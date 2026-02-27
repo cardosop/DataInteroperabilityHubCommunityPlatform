@@ -40,6 +40,7 @@ from hub.apps.semantic.signals import contract_saved, asset_saved
 from hub.apps.contracts.models import Contract
 from hub.apps.assets.models import Asset
 from django.db.models.signals import post_save
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from tests.fixtures.test_data_factories import (
     AssetFactory,
     TenantFactory,
@@ -120,6 +121,9 @@ class MarketplaceOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseIsola
             email=f"consumer-{unique_id}@consumer.com",
         )
         UserRole.objects.get_or_create(user=self.consumer_user, role=self.data_consumer_role)
+
+        ensure_tenant_has_active_subscription(self.provider_tenant)
+        ensure_tenant_has_active_subscription(self.consumer_tenant)
 
         # Create test asset
         self.asset = AssetFactory.create_asset(
@@ -361,6 +365,7 @@ class UCMKT006TrackMarketplaceOrdersTest(MarketplaceOriginalUseCasesTestBase):
         order_data = {"listing_id": str(self.listing.id)}
         orders_url = reverse("order-list")
         order_response = self.client.post(orders_url, order_data, format="json")
+        self.assertEqual(order_response.status_code, status.HTTP_201_CREATED, f"Order creation failed: {getattr(order_response, 'data', order_response.content)}")
         order_id = order_response.data["id"]
 
         # Get order

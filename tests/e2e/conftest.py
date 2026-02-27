@@ -76,6 +76,25 @@ else:
     TenantFactory = None
     User = None
 
+# CRITICAL: Patch PostgreSQL sql_flush to use CASCADE during test teardown (flush).
+# Fixes: psycopg2.errors.FeatureNotSupported: cannot truncate a table referenced in a foreign key constraint
+# E2E tests use django_db and TransactionTestCase; teardown flushes tables. PostgreSQL requires
+# TRUNCATE ... CASCADE when tables have FK references. Apply here so the patch is active for all E2E runs.
+if DJANGO_AVAILABLE:
+    try:
+        import django.db.backends.postgresql.operations as _pg_ops
+        if not hasattr(_pg_ops.DatabaseOperations.sql_flush, "_patched_for_cascade"):
+            _orig_sql_flush = _pg_ops.DatabaseOperations.sql_flush
+
+            def _e2e_sql_flush(self, style, tables, *, reset_sequences=False, allow_cascade=False):
+                return _orig_sql_flush(
+                    self, style, tables, reset_sequences=reset_sequences, allow_cascade=True
+                )
+
+            _e2e_sql_flush._patched_for_cascade = True
+            _pg_ops.DatabaseOperations.sql_flush = _e2e_sql_flush
+    except Exception:
+        pass
 
 # Staging port configuration (from docker-compose.staging.yml)
 STAGING_PORTS = {
@@ -116,6 +135,23 @@ DEFAULT_PORTS = {
 
 # Cache environment detection to avoid repeated HTTP calls
 _ENVIRONMENT_CACHE = None
+
+
+def get_response_data(response):
+    """
+    Get response data from either DRF Response (.data) or JsonResponse/Django HttpResponse.
+
+    Use this when a view may return JsonResponse (e.g. 403 from middleware) instead of
+    DRF Response, to avoid AttributeError: 'JsonResponse' object has no attribute 'data'.
+    """
+    if hasattr(response, "data"):
+        return response.data
+    try:
+        import json
+
+        return json.loads(response.content) if response.content else None
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        return None
 
 
 def detect_environment() -> str:
@@ -266,6 +302,35 @@ def check_service_health(service_url: str, timeout: int = 5) -> bool:
     return False
 
 
+def check_minio_health(timeout: int = 5) -> bool:
+    """
+    Check if MinIO is healthy (Phase 7.2.3).
+    MinIO exposes /minio/health/live for liveness.
+    """
+    if not DJANGO_AVAILABLE or httpx is None:
+        return False
+    s3_url = get_s3_endpoint_url()
+    try:
+        # MinIO health: http://host:9000/minio/health/live
+        health_url = f"{s3_url.rstrip('/')}/minio/health/live"
+        response = httpx.get(health_url, timeout=timeout)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
+@pytest.fixture
+def require_minio():
+    """
+    Fixture that skips the test if MinIO is not available (Phase 7.2.3).
+    Use for tests that need real S3 (complete_file_upload with mock_s3=False).
+    """
+    if not check_minio_health():
+        pytest.skip(
+            "MinIO is not available. Start with docker-compose.test.yml or set AWS_S3_ENDPOINT_URL."
+        )
+
+
 # Mark all E2E tests with e2e marker
 def pytest_addoption(parser):
     """Add command-line options for pytest."""
@@ -278,8 +343,38 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    """Configure pytest markers"""
+    """Configure pytest markers and ensure timeout applies only to test body, not DB setup."""
+    # Fail fast with a clear message if Django is not available (e.g. running with system Python
+    # instead of project venv or Docker). Prevents 100+ import errors from test modules.
+    if not DJANGO_AVAILABLE:
+        config._e2e_env_message = (
+            "E2E tests require Django and project dependencies. Run with the project environment:\n\n"
+            "  Docker (recommended):\n"
+            "    docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "
+            '"cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/ -v '
+            '-c tests/e2e/pytest.ini -o timeout_func_only=true"\n\n'
+            "  On host (Python 3.12 + project deps):\n"
+            "    pip install -r requirements.txt -r requirements-dev.txt\n"
+            "    PYTHONPATH=. DJANGO_SETTINGS_MODULE=hub.settings pytest tests/e2e/ -v -c tests/e2e/pytest.ini -o timeout_func_only=true\n"
+        )
+        pytest.exit(config._e2e_env_message, returncode=2)
+
+    # Force timeout_func_only so pytest-timeout never times out django_db_setup (migrations).
+    if hasattr(config.option, "timeout_func_only"):
+        config.option.timeout_func_only = True
     config.addinivalue_line("markers", "e2e: marks tests as end-to-end tests")
+    config.addinivalue_line(
+        "markers",
+        "requires_minio: Tests that require MinIO/S3 for file uploads (Phase 7.2.3)",
+    )
+    config.addinivalue_line(
+        "markers",
+        "requires_prefect: Tests that require Prefect (scheduled ingestion/export); fail when unreachable (Phase 7.4.3, 7.6.2)",
+    )
+    config.addinivalue_line(
+        "markers",
+        "requires_mailhog: Tests that require MailHog for password reset E2E; skip when unavailable (Phase 7.4.4, 7.6.2)",
+    )
     config.addinivalue_line("markers", "e2e_batch1: E2E tests batch 1")
     config.addinivalue_line("markers", "e2e_batch2: E2E tests batch 2")
     config.addinivalue_line("markers", "e2e_batch3: E2E tests batch 3")
@@ -311,7 +406,9 @@ if DJANGO_AVAILABLE:
 if DJANGO_AVAILABLE and TestCase:
 
     class E2ETestBase(TestCase):
-        """Base test class for E2E tests"""
+        """Base test class for E2E tests. Uses complete_file_upload (requires MinIO/S3)."""
+
+        pytestmark = pytest.mark.requires_minio
 
         def setUp(self):
             """Set up test fixtures"""
@@ -320,10 +417,10 @@ if DJANGO_AVAILABLE and TestCase:
 
             # CRITICAL: Add database connection retry logic to handle connection pool exhaustion
             # Root cause: After running many tests, database connection pool can become exhausted,
-            # leading to connection timeouts during setUp. This retry logic handles transient connection issues.
+            # leading to "too many clients" or connection timeouts during setUp.
             import time
 
-            from django.db import connection
+            from django.db import connection, connections
             from django.db.utils import OperationalError
 
             max_retries = 5
@@ -332,8 +429,9 @@ if DJANGO_AVAILABLE and TestCase:
             for attempt in range(max_retries):
                 try:
                     if attempt > 0:
-                        # Close existing connection and wait before retry
-                        connection.close()
+                        # Free all connections held by this process before retry.
+                        # For "too many clients", closing all connections releases slots for retry.
+                        connections.close_all()
                         wait_time = retry_delay * (2 ** min(attempt - 1, 3))  # Cap at 8 seconds
                         time.sleep(wait_time)
 
@@ -342,20 +440,29 @@ if DJANGO_AVAILABLE and TestCase:
                     break
                 except OperationalError as e:
                     error_msg = str(e).lower()
-                    # Check if database is starting up or connection pool exhausted
+                    # Retry on: startup, timeout, connection pool exhausted, too many clients
                     if (
                         "database system is starting up" in error_msg
                         or "the database system is starting up" in error_msg
                         or "timeout expired" in error_msg
                         or "connection" in error_msg
+                        or "too many clients" in error_msg
                     ):
                         if attempt == max_retries - 1:
                             raise
-                        # Wait longer for database startup or connection pool recovery
+                        # Close all connections to free slots for retry
+                        try:
+                            connections.close_all()
+                        except Exception:
+                            pass
                         continue
                     # Other operational errors - retry with exponential backoff
                     if attempt == max_retries - 1:
                         raise
+                    try:
+                        connections.close_all()
+                    except Exception:
+                        pass
                     continue
                 except Exception as e:
                     if attempt == max_retries - 1:
@@ -389,6 +496,11 @@ if DJANGO_AVAILABLE and TestCase:
             else:
                 pytest.skip("TenantFactory not available")
 
+            # Ensure tenant has active subscription so billing middleware allows writes (POST/PUT/PATCH/DELETE)
+            from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+            ensure_tenant_has_active_subscription(self.tenant)
+
             # Create test user with ACTIVE status
             # Use get_or_create to handle test isolation with --keepdb
             import uuid
@@ -402,18 +514,18 @@ if DJANGO_AVAILABLE and TestCase:
             self.user, created = User.objects.get_or_create(
                 email=email,
                 defaults={
-                    "password": "testpass123",
                     "tenant": self.tenant,
                     "status": UserStatus.ACTIVE,
                 },
             )
 
-            # If user already exists, update it
-            if not created:
-                self.user.tenant = self.tenant
-                self.user.status = UserStatus.ACTIVE
-                self.user.set_password("testpass123")
-                self.user.save()
+            # Always set password via set_password so it is properly hashed.
+            # get_or_create uses create() which bypasses create_user and would store
+            # plain text; login requires check_password to succeed.
+            self.user.set_password("testpass123")
+            self.user.tenant = self.tenant
+            self.user.status = UserStatus.ACTIVE
+            self.user.save()
 
             # Assign TENANT_ADMIN role to test user (required for most E2E operations)
             from hub.apps.users.models import Role, UserRole
@@ -552,12 +664,13 @@ if DJANGO_AVAILABLE and TestCase:
             )
 
             if response.status_code != status.HTTP_201_CREATED:
-                error_data = getattr(response, "data", None) or getattr(
-                    response, "content", b""
-                ).decode("utf-8", errors="ignore")
+                error_data = get_response_data(response) or (
+                    getattr(response, "content", b"").decode("utf-8", errors="ignore")
+                )
                 raise Exception(f"Failed to create asset: {response.status_code} - {error_data}")
 
-            return response.data["id"]
+            data = get_response_data(response)
+            return data["id"] if data else None
 
         def create_contract(
             self, asset_id, original_raw: str = None, original_format: str = None, **kwargs
@@ -665,10 +778,11 @@ if DJANGO_AVAILABLE and TestCase:
 
             if response.status_code not in [status.HTTP_201_CREATED, status.HTTP_200_OK]:
                 raise Exception(
-                    f"Failed to create contract: {response.status_code} - {response.data}"
+                    f"Failed to create contract: {response.status_code} - {get_response_data(response)}"
                 )
 
-            return response.data["id"]
+            data = get_response_data(response)
+            return data["id"] if data else None
 
         def init_file_upload(self, name: str, content_type: str = None, size: int = None, **kwargs):
             """Initialize a file upload and return file ID"""
@@ -696,25 +810,16 @@ if DJANGO_AVAILABLE and TestCase:
             )
 
             if response.status_code != status.HTTP_201_CREATED:
-                # Handle both DRF Response and JsonResponse
-                error_data = getattr(response, "data", None)
-                if error_data is None:
-                    try:
-                        import json
-
-                        error_data = (
-                            json.loads(response.content)
-                            if hasattr(response, "content")
-                            else str(response)
-                        )
-                    except (json.JSONDecodeError, AttributeError):
-                        error_data = str(response)
+                error_data = get_response_data(response) or str(
+                    getattr(response, "content", b"")
+                )
                 raise Exception(
                     f"Failed to init file upload: {response.status_code} - {error_data}"
                 )
 
             # Response uses 'file_id' not 'id' (see FileInitResponseSerializer)
-            return response.data.get("file_id") or response.data.get("id")
+            data = get_response_data(response)
+            return (data.get("file_id") or data.get("id")) if data else None
 
         def complete_file_upload(
             self,
@@ -831,16 +936,10 @@ if DJANGO_AVAILABLE and TestCase:
                         Body=test_content,
                         ContentType=file_obj.content_type,
                     )
-                except Exception as e:
-                    # If S3 upload fails, fall back to mock mode
-                    import logging
-
-                    logger = logging.getLogger(__name__)
-                    logger.warning(f"S3 upload failed for file {file_id}, using mock mode: {e}")
-                    mock_s3 = True
-                    file_obj.status = FileStatus.ACTIVE
-                    file_obj.content_sha256 = content_sha256
-                    file_obj.save()
+                except Exception:
+                    # When mock_s3=False and S3 fails, re-raise (Phase 7.2.2).
+                    # No silent fallback to mock mode — tests that require real S3 must fail when S3 is broken.
+                    raise
 
             # Complete upload via API (only if not already marked as mock)
             if not mock_s3:
@@ -863,18 +962,7 @@ if DJANGO_AVAILABLE and TestCase:
                     if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                         if attempt < max_retries - 1:
                             # Extract retry_after from response if available
-                            error_data = getattr(response, "data", None)
-                            if error_data is None:
-                                try:
-                                    import json
-
-                                    error_data = (
-                                        json.loads(response.content)
-                                        if hasattr(response, "content")
-                                        else {}
-                                    )
-                                except (json.JSONDecodeError, AttributeError):
-                                    error_data = {}
+                            error_data = get_response_data(response) or {}
 
                             # Get retry_after from error details or use exponential backoff
                             retry_after = (
@@ -886,37 +974,26 @@ if DJANGO_AVAILABLE and TestCase:
                             continue
 
                     # For non-rate-limit errors, raise immediately
-                    # Handle both DRF Response and JsonResponse
-                    error_data = getattr(response, "data", None)
+                    error_data = get_response_data(response)
                     if error_data is None:
-                        try:
-                            import json
-
-                            error_data = (
-                                json.loads(response.content)
-                                if hasattr(response, "content")
-                                else str(response)
-                            )
-                        except (json.JSONDecodeError, AttributeError):
-                            error_data = str(response)
+                        error_data = (
+                            getattr(response, "content", b"").decode("utf-8", errors="ignore")
+                            if hasattr(response, "content")
+                            else str(response)
+                        )
                     raise Exception(
                         f"Failed to complete file upload: {response.status_code} - {error_data}"
                     )
 
                 # Final check after retries
                 if response.status_code != status.HTTP_200_OK:
-                    error_data = getattr(response, "data", None)
+                    error_data = get_response_data(response)
                     if error_data is None:
-                        try:
-                            import json
-
-                            error_data = (
-                                json.loads(response.content)
-                                if hasattr(response, "content")
-                                else str(response)
-                            )
-                        except (json.JSONDecodeError, AttributeError):
-                            error_data = str(response)
+                        error_data = (
+                            getattr(response, "content", b"").decode("utf-8", errors="ignore")
+                            if hasattr(response, "content")
+                            else str(response)
+                        )
                     raise Exception(
                         f"Failed to complete file upload after {max_retries} attempts: {response.status_code} - {error_data}"
                     )
@@ -933,12 +1010,11 @@ if DJANGO_AVAILABLE and TestCase:
 
             if response.status_code != status.HTTP_201_CREATED:
                 raise Exception(
-                    f"Failed to create dataset: {response.status_code} - {response.data}"
+                    f"Failed to create dataset: {response.status_code} - {get_response_data(response)}"
                 )
 
-            # The response.data should be a dict from DatasetSerializer
-            # which includes 'id' field
-            data = response.data
+            # The response should be a dict from DatasetSerializer with 'id' field
+            data = get_response_data(response)
 
             # Handle dict response (most common)
             if isinstance(data, dict):
@@ -1355,9 +1431,9 @@ if DJANGO_AVAILABLE and TestCase:
                 status.HTTP_202_ACCEPTED,
             ]:
                 # Return dict with status_code for error handling in tests
-                return {"status_code": response.status_code, "error": response.data}
+                return {"status_code": response.status_code, "error": get_response_data(response)}
 
-            return response.data
+            return get_response_data(response)
 
         def run_compliance_check(self, file_id=None, dataset_id=None, asset_id=None, **kwargs):
             """Create a compliance run via API"""
@@ -1376,10 +1452,11 @@ if DJANGO_AVAILABLE and TestCase:
 
             if response.status_code != status.HTTP_201_CREATED:
                 raise Exception(
-                    f"Failed to create compliance run: {response.status_code} - {response.data}"
+                    f"Failed to create compliance run: {response.status_code} - {get_response_data(response)}"
                 )
 
-            return response.data["id"]
+            data = get_response_data(response) or {}
+            return data.get("id")
 
         def run_dq_check(self, file_id=None, dataset_id=None, asset_id=None, **kwargs):
             """Create a DQ run via API"""
@@ -1398,10 +1475,11 @@ if DJANGO_AVAILABLE and TestCase:
 
             if response.status_code != status.HTTP_201_CREATED:
                 raise Exception(
-                    f"Failed to create DQ run: {response.status_code} - {response.data}"
+                    f"Failed to create DQ run: {response.status_code} - {get_response_data(response)}"
                 )
 
-            return response.data["id"]
+            data = get_response_data(response) or {}
+            return data.get("id")
 
         def wait_for_job_completion(self, job_id, timeout=120, poll_interval=2):
             """
@@ -1453,23 +1531,14 @@ if DJANGO_AVAILABLE and TestCase:
             )
 
             if response.status_code not in [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT]:
-                error_data = getattr(response, "data", None)
-                if error_data is None:
-                    try:
-                        import json
-
-                        error_data = (
-                            json.loads(response.content)
-                            if hasattr(response, "content")
-                            else str(response)
-                        )
-                    except (json.JSONDecodeError, AttributeError):
-                        error_data = str(response)
+                error_data = get_response_data(response) or str(
+                    getattr(response, "content", b"")
+                )
                 raise Exception(
                     f"Failed to attach contract to asset: {response.status_code} - {error_data}"
                 )
 
-            return response.data if hasattr(response, "data") else None
+            return get_response_data(response)
 
         def attach_dataset_to_asset(self, asset_id, dataset_id):
             """Attach a dataset to an asset (dataset already has asset_id, this is a no-op but kept for API compatibility)"""

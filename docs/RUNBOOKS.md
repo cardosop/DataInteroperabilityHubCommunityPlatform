@@ -8,21 +8,82 @@ Complete troubleshooting and operational procedures for the Data Interoperabilit
 2. [Batch execution (Phase 12A path-based batches)](#batch-execution-phase-12a-path-based-batches)
 3. [Gap remediation validation](#gap-remediation-validation)
 4. [Security suite (Phase 12A.3)](#security-suite-phase-12a3)
-5. [Dependency and vulnerability scans](#dependency-and-vulnerability-scans)
-6. [Deployment and rollback](#deployment-and-rollback)
-7. [Normalization Failures](#normalization-failures)
-8. [Lineage Issues](#lineage-issues)
-9. [Scheduled Ingestion Failures](#scheduled-ingestion-failures)
-10. [Prefect Server Issues](#prefect-server-issues)
-11. [Prefect Workers Issues](#prefect-workers-issues)
-12. [Search Service Issues](#search-service-issues)
-13. [Observability Service Issues](#observability-service-issues)
-14. [Webhook Service Issues](#webhook-service-issues)
-15. [Marketplace Connector Pattern Violations](#marketplace-connector-pattern-violations)
-16. [BaaS Platform Troubleshooting](#baas-platform-troubleshooting)
-17. [ODH Integration Troubleshooting](#odh-integration-troubleshooting)
-18. [Disaster Recovery](#disaster-recovery)
-19. [Backup and Recovery](#backup-and-recovery)
+5. [Chaos tests (manual only)](#chaos-tests-manual-only)
+6. [Dependency and vulnerability scans](#dependency-and-vulnerability-scans)
+7. [Deployment and rollback](#deployment-and-rollback)
+8. [Normalization Failures](#normalization-failures)
+9. [Lineage Issues](#lineage-issues)
+10. [Scheduled Ingestion Failures](#scheduled-ingestion-failures)
+11. [Prefect Server Issues](#prefect-server-issues)
+12. [Prefect Workers Issues](#prefect-workers-issues)
+13. [Search Service Issues](#search-service-issues)
+14. [Observability Service Issues](#observability-service-issues)
+15. [Webhook Service Issues](#webhook-service-issues)
+16. [Marketplace Connector Pattern Violations](#marketplace-connector-pattern-violations)
+17. [BaaS Platform Troubleshooting](#baas-platform-troubleshooting)
+18. [ODH Integration Troubleshooting](#odh-integration-troubleshooting)
+19. [Disaster Recovery](#disaster-recovery)
+20. [Backup and Recovery](#backup-and-recovery)
+21. [BaaS Infrastructure (dedicated instances)](#baas-infrastructure-dedicated-instances)
+22. [Marketplace orders and entitlements — KYC required](#marketplace-orders-and-entitlements--kyc-required)
+23. [KYC provider integration](#kyc-provider-integration)
+24. [Real Scheduled Ingestion/Export E2E](#real-scheduled-ingestionexport-e2e)
+25. [Compliance Service — Policy and Risk Config](#compliance-service--policy-and-risk-config)
+
+---
+
+## Compliance Service — Policy and Risk Config
+
+**When to use:** Adjust compliance-service policy thresholds (allowed_to_store) and risk level thresholds via environment variables without code changes.
+
+**Full runbook:** [runbooks/COMPLIANCE_SERVICE_CONFIG.md](runbooks/COMPLIANCE_SERVICE_CONFIG.md) — env vars `COMPLIANCE_POLICY_*`, `COMPLIANCE_RISK_THRESHOLD_*`, defaults, and references.
+
+---
+
+## Real Scheduled Ingestion/Export E2E
+
+**When to use:** Manual or environment-gated validation of scheduled ingestion and scheduled export with **real credentials and real storage** (S3, GCS, Azure Blob, HTTP/HTTPS, FTP/SFTP, DATABASE). No credentials in repo; use env vars or Prefect Blocks.
+
+**Full runbook:** [runbooks/REAL_SCHEDULED_INGESTION_EXPORT_E2E.md](runbooks/REAL_SCHEDULED_INGESTION_EXPORT_E2E.md) — prerequisites, connector support, env vars, Prefect Blocks, steps to run a real ingestion and export, optional pytest marker `real_scheduled_e2e` (guard `REAL_SCHEDULED_E2E=1`). Exclude from default/CI: `pytest -m 'not real_scheduled_e2e'`.
+
+---
+
+## KYC provider integration
+
+**Purpose:** Documented path for a future KYC provider to set tenant `kyc_status` to VERIFIED or PENDING_REVIEW in a secure, auditable, and idempotent way. No live provider implementation in this change.
+
+**Options:** (1) **Secure webhook (future):** Add an authenticated webhook that accepts provider payloads and calls `TenantService.update_tenant(tenant_id=..., kyc_status=...)` so every change is audited; optional idempotency key for at-least-once delivery. (2) **Admin API (current):** Use `PATCH /api/v1/tenants/{id}/` with `kyc_status` and platform-admin (or service-account) auth; provider backend calls this after external verification.
+
+**Idempotency:** Setting the same status again is a no-op (no row change, no duplicate audit). **Audit:** Every real change produces `KYC_STATUS_CHANGED` (see feat1 2.3; do not use `QuerySet.update()` for provider-driven updates).
+
+**Full runbook:** [runbooks/KYC_PROVIDER_INTEGRATION.md](runbooks/KYC_PROVIDER_INTEGRATION.md) — webhook vs admin API, idempotency, audit, and scope. Design: [openspec/changes/feat1/design.md](../openspec/changes/feat1/design.md) D5.
+
+---
+
+## Marketplace orders and entitlements — KYC required
+
+**When it applies**: Creating marketplace orders (POST `/api/v1/marketplace/orders/`, POST `/api/v1/marketplace/orders/purchase/`) and granting entitlements (POST `/api/v1/marketplace/orders/{id}/approve/`) require the **consumer tenant** to have verified KYC.
+
+**Rule**: The tenant that creates the order (buyer/consumer) must have `kyc_status = VERIFIED`. If not, the API returns **403 Forbidden** with a body that includes an error code so clients can handle it explicitly.
+
+**403 response format**:
+- **Status**: `403 Forbidden`
+- **Body**: `{"error": "<message>", "code": "kyc_not_verified"}`
+- **Message**: e.g. "Orders and entitlements require verified KYC for the consumer tenant."
+
+**Flows enforced**:
+1. **Order creation** (create order, purchase): consumer tenant (request user’s tenant) must be KYC-verified.
+2. **Entitlement grant** (approve order): consumer tenant (order’s tenant) must be KYC-verified before the provider can approve and grant entitlement.
+
+**Allowlist (optional)**: Tenant IDs in `MARKETPLACE_KYC_ALLOWLIST_TENANT_IDS` (env list, comma-separated UUIDs) are exempt and can create orders / receive entitlements without VERIFIED KYC. Default is empty. Use only for testing or documented exemptions.
+
+**References**: feat1 task 2.4; `hub/apps/marketplace/kyc.py`; order checks in `hub/apps/marketplace/order_views.py` and `hub/apps/marketplace/services.py`.
+
+---
+
+## BaaS Infrastructure (dedicated instances)
+
+Optional dedicated Postgres and Redis for BaaS usage and quota. When `BAAS_DATABASE_URL` and `BAAS_REDIS_URL` are set, BaaS uses these; when unset, it uses the main DB and Redis. See **[runbooks/BAAS_INFRASTRUCTURE.md](runbooks/BAAS_INFRASTRUCTURE.md)** for Docker wiring, env vars, and test setup.
 
 ---
 
@@ -32,7 +93,7 @@ Complete troubleshooting and operational procedures for the Data Interoperabilit
 
 ### Commands
 
-**Prerequisites**: (1) Scripts must be executable. If `./scripts/run_phase_12a_...` fails with "Permission denied", run: `chmod +x scripts/run_phase_12a_backend_suites.sh scripts/run_phase_12a_full_suites.sh scripts/generate_test_summary_report.sh scripts/generate_sign_off_snippet.sh`. (2) The test stack must be up so backend and smoke tests can run: `docker compose -f docker-compose.test.yml up -d` (wait until `api-service-test` is healthy). Same as [Batch execution](#batch-execution-phase-12a-path-based-batches) start step.
+**Prerequisites**: (1) Scripts must be executable. If `./scripts/run_phase_12a_...` fails with "Permission denied", run: `chmod +x scripts/run_phase_12a_backend_suites.sh scripts/run_phase_12a_full_suites.sh scripts/generate_test_summary_report.sh scripts/generate_sign_off_snippet.sh`. (2) The test stack must be up so backend and smoke tests can run: `docker compose -f docker-compose.test.yml --env-file .env.test up -d` (wait until `api-service-test` is healthy). Use `--env-file .env.test` so Postgres initializes with `hub_test` credentials. Same as [Batch execution](#batch-execution-phase-12a-path-based-batches) start step.
 
 1. **Backend only** (unit, integration, E2E):
    ```bash
@@ -42,6 +103,7 @@ Complete troubleshooting and operational procedures for the Data Interoperabilit
    ```bash
    ./scripts/run_phase_12a_full_suites.sh
    ```
+   Use `--continue-on-failure` to run all phases regardless of failures (for debugging); exit non-zero at end if any failed. Use `--help` for options.
 3. **Where artifacts are stored**: `test_reports_comprehensive/YYYY-MM-DD/` with subdirs `unit/`, `integration/`, `e2e/`, `smoke/`, `security/`, `performance/`, `concurrency/`, `regression/`, `frontend-unit/`, `frontend-e2e/`. Summary artifacts: `phase_12a_1_summary.json` (backend), `phase_12a_3_summary.json` (security/performance/concurrency/regression). Canonical layout is defined in [EVIDENCE_COLLECTION_PLAN.md — Directory structure](EVIDENCE_COLLECTION_PLAN.md#directory-structure).
 
 4. **Layout only (no test run)**: To create the directory structure without running tests, use `./scripts/collect_test_evidence.sh` (date format `YYYYmmdd_HHMMSS`). Phase 12A scripts create the layout automatically when they run.
@@ -49,6 +111,30 @@ Complete troubleshooting and operational procedures for the Data Interoperabilit
 5. **Git**: `test_reports_comprehensive/` is in `.gitignore`; report contents are not committed.
 
 6. **Canonical definition**: Run order, commands per step, and CI vs nightly/manual are defined in [FULL_TEST_SUITE_DEFINITION.md](FULL_TEST_SUITE_DEFINITION.md). Batched execution and full-suite commands are aligned with [GAP_FIX_AND_FULL_TEST_EXECUTION_PLAN.md](GAP_FIX_AND_FULL_TEST_EXECUTION_PLAN.md). Performance, regression, and concurrency are optional for the PR gate and run in **nightly** or **release** (see phase-12a-nightly.yml, phase-12a-release.yml); regression can also be the last batch in batched runs.
+
+7. **E2E journey strict mode** (Task 6.6.3): Set `E2E_STRICT_JOURNEY=1` to make all journey tests strict — missing endpoints (404/501) cause failures instead of skips. Use when validating that all core and optional endpoints exist:
+   ```bash
+   E2E_STRICT_JOURNEY=1 pytest tests/e2e/test_new_user_journeys_comprehensive.py -v
+   ```
+
+### UC/Journey/Persona E2E tests (Task 6.7)
+
+Run only UC-, journey-, and persona-tagged E2E tests (subset of `tests/e2e/`):
+
+```bash
+./scripts/run_uc_journey_persona_tests.sh
+```
+
+Or directly:
+```bash
+pytest tests/e2e/ -v -m uc_journey_persona
+```
+
+**Prerequisites**: Same as full E2E — test stack up (`docker compose -f docker-compose.test.yml --env-file .env.test up -d`), API at 8001.
+
+**Artifacts**: `test_reports_comprehensive/{date}/uc_journey_persona/` (JUnit XML, log).
+
+**Optional CI step**: Can be added as a separate job or step in CI; see [FULL_TEST_SUITE_DEFINITION.md](FULL_TEST_SUITE_DEFINITION.md) step 4b.
 
 ### Use case and journey test coverage report (Phase 5.5)
 
@@ -59,6 +145,12 @@ python scripts/report_uc_journey_test_coverage.py
 ```
 
 Options: `--json` (output JSON), `--fail-if-zero` (exit 1 if any UC or journey has no tests), `--audit-traceability` (check [TEST_TRACEABILITY.md](TEST_TRACEABILITY.md) file paths exist and report broken links). Use in nightly or release to produce the report (e.g. artifact) or to fail the run when coverage is required (`--fail-if-zero`).
+
+**Traceability CI Gate** (openspec/changes/testsfix1): Use `--ci-mode` to run the gate: exit 0 only when no *critical* UC/journey has zero tests and coverage ≥ threshold. Critical IDs are in [CRITICAL_UC_JOURNEY_IDS.yaml](CRITICAL_UC_JOURNEY_IDS.yaml). Example:
+```bash
+python scripts/report_uc_journey_test_coverage.py --ci-mode --output traceability-report.json
+```
+See [TEST_EXECUTION_PLAN.md — Traceability CI Gate (phased rollout)](TEST_EXECUTION_PLAN.md#traceability-ci-gate-phased-rollout) for Phase 1 (report-only), Phase 2 (critical-list gate), Phase 3 (coverage threshold) and how to update the critical list.
 
 ### Generate test summary report
 
@@ -85,10 +177,54 @@ The report includes test execution summary (date, suite, total/passed/failed/ski
 From repo root, using the test compose file:
 
 ```bash
-docker compose -f docker-compose.test.yml up -d
+docker compose -f docker-compose.test.yml --env-file .env.test up -d
 ```
 
 Wait until core services (including `api-service-test`) are running and healthy. The batched script brings up the stack automatically if you run it without `--no-up`.
+
+### Missing test services (api-service-test, workflow-engine-service-test)
+
+If `docker compose -f docker-compose.test.yml ps` does not show `hub-test-api` or `hub-test-workflow-engine`, those containers may have exited. Both services use `restart: on-failure` so they will retry; check status and logs:
+
+1. **List all containers (including exited):**
+   ```bash
+   docker compose -f docker-compose.test.yml ps -a
+   ```
+
+2. **Start the missing services and follow logs:**
+   ```bash
+   docker compose -f docker-compose.test.yml --env-file .env.test up -d api-service-test workflow-engine-service-test
+   docker compose -f docker-compose.test.yml logs -f api-service-test workflow-engine-service-test
+   ```
+   Stop with Ctrl+C once you see the error.
+
+3. **Common causes:**
+   - **Database missing**: `FATAL: database "hub_test" does not exist` — the test Postgres volume may have been created without `POSTGRES_DB=hub_test`. An `ensure-test-db` service runs on each `up` and creates `hub_test` if the role exists. To fix an already-running stack: run the one-off once, then restart API and workflow-engine:
+     ```bash
+     docker compose -f docker-compose.test.yml run --rm ensure-test-db
+     docker compose -f docker-compose.test.yml restart api-service-test workflow-engine-service-test
+     ```
+   - **Role missing**: `FATAL: role "hub_test" does not exist` — the Postgres data volume was initialized with different env (e.g. another user). Recreate the test DB volume so init runs with `POSTGRES_USER=hub_test` and `POSTGRES_DB=hub_test`:
+     ```bash
+     docker compose -f docker-compose.test.yml down -v
+     docker compose -f docker-compose.test.yml --env-file .env.test up -d
+     ```
+     This removes all named volumes for the test stack (including `postgres-test-data`), then brings the stack up so Postgres initializes with `hub_test` user and `hub_test` database. Wait for `ensure-test-db` and core services to be up.
+   - **Postgres auth**: `FATAL: password authentication failed for user "hub_test"` — ensure the same env is used for postgres-test and API/workflow-engine. Use `--env-file .env.test` when bringing up the stack if you override `POSTGRES_USER`/`POSTGRES_PASSWORD` there. If postgres was created earlier with different credentials, either pass that same env when starting the stack or recreate the DB volume: `docker compose -f docker-compose.test.yml down`, remove the postgres-test volume, then `up -d` again.
+   - **Migrations / startup error**: Check the traceback in the logs; fix the application or run migrations manually if needed.
+   - **DuplicateTable `scheduled_exports` (dev)**: If workflow-engine (or api-service) exits with `relation "scheduled_exports" already exists`, the table exists but Django’s migration record is missing. One-time fix: mark the migration as applied without running it, then restart. Use the same compose file you use for `up` (e.g. `docker-compose.dev.yml` or `docker-compose.yml`) and the service that runs migrate (e.g. api-service or workflow-engine-service):
+     ```bash
+     # With docker-compose.dev.yml (api-service runs migrate)
+     docker compose -f docker-compose.dev.yml run --rm api-service python manage.py migrate scheduled_export 0001_initial --fake
+     docker compose -f docker-compose.dev.yml up -d workflow-engine-service
+     ```
+     If you use plain `docker-compose.yml`, workflow-engine does not run migrate; use api-service to fake the migration if api-service is failing the same way.
+
+4. **Start full stack with explicit env (optional):**
+   ```bash
+   docker compose -f docker-compose.test.yml --env-file .env.test up -d
+   ```
+   Use this if you have `.env.test` with `POSTGRES_USER`/`POSTGRES_PASSWORD` so all services share the same credentials.
 
 ### Run batches
 
@@ -106,6 +242,25 @@ All runs use `docker-compose.test.yml` and `api-service-test`; evidence is writt
 - **Base path**: `test_reports_comprehensive/YYYY-MM-DD/batches/`
 - **Per batch**: `batch_N/batch_N.log`, `batch_N/junit.xml`, `batch_N/summary.json` (and `coverage.xml` when coverage is enabled for that batch).
 - **Date**: Default is today (`YYYY-MM-DD`); override with `DATE=2026-02-12 ./scripts/run_phase_12a_batched.sh` if needed.
+- **Failed test names**: To fix failures by root cause, get the list from the batch log: `grep -E '^FAILED|^ERROR' test_reports_comprehensive/YYYY-MM-DD/batches/batch_N/batch_N.log`, or read the "short test summary info" at the end of the log (lines like `FAILED path/to/test_file.py::test_name`).
+
+### Database setup errors (transient Postgres unavailability)
+
+If a batch fails at **setup** with `OperationalError: server closed the connection unexpectedly`, `FATAL: the database system is shutting down`, `FATAL: the database system is starting up`, or `FATAL: the database system is in recovery mode`, the cause is usually Postgres becoming unavailable or still in recovery during test DB creation/migrations (e.g. container restarted, OOM, or stack not fully ready).
+
+- **Before batches run**: The batched scripts (`run_phase_12a_batched.sh`, `run_performance_tests_batched.sh`) wait for **Postgres to be ready** (via `pg_isready` in the postgres-test container, up to 10 minutes) after core services are up, so pytest does not start until the database accepts connections. `hub/conftest.py` also retries the session-start DB check on transient messages (`starting up`, `not yet accepting connections`, `refused`) so runs that start right after compose up succeed once Postgres is ready.
+- **Automatic retry**: `tests/conftest.py` retries `setup_databases` up to 3 times on these transient errors (with 5s, 10s, 15s backoff and connection close between attempts). Many runs will pass on retry.
+- **If errors persist**: Keep the test stack up for the full batch run; do not restart Postgres mid-run. Use `--reuse-db` when re-running so the first-run migration storm is avoided. See [Batch execution](#batch-execution-phase-12a-path-based-batches) start step.
+- **Infrastructure hardening**: `docker-compose.test.yml` configures `postgres-test` and `prefect-db-test` with **start_period 600s** so initdb (first run) or recovery (restart) can finish before the healthcheck marks them unhealthy. `prefect-server-test` depends on `prefect-db-test` with **service_healthy** and has **restart: on-failure** and **start_period 240s** so migrations can complete and the server retries if startup fails (e.g. TimeoutError during migrations). If a batch log shows "database system is shutting down", "database system is starting up", a FATAL connection error, or **DNS resolution failure** ("could not translate host name", "Temporary failure in name resolution"), the batched script waits for Postgres to be healthy again (**600s** when "starting up", **120s** for DNS, **300s** otherwise), then **re-runs only the failed tests** once with `pytest --lf`. If the retry passes, the batch is reported as passed (root-cause fix for transient infra; no mocks).
+- **Postgres exit 137 (OOM)**: If `hub-test-postgres` exits with code 137, the container was killed (usually OOM). Reduce load (fewer concurrent services), increase Docker memory for the engine, or raise `postgres-test` `deploy.resources.limits.memory` in `docker-compose.test.yml` (e.g. 6G). Then bring the stack down, remove the volume if the data dir is corrupt (`docker compose -f docker-compose.test.yml down -v` for the named volume), and start again.
+
+### AWS integration optional tests (batch 52 / integrations)
+
+The AWS Data Exchange integration tests (`hub/apps/integrations/tests/test_aws_data_exchange_integration.py`) skip up to 6 tests when optional env is unset: `AWS_ROLE_ARN`, `AWS_SESSION_TOKEN`, or a test dataset ID (from `AWS_DATA_EXCHANGE_TEST_DATASET_ID` or from `list_listings(limit=1)`). To run with **zero skips**: set `AWS_ROLE_ARN`, `AWS_SESSION_TOKEN`, and `AWS_DATA_EXCHANGE_TEST_DATASET_ID` (or ensure the account has at least one listing). To run the integrations batch **without** those optional tests (and get zero skips when env is unset), the batched script would need to pass a marker filter; see the test file docstring for the exact `-m` expression.
+
+### GCP integration optional tests (batch 56 / integrations)
+
+The GCP Marketplace connector integration tests (`hub/apps/integrations/tests/test_gcp_marketplace_connector_integration.py`) skip when `GCP_SERVICE_ACCOUNT_JSON` is unset or invalid (e.g. malformed JSON or incomplete service account keys). To run with **zero skips**: set `GCP_SERVICE_ACCOUNT_JSON` to valid service account JSON (or use `GCP_CREDENTIALS_JSON_FILE` / `GCP_PROJECT_ID` + `GCP_USE_ADC=true` where supported). To run the batch **without** these optional tests: `-m "not requires_gcp_service_account"` (after adding the marker to the test class/module).
 
 ### Audit batch sizes (≤200 per batch)
 
@@ -149,6 +304,21 @@ To regenerate batch_status.json and README.md only (e.g. after editing deferred 
 ```bash
 ./scripts/generate_batch_status.sh test_reports_comprehensive/YYYY-MM-DD/batches
 ```
+
+### Batch 51 (Integrations & Mesh): failures and skips
+
+Batch 51 runs `hub/apps/integrations/tests/` and `hub/apps/mesh/tests/`. Common outcomes:
+
+- **9 failed, 1 error, 10 skipped**: Failures and the single error are test- or environment-specific; the log must be inspected to fix root cause.
+- **How to get failure/error details**: From repo root, after a run:
+  ```bash
+  grep -E 'FAILED|ERROR at |short test summary' "test_reports_comprehensive/$(date +%Y-%m-%d)/batches/batch_51/batch_51.log"
+  ```
+  Or open `test_reports_comprehensive/YYYY-MM-DD/batches/batch_51/batch_51.log` and search for `FAILED` or `ERROR`; copy the test name and traceback (or the "short test summary" block) to fix or share.
+- **Connection already closed**: If tests fail with `InterfaceError: connection already closed`, the test suite uses `connections.close_all()` and `connection.ensure_connection()` in e2e and framework setUp where needed. Ensure no test in the run calls `connection.close()` in tearDown without re-establishing connection for the next test (see [Database setup errors](#database-setup-errors-transient-postgres-unavailability)).
+- **10 skipped (expected when credentials not set)**:
+  - **6 Snowflake**: Set `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, and `SNOWFLAKE_TOKEN` in `.env.test` (or CI secrets) to run Snowflake integration tests; leave unset to keep these skipped.
+  - **4 GCP**: Set `GCP_CREDENTIALS_JSON_FILE` to a path to a service-account JSON file (recommended), or set `GCP_CREDENTIALS_JSON` with the whole value in **single quotes** in `.env.test` (e.g. `GCP_CREDENTIALS_JSON='{"type":"service_account",...}'`). See `.env.test.example` for variable names and notes.
 
 ### References
 
@@ -231,6 +401,66 @@ Security tests are included in **Phase 12A Nightly** (`phase-12a-nightly.yml`) a
 
 ---
 
+## Chaos tests (manual only)
+
+**When to run**: Pre-release (e.g. before a release candidate), after major orchestration or workflow changes, or during incident investigation when validating resilience (e.g. ODPS workflow behavior under failure).
+
+**Execution**: Chaos tests are **manual only**. They are **not** run in CI or in nightly workflows. Run them on demand using the runbook below. See [FULL_TEST_SUITE_DEFINITION.md — Chaos](FULL_TEST_SUITE_DEFINITION.md#optional--extended-suites-nightly-or-manual), [TEST_EXECUTION_PLAN.md — Chaos tests](TEST_EXECUTION_PLAN.md#chaos-tests-manual-only), and the standalone runbook [runbooks/RB-CHAOS-001.md](../runbooks/RB-CHAOS-001.md).
+
+### How to run
+
+From the repository root, with the test stack up:
+
+```bash
+pytest tests/chaos/ -v --tb=short
+```
+
+**Optional** (same environment as Phase 12A): use the test compose stack and run inside the API container:
+
+```bash
+docker compose -f docker-compose.test.yml --env-file .env.test up -d
+# Wait until api-service-test is healthy, then:
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/chaos/ -v --tb=short"
+```
+
+Or from the host (with stack already up):
+
+```bash
+PYTHONPATH=. DJANGO_SETTINGS_MODULE=hub.settings pytest tests/chaos/ -v --tb=short
+```
+
+### Required environment
+
+- **Docker Compose**: Use `docker-compose.test.yml` (or `docker-compose.dev.yml`) so Postgres, Redis, and the API service are available. Chaos tests use real DB and services (no mocks/stubs).
+- **Services**: PostgreSQL (database), Redis (if tests use cache/queue), API service. See [TEST_EXECUTION_PLAN.md — Docker Compose and test runtime](TEST_EXECUTION_PLAN.md#docker-compose-and-test-runtime-integration-and-e2e) for minimal services.
+- **Settings**: `DJANGO_SETTINGS_MODULE=hub.settings`; test DB will be used when running under pytest.
+
+### What the suite covers
+
+- **ODPS workflow chaos** (`tests/chaos/test_odps_workflow_chaos.py`): resilience under service/network/DB failures, compensation logic, event replay. Uses [tests/chaos/framework.py](tests/chaos/framework.py) (ChaosEngine, ChaosScenario, FailureType).
+
+**Note:** The Phase 10.5 script `scripts/run_phase_10_5_tests.sh` includes the chaos suite as one of its suites (load/stress/chaos); that script is **manual only** and is not invoked from CI or nightly. Prefer `pytest tests/chaos/` for running chaos tests alone.
+
+### Artifacts (optional)
+
+To write JUnit XML under the Phase 12A layout:
+
+```bash
+mkdir -p test_reports_comprehensive/$(date +%Y-%m-%d)/chaos
+pytest tests/chaos/ -v --tb=short --junit-xml=test_reports_comprehensive/$(date +%Y-%m-%d)/chaos/junit.xml
+```
+
+### Fixing failures
+
+- Fix failures at **root cause** (no mocks/stubs, no skip-if-flaky). Chaos tests use real services; any failure indicates a real resilience or environment issue.
+- Re-run the suite after fixes to confirm green.
+
+### Not in CI or nightly
+
+Chaos tests are **excluded** from `ci.yml`, `phase-12a-nightly.yml`, and `phase-12a-release.yml`. They are run only when explicitly executed as above. This is intentional: chaos tests exercise failure injection and can be disruptive; they are for pre-release and incident investigation, not for every PR or nightly run.
+
+---
+
 ## Dependency and vulnerability scans
 
 **When to use**: To understand or verify dependency and vulnerability scanning in CI; part of test/evidence and release posture (gapfix1 6.2.2).
@@ -289,6 +519,17 @@ If a release fails after deployment (e.g. critical errors, failed health checks,
 
 - **Procedures**: See [DOCKER_COMPOSE_DEPLOYMENT.md — Rollback Procedures](DOCKER_COMPOSE_DEPLOYMENT.md#rollback-procedures): Failed Deployment (Scenario 1), Database Migration Failure (Scenario 2), Configuration Error (Scenario 3), Partial Rollback (Scenario 4).
 - **After rollback**: Fix root cause, re-run Phase 12A, generate report, obtain sign-off again, then re-release.
+
+### Startup configuration validation
+
+**When to run**: Before starting the API server in staging or production (e.g. in container entrypoint or as a pre-start step). Ensures required env (database, Redis, ALLOWED_HOSTS, production secrets) are set and valid so misconfiguration fails fast with a clear error.
+
+- **Command**: From repo root (or container working directory `/app`): `python hub/manage.py validate_config`
+  - Exit 0: configuration valid.
+  - Exit 1: prints `ImproperlyConfigured` message; fix env or settings and re-run.
+- **Production entrypoint**: In production Docker Compose, the API service runs validation before gunicorn: `python hub/manage.py validate_config && exec gunicorn ...` (see `docker-compose.production.yml`). For custom entrypoints, run `validate_config` before starting the app server.
+- **Design and variables**: Required variables, format checks, and when validation runs are documented in [CONFIG_VALIDATION_DESIGN.md](CONFIG_VALIDATION_DESIGN.md). Production requires `SECRET_KEY`, `JWT_SECRET_KEY` (not dev defaults), non-empty `ALLOWED_HOSTS`, and valid Redis URL; database config is validated from `DATABASES['default']`.
+- **If validation fails**: Fix the reported variable (e.g. set `SECRET_KEY` in env, set `ALLOWED_HOSTS`, or fix Redis URL format). See docs/SECURITY.md for secret management and CONFIG_VALIDATION_DESIGN.md for all checks.
 
 ---
 
@@ -544,6 +785,12 @@ docker-compose exec postgres psql -U prefect -d prefect -c "\dt"
 docker-compose down prefect-server
 docker-compose up -d prefect-server
 ```
+
+#### Test stack (batch 30): Prefect client/server version match
+If `test_prefect_full_flow_integration.py` skips with "Prefect client and server major versions must match", the test Prefect server image may have resolved to a 3.x build. **Fix**: In `docker-compose.test.yml`, pin `prefect-server-test` and `prefect-worker-test` to an explicit 2.x image, e.g. `prefecthq/prefect:2.16.9-python3.12`. Hub and prefect-integration use `prefect>=2.14.0,<3`; the test server and worker must be 2.x. After changing the image, rebuild or pull and restart: `docker compose -f docker-compose.test.yml --env-file .env.test up -d prefect-server-test prefect-worker-test`.
+
+#### Test stack: hub-test-prefect-server exited (0) / dependency failed to start
+If `hub-test-prefect-server` exits with code 0 and compose reports "dependency failed to start", the server process is stopping. Common causes: (1) **TimeoutError during migrations** — Prefect runs Alembic migrations on startup by default; if prefect-db was slow or not yet healthy, migrations can time out. The stack runs `prefect server database upgrade -y` before starting the server and sets `PREFECT_SERVER_DATABASE_MIGRATE_ON_START=false` so the server skips migrations in its lifespan. It also depends on `prefect-db-test` with **service_healthy**, **restart: on-failure**, and **start_period 240s**. (2) **Auth/connection** — the server uses `scripts/wait_for_prefect_db.py` to wait for an authenticated connection. **Fix**: (1) Check logs: `docker compose -f docker-compose.test.yml logs prefect-server-test prefect-db-test`. (2) Start Prefect services after the rest of the stack is up: `docker compose -f docker-compose.test.yml --env-file .env.test up -d prefect-server-test` (it will retry on failure). (3) Recreate the Prefect DB volume if needed: `docker compose -f docker-compose.test.yml stop prefect-server-test prefect-db-test`, remove volume `..._prefect-db-test-data` (or `down -v`), then `up -d` again.
 
 ---
 
@@ -1421,6 +1668,13 @@ docker compose exec redis redis-cli
 3. Check API key is not expired: `api_key.is_expired() == False`
 4. Verify API key hash matches: Check hashing algorithm
 5. Review API Gateway logs for validation errors
+
+#### Issue: 429 Too Many Requests — BaaS quota vs rate limiting
+**Context**: 429 can come from two layers (see design [feat1 D3](../../openspec/changes/feat1/design.md)): (1) **Rate limiting** (`hub/apps/rate_limiting`) — generic throttling; (2) **BaaS quota** — tier-based hour/day/month limits in `BaaSUsageRecordingMiddleware`. Both use the same identity (`request.api_key_obj.id`).
+
+**BaaS quota 429** (feat1 1.4): When over tier limit, response is 429 with header `Retry-After` (seconds until reset) and JSON body `{"error": "quota_exceeded", "limit_type": "hour"|"day"|"month"}`. Keys without a BaaS tier are not subject to BaaS quota. If the body contains `limit_type`, the 429 is from BaaS quota.
+
+**Resolution**: For BaaS quota — increase tier limits (`APITierModel.rate_limit_per_hour/day`, `max_requests_per_month`) or upgrade tier; or wait until `Retry-After` seconds. For rate limiting — see rate limit config and Redis counters.
 
 #### Issue: Rate Limiting Not Working
 **Symptoms**: Requests not being rate limited, quota not enforced

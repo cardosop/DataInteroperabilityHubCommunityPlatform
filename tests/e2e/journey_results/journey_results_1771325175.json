@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.030553579330444336
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-005-6cae28e3",
+      "journey_name": "CI/CD Integration",
+      "persona": "Data Engineer / Contract Author",
+      "status": "completed",
+      "start_time": 1771325175.927923,
+      "end_time": 1771325175.9584765,
+      "duration": 0.030553579330444336,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771325175.9279253,
+          "end_time": 1771325175.9413521,
+          "duration": 0.013426780700683594,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Run Validation",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771325175.9413636,
+          "end_time": 1771325175.957867,
+          "duration": 0.016503334045410156,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Check Validation Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771325175.9578724,
+          "end_time": 1771325175.958474,
+          "duration": 0.0006015300750732422,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        }
+      ],
+      "metadata": {
+        "contract_id": "8cd6f698-2549-4ecf-bd5a-0add5b987136"
+      }
+    }
+  ],
+  "exported_at": "2026-02-17T10:46:15.958552"
+}

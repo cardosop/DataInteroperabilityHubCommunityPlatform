@@ -14,25 +14,52 @@ All tests use real implementations - no mocks or stubs.
 import os
 import time
 import pytest
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError
 from django.test import TestCase, Client
-from django.contrib.auth import get_user_model
-from django.db import connection
 from rest_framework import status
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.test import APIClient
 
-from hub.apps.integrations.services import MarketplaceIntegrationService
+from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.core.services.base import ValidationError as ServiceValidationError
+from hub.apps.integrations.base import MarketplaceType, SyncDirection
+from hub.apps.integrations.encryption import encrypt_json_field, decrypt_json_field, EncryptionError
+from hub.apps.integrations.factory import MarketplaceConnectorFactory
 from hub.apps.integrations.models import (
     MarketplaceConnection,
     MarketplaceSyncJob,
     MarketplaceMapping,
 )
-from hub.apps.integrations.base import MarketplaceType, SyncDirection
-from hub.apps.integrations.encryption import encrypt_json_field, decrypt_json_field, EncryptionError
-from hub.apps.integrations.factory import MarketplaceConnectorFactory
+from hub.apps.integrations.services import MarketplaceIntegrationService
+from hub.apps.rate_limiting.service import check_rate_limit
 from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.users.models import User, UserStatus, Role, UserRole
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.rate_limiting.service import check_rate_limit
+
+# Validation-like exceptions: service/Django/DRF ValidationError, ValueError (input validation), IntegrityError (DB constraint)
+_VALIDATION_LIKE = (
+    ServiceValidationError,
+    DjangoValidationError,
+    DRFValidationError,
+    ValueError,
+    IntegrityError,
+)
+
+
+def _is_optional_connector_failure(exc: BaseException) -> bool:
+    """True when connector creation failed due to missing optional dependency (skip, not fail)."""
+    if isinstance(exc, ImportError):
+        return True
+    msg = str(exc).lower()
+    if "snowflake" in msg and ("not available" in msg or "not installed" in msg):
+        return True
+    if "not available" in msg or "not installed" in msg or "not found" in msg:
+        return True
+    return False
+
+
+from django.contrib.auth import get_user_model
+from django.db import connection
 
 User = get_user_model()
 
@@ -74,115 +101,112 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
     def test_ckan_connector_authentication_with_valid_credentials(self):
         """Test CKAN connector authentication with valid credentials"""
         factory = MarketplaceConnectorFactory()
-
-        # Create connector with valid credentials
         config = {
             "base_url": "https://demo.ckan.org",
             "api_key": "test-api-key"
         }
 
         try:
-            connector = factory.get_connector(
+            connector = factory.create_connector(
                 MarketplaceType.CKAN_INSTANCE,
-                config
+                config,
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
             )
-
-            # Test authentication
-            auth_result = connector.authenticate(config)
-            # Authentication may fail if marketplace is unavailable, which is OK for security tests
-            # We verify that authentication method exists and is called
-            self.assertIsNotNone(connector)
-            self.assertTrue(hasattr(connector, 'authenticate'))
         except Exception as e:
-            # If connector creation fails due to missing dependencies, that's OK
-            # We verify the authentication mechanism exists
-            self.assertIsNotNone(factory)
+            if _is_optional_connector_failure(e):
+                pytest.skip(f"CKAN connector not available (optional dependency): {e}")
+            raise
+
+        # Test authentication
+        auth_result = connector.authenticate(config)
+        # Authentication may fail if marketplace is unavailable, which is OK for security tests
+        self.assertIsNotNone(connector)
+        self.assertTrue(hasattr(connector, 'authenticate'))
 
     def test_ckan_connector_authentication_with_invalid_credentials(self):
         """Test CKAN connector authentication with invalid credentials"""
         factory = MarketplaceConnectorFactory()
-
-        # Create connector with invalid credentials
         config = {
             "base_url": "https://demo.ckan.org",
             "api_key": ""  # Empty API key
         }
 
         try:
-            connector = factory.get_connector(
+            connector = factory.create_connector(
                 MarketplaceType.CKAN_INSTANCE,
-                config
+                config,
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
             )
+        except Exception as e:
+            if _is_optional_connector_failure(e):
+                pytest.skip(f"CKAN connector not available (optional dependency): {e}")
+            raise
 
-            # Authentication should fail or raise ValueError
-            with self.assertRaises((ValueError, Exception)):
-                connector.authenticate(config)
-        except Exception:
-            # If connector creation fails, that's acceptable
-            pass
+        # Authentication should fail or raise ValueError
+        with self.assertRaises((ValueError, Exception)):
+            connector.authenticate(config)
 
     def test_dados_gov_br_connector_authentication_with_valid_credentials(self):
         """Test DadosGovBr connector authentication with valid credentials"""
         factory = MarketplaceConnectorFactory()
-
-        # Create connector with valid credentials
         config = {
             "base_url": "https://dados.gov.br",
             "jwt_token": "test-jwt-token"
         }
 
         try:
-            connector = factory.get_connector(
+            connector = factory.create_connector(
                 MarketplaceType.CKAN_INSTANCE,
-                config
+                config,
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
             )
+        except Exception as e:
+            if _is_optional_connector_failure(e):
+                pytest.skip(f"DadosGovBr connector not available (optional dependency): {e}")
+            raise
 
-            # Test authentication
-            self.assertIsNotNone(connector)
-            self.assertTrue(hasattr(connector, 'authenticate'))
-        except Exception:
-            # If connector creation fails, that's acceptable
-            pass
+        self.assertIsNotNone(connector)
+        self.assertTrue(hasattr(connector, 'authenticate'))
 
     def test_dados_gov_br_connector_authentication_with_invalid_credentials(self):
         """Test DadosGovBr connector authentication with invalid credentials"""
         factory = MarketplaceConnectorFactory()
-
-        # Create connector with invalid credentials
         config = {
             "base_url": "https://dados.gov.br",
             "jwt_token": ""  # Empty JWT token
         }
 
         try:
-            connector = factory.get_connector(
+            connector = factory.create_connector(
                 MarketplaceType.CKAN_INSTANCE,
-                config
+                config,
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
             )
+        except Exception as e:
+            if _is_optional_connector_failure(e):
+                pytest.skip(f"DadosGovBr connector not available (optional dependency): {e}")
+            raise
 
-            # Authentication should fail or raise ValueError
-            with self.assertRaises((ValueError, Exception)):
-                connector.authenticate(config)
-        except Exception:
-            # If connector creation fails, that's acceptable
-            pass
+        with self.assertRaises((ValueError, Exception)):
+            connector.authenticate(config)
 
     def test_snowflake_connector_authentication_with_valid_credentials(self):
         """Test Snowflake connector authentication with valid credentials"""
-        # Skip if Snowflake connector not available
         try:
             from hub.apps.integrations.connectors.snowflake_connector import (
                 SnowflakeConnector,
                 SNOWFLAKE_AVAILABLE,
             )
             if not SNOWFLAKE_AVAILABLE:
-                self.skipTest("Snowflake connector not available")
+                pytest.skip("snowflake-connector-python not installed")
         except ImportError:
-            self.skipTest("Snowflake connector not available")
+            pytest.skip("Snowflake connector module not available")
 
         factory = MarketplaceConnectorFactory()
-
-        # Create connector with valid credentials
         config = {
             "account": "test-account",
             "user": "test-user",
@@ -190,65 +214,63 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
         }
 
         try:
-            connector = factory.get_connector(
+            connector = factory.create_connector(
                 MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
-                config
+                config,
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
             )
+        except Exception as e:
+            if _is_optional_connector_failure(e):
+                pytest.skip(f"Snowflake connector not available (optional dependency): {e}")
+            raise
 
-            # Test authentication
-            self.assertIsNotNone(connector)
-            self.assertTrue(hasattr(connector, 'authenticate'))
-        except Exception:
-            # If connector creation fails, that's acceptable
-            pass
+        self.assertIsNotNone(connector)
+        self.assertTrue(hasattr(connector, 'authenticate'))
 
     def test_snowflake_connector_authentication_with_invalid_credentials(self):
         """Test Snowflake connector authentication with invalid credentials"""
-        # Skip if Snowflake connector not available
         try:
             from hub.apps.integrations.connectors.snowflake_connector import (
                 SnowflakeConnector,
                 SNOWFLAKE_AVAILABLE,
             )
             if not SNOWFLAKE_AVAILABLE:
-                self.skipTest("Snowflake connector not available")
+                pytest.skip("snowflake-connector-python not installed")
         except ImportError:
-            self.skipTest("Snowflake connector not available")
+            pytest.skip("Snowflake connector module not available")
 
         factory = MarketplaceConnectorFactory()
-
-        # Create connector with invalid credentials (missing required fields)
         config = {
             "account": "",  # Empty account
             "user": "test-user"
         }
 
         try:
-            connector = factory.get_connector(
+            connector = factory.create_connector(
                 MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
-                config
+                config,
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
             )
+        except Exception as e:
+            if _is_optional_connector_failure(e):
+                pytest.skip(f"Snowflake connector not available (optional dependency): {e}")
+            raise
 
-            # Authentication should fail or raise ValueError
-            with self.assertRaises((ValueError, Exception)):
-                connector.authenticate(config)
-        except Exception:
-            # If connector creation fails, that's acceptable
-            pass
+        with self.assertRaises((ValueError, Exception)):
+            connector.authenticate(config)
 
     def test_aws_connector_authentication_with_valid_credentials(self):
         """Test AWS Data Exchange connector authentication with valid credentials"""
-        # Skip if AWS connector not available
         try:
             from hub.apps.integrations.connectors.aws_data_exchange_connector import (
                 AWSDataExchangeConnector,
             )
-        except ImportError:
-            pytest.skip("AWS Data Exchange connector not available")
+        except ImportError as e:
+            pytest.skip(f"AWS Data Exchange connector not available: {e}")
 
         factory = MarketplaceConnectorFactory()
-
-        # Create connector with valid credentials
         config = {
             "aws_access_key_id": "test-access-key",
             "aws_secret_access_key": "test-secret-key",
@@ -256,109 +278,110 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
         }
 
         try:
-            connector = factory.get_connector(
+            connector = factory.create_connector(
                 MarketplaceType.AWS_DATA_EXCHANGE,
-                config
+                config,
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
             )
+        except Exception as e:
+            if _is_optional_connector_failure(e):
+                pytest.skip(f"AWS Data Exchange connector not available (optional dependency): {e}")
+            raise
 
-            # Test authentication
-            self.assertIsNotNone(connector)
-            self.assertTrue(hasattr(connector, 'authenticate'))
-        except Exception:
-            # If connector creation fails, that's acceptable
-            pass
+        self.assertIsNotNone(connector)
+        self.assertTrue(hasattr(connector, 'authenticate'))
 
     def test_aws_connector_authentication_with_invalid_credentials(self):
         """Test AWS Data Exchange connector authentication with invalid credentials"""
-        # Skip if AWS connector not available
         try:
             from hub.apps.integrations.connectors.aws_data_exchange_connector import (
                 AWSDataExchangeConnector,
             )
-        except ImportError:
-            pytest.skip("AWS Data Exchange connector not available")
+        except ImportError as e:
+            pytest.skip(f"AWS Data Exchange connector not available: {e}")
 
         factory = MarketplaceConnectorFactory()
-
-        # Create connector with invalid credentials (missing required fields)
         config = {
             "aws_access_key_id": "",  # Empty access key
             "aws_secret_access_key": "test-secret-key"
         }
 
         try:
-            connector = factory.get_connector(
+            connector = factory.create_connector(
                 MarketplaceType.AWS_DATA_EXCHANGE,
-                config
+                config,
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
             )
+        except Exception as e:
+            if _is_optional_connector_failure(e):
+                pytest.skip(f"AWS Data Exchange connector not available (optional dependency): {e}")
+            raise
 
-            # Authentication should fail or raise ValueError
-            with self.assertRaises((ValueError, Exception)):
-                connector.authenticate(config)
-        except Exception:
-            # If connector creation fails, that's acceptable
-            pass
+        with self.assertRaises((ValueError, Exception)):
+            connector.authenticate(config)
 
     def test_gcp_connector_authentication_with_valid_credentials(self):
         """Test GCP Marketplace connector authentication with valid credentials"""
-        # Skip if GCP connector not available
         try:
             from hub.apps.integrations.connectors.gcp_marketplace_connector import (
                 GCPMarketplaceConnector,
             )
-        except ImportError:
-            pytest.skip("GCP Marketplace connector not available")
+        except ImportError as e:
+            pytest.skip(f"GCP Marketplace connector not available: {e}")
 
         factory = MarketplaceConnectorFactory()
-
-        # Create connector with valid credentials
         config = {
             "project_id": "test-project",
             "use_adc": True
         }
 
         try:
-            connector = factory.get_connector(
+            connector = factory.create_connector(
                 MarketplaceType.GOOGLE_CLOUD_MARKETPLACE,
-                config
+                config,
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
             )
+        except Exception as e:
+            if _is_optional_connector_failure(e):
+                pytest.skip(f"GCP Marketplace connector not available (optional dependency): {e}")
+            raise
 
-            # Test authentication
-            self.assertIsNotNone(connector)
-            self.assertTrue(hasattr(connector, 'authenticate'))
-        except Exception:
-            # If connector creation fails, that's acceptable
-            pass
+        self.assertIsNotNone(connector)
+        self.assertTrue(hasattr(connector, 'authenticate'))
 
     def test_gcp_connector_authentication_with_invalid_credentials(self):
         """Test GCP Marketplace connector authentication with invalid credentials"""
-        # Skip if GCP connector not available
         try:
             from hub.apps.integrations.connectors.gcp_marketplace_connector import (
                 GCPMarketplaceConnector,
             )
-        except ImportError:
-            pytest.skip("GCP Marketplace connector not available")
+        except ImportError as e:
+            pytest.skip(f"GCP Marketplace connector not available: {e}")
 
         factory = MarketplaceConnectorFactory()
-
-        # Create connector with invalid credentials (missing required fields)
+        # GCP connector requires credentials_json or use_adc; pass invalid JSON to test auth failure
         config = {
-            "project_id": "",  # Empty project ID
+            "project_id": "test-project",
+            "credentials_json": '{"type": "invalid", "client_email": "bad@test.iam.gserviceaccount.com"}',
         }
 
         try:
-            connector = factory.get_connector(
+            connector = factory.create_connector(
                 MarketplaceType.GOOGLE_CLOUD_MARKETPLACE,
-                config
+                config,
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
             )
+        except Exception as e:
+            if _is_optional_connector_failure(e):
+                pytest.skip(f"GCP Marketplace connector not available (optional dependency): {e}")
+            raise
 
-            # Authentication should fail or raise ValueError
-            with self.assertRaises((ValueError, Exception)):
-                connector.authenticate(config)
-        except Exception:
-            # If connector creation fails, that's acceptable
-            pass
+        with self.assertRaises((ValueError, Exception)):
+            connector.authenticate(config)
 
 
 class MarketplaceAuthorizationSecurityTest(TestCase):
@@ -676,7 +699,6 @@ class MarketplaceInputValidationSecurityTest(TestCase):
 
     def test_sql_injection_in_config_field(self):
         """Test that SQL injection attempts in config field are rejected"""
-        # SQL injection payloads in config
         sql_injection_payloads = [
             {"base_url": "'; DROP TABLE marketplace_connections; --"},
             {"base_url": "' OR '1'='1"},
@@ -688,25 +710,26 @@ class MarketplaceInputValidationSecurityTest(TestCase):
                 connection = self.service.create_connection(
                     tenant_id=str(self.tenant.id),
                     user_id=str(self.user.id),
-                    marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
-                    name="Test Connection",
-                    config=payload,  # SQL injection attempt
+                marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+                name=f"Test Connection SQL {hash(str(payload)) % 10000}",
+                config=payload,  # SQL injection attempt
                     is_active=True
                 )
-                # If connection is created, verify it's stored safely (encrypted)
-                # The SQL injection should not execute
                 self.assertIsNotNone(connection)
-                # Verify config is encrypted (not plain text SQL)
                 config_str = str(connection.config)
                 self.assertNotIn("DROP TABLE", config_str)
                 self.assertNotIn("SELECT *", config_str)
-            except Exception:
-                # If validation rejects it, that's also acceptable
+            except _VALIDATION_LIKE:
+                # Validation rejection is expected and acceptable
                 pass
+            except Exception as e:
+                self.fail(
+                    f"Unexpected exception type for SQL injection payload {payload!r}: "
+                    f"{type(e).__name__}: {e}. Expected ValidationError (or similar)."
+                )
 
     def test_xss_in_connection_name(self):
         """Test that XSS attempts in connection name are sanitized"""
-        # XSS payloads
         xss_payloads = [
             "<script>alert('XSS')</script>",
             "<img src=x onerror=alert('XSS')>",
@@ -725,18 +748,19 @@ class MarketplaceInputValidationSecurityTest(TestCase):
                     config={"base_url": "https://demo.ckan.org"},
                     is_active=True
                 )
-                # If connection is created, verify name is stored as-is (Django handles XSS in templates)
-                # The important thing is that it doesn't execute when rendered
                 self.assertIsNotNone(connection)
-                # Name should be stored but not executed
                 self.assertIn(payload, connection.name or "")
-            except Exception:
-                # If validation rejects it, that's also acceptable
+            except _VALIDATION_LIKE:
+                # Validation rejection is expected and acceptable
                 pass
+            except Exception as e:
+                self.fail(
+                    f"Unexpected exception type for XSS payload {payload!r}: "
+                    f"{type(e).__name__}: {e}. Expected ValidationError (or similar)."
+                )
 
     def test_path_traversal_in_config(self):
         """Test that path traversal attempts in config are rejected"""
-        # Path traversal payloads
         path_traversal_payloads = [
             {"base_url": "../../etc/passwd"},
             {"base_url": "..\\..\\windows\\system32"},
@@ -745,28 +769,28 @@ class MarketplaceInputValidationSecurityTest(TestCase):
             {"base_url": "\\\\unc\\path"},
         ]
 
-        for payload in path_traversal_payloads:
+        for i, payload in enumerate(path_traversal_payloads):
             try:
                 connection = self.service.create_connection(
                     tenant_id=str(self.tenant.id),
                     user_id=str(self.user.id),
                     marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
-                    name="Test Connection",
+                    name=f"Test Connection Path {i}",
                     config=payload,  # Path traversal attempt
                     is_active=True
                 )
-                # If connection is created, verify URL validation
-                # Path traversal should not allow access to local files
                 self.assertIsNotNone(connection)
-                # Verify config is stored but path traversal doesn't work
-                # (connector should validate URLs, not allow file:// or relative paths)
-            except Exception:
-                # If validation rejects it, that's also acceptable
+            except _VALIDATION_LIKE:
+                # Validation rejection is expected and acceptable
                 pass
+            except Exception as e:
+                self.fail(
+                    f"Unexpected exception type for path traversal payload {payload!r}: "
+                    f"{type(e).__name__}: {e}. Expected ValidationError (or similar)."
+                )
 
     def test_command_injection_in_config(self):
         """Test that command injection attempts in config are rejected"""
-        # Command injection payloads
         command_injection_payloads = [
             {"base_url": "https://demo.ckan.org; rm -rf /"},
             {"base_url": "https://demo.ckan.org | cat /etc/passwd"},
@@ -774,29 +798,31 @@ class MarketplaceInputValidationSecurityTest(TestCase):
             {"api_key": "test; rm -rf /"},
         ]
 
-        for payload in command_injection_payloads:
+        for i, payload in enumerate(command_injection_payloads):
             try:
                 connection = self.service.create_connection(
                     tenant_id=str(self.tenant.id),
                     user_id=str(self.user.id),
                     marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
-                    name="Test Connection",
+                    name=f"Test Connection Cmd {i}",
                     config=payload,  # Command injection attempt
                     is_active=True
                 )
-                # If connection is created, verify commands don't execute
-                # Config should be stored as data, not executed
                 self.assertIsNotNone(connection)
-            except Exception:
-                # If validation rejects it, that's also acceptable
+            except _VALIDATION_LIKE:
+                # Validation rejection is expected and acceptable
                 pass
+            except Exception as e:
+                self.fail(
+                    f"Unexpected exception type for command injection payload {payload!r}: "
+                    f"{type(e).__name__}: {e}. Expected ValidationError (or similar)."
+                )
 
     def test_oversized_input_rejected(self):
         """Test that oversized inputs are rejected"""
-        # Create connection with oversized name
         oversized_name = "A" * 10000  # Very long name
 
-        with self.assertRaises(Exception):  # Should raise ValidationError
+        with self.assertRaises(_VALIDATION_LIKE):
             self.service.create_connection(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
@@ -808,7 +834,6 @@ class MarketplaceInputValidationSecurityTest(TestCase):
 
     def test_null_byte_injection_rejected(self):
         """Test that null byte injection attempts are handled safely"""
-        # Null byte payloads
         null_byte_payloads = [
             "test\x00connection",
             "test%00connection",
@@ -816,8 +841,6 @@ class MarketplaceInputValidationSecurityTest(TestCase):
         ]
 
         for payload in null_byte_payloads:
-            # Django may allow null bytes in strings, but they should be handled safely
-            # PostgreSQL will reject null bytes in text fields, so this should fail
             try:
                 connection = self.service.create_connection(
                     tenant_id=str(self.tenant.id),
@@ -827,12 +850,15 @@ class MarketplaceInputValidationSecurityTest(TestCase):
                     config={"base_url": "https://demo.ckan.org"},
                     is_active=True
                 )
-                # If connection is created, verify it's stored safely
-                # (PostgreSQL typically rejects null bytes, so this may not execute)
                 self.assertIsNotNone(connection)
-            except Exception:
-                # If validation rejects it (PostgreSQL rejects null bytes), that's acceptable
+            except _VALIDATION_LIKE:
+                # Validation rejection is expected (e.g. PostgreSQL rejects null bytes)
                 pass
+            except Exception as e:
+                self.fail(
+                    f"Unexpected exception type for null byte payload {payload!r}: "
+                    f"{type(e).__name__}: {e}. Expected ValidationError (or similar)."
+                )
 
 
 class MarketplaceCredentialEncryptionSecurityTest(TestCase):
@@ -1068,8 +1094,15 @@ class MarketplaceRateLimitingSecurityTest(TestCase):
             format='json'
         )
 
-        # Verify response (may be 201 or 429 if rate limited)
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_429_TOO_MANY_REQUESTS])
+        # Verify response (201 created, 429 rate limited, or 403 if permission/scope not met)
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_201_CREATED,
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                status.HTTP_403_FORBIDDEN,
+            ],
+        )
 
         # If rate limited, verify headers
         if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:

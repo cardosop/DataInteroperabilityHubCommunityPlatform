@@ -16,6 +16,7 @@ All validation methods follow engineering best practices:
 - Follow DRY, SOLID, and clean code principles
 """
 import logging
+import uuid
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 
@@ -297,14 +298,20 @@ class DataMeshBusinessRules(BusinessRules):
             if not isinstance(domain.resource_usage, dict):
                 errors.append("Domain resource_usage must be a dictionary/JSON object")
 
-        # Validate owner belongs to same tenant
-        if hasattr(domain, 'owner') and domain.owner is not None:
-            if hasattr(domain, 'tenant') and domain.tenant is not None:
-                if domain.owner.tenant != domain.tenant:
-                    errors.append(
-                        f"Domain owner must belong to the same tenant as the domain. "
-                        f"Owner tenant: {domain.owner.tenant.id}, Domain tenant: {domain.tenant.id}"
-                    )
+        # Validate owner belongs to same tenant (owner_id set but user may not exist)
+        if hasattr(domain, 'owner_id') and domain.owner_id is not None:
+            try:
+                owner = domain.owner
+                if hasattr(domain, 'tenant') and domain.tenant is not None:
+                    if owner.tenant != domain.tenant:
+                        errors.append(
+                            f"Domain owner must belong to the same tenant as the domain. "
+                            f"Owner tenant: {owner.tenant.id}, Domain tenant: {domain.tenant.id}"
+                        )
+            except User.DoesNotExist:
+                errors.append(
+                    "Domain owner not found or does not belong to tenant"
+                )
 
         # Validate status
         if hasattr(domain, 'status') and domain.status:
@@ -371,6 +378,35 @@ class DataMeshBusinessRules(BusinessRules):
                 warnings=warnings,
                 details=details
             )
+
+        # Validate new_owner_id is non-empty and valid UUID format before DB lookup
+        if not new_owner_id or not str(new_owner_id).strip():
+            errors.append("New owner ID cannot be empty")
+            result = ValidationResult(
+                is_valid=False,
+                errors=errors,
+                warnings=warnings,
+                details=details
+            )
+            if raise_on_error:
+                from hub.apps.core.services.base import ValidationError
+                raise ValidationError("; ".join(errors))
+            return result
+
+        try:
+            uuid.UUID(str(new_owner_id))
+        except (ValueError, TypeError, AttributeError):
+            errors.append(f"New owner ID '{new_owner_id}' is not a valid UUID format")
+            result = ValidationResult(
+                is_valid=False,
+                errors=errors,
+                warnings=warnings,
+                details=details
+            )
+            if raise_on_error:
+                from hub.apps.core.services.base import ValidationError
+                raise ValidationError("; ".join(errors))
+            return result
 
         # Validate new owner exists
         try:

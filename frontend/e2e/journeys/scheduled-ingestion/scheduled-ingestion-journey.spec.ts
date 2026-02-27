@@ -6,12 +6,15 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
+import { clearAuthStorage, getTenantAdminUser, loginUser } from '../../fixtures/auth';
+import { hasLoginPrompt, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-const API_BASE = process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const API_BASE = process.env.E2E_API_BASE_URL || process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const PREFECT_INTEGRATION_URL =
+  process.env.PREFECT_INTEGRATION_SERVICE_URL || 'http://localhost:8084';
 const POLL_INTERVAL_MS = 5000;
 // Increased timeout to handle Docker daemon performance issues (Prefect flow runs may take longer)
-const RUN_COMPLETION_TIMEOUT_MS = 180000; // 3 minutes (was 2 minutes)
+const RUN_COMPLETION_TIMEOUT_MS = 240000; // 4 minutes (Docker/CI can be slow)
 
 type RunStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 
@@ -82,9 +85,12 @@ async function pollRunUntilTerminal(
 
   // Trigger status sync immediately after trigger to catch quick failures
   try {
-    await page.evaluate(async () => {
-      await fetch('http://localhost:8084/status/sync', { method: 'POST' }).catch(() => {});
-    });
+    await page.evaluate(
+      async (url: string) => {
+        await fetch(`${url}/status/sync`, { method: 'POST' }).catch(() => {});
+      },
+      PREFECT_INTEGRATION_URL.replace(/\/$/, '')
+    );
   } catch (e) {
     // Ignore status sync errors - continue polling
   }
@@ -98,14 +104,17 @@ async function pollRunUntilTerminal(
     if (Date.now() - lastStatusSync >= STATUS_SYNC_INTERVAL_MS) {
       try {
         // Trigger status sync and wait for it to complete
-        await page.evaluate(async () => {
-          const response = await fetch('http://localhost:8084/status/sync', {
-            method: 'POST',
-          }).catch(() => null);
-          // Wait a bit for the sync to process and update the database
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          return response;
-        });
+        await page.evaluate(
+          async (url: string) => {
+            const response = await fetch(`${url}/status/sync`, {
+              method: 'POST',
+            }).catch(() => null);
+            // Wait a bit for the sync to process and update the database
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            return response;
+          },
+          PREFECT_INTEGRATION_URL.replace(/\/$/, '')
+        );
         lastStatusSync = Date.now();
       } catch (e) {
         // Ignore status sync errors - continue polling
@@ -125,14 +134,17 @@ async function pollRunUntilTerminal(
 
   // Final check - trigger one more status sync before final check and wait longer
   try {
-    await page.evaluate(async () => {
-      const response = await fetch('http://localhost:8084/status/sync', { method: 'POST' }).catch(
-        () => null
-      );
-      // Wait longer for sync to process and database to update
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      return response;
-    });
+    await page.evaluate(
+      async (url: string) => {
+        const response = await fetch(`${url}/status/sync`, { method: 'POST' }).catch(
+          () => null
+        );
+        // Wait longer for sync to process and database to update
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        return response;
+      },
+      PREFECT_INTEGRATION_URL.replace(/\/$/, '')
+    );
   } catch (e) {
     // Ignore status sync errors
   }
@@ -174,21 +186,59 @@ async function pollRunUntilTerminal(
 }
 
 test.describe('Scheduled Ingestion Journey', () => {
-  // Increased timeout to handle Docker daemon performance issues (Prefect flow runs may take longer)
-  test.setTimeout(240000); // 4 minutes (was 3 minutes)
+  // 8 min: login (~90s) + create + trigger (~60s) + poll (~240s) under parallel E2E load
+  test.setTimeout(480000);
+
+  test.describe('Failure', () => {
+    test('unauthenticated access to scheduled-ingestions redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/scheduled-ingestions', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|scheduled-ingestions|403)/, { timeout: 20_000 });
+      const url = page.url();
+      const onLogin = url.includes('/login');
+      const onRouteWithLoginPrompt =
+        url.includes('/scheduled-ingestions') &&
+        (await hasLoginPrompt(page));
+      expect(onLogin || onRouteWithLoginPrompt).toBe(true);
+    });
+  });
 
   test.describe('Create, trigger, wait for run', () => {
     test('create scheduled ingestion → trigger → poll run status → assert run outcome', async ({
       page,
     }) => {
-      const useStoredAuth = test.info().project.name === 'chromium-routes';
-      if (!useStoredAuth) {
-        await loginUser(page, await getTestUser());
+      // Pre-check: skip early if Prefect integration service is not reachable
+      try {
+        const healthRes = await fetch(`${PREFECT_INTEGRATION_URL.replace(/\/$/, '')}/health`, {
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!healthRes.ok) {
+          throw new Error(
+            `Prefect integration service unhealthy (${healthRes.status}). Scheduled ingestion requires Prefect. ` +
+              `Start: docker compose -f docker-compose.test.yml up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test`
+          );
+        }
+      } catch (e) {
+        throw new Error(
+          `Prefect integration service not reachable at ${PREFECT_INTEGRATION_URL}. Scheduled ingestion requires Prefect. ` +
+            `Start: docker compose -f docker-compose.test.yml up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test`
+        );
       }
-      await page.goto('/scheduled-ingestions', { waitUntil: 'networkidle' });
 
+      const testUser = await getTenantAdminUser();
+      await loginUser(page, testUser);
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2500);
+      await loginAndNavigateToRoute(page, testUser, '/scheduled-ingestions', {
+        timeout: 60000,
+        contentSelector:
+          '.scheduled-ingestion-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+      });
       if (page.url().includes('/login')) {
-        throw new Error('Unexpected redirect to login; auth may have failed or expired.');
+        throw new Error(
+          'Scheduled ingestions redirected to login. Precondition failure: E2E user roles not set up. ' +
+            'Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles'
+        );
       }
 
       // Wait for list content: Create Schedule button (header or empty state; use .first() when both visible)
@@ -201,47 +251,110 @@ test.describe('Scheduled Ingestion Journey', () => {
       await page.getByLabel(/name/i).fill(name);
       await page.getByRole('button', { name: /^Create$/i }).click();
 
-      await page.waitForURL(
-        (url) =>
-          url.pathname.includes('/scheduled-ingestions/') && !url.pathname.endsWith('/create'),
-        {
-          timeout: 15000,
-        }
-      );
+      try {
+        await page.waitForURL(
+          (url) =>
+            url.pathname.includes('/scheduled-ingestions/') && !url.pathname.endsWith('/create'),
+          {
+            timeout: 30000,
+            waitUntil: 'domcontentloaded',
+          }
+        );
+      } catch (err) {
+        const hasError = (await page.locator('.error-display').count()) > 0;
+        const errText = hasError
+          ? (await page.locator('.error-display').first().textContent().catch(() => '')) || ''
+          : '';
+        throw new Error(
+          `Scheduled ingestion create did not navigate to detail within 30s. ${errText ? `Error: ${errText.slice(0, 150)}` : 'Check backend and Prefect availability.'}`
+        );
+      }
+      // Detail page may show loading, then content; or error/empty if create failed
+      // Use .first() to avoid strict mode violation when both detail page and runs-section empty-state exist
+      await page
+        .locator('[data-testid="scheduled-ingestion-detail-page"], .error-display, .empty-state')
+        .first()
+        .waitFor({ state: 'visible', timeout: 20000 });
+      // Only skip on page-level error or "not found" empty - not the runs section "No runs" empty state
+      const hasPageError = (await page.locator('.error-display').count()) > 0;
+      const hasNotFoundEmpty =
+        (await page.locator('.empty-state:has-text("not found"), .empty-state:has-text("could not be found")').count()) >
+        0;
+      if (hasPageError || (hasNotFoundEmpty && (await page.locator('[data-testid="scheduled-ingestion-detail-page"]').count()) === 0)) {
+        throw new Error(
+          'Scheduled ingestion create or load failed (error/empty). Check backend logs and Prefect availability.'
+        );
+      }
       await expect(page.locator('[data-testid="scheduled-ingestion-detail-page"]')).toBeVisible({
-        timeout: 10000,
+        timeout: 5000,
       });
 
       // Wait for schedule to load (name visible)
       await expect(page.getByText(name, { exact: false })).toBeVisible({ timeout: 10000 });
+
+      // Allow deployment sync to complete (on_commit creates Prefect deployment asynchronously)
+      await page.waitForTimeout(10000);
 
       // Trigger button: match "Trigger Now", "Triggering...", or aria-label
       const triggerBtn = page.getByRole('button', { name: /trigger/i });
       await triggerBtn.scrollIntoViewIfNeeded().catch(() => {});
       await triggerBtn.waitFor({ state: 'visible', timeout: 15000 });
 
-      const triggerResponsePromise = page.waitForResponse(
-        (resp) =>
-          resp.url().includes('/trigger/') &&
-          resp.request().method() === 'POST' &&
-          (resp.status() === 202 ||
-            resp.status() === 200 ||
-            resp.status() === 503 ||
-            resp.status() >= 400),
-        { timeout: 60000 }
-      );
+      const maxTriggerAttempts = 3;
+      let triggerResponse!: Awaited<ReturnType<typeof page.waitForResponse>>;
 
-      page.once('dialog', (d) => d.accept());
-      await triggerBtn.click();
+      for (let attempt = 1; attempt <= maxTriggerAttempts; attempt++) {
+        try {
+          const triggerResponsePromise = page.waitForResponse(
+            (resp) =>
+              resp.url().includes('/trigger/') &&
+              resp.request().method() === 'POST' &&
+              (resp.status() === 202 ||
+                resp.status() === 200 ||
+                resp.status() === 503 ||
+                resp.status() >= 400),
+            { timeout: 90000 }
+          );
 
-      const triggerResponse = await triggerResponsePromise;
-      if (triggerResponse.status() === 503) {
+          page.once('dialog', (d) => d.accept());
+          await triggerBtn.click();
+
+          triggerResponse = await triggerResponsePromise;
+        } catch (triggerErr) {
+          const msg = triggerErr instanceof Error ? triggerErr.message : String(triggerErr);
+          const isTimeout = /timeout|exceeded/i.test(msg);
+          const isNetwork = /network|empty.?response|connection/i.test(msg);
+          if ((isTimeout || isNetwork) && attempt < maxTriggerAttempts) {
+            await page.waitForTimeout(5000);
+            continue;
+          }
+          if (isTimeout || isNetwork) {
+            throw new Error(
+              `Trigger did not respond within 90s (${msg.slice(0, 80)}). ` +
+                'Ensure Prefect integration service and backend are running. ' +
+                'Start: docker compose -f docker-compose.test.yml up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test'
+            );
+          }
+          throw triggerErr;
+        }
+        if (triggerResponse.status() === 200 || triggerResponse.status() === 202) break;
         const body = await triggerResponse.json().catch(() => ({}));
-        test.skip(true, `Prefect not available (503): ${JSON.stringify(body)}`);
-      }
-      if (triggerResponse.status() >= 400) {
-        const body = await triggerResponse.json().catch(() => ({}));
-        throw new Error(`Trigger failed: ${triggerResponse.status()} ${JSON.stringify(body)}`);
+        const isDeploymentNotReady =
+          body?.code === 'DEPLOYMENT_NOT_READY' ||
+          (body?.error && /not found|deployment|still be syncing/i.test(String(body.error)));
+        if (triggerResponse.status() === 503 && isDeploymentNotReady && attempt < maxTriggerAttempts) {
+          await page.waitForTimeout(5000);
+          continue;
+        }
+        if (triggerResponse.status() === 503) {
+          throw new Error(
+            `Prefect not available (503). Scheduled ingestion requires Prefect. ` +
+              `Start: docker compose -f docker-compose.test.yml up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test. Body: ${JSON.stringify(body)}`
+          );
+        }
+        if (triggerResponse.status() >= 400) {
+          throw new Error(`Trigger failed: ${triggerResponse.status()} ${JSON.stringify(body)}`);
+        }
       }
 
       const triggerBody = await triggerResponse.json();
@@ -250,7 +363,23 @@ test.describe('Scheduled Ingestion Journey', () => {
         throw new Error(`Trigger response missing run_id: ${JSON.stringify(triggerBody)}`);
       }
 
-      const run = await pollRunUntilTerminal(page, runId);
+      let run: Awaited<ReturnType<typeof pollRunUntilTerminal>>;
+      try {
+        run = await pollRunUntilTerminal(page, runId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (
+          msg.includes('not found within') ||
+          msg.includes('did not reach terminal state') ||
+          msg.includes('Ensure Prefect worker')
+        ) {
+          throw new Error(
+            `Prefect run polling failed: ${msg}. Scheduled ingestion requires Prefect. ` +
+              `Ensure Prefect stack is running: docker compose -f docker-compose.test.yml up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test`
+          );
+        }
+        throw err;
+      }
 
       expect(['COMPLETED', 'FAILED', 'CANCELLED']).toContain(run.status);
       if (run.status === 'COMPLETED') {

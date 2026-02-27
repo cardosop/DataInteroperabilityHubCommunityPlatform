@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-004-0c69e0cf",
+      "journey_name": "Review Access Requests",
+      "persona": "Compliance & Privacy Officer",
+      "status": "failed",
+      "start_time": 1771211171.804239,
+      "end_time": 1771211171.8076115,
+      "duration": 0.0033724308013916016,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 403 - {\"error\": \"No active subscription\", \"code\": \"subscription_inactive\", \"details\": {\"tenant_id\": \"69971f08-a0be-4d93-843a-3fcc8dc53470\"}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1771211171.8042448,
+          "end_time": 1771211171.807608,
+          "duration": 0.0033631324768066406,
+          "error_message": "Failed to create asset: 403 - {\"error\": \"No active subscription\", \"code\": \"subscription_inactive\", \"details\": {\"tenant_id\": \"69971f08-a0be-4d93-843a-3fcc8dc53470\"}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T03:06:11.807683"
+}

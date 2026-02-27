@@ -2158,7 +2158,10 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         except Exception as e:
             logger.warning(
                 "Unexpected error retrieving target asset schema",
-                extra={"target_asset_id": str(target_asset_id), "error_type": type(e).__name__},
+                extra={
+                    "target_asset_id": str(getattr(target_asset, "id", None)),
+                    "error_type": type(e).__name__,
+                },
             )
             warnings.append(f"Failed to retrieve target asset schema: {str(e)}")
             details["schema_compatibility_checked"] = False

@@ -158,9 +158,9 @@ class ServiceToServiceCommunicationTest(TestCase):
         self.assertEqual(self.compliance_client.max_retries, 2)
         self.assertEqual(self.compliance_client.backoff_factor, 1)
 
-        # Semantic service: max_retries = 1 (reduced for faster failure detection)
-        self.assertEqual(self.semantic_client.max_retries, 1)
-        self.assertEqual(self.semantic_client.backoff_factor, 0.5)
+        # Semantic service: max_retries = 0 (fail fast when unavailable)
+        self.assertEqual(self.semantic_client.max_retries, 0)
+        self.assertEqual(self.semantic_client.backoff_factor, 0.1)
 
     def test_service_clients_timeout_configuration(self):
         """Test timeout configuration for service clients"""
@@ -331,12 +331,12 @@ class ServiceToServiceRetryLogicTest(TestCase):
 
     def test_retry_configuration_semantic_service(self):
         """Test retry configuration for Semantic service"""
-        # Semantic service has reduced retries for faster failure detection
-        self.assertEqual(self.semantic_client.max_retries, 1)
-        self.assertEqual(self.semantic_client.backoff_factor, 0.5)
+        # Semantic service: max_retries = 0 (fail fast when unavailable)
+        self.assertEqual(self.semantic_client.max_retries, 0)
+        self.assertEqual(self.semantic_client.backoff_factor, 0.1)
 
         total_attempts = self.semantic_client.max_retries + 1
-        self.assertEqual(total_attempts, 2)
+        self.assertEqual(total_attempts, 1)
 
     def test_exponential_backoff_calculation(self):
         """Test exponential backoff calculation"""
@@ -351,13 +351,13 @@ class ServiceToServiceRetryLogicTest(TestCase):
         self.assertEqual(attempt_0_sleep, 1)
         self.assertEqual(attempt_1_sleep, 2)
 
-        # Semantic service: backoff_factor = 0.5
-        # Attempt 0: sleep = 0.5 * (2^0) = 0.5 seconds
+        # Semantic service: backoff_factor = 0.1 (not used when max_retries=0)
+        # Attempt 0: sleep = 0.1 * (2^0) = 0.1 seconds
 
         semantic_backoff = self.semantic_client.backoff_factor
         semantic_attempt_0 = semantic_backoff * (2 ** 0)
 
-        self.assertEqual(semantic_attempt_0, 0.5)
+        self.assertEqual(semantic_attempt_0, 0.1)
 
     def test_retry_logic_5xx_errors(self):
         """Test that retry logic handles 5xx errors correctly"""
@@ -375,12 +375,16 @@ class ServiceToServiceRetryLogicTest(TestCase):
 
     def test_retry_logic_network_errors(self):
         """Test that retry logic handles network errors correctly"""
-        # Network errors (RequestError) should trigger retries
-        # Verify that max_retries allows for retries on network errors
+        # Network errors (RequestError) should trigger retries where configured
+        # DQ and Compliance have retries; Semantic uses fail-fast (0 retries)
 
         self.assertGreater(self.dq_client.max_retries, 0)
         self.assertGreater(self.compliance_client.max_retries, 0)
-        self.assertGreater(self.semantic_client.max_retries, 0)
+        # Semantic may have 0 retries (fail-fast) - at least one client must retry
+        self.assertGreaterEqual(
+            self.dq_client.max_retries + self.compliance_client.max_retries + self.semantic_client.max_retries,
+            1,
+        )
 
     def test_max_retries_enforcement(self):
         """Test that max retries are enforced correctly"""

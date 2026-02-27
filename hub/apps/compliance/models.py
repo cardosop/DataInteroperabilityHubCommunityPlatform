@@ -23,6 +23,7 @@ class RiskLevel(models.TextChoices):
     MEDIUM = "MEDIUM", "Medium"
     HIGH = "HIGH", "High"
     CRITICAL = "CRITICAL", "Critical"
+    UNKNOWN = "UNKNOWN", "Unknown"  # Service unavailable/indeterminate (fail-closed)
 
 
 class ComplianceRun(models.Model):

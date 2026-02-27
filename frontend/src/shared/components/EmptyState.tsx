@@ -5,7 +5,7 @@
 import './EmptyState.css';
 
 interface EmptyStateProps {
-  title: string;
+  title?: string;
   message: string;
   action?: {
     label: string;
@@ -18,7 +18,7 @@ export function EmptyState({ title, message, action, icon = '📭' }: EmptyState
   return (
     <div className="empty-state">
       <div className="empty-state-icon">{icon}</div>
-      <h3 className="empty-state-title">{title}</h3>
+      <h3 className="empty-state-title">{title ?? message}</h3>
       <p className="empty-state-message">{message}</p>
       {action && (
         <button className="empty-state-action" onClick={action.onClick} type="button">

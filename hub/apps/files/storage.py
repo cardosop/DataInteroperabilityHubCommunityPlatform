@@ -271,14 +271,27 @@ class S3StorageClient:
             Dictionary with upload_url and fields (empty dict for PUT, populated for POST)
         """
         try:
+            # Ensure bucket exists before generating URL (avoids 404 on PUT from browser)
+            if not self._bucket_checked:
+                self._ensure_bucket_exists()
+                self._bucket_checked = True
+
             # For browser uploads, create a temporary client with localhost endpoint
             # This ensures the presigned URL is signed with the correct host
+            # (browser runs on host; can't resolve Docker service names like minio/minio-test)
             client_to_use = self.client
-            if for_browser and self.endpoint_url and 'minio:9000' in self.endpoint_url:
-                # Create a temporary client with localhost endpoint for signing
+            browser_endpoint = None
+            if for_browser and self.endpoint_url:
+                import os
+                if 'minio-test:9000' in self.endpoint_url:
+                    # Test stack: minio-test exposed on host as localhost:9010
+                    port = os.getenv('MINIO_TEST_API_PORT', '9010')
+                    browser_endpoint = self.endpoint_url.replace('minio-test:9000', f'localhost:{port}')
+                elif 'minio:9000' in self.endpoint_url:
+                    browser_endpoint = self.endpoint_url.replace('minio:9000', 'localhost:9000')
+            if browser_endpoint:
                 import boto3
                 from botocore.config import Config
-                browser_endpoint = self.endpoint_url.replace('minio:9000', 'localhost:9000')
                 s3_config = Config(
                     signature_version='s3v4',
                     s3={'addressing_style': 'path'},

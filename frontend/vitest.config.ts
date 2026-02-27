@@ -10,7 +10,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     // Exclude ProtectedRoute.test.tsx from default runs (OOM in worker; run via test:component:protected-route with high memory)
-    exclude: ['node_modules', 'dist', 'e2e/**', '**/ProtectedRoute.test.tsx'],
+    // Exclude integration tests (require real backend; run via test:integration:api)
+    exclude: ['node_modules', 'dist', 'e2e/**', '**/ProtectedRoute.test.tsx', 'src/integration/**'],
     // Optional: pass heap size to workers when VITEST_NODE_HEAP is set (e.g. for high-memory test files)
     execArgv: (process.env.VITEST_NODE_HEAP ? [`--max-old-space-size=${process.env.VITEST_NODE_HEAP}`] : []),
     pool: 'threads',
@@ -23,7 +24,10 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      // Thresholds set to current coverage so CI passes; raise as tests are added (target 80%)
+      // Thresholds set to current coverage so CI passes. Short-term plan (see docs/TEST_EXECUTION_PLAN.md §Frontend Coverage):
+      // - Q1: Raise lines/statements to 20%; functions 60%; branches 65%
+      // - Q2: Raise lines/statements to 40%; functions 70%; branches 70%
+      // - Target: 80% across all metrics
       thresholds: {
         lines: 10,
         functions: 52,

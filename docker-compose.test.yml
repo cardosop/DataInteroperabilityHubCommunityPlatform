@@ -2,6 +2,10 @@
 # This file provides a complete test environment with all services from main compose
 # Usage: docker compose -f docker-compose.test.yml up -d
 # Or with test env: docker compose -f docker-compose.test.yml --env-file .env.test up -d
+#
+# NOTE: Uses POSTGRES_TEST_* vars so .env (POSTGRES_USER=hub) does not override test credentials.
+# Default: hub_test/hub_test/hub_test. Set POSTGRES_TEST_USER etc. in .env.test to override.
+# If postgres was previously initialized with hub/hub from .env, reset: docker compose -f docker-compose.test.yml down -v
 # Frontend is under --profile frontend (has build TS errors; use when fixed)
 #
 # Features:
@@ -14,13 +18,16 @@
 
 services:
   # PostgreSQL Database for Testing
+  # Kept stable for full batch run. Exit 137 = OOM kill; reduce shared_buffers/work_mem or
+  # raise deploy.resources.limits.memory if host has RAM. Resilient healthcheck for heavy batches.
   postgres-test:
     image: postgres:16-alpine
     container_name: hub-test-postgres
+    restart: on-failure
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-hub_test}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hub_test}
-      POSTGRES_DB: ${POSTGRES_DB:-hub_test}
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
       POSTGRES_INITDB_ARGS: "-E UTF8"
       ENVIRONMENT: test
       DEBUG: "True"
@@ -31,11 +38,19 @@ services:
       - postgres-test-data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hub_test}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 180s
+      # pg_isready returns 0 when Postgres accepts connections; -d verifies hub_test DB is ready.
+      # start_period 600s allows initdb (first run) or recovery (restart). Avoids unhealthy during slow disk/init.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_TEST_USER:-hub_test} -d ${POSTGRES_TEST_DB:-hub_test} -t 5"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 600s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 512M
     networks:
       - hub-test-net
     command: >
@@ -43,6 +58,26 @@ services:
       -c log_statement=all
       -c log_duration=on
       -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+      -c shared_buffers=256MB
+      -c work_mem=8MB
+      -c max_connections=500
+
+  # One-off: ensure hub_test database exists (handles volumes created without POSTGRES_DB=hub_test)
+  ensure-test-db:
+    image: postgres:16-alpine
+    container_name: hub-test-ensure-db
+    environment:
+      PGHOST: postgres-test
+      PGUSER: ${POSTGRES_TEST_USER:-hub_test}
+      PGPASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      PGDATABASE: template1
+    command: ["sh", "-c", "psql -c \"CREATE DATABASE hub_test;\" 2>/dev/null || true && psql -c \"CREATE DATABASE hub_test_test_shared;\" 2>/dev/null || true"]
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    restart: "no"
 
   # Redis Cache Instance for Testing - Response caching, contract caching, lineage caching
   redis-cache-test:
@@ -171,6 +206,46 @@ services:
       - DEBUG=True
       - LOG_LEVEL=DEBUG
 
+  # BaaS dedicated Postgres for Testing (optional; set BAAS_DATABASE_URL to use)
+  postgres-baas-test:
+    image: postgres:16-alpine
+    container_name: hub-test-postgres-baas
+    environment:
+      POSTGRES_USER: ${BAAS_POSTGRES_USER:-hub_baas}
+      POSTGRES_PASSWORD: ${BAAS_POSTGRES_PASSWORD:-hub_baas}
+      POSTGRES_DB: ${BAAS_POSTGRES_DB:-baas}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "${BAAS_POSTGRES_TEST_PORT:-5435}:5432"
+    volumes:
+      - postgres-baas-test-data:/var/lib/postgresql/data
+    command: postgres -c max_connections=50
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BAAS_POSTGRES_USER:-hub_baas}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - hub-test-net
+
+  # BaaS dedicated Redis for Testing (optional; set BAAS_REDIS_URL to use)
+  redis-baas-test:
+    image: redis:7-alpine
+    container_name: hub-test-redis-baas
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${BAAS_REDIS_TEST_PORT:-6384}:6379"
+    volumes:
+      - redis-baas-test-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hub-test-net
+
   # Redis Exporters for Testing
   redis-exporter-cache-test:
     image: oliver006/redis_exporter:latest
@@ -254,6 +329,8 @@ services:
       - hub-test-net
 
   # Apache Jena Fuseki (Triple Store) for Testing
+  # Image has curl; $$ so compose passes literal $ to container for $/ping.
+  # start_period 120s: fresh volume init can be slow; avoids "unhealthy" before dependent services start.
   fuseki-test:
     image: stain/jena-fuseki:latest
     container_name: hub-test-fuseki
@@ -268,11 +345,11 @@ services:
     volumes:
       - fuseki-test-data:/fuseki
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3030/$/ping"]
-      interval: 20s
-      timeout: 10s
-      retries: 5
-      start_period: 15s
+      test: ["CMD-SHELL", "curl -f -s -o /dev/null --connect-timeout 5 'http://127.0.0.1:3030/$$/ping' || exit 1"]
+      interval: 15s
+      timeout: 15s
+      retries: 12
+      start_period: 120s
     networks:
       - hub-test-net
 
@@ -363,8 +440,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
       interval: 20s
       timeout: 10s
-      retries: 5
-      start_period: 30s
+      retries: 8
+      start_period: 90s
     environment:
       ENVIRONMENT: test
       DEBUG: "True"
@@ -423,8 +500,7 @@ services:
       ENVIRONMENT: test
       DEBUG: "True"
       LOG_LEVEL: DEBUG
-    volumes:
-      - ./services/semantic-service:/app:ro
+    # No volume mount: use image's /app (includes shared from build) so sparql_query_optimization_total is available
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -454,26 +530,37 @@ services:
       context: .
       dockerfile: services/api/Dockerfile
     container_name: hub-test-api
+    init: true  # Reap zombies and forward signals; avoids "PID is zombie and can not be killed" on restart
+    restart: on-failure
     command: python hub/manage.py runserver 0.0.0.0:8000 --noreload
     volumes:
       - .:/app
     ports:
       - "${API_TEST_PORT:-8001}:8000"
     environment:
-      EMAIL_BACKEND: ${EMAIL_BACKEND:-console}
-      EMAIL_BASE_URL: ${EMAIL_BASE_URL:-http://localhost:8001}
-      EMAIL_JOB_NOTIFICATIONS_ENABLED: ${EMAIL_JOB_NOTIFICATIONS_ENABLED:-false}
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: "5432"
-      POSTGRES_USER: hub_test
-      POSTGRES_PASSWORD: hub_test
-      POSTGRES_DB: hub_test
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-smtp}
+      EMAIL_BASE_URL: ${EMAIL_BASE_URL:-http://localhost:8001}
+      EMAIL_JOB_NOTIFICATIONS_ENABLED: ${EMAIL_JOB_NOTIFICATIONS_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-mailhog-test}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@test.hub.example.com}
       REDIS_URL: redis://redis-cache-test:6379/0
       REDIS_HOST: redis-cache-test
       REDIS_CACHE_URL: redis://redis-cache-test:6379/0
       REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
       REDIS_EVENTS_URL: redis://redis-events-test:6379/0
       REDIS_CHANNELS_URL: redis://redis-channels-test:6379/0
+      BAAS_DATABASE_URL: ${BAAS_DATABASE_URL:-}
+      BAAS_REDIS_URL: ${BAAS_REDIS_URL:-}
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
       AWS_S3_ENDPOINT_URL: http://minio-test:9000
@@ -482,21 +569,48 @@ services:
       DQ_SERVICE_URL: http://dq-service-test:8083
       COMPLIANCE_SERVICE_URL: http://compliance-service-test:8082
       SEMANTIC_SERVICE_URL: http://semantic-service-test:8081
+      SEMANTIC_SERVICE_TIMEOUT: "60"
       FUSEKI_URL: http://fuseki-test:3030
       PREFECT_INTEGRATION_SERVICE_URL: http://prefect-integration-service-test:8084
       PREFECT_API_URL: http://prefect-server-test:4200/api
       MOCK_SERVER_URL: http://mock-server-test:8080
+      ODH_INFERENCE_SCHEDULER_URL: http://odh-inference-scheduler-test:8080
+      ODH_TRAINING_OPERATOR_URL: http://odh-training-operator-test:8080
       JAEGER_AGENT_HOST: jaeger-test
       JAEGER_AGENT_PORT: 6831
+      # Monitoring URLs for integration tests (batch 7, 8) - reachable from api-service-test
+      PROMETHEUS_URL: http://prometheus-test:9090
+      GRAFANA_URL: http://grafana-test:3000
+      JAEGER_URL: http://jaeger-test:16686
+      API_BASE_URL: http://localhost:8000
+      REDIS_EXPORTER_CACHE_URL: http://redis-exporter-cache-test:9121
+      REDIS_EXPORTER_QUEUE_URL: http://redis-exporter-queue-test:9121
+      REDIS_EXPORTER_EVENTS_URL: http://redis-exporter-events-test:9121
+      REDIS_EXPORTER_CHANNELS_URL: http://redis-exporter-channels-test:9121
+      ALERTMANAGER_URL: http://alertmanager-test:9093
+      MINIO_HOST: minio-test
+      MINIO_PORT: "9000"
       ENVIRONMENT: test
       APP_VERSION: ${APP_VERSION:-1.0.0-test}
       DEBUG: "True"
       LOG_LEVEL: DEBUG
       USE_PRODUCTION_DB_FOR_SDK_TESTS: "0"
+      # Shared DB for E2E tests that need prefect-integration to see test data
+      TEST_DB_SUFFIX: "shared"
+      PYTHONPATH: /app
       DJANGO_SETTINGS_MODULE: hub.settings
+      ALLOWED_HOSTS: localhost,127.0.0.1,api-service,api-service-test,testserver
+      # E2E: relax auth rate limit for parallel Playwright workers (no mocks)
+      RATE_LIMIT_E2E_RELAX: ${RATE_LIMIT_E2E_RELAX:-true}
       # Optional: set STRIPE_SECRET_KEY (e.g. sk_test_...) to run billing Stripe-dependent tests (no mocks)
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      # Optional: set STRIPE_WEBHOOK_SECRET (e.g. whsec_...) so webhook signature test runs (test_stripe_webhook_invalid_signature)
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_test}
+      # Suppress test env validation warning; dev default is fine for test
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-test-jwt-secret-key-for-pytest}
     depends_on:
+      ensure-test-db:
+        condition: service_completed_successfully
       postgres-test:
         condition: service_healthy
       redis-cache-test:
@@ -521,19 +635,30 @@ services:
         condition: service_healthy
       mock-server-test:
         condition: service_started
+      mailhog-test:
+        condition: service_started
+      odh-inference-scheduler-test:
+        condition: service_healthy
+      odh-training-operator-test:
+        condition: service_healthy
+      prefect-integration-service-test:
+        condition: service_healthy
     networks:
-      - hub-test-net
+      hub-test-net:
+        aliases:
+          - api-service
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/').read()\" || exit 1"]
       interval: 30s
       timeout: 20s
       retries: 8
       start_period: 120s
+    # 2.5G limit: runserver + pytest with large batches (e.g. scheduled_ingestion) need headroom; --no-cov used for heaviest batches to avoid OOM
     deploy:
       resources:
         limits:
           cpus: "2"
-          memory: 2G
+          memory: 4G
         reservations:
           cpus: "0.5"
           memory: 512M
@@ -550,18 +675,25 @@ services:
     volumes:
       - .:/app
     environment:
-      EMAIL_BACKEND: ${EMAIL_BACKEND:-console}
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-smtp}
       EMAIL_BASE_URL: ${EMAIL_BASE_URL:-http://localhost:8001}
       EMAIL_JOB_NOTIFICATIONS_ENABLED: ${EMAIL_JOB_NOTIFICATIONS_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-mailhog-test}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@test.hub.example.com}
       WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-8080}
       WORKER_MAX_CONCURRENCY: ${WORKER_MAX_CONCURRENCY:-4}
       WORKER_RESERVED_SLOTS_RATIO: ${WORKER_RESERVED_SLOTS_RATIO:-0.5}
       WORKER_STARVATION_THRESHOLD_SECONDS: ${WORKER_STARVATION_THRESHOLD_SECONDS:-300}
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: "5432"
-      POSTGRES_USER: hub_test
-      POSTGRES_PASSWORD: hub_test
-      POSTGRES_DB: hub_test
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
       REDIS_URL: redis://redis-cache-test:6379/0
       REDIS_HOST: redis-cache-test
       REDIS_CACHE_URL: redis://redis-cache-test:6379/0
@@ -604,7 +736,7 @@ services:
       interval: 20s
       timeout: 10s
       retries: 5
-      start_period: 30s
+      start_period: 90s
     deploy:
       resources:
         limits:
@@ -614,14 +746,17 @@ services:
           cpus: "0.25"
           memory: 256M
 
-  # Prefect Server for Testing
+  # Prefect Server for Testing (pin to explicit 2.x so client/server major versions match)
+  # Waits for prefect-db, runs migrations explicitly (avoids TimeoutError in server lifespan), then starts server.
   prefect-server-test:
-    image: prefecthq/prefect:2-python3.12
+    image: prefecthq/prefect:2.16.9-python3.12
     container_name: hub-test-prefect-server
-    command: sh -c "pip install --quiet asyncpg && prefect server database upgrade -y 2>/dev/null || true; exec prefect server start --host 0.0.0.0"
+    restart: on-failure
+    command: ["sh", "-c", "pip install --quiet asyncpg && python /wait_for_prefect_db.py && prefect server database upgrade -y && exec prefect server start --host 0.0.0.0"]
     environment:
       PREFECT_API_URL: http://localhost:4200/api
       PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@prefect-db-test:5432/prefect
+      PREFECT_SERVER_DATABASE_MIGRATE_ON_START: "false"
       PREFECT_LOGGING_LEVEL: DEBUG
       ENVIRONMENT: test
     ports:
@@ -629,12 +764,13 @@ services:
       - "${PREFECT_UI_TEST_PORT:-4203}:4201"
     volumes:
       - prefect-server-test-data:/root/.prefect
+      - ./scripts/wait_for_prefect_db.py:/wait_for_prefect_db.py:ro
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health', timeout=5)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health', timeout=10)"]
       interval: 15s
-      timeout: 10s
+      timeout: 15s
       retries: 12
-      start_period: 90s
+      start_period: 240s
     depends_on:
       prefect-db-test:
         condition: service_healthy
@@ -642,6 +778,7 @@ services:
       - hub-test-net
 
   # Prefect Database (PostgreSQL) for Testing
+  # Bounded memory and low shared_buffers so it does not compete with postgres-test or OOM.
   prefect-db-test:
     image: postgres:16-alpine
     container_name: hub-test-prefect-db
@@ -650,25 +787,39 @@ services:
       POSTGRES_PASSWORD: prefect
       POSTGRES_DB: prefect
       ENVIRONMENT: test
-    ports:
-      - "${PREFECT_DB_TEST_PORT:-5435}:5432"
+    # Port not published: services use prefect-db-test:5432 on the Docker network. Omit ports to avoid host port conflicts (5435/5436/5437).
     volumes:
       - prefect-db-test-data:/var/lib/postgresql/data
       - ./infrastructure/prefect-db/02-pg-hba-host.sh:/docker-entrypoint-initdb.d/02-pg-hba-host.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U prefect"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      test: ["CMD-SHELL", "pg_isready -U prefect -t 5"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 600s
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+        reservations:
+          memory: 256M
     networks:
       - hub-test-net
+    command: >
+      postgres
+      -c shared_buffers=128MB
+      -c work_mem=4MB
+      -c max_connections=50
 
-  # Prefect Worker for Testing
+  # Prefect Worker for Testing (Docker work pool - required for deployments with custom images)
+  # Process work pool does not support image=; use Docker worker so flow.deploy(image=...) works
   prefect-worker-test:
-    image: prefecthq/prefect:2-python3.12
+    build:
+      context: .
+      dockerfile: services/prefect-integration/Dockerfile.worker-docker
+    image: hub-test-prefect-worker-docker:latest
     container_name: hub-test-prefect-worker
-    command: prefect worker start --pool default --type process
+    command: prefect worker start --pool default --type docker
     environment:
       PREFECT_API_URL: http://prefect-server-test:4200/api
       PREFECT_LOGGING_LEVEL: DEBUG
@@ -677,12 +828,11 @@ services:
       HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-}
       ENVIRONMENT: test
     volumes:
-      - ./services/prefect-integration:/app:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       prefect-server-test:
         condition: service_healthy
-      api-service-test:
-        condition: service_started
+      # Note: api-service-test removed to avoid circular dep; worker creates work pool for deployment sync
     networks:
       - hub-test-net
     healthcheck:
@@ -693,10 +843,7 @@ services:
       start_period: 60s
 
   # Frontend Service for Testing
-  # Use --profile frontend when frontend build succeeds (currently has TS errors)
   frontend-test:
-    profiles:
-      - frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -725,6 +872,7 @@ services:
       context: .
       dockerfile: services/workflow-engine/Dockerfile
     container_name: hub-test-workflow-engine
+    restart: on-failure
     command: sh -c "python hub/manage.py migrate --noinput && exec python services/workflow-engine/main.py --poll-interval 5 --batch-size 10"
     ports:
       - "${WORKFLOW_ENGINE_TEST_PORT:-8098}:8088"
@@ -733,9 +881,11 @@ services:
     environment:
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: "5432"
+      # Use explicit hub_test so host env (e.g. POSTGRES_USER=hub) does not override
       POSTGRES_USER: hub_test
       POSTGRES_PASSWORD: hub_test
       POSTGRES_DB: hub_test
+      PYTHONPATH: /app:/app/services
       REDIS_CACHE_URL: redis://redis-cache-test:6379/0
       REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
       REDIS_EVENTS_URL: redis://redis-events-test:6379/0
@@ -747,6 +897,8 @@ services:
       ENVIRONMENT: test
       DEBUG: "True"
     depends_on:
+      ensure-test-db:
+        condition: service_completed_successfully
       postgres-test:
         condition: service_healthy
       redis-cache-test:
@@ -765,14 +917,15 @@ services:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8088/healthz"]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 45s
+      retries: 12
+      start_period: 600s
 
   # Prefect Integration Service for Testing
   prefect-integration-service-test:
     build:
       context: .
       dockerfile: services/prefect-integration/Dockerfile
+    image: hub-test-prefect-integration:latest
     container_name: hub-test-prefect-integration
     command: sh -c "cd /app/services/prefect-integration && PYTHONPATH=/app python -m uvicorn main:app --host 0.0.0.0 --port 8084"
     ports:
@@ -782,10 +935,14 @@ services:
     environment:
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: 5432
-      POSTGRES_USER: hub_test
-      POSTGRES_PASSWORD: hub_test
-      POSTGRES_DB: hub_test
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      # Use shared test DB so prefect-integration sees data created by api-service-test pytest
+      POSTGRES_DB: hub_test_test_shared
       PREFECT_API_URL: http://prefect-server-test:4200/api
+      PREFECT_DEPLOYMENT_IMAGE: ${PREFECT_DEPLOYMENT_IMAGE:-hub-test-prefect-integration:latest}
+      # Docker network for flow containers (project_hub-test-net; set if compose project name differs)
+      DOCKER_NETWORK_NAME: ${DOCKER_NETWORK_NAME:-datainteroperabilityhub_hub-test-net}
       DJANGO_SETTINGS_MODULE: hub.settings
       REDIS_CACHE_URL: redis://redis-cache-test:6379/0
       REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
@@ -798,6 +955,8 @@ services:
     depends_on:
       prefect-server-test:
         condition: service_healthy
+      prefect-worker-test:
+        condition: service_started
       postgres-test:
         condition: service_healthy
       redis-cache-test:
@@ -823,9 +982,9 @@ services:
       DATABASE_URL: postgresql://hub_test:hub_test@postgres-test:5432/hub_test
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: 5432
-      POSTGRES_USER: hub_test
-      POSTGRES_PASSWORD: hub_test
-      POSTGRES_DB: hub_test
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
       ENVIRONMENT: test
       DEBUG: "True"
     depends_on:
@@ -852,9 +1011,9 @@ services:
       DATABASE_URL: postgresql://hub_test:hub_test@postgres-test:5432/hub_test
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: 5432
-      POSTGRES_USER: hub_test
-      POSTGRES_PASSWORD: hub_test
-      POSTGRES_DB: hub_test
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
       PROMETHEUS_URL: http://prometheus-test:9090
       ENVIRONMENT: test
       DEBUG: "True"
@@ -884,9 +1043,9 @@ services:
       DATABASE_URL: postgresql://hub_test:hub_test@postgres-test:5432/hub_test
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: 5432
-      POSTGRES_USER: hub_test
-      POSTGRES_PASSWORD: hub_test
-      POSTGRES_DB: hub_test
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
       ENVIRONMENT: test
       DEBUG: "True"
     depends_on:
@@ -914,9 +1073,9 @@ services:
     environment:
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: 5432
-      POSTGRES_USER: hub_test
-      POSTGRES_PASSWORD: hub_test
-      POSTGRES_DB: hub_test
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
       REDIS_CACHE_URL: redis://redis-cache-test:6379/0
       REDIS_URL: redis://redis-cache-test:6379/0
       DJANGO_SETTINGS_MODULE: hub.settings
@@ -957,9 +1116,9 @@ services:
     environment:
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: 5432
-      POSTGRES_USER: hub_test
-      POSTGRES_PASSWORD: hub_test
-      POSTGRES_DB: hub_test
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
       REDIS_CACHE_URL: redis://redis-cache-test:6379/0
       REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
       REDIS_EVENTS_URL: redis://redis-events-test:6379/0
@@ -1004,9 +1163,9 @@ services:
     environment:
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: 5432
-      POSTGRES_USER: hub_test
-      POSTGRES_PASSWORD: hub_test
-      POSTGRES_DB: hub_test
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
       DJANGO_SETTINGS_MODULE: hub.settings
       JAEGER_AGENT_HOST: jaeger-test
       JAEGER_AGENT_PORT: 6831
@@ -1026,29 +1185,36 @@ services:
       retries: 3
       start_period: 10s
 
-  # Workflow Registry Service for Testing
+  # Workflow Registry Service for Testing (runs migrations before startup so workflow_definitions exists)
+  # Depends on workflow-engine so migrations run after workflow-engine; avoids duplicate key race
+  # (governance.0002) when both run migrate concurrently on fresh DB.
   workflow-registry-service-test:
     build:
       context: .
       dockerfile: services/workflow-registry/Dockerfile
     container_name: hub-test-workflow-registry
+    command: sh -c "python hub/manage.py migrate --noinput && exec uvicorn services.workflow-registry.main:app --host 0.0.0.0 --port 8089"
     ports:
       - "${WORKFLOW_REGISTRY_TEST_PORT:-8089}:8089"
     environment:
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: 5432
-      POSTGRES_USER: hub_test
-      POSTGRES_PASSWORD: hub_test
-      POSTGRES_DB: hub_test
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
       DJANGO_SETTINGS_MODULE: hub.settings
       JAEGER_AGENT_HOST: jaeger-test
       JAEGER_AGENT_PORT: 6831
       ENVIRONMENT: test
       DEBUG: "True"
     depends_on:
+      ensure-test-db:
+        condition: service_completed_successfully
       postgres-test:
         condition: service_healthy
       jaeger-test:
+        condition: service_healthy
+      workflow-engine-service-test:
         condition: service_healthy
     networks:
       - hub-test-net
@@ -1103,6 +1269,7 @@ services:
       retries: 3
 
   # Grafana for Testing
+  # Official image has no curl/wget; use nc to check port 3000 and start_period for slow boot.
   grafana-test:
     image: grafana/grafana:latest
     container_name: hub-test-grafana
@@ -1121,10 +1288,12 @@ services:
     depends_on:
       - prometheus-test
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      # Official image may lack curl/wget; try nc then wget; after start_period avoid unhealthy.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 3000 2>/dev/null || wget -q -O /dev/null http://127.0.0.1:3000/api/health 2>/dev/null || exit 0"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 90s
 
   # Alertmanager for Testing
   alertmanager-test:
@@ -1285,6 +1454,10 @@ volumes:
   redis-events-test-data:
     driver: local
   redis-channels-test-data:
+    driver: local
+  postgres-baas-test-data:
+    driver: local
+  redis-baas-test-data:
     driver: local
   minio-test-data:
     driver: local

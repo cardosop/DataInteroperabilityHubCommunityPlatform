@@ -137,8 +137,13 @@ def _execute_odps_normalization_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Update progress: Normalizing to HubContract (40%)
         job_obj.details_json["progress_percentage"] = 40.0
@@ -158,8 +163,13 @@ def _execute_odps_normalization_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Normalize contract using NormalizationService (event publishing integrated)
         # This will publish normalization.started, normalization.completed/failed events
@@ -202,8 +212,13 @@ def _execute_odps_normalization_job(job_obj: Job) -> dict:
                     tenant_id=tenant_id,
                     user_id=user_id,
                 )
-            except Exception:
-                pass
+            except Exception as event_err:
+                logger.warning(
+                    "odps_job_event_publish_failed",
+                    job_id=str(job_obj.id),
+                    contract_id=str(contract_id),
+                    extra={"error_type": type(event_err).__name__, "error": str(event_err)},
+                )
             raise ValueError(f"ODPS normalization failed: {error_message}") from e
 
         # Update progress: Validation (60%)
@@ -224,8 +239,13 @@ def _execute_odps_normalization_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Check normalization status
         if norm_status == NormalizationStatus.NORMALIZATION_FAILED:
@@ -250,9 +270,13 @@ def _execute_odps_normalization_job(job_obj: Job) -> dict:
                     tenant_id=tenant_id,
                     user_id=user_id,
                 )
-            except Exception:
-                pass  # Event publishing failure should not affect job
-
+            except Exception as event_err:
+                logger.warning(
+                    "odps_job_event_publish_failed",
+                    job_id=str(job_obj.id),
+                    contract_id=str(contract_id),
+                    extra={"error_type": type(event_err).__name__, "error": str(event_err)},
+                )
             raise ValueError(f"ODPS normalization failed: {error_message}")
 
         # Update progress: Saving results (80%)
@@ -273,8 +297,13 @@ def _execute_odps_normalization_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Update contract with normalized data
         with transaction.atomic():
@@ -470,8 +499,13 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Parse ODPS document
         format_str = contract.original_format.lower() if contract.original_format else "json"
@@ -493,8 +527,13 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Count refs for progress tracking (approximate)
         def count_refs(obj, count=0):
@@ -529,8 +568,13 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Get external ref handling mode from job details (default: RESOLVE)
         external_ref_handling_str = job_obj.details_json.get("external_ref_handling", "resolve")
@@ -567,9 +611,13 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
                     tenant_id=tenant_id,
                     user_id=user_id,
                 )
-            except Exception:
-                pass  # Event publishing failure should not affect job
-
+            except Exception as event_err:
+                logger.warning(
+                    "odps_job_event_publish_failed",
+                    job_id=str(job_obj.id),
+                    contract_id=str(contract_id),
+                    extra={"error_type": type(event_err).__name__, "error": str(event_err)},
+                )
             raise ValueError(f"ODPS $ref resolution failed: {str(e)}")
 
         # Update progress: Saving results (90%)
@@ -589,8 +637,13 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Serialize resolved document
         if format_str == "yaml":
@@ -812,8 +865,13 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Get original ODCS contract if available (for embedding in ODPS)
         original_odcs_contract = None
@@ -822,9 +880,13 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
                 original_odcs_contract = parse_contract(
                     contract.original_raw, contract.original_format
                 )
-            except Exception:
-                # If parsing fails, continue without original ODCS
-                pass
+            except Exception as parse_err:
+                logger.debug(
+                    "odps_export_parse_original_odcs_failed",
+                    job_id=str(job_obj.id),
+                    contract_id=str(contract_id),
+                    extra={"error_type": type(parse_err).__name__, "error": str(parse_err)},
+                )
 
         # Update progress: Generating ODPS (30%)
         job_obj.details_json["progress_percentage"] = 30.0
@@ -843,8 +905,13 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Generate ODPS document
         odps_doc = generate_odps_from_hubcontract(
@@ -871,8 +938,13 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Format output
         if export_format == "yaml":
@@ -905,8 +977,13 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Update contract with exported ODPS (store in original_raw for now)
         # Note: This preserves the original_raw if it exists, but stores the exported ODPS
@@ -978,8 +1055,12 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
             odps_export_total.labels(
                 status="success", format=export_format, tenant_id=tenant_id or "unknown"
             ).inc()
-        except Exception:
-            pass  # Don't fail on metrics recording
+        except Exception as metrics_err:
+            logger.debug(
+                "odps_export_metrics_failed",
+                job_id=str(job_obj.id),
+                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+            )
 
         return {
             "status": "completed",
@@ -1006,8 +1087,12 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
             odps_export_total.labels(
                 status="failure", format=export_format, tenant_id=tenant_id
             ).inc()
-        except Exception:
-            pass  # Don't fail on metrics recording
+        except Exception as metrics_err:
+            logger.debug(
+                "odps_export_metrics_failed",
+                job_id=str(job_obj.id),
+                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+            )
         raise  # Re-raise specific errors
     except Exception as e:
         # Wrap other exceptions
@@ -1035,8 +1120,12 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
             odps_export_total.labels(
                 status="failure", format=export_format, tenant_id=tenant_id
             ).inc()
-        except Exception:
-            pass  # Don't fail on metrics recording
+        except Exception as metrics_err:
+            logger.debug(
+                "odps_export_metrics_failed",
+                job_id=str(job_obj.id),
+                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+            )
 
         raise Exception(f"ODPS export failed: {str(e)}") from e
 
@@ -1153,8 +1242,13 @@ def _execute_odps_semantic_mapping_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Update progress: Mapping to RDF (50%)
         job_obj.details_json["progress_percentage"] = 50.0
@@ -1174,8 +1268,13 @@ def _execute_odps_semantic_mapping_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Map ODPS to semantic (RDF)
         semantic_resource = map_odps_to_semantic(
@@ -1200,8 +1299,13 @@ def _execute_odps_semantic_mapping_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Check if mapping was successful
         if not semantic_resource:
@@ -1404,8 +1508,13 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Validate contracts for linking
         try:
@@ -1435,9 +1544,13 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
                     tenant_id=tenant_id,
                     user_id=user_id,
                 )
-            except Exception:
-                pass  # Event publishing failure should not affect job
-
+            except Exception as event_err:
+                logger.warning(
+                    "odps_job_event_publish_failed",
+                    job_id=str(job_obj.id),
+                    contract_id=str(contract_id),
+                    extra={"error_type": type(event_err).__name__, "error": str(event_err)},
+                )
             raise ValueError(f"ODPS linking validation failed: {str(e)}")
 
         # Update progress: Validation passed (40%)
@@ -1458,8 +1571,13 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Update progress: Establishing links (60%)
         job_obj.details_json["progress_percentage"] = 60.0
@@ -1478,8 +1596,13 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Establish bidirectional links using ContractService
         contract_service = ContractService(tenant_id=tenant_id, user_id=user_id)
@@ -1536,8 +1659,13 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Event publishing failure should not affect job
+        except Exception as e:
+            logger.warning(
+                "odps_job_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id) if contract_id else None,
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Update progress: Completed (100%)
         job_obj.details_json["progress_percentage"] = 100.0

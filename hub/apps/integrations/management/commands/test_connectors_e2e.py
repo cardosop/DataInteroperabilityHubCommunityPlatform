@@ -63,6 +63,24 @@ def get_dados_gov_br_credentials() -> dict:
     return {"jwt_token": jwt_token}
 
 
+def get_azure_marketplace_credentials() -> dict:
+    """Get Azure Marketplace Catalog API credentials from environment."""
+    api_key = os.getenv("AZURE_MARKETPLACE_API_KEY") or os.getenv("AZURE_CATALOG_API_KEY")
+    if not api_key:
+        raise CommandError(
+            "AZURE_MARKETPLACE_API_KEY (or AZURE_CATALOG_API_KEY) not set - "
+            "required for Azure Marketplace testing. "
+            "See https://aka.ms/DiscoveryAPI/keys"
+        )
+    base_url = os.getenv("AZURE_MARKETPLACE_BASE_URL", "https://catalogapi.azure.com")
+    api_version = os.getenv("AZURE_MARKETPLACE_API_VERSION", "2025-05-01")
+    return {
+        "base_url": base_url,
+        "api_key": api_key,
+        "api_version": api_version,
+    }
+
+
 def get_snowflake_credentials() -> dict:
     """Get Snowflake credentials from environment variables."""
     account = os.getenv("SNOWFLAKE_ACCOUNT")
@@ -100,9 +118,9 @@ class Command(BaseCommand):
         parser.add_argument(
             '--source',
             type=str,
-            choices=['dados_gov_br', 'snowflake', 'both'],
+            choices=['dados_gov_br', 'snowflake', 'azure', 'both'],
             default='both',
-            help='Source to test: dados_gov_br, snowflake, or both (default: both)',
+            help='Source to test: dados_gov_br, snowflake, azure, or both (default: both)',
         )
         parser.add_argument(
             '--limit',
@@ -429,6 +447,29 @@ class Command(BaseCommand):
 
             return connection
 
+        elif source_name == 'azure':
+            credentials = get_azure_marketplace_credentials()
+            config = {
+                'base_url': credentials['base_url'],
+                'api_key': credentials['api_key'],
+                'api_version': credentials['api_version'],
+            }
+            with transaction.atomic():
+                connection, created = MarketplaceConnection.objects.get_or_create(
+                    tenant=tenant,
+                    marketplace_type=MarketplaceType.AZURE_MARKETPLACE.value,
+                    name='Azure Marketplace E2E Test',
+                    defaults={
+                        'config': config,
+                        'is_active': True,
+                    }
+                )
+                if not created:
+                    connection.set_config(config)
+                    connection.is_active = True
+                    connection.save()
+            return connection
+
         else:
             raise CommandError(f"Unknown source: {source_name}")
 
@@ -453,6 +494,16 @@ class Command(BaseCommand):
                 warehouse=config.get('warehouse'),
                 role=config.get('role'),
                 database=config.get('database'),
+            )
+        elif source_name == 'azure':
+            from hub.apps.integrations.connectors.azure_marketplace_connector import (
+                AzureMarketplaceConnector,
+            )
+            config = connection.get_config()
+            connector = AzureMarketplaceConnector(
+                base_url=config.get('base_url'),
+                api_key=config.get('api_key'),
+                api_version=config.get('api_version'),
             )
         else:
             raise CommandError(f"Unknown source: {source_name}")

@@ -75,19 +75,26 @@ class ErrorReportingService {
       };
     }
 
+    // Skip reporting expected 404 "not found" — reduces console noise in E2E and normal flows
+    if (errorReport.httpStatus === 404) {
+      return;
+    }
+
     // Add to queue
     this.errorQueue.push(errorReport);
     if (this.errorQueue.length > this.maxQueueSize) {
       this.errorQueue.shift(); // Remove oldest
     }
 
-    // Log to console (sanitized)
-    console.error('[Error Report]', {
-      message: errorReport.message,
-      correlationId: errorReport.correlationId,
-      errorType: errorReport.errorType,
-      timestamp: errorReport.timestamp,
-    });
+    // Log to console (sanitized) — skip in test to avoid stderr noise from expected error scenarios
+    if (import.meta.env.MODE !== 'test') {
+      console.error('[Error Report]', {
+        message: errorReport.message,
+        correlationId: errorReport.correlationId,
+        errorType: errorReport.errorType,
+        timestamp: errorReport.timestamp,
+      });
+    }
 
     // In production, could send to external service (e.g., Sentry, LogRocket)
     // For now, we just log to console

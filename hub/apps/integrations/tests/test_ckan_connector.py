@@ -21,7 +21,7 @@ import pytest
 from django.test import TestCase, override_settings
 
 from hub.apps.assets.models import AssetSourceType
-from hub.apps.core.services.base import NotFoundError
+from hub.apps.core.services.base import ConnectionError, NotFoundError
 from hub.apps.integrations.base import (
     MarketplaceAssetMapping,
     MarketplaceListing,
@@ -32,6 +32,10 @@ from hub.apps.integrations.base import (
     SyncStatus,
 )
 from hub.apps.integrations.connectors.ckan_connector import CKANConnector
+from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
+    ckan_available,
+    create_test_connector,
+)
 
 
 class TestCKANConnectorInitialization(TestCase):
@@ -71,12 +75,13 @@ class TestCKANConnectorInitialization(TestCase):
         self.assertEqual(connector.marketplace_type, MarketplaceType.CKAN_INSTANCE)
 
     def test_supported_sync_directions_property(self):
-        """Test supported_sync_directions property returns all directions"""
+        """Test supported_sync_directions is PULL only (CKAN is harvest-only)."""
         connector = CKANConnector(base_url="https://data.gov")
         directions = connector.supported_sync_directions
-        self.assertIn(SyncDirection.PUSH, directions)
+        self.assertEqual(directions, [SyncDirection.PULL])
         self.assertIn(SyncDirection.PULL, directions)
-        self.assertIn(SyncDirection.BIDIRECTIONAL, directions)
+        self.assertNotIn(SyncDirection.PUSH, directions)
+        self.assertNotIn(SyncDirection.BIDIRECTIONAL, directions)
 
 
 class TestCKANConnectorAuthentication(TestCase):
@@ -162,7 +167,7 @@ class TestCKANConnectorConnectionTest(TestCase):
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
     def test_test_connection_success(self, mock_request):
-        """Test successful connection test"""
+        """Test successful connection test (connector uses package_search with rows=0)."""
         mock_response = Mock()
         mock_response.json.return_value = {"success": True}
         mock_request.return_value = mock_response
@@ -170,13 +175,15 @@ class TestCKANConnectorConnectionTest(TestCase):
         result = self.connector.test_connection()
 
         self.assertTrue(result)
-        mock_request.assert_called_once_with("GET", "/api/3/action/status_show")
+        mock_request.assert_called_once_with(
+            "GET", "/api/3/action/package_search", params={"rows": 0}
+        )
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
     def test_test_connection_failure(self, mock_request):
-        """Test connection test failure"""
+        """Test connection test returns False when response has no 'success' field."""
         mock_response = Mock()
-        mock_response.json.return_value = {"success": False}
+        mock_response.json.return_value = {"error": "Invalid response"}
         mock_request.return_value = mock_response
 
         result = self.connector.test_connection()
@@ -392,63 +399,37 @@ class TestCKANConnectorCreateListing(TestCase):
         """Set up test fixtures"""
         self.connector = CKANConnector(base_url="https://data.gov", api_key="test-key")
 
-    @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
-    def test_create_listing_success(self, mock_request):
-        """Test successful listing creation"""
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            "success": True,
-            "result": {
-                "id": "new-package",
-                "name": "new-package",
-                "title": "New Package",
-                "notes": "Description",
-                "tags": [],
-                "organization": None,
-            },
-        }
-        mock_request.return_value = mock_response
-
+    def test_create_listing_success(self):
+        """CKAN connector is harvest-only: create_listing raises NotImplementedError."""
         listing = MarketplaceListing(
             marketplace_id="new-package",
             marketplace_type=MarketplaceType.CKAN_INSTANCE,
             title="New Package",
             description="Description",
         )
-
-        created = self.connector.create_listing(listing)
-
-        self.assertEqual(created.marketplace_id, "new-package")
-        mock_request.assert_called_once()
-        call_args = mock_request.call_args
-        self.assertEqual(call_args[0][1], "/api/3/action/package_create")
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.create_listing(listing)
+        self.assertIn("PULL only", str(cm.exception))
+        self.assertIn("harvest", str(cm.exception).lower())
 
     def test_create_listing_no_api_key(self):
-        """Test create_listing raises PermissionError without API key"""
+        """CKAN connector is harvest-only: create_listing raises NotImplementedError."""
         connector = CKANConnector(base_url="https://data.gov")
         listing = MarketplaceListing(
             marketplace_id="test", marketplace_type=MarketplaceType.CKAN_INSTANCE, title="Test"
         )
-
-        with self.assertRaises(PermissionError):
+        with self.assertRaises(NotImplementedError) as cm:
             connector.create_listing(listing)
+        self.assertIn("PULL only", str(cm.exception))
 
-    @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
-    def test_create_listing_permission_denied(self, mock_request):
-        """Test create_listing raises PermissionError on permission denial"""
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            "success": False,
-            "error": {"message": "Permission denied"},
-        }
-        mock_request.return_value = mock_response
-
+    def test_create_listing_permission_denied(self):
+        """CKAN connector is harvest-only: create_listing raises NotImplementedError."""
         listing = MarketplaceListing(
             marketplace_id="test", marketplace_type=MarketplaceType.CKAN_INSTANCE, title="Test"
         )
-
-        with self.assertRaises(PermissionError):
+        with self.assertRaises(NotImplementedError) as cm:
             self.connector.create_listing(listing)
+        self.assertIn("PULL only", str(cm.exception))
 
 
 class TestCKANConnectorUpdateListing(TestCase):
@@ -458,57 +439,26 @@ class TestCKANConnectorUpdateListing(TestCase):
         """Set up test fixtures"""
         self.connector = CKANConnector(base_url="https://data.gov", api_key="test-key")
 
-    @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector.get_listing")
-    @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
-    def test_update_listing_success(self, mock_request, mock_get_listing):
-        """Test successful listing update"""
-        # Mock existing listing
-        mock_get_listing.return_value = MarketplaceListing(
-            marketplace_id="existing-package",
-            marketplace_type=MarketplaceType.CKAN_INSTANCE,
-            title="Existing Package",
-        )
-
-        # Mock update response
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            "success": True,
-            "result": {
-                "id": "existing-package",
-                "name": "existing-package",
-                "title": "Updated Package",
-                "notes": "Updated Description",
-                "tags": [],
-                "organization": None,
-            },
-        }
-        mock_request.return_value = mock_response
-
+    def test_update_listing_success(self):
+        """CKAN connector is harvest-only: update_listing raises NotImplementedError."""
         listing = MarketplaceListing(
             marketplace_id="existing-package",
             marketplace_type=MarketplaceType.CKAN_INSTANCE,
             title="Updated Package",
             description="Updated Description",
         )
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.update_listing("existing-package", listing)
+        self.assertIn("PULL only", str(cm.exception))
 
-        updated = self.connector.update_listing("existing-package", listing)
-
-        self.assertEqual(updated.title, "Updated Package")
-        mock_request.assert_called_once()
-        call_args = mock_request.call_args
-        self.assertEqual(call_args[0][1], "/api/3/action/package_update")
-
-    @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector.get_listing")
-    def test_update_listing_not_found(self, mock_get_listing):
-        """Test update_listing raises NotFoundError if package not found"""
-        mock_get_listing.side_effect = NotFoundError("Package not found")
-
+    def test_update_listing_not_found(self):
+        """CKAN connector is harvest-only: update_listing raises NotImplementedError."""
         listing = MarketplaceListing(
             marketplace_id="test", marketplace_type=MarketplaceType.CKAN_INSTANCE, title="Test"
         )
-
-        with self.assertRaises(NotFoundError):
+        with self.assertRaises(NotImplementedError) as cm:
             self.connector.update_listing("non-existent", listing)
+        self.assertIn("PULL only", str(cm.exception))
 
 
 class TestCKANConnectorPublishResource(TestCase):
@@ -518,32 +468,8 @@ class TestCKANConnectorPublishResource(TestCase):
         """Set up test fixtures"""
         self.connector = CKANConnector(base_url="https://data.gov", api_key="test-key")
 
-    @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector.get_listing")
-    @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
-    def test_publish_resource_success(self, mock_request, mock_get_listing):
-        """Test successful resource publishing"""
-        # Mock existing package
-        mock_get_listing.return_value = MarketplaceListing(
-            marketplace_id="test-package",
-            marketplace_type=MarketplaceType.CKAN_INSTANCE,
-            title="Test Package",
-        )
-
-        # Mock resource creation response
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            "success": True,
-            "result": {
-                "id": "new-resource",
-                "name": "New Resource",
-                "description": "Description",
-                "url": "https://example.com/resource.csv",
-                "format": "CSV",
-                "size": 1024,
-            },
-        }
-        mock_request.return_value = mock_response
-
+    def test_publish_resource_success(self):
+        """CKAN connector is harvest-only: publish_resource raises NotImplementedError."""
         resource = MarketplaceResource(
             resource_id="new-resource",
             resource_type="FILE",
@@ -552,28 +478,21 @@ class TestCKANConnectorPublishResource(TestCase):
             url="https://example.com/resource.csv",
             format="CSV",
         )
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.publish_resource("test-package", resource)
+        self.assertIn("PULL only", str(cm.exception))
 
-        published = self.connector.publish_resource("test-package", resource)
-
-        self.assertEqual(published.resource_id, "new-resource")
-        mock_request.assert_called_once()
-        call_args = mock_request.call_args
-        self.assertEqual(call_args[0][1], "/api/3/action/resource_create")
-
-    @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector.get_listing")
-    def test_publish_resource_package_not_found(self, mock_get_listing):
-        """Test publish_resource raises NotFoundError if package not found"""
-        mock_get_listing.side_effect = NotFoundError("Package not found")
-
+    def test_publish_resource_package_not_found(self):
+        """CKAN connector is harvest-only: publish_resource raises NotImplementedError."""
         resource = MarketplaceResource(
             resource_id="test",
             resource_type="FILE",
             name="Test",
             url="https://example.com/test.csv",
         )
-
-        with self.assertRaises(NotFoundError):
+        with self.assertRaises(NotImplementedError) as cm:
             self.connector.publish_resource("non-existent", resource)
+        self.assertIn("PULL only", str(cm.exception))
 
 
 class TestCKANConnectorDownloadResource(TestCase):
@@ -1120,7 +1039,7 @@ class TestCKANConnectorMapping(TestCase):
         self.assertIsNone(deserialized["odcs_metadata"])
 
     def test_map_from_hub_asset_basic(self):
-        """Test basic mapping Hub asset to CKAN package"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {
             "name": "Test Asset",
             "description": "Test Description",
@@ -1128,290 +1047,160 @@ class TestCKANConnectorMapping(TestCase):
             "tags": ["tag1"],
             "domain": "test-domain",
         }
-
-        listing = self.connector.map_from_hub_asset(asset_data)
-
-        self.assertIsInstance(listing, MarketplaceListing)
-        self.assertEqual(listing.title, "Test Asset")
-        self.assertEqual(listing.description, "Test Description")
-        self.assertEqual(listing.marketplace_type, MarketplaceType.CKAN_INSTANCE)
-        self.assertIn("tag1", listing.tags)
-        self.assertEqual(listing.category, "test-domain")
-        self.assertIsNotNone(listing.marketplace_id)
-        self.assertIn("hub_asset_id", listing.metadata)
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data)
+        self.assertIn("PULL only", str(cm.exception))
+        self.assertIn("map_to_hub_asset", str(cm.exception))
 
     def test_map_from_hub_asset_with_key(self):
-        """Test mapping with asset key"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {
             "name": "Test Asset",
             "key": "test-asset-key",
             "description": "Test Description",
         }
-
-        listing = self.connector.map_from_hub_asset(asset_data)
-
-        self.assertEqual(listing.metadata["hub_asset_key"], "test-asset-key")
-        # Package ID should be generated from key (hyphens removed by _generate_package_name)
-        # The key 'test-asset-key' becomes 'testassetkey' in package name
-        normalized_package_id = listing.marketplace_id.lower().replace("-", "")
-        self.assertIn("testassetkey", normalized_package_id)
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_with_odps_metadata(self):
-        """Test mapping Hub asset with ODPS metadata"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {"name": "Test Asset", "description": "Test Description", "id": "asset-123"}
-
         odps_metadata = {
             "tags": ["odps-tag1", "odps-tag2"],
             "categories": ["odps-category"],
             "license_id": "cc-by",
-            "author": "Test Author",
-            "maintainer": "Test Maintainer",
-            "version": "1.0.0",
         }
-
-        listing = self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
-
-        self.assertEqual(len(listing.tags), 2)
-        self.assertIn("odps-tag1", listing.tags)
-        self.assertEqual(listing.category, "odps-category")
-        self.assertEqual(listing.metadata["license_id"], "cc-by")
-        self.assertEqual(listing.metadata["author"], "Test Author")
-        self.assertEqual(listing.metadata["maintainer"], "Test Maintainer")
-        self.assertEqual(listing.metadata["version"], "1.0.0")
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_with_odps_pricing_plans(self):
-        """Test mapping with ODPS pricing plans"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {"name": "Test Asset", "description": "Test Description"}
-
-        odps_metadata = {
-            "pricing_plans": [
-                {
-                    "planID": "plan-1",
-                    "name": "Basic Plan",
-                    "price": 10.0,
-                    "currency": "USD",
-                    "billingPeriod": "monthly",
-                }
-            ]
-        }
-
-        listing = self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
-
-        self.assertIn("pricing_plans", listing.metadata)
-        self.assertEqual(len(listing.metadata["pricing_plans"]), 1)
-        self.assertEqual(listing.metadata["pricing_plans"][0]["planID"], "plan-1")
-        self.assertIn("x_odps", listing.metadata)
-        self.assertIn("pricing_plans", listing.metadata["x_odps"])
+        odps_metadata = {"pricing_plans": [{"planID": "plan-1", "name": "Basic Plan", "price": 10.0}]}
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_with_odps_access_methods(self):
-        """Test mapping with ODPS access methods"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {"name": "Test Asset", "description": "Test Description"}
-
         odps_metadata = {
-            "access_methods": {
-                "api": {
-                    "type": "REST_API",
-                    "endpoint": "https://api.example.com/data",
-                    "authenticationType": "API_KEY",
-                }
-            }
+            "access_methods": {"api": {"type": "REST_API", "endpoint": "https://api.example.com/data"}}
         }
-
-        listing = self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
-
-        self.assertIn("access_methods", listing.metadata)
-        self.assertIn("api", listing.metadata["access_methods"])
-        self.assertEqual(listing.metadata["access_methods"]["api"]["type"], "REST_API")
-        self.assertIn("x_odps", listing.metadata)
-        self.assertIn("access_methods", listing.metadata["x_odps"])
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_with_odps_payment_gateways(self):
-        """Test mapping with ODPS payment gateways"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {"name": "Test Asset", "description": "Test Description"}
-
         odps_metadata = {
-            "payment_gateways": {
-                "stripe": {
-                    "gatewayID": "stripe",
-                    "enabled": True,
-                    "config": {"public_key": "pk_test_123"},
-                }
-            }
+            "payment_gateways": {"stripe": {"gatewayID": "stripe", "enabled": True}}
         }
-
-        listing = self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
-
-        self.assertIn("payment_gateways", listing.metadata)
-        self.assertIn("stripe", listing.metadata["payment_gateways"])
-        self.assertTrue(listing.metadata["payment_gateways"]["stripe"]["enabled"])
-        self.assertIn("x_odps", listing.metadata)
-        self.assertIn("payment_gateways", listing.metadata["x_odps"])
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_with_odps_product_details(self):
-        """Test mapping with ODPS product details"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {"name": "Test Asset", "description": "Test Description"}
-
         odps_metadata = {
             "product_details": {
                 "product_version": "2.0.0",
                 "license_id": "mit",
-                "license_title": "MIT License",
                 "author": "Product Author",
-                "maintainer": "Product Maintainer",
             }
         }
-
-        listing = self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
-
-        self.assertEqual(listing.metadata["version"], "2.0.0")
-        self.assertEqual(listing.metadata["license_id"], "mit")
-        self.assertEqual(listing.metadata["license_title"], "MIT License")
-        self.assertEqual(listing.metadata["author"], "Product Author")
-        self.assertEqual(listing.metadata["maintainer"], "Product Maintainer")
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_with_odcs_metadata(self):
-        """Test mapping with ODCS metadata"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {"name": "Test Asset", "description": "Test Description"}
-
         odcs_metadata = {
-            "schema": {
-                "fields": [{"name": "id", "type": "integer"}, {"name": "name", "type": "string"}]
-            },
+            "schema": {"fields": [{"name": "id", "type": "integer"}]},
             "quality": {"rules": []},
         }
-
-        listing = self.connector.map_from_hub_asset(asset_data, odcs_metadata=odcs_metadata)
-
-        self.assertIn("odcs_metadata", listing.metadata)
-        self.assertIn("schema", listing.metadata["odcs_metadata"])
-        self.assertIn("quality", listing.metadata["odcs_metadata"])
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data, odcs_metadata=odcs_metadata)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_missing_fields(self):
-        """Test mapping with missing fields handled gracefully"""
-        asset_data = {
-            "name": "Test Asset"
-            # Missing description, tags, domain, etc.
-        }
-
-        listing = self.connector.map_from_hub_asset(asset_data)
-
-        self.assertEqual(listing.title, "Test Asset")
-        self.assertEqual(listing.description, "")
-        self.assertEqual(listing.tags, [])
-        self.assertIsNone(listing.category)
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
+        asset_data = {"name": "Test Asset"}
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_missing_name(self):
-        """Test mapping with missing name defaults to 'Untitled Asset'"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {"description": "Test Description"}
-
-        listing = self.connector.map_from_hub_asset(asset_data)
-
-        self.assertEqual(listing.title, "Untitled Asset")
-        self.assertEqual(listing.description, "Test Description")
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_with_uuid_id(self):
-        """Test mapping with UUID asset ID uses name for package ID"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {
-            "id": "123e4567-e89b-12d3-a456-426614174000",  # UUID format
+            "id": "123e4567-e89b-12d3-a456-426614174000",
             "name": "Test Asset",
             "description": "Test Description",
         }
-
-        listing = self.connector.map_from_hub_asset(asset_data)
-
-        # Package ID should be generated from name, not UUID
-        self.assertIn("test", listing.marketplace_id.lower())
-        self.assertNotIn("123e4567", listing.marketplace_id)
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_merges_tags(self):
-        """Test that tags from asset and ODPS metadata are merged"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {"name": "Test Asset", "tags": ["asset-tag1", "asset-tag2"]}
-
         odps_metadata = {"tags": ["odps-tag1", "odps-tag2"]}
-
-        listing = self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
-
-        self.assertEqual(len(listing.tags), 4)
-        self.assertIn("asset-tag1", listing.tags)
-        self.assertIn("asset-tag2", listing.tags)
-        self.assertIn("odps-tag1", listing.tags)
-        self.assertIn("odps-tag2", listing.tags)
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_domain_precedence(self):
-        """Test that domain takes precedence over ODPS category"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {"name": "Test Asset", "domain": "asset-domain"}
-
         odps_metadata = {"categories": ["odps-category"]}
-
-        listing = self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
-
-        self.assertEqual(listing.category, "asset-domain")
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_odps_category_fallback(self):
-        """Test that ODPS category is used when domain not available"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {"name": "Test Asset"}
-
         odps_metadata = {"categories": ["odps-category"]}
-
-        listing = self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
-
-        self.assertEqual(listing.category, "odps-category")
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_complete_odps_integration(self):
-        """Test complete ODPS contract integration"""
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
         asset_data = {
             "name": "Test Asset",
             "description": "Test Description",
             "domain": "finance",
             "tags": ["finance", "data"],
-            "status": "ACTIVE",
-            "visibility": "PUBLIC",
         }
-
         odps_metadata = {
             "tags": ["odps-tag"],
             "categories": ["financial-data"],
             "license_id": "cc-by",
-            "author": "Data Provider",
-            "maintainer": "Data Maintainer",
             "version": "1.0.0",
-            "pricing_plans": [{"planID": "free", "name": "Free Plan", "price": 0.0}],
-            "access_methods": {
-                "api": {"type": "REST_API", "endpoint": "https://api.example.com/data"}
-            },
-            "payment_gateways": {"stripe": {"gatewayID": "stripe", "enabled": True}},
         }
-
-        listing = self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
-
-        # Verify basic fields
-        self.assertEqual(listing.title, "Test Asset")
-        self.assertEqual(listing.description, "Test Description")
-        self.assertEqual(listing.category, "finance")  # Domain takes precedence
-
-        # Verify tags merged
-        self.assertIn("finance", listing.tags)
-        self.assertIn("odps-tag", listing.tags)
-
-        # Verify ODPS metadata
-        self.assertEqual(listing.metadata["license_id"], "cc-by")
-        self.assertEqual(listing.metadata["version"], "1.0.0")
-        self.assertIn("pricing_plans", listing.metadata)
-        self.assertIn("access_methods", listing.metadata)
-        self.assertIn("payment_gateways", listing.metadata)
-        self.assertIn("x_odps", listing.metadata)
-
-        # Verify x_odps structure
-        x_odps = listing.metadata["x_odps"]
-        self.assertIn("pricing_plans", x_odps)
-        self.assertIn("access_methods", x_odps)
-        self.assertIn("payment_gateways", x_odps)
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(asset_data, odps_metadata=odps_metadata)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_raises_on_none_asset_data(self):
-        """Test that mapping raises ValueError for None asset_data"""
-        with self.assertRaises(ValueError) as cm:
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError (even for None)."""
+        with self.assertRaises(NotImplementedError) as cm:
             self.connector.map_from_hub_asset(None)
-        self.assertIn("required", str(cm.exception).lower())
+        self.assertIn("PULL only", str(cm.exception))
+        self.assertIn("map_to_hub_asset", str(cm.exception))
 
 
 class TestCKANConnectorSyncOperations(TestCase):
@@ -1422,32 +1211,21 @@ class TestCKANConnectorSyncOperations(TestCase):
         self.connector = CKANConnector(base_url="https://data.gov")
 
     def test_sync_push_empty_asset_ids(self):
-        """Test sync_push raises ValueError for empty asset IDs"""
-        with self.assertRaises(ValueError):
+        """CKAN connector is harvest-only: sync_push raises NotImplementedError."""
+        with self.assertRaises(NotImplementedError) as cm:
             self.connector.sync_push([])
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_sync_push_dry_run(self):
-        """Test sync_push with dry_run option"""
-
-        # Provide asset_data_provider even for dry_run
+        """CKAN connector is harvest-only: sync_push raises NotImplementedError."""
         def mock_asset_provider(asset_id):
-            return {
-                "id": asset_id,
-                "name": f"Asset {asset_id}",
-                "description": f"Description for {asset_id}",
-                "key": f"asset-{asset_id}",
-            }
-
-        result = self.connector.sync_push(
-            ["asset-1", "asset-2"],
-            options={"dry_run": True, "asset_data_provider": mock_asset_provider},
-        )
-
-        self.assertIsInstance(result, SyncResult)
-        self.assertEqual(result.total_items, 2)
-        self.assertEqual(result.status, SyncStatus.COMPLETED)
-        self.assertTrue(result.metadata.get("dry_run"))
-        self.assertEqual(result.successful_items, 2)
+            return {"id": asset_id, "name": f"Asset {asset_id}", "key": f"asset-{asset_id}"}
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.sync_push(
+                ["asset-1", "asset-2"],
+                options={"dry_run": True, "asset_data_provider": mock_asset_provider},
+            )
+        self.assertIn("PULL only", str(cm.exception))
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector.list_listings")
     def test_sync_pull_success(self, mock_list_listings):
@@ -1571,26 +1349,36 @@ class TestCKANConnectorRetryLogic(TestCase):
 # Integration tests with real CKAN instance (skipped if not available)
 @pytest.mark.integration
 class TestCKANConnectorIntegration(TestCase):
-    """Integration tests with real CKAN instance"""
+    """Integration tests with real CKAN instance.
+
+    Uses centralized test utilities (ckan_available, create_test_connector) so behavior
+    matches discovery/pull/push integration tests: runs when a CKAN instance is available
+    (CKAN_TEST_URL, .env.test.ckan, or default demo.ckan.org); skips otherwise.
+    """
 
     @classmethod
     def setUpClass(cls):
-        """Set up integration test class"""
+        """Set up integration test class using centralized marketplace helpers."""
         super().setUpClass()
-        cls.ckan_url = os.getenv("CKAN_TEST_URL", "")
-        cls.ckan_api_key = os.getenv("CKAN_TEST_API_KEY", "")
+        cls.connector = None
+        cls.ckan_url = ""
+        cls.ckan_api_key = ""
+        if not ckan_available():
+            return
+        cls.connector = create_test_connector(verify_connection=True)
+        if not cls.connector:
+            return
+        cls.ckan_url = getattr(cls.connector, "base_url", "") or ""
+        cls.ckan_api_key = getattr(cls.connector, "api_key", None) or os.getenv("CKAN_TEST_API_KEY", "")
 
     def setUp(self):
-        """Set up test fixtures"""
-        if not self.ckan_url:
-            self.skipTest("CKAN_TEST_URL environment variable not set")
-
-        self.connector = CKANConnector(
-            base_url=self.ckan_url, api_key=self.ckan_api_key if self.ckan_api_key else None
-        )
+        """Set up test fixtures."""
+        if not ckan_available() or not getattr(self, "connector", None):
+            self.skipTest("No CKAN instance available for testing")
 
     def test_integration_authenticate(self):
         """Integration test for authentication"""
+        assert self.connector is not None  # ensured by setUp skip
         if not self.ckan_api_key:
             pytest.skip("CKAN_TEST_API_KEY not set, skipping authentication test")
 
@@ -1601,12 +1389,14 @@ class TestCKANConnectorIntegration(TestCase):
 
     def test_integration_test_connection(self):
         """Integration test for connection testing"""
+        assert self.connector is not None  # ensured by setUp skip
         result = self.connector.test_connection()
 
         self.assertTrue(result)
 
     def test_integration_list_listings(self):
         """Integration test for listing packages"""
+        assert self.connector is not None  # ensured by setUp skip
         listings = self.connector.list_listings(limit=10)
 
         self.assertIsInstance(listings, list)
@@ -1617,6 +1407,7 @@ class TestCKANConnectorIntegration(TestCase):
 
     def test_integration_get_listing(self):
         """Integration test for getting a specific listing"""
+        assert self.connector is not None  # ensured by setUp skip
         # First, get a list of packages
         listings = self.connector.list_listings(limit=1)
 
@@ -1629,6 +1420,7 @@ class TestCKANConnectorIntegration(TestCase):
 
     def test_integration_list_resources(self):
         """Integration test for listing resources"""
+        assert self.connector is not None  # ensured by setUp skip
         # First, get a list of packages
         listings = self.connector.list_listings(limit=1)
 
@@ -1729,9 +1521,10 @@ class TestCKANConnectorErrorHandling(TestCase):
             marketplace_id="test", marketplace_type=MarketplaceType.CKAN_INSTANCE, title="Test"
         )
 
-        # The connector wraps HTTPStatusError in ConnectionError or ValueError
-        with self.assertRaises((httpx.HTTPStatusError, ConnectionError, ValueError)):
+        # CKAN connector is harvest-only: create_listing raises NotImplementedError
+        with self.assertRaises(NotImplementedError) as cm:
             connector.create_listing(listing)
+        self.assertIn("PULL only", str(cm.exception))
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
     @patch("httpx.get")
@@ -1779,24 +1572,20 @@ class TestCKANConnectorErrorHandling(TestCase):
             self.connector.download_resource("resource-1", "/nonexistent/dir/file.csv")
 
     def test_sync_push_handles_missing_asset_data_provider(self):
-        """Test sync_push raises ValueError when asset_data_provider is missing"""
-        with self.assertRaises(ValueError) as cm:
+        """CKAN connector is harvest-only: sync_push raises NotImplementedError."""
+        with self.assertRaises(NotImplementedError) as cm:
             self.connector.sync_push(["asset-1"])
-        self.assertIn("asset_data_provider", str(cm.exception))
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_sync_push_handles_provider_exception(self):
-        """Test sync_push handles exceptions from asset_data_provider"""
-
+        """CKAN connector is harvest-only: sync_push raises NotImplementedError."""
         def failing_provider(asset_id):
             raise Exception("Provider failed")
-
-        result = self.connector.sync_push(
-            ["asset-1"], options={"asset_data_provider": failing_provider}
-        )
-
-        self.assertEqual(result.failed_items, 1)
-        self.assertEqual(result.status, SyncStatus.FAILED)
-        self.assertGreater(len(result.errors), 0)
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.sync_push(
+                ["asset-1"], options={"asset_data_provider": failing_provider}
+            )
+        self.assertIn("PULL only", str(cm.exception))
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector.list_listings")
     def test_sync_pull_handles_empty_listings(self, mock_list_listings):
@@ -1828,23 +1617,19 @@ class TestCKANConnectorErrorHandling(TestCase):
                 self.assertIn("API Error", str(e))
 
     def test_map_from_hub_asset_handles_none_asset_data(self):
-        """Test map_from_hub_asset raises ValueError for None asset_data"""
-        with self.assertRaises((ValueError, TypeError)):
-            # type: ignore - intentionally passing None to test error handling
-            self.connector.map_from_hub_asset(None)  # type: ignore
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError for None."""
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.map_from_hub_asset(None)  # type: ignore[arg-type]
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_handles_empty_asset_data(self):
-        """Test map_from_hub_asset handles empty asset_data"""
-        # Empty dict is considered invalid by the implementation
-        with self.assertRaises(ValueError):
+        """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError."""
+        with self.assertRaises(NotImplementedError) as cm:
             self.connector.map_from_hub_asset({})
-
-        # Test with minimal valid asset_data
-        minimal_data = {"name": "Test Asset", "key": "test-asset"}
-        result = self.connector.map_from_hub_asset(minimal_data)
-
-        self.assertIsInstance(result, MarketplaceListing)
-        self.assertEqual(result.marketplace_type, MarketplaceType.CKAN_INSTANCE)
+        self.assertIn("PULL only", str(cm.exception))
+        with self.assertRaises(NotImplementedError) as cm2:
+            self.connector.map_from_hub_asset({"name": "Test Asset", "key": "test-asset"})
+        self.assertIn("PULL only", str(cm2.exception))
 
 
 # ============================================================================
@@ -2106,18 +1891,10 @@ class TestCKANConnectorE2EWorkflows(TestCase):
             description="Test Description",
         )
 
-        created = connector.create_listing(listing)
-        self.assertIsInstance(created, MarketplaceListing)
-
-        # Step 3: Map to hub asset
-        mapping = connector.map_to_hub_asset(created)
-        self.assertIsInstance(mapping, MarketplaceAssetMapping)
-
-        # Step 4: Sync pull
-        with patch.object(connector, "list_listings", return_value=[created]):
-            result = connector.sync_pull(options={"dry_run": True})
-            self.assertEqual(result.total_items, 1)
-            self.assertEqual(result.status, SyncStatus.COMPLETED)
+        # CKAN connector is harvest-only: create_listing raises NotImplementedError
+        with self.assertRaises(NotImplementedError) as cm:
+            connector.create_listing(listing)
+        self.assertIn("PULL only", str(cm.exception))
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
     def test_e2e_update_workflow(self, mock_request):
@@ -2171,40 +1948,21 @@ class TestCKANConnectorE2EWorkflows(TestCase):
             description="Updated Description",
         )
 
-        updated = connector.update_listing("test-package", updated_listing)
-        self.assertEqual(updated.title, "Updated Title")
+        # CKAN connector is harvest-only: update_listing raises NotImplementedError
+        with self.assertRaises(NotImplementedError) as cm:
+            connector.update_listing("test-package", updated_listing)
+        self.assertIn("PULL only", str(cm.exception))
 
     def test_e2e_sync_push_workflow(self):
-        """Test complete sync_push workflow"""
-
+        """CKAN connector is harvest-only: sync_push raises NotImplementedError."""
         def asset_provider(asset_id):
-            return {
-                "id": asset_id,
-                "name": f"Asset {asset_id}",
-                "description": f"Description for {asset_id}",
-                "key": f"asset-{asset_id}",
-            }
-
-        def mock_map_from_hub_asset(asset_data, **kwargs):
-            if asset_data is None:
-                raise ValueError("Asset data is required")
-            return MarketplaceListing(
-                marketplace_id=f'package-{asset_data["id"]}',
-                marketplace_type=MarketplaceType.CKAN_INSTANCE,
-                title=f'Asset {asset_data["id"]}',
-            )
-
-        with patch.object(
-            self.connector, "map_from_hub_asset", side_effect=mock_map_from_hub_asset
-        ):
-            result = self.connector.sync_push(
+            return {"id": asset_id, "name": f"Asset {asset_id}", "key": f"asset-{asset_id}"}
+        with self.assertRaises(NotImplementedError) as cm:
+            self.connector.sync_push(
                 ["asset-1", "asset-2"],
                 options={"asset_data_provider": asset_provider, "dry_run": True},
             )
-
-            self.assertEqual(result.total_items, 2)
-            self.assertEqual(result.successful_items, 2)
-            self.assertEqual(result.status, SyncStatus.COMPLETED)
+        self.assertIn("PULL only", str(cm.exception))
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
     @patch("httpx.get")

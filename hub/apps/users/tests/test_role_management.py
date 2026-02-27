@@ -9,6 +9,7 @@ from rest_framework import status
 
 from hub.apps.users.models import User, Role, UserRole, UserStatus
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -57,6 +58,9 @@ class RoleManagementTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+
+        # Active subscription required so TenantSuspensionMiddleware allows writes
+        ensure_tenant_has_active_subscription(self.tenant)
     
     def test_assign_role(self):
         """Test assigning a role to a user"""
@@ -70,7 +74,7 @@ class RoleManagementTest(TestCase):
         }
         
         response = self.client.post(
-            f"/api/v1/users/users/{self.regular_user.id}/roles/",
+            f"/api/v1/users/{self.regular_user.id}/roles/",
             data,
             format="json"
         )
@@ -102,7 +106,7 @@ class RoleManagementTest(TestCase):
         }
         
         response = self.client.post(
-            f"/api/v1/users/users/{self.regular_user.id}/roles/",
+            f"/api/v1/users/{self.regular_user.id}/roles/",
             data,
             format="json"
         )
@@ -143,7 +147,7 @@ class RoleManagementTest(TestCase):
         }
         
         response = self.client.post(
-            f"/api/v1/users/users/{self.regular_user.id}/roles/",
+            f"/api/v1/users/{self.regular_user.id}/roles/",
             data,
             format="json"
         )
@@ -167,11 +171,11 @@ class RoleManagementTest(TestCase):
         # Assign a role
         UserRole.objects.create(user=self.regular_user, role=self.provider_role)
         
-        response = self.client.get(f"/api/v1/users/users/{self.regular_user.id}/")
+        response = self.client.get(f"/api/v1/users/{self.regular_user.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
-        # Verify roles are included in response
+        # Verify roles are included in response (serializer returns role names as strings)
         self.assertIn("roles", response.data)
-        role_names = [role["name"] for role in response.data["roles"]]
+        role_names = list(response.data["roles"])
         self.assertIn("DATA_PROVIDER", role_names)
 

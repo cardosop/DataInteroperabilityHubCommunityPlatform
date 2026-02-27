@@ -18,9 +18,21 @@ from hub.apps.mesh.models import (
 from hub.apps.mesh.services import DataMeshService
 from hub.apps.orchestration.models import WorkflowStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import Role, UserRole
+from django.core.cache import cache
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
+
+
+def _ensure_tenant_admin(user, tenant):
+    """Ensure user has TENANT_ADMIN role for create_domain permission."""
+    role, _ = Role.objects.get_or_create(
+        tenant=tenant,
+        name="TENANT_ADMIN",
+        defaults={"description": "Tenant admin role"},
+    )
+    UserRole.objects.get_or_create(user=user, role=role, defaults={})
 
 
 class DataMeshServiceInitializationTest(TestCase):
@@ -74,6 +86,7 @@ class DataMeshServiceEventPublishingTest(TestCase):
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant
         )
+        _ensure_tenant_admin(self.user, self.tenant)
         self.service = DataMeshService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant, name="Test Domain", owner=self.user
@@ -166,8 +179,13 @@ class DataMeshServiceEventPublishingTest(TestCase):
             event_type="domain.created", tenant_id=self.tenant.id
         ).count()
 
-        # Publish event
-        event_id = service.publish_domain_created(domain_id=str(self.domain.id))
+        # Publish event (pass required payload fields; test verifies tenant_id/user_id usage)
+        event_id = service.publish_domain_created(
+            domain_id=str(self.domain.id),
+            name=self.domain.name,
+            status=self.domain.status,
+            owner_id=str(self.domain.owner_id) if self.domain.owner_id else None,
+        )
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -209,9 +227,12 @@ class DataMeshServiceEventPublishingTest(TestCase):
             event_type="domain.created", tenant_id=other_tenant.id
         ).count()
 
-        # Publish event with overridden tenant_id and user_id
+        # Publish event with overridden tenant_id and user_id (pass required payload fields)
         event_id = service.publish_domain_created(
             domain_id=str(self.domain.id),
+            name=self.domain.name,
+            status=self.domain.status,
+            owner_id=str(self.domain.owner_id) if self.domain.owner_id else None,
             tenant_id=str(other_tenant.id),
             user_id=str(other_user.id),
         )
@@ -231,6 +252,24 @@ class DataMeshServiceEventPublishingTest(TestCase):
         self.assertEqual(event.data.get("domain_id"), str(self.domain.id))
 
 
+def _ensure_abac_allow_domain_creation(tenant, user):
+    """Create ABAC policy allowing domain creation (required when tenant has any applicable policies)."""
+    from hub.apps.governance.models import AccessPolicy
+
+    AccessPolicy.objects.get_or_create(
+        tenant=tenant,
+        name="Allow Domain Creation",
+        defaults={
+            "conditions": {"user": {"tenant_id": str(tenant.id)}},
+            "effect": "ALLOW",
+            "priority": 100,
+            "enabled": True,
+            "created_by": user,
+        },
+    )
+    cache.clear()
+
+
 class DataMeshServiceDomainOperationsTest(TestCase):
     """Test DataMeshService domain operations"""
 
@@ -242,6 +281,8 @@ class DataMeshServiceDomainOperationsTest(TestCase):
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant
         )
+        _ensure_tenant_admin(self.user, self.tenant)
+        _ensure_abac_allow_domain_creation(self.tenant, self.user)
         self.service = DataMeshService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_get_domain_success(self):
@@ -669,6 +710,7 @@ class DataMeshServicePolicyOperationsTest(TestCase):
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant
         )
+        _ensure_tenant_admin(self.user, self.tenant)
         self.service = DataMeshService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
@@ -754,8 +796,7 @@ class DataMeshServicePolicyOperationsTest(TestCase):
         )
 
     def test_apply_policy_validates_domain_compatibility(self):
-        """Test that apply_policy validates domain compatibility"""
-        from hub.apps.core.services.base import NotFoundError
+        """Test that apply_policy validates policy and domain belong to same tenant"""
         from hub.apps.governance.models import AccessPolicy
         from hub.apps.tenants.models import Tenant
 
@@ -772,43 +813,14 @@ class DataMeshServicePolicyOperationsTest(TestCase):
             created_by=self.user,
         )
 
-        # The service will first try to find the policy in the domain's tenant
-        # Since the policy is in a different tenant, it will raise NotFoundError
-        # This is expected behavior - policies must be in the same tenant as the domain
-        with self.assertRaises(NotFoundError) as cm:
-            self.service.apply_policy(domain_id=str(self.domain.id), policy_id=str(other_policy.id))
-
-        # Verify we get NotFoundError because policy is not in domain's tenant
-        self.assertIn("not found", str(cm.exception).lower())
-
-        # To test the explicit tenant validation check, we need to bypass the initial lookup
-        # by creating a policy in the same tenant but then manually checking tenant compatibility
-        # Actually, the tenant check happens after policy lookup, so we need a different approach
-        # Let's test by creating a service with the other tenant and trying to apply to our domain
-        # But first, we need to create a user in the other tenant
-        from hub.apps.users.models import User
-
-        other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
-        )
-
-        service_other_tenant = DataMeshService(
-            tenant_id=str(other_tenant.id), user_id=str(other_user.id)
-        )
-
-        # Now try to apply policy from other_tenant to domain in self.tenant
-        # This should fail because domain is in self.tenant but we're using other_tenant service
-        # The get_domain will use other_tenant, so it won't find the domain
-        with self.assertRaises(NotFoundError):
-            service_other_tenant.apply_policy(
+        # Service fetches policy by ID (no tenant filter), then validates tenant match.
+        # Policy belongs to other_tenant, domain belongs to self.tenant -> ValidationError
+        with self.assertRaises(ValidationError) as cm:
+            self.service.apply_policy(
                 domain_id=str(self.domain.id), policy_id=str(other_policy.id)
             )
 
-        # To properly test tenant compatibility validation, we need to test the case where
-        # policy and domain are retrieved but belong to different tenants
-        # This is actually already covered by the model's clean() method which validates
-        # that policy and domain belong to same tenant. The service-level check happens
-        # when we query for the policy with tenant_id filter, which is the correct behavior.
+        self.assertIn("same tenant", str(cm.exception).lower())
 
     def test_apply_policy_validates_domain_active(self):
         """Test that apply_policy validates domain is active"""
@@ -928,6 +940,7 @@ class DataMeshServicePolicyAuditLoggingTest(TestCase):
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant
         )
+        _ensure_tenant_admin(self.user, self.tenant)
         self.service = DataMeshService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
@@ -1145,6 +1158,8 @@ class DataMeshServiceWorkflowIntegrationTest(TestCase):
         self.user = User.objects.create_user(
             email="test-workflow@example.com", password="testpass123", tenant=self.tenant
         )
+        _ensure_tenant_admin(self.user, self.tenant)
+        _ensure_abac_allow_domain_creation(self.tenant, self.user)
         self.service = DataMeshService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_create_domain_uses_workflow(self):

@@ -57,7 +57,7 @@ export function ODPSListPage() {
             </thead>
             <tbody>
               {odpsContracts.map((contract) => (
-                <tr key={contract.id}>
+                <tr key={contract.id} data-odps-id={contract.id}>
                   <td>
                     <code className="contract-id">{contract.id.slice(0, 8)}...</code>
                   </td>

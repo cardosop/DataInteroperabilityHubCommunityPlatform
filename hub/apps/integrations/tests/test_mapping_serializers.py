@@ -248,17 +248,26 @@ class MarketplaceMappingSerializerTest(TestCase):
 
     def test_serialize_mapping_with_deleted_connection(self):
         """Test serializing mapping when connection is deleted"""
-        # Create mapping
+        # Use a distinct (connection, hub_asset) pair to avoid unique constraint with setUp's self.mapping
+        conn = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Conn for deleted test",
+            config={},
+            is_active=True,
+        )
+        asset = Asset.objects.create(
+            tenant=self.tenant, key="asset-deleted-conn", name="Asset for deleted conn"
+        )
         mapping = MarketplaceMapping.objects.create(
             tenant=self.tenant,
-            connection=self.connection,
-            hub_asset=self.asset,
+            connection=conn,
+            hub_asset=asset,
             external_listing_id="ext-listing-deleted",
         )
 
-        # Delete connection (cascade should handle this, but test the edge case)
-        connection_id = self.connection.id
-        self.connection.delete()
+        # Delete connection (cascade may remove mapping; test serializer behavior)
+        conn.delete()
 
         # Try to serialize - should handle gracefully
         try:
@@ -274,17 +283,26 @@ class MarketplaceMappingSerializerTest(TestCase):
 
     def test_serialize_mapping_with_deleted_asset(self):
         """Test serializing mapping when asset is deleted"""
-        # Create mapping
+        # Use a distinct (connection, hub_asset) pair to avoid unique constraint with setUp's self.mapping
+        conn = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Conn for deleted asset test",
+            config={},
+            is_active=True,
+        )
+        asset = Asset.objects.create(
+            tenant=self.tenant, key="asset-deleted-asset", name="Asset to delete"
+        )
         mapping = MarketplaceMapping.objects.create(
             tenant=self.tenant,
-            connection=self.connection,
-            hub_asset=self.asset,
+            connection=conn,
+            hub_asset=asset,
             external_listing_id="ext-listing-asset-deleted",
         )
 
-        # Delete asset (cascade should handle this, but test the edge case)
-        asset_id = self.asset.id
-        self.asset.delete()
+        # Delete asset (cascade may remove mapping; test serializer behavior)
+        asset.delete()
 
         # Try to serialize - should handle gracefully
         try:

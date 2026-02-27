@@ -1,0 +1,111 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.09263896942138672
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-001-cd044992",
+      "journey_name": "Programmatic Contract-First Onboarding",
+      "persona": "Data Engineer / Contract Author",
+      "status": "completed",
+      "start_time": 1771289976.1122973,
+      "end_time": 1771289976.2049363,
+      "duration": 0.09263896942138672,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Contract via API",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771289976.1123025,
+          "end_time": 1771289976.1351688,
+          "duration": 0.022866249084472656,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Validate Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771289976.1351774,
+          "end_time": 1771289976.1543953,
+          "duration": 0.019217967987060547,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Normalize Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771289976.1544027,
+          "end_time": 1771289976.1571612,
+          "duration": 0.002758502960205078,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NormalizationStatus"
+          }
+        },
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771289976.1571748,
+          "end_time": 1771289976.1732907,
+          "duration": 0.016115903854370117,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Attach Contract to Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771289976.1732972,
+          "end_time": 1771289976.201887,
+          "duration": 0.028589725494384766,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "ReturnDict"
+          }
+        },
+        {
+          "step_name": "Activate Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771289976.2018943,
+          "end_time": 1771289976.204933,
+          "duration": 0.003038644790649414,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        }
+      ],
+      "metadata": {
+        "contract_id": "1741db64-e340-4a9c-9f19-cc477e13b56d",
+        "asset_id": "6d8f2e8b-7665-4c85-8bf2-b9a34bf74b9e"
+      }
+    }
+  ],
+  "exported_at": "2026-02-17T00:59:36.205015"
+}

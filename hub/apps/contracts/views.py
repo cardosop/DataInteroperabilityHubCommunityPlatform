@@ -293,6 +293,14 @@ class ContractViewSet(
     for the lineage visualization endpoint.
     """
 
+    def initial(self, request, *args, **kwargs):
+        # Impact analysis uses ?output=csv (handled in view), not DRF format_kwarg.
+        # Disable format_kwarg for this action so ?format=csv does not trigger
+        # content negotiation and 404 when no CSV renderer is configured.
+        if getattr(self, "action", None) == "get_impact_analysis":
+            self.format_kwarg = None
+        super().initial(request, *args, **kwargs)
+
     def get_queryset(self):
         """Filter queryset based on user permissions and query parameters (GAP-9.2.2)"""
         user = self.request.user

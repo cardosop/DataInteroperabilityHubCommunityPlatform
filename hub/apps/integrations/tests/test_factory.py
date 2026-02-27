@@ -808,6 +808,53 @@ class TestGCPMarketplaceConnectorFactory(TestCase):
         assert MarketplaceType.GOOGLE_CLOUD_MARKETPLACE in supported_types
 
 
+class TestAzureMarketplaceConnectorFactory(TestCase):
+    """Test Azure Marketplace connector factory registration and creation"""
+
+    def test_create_azure_marketplace_connector_with_config(self):
+        """Test creating Azure Marketplace connector with configuration"""
+        from hub.apps.integrations.connectors.azure_marketplace_connector import (
+            AzureMarketplaceConnector,
+        )
+
+        if MarketplaceType.AZURE_MARKETPLACE.value not in MarketplaceConnectorFactory._connectors:
+            MarketplaceConnectorFactory.register_connector(
+                MarketplaceType.AZURE_MARKETPLACE,
+                AzureMarketplaceConnector,
+            )
+
+        config = {
+            "base_url": "https://catalogapi.azure.com",
+            "api_key": "test-api-key",
+            "api_version": "2025-05-01",
+        }
+        connector = MarketplaceConnectorFactory.create_connector(
+            MarketplaceType.AZURE_MARKETPLACE,
+            config=config,
+        )
+
+        assert isinstance(connector, AzureMarketplaceConnector)
+        assert connector.marketplace_type == MarketplaceType.AZURE_MARKETPLACE
+        assert connector._base_url == config["base_url"]
+        assert connector._api_key == config["api_key"]
+        assert connector._api_version == config["api_version"]
+
+    def test_factory_is_supported_azure_marketplace(self):
+        """Test factory is_supported() returns True for AZURE_MARKETPLACE"""
+        from hub.apps.integrations.connectors.azure_marketplace_connector import (
+            AzureMarketplaceConnector,
+        )
+
+        if MarketplaceType.AZURE_MARKETPLACE.value not in MarketplaceConnectorFactory._connectors:
+            MarketplaceConnectorFactory.register_connector(
+                MarketplaceType.AZURE_MARKETPLACE,
+                AzureMarketplaceConnector,
+            )
+        assert MarketplaceConnectorFactory.is_supported(
+            MarketplaceType.AZURE_MARKETPLACE
+        ) is True
+
+
 class TestAWSDataExchangeConnectorFactory(TestCase):
     """Test AWS Data Exchange connector factory registration and retrieval"""
 

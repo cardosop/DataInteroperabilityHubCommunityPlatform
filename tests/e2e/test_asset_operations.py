@@ -29,7 +29,7 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.datasets.models import Dataset
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e1]
 
@@ -50,13 +50,14 @@ class AssetOperationsE2ETest(E2ETestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["key"], "test-asset")
-        self.assertEqual(response.data["name"], "Test Asset")
-        self.assertEqual(response.data["status"], AssetStatus.DRAFT)
-        self.assertEqual(response.data["version"], 1)
+        data = get_response_data(response) or {}
+        self.assertEqual(data["key"], "test-asset")
+        self.assertEqual(data["name"], "Test Asset")
+        self.assertEqual(data["status"], AssetStatus.DRAFT)
+        self.assertEqual(data["version"], 1)
 
         # Verify asset in database
-        asset = Asset.objects.get(id=response.data["id"])
+        asset = Asset.objects.get(id=data["id"])
         self.assertEqual(asset.key, "test-asset")
         self.assertEqual(asset.status, AssetStatus.DRAFT)
         self.assertEqual(asset.dq_status, DQStatus.UNKNOWN)
@@ -85,12 +86,14 @@ class AssetOperationsE2ETest(E2ETestBase):
         # List all assets
         response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data["results"]), 2)
+        data = get_response_data(response) or {}
+        self.assertGreaterEqual(len(data.get("results", [])), 2)
 
         # Filter by status
         response = self.client.get(f"/api/v1/assets/?status={AssetStatus.DRAFT}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        asset_statuses = {a["status"] for a in response.data["results"]}
+        data = get_response_data(response) or {}
+        asset_statuses = {a["status"] for a in data.get("results", [])}
         # Should only contain DRAFT assets (may include other assets if filter doesn't work)
         self.assertIn(AssetStatus.DRAFT, asset_statuses)
         # If filter works correctly, should only have DRAFT, but we'll be lenient
@@ -102,10 +105,11 @@ class AssetOperationsE2ETest(E2ETestBase):
         response = self.client.get(f"/api/v1/assets/{asset_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["id"], str(asset_id))
-        self.assertEqual(response.data["key"], "details-test")
-        self.assertEqual(response.data["name"], "Details Test")
-        self.assertIn("version", response.data)
+        data = get_response_data(response) or {}
+        self.assertEqual(data["id"], str(asset_id))
+        self.assertEqual(data["key"], "details-test")
+        self.assertEqual(data["name"], "Details Test")
+        self.assertIn("version", data)
 
     def test_update_asset_with_optimistic_locking(self):
         """Test updating asset with optimistic locking"""
@@ -123,8 +127,9 @@ class AssetOperationsE2ETest(E2ETestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["name"], "Updated Name")
-        self.assertEqual(response.data["version"], current_version + 1)  # Version incremented
+        data = get_response_data(response) or {}
+        self.assertEqual(data["name"], "Updated Name")
+        self.assertEqual(data["version"], current_version + 1)  # Version incremented
 
         # Verify database updated
         asset.refresh_from_db()
@@ -147,7 +152,8 @@ class AssetOperationsE2ETest(E2ETestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-        self.assertIn("ASSET_CONCURRENT_MODIFICATION", response.data.get("code", ""))
+        data = get_response_data(response) or {}
+        self.assertIn("ASSET_CONCURRENT_MODIFICATION", data.get("code", ""))
 
     def test_activate_asset_success(self):
         """Test activating asset with all requirements met"""
@@ -238,8 +244,9 @@ class AssetOperationsE2ETest(E2ETestBase):
 
         # If activation fails, check the error details
         if response.status_code != status.HTTP_200_OK:
-            error_details = response.data.get("details", {})
-            blockers = response.data.get("error", "")
+            data = get_response_data(response) or {}
+            error_details = data.get("details", {})
+            blockers = data.get("error", "")
             # Log for debugging
             print(
                 f"Activation failed: {response.status_code}, error: {blockers}, details: {error_details}"
@@ -266,15 +273,14 @@ class AssetOperationsE2ETest(E2ETestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        # Error message may say "requirements not met" - check error or details
-        error_msg = str(response.data.get("error", "")).lower()
-        details = response.data.get("details", {})
-        # Check if contract is mentioned in error or details
+        data = get_response_data(response) or {}
+        error_msg = str(data.get("error", "")).lower()
+        details = data.get("details", {})
         self.assertTrue(
             "contract" in error_msg
             or "contract" in str(details).lower()
             or "requirements not met" in error_msg,
-            f"Expected 'contract' or 'requirements not met' in error, got: {response.data}",
+            f"Expected 'contract' or 'requirements not met' in error, got: {data}",
         )
 
     def test_attach_contract_to_asset(self):
@@ -366,7 +372,8 @@ class AssetOperationsE2ETest(E2ETestBase):
         # Search by name
         response = self.client.get("/api/v1/assets/?search=Customer")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        asset_names = {a["name"] for a in response.data["results"]}
+        data = get_response_data(response) or {}
+        asset_names = {a["name"] for a in data.get("results", [])}
         self.assertIn("Customer Data Asset", asset_names)
 
     def test_asset_domain_filtering(self):
@@ -377,5 +384,6 @@ class AssetOperationsE2ETest(E2ETestBase):
         # Filter by domain
         response = self.client.get("/api/v1/assets/?domain=sales")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        asset_domains = {a.get("domain") for a in response.data["results"] if a.get("domain")}
+        data = get_response_data(response) or {}
+        asset_domains = {a.get("domain") for a in data.get("results", []) if a.get("domain")}
         self.assertIn("sales", asset_domains)

@@ -25,9 +25,21 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.auth.models import APIKey, RefreshToken
 from hub.apps.users.models import User, UserStatus
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
+pytestmark = [
+    pytest.mark.uc_journey_persona,
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.e2e4,
+    pytest.mark.uc("UC-AUTH-001"),
+    pytest.mark.uc("UC-AUTH-002"),
+    pytest.mark.uc("UC-AUTH-003"),
+    pytest.mark.uc("UC-AUTH-004"),
+    pytest.mark.journey("JOURNEY-AUTH-001"),
+    pytest.mark.journey("JOURNEY-AUTH-002"),
+    pytest.mark.journey("JOURNEY-AUTH-003"),
+    pytest.mark.journey("JOURNEY-AUTH-004"),
+]
 UserModel = get_user_model()
 
 
@@ -59,12 +71,13 @@ class AuthenticationE2ETest(E2ETestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("access_token", response.data)
+        data = get_response_data(response) or {}
+        self.assertIn("access_token", data)
         # Refresh endpoint only returns new access_token, not a new refresh_token
         # The original refresh_token can be reused until it expires
         # Note: Some implementations may return a new refresh_token, but ours doesn't
-        self.assertEqual(response.data["token_type"], "Bearer")
-        self.assertIn("expires_in", response.data)
+        self.assertEqual(data["token_type"], "Bearer")
+        self.assertIn("expires_in", data)
 
         # Verify refresh token created in database
         refresh_token_count = RefreshToken.objects.filter(user=test_user).count()
@@ -92,8 +105,9 @@ class AuthenticationE2ETest(E2ETestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("email", response.data)
-        self.assertNotIn("access_token", response.data)
+        data = get_response_data(response) or {}
+        self.assertIn("email", data)
+        self.assertNotIn("access_token", data)
 
     def test_login_inactive_user_fails(self):
         """Test login with inactive user fails"""
@@ -112,7 +126,8 @@ class AuthenticationE2ETest(E2ETestBase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         # Error message format may vary - check for 'not active' or 'inactive' or 'disabled'
-        error_msg = str(response.data.get("email", [""]))
+        data = get_response_data(response) or {}
+        error_msg = str(data.get("email", [""]))
         error_lower = error_msg.lower()
         self.assertTrue(
             "not active" in error_lower
@@ -136,9 +151,10 @@ class AuthenticationE2ETest(E2ETestBase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn("id", response.data)
-        self.assertEqual(response.data.get("email"), email)
-        self.assertEqual(response.data.get("name"), "New Visitor")
+        data = get_response_data(response) or {}
+        self.assertIn("id", data)
+        self.assertEqual(data.get("email"), email)
+        self.assertEqual(data.get("name"), "New Visitor")
         user = User.objects.get(email=email)
         self.assertTrue(user.check_password("SecurePass123"))
         self.assertEqual(user.display_name, "New Visitor")
@@ -160,8 +176,9 @@ class AuthenticationE2ETest(E2ETestBase):
             format="json",
         )
         self.assertEqual(login_resp.status_code, status.HTTP_200_OK)
-        self.assertIn("access_token", login_resp.data)
-        self.assertIn("refresh_token", login_resp.data)
+        login_data = get_response_data(login_resp) or {}
+        self.assertIn("access_token", login_data)
+        self.assertIn("refresh_token", login_data)
 
     def test_public_resources_without_auth(self):
         """JOURNEY-AUTH-004: Unauthenticated user accesses public resources (health)."""
@@ -192,7 +209,8 @@ class AuthenticationE2ETest(E2ETestBase):
             format="json",
         )
 
-        refresh_token = login_response.data["refresh_token"]
+        login_data = get_response_data(login_response) or {}
+        refresh_token = login_data["refresh_token"]
 
         # Refresh token
         response = self.client.post(
@@ -200,13 +218,14 @@ class AuthenticationE2ETest(E2ETestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("access_token", response.data)
+        data = get_response_data(response) or {}
+        self.assertIn("access_token", data)
         # Refresh endpoint only returns new access_token, not a new refresh_token
         # The original refresh_token can be reused until it expires
         # Note: Access tokens may be the same if generated within the same second (JWT iat/exp)
         # The important thing is that refresh succeeded and returned a valid access_token
-        self.assertIsNotNone(response.data["access_token"])
-        self.assertEqual(response.data["token_type"], "Bearer")
+        self.assertIsNotNone(data["access_token"])
+        self.assertEqual(data["token_type"], "Bearer")
 
     def test_refresh_token_invalid_fails(self):
         """Test refresh with invalid refresh token fails"""
@@ -215,7 +234,8 @@ class AuthenticationE2ETest(E2ETestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("refresh_token", response.data)
+        data = get_response_data(response) or {}
+        self.assertIn("refresh_token", data)
 
     def test_refresh_token_expired_fails(self):
         """Test refresh with expired refresh token fails"""
@@ -261,8 +281,9 @@ class AuthenticationE2ETest(E2ETestBase):
         )
 
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
-        refresh_token = login_response.data["refresh_token"]
-        access_token = login_response.data["access_token"]
+        login_data = get_response_data(login_response) or {}
+        refresh_token = login_data["refresh_token"]
+        access_token = login_data["access_token"]
 
         # Verify refresh token exists before logout
         refresh_token_hash = RefreshToken.hash_token(refresh_token)
@@ -283,9 +304,10 @@ class AuthenticationE2ETest(E2ETestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("revoked_sessions", response.data)
+        data = get_response_data(response) or {}
+        self.assertIn("revoked_sessions", data)
         self.assertEqual(
-            response.data["revoked_sessions"], 1, "One refresh token should be revoked"
+            data["revoked_sessions"], 1, "One refresh token should be revoked"
         )
 
         # Verify refresh token revoked
@@ -395,7 +417,7 @@ class AuthenticationE2ETest(E2ETestBase):
             format="json",
         )
         self.assertEqual(login_resp.status_code, status.HTTP_200_OK)
-        self.assertIn("access_token", login_resp.data)
+        self.assertIn("access_token", get_response_data(login_resp) or {})
 
     def test_create_api_key_success(self):
         """Test creating API key"""
@@ -413,11 +435,12 @@ class AuthenticationE2ETest(E2ETestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn("api_key", response.data)  # Full key returned on creation
-        self.assertEqual(response.data["name"], "Test API Key")
+        data = get_response_data(response) or {}
+        self.assertIn("api_key", data)  # Full key returned on creation
+        self.assertEqual(data["name"], "Test API Key")
 
         # Verify API key created in database
-        api_key_id = response.data["id"]
+        api_key_id = data["id"]
         api_key = APIKey.objects.get(id=api_key_id)
         self.assertEqual(api_key.name, "Test API Key")
         self.assertEqual(api_key.user, self.user)
@@ -447,10 +470,11 @@ class AuthenticationE2ETest(E2ETestBase):
         response = self.client.get("/api/v1/auth/api-keys/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data["results"]), 2)
+        data = get_response_data(response) or {}
+        self.assertGreaterEqual(len(data["results"]), 2)
 
         # Verify full key is NOT returned in list (security)
-        for key in response.data["results"]:
+        for key in data["results"]:
             self.assertNotIn("api_key", key)  # Full key should not be in list
             # Note: prefix field may not be implemented, check for id and name instead
             self.assertIn("id", key)
@@ -496,7 +520,8 @@ class AuthenticationE2ETest(E2ETestBase):
             format="json",
         )
 
-        api_key = create_response.data["api_key"]
+        create_data = get_response_data(create_response) or {}
+        api_key = create_data["api_key"]
 
         # Clear authentication
         self.client.force_authenticate(user=None)
@@ -545,7 +570,8 @@ class AuthenticationE2ETest(E2ETestBase):
             format="json",
         )
 
-        access_token = login_response.data["access_token"]
+        login_data = get_response_data(login_response) or {}
+        access_token = login_data["access_token"]
         initial_token_version = test_user.token_version
 
         # Increment token version (simulating role change)

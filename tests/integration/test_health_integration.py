@@ -4,6 +4,12 @@ Integration tests for Health API endpoints.
 Verifies GET /health/ and GET /health/circuit-breakers/ with real client and
 real HealthService (no mocks/stubs). Covers the gap from Phase 3.2.1 for
 dedicated health and circuit-breakers endpoint coverage.
+
+Circuit-breakers status codes (see docs/TEST_ASSERTION_CONVENTIONS.md §2.2, §2.5):
+- 200: Healthy (all breakers closed or requested breaker healthy)
+- 404: Requested service_name not found in circuit breaker registry
+- 500: Unhandled exception during status retrieval (e.g. registry not initialized,
+  import error, downstream failure). Valid per view's except block.
 """
 
 import pytest
@@ -42,6 +48,7 @@ class HealthIntegrationTest(TestCase):
     def test_circuit_breakers_endpoint_returns_json(self):
         """GET /health/circuit-breakers/ returns JSON (200, 404, or 500)."""
         response = self.client.get("/health/circuit-breakers/")
+        # 200=healthy; 404=service_name not found; 500=unhandled exception (see module docstring)
         self.assertIn(
             response.status_code,
             [200, 404, 500],
@@ -60,6 +67,7 @@ class HealthIntegrationTest(TestCase):
     def test_circuit_breakers_with_service_name_query(self):
         """GET /health/circuit-breakers/?service_name=X returns JSON."""
         response = self.client.get("/health/circuit-breakers/?service_name=dq-service")
+        # 200=breaker healthy; 404=dq-service not in registry; 500=unhandled exception
         self.assertIn(response.status_code, [200, 404, 500])
         data = response.json()
         self.assertIsInstance(data, dict)

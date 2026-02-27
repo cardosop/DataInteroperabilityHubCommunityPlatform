@@ -48,7 +48,7 @@ from hub.apps.integrations.base import (
 )
 from hub.apps.integrations.config.marketplace_instances import get_marketplace_instance_config
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
-from hub.apps.core.services.base import NotFoundError
+from hub.apps.core.services.base import ConnectionError as HubConnectionError, NotFoundError
 from hub.apps.integrations.utils import (
     MarketplaceConnectionError,
     MarketplaceAuthenticationError,
@@ -62,6 +62,50 @@ pytestmark = [
     pytest.mark.django_db(transaction=True, reset_sequences=True),
     pytest.mark.integration,
 ]
+
+
+def _parse_gcp_credentials_json(raw):
+    """
+    Parse GCP service account JSON from env string.
+    Tries direct parse, strip quotes, file path, then extract {...} from string
+    (handles .env mangling when value is unquoted). Returns dict or None.
+    """
+    import json
+    if not raw or not isinstance(raw, str):
+        return None
+    s = raw.strip()
+    # Direct parse
+    try:
+        out = json.loads(s)
+        if isinstance(out, dict) and ("type" in out or "project_id" in out):
+            return out
+    except json.JSONDecodeError:
+        pass
+    # Strip surrounding quotes
+    try:
+        out = json.loads(s.strip("'\""))
+        if isinstance(out, dict) and ("type" in out or "project_id" in out):
+            return out
+    except json.JSONDecodeError:
+        pass
+    # File path
+    if os.path.isfile(s):
+        try:
+            with open(s) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    # Extract JSON object from first { to last } (shell may have left garbage)
+    first = s.find("{")
+    last = s.rfind("}")
+    if first != -1 and last != -1 and last > first:
+        try:
+            out = json.loads(s[first : last + 1])
+            if isinstance(out, dict) and ("type" in out or "project_id" in out):
+                return out
+        except json.JSONDecodeError:
+            pass
+    return None
 
 
 # === CKAN Connector Integration Tests ===
@@ -141,12 +185,12 @@ class CKANConnectorIntegrationTest(TestCase):
 
     def test_ckan_connector_pull_operation(self):
         """Test CKAN connector sync_pull operation"""
-        result = self.connector.sync_pull(limit=5)
+        result = self.connector.sync_pull(options={"limit": 5})
 
         self.assertIsInstance(result, SyncResult)
         self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
-        self.assertIsInstance(result.items_synced, int)
-        self.assertGreaterEqual(result.items_synced, 0)
+        self.assertIsInstance(result.successful_items, int)
+        self.assertGreaterEqual(result.successful_items, 0)
 
     def test_ckan_connector_error_handling_not_found(self):
         """Test CKAN connector error handling for not found"""
@@ -154,8 +198,8 @@ class CKANConnectorIntegrationTest(TestCase):
             self.connector.get_listing("nonexistent-package-id-12345")
 
     def test_ckan_connector_error_handling_invalid_config(self):
-        """Test CKAN connector error handling for invalid configuration"""
-        with self.assertRaises((ValueError, MarketplaceConnectionError, ConnectionError)):
+        """Test CKAN connector error handling for invalid configuration (CKAN uses built-in ConnectionError)."""
+        with self.assertRaises((ValueError, MarketplaceConnectionError, HubConnectionError, ConnectionError)):
             invalid_connector = CKANConnector(base_url="https://invalid-url-that-does-not-exist.com")
             invalid_connector.test_connection()
 
@@ -193,7 +237,7 @@ class DadosGovBrConnectorIntegrationTest(TestCase):
         try:
             result = self.connector.test_connection()
             self.assertTrue(result)
-        except (ValueError, ConnectionError) as e:
+        except (ValueError, HubConnectionError, ConnectionError) as e:
             error_str = str(e).lower()
             if 'authentication failed' in error_str or 'signin' in error_str or 'jwt token' in error_str:
                 pytest.skip(f"JWT token authentication failed (token may be expired or invalid): {e}")
@@ -238,7 +282,7 @@ class DadosGovBrConnectorIntegrationTest(TestCase):
     def test_dados_gov_br_connector_pull_operation(self):
         """Test DadosGovBr connector sync_pull operation"""
         try:
-            result = self.connector.sync_pull(limit=3)
+            result = self.connector.sync_pull(options={"limit": 3})
             self.assertIsInstance(result, SyncResult)
             self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
         except ValueError as e:
@@ -254,13 +298,14 @@ class DadosGovBrConnectorIntegrationTest(TestCase):
             jwt_token="invalid-token-12345"
         )
 
-        with self.assertRaises((ValueError, MarketplaceAuthenticationError, MarketplaceConnectionError, ConnectionError)):
+        with self.assertRaises((ValueError, MarketplaceAuthenticationError, MarketplaceConnectionError, HubConnectionError, ConnectionError)):
             invalid_connector.test_connection()
 
 
 # === Snowflake Connector Integration Tests ===
 
 @pytest.mark.integration
+@pytest.mark.snowflake_integration
 @pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
 class SnowflakeConnectorIntegrationTest(TestCase):
     """Integration tests for Snowflake connector with real Snowflake instance"""
@@ -338,7 +383,7 @@ class SnowflakeConnectorIntegrationTest(TestCase):
     def test_snowflake_connector_pull_operation(self):
         """Test Snowflake connector sync_pull operation"""
         try:
-            result = self.connector.sync_pull(limit=5)
+            result = self.connector.sync_pull(options={"limit": 5})
             self.assertIsInstance(result, SyncResult)
             self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
         except Exception as e:
@@ -352,7 +397,7 @@ class SnowflakeConnectorIntegrationTest(TestCase):
             token="invalid_token"
         )
 
-        with self.assertRaises((ValueError, ConnectionError, AuthenticationError)):
+        with self.assertRaises((ValueError, HubConnectionError, ConnectionError, MarketplaceAuthenticationError)):
             invalid_connector.authenticate({
                 "account": "invalid_account",
                 "user": "invalid_user",
@@ -363,6 +408,7 @@ class SnowflakeConnectorIntegrationTest(TestCase):
 # === AWS Data Exchange Connector Integration Tests ===
 
 @pytest.mark.integration
+@pytest.mark.aws_integration
 class AWSDataExchangeConnectorIntegrationTest(TestCase):
     """Integration tests for AWS Data Exchange connector with real AWS instance"""
 
@@ -434,8 +480,13 @@ class AWSDataExchangeConnectorIntegrationTest(TestCase):
     def test_aws_connector_pull_operation(self):
         """Test AWS Data Exchange connector sync_pull operation"""
         try:
-            result = self.connector.sync_pull(limit=5)
+            result = self.connector.sync_pull(options={"limit": 5})
             self.assertIsInstance(result, SyncResult)
+            if result.status == SyncStatus.FAILED:
+                err = "; ".join(result.errors) if result.errors else "unknown"
+                pytest.skip(
+                    f"AWS sync_pull returned FAILED (credentials may be invalid or no access): {err}"
+                )
             self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
         except Exception as e:
             pytest.skip(f"AWS sync_pull failed: {e}")
@@ -451,7 +502,7 @@ class AWSDataExchangeConnectorIntegrationTest(TestCase):
             region_name="us-east-1"
         )
 
-        with self.assertRaises((ValueError, MarketplaceConnectionError, MarketplaceAuthenticationError, ConnectionError)):
+        with self.assertRaises((ValueError, MarketplaceConnectionError, MarketplaceAuthenticationError, HubConnectionError)):
             invalid_connector.authenticate({
                 'aws_access_key_id': "invalid_key",
                 'aws_secret_access_key': "invalid_secret",
@@ -462,6 +513,7 @@ class AWSDataExchangeConnectorIntegrationTest(TestCase):
 # === GCP Marketplace Connector Integration Tests ===
 
 @pytest.mark.integration
+@pytest.mark.gcp_integration
 class GCPMarketplaceConnectorIntegrationTest(TestCase):
     """Integration tests for GCP Marketplace connector with real GCP instance"""
 
@@ -478,9 +530,10 @@ class GCPMarketplaceConnectorIntegrationTest(TestCase):
         except ImportError:
             pytest.skip("google-cloud-bigquery not installed - skipping GCP tests")
 
-        # Get credentials from environment
+        # Get credentials from environment (file path preferred to avoid .env quoting issues)
         cls.project_id = os.getenv('GCP_PROJECT_ID')
         cls.credentials_json = os.getenv('GCP_CREDENTIALS_JSON')
+        credentials_file = os.getenv('GCP_CREDENTIALS_JSON_FILE')
         cls.location = os.getenv('GCP_LOCATION', 'US')
 
         if not cls.project_id:
@@ -492,12 +545,58 @@ class GCPMarketplaceConnectorIntegrationTest(TestCase):
             'location': cls.location,
         }
 
-        if cls.credentials_json:
-            import json
-            connector_kwargs['credentials_json'] = json.loads(cls.credentials_json)
-        else:
+        import json
+        credentials_loaded = False
+        if credentials_file and os.path.isfile(credentials_file):
+            try:
+                with open(credentials_file) as f:
+                    raw = f.read()
+                connector_kwargs['credentials_json'] = json.loads(raw)
+                credentials_loaded = True
+            except json.JSONDecodeError:
+                parsed = _parse_gcp_credentials_json(raw)
+                if parsed is not None:
+                    connector_kwargs['credentials_json'] = parsed
+                    credentials_loaded = True
+            except OSError as e:
+                pytest.skip(f"Cannot load GCP credentials from GCP_CREDENTIALS_JSON_FILE: {e}")
+
+        if not credentials_loaded and cls.credentials_json:
+            raw = cls.credentials_json.strip()
+            parsed = _parse_gcp_credentials_json(raw)
+            if parsed is not None:
+                connector_kwargs['credentials_json'] = parsed
+                credentials_loaded = True
+        if not credentials_loaded:
+            # Fallback: some envs use GCP_SERVICE_ACCOUNT_JSON
+            service_account_json = os.getenv('GCP_SERVICE_ACCOUNT_JSON')
+            if service_account_json:
+                parsed = _parse_gcp_credentials_json(service_account_json.strip())
+                if parsed is not None:
+                    connector_kwargs['credentials_json'] = parsed
+                    credentials_loaded = True
+        if not credentials_loaded and (cls.credentials_json or os.getenv('GCP_SERVICE_ACCOUNT_JSON')):
+            pytest.skip(
+                "GCP_CREDENTIALS_JSON / GCP_SERVICE_ACCOUNT_JSON must be valid JSON or set "
+                "GCP_CREDENTIALS_JSON_FILE to a JSON file path; in .env use single quotes: "
+                "GCP_CREDENTIALS_JSON='{...}'"
+            )
+
+        if not credentials_loaded:
             # Try to use Application Default Credentials
             connector_kwargs['use_adc'] = True
+
+        # Store auth credentials for authenticate() calls (connector requires use_adc or credentials_json)
+        if credentials_loaded:
+            cls._auth_credentials = {
+                'project_id': cls.project_id,
+                'credentials_json': connector_kwargs['credentials_json'],
+            }
+        else:
+            cls._auth_credentials = {
+                'project_id': cls.project_id,
+                'use_adc': True,
+            }
 
         try:
             cls.connector = GCPMarketplaceConnector(**connector_kwargs)
@@ -507,9 +606,7 @@ class GCPMarketplaceConnectorIntegrationTest(TestCase):
     def test_gcp_connector_authentication(self):
         """Test GCP Marketplace connector authentication"""
         try:
-            result = self.connector.authenticate({
-                'project_id': self.project_id,
-            })
+            result = self.connector.authenticate(self._auth_credentials)
             self.assertTrue(result)
         except Exception as e:
             pytest.skip(f"GCP authentication failed (credentials may be invalid): {e}")
@@ -539,7 +636,7 @@ class GCPMarketplaceConnectorIntegrationTest(TestCase):
     def test_gcp_connector_pull_operation(self):
         """Test GCP Marketplace connector sync_pull operation"""
         try:
-            result = self.connector.sync_pull(limit=5)
+            result = self.connector.sync_pull(options={"limit": 5})
             self.assertIsInstance(result, SyncResult)
             self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
         except Exception as e:
@@ -553,7 +650,7 @@ class MarketplaceConnectorFactoryIntegrationTest(TestCase):
     """Integration tests for factory with real connectors"""
 
     def test_factory_creates_ckan_connector(self):
-        """Test factory creates CKAN connector"""
+        """Test factory creates CKAN connector (may be CKANConnector or DadosGovBrConnector per registration)."""
         if not marketplace_available():
             pytest.skip("No CKAN instance available for testing")
 
@@ -564,7 +661,8 @@ class MarketplaceConnectorFactoryIntegrationTest(TestCase):
 
         self.assertIsNotNone(connector)
         self.assertEqual(connector.marketplace_type, MarketplaceType.CKAN_INSTANCE)
-        self.assertIsInstance(connector, CKANConnector)
+        # Factory may return CKANConnector or DadosGovBrConnector depending on registration order
+        self.assertIsInstance(connector, (CKANConnector, DadosGovBrConnector))
 
     def test_factory_creates_dados_gov_br_connector(self):
         """Test factory creates DadosGovBr connector"""
@@ -589,6 +687,7 @@ class MarketplaceConnectorFactoryIntegrationTest(TestCase):
         # May be DadosGovBrConnector or CKANConnector depending on registration order
         self.assertIsInstance(connector, (CKANConnector, DadosGovBrConnector))
 
+    @pytest.mark.snowflake_integration
     @pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
     def test_factory_creates_snowflake_connector(self):
         """Test factory creates Snowflake connector"""
@@ -638,9 +737,9 @@ class CrossConnectorIntegrationTest(TestCase):
 
             # Test that sync_pull can be called (may fail due to auth, but should not crash)
             try:
-                result = connector.sync_pull(limit=1)
+                result = connector.sync_pull(options={"limit": 1})
                 self.assertIsInstance(result, SyncResult)
-            except (ValueError, MarketplaceConnectionError, MarketplaceAuthenticationError, ConnectionError):
+            except (ValueError, MarketplaceConnectionError, MarketplaceAuthenticationError, HubConnectionError, ConnectionError):
                 # Auth failures are acceptable - we're just testing the interface
                 pass
 

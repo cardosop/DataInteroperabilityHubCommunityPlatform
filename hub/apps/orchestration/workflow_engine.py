@@ -766,7 +766,9 @@ class WorkflowEngine(WorkflowEventPublisher):
 
         step_start_time = time.time()
 
+        sid = None
         try:
+            sid = transaction.savepoint()
             step_type = step_def.get("type", "task")
 
             if step_type == "task":
@@ -907,6 +909,19 @@ class WorkflowEngine(WorkflowEventPublisher):
 
         except Exception as e:
             logger.exception("Error executing step", step_name=step.step_name, error=str(e))
+            # Rollback savepoint to restore transaction to valid state before DB writes.
+            # Without this, Django marks the transaction for rollback on exception, and
+            # subsequent queries (mark_failed, instance.save) fail with "can't execute
+            # queries until the end of the 'atomic' block".
+            if sid is not None:
+                try:
+                    transaction.savepoint_rollback(sid)
+                except Exception as rollback_err:
+                    logger.warning(
+                        "Savepoint rollback failed (non-fatal)",
+                        error=str(rollback_err),
+                        step_name=step.step_name,
+                    )
             step.mark_failed(
                 error_message=str(e), error_details={"exception_type": type(e).__name__}
             )
@@ -2027,13 +2042,12 @@ class WorkflowEngine(WorkflowEventPublisher):
                 # If step already exists and is completed/failed, skip it
                 if not created and temp_step.is_terminal():
                     continue
-                try:
-                    result = self._execute_step(instance, temp_step, loop_step_def)
-                except Exception as e:
-                    # Per-item failure: run this step's compensation then continue to next item
+
+                def _run_loop_step_compensation_and_break(error_msg: str) -> None:
+                    """Run compensation for failed loop step and break to next item."""
                     if instance.state_data is None:
                         instance.state_data = {}
-                    instance.state_data["last_error"] = str(e)
+                    instance.state_data["last_error"] = error_msg
                     comp_def = loop_step_def.get("compensation", {})
                     comp_task_name = comp_def.get("task") if isinstance(comp_def, dict) else None
                     if comp_task_name and self.task_registry:
@@ -2045,6 +2059,19 @@ class WorkflowEngine(WorkflowEventPublisher):
                                 **temp_step.input_data,
                                 **comp_def.get("input", {}),
                             }
+                            loop_item = task_input.get("loop_item") or item
+                            if isinstance(loop_item, str) and "file_path" not in task_input:
+                                task_input["file_path"] = loop_item
+                                task_input["loop_item"] = loop_item
+                            elif isinstance(loop_item, dict):
+                                if "file_path" not in task_input:
+                                    task_input["file_path"] = loop_item.get("file_path")
+                                task_input["loop_item"] = loop_item
+                            if "scheduled_ingestion_id" not in task_input and instance.input_data:
+                                sid = instance.input_data.get("scheduled_ingestion_id")
+                                if sid:
+                                    task_input["scheduled_ingestion_id"] = sid
+                            task_input["last_error"] = error_msg
                             try:
                                 comp_result = task_func(task_input, instance, temp_step)
                                 if isinstance(comp_result, dict):
@@ -2057,8 +2084,24 @@ class WorkflowEngine(WorkflowEventPublisher):
                                     step_name=temp_step.step_name,
                                     error=str(comp_e),
                                 )
-                    results.append({"error": str(e), "step": temp_step.step_name})
+                    results.append({"error": error_msg, "step": temp_step.step_name})
+
+                try:
+                    result = self._execute_step(instance, temp_step, loop_step_def)
+                except Exception as e:
+                    _run_loop_step_compensation_and_break(str(e))
                     break  # Skip remaining steps for this item, continue to next iteration
+
+                # When workflow has compensation enabled, _execute_step catches exceptions
+                # and returns instead of re-raising. The step is marked FAILED. We must
+                # detect that and break to avoid running subsequent steps with stale
+                # state_data from the previous item (e.g. create_dataset for wrong file).
+                temp_step.refresh_from_db()
+                if temp_step.status == StepStatus.FAILED:
+                    error_msg = temp_step.error_message or "Step failed"
+                    _run_loop_step_compensation_and_break(error_msg)
+                    break
+
                 results.append(result)
                 # Merge this inner step's output into state_data so next inner step
                 # (e.g. validate_file after download_file) receives file_path, temp_path, etc.

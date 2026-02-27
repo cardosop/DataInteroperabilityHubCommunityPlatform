@@ -17,9 +17,12 @@ import {
   runJOURNEY_AUTH_001_Success,
   strongPassword,
   uniqueEmail,
+  waitForRegisterPageReady,
 } from '../../fixtures/auth-journey-steps';
 
 test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
+  test.setTimeout(120000); // 2 min: register + login may need capabilities load and rate-limit headroom
+
   test.describe('Success', () => {
     test('visitor registers via UI and then logs in', async ({ page }) => {
       await runJOURNEY_AUTH_001_Success(page);
@@ -30,9 +33,19 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
     test('registration page shows validation when fields empty', async ({ page }) => {
       await clearAuthStorage(page);
       await page.goto('/register', { waitUntil: 'domcontentloaded' });
-      await expect(page.getByRole('heading', { name: 'Create account' })).toBeVisible({
-        timeout: 10_000,
-      });
+      if (page.url().includes('/login')) {
+        const createLink = page.getByRole('link', { name: /Create an account/i });
+        await createLink.waitFor({ state: 'visible', timeout: 35_000 });
+        await createLink.click();
+        await page.waitForURL((url) => url.pathname.includes('/register'), { timeout: 5000 });
+      }
+      await waitForRegisterPageReady(page);
+      if (page.url().includes('/unavailable')) {
+        throw new Error(
+          'Registration unavailable (capabilities/schema). JOURNEY-AUTH-001 requires registration to be enabled. ' +
+            'Enable registration in deployment capabilities or schema.'
+        );
+      }
       await page.click('button[type="submit"]');
       await page.waitForTimeout(500);
       const stillOnRegister = page.url().includes('/register');
@@ -46,9 +59,19 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
       await registerViaApi({ email, password, name });
       await clearAuthStorage(page);
       await page.goto('/register', { waitUntil: 'domcontentloaded' });
-      await expect(page.getByRole('heading', { name: 'Create account' })).toBeVisible({
-        timeout: 10_000,
-      });
+      if (page.url().includes('/login')) {
+        const createLink = page.getByRole('link', { name: /Create an account/i });
+        await createLink.waitFor({ state: 'visible', timeout: 35_000 });
+        await createLink.click();
+        await page.waitForURL((url) => url.pathname.includes('/register'), { timeout: 5000 });
+      }
+      await waitForRegisterPageReady(page);
+      if (page.url().includes('/unavailable')) {
+        throw new Error(
+          'Registration unavailable (capabilities/schema). JOURNEY-AUTH-001 requires registration to be enabled. ' +
+            'Enable registration in deployment capabilities or schema.'
+        );
+      }
       await page.fill('input#name', name);
       await page.fill('input#email', email);
       await page.fill('input#password', password);
@@ -64,9 +87,19 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
     test('empty submit stays on register (HTML5 validation)', async ({ page }) => {
       await clearAuthStorage(page);
       await page.goto('/register', { waitUntil: 'domcontentloaded' });
-      await expect(page.getByRole('heading', { name: 'Create account' })).toBeVisible({
-        timeout: 10_000,
-      });
+      if (page.url().includes('/login')) {
+        const createLink = page.getByRole('link', { name: /Create an account/i });
+        await createLink.waitFor({ state: 'visible', timeout: 35_000 });
+        await createLink.click();
+        await page.waitForURL((url) => url.pathname.includes('/register'), { timeout: 5000 });
+      }
+      await waitForRegisterPageReady(page);
+      if (page.url().includes('/unavailable')) {
+        throw new Error(
+          'Registration unavailable (capabilities/schema). JOURNEY-AUTH-001 requires registration to be enabled. ' +
+            'Enable registration in deployment capabilities or schema.'
+        );
+      }
       await page.locator('button[type="submit"]').click();
       await page.waitForTimeout(500);
       expect(page.url()).toContain('/register');
@@ -78,9 +111,19 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
       const name = 'E2E Edge Name';
       await clearAuthStorage(page);
       await page.goto('/register', { waitUntil: 'domcontentloaded' });
-      await expect(page.getByRole('heading', { name: 'Create account' })).toBeVisible({
-        timeout: 10_000,
-      });
+      if (page.url().includes('/login')) {
+        const createLink = page.getByRole('link', { name: /Create an account/i });
+        await createLink.waitFor({ state: 'visible', timeout: 35_000 });
+        await createLink.click();
+        await page.waitForURL((url) => url.pathname.includes('/register'), { timeout: 5000 });
+      }
+      await waitForRegisterPageReady(page);
+      if (page.url().includes('/unavailable')) {
+        throw new Error(
+          'Registration unavailable (capabilities/schema). JOURNEY-AUTH-001 requires registration to be enabled. ' +
+            'Enable registration in deployment capabilities or schema.'
+        );
+      }
       await page.fill('input#name', name);
       await page.fill('input#email', email);
       await page.fill('input#password', password);

@@ -1,0 +1,149 @@
+{
+  "summary": {
+    "total_journeys": 5,
+    "completed": 5,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 3.147125244140625e-06
+  },
+  "journeys": [
+    {
+      "journey_id": "SUMMARY-TEST-0-fa1ac4ba",
+      "journey_name": "Test Journey 1",
+      "persona": "Test",
+      "status": "completed",
+      "start_time": 1771738007.8955946,
+      "end_time": 1771738007.8956025,
+      "duration": 7.867813110351562e-06,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Test Step",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771738007.895599,
+          "end_time": 1771738007.8956017,
+          "duration": 2.86102294921875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "journey_id": "SUMMARY-TEST-1-e618d6dd",
+      "journey_name": "Test Journey 2",
+      "persona": "Test",
+      "status": "completed",
+      "start_time": 1771738007.895608,
+      "end_time": 1771738007.8956106,
+      "duration": 2.6226043701171875e-06,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Test Step",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771738007.8956091,
+          "end_time": 1771738007.8956103,
+          "duration": 1.1920928955078125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "journey_id": "SUMMARY-TEST-2-37e9c72e",
+      "journey_name": "Test Journey 3",
+      "persona": "Test",
+      "status": "completed",
+      "start_time": 1771738007.8956144,
+      "end_time": 1771738007.8956165,
+      "duration": 2.1457672119140625e-06,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Test Step",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771738007.8956153,
+          "end_time": 1771738007.895616,
+          "duration": 7.152557373046875e-07,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "journey_id": "SUMMARY-TEST-3-41ca4b22",
+      "journey_name": "Test Journey 4",
+      "persona": "Test",
+      "status": "completed",
+      "start_time": 1771738007.8956203,
+      "end_time": 1771738007.8956218,
+      "duration": 1.430511474609375e-06,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Test Step",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771738007.8956208,
+          "end_time": 1771738007.8956215,
+          "duration": 7.152557373046875e-07,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "journey_id": "SUMMARY-TEST-4-2c65a67e",
+      "journey_name": "Test Journey 5",
+      "persona": "Test",
+      "status": "completed",
+      "start_time": 1771738007.8956249,
+      "end_time": 1771738007.8956265,
+      "duration": 1.6689300537109375e-06,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Test Step",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771738007.8956254,
+          "end_time": 1771738007.8956263,
+          "duration": 9.5367431640625e-07,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-22T05:26:47.895694"
+}

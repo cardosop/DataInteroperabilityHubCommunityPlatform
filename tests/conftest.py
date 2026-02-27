@@ -7,6 +7,16 @@ Pytest configuration and shared fixtures
 import logging
 import os
 import sys
+import time
+
+# Early progress so users see output immediately (avoids "hanging" perception)
+# Unit tests: collection can take 30s-2min for ~18k tests; integration/E2E: similar
+if os.environ.get("PYTEST_DOCKER_COMPOSE_RUNTIME") == "1":
+    sys.stderr.write("Starting pytest (integration/E2E)...\n")
+    sys.stderr.flush()
+else:
+    sys.stderr.write("Starting pytest (unit tests; collection may take 30s-2min)...\n")
+    sys.stderr.flush()
 
 # Set up logging for patch verification. Use WARNING by default to avoid I/O
 # during test DB setup (create_test_db + migrate), which is the main bottleneck.
@@ -653,6 +663,63 @@ if True:  # Always apply patches
     except Exception as e:
         _patch_logger.debug(f"Could not patch call_command: {e}")
 
+    # CRITICAL: Patch create_contenttypes to be idempotent when TEST_DB_SUFFIX is set (shared test DB).
+    # ROOT CAUSE: When reusing hub_test_test_shared, migrate may run and post_migrate fires create_contenttypes.
+    # ContentTypes already exist from prefect-integration or prior run, causing UniqueViolation on bulk_create.
+    # Fix: use bulk_create(..., ignore_conflicts=True) so duplicates are skipped (Django 4+).
+    try:
+        import django.contrib.contenttypes.management as ct_management
+
+        if not hasattr(ct_management, "_original_create_contenttypes"):
+            ct_management._original_create_contenttypes = ct_management.create_contenttypes
+
+        def _patched_create_contenttypes(app_config, verbosity=2, interactive=True, using=None, apps=None, **kwargs):
+            """Idempotent create_contenttypes when TEST_DB_SUFFIX set - skip duplicates via ignore_conflicts."""
+            from django.apps import apps as global_apps
+            from django.db import DEFAULT_DB_ALIAS
+            from django.db import router
+
+            using = using or DEFAULT_DB_ALIAS
+            apps = apps or global_apps
+            if not app_config.models_module:
+                return
+            try:
+                app_config = apps.get_app_config(app_config.label)
+                ContentType = apps.get_model("contenttypes", "ContentType")
+            except LookupError:
+                return
+            if not router.allow_migrate_model(using, ContentType):
+                return
+            all_model_names = {model._meta.model_name for model in app_config.get_models()}
+            if not all_model_names:
+                return
+            ContentType.objects.clear_cache()
+            existing_model_names = set(
+                ContentType.objects.using(using)
+                .filter(app_label=app_config.label)
+                .values_list("model", flat=True)
+            )
+            to_create = sorted(m for m in (all_model_names - existing_model_names) if m)
+            cts = [
+                ContentType(app_label=app_config.label, model=model_name)
+                for model_name in to_create
+            ]
+            if not cts:
+                return
+            # When TEST_DB_SUFFIX set, use ignore_conflicts to handle shared DB reuse (ContentTypes may exist)
+            use_ignore_conflicts = bool(os.getenv("TEST_DB_SUFFIX"))
+            ContentType.objects.using(using).bulk_create(
+                cts, ignore_conflicts=use_ignore_conflicts
+            )
+            if verbosity >= 2:
+                for ct in cts:
+                    _patch_logger.debug(f"Adding content type '{ct.app_label} | {ct.model}'")
+
+        ct_management.create_contenttypes = _patched_create_contenttypes
+        _log_patch("create_contenttypes (idempotent when TEST_DB_SUFFIX set)")
+    except Exception as e:
+        _patch_logger.warning(f"✗ Could not patch create_contenttypes: {e}")
+
     # CRITICAL: Patch BaseDatabaseCreation.create_test_db AND PostgreSQL-specific DatabaseCreation
     # ROOT CAUSE FIX: Django's create_test_db explicitly sets run_syncdb=True at line 59-61
     # This causes sync_apps to run BEFORE migrations complete, querying tables that don't exist yet
@@ -703,13 +770,19 @@ if True:  # Always apply patches
                 settings.DATABASES[self.connection.alias]["NAME"] = test_database_name
                 self.connection.settings_dict["NAME"] = test_database_name
                 self.connection.ensure_connection()
-                # Only skip migrate if DB is already migrated (django_migrations has rows).
+                # Only skip migrate if DB is already migrated.
+                # Check django_migrations first; when TEST_DB_SUFFIX set, also accept django_content_type
+                # (more robust for shared DB where migrations may differ from our loader state).
+                already_migrated = False
                 try:
                     with self.connection.cursor() as cursor:
                         cursor.execute("SELECT 1 FROM django_migrations LIMIT 1")
                         already_migrated = cursor.fetchone() is not None
+                        if not already_migrated and os.getenv("TEST_DB_SUFFIX"):
+                            cursor.execute("SELECT 1 FROM django_content_type LIMIT 1")
+                            already_migrated = cursor.fetchone() is not None
                 except Exception:
-                    already_migrated = False
+                    pass
                 if already_migrated:
                     _patch_logger.debug(
                         "create_test_db: fast path (DB already migrated), skipping migrate and serialize"
@@ -910,9 +983,10 @@ def pytest_configure(config):
     Configure pytest - ensure patches are applied early.
     This hook runs before Django is initialized, so we can apply patches here.
     """
-    # Set TESTING environment variable early to help apps detect test mode
     import os
+    import sys
 
+    # Set TESTING environment variable early to help apps detect test mode
     os.environ["TESTING"] = "1"
 
     _patch_logger.info("=" * 80)
@@ -1100,6 +1174,13 @@ def pytest_configure(config):
             _patch_logger.info("✓ setup_databases: PATCHED VERSION CALLED!")
             _patch_logger.info("=" * 80)
 
+            # When TEST_DB_SUFFIX is set (e.g. "shared"), force keepdb=True so Django reuses the
+            # existing database instead of create/drop (which fails when prefect-integration holds
+            # connections to hub_test_test_shared).
+            if os.getenv("TEST_DB_SUFFIX"):
+                keepdb = True
+                _patch_logger.info("✓ TEST_DB_SUFFIX set: forcing keepdb=True to reuse existing DB")
+
             # CRITICAL: Check if we should skip database creation (for SDK tests using production DB)
             use_production_db = os.getenv("USE_PRODUCTION_DB_FOR_SDK_TESTS", "").lower() == "1"
             if use_production_db:
@@ -1179,18 +1260,63 @@ def pytest_configure(config):
                     "✓ create_test_db patch re-applied in setup_databases (both base and PostgreSQL)"
                 )
 
-            # Call original setup_databases
-            result = _original_setup_databases(
-                verbosity,
-                interactive,
-                keepdb=keepdb,
-                debug_sql=debug_sql,
-                parallel=parallel,
-                aliases=aliases,
-                **kwargs,
-            )
-            _patch_logger.info("✓ setup_databases: Completed successfully")
-            return result
+            # Call original setup_databases with retry on transient DB unavailability
+            # (e.g. "database system is shutting down", "in recovery mode", "server closed the connection")
+            from django.db.utils import OperationalError
+
+            last_exc = None
+            for attempt in range(1, 21):  # up to 20 attempts for long recoveries
+                try:
+                    result = _original_setup_databases(
+                        verbosity,
+                        interactive,
+                        keepdb=keepdb,
+                        debug_sql=debug_sql,
+                        parallel=parallel,
+                        aliases=aliases,
+                        **kwargs,
+                    )
+                    _patch_logger.info("✓ setup_databases: Completed successfully")
+                    return result
+                except OperationalError as e:
+                    last_exc = e
+                    msg = str(e).lower()
+                    transient = (
+                        "shutting down" in msg
+                        or "connection closed" in msg
+                        or "connection refused" in msg
+                        or "server closed the connection" in msg
+                        or "terminated abnormally" in msg
+                        or "recovery" in msg
+                        or "starting up" in msg
+                        or "consistent recovery" in msg
+                    )
+                    if not transient:
+                        raise
+                    # Recovery/startup can take 1-2 min; use longer delays
+                    is_recovery = "recovery" in msg or "starting up" in msg
+                    max_attempts = 15 if is_recovery else 5
+                    if attempt >= max_attempts:
+                        raise
+                    # Close connections so next attempt gets a fresh connection
+                    try:
+                        from django.db import connections
+
+                        for conn in connections.all():
+                            conn.close()
+                    except Exception:
+                        pass
+                    delay = 10 if is_recovery else (5 * attempt)
+                    _patch_logger.warning(
+                        "setup_databases: transient DB error (attempt %s/%s): %s. Retrying in %ss...",
+                        attempt,
+                        max_attempts,
+                        e,
+                        delay,
+                    )
+                    time.sleep(delay)
+            if last_exc is not None:
+                raise last_exc
 
         django.test.utils.setup_databases = _patched_setup_databases
         _log_patch("setup_databases")
@@ -1207,6 +1333,21 @@ def pytest_configure(config):
     _validate_test_environment_config(config)
 
 
+def pytest_collection_modifyitems(config, items):
+    """Skip tests marked real_scheduled_e2e unless REAL_SCHEDULED_E2E=1 (env-gated real E2E)."""
+    if not items:
+        return
+    import pytest
+
+    guard = os.environ.get("REAL_SCHEDULED_E2E", "").strip() == "1"
+    skip_real = pytest.mark.skip(
+        reason="Real scheduled ingestion/export E2E: set REAL_SCHEDULED_E2E=1 to run (see docs/runbooks/REAL_SCHEDULED_INGESTION_EXPORT_E2E.md)"
+    )
+    for item in items:
+        if not guard and item.get_closest_marker("real_scheduled_e2e"):
+            item.add_marker(skip_real)
+
+
 def pytest_sessionstart(session):
     """
     Called after the Session object has been created and before performing collection.
@@ -1215,6 +1356,8 @@ def pytest_sessionstart(session):
     # Skip Django setup for Docker Compose runtime tests (they don't need Django)
     if os.getenv("PYTEST_DOCKER_COMPOSE_RUNTIME") == "1" or os.getenv("SKIP_DJANGO_SETUP") == "1":
         _patch_logger.info("Skipping Django setup for Docker Compose runtime tests")
+        sys.stderr.write("Conftest loaded. Collecting tests...\n")
+        sys.stderr.flush()
         return
 
     # Wait for PostgreSQL to be ready before running tests

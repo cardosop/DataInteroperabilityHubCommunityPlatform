@@ -28,7 +28,8 @@ from django.contrib.auth import get_user_model
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.baas.models import APIKey, APITierModel
+from hub.apps.auth.models import APIKey as AuthAPIKey
+from hub.apps.baas.models import APITierModel
 from hub.apps.baas.business_rules import BaaSBusinessRules
 from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.core.services.base import ValidationError, NotFoundError
@@ -233,11 +234,11 @@ class APIKeyManagementWorkflow:
                 # Already a datetime object
                 expires_at_parsed = expires_at
 
-        # Validate using business rules
+        # Validate using business rules (auth APIKey with tier for BaaS)
         rules = BaaSBusinessRules(tenant_id=str(tenant_id), user_id=str(user_id))
 
         # Create temporary API key object for validation (not saved)
-        temp_api_key = APIKey(
+        temp_api_key = AuthAPIKey(
             tenant=tenant,
             user=user,
             tier=tier,
@@ -340,8 +341,8 @@ class APIKeyManagementWorkflow:
         # Check permissions using business rules
         rules = BaaSBusinessRules(tenant_id=str(tenant_id), user_id=str(user_id))
 
-        # Create temporary API key for permission check
-        temp_api_key = APIKey(
+        # Create temporary API key for permission check (auth APIKey)
+        temp_api_key = AuthAPIKey(
             tenant=tenant,
             user=user,
             key_hash=""
@@ -413,8 +414,8 @@ class APIKeyManagementWorkflow:
         # Check quota using business rules
         rules = BaaSBusinessRules(tenant_id=str(tenant_id), user_id=str(user_id))
 
-        # Create temporary API key for quota check
-        temp_api_key = APIKey(
+        # Create temporary API key for quota check (auth APIKey with tier)
+        temp_api_key = AuthAPIKey(
             tenant=tenant,
             user=User.objects.get(id=user_id),
             tier=tier,
@@ -469,9 +470,9 @@ class APIKeyManagementWorkflow:
                 "reason": f"Step not applicable for operation: {operation}"
             }
 
-        # Generate secure API key
-        plaintext_key = APIKey.generate_key()
-        key_hash = APIKey.hash_key(plaintext_key)
+        # Generate secure API key (same format as auth)
+        plaintext_key = AuthAPIKey.generate_key()
+        key_hash = AuthAPIKey.hash_key(plaintext_key)
 
         logger.info(
             "API key generated",
@@ -531,8 +532,8 @@ class APIKeyManagementWorkflow:
             from django.utils.dateparse import parse_datetime
             expires_at = parse_datetime(expires_at_str)
 
-        # Create API key
-        api_key = APIKey.objects.create(
+        # Create auth API key with tier (single identity — D2; no BaaS APIKey)
+        api_key = AuthAPIKey.objects.create(
             tenant=tenant,
             user=user,
             key_hash=key_hash,
@@ -745,10 +746,12 @@ class APIKeyManagementWorkflow:
         if not api_key_id:
             raise ValueError("api_key_id is required for revocation")
 
-        # Get API key
+        # Get auth API key (single identity)
         try:
-            api_key = APIKey.objects.select_related('tenant', 'user').get(id=api_key_id)
-        except APIKey.DoesNotExist:
+            api_key = AuthAPIKey.objects.select_related('tenant', 'user').get(
+                id=api_key_id
+            )
+        except AuthAPIKey.DoesNotExist:
             raise NotFoundError(f"API key {api_key_id} not found")
 
         # Validate tenant isolation
@@ -758,8 +761,8 @@ class APIKeyManagementWorkflow:
                 code="TENANT_MISMATCH"
             )
 
-        # Check if already revoked
-        if api_key.revoked_at is not None:
+        # Check if already revoked (auth APIKey.revoked_at)
+        if getattr(api_key, 'revoked_at', None) is not None:
             raise ValidationError(
                 "API key is already revoked",
                 code="ALREADY_REVOKED"
@@ -825,10 +828,8 @@ class APIKeyManagementWorkflow:
 
         api_key_id = instance.state_data.get("api_key_id")
 
-        # Get API key
-        api_key = APIKey.objects.get(id=api_key_id)
-
-        # Revoke the key
+        # Get auth API key and revoke (single identity)
+        api_key = AuthAPIKey.objects.get(id=api_key_id)
         api_key.revoke()
 
         # Publish step completed event
@@ -884,14 +885,14 @@ class APIKeyManagementWorkflow:
 
         if api_key_id:
             try:
-                api_key = APIKey.objects.get(id=api_key_id)
+                api_key = AuthAPIKey.objects.get(id=api_key_id)
                 api_key.delete()
                 logger.info(
                     "API key generation rolled back (deleted)",
                     workflow_instance_id=str(instance.id),
                     api_key_id=api_key_id
                 )
-            except APIKey.DoesNotExist:
+            except AuthAPIKey.DoesNotExist:
                 logger.warning(
                     "API key not found for rollback",
                     workflow_instance_id=str(instance.id),
@@ -918,8 +919,8 @@ class APIKeyManagementWorkflow:
 
         if api_key_id:
             try:
-                api_key = APIKey.objects.get(id=api_key_id)
-                if api_key.revoked_at is not None:
+                api_key = AuthAPIKey.objects.get(id=api_key_id)
+                if getattr(api_key, 'revoked_at', None) is not None:
                     api_key.revoked_at = None
                     api_key.save(update_fields=['revoked_at', 'updated_at'])
                     logger.info(
@@ -927,7 +928,7 @@ class APIKeyManagementWorkflow:
                         workflow_instance_id=str(instance.id),
                         api_key_id=api_key_id
                     )
-            except APIKey.DoesNotExist:
+            except AuthAPIKey.DoesNotExist:
                 logger.warning(
                     "API key not found for rollback",
                     workflow_instance_id=str(instance.id),

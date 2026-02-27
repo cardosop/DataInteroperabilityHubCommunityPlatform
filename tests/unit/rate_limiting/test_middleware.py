@@ -34,7 +34,7 @@ class RateLimitMiddlewareTest(TestCase):
         )
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
-    @patch('django.conf.settings')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     def test_middleware_skips_health_checks(self, mock_settings, mock_check):
         """Test that middleware skips health check endpoints"""
         mock_settings.RATE_LIMIT_ENABLED = True
@@ -46,7 +46,7 @@ class RateLimitMiddlewareTest(TestCase):
         mock_check.assert_not_called()
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
-    @patch('django.conf.settings')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     def test_middleware_skips_admin_endpoints(self, mock_settings, mock_check):
         """Test that middleware skips admin endpoints"""
         mock_settings.RATE_LIMIT_ENABLED = True
@@ -58,7 +58,7 @@ class RateLimitMiddlewareTest(TestCase):
         mock_check.assert_not_called()
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
-    @patch('django.conf.settings')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     def test_middleware_skips_non_api_endpoints(self, mock_settings, mock_check):
         """Test that middleware skips non-API endpoints"""
         mock_settings.RATE_LIMIT_ENABLED = True
@@ -69,7 +69,7 @@ class RateLimitMiddlewareTest(TestCase):
         self.assertIsNone(response)
         mock_check.assert_not_called()
     
-    @patch('django.conf.settings')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     def test_middleware_skips_when_disabled(self, mock_settings):
         """Test that middleware skips when rate limiting is disabled"""
         with patch.object(mock_settings, 'RATE_LIMIT_ENABLED', False):
@@ -80,7 +80,7 @@ class RateLimitMiddlewareTest(TestCase):
             self.assertIsNone(response)
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
-    @patch('django.conf.settings')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     def test_middleware_allows_request(self, mock_settings, mock_check):
         """Test that middleware allows request when within limits"""
         mock_settings.RATE_LIMIT_ENABLED = True
@@ -107,9 +107,11 @@ class RateLimitMiddlewareTest(TestCase):
         self.assertEqual(getattr(request, 'rate_limit_results', None), results)
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     @patch('time.time')
-    def test_middleware_rejects_when_exceeded(self, mock_time, mock_check):
+    def test_middleware_rejects_when_exceeded(self, mock_time, mock_settings, mock_check):
         """Test that middleware rejects request when rate limit exceeded"""
+        mock_settings.RATE_LIMIT_ENABLED = True
         mock_time.return_value = 500.0
         
         # Mock rate limit check to reject
@@ -141,9 +143,11 @@ class RateLimitMiddlewareTest(TestCase):
         self.assertEqual(data['error']['details']['retry_after'], 500)  # 1000 - 500
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     @patch('time.time')
-    def test_middleware_sets_retry_after(self, mock_time, mock_check):
+    def test_middleware_sets_retry_after(self, mock_time, mock_settings, mock_check):
         """Test that middleware sets Retry-After header"""
+        mock_settings.RATE_LIMIT_ENABLED = True
         mock_time.return_value = 500.0
         
         failed_result = RateLimitResult(
@@ -165,7 +169,7 @@ class RateLimitMiddlewareTest(TestCase):
         self.assertEqual(getattr(request, 'retry_after', None), 500)
     
     @patch('hub.apps.rate_limiting.middleware.get_rate_limit_headers')
-    @patch('django.conf.settings')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     def test_middleware_adds_headers(self, mock_settings, mock_get_headers):
         """Test that middleware adds rate limit headers to response"""
         mock_settings.RATE_LIMIT_ENABLED = True
@@ -201,7 +205,7 @@ class RateLimitMiddlewareTest(TestCase):
         self.assertEqual(response.__setitem__.call_count, 4)  # 4 headers
     
     @patch('hub.apps.rate_limiting.middleware.get_rate_limit_headers')
-    @patch('django.conf.settings')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     def test_middleware_adds_retry_after_header(self, mock_settings, mock_get_headers):
         """Test that middleware adds Retry-After header when limit exceeded"""
         mock_settings.RATE_LIMIT_ENABLED = True
@@ -219,7 +223,7 @@ class RateLimitMiddlewareTest(TestCase):
         response.__setitem__.assert_called_with('Retry-After', '60')
     
     @patch('hub.apps.rate_limiting.middleware.get_rate_limit_headers')
-    @patch('django.conf.settings')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     def test_middleware_no_headers_for_non_api(self, mock_settings, mock_get_headers):
         """Test that middleware doesn't add headers for non-API endpoints"""
         mock_settings.RATE_LIMIT_ENABLED = True
@@ -236,9 +240,11 @@ class RateLimitMiddlewareTest(TestCase):
         mock_get_headers.assert_not_called()
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     @patch('time.time')
-    def test_middleware_generates_request_id(self, mock_time, mock_check):
+    def test_middleware_generates_request_id(self, mock_time, mock_settings, mock_check):
         """Test that middleware generates request ID if not present"""
+        mock_settings.RATE_LIMIT_ENABLED = True
         mock_time.return_value = 500.0
         
         failed_result = RateLimitResult(
@@ -264,9 +270,11 @@ class RateLimitMiddlewareTest(TestCase):
         self.assertIn('request_id', data['error'])
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     @patch('time.time')
-    def test_middleware_uses_existing_request_id(self, mock_time, mock_check):
+    def test_middleware_uses_existing_request_id(self, mock_time, mock_settings, mock_check):
         """Test that middleware uses existing request ID if present"""
+        mock_settings.RATE_LIMIT_ENABLED = True
         mock_time.return_value = 500.0
         
         failed_result = RateLimitResult(
@@ -291,9 +299,11 @@ class RateLimitMiddlewareTest(TestCase):
         self.assertEqual(data['error']['request_id'], 'existing-request-id')
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     @patch('time.time')
-    def test_middleware_error_format(self, mock_time, mock_check):
+    def test_middleware_error_format(self, mock_time, mock_settings, mock_check):
         """Test that error response follows standard format"""
+        mock_settings.RATE_LIMIT_ENABLED = True
         mock_time.return_value = 500.0
         
         failed_result = RateLimitResult(
@@ -323,9 +333,11 @@ class RateLimitMiddlewareTest(TestCase):
         self.assertIn('details', data['error'])
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     @patch('time.time')
-    def test_middleware_handles_no_results(self, mock_time, mock_check):
+    def test_middleware_handles_no_results(self, mock_time, mock_settings, mock_check):
         """Test that middleware handles case when no results returned"""
+        mock_settings.RATE_LIMIT_ENABLED = True
         mock_time.return_value = 500.0
         mock_check.return_value = (False, [])  # No results
         
@@ -340,9 +352,11 @@ class RateLimitMiddlewareTest(TestCase):
         self.assertEqual(data['error']['code'], 'RATE_LIMIT_EXCEEDED')
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
+    @patch('hub.apps.rate_limiting.middleware.settings')
     @patch('time.time')
-    def test_middleware_retry_after_minimum(self, mock_time, mock_check):
+    def test_middleware_retry_after_minimum(self, mock_time, mock_settings, mock_check):
         """Test that Retry-After is at least 1 second"""
+        mock_settings.RATE_LIMIT_ENABLED = True
         mock_time.return_value = 999.0  # Very close to reset_time
         
         failed_result = RateLimitResult(

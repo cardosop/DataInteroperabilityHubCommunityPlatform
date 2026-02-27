@@ -135,10 +135,12 @@ export function useAssetRecommendations(
     asset_id?: string;
     user_id?: string;
     limit?: number;
-  } = {}
+  } = {},
+  options?: { enabled?: boolean }
 ) {
   return useQuery({
     queryKey: ['assets', 'recommendations', filters],
     queryFn: () => assetService.getRecommendations(filters),
+    enabled: options?.enabled !== false,
   });
 }

@@ -24,11 +24,14 @@ export function ContractListPage() {
     return (
       <ErrorDisplay error={error} title="Failed to load contracts" onRetry={() => refetch()} />
     );
+  const handleCreateContract = () => navigate('/odps/upload');
+
   if (!data || data.results.length === 0) {
     return (
       <EmptyState
         title="No contracts found"
         message="Get started by creating your first contract."
+        action={{ label: 'Create Contract', onClick: handleCreateContract }}
       />
     );
   }
@@ -37,7 +40,7 @@ export function ContractListPage() {
     <div className="contract-list-page">
       <div className="contract-list-header">
         <h1>Contracts</h1>
-        <button className="btn-primary" onClick={() => navigate('/odps/upload')} type="button">
+        <button className="btn-primary" onClick={handleCreateContract} type="button">
           Create Contract
         </button>
       </div>

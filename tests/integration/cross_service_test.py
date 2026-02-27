@@ -10,15 +10,16 @@ from typing import Dict, Any
 import os
 
 # Service URLs (configurable via environment variables)
-API_SERVICE_URL = os.getenv("API_SERVICE_URL", "http://localhost:8000")
-DATACONTRACT_SERVICE_URL = os.getenv("DATACONTRACT_SERVICE_URL", "http://localhost:8080")
-COMPLIANCE_SERVICE_URL = os.getenv("COMPLIANCE_SERVICE_URL", "http://localhost:8082")
-DQ_SERVICE_URL = os.getenv("DQ_SERVICE_URL", "http://localhost:8083")
-SEMANTIC_SERVICE_URL = os.getenv("SEMANTIC_SERVICE_URL", "http://localhost:8081")
-PREFECT_INTEGRATION_SERVICE_URL = os.getenv("PREFECT_INTEGRATION_SERVICE_URL", "http://localhost:8084")
-SEARCH_SERVICE_URL = os.getenv("SEARCH_SERVICE_URL", "http://localhost:8085")
-OBSERVABILITY_SERVICE_URL = os.getenv("OBSERVABILITY_SERVICE_URL", "http://localhost:8086")
-WEBHOOK_SERVICE_URL = os.getenv("WEBHOOK_SERVICE_URL", "http://localhost:8087")
+# Defaults use Docker service hostnames for integration tests running in docker-compose.test
+API_SERVICE_URL = os.getenv("API_SERVICE_URL", "http://api-service-test:8000")
+DATACONTRACT_SERVICE_URL = os.getenv("DATACONTRACT_SERVICE_URL", "http://datacontract-service-test:8080")
+COMPLIANCE_SERVICE_URL = os.getenv("COMPLIANCE_SERVICE_URL", "http://compliance-service-test:8082")
+DQ_SERVICE_URL = os.getenv("DQ_SERVICE_URL", "http://dq-service-test:8083")
+SEMANTIC_SERVICE_URL = os.getenv("SEMANTIC_SERVICE_URL", "http://semantic-service-test:8081")
+PREFECT_INTEGRATION_SERVICE_URL = os.getenv("PREFECT_INTEGRATION_SERVICE_URL", "http://prefect-integration-service-test:8084")
+SEARCH_SERVICE_URL = os.getenv("SEARCH_SERVICE_URL", "http://search-service-test:8085")
+OBSERVABILITY_SERVICE_URL = os.getenv("OBSERVABILITY_SERVICE_URL", "http://observability-service-test:8086")
+WEBHOOK_SERVICE_URL = os.getenv("WEBHOOK_SERVICE_URL", "http://webhook-service-test:8087")
 
 
 class TestServiceHealth:
@@ -38,8 +39,12 @@ class TestServiceHealth:
     def test_service_health(self, service_url: str, service_name: str):
         """Test that all services have working health endpoints"""
         try:
-            response = requests.get(f"{service_url}/health", timeout=5)
-            assert response.status_code == 200, f"{service_name} health check failed"
+            # Django API uses /health/ (trailing slash); other services use /health
+            for path in ["/health", "/health/"]:
+                response = requests.get(f"{service_url.rstrip('/')}{path}", timeout=5)
+                if response.status_code == 200:
+                    break
+            assert response.status_code == 200, f"{service_name} health check failed (tried /health and /health/)"
             data = response.json()
             assert data.get("status") in ["healthy", "ok"], f"{service_name} not healthy"
         except requests.exceptions.RequestException as e:

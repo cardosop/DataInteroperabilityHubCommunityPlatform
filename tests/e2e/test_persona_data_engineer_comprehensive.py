@@ -38,7 +38,18 @@ from hub.apps.datasets.models import Dataset
 from .conftest import E2ETestBase
 
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
+pytestmark = [
+    pytest.mark.uc_journey_persona,
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.e2e,
+    pytest.mark.persona("Data Engineer"),
+    pytest.mark.journey("JOURNEY-DE-001"),
+    pytest.mark.journey("JOURNEY-DE-002"),
+    pytest.mark.journey("JOURNEY-DE-003"),
+    pytest.mark.journey("JOURNEY-DE-004"),
+    pytest.mark.journey("JOURNEY-DE-005"),
+    pytest.mark.journey("JOURNEY-DE-006"),
+]
 
 
 class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):

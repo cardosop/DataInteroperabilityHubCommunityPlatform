@@ -13,7 +13,7 @@ from rest_framework import status
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, Role, UserRole, UserStatus
-from tests.e2e.conftest import E2ETestBase
+from tests.e2e.conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
 User = get_user_model()
@@ -47,17 +47,17 @@ class AuditorPersonaTest(E2ETestBase):
     
     def test_auditor_cannot_get_tenant_config(self):
         """Test AUDITOR cannot GET tenant configuration"""
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertIn("error", response.data)
+        self.assertIn("error", get_response_data(response) or {})
     
     def test_auditor_cannot_patch_tenant_config(self):
         """Test AUDITOR cannot PATCH tenant configuration"""
         data = {"default_dq_profile": "intake_basic_gx"}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -143,14 +143,16 @@ class AuditorPersonaTest(E2ETestBase):
     
     def test_auditor_cannot_create_dq_runs(self):
         """Test AUDITOR cannot create DQ runs"""
-        # Create valid test data - need asset_id, dataset_id, or file_id
+        # Create valid test data as tenant admin (auditor cannot create assets)
+        self.client.force_authenticate(user=self.user)
         asset_id = self.create_asset(key='dq-test-asset', name='DQ Test Asset')
         file_id = self.init_file_upload(name='test.csv', content_type='text/csv', size=1024)
         self.complete_file_upload(file_id)
         dataset_id = self.create_dataset(file_id, asset_id)
-        
+        self.client.force_authenticate(user=self.auditor_user)
+
         data = {"asset_id": str(asset_id), "dataset_id": str(dataset_id)}
-        
+
         response = self.client.post(
             "/api/v1/dq/runs/",
             data,
@@ -177,14 +179,16 @@ class AuditorPersonaTest(E2ETestBase):
     
     def test_auditor_cannot_create_compliance_runs(self):
         """Test AUDITOR cannot create compliance runs"""
-        # Create valid test data - need asset_id, dataset_id, or file_id
+        # Create valid test data as tenant admin (auditor cannot create assets)
+        self.client.force_authenticate(user=self.user)
         asset_id = self.create_asset(key='compliance-test-asset', name='Compliance Test Asset')
         file_id = self.init_file_upload(name='test.csv', content_type='text/csv', size=1024)
         self.complete_file_upload(file_id)
         dataset_id = self.create_dataset(file_id, asset_id)
-        
+        self.client.force_authenticate(user=self.auditor_user)
+
         data = {"asset_id": str(asset_id), "dataset_id": str(dataset_id)}
-        
+
         response = self.client.post(
             "/api/v1/compliance/runs/",
             data,

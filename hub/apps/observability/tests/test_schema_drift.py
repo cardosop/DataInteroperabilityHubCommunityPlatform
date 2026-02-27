@@ -58,7 +58,6 @@ class SchemaDriftDetectorTest(TestCase):
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
-            name="Test Dataset",
             schema_json={
                 "fields": [
                     {"name": "email", "type": "string", "nullable": False},

@@ -233,6 +233,32 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
                     code="NOT_FOUND",
                 )
 
+        # Validate contract compliance schema when run will use contract terms (5.4.2)
+        if asset or dataset:
+            from hub.apps.contracts.models import Contract, ContractStatus
+            from hub.apps.compliance.contract_integration import (
+                validate_contract_compliance_payload,
+                ContractComplianceSchemaError,
+            )
+            contract_to_validate = None
+            if asset:
+                contract_to_validate = asset.contracts.filter(status=ContractStatus.ACTIVE).first()
+            if not contract_to_validate and dataset and getattr(dataset, "asset", None):
+                contract_to_validate = dataset.asset.contracts.filter(status=ContractStatus.ACTIVE).first()
+            if contract_to_validate and contract_to_validate.hub_contract_json:
+                try:
+                    validate_contract_compliance_payload(contract_to_validate.hub_contract_json)
+                except ContractComplianceSchemaError as e:
+                    return Response(
+                        {
+                            "error": "Contract compliance terms are invalid",
+                            "code": "contract_compliance_schema_invalid",
+                            "details": e.details,
+                            "message": e.message,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
         # Create compliance run via service (validates via ComplianceBusinessRules, then creates)
         service = ComplianceService(tenant_id=str(tenant.id), user_id=str(request.user.id))
         try:
@@ -539,20 +565,28 @@ def execute_compliance_run(compliance_run_id: str) -> None:
         storage_client = S3StorageClient()
         file_content = storage_client.get_file_content(file_obj.storage_path)
 
-        # Call compliance service
+        # Call compliance service (tenant_id for metrics — 5.3.2; correlation_id for tracing — 5.4.1)
         compliance_client = ComplianceServiceClient()
+        tenant_id = (
+            str(compliance_run.tenant_id) if compliance_run.tenant_id else "unknown"
+        )
         result = compliance_client.scan_file(
             file_content=file_content,
-            file_format=file_format,
+            file_format=file_format or "csv",
             scan_mode=scan_mode,
             applicable_regulations=applicable_regulations if applicable_regulations else None,
+            tenant_id=tenant_id,
+            correlation_id=str(compliance_run.id),
         )
 
-        # Update compliance run with results
+        # Update compliance run with results (fail-closed: UNKNOWN or missing allowed_to_store → not allowed)
         compliance_run.status = ComplianceRunStatus.SUCCEEDED
         compliance_run.overall_status = result.get("overall_status")
         compliance_run.risk_level = result.get("risk_level")
-        compliance_run.allowed_to_store = result.get("allowed_to_store")
+        allowed_to_store = result.get("allowed_to_store")
+        if result.get("overall_status") == "UNKNOWN" or allowed_to_store is None:
+            allowed_to_store = False
+        compliance_run.allowed_to_store = bool(allowed_to_store)
         compliance_run.detected_categories_json = result.get("detected_categories", [])
         compliance_run.column_findings_json = result.get("column_findings", [])
         # Initialize regulation_mapping_json with result data, metering will be added below
@@ -574,7 +608,7 @@ def execute_compliance_run(compliance_run_id: str) -> None:
             "scan_mode": scan_mode,
             "risk_score": result.get("risk_score", 0.0),
             "risk_level": result.get("risk_level"),
-            "allowed_to_store": result.get("allowed_to_store"),
+            "allowed_to_store": compliance_run.allowed_to_store,
             "regulations_checked": result.get("applicable_regulations", []),
         }
 

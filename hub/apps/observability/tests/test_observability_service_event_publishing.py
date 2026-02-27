@@ -5,6 +5,8 @@ Tests event publishing using real EventPublisher and EventBus (no mocks/stubs).
 All tests use real services and models following engineering best practices.
 """
 
+import uuid
+
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -227,11 +229,14 @@ class ObservabilityServiceEventPublishingIntegrationTest(TestCase):
 
     def test_publish_log_event(self):
         """Test that publish_log_event publishes observability.log.created event."""
+        # Use unique context so deduplication key is unique (avoids reusing event_id from
+        # a rolled-back transaction in another test when Redis still has the dedup key).
+        unique_context = {"key": "value", "test_run_id": str(uuid.uuid4())}
         event_id = self.service.publish_log_event(
             message="Test log message",
             log_level="INFO",
             logger_name="test.logger",
-            context={"key": "value"},
+            context=unique_context,
             tenant_id=str(self.tenant.id),
         )
 
@@ -245,7 +250,7 @@ class ObservabilityServiceEventPublishingIntegrationTest(TestCase):
         self.assertEqual(event.data["message"], "Test log message")
         self.assertEqual(event.data["log_level"], "INFO")
         self.assertEqual(event.data["logger_name"], "test.logger")
-        self.assertEqual(event.data["context"], {"key": "value"})
+        self.assertEqual(event.data["context"], unique_context)
         self.assertEqual(str(event.tenant_id), str(self.tenant.id))
         self.assertEqual(event.source_service, "observability_service")
 

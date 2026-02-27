@@ -12,7 +12,15 @@ Verifies: workflow execution with business rules, all steps validate, workflow c
 
 import pytest
 
-pytestmark = pytest.mark.workflow_e2e
+pytestmark = [
+    pytest.mark.uc_journey_persona,
+    pytest.mark.workflow_e2e,
+    pytest.mark.journey("JOURNEY-DPO-001"),
+    pytest.mark.journey("JOURNEY-DPO-002"),
+    pytest.mark.journey("JOURNEY-DPO-015"),
+    pytest.mark.journey("JOURNEY-DE-001"),
+    pytest.mark.journey("JOURNEY-DE-014"),
+]
 
 import json
 import uuid

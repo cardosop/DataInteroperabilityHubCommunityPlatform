@@ -83,7 +83,7 @@ Phase 5: CI & ongoing (canonical suite in CI, nightly optional)
 ### 3.3 Prerequisites Checklist
 
 - [ ] Docker and Docker Compose installed and working.
-- [ ] `docker-compose.test.yml` (or equivalent) present; stack can be brought up with `docker compose -f docker-compose.test.yml up -d`.
+- [ ] `docker-compose.test.yml` (or equivalent) present; stack can be brought up with `docker compose -f docker-compose.test.yml --env-file .env.test up -d`.
 - [ ] All core test services healthy (health checks or manual curl).
 - [ ] Repo root has `pytest.ini`, `tests/conftest.py`, and `hub/` on `PYTHONPATH`.
 - [ ] No uncommitted changes that would invalidate a batch (or document branch/commit for the run).

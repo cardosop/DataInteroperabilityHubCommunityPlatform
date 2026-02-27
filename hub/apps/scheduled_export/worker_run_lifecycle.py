@@ -104,6 +104,7 @@ def _send_completion_or_failure_notification(run: ScheduledExportRun, status: st
                 "resource_type": "Run",
                 "resource_id": str(run.id),
                 "result_summary": result_summary,
+                "job_url": None,  # Run has no Job; template expects job_url for {% if job_url %}
             }
         else:
             subject = f"Scheduled Export Failed: {scheduled_export.name}"
@@ -118,6 +119,7 @@ def _send_completion_or_failure_notification(run: ScheduledExportRun, status: st
                 "resource_type": "Run",
                 "resource_id": str(run.id),
                 "error_message": error_message,
+                "job_url": None,  # Run has no Job; template expects job_url for {% if job_url %}
             }
 
         for recipient in recipients:

@@ -36,10 +36,20 @@ from hub.apps.jobs.models import Job, JobType, JobStatus
 
 User = get_user_model()
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
+pytestmark = [
+    pytest.mark.uc_journey_persona,
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.e2e,
+    pytest.mark.persona("Compliance Officer"),
+    pytest.mark.journey("JOURNEY-CPO-001"),
+    pytest.mark.journey("JOURNEY-CPO-002"),
+    pytest.mark.journey("JOURNEY-CPO-003"),
+    pytest.mark.journey("JOURNEY-CPO-004"),
+    pytest.mark.journey("JOURNEY-CPO-005"),
+]
 
 
 class JourneyCPO001ReviewComplianceTests(E2ETestBase):
@@ -92,15 +102,17 @@ class JourneyCPO001ReviewComplianceTests(E2ETestBase):
         asset = Asset.objects.get(id=asset_id)
         response = self.client.get(f'/api/v1/assets/{asset_id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('compliance_status', response.data)
+        data = get_response_data(response) or {}
+        self.assertIn('compliance_status', data)
 
         # Step 2: Get compliance run details
         response = self.client.get(f'/api/v1/compliance/runs/{compliance_run_id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(compliance_run_id))
-        self.assertIn('overall_status', response.data)
-        self.assertIn('risk_level', response.data)
-        self.assertIn('detected_categories_json', response.data)
+        data = get_response_data(response) or {}
+        self.assertEqual(data['id'], str(compliance_run_id))
+        self.assertIn('overall_status', data)
+        self.assertIn('risk_level', data)
+        self.assertIn('detected_categories_json', data)
 
         # Step 3: List compliance runs for asset
         response = self.client.get(
@@ -109,7 +121,8 @@ class JourneyCPO001ReviewComplianceTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        results = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        data = get_response_data(response) or {}
+        results = data.get('results', data) if isinstance(data, dict) else data
         if isinstance(results, list):
             self.assertGreaterEqual(len(results), 1)
             # Verify our compliance run is in the list
@@ -149,7 +162,8 @@ class JourneyCPO001ReviewComplianceTests(E2ETestBase):
         # Get asset - should show UNKNOWN compliance status
         response = self.client.get(f'/api/v1/assets/{asset_id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data.get('compliance_status'), ComplianceStatus.UNKNOWN)
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('compliance_status'), ComplianceStatus.UNKNOWN)
 
         # List compliance runs - should be empty
         response = self.client.get(
@@ -158,7 +172,8 @@ class JourneyCPO001ReviewComplianceTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        results = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        data = get_response_data(response) or {}
+        results = data.get('results', data) if isinstance(data, dict) else data
         if isinstance(results, list):
             self.assertEqual(len(results), 0)
 
@@ -382,7 +397,8 @@ class JourneyCPO003ConfigureRetentionPoliciesTests(E2ETestBase):
             policy_id = policy.id
         else:
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-            policy_id = response.data['id']
+            data = get_response_data(response) or {}
+            policy_id = data['id']
 
         # Verify policy was created
         policy = RetentionPolicy.objects.get(id=policy_id)
@@ -495,7 +511,8 @@ class JourneyCPO003ConfigureRetentionPoliciesTests(E2ETestBase):
             self.assertEqual(policies.count(), 2)
         else:
             self.assertEqual(response.status_code, status.HTTP_200_OK)
-            results = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+            data = get_response_data(response) or {}
+            results = data.get('results', data) if isinstance(data, dict) else data
             if isinstance(results, list):
                 self.assertGreaterEqual(len(results), 2)
 
@@ -604,7 +621,8 @@ class JourneyCPO004ReviewAccessRequestsTests(E2ETestBase):
             )
         else:
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-            access_request = AccessRequest.objects.get(id=response.data['id'])
+            data = get_response_data(response) or {}
+            access_request = AccessRequest.objects.get(id=data['id'])
 
         # Step 1: List access requests
         # Try governance/access/access-requests/, then access/access-requests/
@@ -625,7 +643,8 @@ class JourneyCPO004ReviewAccessRequestsTests(E2ETestBase):
             self.assertGreaterEqual(requests.count(), 1)
         else:
             self.assertEqual(response.status_code, status.HTTP_200_OK)
-            results = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+            data = get_response_data(response) or {}
+            results = data.get('results', data) if isinstance(data, dict) else data
             if isinstance(results, list):
                 self.assertGreaterEqual(len(results), 1)
                 # Find our request
@@ -650,8 +669,9 @@ class JourneyCPO004ReviewAccessRequestsTests(E2ETestBase):
             self.assertEqual(request.status, AccessRequestStatus.PENDING)
         else:
             self.assertEqual(response.status_code, status.HTTP_200_OK)
-            self.assertEqual(response.data['id'], str(access_request.id))
-            self.assertEqual(response.data['status'], AccessRequestStatus.PENDING)
+            data = get_response_data(response) or {}
+            self.assertEqual(data['id'], str(access_request.id))
+            self.assertEqual(data['status'], AccessRequestStatus.PENDING)
 
         # Step 3: Approve access request
         response = self.client.post(
@@ -736,7 +756,8 @@ class JourneyCPO004ReviewAccessRequestsTests(E2ETestBase):
             )
         else:
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-            access_request = AccessRequest.objects.get(id=response.data['id'])
+            data = get_response_data(response) or {}
+            access_request = AccessRequest.objects.get(id=data['id'])
 
         # Reject access request
         # Try governance/access/access-requests/, then access/access-requests/
@@ -853,7 +874,8 @@ class JourneyCPO005AuditAccessLogsTests(E2ETestBase):
         response = self.client.get('/api/v1/audit/audit-events/', format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        results = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        data = get_response_data(response) or {}
+        results = data.get('results', data) if isinstance(data, dict) else data
         if isinstance(results, list):
             self.assertGreaterEqual(len(results), 0)  # At least our asset creation event
 
@@ -865,7 +887,8 @@ class JourneyCPO005AuditAccessLogsTests(E2ETestBase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        results = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        data = get_response_data(response) or {}
+        results = data.get('results', data) if isinstance(data, dict) else data
         if isinstance(results, list):
             # Verify all results are ASSET type
             for event in results:
@@ -883,7 +906,8 @@ class JourneyCPO005AuditAccessLogsTests(E2ETestBase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        results = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        data = get_response_data(response) or {}
+        results = data.get('results', data) if isinstance(data, dict) else data
         if isinstance(results, list):
             # Verify all results have ASSET_CREATED action
             for event in results:
@@ -907,7 +931,8 @@ class JourneyCPO005AuditAccessLogsTests(E2ETestBase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        results = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        data = get_response_data(response) or {}
+        results = data.get('results', data) if isinstance(data, dict) else data
         if isinstance(results, list):
             # Verify all results are within time range
             for event in results:
@@ -940,10 +965,11 @@ class JourneyCPO005AuditAccessLogsTests(E2ETestBase):
         # Get audit event details
         response = self.client.get(f'/api/v1/audit/audit-events/{audit_event.id}/', format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(audit_event.id))
-        self.assertEqual(response.data['resource_type'], 'ASSET')
-        self.assertEqual(response.data['action'], 'ASSET_CREATED')
-        self.assertEqual(response.data['resource_id'], str(asset_id))
+        data = get_response_data(response) or {}
+        self.assertEqual(data['id'], str(audit_event.id))
+        self.assertEqual(data['resource_type'], 'ASSET')
+        self.assertEqual(data['action'], 'ASSET_CREATED')
+        self.assertEqual(data['resource_id'], str(asset_id))
 
     def test_export_audit_logs(self):
         """Test exporting audit logs to CSV"""
@@ -1017,7 +1043,8 @@ class JourneyCPO005AuditAccessLogsTests(E2ETestBase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        results = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        data = get_response_data(response) or {}
+        results = data.get('results', data) if isinstance(data, dict) else data
         if isinstance(results, list):
             # Verify all results match all filters
             for event in results:

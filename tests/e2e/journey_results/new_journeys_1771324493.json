@@ -1,0 +1,95 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 0,
+    "in_progress": 1,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-007-761d135e",
+      "journey_name": "Create Transformation Pipeline for Data",
+      "persona": "Data Consumer",
+      "status": "in_progress",
+      "start_time": 1771324493.691112,
+      "end_time": null,
+      "duration": null,
+      "completion_rate": 80.0,
+      "success_rate": 80.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Data Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324493.6911166,
+          "end_time": 1771324493.9525516,
+          "duration": 0.26143503189086914,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324493.9525707,
+          "end_time": 1771324493.9577508,
+          "duration": 0.0051801204681396484,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Design Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324493.9577599,
+          "end_time": 1771324493.9577634,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Pipeline Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324493.9615521,
+          "end_time": 1771324493.9615564,
+          "duration": 4.291534423828125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Pipeline Preview Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324493.9655223,
+          "end_time": 1771324493.9655263,
+          "duration": 4.0531158447265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-17T10:34:53.969533"
+}

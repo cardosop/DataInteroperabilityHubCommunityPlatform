@@ -97,7 +97,7 @@ class APIKeyAuthenticationTest(TestCase):
 
         self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {plaintext_key}")
 
-        response = self.client.get("/api/v1/users/users/")
+        response = self.client.get("/api/v1/users/")
 
         # Should fail
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

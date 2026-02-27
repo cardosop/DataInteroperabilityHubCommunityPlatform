@@ -11,9 +11,13 @@ For runtime tests, set PYTEST_DOCKER_COMPOSE_RUNTIME=1 and ensure services are r
 
 IMPORTANT: Runtime tests don't require Django - they test Docker Compose directly.
 Set PYTEST_DOCKER_COMPOSE_RUNTIME=1 and unset DJANGO_SETTINGS_MODULE before running.
+
+REQUIREMENT: Docker CLI must be available (e.g. on host). Tests skip when run inside
+a container that does not have Docker (e.g. api-service-test container).
 """
 
 import json
+import shutil
 import logging
 import os
 import subprocess
@@ -227,9 +231,16 @@ class DockerComposeManager:
         self.wait_for_service_healthy(service_name)
 
 
+def _docker_available() -> bool:
+    """Check if Docker CLI is available (required for these tests)."""
+    return shutil.which("docker") is not None
+
+
 @pytest.fixture(scope="module")
 def docker_compose_file():
     """Get path to docker-compose.yml."""
+    if not _docker_available():
+        pytest.skip("Docker CLI not available (run these tests on host with Docker)")
     compose_file = project_root / "docker-compose.yml"
     assert compose_file.exists(), f"docker-compose.yml not found at {compose_file}"
     return compose_file

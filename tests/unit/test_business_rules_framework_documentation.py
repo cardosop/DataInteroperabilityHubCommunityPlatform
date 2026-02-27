@@ -47,9 +47,6 @@ from hub.apps.mesh.business_rules import (
     PolicyBusinessRules,
     TopologyBusinessRules,
 )
-from hub.apps.transformation.business_rules import (
-    TransformationBusinessRules,
-)
 from hub.apps.virtualization.business_rules import (
     VirtualizationBusinessRules,
     QueryExecutionBusinessRules,
@@ -164,7 +161,6 @@ class TestDocumentationCompleteness(SimpleTestCase):
             'DataMeshBusinessRules',
             'PolicyBusinessRules',
             'TopologyBusinessRules',
-            'TransformationBusinessRules',
             'VirtualizationBusinessRules',
             'QueryExecutionBusinessRules',
             'ResultBusinessRules',
@@ -418,7 +414,7 @@ class TestDocumentationAccuracy(SimpleTestCase):
                     'ODPSBusinessRules', 'ODPSLinkingRules', 'ODPSExportRules',
                     'ODPSNormalizationRules', 'ContractsBusinessRules',
                     'DataMeshBusinessRules', 'PolicyBusinessRules', 'TopologyBusinessRules',
-                    'TransformationBusinessRules', 'VirtualizationBusinessRules',
+                    'VirtualizationBusinessRules',
                     'QueryExecutionBusinessRules', 'ResultBusinessRules',
                     'OrchestrationBusinessRules', 'NotificationsBusinessRules',
                     'SearchBusinessRules', 'SemanticBusinessRules', 'WebhooksBusinessRules',
@@ -649,7 +645,7 @@ class TestDocumentationClassDetails(SimpleTestCase):
             'ODPSBusinessRules', 'ODPSLinkingRules', 'ODPSExportRules',
             'ODPSNormalizationRules', 'ContractsBusinessRules',
             'DataMeshBusinessRules', 'PolicyBusinessRules', 'TopologyBusinessRules',
-            'TransformationBusinessRules', 'VirtualizationBusinessRules',
+            'VirtualizationBusinessRules',
             'QueryExecutionBusinessRules', 'ResultBusinessRules',
             'OrchestrationBusinessRules', 'NotificationsBusinessRules',
             'SearchBusinessRules', 'SemanticBusinessRules', 'WebhooksBusinessRules',

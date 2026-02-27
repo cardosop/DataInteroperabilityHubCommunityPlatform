@@ -1,10 +1,18 @@
 """
-Management command to ensure E2E test users exist and have DATA_PROVIDER role.
+Management command to ensure E2E test users exist with role-specific personas.
 
-Used so Playwright/frontend E2E tests can access role-gated routes (e.g. scheduled-ingestions)
-without changing production registration behavior. Run before E2E (e.g. in docker-compose
-entrypoint or CI) so the test user exists with the correct role; frontend getTestUser() will
-then succeed via login.
+Creates users for all role personas so Playwright/frontend E2E tests can log in
+as DPO, DC, TA, PA, AUD, CPO, DEV, DMO. Run before E2E (e.g. via e2e-detect-api.sh or CI).
+
+Personas:
+- DATA_PROVIDER (DPO): e2e_test@example.com
+- DATA_CONSUMER: e2e_consumer@example.com
+- TENANT_ADMIN (TA): e2e_admin@example.com
+- PLATFORM_ADMIN (PA): e2e_platform@example.com (is_platform_admin=True)
+- AUDITOR (AUD): e2e_auditor@example.com
+- Compliance Officer (CPO): e2e_cpo@example.com (TENANT_ADMIN + DATA_PROVIDER + COMPLIANCE_OFFICER)
+- External Developer (DEV): e2e_developer@example.com (DATA_PROVIDER)
+- Data Mesh Domain Owner (DMO): e2e_dmo@example.com (TENANT_ADMIN + DATA_PROVIDER)
 """
 
 from django.core.management.base import BaseCommand
@@ -18,27 +26,83 @@ E2E_USERS = [
     {
         "email": "e2e_test@example.com",
         "password": "TestPass123",
-        "display_name": "E2E Test User",
+        "display_name": "E2E Test User (DPO)",
+        "roles": ["DATA_PROVIDER"],
+        "is_platform_admin": False,
     },
     {
         "email": "e2e_consumer@example.com",
         "password": "TestPass123",
         "display_name": "E2E Consumer User",
+        "roles": ["DATA_CONSUMER"],
+        "is_platform_admin": False,
+        "tenant_slug": "consumer",  # Separate tenant so marketplace "cannot order own listing" passes
+    },
+    {
+        "email": "e2e_admin@example.com",
+        "password": "TestPass123",
+        "display_name": "E2E Tenant Admin",
+        "roles": ["TENANT_ADMIN", "DATA_PROVIDER"],
+        "is_platform_admin": False,
+    },
+    {
+        "email": "e2e_platform@example.com",
+        "password": "TestPass123",
+        "display_name": "E2E Platform Admin",
+        "roles": [],
+        "is_platform_admin": True,
+    },
+    {
+        "email": "e2e_auditor@example.com",
+        "password": "TestPass123",
+        "display_name": "E2E Auditor",
+        "roles": ["AUDITOR"],
+        "is_platform_admin": False,
+    },
+    {
+        "email": "e2e_cpo@example.com",
+        "password": "TestPass123",
+        "display_name": "E2E Compliance Officer",
+        "roles": ["TENANT_ADMIN", "DATA_PROVIDER", "COMPLIANCE_OFFICER"],
+        "is_platform_admin": False,
+    },
+    {
+        "email": "e2e_developer@example.com",
+        "password": "TestPass123",
+        "display_name": "E2E External Developer",
+        "roles": ["DATA_PROVIDER"],
+        "is_platform_admin": False,
+    },
+    {
+        "email": "e2e_dmo@example.com",
+        "password": "TestPass123",
+        "display_name": "E2E Data Mesh Domain Owner",
+        "roles": ["TENANT_ADMIN", "DATA_PROVIDER"],
+        "is_platform_admin": False,
     },
 ]
 
 
+ROLE_DESCRIPTIONS = {
+    "DATA_PROVIDER": "Can create and manage data assets",
+    "DATA_CONSUMER": "Can consume and purchase data products",
+    "TENANT_ADMIN": "Tenant administrator",
+    "AUDITOR": "Can audit access logs and compliance",
+    "COMPLIANCE_OFFICER": "Can review access requests and compliance",
+}
+
+
 class Command(BaseCommand):
     help = (
-        "Ensure E2E test users exist with DATA_PROVIDER role so frontend E2E tests "
-        "can access role-gated routes (e.g. /scheduled-ingestions)."
+        "Ensure E2E test users exist with role-specific personas (DPO, DC, TA, PA, AUD, CPO, DEV, DMO) "
+        "so frontend E2E tests can access role-gated routes."
     )
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--email",
             type=str,
-            help="Ensure only this email (default: ensure both e2e_test and e2e_consumer)",
+            help="Ensure only this email (default: ensure all E2E persona users)",
         )
         parser.add_argument(
             "--dry-run",
@@ -59,56 +123,92 @@ class Command(BaseCommand):
             return
 
         with transaction.atomic():
-            tenant, created = Tenant.objects.get_or_create(
+            default_tenant, created = Tenant.objects.get_or_create(
                 slug="default",
                 defaults={"name": "Default Tenant", "status": TenantStatus.ACTIVE},
             )
             if created and not dry_run:
                 self.stdout.write(self.style.SUCCESS("Created default tenant."))
 
-            role, role_created = Role.objects.get_or_create(
-                tenant=tenant,
-                name="DATA_PROVIDER",
-                defaults={"description": "Can create and manage data assets"},
+            consumer_tenant, _ = Tenant.objects.get_or_create(
+                slug="consumer",
+                defaults={"name": "Consumer Tenant", "status": TenantStatus.ACTIVE},
             )
-            if role_created and not dry_run:
-                self.stdout.write(
-                    self.style.SUCCESS(f"Created DATA_PROVIDER role for tenant {tenant.slug}.")
-                )
 
             for spec in users_to_ensure:
                 email = spec["email"]
                 password = spec["password"]
                 display_name = spec["display_name"]
+                roles = spec.get("roles", [])
+                is_platform_admin = spec.get("is_platform_admin", False)
+                tenant_slug = spec.get("tenant_slug", "default")
+                tenant = consumer_tenant if tenant_slug == "consumer" else default_tenant
+
                 user, user_created = User.objects.get_or_create(
                     email=email,
                     defaults={
                         "tenant": tenant,
                         "display_name": display_name,
                         "status": UserStatus.ACTIVE,
+                        "is_platform_admin": is_platform_admin,
                     },
                 )
+                # Migrate consumer to separate tenant if they were in default (for marketplace tests)
+                if (
+                    not dry_run
+                    and not user_created
+                    and tenant_slug == "consumer"
+                    and getattr(user, "tenant_id", None) != consumer_tenant.id
+                ):
+                    user.tenant = consumer_tenant
+                    user.save(update_fields=["tenant"])
+                    self.stdout.write(
+                        self.style.SUCCESS(f"Migrated {email} to consumer tenant for marketplace tests")
+                    )
                 if user_created and not dry_run:
                     user.set_password(password)
                     user.save(update_fields=["password"])
                     self.stdout.write(self.style.SUCCESS(f"Created user: {email}"))
                 elif user_created and dry_run:
                     self.stdout.write(f"[dry-run] Would create user: {email}")
+                elif not dry_run:
+                    # Sync password for existing users (idempotent; ensures correct creds after DB restore)
+                    if not user.check_password(password):
+                        user.set_password(password)
+                        user.save(update_fields=["password"])
+                        self.stdout.write(
+                            self.style.SUCCESS(f"Synced password for existing user: {email}")
+                        )
 
-                # Use role for user's tenant (so assignment is tenant-consistent)
+                # Update is_platform_admin if changed
+                if not dry_run and user.is_platform_admin != is_platform_admin:
+                    user.is_platform_admin = is_platform_admin
+                    user.save(update_fields=["is_platform_admin"])
+                    self.stdout.write(
+                        self.style.SUCCESS(f"Updated is_platform_admin={is_platform_admin} for {email}")
+                    )
+
+                # Assign roles
                 user_tenant = user.tenant or tenant
-                role_for_user, _ = Role.objects.get_or_create(
-                    tenant=user_tenant,
-                    name="DATA_PROVIDER",
-                    defaults={"description": "Can create and manage data assets"},
-                )
-                if not dry_run:
-                    _, ur_created = UserRole.objects.get_or_create(user=user, role=role_for_user)
-                    if ur_created:
-                        self.stdout.write(self.style.SUCCESS(f"Assigned DATA_PROVIDER to {email}"))
-                else:
-                    if not UserRole.objects.filter(user=user, role=role_for_user).exists():
-                        self.stdout.write(f"[dry-run] Would assign DATA_PROVIDER to {email}")
+                for role_name in roles:
+                    role, role_created = Role.objects.get_or_create(
+                        tenant=user_tenant,
+                        name=role_name,
+                        defaults={"description": ROLE_DESCRIPTIONS.get(role_name, role_name)},
+                    )
+                    if role_created and not dry_run:
+                        self.stdout.write(
+                            self.style.SUCCESS(f"Created role {role_name} for tenant {user_tenant.slug}")
+                        )
+                    if not dry_run:
+                        _, ur_created = UserRole.objects.get_or_create(user=user, role=role)
+                        if ur_created:
+                            self.stdout.write(
+                                self.style.SUCCESS(f"Assigned {role_name} to {email}")
+                            )
+                    else:
+                        if not UserRole.objects.filter(user=user, role=role).exists():
+                            self.stdout.write(f"[dry-run] Would assign {role_name} to {email}")
 
                 # Ensure tenant has a plan assigned (required for plan limit checks)
                 if not dry_run and user_tenant:

@@ -42,7 +42,7 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.auth.models import APIKey
 from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.users.models import User, UserStatus
-from tests.e2e.conftest import TenantFactory
+from tests.e2e.conftest import TenantFactory, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
@@ -87,19 +87,26 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         # Create test tenant
         self.tenant = TenantFactory.create_tenant()
-        
-        # Create test user with ACTIVE status
-        from hub.apps.users.models import UserStatus
+
+        # Ensure tenant has active subscription so billing middleware allows writes
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+        ensure_tenant_has_active_subscription(self.tenant)
+
+        # Create test user with ACTIVE status (unique email per test run to avoid IntegrityError)
+        import uuid
+
         from django.db import transaction
-        
+        from hub.apps.users.models import UserStatus
+
         # CRITICAL: For LiveServerTestCase, we must explicitly commit the transaction
         # to ensure data is visible to the live server process which runs in a separate thread
         with transaction.atomic():
             self.user = User.objects.create_user(
-                email="e2e_test@example.com",
+                email=f"e2e_sdk_{uuid.uuid4().hex[:8]}@example.com",
                 password="testpass123",
                 tenant=self.tenant,
-                status=UserStatus.ACTIVE
+                status=UserStatus.ACTIVE,
             )
             # Force commit by accessing the user after creation
             self.user.save()
@@ -111,7 +118,17 @@ class SDKPythonE2ETest(LiveServerTestCase):
         # Verify user exists in database (ensures it's committed and visible)
         # Use a fresh query to ensure we're reading from committed data
         User.objects.get(id=self.user.id)
-        
+
+        # Assign DATA_PROVIDER role so user can create/update assets (required by assets API)
+        from hub.apps.users.models import Role, UserRole
+
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=provider_role)
+
         # Additional verification: ensure user can be authenticated
         # This helps catch transaction isolation issues early
         from django.contrib.auth import authenticate
@@ -147,10 +164,13 @@ class SDKPythonE2ETest(LiveServerTestCase):
         }, format='json')
         
         # Check if login was successful
+        login_data = get_response_data(login_response)
         if login_response.status_code != 200:
-            raise Exception(f"Login failed: {login_response.status_code} - {login_response.data}")
+            raise Exception(f"Login failed: {login_response.status_code} - {login_data}")
         
-        access_token = login_response.data['access_token']
+        access_token = (login_data or {}).get('access_token')
+        if not access_token:
+            raise Exception("Login response missing access_token")
         
         # Verify token is valid by decoding it
         from hub.apps.auth.jwt_utils import JWTTokenGenerator
@@ -198,7 +218,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             # Make authenticated request
-            assets = await client.get("/assets/assets/")
+            assets = await client.get("assets/")
             assert "results" in assets
             assert isinstance(assets["results"], list)
     
@@ -210,7 +230,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             # Make authenticated request
-            assets = await client.get("/assets/assets/")
+            assets = await client.get("assets/")
             assert "results" in assets
             assert isinstance(assets["results"], list)
     
@@ -287,7 +307,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
             
             # Request should trigger refresh and succeed with new token
             try:
-                assets = await client.get("/assets/assets/")
+                assets = await client.get("assets/")
                 
                 # Assertions (don't skip - fix root cause)
                 self.assertTrue(refresh_called, "Token refresh callback should have been called")
@@ -312,7 +332,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             with pytest.raises(UnauthorizedError) as exc_info:
-                await client.get("/assets/assets/")
+                await client.get("assets/")
             
             error = exc_info.value
             assert error.http_status == 401
@@ -328,7 +348,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             with pytest.raises(UnauthorizedError) as exc_info:
-                await client.get("/assets/assets/")
+                await client.get("assets/")
             
             error = exc_info.value
             assert error.http_status == 401
@@ -344,7 +364,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
             # Create asset via SDK (key is required)
             import uuid
             asset_key = f"sdk-test-{uuid.uuid4().hex[:8]}"
-            asset = await client.post("/assets/assets/", {
+            asset = await client.post("assets/", {
                 "key": asset_key,
                 "name": "SDK Test Asset",
                 "description": "Created via SDK",
@@ -375,7 +395,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             # Get asset via SDK
-            retrieved = await client.get(f"/assets/assets/{asset.id}/")
+            retrieved = await client.get(f"assets/{asset.id}/")
             
             assert retrieved["id"] == str(asset.id)
             assert retrieved["name"] == "Test Asset"
@@ -395,7 +415,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             # List assets via SDK
-            response = await client.get("/assets/assets/")
+            response = await client.get("assets/")
             
             assert "results" in response
             assert "count" in response
@@ -417,7 +437,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         async with DataHubClient(config) as client:
             # Get first page with limit parameter
             # Note: API may not respect limit parameter in all cases, so we check pagination behavior
-            page1 = await client.get("/assets/assets/", params={"limit": 10})
+            page1 = await client.get("assets/", params={"limit": 10})
             
             # Should have results
             assert len(page1["results"]) > 0
@@ -471,7 +491,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             # Update via SDK
-            updated = await client.patch(f"/assets/assets/{asset.id}/", {
+            updated = await client.patch(f"assets/{asset.id}/", {
                 "name": "Updated Name",
                 "description": "Updated description"
             })
@@ -501,7 +521,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         async with DataHubClient(config) as client:
             # Delete via SDK (may return 204 No Content, which is fine)
             try:
-                result = await client.delete(f"/assets/assets/{asset_id}/")
+                result = await client.delete(f"assets/{asset_id}/")
                 # Some APIs return empty response on delete, which is OK
             except Exception as e:
                 # If it's a JSON decode error from empty response, that's expected
@@ -547,7 +567,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             # Create contract via SDK
-            contract = await client.post("/contracts/contracts/", {
+            contract = await client.post("contracts/", {
                 "asset_id": str(asset.id),
                 "original_raw": '{"id": "test", "name": "Test Contract", "schema": {"fields": [{"name": "col1", "type": "string"}]}}',
                 "original_format": "JSON",
@@ -571,7 +591,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             with pytest.raises(ValidationError) as exc_info:
-                await client.post("/assets/assets/", {
+                await client.post("assets/", {
                     "name": "",  # Invalid: empty name
                 })
             
@@ -586,7 +606,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             with pytest.raises(NotFoundError) as exc_info:
-                await client.get("/assets/assets/00000000-0000-0000-0000-000000000000/")
+                await client.get("assets/00000000-0000-0000-0000-000000000000/")
             
             error = exc_info.value
             assert error.http_status == 404
@@ -602,7 +622,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             with pytest.raises(UnauthorizedError) as exc_info:
-                await client.get("/assets/assets/")
+                await client.get("assets/")
             
             error = exc_info.value
             assert error.http_status == 401
@@ -637,7 +657,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         async with DataHubClient(config) as client:
             # Should get 404 (not revealing existence) due to tenant isolation
             with pytest.raises(NotFoundError):
-                await client.get(f"/assets/assets/{other_asset.id}/")
+                await client.get(f"assets/{other_asset.id}/")
     
     # Advanced Features Tests
     
@@ -653,7 +673,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             # Initialize upload
-            file_info = await client.post("/files/files/init/", {
+            file_info = await client.post("files/init/", {
                 "name": "test.csv",
                 "size": 1024,
                 "content_type": "text/csv"
@@ -674,6 +694,11 @@ class SDKPythonE2ETest(LiveServerTestCase):
                         headers={"Content-Type": "text/csv"}
                     )
                     upload_response.raise_for_status()
+            except httpx.ConnectError:
+                pytest.skip(
+                    "Presigned upload URL host not reachable from test runner "
+                    "(e.g. localhost/port not exposed when tests run in Docker)"
+                )
             except httpx.HTTPStatusError as e:
                 if e.response.status_code in [400, 403, 404, 500, 503]:
                     pytest.skip(f"MinIO upload failed (status {e.response.status_code})")
@@ -683,7 +708,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
             import hashlib
             content_sha256 = hashlib.sha256(test_content).hexdigest()
             try:
-                completed = await client.post(f"/files/files/{file_id}/complete/", {
+                completed = await client.post(f"files/{file_id}/complete/", {
                     "content_sha256": content_sha256
                 })
                 # Handle both dict and string responses
@@ -749,7 +774,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             # Filter by status
-            response = await client.get("/assets/assets/", params={"status": "ACTIVE"})
+            response = await client.get("assets/", params={"status": "ACTIVE"})
             
             assert "results" in response
             # All results should be ACTIVE (or at least the one we created should be there)
@@ -769,7 +794,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         async with DataHubClient(config) as client:
             # Make request with custom header
             response = await client.get(
-                "/assets/assets/",
+                "assets/",
                 headers={"X-Custom-Header": "test-value"}
             )
             
@@ -790,7 +815,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             # Normal request should work
-            assets = await client.get("/assets/assets/")
+            assets = await client.get("assets/")
             assert "results" in assets
             
             # Verify retry config is set
@@ -809,7 +834,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
         
         async with DataHubClient(config) as client:
             # Normal request should work
-            assets = await client.get("/assets/assets/")
+            assets = await client.get("assets/")
             assert "results" in assets
             
             # Verify timeout config is set

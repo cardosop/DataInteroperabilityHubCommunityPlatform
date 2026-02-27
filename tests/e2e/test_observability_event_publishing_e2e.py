@@ -27,14 +27,23 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.users.models import UserStatus
 
-# Try to import E2ETestBase, fallback to TestCase if not available
+# Try to import E2ETestBase and get_response_data, fallback to TestCase if not available
 try:
-    from tests.e2e.conftest import E2ETestBase
+    from tests.e2e.conftest import E2ETestBase, get_response_data
 except ImportError:
-    # Fallback: create minimal base class
+    # Fallback: create minimal base class and get_response_data
     from tests.factories import TenantFactory
 
     User = get_user_model()
+
+    def get_response_data(response):
+        if hasattr(response, "data"):
+            return response.data
+        try:
+            import json
+            return json.loads(response.content) if response.content else None
+        except (TypeError, AttributeError, ValueError):
+            return None
 
     class E2ETestBase(TestCase):
         """Minimal base class for E2E tests when conftest is not available."""
@@ -103,8 +112,9 @@ class ObservabilityEventPublishingE2ETest(E2ETestBase):
 
         # Verify API response
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("results", response.data)
-        self.assertIn("summary", response.data)
+        data = get_response_data(response) or {}
+        self.assertIn("results", data)
+        self.assertIn("summary", data)
 
         # Verify trace event was published (if trace context available)
         # Note: Trace events are only published when OpenTelemetry trace context is available
@@ -133,8 +143,9 @@ class ObservabilityEventPublishingE2ETest(E2ETestBase):
 
         # Verify API response
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("results", response.data)
-        self.assertIn("summary", response.data)
+        data = get_response_data(response) or {}
+        self.assertIn("results", data)
+        self.assertIn("summary", data)
 
         # Verify trace event was published (if trace context available)
         trace_events = Event.objects.filter(
@@ -156,8 +167,9 @@ class ObservabilityEventPublishingE2ETest(E2ETestBase):
 
         # Verify API response
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("results", response.data)
-        self.assertIn("summary", response.data)
+        data = get_response_data(response) or {}
+        self.assertIn("results", data)
+        self.assertIn("summary", data)
 
         # Verify trace event was published (if trace context available)
         trace_events = Event.objects.filter(
@@ -189,8 +201,9 @@ class ObservabilityEventPublishingE2ETest(E2ETestBase):
 
         # Verify API response
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn("id", response.data)
-        self.assertIn("recorded_at", response.data)
+        data = get_response_data(response) or {}
+        self.assertIn("id", data)
+        self.assertIn("recorded_at", data)
 
         # Verify metric event was published
         metric_events = Event.objects.filter(
@@ -226,7 +239,8 @@ class ObservabilityEventPublishingE2ETest(E2ETestBase):
 
         # Verify API response
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(response.data.get("is_stale"))
+        data = get_response_data(response) or {}
+        self.assertTrue(data.get("is_stale"))
 
         # Verify alert event was published
         alert_events = Event.objects.filter(
@@ -320,7 +334,8 @@ class ObservabilityEventPublishingE2ETest(E2ETestBase):
 
         # Verify API response
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn("id", response.data)
+        data = get_response_data(response) or {}
+        self.assertIn("id", data)
 
         # Verify metric event was published
         metric_events = Event.objects.filter(

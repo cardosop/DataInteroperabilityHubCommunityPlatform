@@ -151,7 +151,7 @@ The Prefect worker runs `scheduled_ingestion_full_flow` (HTTP-only; no Django in
 
 **Worker credentials for connectors:** If a connector needs real credentials (e.g. S3 `access_key_id`/`secret_access_key`), use one of:
 
-- **Prefect Blocks (optional):** Store credentials in a Prefect Block keyed by `scheduled_ingestion/{id}/source_config` and merge into the masked config in the flow before discovery/download. Document block schema in runbooks.
+- **Prefect Blocks (optional):** Store credentials in a Prefect Block keyed by `scheduled_ingestion/{id}/source_config` and merge into the masked config in the flow before discovery/download. See [Real Scheduled Ingestion/Export E2E runbook](runbooks/REAL_SCHEDULED_INGESTION_EXPORT_E2E.md) for Prefect Blocks, env vars, connector support, and env-gated real E2E tests (`real_scheduled_e2e` marker, `REAL_SCHEDULED_E2E=1`).
 - **Environment / config from hub:** For public or env-based auth (e.g. IAM role for S3, or HTTP with no auth), the masked config may be sufficient; or pass credentials via environment variables in the worker and merge in the flow.
 
 Discovery and filter logic match current scheduled ingestion semantics (incremental, file pattern); state is read from hub config (`ingestion_state`).

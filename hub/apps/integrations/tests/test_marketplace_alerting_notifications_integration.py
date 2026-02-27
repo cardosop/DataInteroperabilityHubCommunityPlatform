@@ -9,6 +9,10 @@ Tests that:
 - Notification templates are correct
 
 All tests use real services (no mocks/stubs) and run against Docker Compose instances.
+
+Tests that require Prometheus (test_marketplace_alerts_loaded_in_prometheus and related)
+skip when Prometheus is not reachable (e.g. not started in test stack). To run them,
+ensure Prometheus is available at http://localhost:9090 or http://prometheus:9090.
 """
 
 import time
@@ -59,8 +63,13 @@ class MarketplaceAlertingIntegrationTest(TestCase):
 
     def test_marketplace_alerts_loaded_in_prometheus(self):
         """Test that marketplace alerts are loaded in Prometheus"""
-        # Try both localhost (if running outside docker) and service name (if running in docker)
-        prometheus_urls = ["http://localhost:9090", "http://prometheus:9090"]
+        # Try docker-compose.test.yml name first, then localhost (mapped port), then main compose name
+        prometheus_urls = [
+            "http://prometheus-test:9090",
+            "http://localhost:9091",
+            "http://localhost:9090",
+            "http://prometheus:9090",
+        ]
         prometheus_url = None
         for url in prometheus_urls:
             try:
@@ -143,8 +152,13 @@ class MarketplaceAlertingIntegrationTest(TestCase):
 
     def test_connection_test_failure_alert_rule(self):
         """Test that connection test failure alert rule is evaluable"""
-        # Try both localhost (if running outside docker) and service name (if running in docker)
-        prometheus_urls = ["http://localhost:9090", "http://prometheus:9090"]
+        # Try docker-compose.test.yml name first, then localhost, then main compose name
+        prometheus_urls = [
+            "http://prometheus-test:9090",
+            "http://localhost:9091",
+            "http://localhost:9090",
+            "http://prometheus:9090",
+        ]
         prometheus_url = None
         for url in prometheus_urls:
             try:
@@ -174,8 +188,13 @@ class MarketplaceAlertingIntegrationTest(TestCase):
 
     def test_sync_job_failure_alert_rule(self):
         """Test that sync job failure alert rule is evaluable"""
-        # Try both localhost (if running outside docker) and service name (if running in docker)
-        prometheus_urls = ["http://localhost:9090", "http://prometheus:9090"]
+        # Try docker-compose.test.yml name first, then localhost, then main compose name
+        prometheus_urls = [
+            "http://prometheus-test:9090",
+            "http://localhost:9091",
+            "http://localhost:9090",
+            "http://prometheus:9090",
+        ]
         prometheus_url = None
         for url in prometheus_urls:
             try:
@@ -464,42 +483,34 @@ class MarketplaceNotificationIntegrationTest(TestCase):
         self.assertTrue(hasattr(send_marketplace_sync_completion_email, "delay"))
 
     def test_notification_tasks_with_none_parameters(self):
-        """Test notification tasks error handling with None parameters"""
+        """Test notification tasks raise ValueError for None required parameters"""
         from hub.apps.notifications.tasks import (
             send_marketplace_connection_test_failure_email,
             send_marketplace_sync_completion_email,
             send_marketplace_sync_failure_email,
         )
 
-        # Test with None parameters - should handle gracefully or raise appropriate errors
-        try:
-            # These may raise ValueError or TypeError if None is not allowed
-            send_marketplace_sync_completion_email(None, None)  # type: ignore[arg-type]
-        except (ValueError, TypeError):
-            # Expected if validation is strict
-            pass
+        # sync_job_id is required
+        with self.assertRaises((ValueError, TypeError)):
+            send_marketplace_sync_completion_email(None)  # type: ignore[arg-type]
 
-        try:
-            send_marketplace_sync_failure_email(None, None, None)  # type: ignore[arg-type]
-        except (ValueError, TypeError):
-            # Expected if validation is strict
-            pass
+        # sync_job_id is required
+        with self.assertRaises((ValueError, TypeError)):
+            send_marketplace_sync_failure_email(None)  # type: ignore[arg-type]
 
-        try:
+        # connection_id and error_message are required
+        with self.assertRaises((ValueError, TypeError)):
             send_marketplace_connection_test_failure_email(None, None)  # type: ignore[arg-type]
-        except (ValueError, TypeError):
-            # Expected if validation is strict
-            pass
 
     def test_sync_job_creation_with_invalid_connection(self):
         """Test sync job creation error handling with invalid connection"""
         service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id), request_id="test-request-123"
         )
-        # Create a connection that doesn't exist
+        # Create a connection that doesn't exist (no DB record)
         with self.assertRaises(Exception):
             service.sync_from_marketplace(
-                connection_id="invalid-connection-id",
+                connection_id="00000000-0000-0000-0000-000000000000",
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
             )
@@ -511,7 +522,7 @@ class MarketplaceNotificationIntegrationTest(TestCase):
         )
         connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
-            marketplace_type=MarketplaceType.CKAN_INSTANCE,
+            marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             name="Test Connection",
             config={"base_url": "https://data.gov"},
         )
@@ -530,7 +541,7 @@ class MarketplaceNotificationIntegrationTest(TestCase):
         )
         connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
-            marketplace_type=MarketplaceType.CKAN_INSTANCE,
+            marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             name="Test Connection",
             config={"base_url": "https://data.gov"},
         )

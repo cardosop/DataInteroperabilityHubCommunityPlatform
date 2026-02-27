@@ -584,28 +584,29 @@ class JobSchedulingTest(TestCase):
         # but we verify the scheduling mechanism works
 
     def test_scheduled_recurring_jobs(self):
-        """Test scheduled/recurring jobs"""
+        """Test scheduled/recurring jobs - jobs created on a schedule get enqueued with timestamps."""
         if not self.redis_available:
             self.skipTest("Redis queue not available in test environment")
         # Recurring jobs are typically handled by external schedulers (e.g., cron, Celery Beat)
-        # For our system, we test that jobs can be created on a schedule
+        # For our system, we test that jobs can be created on a schedule and enqueued.
+        # Use ODPS_NORMALIZATION (not SCHEDULED_INGESTION) - SCHEDULED_INGESTION is never
+        # enqueued to RQ; only Prefect runs it, so get_job_enqueue_timestamp would be None.
 
-        # Create a job that would be scheduled repeatedly
-        # In practice, this would be triggered by a scheduler (deterministic time per 3.3.2)
+        # Create jobs that would be scheduled repeatedly (deterministic time per 3.3.2)
         with freezegun.freeze_time(timezone.now()) as frozen:
             job1 = create_job(
                 tenant=self.tenant,
                 user=self.user,
-                job_type=JobType.SCHEDULED_INGESTION.value,
-                resource_type="DATASET",
+                job_type=JobType.ODPS_NORMALIZATION.value,
+                resource_type="CONTRACT",
                 resource_id=str(uuid.uuid4()),
             )
             frozen.tick(delta=timedelta(seconds=1))
             job2 = create_job(
                 tenant=self.tenant,
                 user=self.user,
-                job_type=JobType.SCHEDULED_INGESTION.value,
-                resource_type="DATASET",
+                job_type=JobType.ODPS_NORMALIZATION.value,
+                resource_type="CONTRACT",
                 resource_id=str(uuid.uuid4()),
             )
 

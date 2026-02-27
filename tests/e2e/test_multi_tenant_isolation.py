@@ -21,7 +21,7 @@ from hub.apps.files.models import File
 from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.marketplace.models import Entitlement, EntitlementStatus, Listing, ListingStatus, PricingModel
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
@@ -34,18 +34,26 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
         """Set up test fixtures"""
         super().setUp()
         
-        # Create another tenant
+        # Create another tenant (with active subscription and role so create_asset works when switched to other_user)
         self.other_tenant = Tenant.objects.create(
             name='Other Tenant',
             slug='other-tenant',
             kyc_status=KYCStatus.VERIFIED
         )
-        from hub.apps.users.models import User
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.other_tenant)
+        from hub.apps.users.models import User, Role, UserRole
         self.other_user = User.objects.create_user(
             email='other@example.com',
             password='testpass123',
             tenant=self.other_tenant
         )
+        other_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.other_tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.other_user, role=other_admin_role)
     
     def test_asset_tenant_isolation(self):
         """Test assets are tenant-isolated"""
@@ -137,8 +145,9 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
         
         # List assets (should only see other tenant's assets)
         response = self.client.get('/api/v1/assets/')
+        data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        asset_ids = {a['id'] for a in response.data['results']}
+        asset_ids = {a['id'] for a in data.get('results', [])}
         self.assertIn(str(asset_id3), asset_ids)
         self.assertNotIn(str(asset_id1), asset_ids)
         self.assertNotIn(str(asset_id2), asset_ids)
@@ -219,7 +228,8 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
         
         # Search (should only see current tenant's assets)
         response = self.client.get('/api/v1/assets/?search=Iso')
+        data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        asset_ids = {a['id'] for a in response.data['results']}
+        asset_ids = {a['id'] for a in data.get('results', [])}
         self.assertIn(str(asset_id2), asset_ids)
         self.assertNotIn(str(asset_id1), asset_ids)

@@ -400,6 +400,15 @@ class AssetService(BaseService, AssetEventPublisher):
         def _delete():
             asset = self.get_resource_or_raise(Asset, asset_id, tenant_id=effective_tenant_id)
 
+            # Unpublish any marketplace listings BEFORE retirement validation.
+            # Retirement validation blocks if there are active listings; unpublishing first
+            # allows retirement to proceed and matches expected behavior (retire unpublishes).
+            from hub.apps.marketplace.models import Listing, ListingStatus
+
+            Listing.objects.filter(asset=asset, status=ListingStatus.PUBLISHED).update(
+                status=ListingStatus.UNLISTED
+            )
+
             # Run business rules for deletion (retirement requirements)
             rules = AssetsBusinessRules(
                 tenant_id=effective_tenant_id,
@@ -419,13 +428,6 @@ class AssetService(BaseService, AssetEventPublisher):
                 )
 
             asset.status = AssetStatus.RETIRED
-
-            # Unpublish any marketplace listings for this asset
-            from hub.apps.marketplace.models import Listing, ListingStatus
-
-            Listing.objects.filter(asset=asset, status=ListingStatus.PUBLISHED).update(
-                status=ListingStatus.UNLISTED
-            )
             asset.save()
 
         return self.execute_with_metrics(

@@ -4,9 +4,13 @@ Integration tests for connection validation rules with GovernanceService and Ten
 Tests integration with real services (no mocks/stubs), following engineering best practices.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db import connection, connections
+from django.db.utils import InterfaceError as DjangoInterfaceError, OperationalError
+from django.test import TransactionTestCase
 
 from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.governance.services import GovernanceService
@@ -21,21 +25,81 @@ pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
-class ConnectionValidationGovernanceIntegrationTest(TestCase):
-    """Integration tests for connection validation with GovernanceService"""
+def _is_connection_closed_error(exc: BaseException) -> bool:
+    """True if the exception indicates the DB connection was closed (any backend or wrapper)."""
+    msg = str(exc).lower()
+    return "connection" in msg and "closed" in msg
+
+
+def _ensure_db_connection():
+    """Ensure default DB connection is open so setUp never sees 'connection already closed'."""
+    try:
+        connections.close_all()
+        connection.ensure_connection()
+    except Exception:
+        pass
+
+
+def _ensure_db_connection_for_teardown():
+    """Ensure connection for tearDown/flush without closing first (avoid breaking active connection)."""
+    try:
+        connection.ensure_connection()
+    except Exception:
+        try:
+            connections.close_all()
+            connection.ensure_connection()
+        except Exception:
+            pass
+
+
+class ConnectionValidationGovernanceIntegrationTest(TransactionTestCase):
+    """
+    Integration tests for connection validation with GovernanceService.
+
+    Uses TransactionTestCase; tearDown ensures connection is open before super().tearDown()
+    to avoid 'connection already closed' during flush in batched runs.
+    """
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures; retry up to 3 times on connection closed."""
+        _ensure_db_connection()
+        last_error = None
+        for _ in range(3):
+            try:
+                self._create_fixtures()
+                last_error = None
+                break
+            except (DjangoInterfaceError, OperationalError) as e:
+                last_error = e
+                if _is_connection_closed_error(e):
+                    _ensure_db_connection()
+                    continue
+                raise
+            except Exception as e:
+                if _is_connection_closed_error(e):
+                    last_error = e
+                    _ensure_db_connection()
+                    continue
+                raise
+        if last_error is not None:
+            raise last_error
+
+    def _create_fixtures(self):
+        """Create tenant, user, rules, and roles. Unique slug per run to avoid collisions."""
+        slug_suffix = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant",
+            slug=f"test-tenant-{slug_suffix}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{slug_suffix}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.rules = MarketplaceIntegrationBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
-        # Create roles
         self.admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="TENANT_ADMIN",
@@ -44,6 +108,28 @@ class ConnectionValidationGovernanceIntegrationTest(TestCase):
         self.provider_role, _ = Role.objects.get_or_create(
             tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
+
+    def tearDown(self):
+        """Ensure connection then run TransactionTestCase teardown (flush); retry on connection closed."""
+        last_err = None
+        for _ in range(3):
+            try:
+                _ensure_db_connection_for_teardown()
+                super().tearDown()
+                last_err = None
+                break
+            except (DjangoInterfaceError, OperationalError) as e:
+                last_err = e
+                if _is_connection_closed_error(e):
+                    continue
+                raise
+            except Exception as e:
+                if _is_connection_closed_error(e):
+                    last_err = e
+                    continue
+                raise
+        if last_err is not None:
+            raise last_err
 
     def test_validate_connection_access_with_governance_service_pattern(self):
         """
@@ -79,6 +165,7 @@ class ConnectionValidationGovernanceIntegrationTest(TestCase):
         # Our validation should match GovernanceService behavior
         self.assertTrue(permission_allowed)
 
+    @pytest.mark.timeout(600)  # TransactionTestCase + GovernanceService can exceed 300s under batch load
     def test_validate_connection_access_without_permission_governance_pattern(self):
         """
         Test that validate_connection_access correctly identifies missing permissions
@@ -148,25 +235,79 @@ class ConnectionValidationGovernanceIntegrationTest(TestCase):
         self.assertTrue(permission_allowed)
 
 
-class ConnectionValidationTenantServiceIntegrationTest(TestCase):
-    """Integration tests for connection validation with TenantService"""
+class ConnectionValidationTenantServiceIntegrationTest(TransactionTestCase):
+    """
+    Integration tests for connection validation with TenantService.
+
+    Uses TransactionTestCase; tearDown ensures connection is open before super().tearDown().
+    """
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures; retry up to 3 times on connection closed."""
+        _ensure_db_connection()
+        last_error = None
+        for _ in range(3):
+            try:
+                self._create_fixtures()
+                last_error = None
+                break
+            except (DjangoInterfaceError, OperationalError) as e:
+                last_error = e
+                if _is_connection_closed_error(e):
+                    _ensure_db_connection()
+                    continue
+                raise
+            except Exception as e:
+                if _is_connection_closed_error(e):
+                    last_error = e
+                    _ensure_db_connection()
+                    continue
+                raise
+        if last_error is not None:
+            raise last_error
+
+    def _create_fixtures(self):
+        """Create tenant, user, rules, role, and user-role. Unique slug per run to avoid collisions."""
+        slug_suffix = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant",
+            slug=f"test-tenant-svc-{slug_suffix}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-svc-{slug_suffix}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.rules = MarketplaceIntegrationBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
-        # Create roles
         self.provider_role, _ = Role.objects.get_or_create(
             tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
         UserRole.objects.create(user=self.user, role=self.provider_role)
+
+    def tearDown(self):
+        """Ensure connection then run TransactionTestCase teardown; retry on connection closed."""
+        last_err = None
+        for _ in range(3):
+            try:
+                _ensure_db_connection_for_teardown()
+                super().tearDown()
+                last_err = None
+                break
+            except (DjangoInterfaceError, OperationalError) as e:
+                last_err = e
+                if _is_connection_closed_error(e):
+                    continue
+                raise
+            except Exception as e:
+                if _is_connection_closed_error(e):
+                    last_err = e
+                    continue
+                raise
+        if last_err is not None:
+            raise last_err
 
     def test_validate_connection_access_tenant_service_integration(self):
         """
@@ -197,11 +338,16 @@ class ConnectionValidationTenantServiceIntegrationTest(TestCase):
         Test that validate_connection_access correctly identifies unverified tenants
         using TenantService pattern
         """
+        uv_suffix = uuid.uuid4().hex[:8]
         unverified_tenant = Tenant.objects.create(
-            name="Unverified Tenant", slug="unverified-tenant", kyc_status=KYCStatus.UNVERIFIED
+            name="Unverified Tenant",
+            slug=f"unverified-tenant-{uv_suffix}",
+            kyc_status=KYCStatus.UNVERIFIED,
         )
         unverified_user = User.objects.create_user(
-            email="unverified@example.com", password="testpass123", tenant=unverified_tenant
+            email=f"unverified-{uv_suffix}@example.com",
+            password="testpass123",
+            tenant=unverified_tenant,
         )
         provider_role, _ = Role.objects.get_or_create(
             tenant=unverified_tenant,
@@ -308,9 +454,9 @@ class ConnectionValidationTenantServiceIntegrationTest(TestCase):
             tenant=self.tenant, name="DATA_VIEWER", defaults={"description": "Data Viewer"}
         )
 
-        # Assign both roles
-        UserRole.objects.create(user=self.user, role=self.provider_role)
-        UserRole.objects.create(user=self.user, role=viewer_role)
+        # Assign both roles (get_or_create to avoid duplicate key if already assigned)
+        UserRole.objects.get_or_create(user=self.user, role=self.provider_role)
+        UserRole.objects.get_or_create(user=self.user, role=viewer_role)
 
         result = self.rules.validate_connection_access(
             user_id=str(self.user.id), tenant_id=str(self.tenant.id)

@@ -17,7 +17,7 @@ router.register(r"config", TenantConfigViewSet, basename="tenant-config")
 urlpatterns = [
     path("", include(router.urls)),
     path(
-        "tenants/<uuid:tenant_id>/config/",
+        "<uuid:tenant_id>/config/",
         TenantConfigViewSet.as_view({"get": "retrieve", "patch": "partial_update"}),
         name="tenant-config-detail",
     ),

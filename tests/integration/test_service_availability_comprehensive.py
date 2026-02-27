@@ -32,11 +32,12 @@ except ImportError:
     REDIS_AVAILABLE = False
 
 try:
-    from minio import Minio
-    from minio.error import S3Error
-    MINIO_AVAILABLE = True
+    import boto3
+    from botocore.config import Config as BotocoreConfig
+    from botocore.exceptions import ClientError, EndpointConnectionError
+    BOTO3_AVAILABLE = True
 except ImportError:
-    MINIO_AVAILABLE = False
+    BOTO3_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -340,48 +341,51 @@ class ServiceAvailabilityChecker:
         Returns:
             ServiceCheckResult with check results
         """
-        if not MINIO_AVAILABLE:
+        if not BOTO3_AVAILABLE:
             return ServiceCheckResult(
                 service_name=config.name,
                 status=ServiceStatus.ERROR,
-                error_message="MinIO library not available"
+                error_message="boto3 not available for S3/MinIO connectivity check"
             )
 
         retries = retries or config.retries or self.default_retries
         retry_delay = retry_delay or config.retry_delay or self.default_retry_delay
 
         # Get MinIO credentials from settings or environment
-        access_key = os.getenv("MINIO_ROOT_USER", getattr(settings, "MINIO_ROOT_USER", "minio"))
-        secret_key = os.getenv("MINIO_ROOT_PASSWORD", getattr(settings, "MINIO_ROOT_PASSWORD", "minio123"))
-        secure = config.use_https
+        access_key = os.getenv("MINIO_ROOT_USER", os.getenv("AWS_ACCESS_KEY_ID", getattr(settings, "MINIO_ROOT_USER", "minio")))
+        secret_key = os.getenv("MINIO_ROOT_PASSWORD", os.getenv("AWS_SECRET_ACCESS_KEY", getattr(settings, "MINIO_ROOT_PASSWORD", "minio123")))
+        endpoint_url = f"http{'s' if config.use_https else ''}://{config.host}:{config.port}"
 
         last_error = None
 
         for attempt in range(retries):
             try:
                 start_time = time.time()
-                client = Minio(
-                    f"{config.host}:{config.port}",
-                    access_key=access_key,
-                    secret_key=secret_key,
-                    secure=secure
+                client = boto3.client(
+                    "s3",
+                    endpoint_url=endpoint_url,
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                    region_name=os.getenv("AWS_REGION", "us-east-1"),
+                    config=BotocoreConfig(signature_version="s3v4", connect_timeout=config.timeout)
                 )
 
                 # Try to list buckets (lightweight operation)
-                buckets = client.list_buckets()
+                response = client.list_buckets()
                 response_time_ms = (time.time() - start_time) * 1000
+                bucket_count = len(response.get("Buckets", []))
 
                 return ServiceCheckResult(
                     service_name=config.name,
                     status=ServiceStatus.HEALTHY,
                     response_time_ms=response_time_ms,
                     details={
-                        "bucket_count": len(list(buckets)),
+                        "bucket_count": bucket_count,
                         "endpoint": f"{config.host}:{config.port}"
                     }
                 )
 
-            except S3Error as e:
+            except (ClientError, EndpointConnectionError) as e:
                 last_error = f"MinIO S3 error: {str(e)}"
             except Exception as e:
                 last_error = f"MinIO error: {str(e)}"
@@ -885,14 +889,17 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
         self.assertIsNotNone(result.response_time_ms)
 
     def test_minio_connectivity(self):
-        """Test MinIO object storage connectivity"""
-        if not MINIO_AVAILABLE:
-            self.skipTest("MinIO library not available")
+        """Test MinIO object storage connectivity (uses boto3 S3 client)"""
+        if not BOTO3_AVAILABLE:
+            self.skipTest("boto3 not available for S3/MinIO connectivity check")
 
+        # Use MINIO_HOST when in Docker (minio-test); else base_host
+        minio_host = os.getenv("MINIO_HOST", self.base_host)
+        minio_port = int(os.getenv("MINIO_PORT", "9000"))
         config = ServiceConfig(
             name="minio",
-            host=self.base_host,
-            port=9000,
+            host=minio_host,
+            port=minio_port,
             health_path="/minio/health/live",
             timeout=10,
             retries=3,

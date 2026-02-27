@@ -9,6 +9,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 
 from hub.apps.semantic.service_client import SemanticServiceClient
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.contracts.models import Contract, OriginalSpecType, OriginalFormat, NormalizationStatus
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
 from hub.apps.semantic.utils import map_contract_to_semantic
@@ -23,7 +24,7 @@ def check_semantic_service_available():
     """Check if semantic service is available"""
     try:
         client = SemanticServiceClient()
-        is_healthy, fuseki_status = client.health_check()
+        is_healthy, fuseki_status = client.health_check(use_cache=False)
         # Service is available only if health check returns healthy status
         # fuseki_status can be "connected", "disconnected", "timeout", "unreachable", or "unknown"
         # We only consider the service available if is_healthy is True
@@ -36,15 +37,22 @@ def check_semantic_service_available():
         return False
 
 
-@pytest.mark.skipif(
-    not check_semantic_service_available(),
-    reason="Semantic service not available"
-)
+def _skip_if_circuit_breaker(result):
+    """Skip test when semantic service returns circuit breaker (unavailable at runtime)."""
+    if isinstance(result, dict) and result.get("error") and "circuit breaker" in str(result.get("error", "")).lower():
+        pytest.skip("Semantic service unavailable (circuit breaker open)")
+    if isinstance(result, str) and "circuit breaker" in result.lower():
+        pytest.skip("Semantic service unavailable (circuit breaker open)")
+
+
 class SPARQLStandardVocabulariesTest(TestCase):
-    """Test SPARQL queries with standard vocabularies"""
-    
+    """Test SPARQL queries with standard vocabularies. Skips at runtime if semantic service unavailable."""
+
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures. Check semantic service at runtime (not collection) so batch runs can pass when service is up."""
+        reset_circuit_breaker_by_name("semantic-service")
+        if not check_semantic_service_available():
+            pytest.skip("Semantic service not available")
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             slug="test-tenant",
@@ -131,7 +139,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         """
         
         result = self.client.query_sparql(query, output_format="json")
-        
+        _skip_if_circuit_breaker(result)
         # Should not have error
         self.assertNotIn("error", result)
         # Should have results or empty results (depending on data)
@@ -154,7 +162,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         """
         
         result = self.client.query_sparql(query, output_format="json")
-        
+        _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
     
@@ -175,7 +183,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         """
         
         result = self.client.query_sparql(query, output_format="json")
-        
+        _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
     
@@ -196,7 +204,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         """
         
         result = self.client.query_sparql(query, output_format="json")
-        
+        _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
     
@@ -218,7 +226,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         """
         
         result = self.client.query_sparql(query, output_format="json")
-        
+        _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
     
@@ -240,7 +248,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         """
         
         result = self.client.query_sparql(query, output_format="json")
-        
+        _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
     
@@ -262,7 +270,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         """
         
         result = self.client.query_sparql(query, output_format="json")
-        
+        _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
     
@@ -289,7 +297,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         """
         
         result = self.client.query_sparql(query, output_format="json")
-        
+        _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
     
@@ -311,7 +319,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         """
         
         result = self.client.query_sparql(query, output_format="json")
-        
+        _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
     
@@ -331,7 +339,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         """
         
         result = self.client.query_sparql(query, output_format="json")
-        
+        _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
     
@@ -353,7 +361,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         """
         
         result = self.client.query_sparql(query, output_format="json")
-        
+        _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
     
@@ -374,13 +382,14 @@ class SPARQLStandardVocabulariesTest(TestCase):
         
         # Test JSON format
         result_json = self.client.query_sparql(query, output_format="json")
+        _skip_if_circuit_breaker(result_json)
         self.assertNotIn("error", result_json)
-        
         # Test CSV format
         result_csv = self.client.query_sparql(query, output_format="csv")
+        _skip_if_circuit_breaker(result_csv)
         self.assertNotIn("error", result_csv)
-        
         # Test Turtle format
         result_turtle = self.client.query_sparql(query, output_format="turtle")
+        _skip_if_circuit_breaker(result_turtle)
         self.assertNotIn("error", result_turtle)
 

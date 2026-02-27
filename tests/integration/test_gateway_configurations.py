@@ -43,33 +43,35 @@ class TestTraefikConfiguration:
         assert self.routes_file.is_file(), "Traefik routes file should be a file"
 
     def test_compliance_service_route_configured(self):
-        """Test that compliance service route is configured correctly"""
+        """Test that compliance service is configured (API Gateway architecture)"""
         if not self.routes_file.exists():
             pytest.skip("Traefik routes file not found")
 
         content = self.routes_file.read_text(encoding='utf-8')
 
-        # Should have compliance-service router
-        assert 'compliance-service:' in content, "Should have compliance-service router"
-        assert 'PathPrefix(`/api/v1/compliance`)' in content, (
-            "Compliance service should use /api/v1/compliance route"
+        # Architecture: Traefik routes /api/v1 to api-gateway; API Gateway routes internally
+        assert 'api-gateway' in content, "API gateway route should exist"
+        assert 'PathPrefix(`/api/v1`)' in content, (
+            "API gateway should use PathPrefix /api/v1"
         )
+        assert 'compliance-service:' in content, "Should have compliance service definition"
         assert '/api/v1/compliance/compliance-runs' not in content, (
             "Should not use old compliance-runs pattern"
         )
 
     def test_dq_service_route_configured(self):
-        """Test that DQ service route is configured correctly"""
+        """Test that DQ service is configured (API Gateway architecture)"""
         if not self.routes_file.exists():
             pytest.skip("Traefik routes file not found")
 
         content = self.routes_file.read_text(encoding='utf-8')
 
-        # Should have dq-service router
-        assert 'dq-service:' in content, "Should have dq-service router"
-        assert 'PathPrefix(`/api/v1/dq`)' in content, (
-            "DQ service should use /api/v1/dq route"
+        # Architecture: Traefik routes /api/v1 to api-gateway; API Gateway routes internally
+        assert 'api-gateway' in content, "API gateway route should exist"
+        assert 'PathPrefix(`/api/v1`)' in content, (
+            "API gateway should use PathPrefix /api/v1"
         )
+        assert 'dq-service:' in content, "Should have DQ service definition"
         assert '/api/v1/dq/dq-runs' not in content, (
             "Should not use old dq-runs pattern"
         )
@@ -91,19 +93,18 @@ class TestTraefikConfiguration:
         )
 
     def test_k8s_configmap_configured(self):
-        """Test that Kubernetes ConfigMap is configured correctly"""
+        """Test that Kubernetes ConfigMap is configured correctly (API Gateway architecture)"""
         if not self.k8s_configmap.exists():
             pytest.skip("K8s ConfigMap not found")
 
         content = self.k8s_configmap.read_text(encoding='utf-8')
 
-        # Should have compliance and DQ routes
-        assert 'PathPrefix(`/api/v1/compliance`)' in content, (
-            "K8s ConfigMap should have compliance route"
+        # Architecture: api-gateway route with PathPrefix /api/v1; compliance/dq as backend defs
+        assert 'PathPrefix(`/api/v1`)' in content, (
+            "K8s ConfigMap should have api-gateway route with PathPrefix /api/v1"
         )
-        assert 'PathPrefix(`/api/v1/dq`)' in content, (
-            "K8s ConfigMap should have DQ route"
-        )
+        assert 'compliance-service:' in content, "Should have compliance service definition"
+        assert 'dq-service:' in content, "Should have DQ service definition"
         assert '/api/v1/compliance/compliance-runs' not in content, (
             "Should not use old compliance-runs pattern"
         )

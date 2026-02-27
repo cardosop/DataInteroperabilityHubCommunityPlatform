@@ -10,6 +10,8 @@ Tests all services work correctly with Django 6:
 - Semantic service (FastAPI)
 - Microservices integration
 """
+import os
+
 import pytest
 import requests
 from django.test import TestCase
@@ -19,6 +21,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.assets.models import Asset
@@ -26,6 +29,12 @@ from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
 from tests.factories import TenantFactory
 
 User = get_user_model()
+
+# Service URLs: use Docker hostnames when running in docker-compose.test (localhost fails from inside container)
+DATACONTRACT_SERVICE_URL = os.getenv("DATACONTRACT_SERVICE_URL", "http://datacontract-service-test:8080")
+COMPLIANCE_SERVICE_URL = os.getenv("COMPLIANCE_SERVICE_URL", "http://compliance-service-test:8082")
+DQ_SERVICE_URL = os.getenv("DQ_SERVICE_URL", "http://dq-service-test:8083")
+SEMANTIC_SERVICE_URL = os.getenv("SEMANTIC_SERVICE_URL", "http://semantic-service-test:8081")
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -173,30 +182,31 @@ class WorkerServiceDjango6Test(TestCase):
 
 class DataContractServiceDjango6Test(TestCase):
     """Test DataContract service with Django 6"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
-        self.service_url = "http://localhost:8080"
-    
+        self.service_url = DATACONTRACT_SERVICE_URL.rstrip("/")
+
     def test_datacontract_service_health(self):
         """Test DataContract service health endpoint"""
-        if check_service_health(f"{self.service_url}/health"):
-            response = requests.get(f"{self.service_url}/health", timeout=5)
+        url = f"{self.service_url}/health"
+        if check_service_health(url):
+            response = requests.get(url, timeout=5)
             self.assertIn(response.status_code, [200, 404])
         else:
             pytest.skip("DataContract service not available")
-    
+
     def test_datacontract_service_normalization(self):
         """Test DataContract service normalization endpoint"""
         if not check_service_health(f"{self.service_url}/health"):
             pytest.skip("DataContract service not available")
-        
+
         # Test normalization endpoint
         test_contract = {
             "id": "test-contract",
             "info": {"title": "Test Contract"}
         }
-        
+
         try:
             response = requests.post(
                 f"{self.service_url}/normalize",
@@ -211,10 +221,10 @@ class DataContractServiceDjango6Test(TestCase):
 
 class ComplianceServiceDjango6Test(TestCase):
     """Test Compliance service with Django 6"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
-        self.service_url = "http://localhost:8082"
+        self.service_url = COMPLIANCE_SERVICE_URL.rstrip("/")
     
     def test_compliance_service_health(self):
         """Test Compliance service health endpoint"""
@@ -247,28 +257,29 @@ class ComplianceServiceDjango6Test(TestCase):
 
 class DQServiceDjango6Test(TestCase):
     """Test DQ service with Django 6"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
-        self.service_url = "http://localhost:8083"
-    
+        self.service_url = DQ_SERVICE_URL.rstrip("/")
+
     def test_dq_service_health(self):
         """Test DQ service health endpoint"""
-        if check_service_health(f"{self.service_url}/health"):
-            response = requests.get(f"{self.service_url}/health", timeout=5)
+        url = f"{self.service_url}/health"
+        if check_service_health(url):
+            response = requests.get(url, timeout=5)
             self.assertIn(response.status_code, [200, 404])
         else:
             pytest.skip("DQ service not available")
-    
+
     def test_dq_service_schema_inference(self):
         """Test DQ service schema inference endpoint"""
         if not check_service_health(f"{self.service_url}/health"):
             pytest.skip("DQ service not available")
-        
+
         test_data = {
             "data": [{"col1": "value1", "col2": 123}]
         }
-        
+
         try:
             response = requests.post(
                 f"{self.service_url}/infer-schema",
@@ -283,24 +294,25 @@ class DQServiceDjango6Test(TestCase):
 
 class SemanticServiceDjango6Test(TestCase):
     """Test Semantic service with Django 6"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
-        self.service_url = "http://localhost:8081"
-    
+        self.service_url = SEMANTIC_SERVICE_URL.rstrip("/")
+
     def test_semantic_service_health(self):
         """Test Semantic service health endpoint"""
-        if check_service_health(f"{self.service_url}/health"):
-            response = requests.get(f"{self.service_url}/health", timeout=5)
+        url = f"{self.service_url}/health"
+        if check_service_health(url):
+            response = requests.get(url, timeout=5)
             self.assertIn(response.status_code, [200, 404])
         else:
             pytest.skip("Semantic service not available")
-    
+
     def test_semantic_service_uri_resolution(self):
         """Test Semantic service URI resolution endpoint"""
         if not check_service_health(f"{self.service_url}/health"):
             pytest.skip("Semantic service not available")
-        
+
         try:
             response = requests.get(
                 f"{self.service_url}/resolve-uri?uri=http://example.org/resource",
@@ -319,6 +331,7 @@ class MicroservicesIntegrationTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
@@ -391,10 +404,10 @@ class MicroservicesIntegrationTest(TestCase):
             },
             format='json'
         )
-        # Should return 201 (created), 400 (bad request), 401 (unauthorized), 503 (service unavailable), or 404 (not found)
+        # Should return 201 (created), 400 (bad request), 401 (unauthorized), 403 (no subscription), 503 (service unavailable), or 404 (not found)
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST,
-                                             status.HTTP_401_UNAUTHORIZED, status.HTTP_503_SERVICE_UNAVAILABLE,
-                                             status.HTTP_404_NOT_FOUND])
+                                             status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN,
+                                             status.HTTP_503_SERVICE_UNAVAILABLE, status.HTTP_404_NOT_FOUND])
     
     def test_all_services_accessible(self):
         """Test that all services are accessible"""

@@ -19,6 +19,7 @@ from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
 
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.contracts.models import Contract, ContractStatus
 from hub.apps.scheduled_ingestion.models import (
     ScheduledIngestion, ScheduledIngestionStatus, SourceType, ScheduleType
@@ -38,16 +39,17 @@ class TestContractAPIEndpoints(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
-
+        slug = f"test-tenant-{uuid.uuid4().hex[:8]}"
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {slug}",
+            slug=slug,
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="de@example.com",
+            email=f"de-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -155,16 +157,17 @@ class TestScheduledIngestionAPIEndpoints(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
-
+        slug = f"test-tenant-{uuid.uuid4().hex[:8]}"
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {slug}",
+            slug=slug,
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="de@example.com",
+            email=f"de-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -416,16 +419,17 @@ class TestComplianceAPIEndpoints(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
-
+        slug = f"test-tenant-{uuid.uuid4().hex[:8]}"
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {slug}",
+            slug=slug,
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="de@example.com",
+            email=f"de-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -474,16 +478,17 @@ class TestSchemaEvolutionAPIEndpoints(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
-
+        slug = f"test-tenant-{uuid.uuid4().hex[:8]}"
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {slug}",
+            slug=slug,
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="de@example.com",
+            email=f"de-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -506,7 +511,8 @@ class TestSchemaEvolutionAPIEndpoints(TestCase):
             name='test.csv',
             content_type='text/csv',
             size=1024,
-            status=FileStatus.ACTIVE
+            status=FileStatus.ACTIVE,
+            storage_path='test/schema-test.csv',
         )
 
         self.dataset = Dataset.objects.create(

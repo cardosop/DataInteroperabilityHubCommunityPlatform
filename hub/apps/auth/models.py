@@ -60,6 +60,20 @@ class APIKey(models.Model):
         blank=True,
         help_text="Custom API gateway rate limit (requests per hour); null uses tier/tenant default"
     )
+    # BaaS: optional tier for usage/quota (single API key model — D2)
+    tier = models.ForeignKey(
+        "baas.APITierModel",
+        on_delete=models.RESTRICT,
+        related_name="auth_api_keys",
+        null=True,
+        blank=True,
+        help_text="BaaS API tier for this key (null for non-BaaS keys)"
+    )
+    revoked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Revocation timestamp (null if active); used for BaaS revoke"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -69,6 +83,7 @@ class APIKey(models.Model):
         indexes = [
             models.Index(fields=["tenant", "user"]),
             models.Index(fields=["key_hash"]),
+            models.Index(fields=["tier_id"]),
         ]
     
     def __str__(self):
@@ -89,11 +104,31 @@ class APIKey(models.Model):
         if self.expires_at is None:
             return False
         return timezone.now() > self.expires_at
-    
+
+    def is_revoked(self) -> bool:
+        """Check if API key is revoked (BaaS-style revocation)"""
+        return self.revoked_at is not None
+
+    def is_active(self) -> bool:
+        """Check if API key is active (not revoked and not expired)"""
+        if self.revoked_at is not None:
+            return False
+        return not self.is_expired()
+
+    def revoke(self):
+        """Revoke this API key (sets revoked_at)."""
+        if self.revoked_at is None:
+            self.revoked_at = timezone.now()
+            self.save(update_fields=["revoked_at", "updated_at"])
+
     def update_last_used(self):
         """Update last_used_at timestamp"""
         self.last_used_at = timezone.now()
         self.save(update_fields=["last_used_at"])
+
+    def verify_key(self, key: str) -> bool:
+        """Verify if a plaintext key matches this API key's hash (BaaS compatibility)."""
+        return self.key_hash == self.hash_key(key)
 
 
 class RefreshToken(models.Model):

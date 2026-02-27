@@ -73,6 +73,10 @@ class DadosGovBrConnector(DataMarketplaceConnector):
                       Public endpoints may work without authentication.
             swagger_spec_url: Optional URL to Swagger JSON specification
         """
+        if not base_url or (isinstance(base_url, str) and not base_url.strip()):
+            raise ValueError("base_url must be a non-empty string")
+        if jwt_token is None:
+            raise TypeError("jwt_token must not be None")
         self.base_url = base_url.rstrip("/")
         self.jwt_token = jwt_token
         self.swagger_spec_url = swagger_spec_url or f"{self.base_url}/v3/api-docs"
@@ -221,6 +225,9 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             ConnectionError: If unable to connect to dados.gov.br
             ValueError: If filters or pagination parameters are invalid
         """
+        if limit is not None and limit == 0:
+            return []
+
         try:
             # Extract query from filters (maps to nomeConjuntoDados)
             query = filters.get("q") if filters else None
@@ -897,6 +904,34 @@ class DadosGovBrConnector(DataMarketplaceConnector):
         skipped_items = 0
         errors = []
         mappings = []
+
+        # Explicit empty listing_ids: sync nothing (do not fall through to list all)
+        if listing_ids is not None and len(listing_ids) == 0:
+            return SyncResult(
+                status=SyncStatus.COMPLETED,
+                total_items=0,
+                successful_items=0,
+                failed_items=0,
+                skipped_items=0,
+                errors=[],
+                metadata={"dry_run": dry_run, "reason": "empty_listing_ids"},
+                started_at=started_at,
+                completed_at=datetime.now(),
+            )
+
+        # Zero limit: sync nothing
+        if limit is not None and limit == 0:
+            return SyncResult(
+                status=SyncStatus.COMPLETED,
+                total_items=0,
+                successful_items=0,
+                failed_items=0,
+                skipped_items=0,
+                errors=[],
+                metadata={"dry_run": dry_run, "reason": "zero_limit"},
+                started_at=started_at,
+                completed_at=datetime.now(),
+            )
 
         # Get listings to sync
         try:

@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 0,
+    "in_progress": 1,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DS-005-9e0b1c66",
+      "journey_name": "Review Auto-Classification Results",
+      "persona": "Data Scientist",
+      "status": "in_progress",
+      "start_time": 1771260816.6000526,
+      "end_time": null,
+      "duration": null,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771260816.6000578,
+          "end_time": 1771260819.1424131,
+          "duration": 2.5423552989959717,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T16:53:39.147120"
+}

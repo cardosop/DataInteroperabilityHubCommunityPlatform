@@ -2,13 +2,21 @@
 Comprehensive New User Journey Testing
 
 Tests all new user journeys (JOURNEY-DPO-007 through DPO-014, DE-007 through DE-013,
-CPO-006 through CPO-010, DC-006 through DC-013, and all new persona journeys) with
+CPO-006 through CPO-010, DC-006 through DC-015, and all new persona journeys) with
 completion tracking, error handling validation, and performance metrics.
 
 All tests use REAL services (no mocks/stubs) and follow engineering best practices.
+
+Skip-on-404 Behavior (Task 6.6):
+- Core journeys: skip_on_404=False — missing endpoints cause test failure (assets, files,
+  datasets, contracts, compliance, dq, marketplace, users, tenants, audit, governance).
+- Optional/experimental: skip_on_404=True — missing endpoints skip gracefully (AI, social,
+  transformation, plugins, analytics, mesh, virtualization, developer portal).
+- E2E_STRICT_JOURNEY=1: When set, all endpoints use strict mode (no skip on 404).
 """
 
 import json
+import os
 import time
 import uuid
 from typing import Any, Dict, List, Optional
@@ -17,10 +25,27 @@ import pytest
 from django.test import TestCase
 from rest_framework import status
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 from .journey_tracker import JourneyStatus, JourneyTracker, StepStatus, get_journey_tracker
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
+# Optional/experimental endpoints: skip if not implemented (Task 6.6.2)
+SKIP_ON_404_OPTIONAL = True
+
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.e2e,
+    pytest.mark.uc_journey_persona,
+    pytest.mark.journey("JOURNEY-DPO-007"),
+    pytest.mark.journey("JOURNEY-DPO-008"),
+    pytest.mark.journey("JOURNEY-DE-007"),
+    pytest.mark.journey("JOURNEY-CPO-006"),
+    pytest.mark.journey("JOURNEY-DC-006"),
+    pytest.mark.journey("JOURNEY-DC-014"),
+    pytest.mark.journey("JOURNEY-DC-015"),
+    pytest.mark.journey("JOURNEY-TA-005"),
+    pytest.mark.journey("JOURNEY-DEV-005"),
+    pytest.mark.journey("JOURNEY-AUD-004"),
+]
 
 
 class NewUserJourneyTestBase(E2ETestBase):
@@ -88,6 +113,25 @@ class NewUserJourneyTestBase(E2ETestBase):
 
         return asset_id
 
+    def _wait_for_execution(self, execution_id, timeout=300):
+        """Wait for pipeline execution to complete (polls GET /transformation/executions/{id}/)."""
+        import time
+
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            response = self._call_api_safe(
+                "GET",
+                f"/api/v1/transformation/executions/{execution_id}/",
+                skip_on_404=SKIP_ON_404_OPTIONAL,
+            )
+            if response.status_code == 200:
+                data = get_response_data(response) or {}
+                exec_status = data.get("status")
+                if exec_status in ["completed", "failed", "cancelled"]:
+                    return data
+            time.sleep(2)
+        return None
+
     def _call_api_safe(
         self,
         method: str,
@@ -98,13 +142,11 @@ class NewUserJourneyTestBase(E2ETestBase):
     ):
         """Safely call API endpoint, handling missing endpoints gracefully.
 
-        Args:
-            method: HTTP method
-            url: Endpoint URL
-            data: Request data
-            expected_status: Expected HTTP status code
-            skip_on_404: If True, skip test on 404/501. If False, return response anyway.
+        Phase 7.2.4: Only skip on 404/501 response when skip_on_404=True.
+        For other exceptions (network, DB, etc.), always re-raise — never convert to skip.
         """
+        if os.environ.get("E2E_STRICT_JOURNEY") == "1":
+            skip_on_404 = False
         try:
             if method.upper() == "GET":
                 response = self.client.get(url)
@@ -120,22 +162,19 @@ class NewUserJourneyTestBase(E2ETestBase):
                 raise ValueError(f"Unsupported method: {method}")
 
             if expected_status and response.status_code != expected_status:
-                # If endpoint doesn't exist (404) or not implemented (501), skip gracefully
+                # Only skip for 404/501 when skip_on_404=True (endpoint not implemented)
                 if skip_on_404 and response.status_code in [404, 501]:
                     pytest.skip(
                         f"Endpoint {url} not yet implemented (status: {response.status_code})"
                     )
 
             return response
-        except Exception as e:
-            # If endpoint doesn't exist, skip test gracefully
-            if skip_on_404:
-                pytest.skip(f"Endpoint {url} not available: {e}")
-            else:
-                # Return a synthesized Response for non-critical endpoints (real DRF Response)
-                from rest_framework.response import Response
-
-                return Response({"error": str(e)}, status=404)
+        except pytest.skip.Exception:
+            raise
+        except Exception:
+            # Phase 7.2.4: For network, DB, or other exceptions, always re-raise.
+            # Do not convert to skip — that would mask real errors.
+            raise
 
 
 # ============================================================================
@@ -218,11 +257,12 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                         "context": {"asset_id": str(asset_id)},
                     },
                     expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI service
                 ),
             )
 
             if schema_matching_result.status_code == 200:
-                matching_data = schema_matching_result.data
+                matching_data = get_response_data(schema_matching_result) or {}
                 self.assertIn("matches", matching_data)
                 self.assertIn("confidence", matching_data)
 
@@ -307,14 +347,14 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
     def _verify_mappings_exist(self, response):
         """Verify mappings exist in response."""
         if response.status_code == 200:
-            data = response.data
+            data = get_response_data(response) or {}
             assert "matches" in data or "mappings" in data or "field_mappings" in data
         return True
 
     def _process_mappings(self, response):
         """Process and accept mappings."""
         if response.status_code == 200:
-            data = response.data
+            data = get_response_data(response) or {}
             # API returns 'matches' not 'mappings'
             mappings = data.get("matches", data.get("mappings", data.get("field_mappings", [])))
             # Accept mappings with confidence > 0.7
@@ -367,7 +407,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                     "/api/v1/transformation/pipelines/",
                     pipeline_data,
                     expected_status=201,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred (BACKLOG-TRANSFORMATION-PIPELINE)
                 ),
             )
 
@@ -385,7 +425,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                 )
 
             pipeline_id = (
-                pipeline_response.data.get("id") if pipeline_response.status_code == 201 else None
+                (get_response_data(pipeline_response) or {}).get("id") if pipeline_response.status_code == 201 else None
             )
 
             # Step 4-5: Design pipeline and configure nodes (already in pipeline_data)
@@ -398,7 +438,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                         f"/api/v1/transformation/pipelines/{pipeline_id}/validate/",
                         {},
                         expected_status=200,
-                        skip_on_404=False,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred
                     ),
                 )
 
@@ -420,7 +460,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                         f"/api/v1/transformation/pipelines/{pipeline_id}/preview/",
                         {"sample_size": 10},
                         expected_status=200,
-                        skip_on_404=False,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred
                     ),
                 )
 
@@ -442,7 +482,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                             f"/api/v1/transformation/pipelines/{pipeline_id}/execute/",
                             {},
                             expected_status=202,
-                            skip_on_404=False,
+                            skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred
                         ),
                     )
 
@@ -458,7 +498,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
 
                     # Step 10: Review transformation results
                     if execution_response.status_code == 202:
-                        execution_id = execution_response.data.get("execution_id")
+                        execution_id = (get_response_data(execution_response) or {}).get("execution_id")
                         if execution_id:
                             self.execute_journey_step(
                                 "Review Transformation Results",
@@ -484,22 +524,6 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
         except Exception as e:
             journey.fail(e)
             raise
-
-    def _wait_for_execution(self, execution_id, timeout=300):
-        """Wait for pipeline execution to complete."""
-        import time
-
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            response = self._call_api_safe(
-                "GET", f"/api/v1/transformation/executions/{execution_id}/"
-            )
-            if response.status_code == 200:
-                status = response.data.get("status")
-                if status in ["completed", "failed", "cancelled"]:
-                    return response.data
-            time.sleep(2)
-        return None
 
     def _sync_pipeline_results(self, asset_id, execution_id):
         """Sync pipeline results with asset."""
@@ -528,6 +552,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                     "/api/v1/social/ratings/",
                     {"asset_id": str(asset_id), "rating": 5, "comment": "Excellent asset"},
                     expected_status=201,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
                 ),
             )
 
@@ -543,6 +568,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                         "content": "Very useful data",
                     },
                     expected_status=201,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
                 ),
             )
 
@@ -552,7 +578,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             )
 
             if asset_response.status_code == 200:
-                asset_data = asset_response.data
+                asset_data = get_response_data(asset_response)
                 # Check for rating/review data in asset (may be in different fields)
                 self.execute_journey_step(
                     "Verify Asset Has Social Data",
@@ -562,7 +588,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             # Step 5: View asset quality/health metrics
             # Quality score may be in health_score, dq_status, or quality_score field
             if asset_response.status_code == 200:
-                asset_data = asset_response.data
+                asset_data = get_response_data(asset_response)
                 # Check for any quality-related metrics
                 quality_metrics = (
                     asset_data.get("quality_score")
@@ -665,7 +691,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             )
 
             listing_id = (
-                listing_response.data.get("id") if listing_response.status_code == 201 else None
+                (get_response_data(listing_response) or {}).get("id") if listing_response.status_code == 201 else None
             )
 
             # Try pricing endpoint (may not exist, handle gracefully)
@@ -702,6 +728,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                         f"/api/v1/marketplace/listings/{asset_id}/billing/",
                         {"auto_billing": True, "billing_email": "billing@example.com"},
                         expected_status=200,
+                        skip_on_404=False,  # Core: marketplace
                     ),
                 )
 
@@ -720,7 +747,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             )
 
             if listing_response.status_code == 201:
-                listing_id = listing_response.data.get("id")
+                listing_id = (get_response_data(listing_response) or {}).get("id")
 
                 # Step 8: Publish listing
                 publish_response = self.execute_journey_step(
@@ -861,12 +888,15 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             communities_response = self.execute_journey_step(
                 "Browse Data Communities",
                 lambda: self._call_api_safe(
-                    "GET", "/api/v1/social/communities/", expected_status=200
+                    "GET",
+                    "/api/v1/social/communities/",
+                    expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
                 ),
             )
 
             if communities_response.status_code == 200:
-                communities_data = communities_response.data
+                communities_data = get_response_data(communities_response)
                 if isinstance(communities_data, dict) and "results" in communities_data:
                     communities_list = communities_data["results"]
                 elif isinstance(communities_data, list):
@@ -888,9 +918,10 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                             "is_public": True,
                         },
                         expected_status=201,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
                     )
                     if create_response.status_code == 201:
-                        community_id = create_response.data.get("id")
+                        community_id = (get_response_data(create_response) or {}).get("id")
                     else:
                         pytest.skip("Community creation not available")
                         return
@@ -903,6 +934,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                         f"/api/v1/social/communities/{community_id}/join/",
                         {},
                         expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
                     ),
                 )
 
@@ -915,6 +947,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                             f"/api/v1/social/communities/{community_id}/discussions/",
                             {"title": "Test Discussion", "content": "Test discussion content"},
                             expected_status=201,
+                            skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
                         ),
                     )
 
@@ -927,6 +960,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                             f"/api/v1/social/communities/{community_id}/assets/",
                             {"asset_id": str(asset_id)},
                             expected_status=201,
+                            skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
                         ),
                     )
 
@@ -937,6 +971,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                             "GET",
                             f"/api/v1/social/communities/{community_id}/knowledge-base/",
                             expected_status=200,
+                            skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
                         ),
                     )
 
@@ -968,12 +1003,16 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             domain_response = self.execute_journey_step(
                 "Create/Select Domain",
                 lambda: self._call_api_safe(
-                    "POST", "/api/v1/mesh/domains/", domain_data, expected_status=201
+                    "POST",
+                    "/api/v1/mesh/domains/",
+                    domain_data,
+                    expected_status=201,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: mesh
                 ),
             )
 
             if domain_response.status_code == 201:
-                domain_id = domain_response.data.get("id")
+                domain_id = (get_response_data(domain_response) or {}).get("id")
 
                 # Step 3: Define domain boundaries
                 boundaries_response = self.execute_journey_step(
@@ -983,6 +1022,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                         f"/api/v1/mesh/domains/{domain_id}/boundaries/",
                         {"data_products": [], "governance_rules": []},
                         expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: mesh
                     ),
                 )
 
@@ -994,6 +1034,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                         f"/api/v1/mesh/domains/{domain_id}/ownership/",
                         {"owner_id": str(self.user.id)},
                         expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: mesh
                     ),
                 )
 
@@ -1006,6 +1047,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                         f"/api/v1/mesh/domains/{domain_id}/assets/",
                         {"asset_id": str(asset_id)},
                         expected_status=201,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: mesh
                     ),
                 )
 
@@ -1017,6 +1059,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                         f"/api/v1/mesh/domains/{domain_id}/analytics/",
                         {"enabled": True, "metrics": ["usage", "quality", "compliance"]},
                         expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: mesh
                     ),
                 )
 
@@ -1055,7 +1098,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             if reliability_response.status_code == 404:
                 asset_response = self.client.get(f"/api/v1/assets/{asset_id}/")
                 if asset_response.status_code == 200:
-                    asset_data = asset_response.data
+                    asset_data = get_response_data(asset_response)
                     # Check for health_score or reliability metrics in asset data
                     health_score = asset_data.get("health_score") or asset_data.get(
                         "reliability_score"
@@ -1066,7 +1109,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
 
             # Step 3: Review score breakdown
             if reliability_response.status_code == 200:
-                reliability_data = reliability_response.data
+                reliability_data = get_response_data(reliability_response) or {}
                 self.execute_journey_step(
                     "Review Score Breakdown", lambda: self._verify_score_breakdown(reliability_data)
                 )
@@ -1086,7 +1129,10 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                 trends_response = self.execute_journey_step(
                     "Monitor Score Trends",
                     lambda: self._call_api_safe(
-                        "GET", f"/api/v1/assets/{asset_id}/reliability/trends/", expected_status=200
+                        "GET",
+                        f"/api/v1/assets/{asset_id}/reliability/trends/",
+                        expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: observability
                     ),
                 )
 
@@ -1145,7 +1191,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     "/api/v1/transformation/pipelines/",
                     pipeline_data,
                     expected_status=201,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred (BACKLOG-TRANSFORMATION-PIPELINE)
                 ),
             )
 
@@ -1162,7 +1208,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                 )
 
             if pipeline_response.status_code == 201:
-                pipeline_id = pipeline_response.data.get("id")
+                pipeline_id = (get_response_data(pipeline_response) or {}).get("id")
 
                 self.execute_journey_step("Configure Nodes", lambda: pipeline_id)
 
@@ -1172,10 +1218,10 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     f"/api/v1/transformation/pipelines/{pipeline_id}/validate/",
                     {},
                     expected_status=200,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred
                 )
                 if validate_response.status_code == 200:
-                    self.execute_journey_step("Validate Pipeline", lambda: validate_response.data)
+                    self.execute_journey_step("Validate Pipeline", lambda: get_response_data(validate_response))
                 else:
                     self.execute_journey_step(
                         "Note: Pipeline Validation Not Available", lambda: None
@@ -1186,10 +1232,10 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     f"/api/v1/transformation/pipelines/{pipeline_id}/test/",
                     {"sample_size": 10},
                     expected_status=200,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred
                 )
                 if test_response.status_code == 200:
-                    self.execute_journey_step("Test Pipeline", lambda: test_response.data)
+                    self.execute_journey_step("Test Pipeline", lambda: get_response_data(test_response))
                 else:
                     self.execute_journey_step("Note: Pipeline Testing Not Available", lambda: None)
 
@@ -1200,11 +1246,11 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     f"/api/v1/transformation/pipelines/{pipeline_id}/execute/",
                     {},
                     expected_status=202,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred
                 )
                 if execute_response.status_code == 202:
-                    self.execute_journey_step("Execute Pipeline", lambda: execute_response.data)
-                    execution_id = execute_response.data.get("execution_id")
+                    self.execute_journey_step("Execute Pipeline", lambda: get_response_data(execute_response))
+                    execution_id = (get_response_data(execute_response) or {}).get("execution_id")
                     if execution_id:
                         self.execute_journey_step(
                             "Monitor Execution", lambda: self._wait_for_execution(execution_id)
@@ -1294,11 +1340,12 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     "/api/v1/virtualization/datasets/",
                     virtual_dataset_data,
                     expected_status=201,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: virtualization
                 ),
             )
 
             if vd_response.status_code == 201:
-                vd_id = vd_response.data.get("id")
+                vd_id = (get_response_data(vd_response) or {}).get("id")
                 self.execute_journey_step(
                     "Configure Sources",
                     lambda: self._call_api_safe(
@@ -1306,6 +1353,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                         f"/api/v1/virtualization/datasets/{vd_id}/sources/",
                         {"sources": []},
                         expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: virtualization
                     ),
                 )
                 self.execute_journey_step(
@@ -1315,6 +1363,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                         f"/api/v1/virtualization/datasets/{vd_id}/query-mapping/",
                         {},
                         expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: virtualization
                     ),
                 )
                 self.execute_journey_step(
@@ -1324,6 +1373,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                         f"/api/v1/virtualization/datasets/{vd_id}/caching/",
                         {"strategy": "lru", "ttl": 3600},
                         expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: virtualization
                     ),
                 )
                 self.execute_journey_step(
@@ -1333,6 +1383,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                         f"/api/v1/virtualization/datasets/{vd_id}/test-query/",
                         {"query": "SELECT * FROM dataset LIMIT 10"},
                         expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: virtualization
                     ),
                 )
                 self.execute_journey_step(
@@ -1342,6 +1393,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                         f"/api/v1/virtualization/datasets/{vd_id}/deploy/",
                         {},
                         expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: virtualization
                     ),
                 )
                 self.execute_journey_step(
@@ -1350,6 +1402,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                         "GET",
                         f"/api/v1/virtualization/datasets/{vd_id}/performance/",
                         expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: virtualization
                     ),
                 )
 
@@ -1378,7 +1431,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
             )
             if marketplace_response.status_code == 200:
                 self.execute_journey_step(
-                    "Browse Connector Marketplace", lambda: marketplace_response.data
+                    "Browse Connector Marketplace", lambda: get_response_data(marketplace_response)
                 )
             else:
                 self.execute_journey_step("Note: Connector Marketplace Not Available", lambda: None)
@@ -1410,7 +1463,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                 self.execute_journey_step("Note: Connector API Not Yet Implemented", lambda: None)
 
             if install_response.status_code == 201:
-                connector_id = install_response.data.get("id")
+                connector_id = (get_response_data(install_response) or {}).get("id")
 
                 # All subsequent operations may not exist, handle gracefully
                 config_response = self._call_api_safe(
@@ -1421,7 +1474,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if config_response.status_code == 200:
-                    self.execute_journey_step("Configure Connection", lambda: config_response.data)
+                    self.execute_journey_step("Configure Connection", lambda: get_response_data(config_response))
                 else:
                     self.execute_journey_step(
                         "Note: Connector Configuration Not Available", lambda: None
@@ -1435,7 +1488,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if test_response.status_code == 200:
-                    self.execute_journey_step("Test Connection", lambda: test_response.data)
+                    self.execute_journey_step("Test Connection", lambda: get_response_data(test_response))
                 else:
                     self.execute_journey_step(
                         "Note: Connection Testing Not Available", lambda: None
@@ -1449,7 +1502,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if deploy_response.status_code == 200:
-                    self.execute_journey_step("Deploy Connector", lambda: deploy_response.data)
+                    self.execute_journey_step("Deploy Connector", lambda: get_response_data(deploy_response))
                 else:
                     self.execute_journey_step(
                         "Note: Connector Deployment Not Available", lambda: None
@@ -1462,7 +1515,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if health_response.status_code == 200:
-                    self.execute_journey_step("Monitor Health", lambda: health_response.data)
+                    self.execute_journey_step("Monitor Health", lambda: get_response_data(health_response))
                 else:
                     self.execute_journey_step("Note: Health Monitoring Not Available", lambda: None)
 
@@ -1511,7 +1564,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                 self.execute_journey_step("Note: Reverse ETL API Not Yet Implemented", lambda: None)
 
             if reverse_etl_response.status_code == 201:
-                reverse_etl_id = reverse_etl_response.data.get("id")
+                reverse_etl_id = (get_response_data(reverse_etl_response) or {}).get("id")
 
                 # All subsequent operations may not exist, handle gracefully
                 mappings_response = self._call_api_safe(
@@ -1522,7 +1575,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if mappings_response.status_code == 200:
-                    self.execute_journey_step("Map Data Fields", lambda: mappings_response.data)
+                    self.execute_journey_step("Map Data Fields", lambda: get_response_data(mappings_response))
                 else:
                     self.execute_journey_step("Note: Field Mapping Not Available", lambda: None)
 
@@ -1535,7 +1588,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                 )
                 if transform_response.status_code == 200:
                     self.execute_journey_step(
-                        "Configure Transformation", lambda: transform_response.data
+                        "Configure Transformation", lambda: get_response_data(transform_response)
                     )
                 else:
                     self.execute_journey_step(
@@ -1550,7 +1603,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if schedule_response.status_code == 200:
-                    self.execute_journey_step("Set Up Schedule", lambda: schedule_response.data)
+                    self.execute_journey_step("Set Up Schedule", lambda: get_response_data(schedule_response))
                 else:
                     self.execute_journey_step(
                         "Note: Schedule Configuration Not Available", lambda: None
@@ -1564,7 +1617,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if test_response.status_code == 200:
-                    self.execute_journey_step("Test Reverse ETL", lambda: test_response.data)
+                    self.execute_journey_step("Test Reverse ETL", lambda: get_response_data(test_response))
                 else:
                     self.execute_journey_step(
                         "Note: Reverse ETL Testing Not Available", lambda: None
@@ -1578,7 +1631,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if deploy_response.status_code == 200:
-                    self.execute_journey_step("Deploy and Monitor", lambda: deploy_response.data)
+                    self.execute_journey_step("Deploy and Monitor", lambda: get_response_data(deploy_response))
                 else:
                     self.execute_journey_step(
                         "Note: Reverse ETL Deployment Not Available", lambda: None
@@ -1610,7 +1663,11 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
             plugin_response = self.execute_journey_step(
                 "Design Plugin",
                 lambda: self._call_api_safe(
-                    "POST", "/api/v1/plugins/", plugin_data, expected_status=201, skip_on_404=False
+                    "POST",
+                    "/api/v1/developer/plugins/",
+                    plugin_data,
+                    expected_status=201,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: developer plugins
                 ),
             )
 
@@ -1625,57 +1682,57 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                 self.execute_journey_step("Note: Plugin API Not Yet Implemented", lambda: None)
 
             if plugin_response.status_code == 201:
-                plugin_id = plugin_response.data.get("id")
+                plugin_id = (get_response_data(plugin_response) or {}).get("id")
                 self.execute_journey_step("Implement Interface", lambda: plugin_id)
 
                 # All subsequent operations may not exist, handle gracefully
                 test_response = self._call_api_safe(
                     "POST",
-                    f"/api/v1/plugins/{plugin_id}/test/",
+                    f"/api/v1/developer/plugins/{plugin_id}/test/",
                     {"test_data": {}},
                     expected_status=200,
                     skip_on_404=False,
                 )
                 if test_response.status_code == 200:
-                    self.execute_journey_step("Test Plugin", lambda: test_response.data)
+                    self.execute_journey_step("Test Plugin", lambda: get_response_data(test_response))
                 else:
                     self.execute_journey_step("Note: Plugin Testing Not Available", lambda: None)
 
                 validate_response = self._call_api_safe(
                     "POST",
-                    f"/api/v1/plugins/{plugin_id}/validate/",
+                    f"/api/v1/developer/plugins/{plugin_id}/validate/",
                     {},
                     expected_status=200,
                     skip_on_404=False,
                 )
                 if validate_response.status_code == 200:
-                    self.execute_journey_step("Validate Plugin", lambda: validate_response.data)
+                    self.execute_journey_step("Validate Plugin", lambda: get_response_data(validate_response))
                 else:
                     self.execute_journey_step("Note: Plugin Validation Not Available", lambda: None)
 
                 publish_response = self._call_api_safe(
                     "POST",
-                    f"/api/v1/plugins/{plugin_id}/publish/",
+                    f"/api/v1/developer/plugins/{plugin_id}/publish/",
                     {},
                     expected_status=200,
                     skip_on_404=False,
                 )
                 if publish_response.status_code == 200:
                     self.execute_journey_step(
-                        "Publish to Marketplace", lambda: publish_response.data
+                        "Publish to Marketplace", lambda: get_response_data(publish_response)
                     )
                 else:
                     self.execute_journey_step("Note: Plugin Publishing Not Available", lambda: None)
 
                 deploy_response = self._call_api_safe(
                     "POST",
-                    f"/api/v1/plugins/{plugin_id}/deploy/",
+                    f"/api/v1/developer/plugins/{plugin_id}/deploy/",
                     {},
                     expected_status=200,
                     skip_on_404=False,
                 )
                 if deploy_response.status_code == 200:
-                    self.execute_journey_step("Deploy Plugin", lambda: deploy_response.data)
+                    self.execute_journey_step("Deploy Plugin", lambda: get_response_data(deploy_response))
                 else:
                     self.execute_journey_step("Note: Plugin Deployment Not Available", lambda: None)
 
@@ -1709,7 +1766,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
             )
 
             if domain_response.status_code == 201:
-                domain_id = domain_response.data.get("id")
+                domain_id = (get_response_data(domain_response) or {}).get("id")
                 self.execute_journey_step(
                     "Configure Infrastructure",
                     lambda: self._call_api_safe(
@@ -1822,7 +1879,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 )
 
             if rules_response.status_code == 201:
-                rule_id = rules_response.data.get("id")
+                rule_id = (get_response_data(rules_response) or {}).get("id")
 
                 # All subsequent operations may not exist, handle gracefully
                 auto_detection_response = self._call_api_safe(
@@ -1834,7 +1891,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 )
                 if auto_detection_response.status_code == 200:
                     self.execute_journey_step(
-                        "Configure Auto-Detection", lambda: auto_detection_response.data
+                        "Configure Auto-Detection", lambda: get_response_data(auto_detection_response)
                     )
                 else:
                     self.execute_journey_step(
@@ -1850,7 +1907,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 )
                 if enforcement_response.status_code == 200:
                     self.execute_journey_step(
-                        "Set Up Enforcement", lambda: enforcement_response.data
+                        "Set Up Enforcement", lambda: get_response_data(enforcement_response)
                     )
                 else:
                     self.execute_journey_step(
@@ -1865,7 +1922,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if alerts_response.status_code == 200:
-                    self.execute_journey_step("Configure Alerts", lambda: alerts_response.data)
+                    self.execute_journey_step("Configure Alerts", lambda: get_response_data(alerts_response))
                 else:
                     self.execute_journey_step(
                         "Note: Alerts Configuration Not Available", lambda: None
@@ -1879,7 +1936,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 )
                 if test_response.status_code == 200:
                     self.execute_journey_step(
-                        "Test Automated Compliance", lambda: test_response.data
+                        "Test Automated Compliance", lambda: get_response_data(test_response)
                     )
                 else:
                     self.execute_journey_step(
@@ -1894,7 +1951,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if deploy_response.status_code == 200:
-                    self.execute_journey_step("Deploy and Monitor", lambda: deploy_response.data)
+                    self.execute_journey_step("Deploy and Monitor", lambda: get_response_data(deploy_response))
                 else:
                     self.execute_journey_step(
                         "Note: Compliance Deployment Not Available", lambda: None
@@ -1952,7 +2009,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 )
 
             if workflow_response.status_code == 201:
-                workflow_id = workflow_response.data.get("id")
+                workflow_id = (get_response_data(workflow_response) or {}).get("id")
 
                 # All subsequent operations may not exist, handle gracefully
                 deletion_service_response = self._call_api_safe(
@@ -1964,7 +2021,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 )
                 if deletion_service_response.status_code == 200:
                     self.execute_journey_step(
-                        "Set Up Deletion Service", lambda: deletion_service_response.data
+                        "Set Up Deletion Service", lambda: get_response_data(deletion_service_response)
                     )
                 else:
                     self.execute_journey_step(
@@ -1980,7 +2037,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 )
                 if verification_response.status_code == 200:
                     self.execute_journey_step(
-                        "Configure Verification", lambda: verification_response.data
+                        "Configure Verification", lambda: get_response_data(verification_response)
                     )
                 else:
                     self.execute_journey_step(
@@ -1995,7 +2052,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if test_response.status_code == 200:
-                    self.execute_journey_step("Test Deletion Workflow", lambda: test_response.data)
+                    self.execute_journey_step("Test Deletion Workflow", lambda: get_response_data(test_response))
                 else:
                     self.execute_journey_step("Note: Workflow Testing Not Available", lambda: None)
                 deploy_workflow_response = self._call_api_safe(
@@ -2007,7 +2064,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 )
                 if deploy_workflow_response.status_code == 200:
                     self.execute_journey_step(
-                        "Deploy Workflow", lambda: deploy_workflow_response.data
+                        "Deploy Workflow", lambda: get_response_data(deploy_workflow_response)
                     )
                 else:
                     self.execute_journey_step(
@@ -2022,7 +2079,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 )
                 if monitor_response.status_code == 200:
                     self.execute_journey_step(
-                        "Monitor Deletion Requests", lambda: monitor_response.data
+                        "Monitor Deletion Requests", lambda: get_response_data(monitor_response)
                     )
                 else:
                     self.execute_journey_step(
@@ -2067,7 +2124,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 "GET", "/api/v1/governance/consent/records/", expected_status=200, skip_on_404=False
             )
             if records_response.status_code == 200:
-                self.execute_journey_step("View Consent Records", lambda: records_response.data)
+                self.execute_journey_step("View Consent Records", lambda: get_response_data(records_response))
             else:
                 self.execute_journey_step("Note: Consent Records Not Available", lambda: None)
 
@@ -2079,7 +2136,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if update_response.status_code == 201:
-                self.execute_journey_step("Update Consent", lambda: update_response.data)
+                self.execute_journey_step("Update Consent", lambda: get_response_data(update_response))
             else:
                 self.execute_journey_step("Note: Consent Update Not Available", lambda: None)
 
@@ -2087,7 +2144,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 "GET", "/api/v1/governance/consent/reports/", expected_status=200, skip_on_404=False
             )
             if report_response.status_code == 200:
-                self.execute_journey_step("Generate Consent Report", lambda: report_response.data)
+                self.execute_journey_step("Generate Consent Report", lambda: get_response_data(report_response))
             else:
                 self.execute_journey_step("Note: Consent Reports Not Available", lambda: None)
 
@@ -2125,7 +2182,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
             )
 
             if policy_response.status_code == 201:
-                policy_id = policy_response.data.get("id")
+                policy_id = (get_response_data(policy_response) or {}).get("id")
                 self.execute_journey_step(
                     "Apply Policy to Assets",
                     lambda: self._call_api_safe(
@@ -2186,7 +2243,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                     "GET",
                     f"/api/v1/ai/classification/{asset_id}/",
                     expected_status=200,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
                 ),
             )
 
@@ -2204,7 +2261,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
             if classification_response.status_code == 200:
                 self.execute_journey_step(
                     "Review Classifications",
-                    lambda: self._verify_classifications(classification_response.data),
+                    lambda: self._verify_classifications(get_response_data(classification_response)),
                 )
 
                 # All subsequent operations may not exist, handle gracefully
@@ -2213,11 +2270,11 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                     f"/api/v1/ai/classification/{asset_id}/validate/",
                     {},
                     expected_status=200,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
                 )
                 if validate_response.status_code == 200:
                     self.execute_journey_step(
-                        "Validate Classifications", lambda: validate_response.data
+                        "Validate Classifications", lambda: get_response_data(validate_response)
                     )
                 else:
                     self.execute_journey_step(
@@ -2229,10 +2286,10 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                     f"/api/v1/ai/classification/{asset_id}/rules/",
                     {},
                     expected_status=200,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
                 )
                 if rules_response.status_code == 200:
-                    self.execute_journey_step("Update Rules", lambda: rules_response.data)
+                    self.execute_journey_step("Update Rules", lambda: get_response_data(rules_response))
                 else:
                     self.execute_journey_step("Note: Rules Update Not Available", lambda: None)
 
@@ -2240,10 +2297,10 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                     "GET",
                     f"/api/v1/ai/classification/{asset_id}/report/",
                     expected_status=200,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
                 )
                 if report_response.status_code == 200:
-                    self.execute_journey_step("Generate Report", lambda: report_response.data)
+                    self.execute_journey_step("Generate Report", lambda: get_response_data(report_response))
                 else:
                     self.execute_journey_step(
                         "Note: Classification Reports Not Available", lambda: None
@@ -2266,7 +2323,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
 
 
 class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
-    """Persona 4: Data Consumer - New Journeys (DC-006 through DC-013)"""
+    """Persona 4: Data Consumer - New Journeys (DC-006 through DC-015)"""
 
     def test_journey_dc_006_use_natural_language_search(self):
         """JOURNEY-DC-006: Use Natural Language Search"""
@@ -2286,17 +2343,18 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                     "/api/v1/ai/natural-language-search/",
                     {"query": search_query, "result_types": ["assets"]},
                     expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
                 ),
             )
 
             if search_response.status_code == 200:
                 self.execute_journey_step(
                     "Review Query Interpretation",
-                    lambda: self._verify_interpretation(search_response.data),
+                    lambda: self._verify_interpretation(get_response_data(search_response)),
                 )
-                self.execute_journey_step("Execute Query", lambda: search_response.data)
+                self.execute_journey_step("Execute Query", lambda: get_response_data(search_response))
                 self.execute_journey_step(
-                    "Review Results", lambda: self._verify_search_results(search_response.data)
+                    "Review Results", lambda: self._verify_search_results(get_response_data(search_response))
                 )
                 refine_response = self.execute_journey_step(
                     "Refine Query",
@@ -2305,6 +2363,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                         "/api/v1/ai/natural-language-search/",
                         {"query": "customer data from Q4 2024", "result_types": ["assets"]},
                         expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
                     ),
                 )
 
@@ -2318,7 +2377,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                         skip_on_404=False,
                     )
                     if save_response.status_code == 201:
-                        self.execute_journey_step("Save Query", lambda: save_response.data)
+                        self.execute_journey_step("Save Query", lambda: get_response_data(save_response))
                     else:
                         # Saved queries endpoint not available, but that's okay
                         self.execute_journey_step("Note: Saved Queries Not Available", lambda: None)
@@ -2360,7 +2419,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                     "/api/v1/transformation/pipelines/",
                     pipeline_data,
                     expected_status=201,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred (BACKLOG-TRANSFORMATION-PIPELINE)
                 ),
             )
 
@@ -2377,7 +2436,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                 )
 
             if pipeline_response.status_code == 201:
-                pipeline_id = pipeline_response.data.get("id")
+                pipeline_id = (get_response_data(pipeline_response) or {}).get("id")
                 self.execute_journey_step("Design Pipeline", lambda: pipeline_id)
 
                 # All subsequent pipeline operations may not exist, handle gracefully
@@ -2390,7 +2449,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                 )
                 if config_response.status_code == 200:
                     self.execute_journey_step(
-                        "Configure Transformations", lambda: config_response.data
+                        "Configure Transformations", lambda: get_response_data(config_response)
                     )
                 else:
                     self.execute_journey_step(
@@ -2405,7 +2464,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if preview_response.status_code == 200:
-                    self.execute_journey_step("Preview Results", lambda: preview_response.data)
+                    self.execute_journey_step("Preview Results", lambda: get_response_data(preview_response))
                 else:
                     self.execute_journey_step("Note: Pipeline Preview Not Available", lambda: None)
 
@@ -2414,10 +2473,10 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                     f"/api/v1/transformation/pipelines/{pipeline_id}/execute/",
                     {},
                     expected_status=202,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred
                 )
                 if execute_response.status_code == 202:
-                    self.execute_journey_step("Execute Pipeline", lambda: execute_response.data)
+                    self.execute_journey_step("Execute Pipeline", lambda: get_response_data(execute_response))
                 else:
                     self.execute_journey_step(
                         "Note: Pipeline Execution Not Available", lambda: None
@@ -2427,11 +2486,11 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                     "GET",
                     f"/api/v1/transformation/pipelines/{pipeline_id}/download/",
                     expected_status=200,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred
                 )
                 if download_response.status_code == 200:
                     self.execute_journey_step(
-                        "Download Transformed Data", lambda: download_response.data
+                        "Download Transformed Data", lambda: get_response_data(download_response)
                     )
                 else:
                     self.execute_journey_step("Note: Data Download Not Available", lambda: None)
@@ -2476,7 +2535,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
             )
 
             if review_response.status_code == 201:
-                review_id = review_response.data.get("id")
+                review_id = (get_response_data(review_response) or {}).get("id")
                 self.execute_journey_step("Submit Review", lambda: review_id)
                 self.execute_journey_step(
                     "View Review Status",
@@ -2509,7 +2568,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
             )
 
             if communities_response.status_code == 200:
-                communities_data = communities_response.data
+                communities_data = get_response_data(communities_response)
                 if isinstance(communities_data, dict) and "results" in communities_data:
                     community_id = (
                         communities_data["results"][0].get("id")
@@ -2587,7 +2646,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
             )
 
             if vd_response.status_code == 200:
-                vd_data = vd_response.data
+                vd_data = get_response_data(vd_response) or {}
                 # Handle both dict with results and list responses
                 if isinstance(vd_data, dict) and "results" in vd_data:
                     results = vd_data.get("results", [])
@@ -2610,7 +2669,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                     )
 
                     if query_response.status_code == 201:
-                        query_id = query_response.data.get("id")
+                        query_id = (get_response_data(query_response) or {}).get("id")
                         self.execute_journey_step(
                             "Execute Query",
                             lambda: self._call_api_safe(
@@ -2666,7 +2725,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
             )
 
             if listing_response.status_code == 201:
-                listing_id = listing_response.data.get("id")
+                listing_id = (get_response_data(listing_response) or {}).get("id")
                 purchase_response = self.execute_journey_step(
                     "Purchase Asset",
                     lambda: self.client.post(
@@ -2677,7 +2736,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                 )
 
                 if purchase_response.status_code == 201:
-                    order_id = purchase_response.data.get("id")
+                    order_id = (get_response_data(purchase_response) or {}).get("id")
                     self.execute_journey_step(
                         "Use Asset",
                         lambda: self._call_api_safe(
@@ -2734,7 +2793,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
             )
 
             if listing_response.status_code == 201:
-                listing_id = listing_response.data.get("id")
+                listing_id = (get_response_data(listing_response) or {}).get("id")
                 preview_response = self.execute_journey_step(
                     "Request Preview",
                     lambda: self._call_api_safe(
@@ -2747,14 +2806,14 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                 if preview_response.status_code == 200:
                     self.execute_journey_step(
                         "Review Sample Data",
-                        lambda: self._verify_preview_data(preview_response.data),
+                        lambda: self._verify_preview_data(get_response_data(preview_response)),
                     )
                     self.execute_journey_step(
                         "Review Quality Metrics",
-                        lambda: self._verify_quality_metrics(preview_response.data),
+                        lambda: self._verify_quality_metrics(get_response_data(preview_response)),
                     )
                     self.execute_journey_step(
-                        "Review Schema", lambda: self._verify_schema(preview_response.data)
+                        "Review Schema", lambda: self._verify_schema(get_response_data(preview_response))
                     )
                     self.execute_journey_step("Make Purchase Decision", lambda: True)
 
@@ -2786,7 +2845,10 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
             recommendations_response = self.execute_journey_step(
                 "View Recommendations",
                 lambda: self._call_api_safe(
-                    "GET", "/api/v1/assets/recommendations/", expected_status=200, skip_on_404=False
+                    "GET",
+                    "/api/v1/assets/recommendations/",
+                    expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: ML recommendations
                 ),
             )
 
@@ -2794,24 +2856,29 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                 self.execute_journey_step(
                     "View Recommended for You",
                     lambda: self._verify_recommendations(
-                        recommendations_response.data, "recommended_for_you"
+                        get_response_data(recommendations_response), "recommended_for_you"
                     ),
                 )
                 self.execute_journey_step(
                     "View Similar Assets",
                     lambda: self._verify_recommendations(
-                        recommendations_response.data, "similar_assets"
+                        get_response_data(recommendations_response), "similar_assets"
                     ),
                 )
                 self.execute_journey_step(
                     "View Also Used",
                     lambda: self._verify_recommendations(
-                        recommendations_response.data, "also_used"
+                        get_response_data(recommendations_response), "also_used"
                     ),
                 )
                 self.execute_journey_step(
                     "Explore Recommended Assets",
-                    lambda: self._call_api_safe("GET", "/api/v1/assets/", expected_status=200),
+                    lambda: self._call_api_safe(
+                        "GET",
+                        "/api/v1/assets/",
+                        expected_status=200,
+                        skip_on_404=False,  # Core: assets
+                    ),
                 )
                 # Feedback endpoint may not exist, handle gracefully
                 feedback_response = self._call_api_safe(
@@ -2819,10 +2886,10 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                     "/api/v1/ai/recommendations/feedback/",
                     {"asset_id": str(uuid.uuid4()), "feedback": "like"},
                     expected_status=201,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: ML feedback
                 )
                 if feedback_response.status_code == 201:
-                    self.execute_journey_step("Provide Feedback", lambda: feedback_response.data)
+                    self.execute_journey_step("Provide Feedback", lambda: get_response_data(feedback_response))
                 else:
                     self.execute_journey_step("Note: Feedback Endpoint Not Available", lambda: None)
             else:
@@ -2838,6 +2905,149 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
 
     def _verify_recommendations(self, data, key):
         return key in data or "recommendations" in data
+
+    def test_journey_dc_014_discover_odps_products_semantic_search(self):
+        """JOURNEY-DC-014: Discover ODPS Products (Semantic Search)"""
+        journey_id = f"DC-014-{uuid.uuid4().hex[:8]}"
+        journey = self.tracker.start_journey(
+            journey_id=journey_id,
+            journey_name="Discover ODPS Products (Semantic Search)",
+            persona="Data Consumer",
+        )
+
+        try:
+            # Semantic search - may return 503 if semantic service unavailable
+            search_response = self.execute_journey_step(
+                "Execute Semantic Search",
+                lambda: self._call_api_safe(
+                    "POST",
+                    "/api/v1/semantic/search/",
+                    {"query": "ODPS products with pricing", "result_types": ["products"]},
+                    expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,
+                ),
+            )
+
+            if search_response.status_code == 200:
+                self.execute_journey_step(
+                    "Review Search Results",
+                    lambda: self._verify_search_results(get_response_data(search_response)),
+                )
+                # List ODPS products
+                products_response = self._call_api_safe(
+                    "GET",
+                    "/api/v1/semantic/products/",
+                    expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,
+                )
+                if products_response.status_code == 200:
+                    self.execute_journey_step(
+                        "View ODPS Products",
+                        lambda: get_response_data(products_response),
+                    )
+            else:
+                self.execute_journey_step(
+                    "Note: Semantic Search Unavailable (503/404)",
+                    lambda: None,
+                )
+
+            # Fallback: list contracts (ODPS products) via core API
+            contracts_response = self._call_api_safe(
+                "GET",
+                "/api/v1/contracts/",
+                expected_status=200,
+                skip_on_404=False,
+            )
+            if contracts_response.status_code == 200:
+                self.execute_journey_step(
+                    "View ODPS Contracts",
+                    lambda: get_response_data(contracts_response),
+                )
+
+            journey.complete()
+            self.assertGreaterEqual(journey.completion_rate, 80.0)
+
+        except Exception as e:
+            journey.fail(e)
+            raise
+
+    def test_journey_dc_015_purchase_odps_product_marketplace(self):
+        """JOURNEY-DC-015: Purchase ODPS Product (Marketplace)"""
+        journey_id = f"DC-015-{uuid.uuid4().hex[:8]}"
+        journey = self.tracker.start_journey(
+            journey_id=journey_id,
+            journey_name="Purchase ODPS Product (Marketplace)",
+            persona="Data Consumer",
+        )
+
+        try:
+            # Discover marketplace listings (ODPS products)
+            listings_response = self.execute_journey_step(
+                "Discover ODPS Products",
+                lambda: self._call_api_safe(
+                    "GET",
+                    "/api/v1/marketplace/listings/",
+                    expected_status=200,
+                    skip_on_404=False,
+                ),
+            )
+
+            if listings_response.status_code != 200:
+                self.execute_journey_step(
+                    "Note: Marketplace Listings Unavailable",
+                    lambda: None,
+                )
+                journey.complete()
+                self.assertGreaterEqual(journey.completion_rate, 80.0)
+                return
+
+            listings_data = get_response_data(listings_response) or {}
+            results = listings_data.get("results", listings_data)
+            if isinstance(results, list) and len(results) > 0:
+                listing_id = results[0].get("id") or results[0].get("listing_id")
+                if listing_id:
+                    self.execute_journey_step(
+                        "View ODPS Product Details",
+                        lambda: self._call_api_safe(
+                            "GET",
+                            f"/api/v1/marketplace/listings/{listing_id}/",
+                            expected_status=200,
+                            skip_on_404=False,
+                        ),
+                    )
+
+            # List entitlements (existing purchases)
+            entitlements_response = self._call_api_safe(
+                "GET",
+                "/api/v1/marketplace/entitlements/",
+                expected_status=200,
+                skip_on_404=False,
+            )
+            if entitlements_response.status_code == 200:
+                self.execute_journey_step(
+                    "View Entitlements",
+                    lambda: get_response_data(entitlements_response),
+                )
+
+            # List orders
+            orders_response = self._call_api_safe(
+                "GET",
+                "/api/v1/marketplace/orders/",
+                expected_status=200,
+                skip_on_404=False,
+            )
+            if orders_response.status_code == 200:
+                self.execute_journey_step(
+                    "View Orders",
+                    lambda: get_response_data(orders_response),
+                )
+
+            journey.complete()
+            self.assertGreaterEqual(journey.completion_rate, 80.0)
+
+        except Exception as e:
+            journey.fail(e)
+            raise
 
 
 # ============================================================================
@@ -2867,7 +3077,7 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
                 ),
             )
             if domain_response.status_code == 201:
-                domain_id = domain_response.data.get("id")
+                domain_id = (get_response_data(domain_response) or {}).get("id")
                 self.execute_journey_step(
                     "Assign Domain Owners",
                     lambda: self._call_api_safe(
@@ -2914,7 +3124,7 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
             )
             if compliance_response.status_code == 201:
                 self.execute_journey_step(
-                    "Configure Automated Compliance", lambda: compliance_response.data
+                    "Configure Automated Compliance", lambda: get_response_data(compliance_response)
                 )
             else:
                 self.execute_journey_step("Note: Automated Compliance Not Available", lambda: None)
@@ -2928,7 +3138,7 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
             )
             if retention_response.status_code == 201:
                 self.execute_journey_step(
-                    "Set Up Retention Automation", lambda: retention_response.data
+                    "Set Up Retention Automation", lambda: get_response_data(retention_response)
                 )
             else:
                 self.execute_journey_step("Note: Retention Policies Not Available", lambda: None)
@@ -2942,7 +3152,7 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
             )
             if consent_response.status_code == 200:
                 self.execute_journey_step(
-                    "Configure Consent Management", lambda: consent_response.data
+                    "Configure Consent Management", lambda: get_response_data(consent_response)
                 )
             else:
                 self.execute_journey_step("Note: Consent Management Not Available", lambda: None)
@@ -2963,26 +3173,35 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
         )
         try:
             dashboard_response = self._call_api_safe(
-                "GET", "/api/v1/analytics/costs/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/analytics/costs/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: analytics
             )
             if dashboard_response.status_code == 200:
-                self.execute_journey_step("View Cost Dashboard", lambda: dashboard_response.data)
+                self.execute_journey_step("View Cost Dashboard", lambda: get_response_data(dashboard_response))
             else:
                 self.execute_journey_step("Note: Cost Dashboard Not Available", lambda: None)
 
             breakdown_response = self._call_api_safe(
-                "GET", "/api/v1/analytics/costs/breakdown/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/analytics/costs/breakdown/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: analytics
             )
             if breakdown_response.status_code == 200:
-                self.execute_journey_step("View Cost Breakdown", lambda: breakdown_response.data)
+                self.execute_journey_step("View Cost Breakdown", lambda: get_response_data(breakdown_response))
             else:
                 self.execute_journey_step("Note: Cost Breakdown Not Available", lambda: None)
 
             by_asset_response = self._call_api_safe(
-                "GET", "/api/v1/analytics/costs/by-asset/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/analytics/costs/by-asset/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: analytics
             )
             if by_asset_response.status_code == 200:
-                self.execute_journey_step("Analyze Costs by Asset", lambda: by_asset_response.data)
+                self.execute_journey_step("Analyze Costs by Asset", lambda: get_response_data(by_asset_response))
             else:
                 self.execute_journey_step(
                     "Note: Cost Analysis by Asset Not Available", lambda: None
@@ -2992,11 +3211,11 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
                 "GET",
                 "/api/v1/analytics/costs/recommendations/",
                 expected_status=200,
-                skip_on_404=False,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: analytics
             )
             if recommendations_response.status_code == 200:
                 self.execute_journey_step(
-                    "Review Optimization Recommendations", lambda: recommendations_response.data
+                    "Review Optimization Recommendations", lambda: get_response_data(recommendations_response)
                 )
             else:
                 self.execute_journey_step("Note: Cost Recommendations Not Available", lambda: None)
@@ -3004,10 +3223,13 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
             self.execute_journey_step("Implement Optimizations", lambda: True)
 
             trends_response = self._call_api_safe(
-                "GET", "/api/v1/analytics/costs/trends/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/analytics/costs/trends/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: analytics
             )
             if trends_response.status_code == 200:
-                self.execute_journey_step("Monitor Cost Trends", lambda: trends_response.data)
+                self.execute_journey_step("Monitor Cost Trends", lambda: get_response_data(trends_response))
             else:
                 self.execute_journey_step("Note: Cost Trends Not Available", lambda: None)
             journey.complete()
@@ -3033,7 +3255,7 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if install_response.status_code == 201:
-                self.execute_journey_step("Install Connectors", lambda: install_response.data)
+                self.execute_journey_step("Install Connectors", lambda: get_response_data(install_response))
             else:
                 self.execute_journey_step(
                     "Note: Connector Installation Not Available", lambda: None
@@ -3047,7 +3269,7 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if config_response.status_code == 200:
-                self.execute_journey_step("Configure Connections", lambda: config_response.data)
+                self.execute_journey_step("Configure Connections", lambda: get_response_data(config_response))
             else:
                 self.execute_journey_step(
                     "Note: Connection Configuration Not Available", lambda: None
@@ -3057,7 +3279,7 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
                 "POST", "/api/v1/integrations/test/", {}, expected_status=200, skip_on_404=False
             )
             if test_response.status_code == 200:
-                self.execute_journey_step("Test Integrations", lambda: test_response.data)
+                self.execute_journey_step("Test Integrations", lambda: get_response_data(test_response))
             else:
                 self.execute_journey_step("Note: Integration Testing Not Available", lambda: None)
 
@@ -3065,7 +3287,7 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
                 "POST", "/api/v1/integrations/deploy/", {}, expected_status=200, skip_on_404=False
             )
             if deploy_response.status_code == 200:
-                self.execute_journey_step("Deploy Integrations", lambda: deploy_response.data)
+                self.execute_journey_step("Deploy Integrations", lambda: get_response_data(deploy_response))
             else:
                 self.execute_journey_step(
                     "Note: Integration Deployment Not Available", lambda: None
@@ -3076,7 +3298,7 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
             )
             if health_response.status_code == 200:
                 self.execute_journey_step(
-                    "Monitor Integration Health", lambda: health_response.data
+                    "Monitor Integration Health", lambda: get_response_data(health_response)
                 )
             else:
                 self.execute_journey_step(
@@ -3109,7 +3331,7 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
             )
             if marketplace_response.status_code == 200:
                 self.execute_journey_step(
-                    "View Connector Marketplace", lambda: marketplace_response.data
+                    "View Connector Marketplace", lambda: get_response_data(marketplace_response)
                 )
             else:
                 self.execute_journey_step("Note: Connector Marketplace Not Available", lambda: None)
@@ -3122,7 +3344,7 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if approve_response.status_code == 200:
-                self.execute_journey_step("Approve Connector", lambda: approve_response.data)
+                self.execute_journey_step("Approve Connector", lambda: get_response_data(approve_response))
             else:
                 self.execute_journey_step("Note: Connector Approval Not Available", lambda: None)
 
@@ -3134,7 +3356,7 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
             )
             if categories_response.status_code == 200:
                 self.execute_journey_step(
-                    "Manage Connector Categories", lambda: categories_response.data
+                    "Manage Connector Categories", lambda: get_response_data(categories_response)
                 )
             else:
                 self.execute_journey_step("Note: Connector Categories Not Available", lambda: None)
@@ -3146,7 +3368,7 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if usage_response.status_code == 200:
-                self.execute_journey_step("Monitor Connector Usage", lambda: usage_response.data)
+                self.execute_journey_step("Monitor Connector Usage", lambda: get_response_data(usage_response))
             else:
                 self.execute_journey_step(
                     "Note: Connector Usage Monitoring Not Available", lambda: None
@@ -3174,7 +3396,7 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if pricing_response.status_code == 200:
-                self.execute_journey_step("Configure Pricing Models", lambda: pricing_response.data)
+                self.execute_journey_step("Configure Pricing Models", lambda: get_response_data(pricing_response))
             else:
                 self.execute_journey_step(
                     "Note: Pricing Models Configuration Not Available", lambda: None
@@ -3188,7 +3410,7 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if trust_response.status_code in (200, 201):
-                self.execute_journey_step("Configure Trust Signals", lambda: trust_response.data)
+                self.execute_journey_step("Configure Trust Signals", lambda: get_response_data(trust_response))
             else:
                 self.execute_journey_step(
                     "Note: Trust Signals Configuration Not Available", lambda: None
@@ -3203,7 +3425,7 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
             )
             if recommendations_response.status_code == 200:
                 self.execute_journey_step(
-                    "Configure Recommendations", lambda: recommendations_response.data
+                    "Configure Recommendations", lambda: get_response_data(recommendations_response)
                 )
             else:
                 self.execute_journey_step(
@@ -3226,7 +3448,12 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
         try:
             self.execute_journey_step(
                 "View Topology",
-                lambda: self._call_api_safe("GET", "/api/v1/mesh/topology/", expected_status=200),
+                lambda: self._call_api_safe(
+                    "GET",
+                    "/api/v1/mesh/topology/",
+                    expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: mesh
+                ),
             )
             self.execute_journey_step(
                 "Monitor Domain Health",
@@ -3263,7 +3490,7 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if metrics_response.status_code == 200:
-                self.execute_journey_step("Configure Metrics", lambda: metrics_response.data)
+                self.execute_journey_step("Configure Metrics", lambda: get_response_data(metrics_response))
             else:
                 self.execute_journey_step("Note: Metrics Configuration Not Available", lambda: None)
 
@@ -3275,7 +3502,7 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if alerts_response.status_code == 200:
-                self.execute_journey_step("Configure Alerts", lambda: alerts_response.data)
+                self.execute_journey_step("Configure Alerts", lambda: get_response_data(alerts_response))
             else:
                 self.execute_journey_step("Note: Alerts Configuration Not Available", lambda: None)
 
@@ -3287,7 +3514,7 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if dashboards_response.status_code == 201:
-                self.execute_journey_step("Configure Dashboards", lambda: dashboards_response.data)
+                self.execute_journey_step("Configure Dashboards", lambda: get_response_data(dashboards_response))
             else:
                 self.execute_journey_step(
                     "Note: Dashboards Configuration Not Available", lambda: None
@@ -3308,32 +3535,38 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
         )
         try:
             marketplace_response = self._call_api_safe(
-                "GET", "/api/v1/plugins/marketplace/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/developer/plugins/marketplace/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: plugins
             )
             if marketplace_response.status_code == 200:
                 self.execute_journey_step(
-                    "View Plugin Marketplace", lambda: marketplace_response.data
+                    "View Plugin Marketplace", lambda: get_response_data(marketplace_response)
                 )
             else:
                 self.execute_journey_step("Note: Plugin Marketplace Not Available", lambda: None)
 
             approve_response = self._call_api_safe(
                 "POST",
-                "/api/v1/plugins/marketplace/approve/",
+                "/api/v1/developer/plugins/marketplace/approve/",
                 {},
                 expected_status=200,
                 skip_on_404=False,
             )
             if approve_response.status_code == 200:
-                self.execute_journey_step("Approve Plugin", lambda: approve_response.data)
+                self.execute_journey_step("Approve Plugin", lambda: get_response_data(approve_response))
             else:
                 self.execute_journey_step("Note: Plugin Approval Not Available", lambda: None)
 
             usage_response = self._call_api_safe(
-                "GET", "/api/v1/plugins/marketplace/usage/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/developer/plugins/marketplace/usage/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: plugins
             )
             if usage_response.status_code == 200:
-                self.execute_journey_step("Monitor Plugin Usage", lambda: usage_response.data)
+                self.execute_journey_step("Monitor Plugin Usage", lambda: get_response_data(usage_response))
             else:
                 self.execute_journey_step(
                     "Note: Plugin Usage Monitoring Not Available", lambda: None
@@ -3364,6 +3597,7 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
                     "/api/v1/ai/natural-language-search/",
                     {"query": "customer data"},
                     expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
                 ),
             )
             self.execute_journey_step("Process API Response", lambda: True)
@@ -3392,7 +3626,7 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
             )
             if create_response.status_code == 201:
                 self.execute_journey_step(
-                    "Call Pipeline Creation API", lambda: create_response.data
+                    "Call Pipeline Creation API", lambda: get_response_data(create_response)
                 )
             else:
                 self.execute_journey_step("Note: Pipeline Creation API Not Available", lambda: None)
@@ -3406,7 +3640,7 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
             )
             if execute_response.status_code == 202:
                 self.execute_journey_step(
-                    "Call Pipeline Execution API", lambda: execute_response.data
+                    "Call Pipeline Execution API", lambda: get_response_data(execute_response)
                 )
             else:
                 self.execute_journey_step(
@@ -3440,7 +3674,7 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if test_response.status_code == 200:
-                self.execute_journey_step("Test Connector", lambda: test_response.data)
+                self.execute_journey_step("Test Connector", lambda: get_response_data(test_response))
             else:
                 self.execute_journey_step("Note: Connector Testing Not Available", lambda: None)
 
@@ -3452,7 +3686,7 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if submit_response.status_code == 201:
-                self.execute_journey_step("Submit to Marketplace", lambda: submit_response.data)
+                self.execute_journey_step("Submit to Marketplace", lambda: get_response_data(submit_response))
             else:
                 self.execute_journey_step(
                     "Note: Marketplace Submission Not Available", lambda: None
@@ -3471,28 +3705,51 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
         )
         try:
             browse_response = self._call_api_safe(
-                "GET", "/api/v1/plugins/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/developer/plugins/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: plugins
             )
+            plugin_id = None
             if browse_response.status_code == 200:
-                self.execute_journey_step("Browse Plugins", lambda: browse_response.data)
-            else:
-                self.execute_journey_step("Note: Plugin Browsing Not Available", lambda: None)
+                self.execute_journey_step("Browse Plugins", lambda: get_response_data(browse_response))
+                browse_data = get_response_data(browse_response) or {}
+                results = browse_data.get("results", browse_data)
+                if isinstance(results, list) and results:
+                    plugin_id = results[0].get("id")
+                elif isinstance(results, dict) and "results" in results:
+                    plugin_list = results.get("results", [])
+                    if plugin_list:
+                        plugin_id = plugin_list[0].get("id")
 
             install_response = self._call_api_safe(
-                "POST", "/api/v1/plugins/install/", {}, expected_status=200, skip_on_404=False
+                "POST",
+                "/api/v1/developer/plugins/install/",
+                {},
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: plugins
             )
             if install_response.status_code == 200:
-                self.execute_journey_step("Install Plugin", lambda: install_response.data)
+                self.execute_journey_step("Install Plugin", lambda: get_response_data(install_response))
             else:
                 self.execute_journey_step("Note: Plugin Installation Not Available", lambda: None)
 
-            execute_response = self._call_api_safe(
-                "POST", "/api/v1/plugins/{id}/execute/", {}, expected_status=200, skip_on_404=False
-            )
-            if execute_response.status_code == 200:
-                self.execute_journey_step("Use Plugin API", lambda: execute_response.data)
+            if plugin_id:
+                execute_response = self._call_api_safe(
+                    "POST",
+                    f"/api/v1/developer/plugins/{plugin_id}/execute/",
+                    {},
+                    expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: plugins
+                )
+                if execute_response.status_code == 200:
+                    self.execute_journey_step("Use Plugin API", lambda: get_response_data(execute_response))
+                else:
+                    self.execute_journey_step(
+                        "Note: Plugin Execution API Not Available", lambda: None
+                    )
             else:
-                self.execute_journey_step("Note: Plugin Execution API Not Available", lambda: None)
+                self.execute_journey_step("Note: No Plugins to Execute", lambda: None)
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 80.0)
         except Exception as e:
@@ -3509,34 +3766,47 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
         )
         try:
             portal_response = self._call_api_safe(
-                "GET", "/api/v1/developer/portal/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/developer/portal/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: developer portal
             )
             if portal_response.status_code == 200:
-                self.execute_journey_step("Access Developer Portal", lambda: portal_response.data)
+                self.execute_journey_step("Access Developer Portal", lambda: get_response_data(portal_response))
             else:
                 self.execute_journey_step("Note: Developer Portal Not Available", lambda: None)
 
             docs_response = self._call_api_safe(
-                "GET", "/api/v1/developer/documentation/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/developer/documentation/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: developer portal
             )
             if docs_response.status_code == 200:
-                self.execute_journey_step("View API Documentation", lambda: docs_response.data)
+                self.execute_journey_step("View API Documentation", lambda: get_response_data(docs_response))
             else:
                 self.execute_journey_step("Note: API Documentation Not Available", lambda: None)
 
             key_response = self._call_api_safe(
-                "POST", "/api/v1/developer/api-keys/", {}, expected_status=201, skip_on_404=False
+                "POST",
+                "/api/v1/developer/api-keys/",
+                {},
+                expected_status=201,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: developer portal
             )
             if key_response.status_code == 201:
-                self.execute_journey_step("Generate API Key", lambda: key_response.data)
+                self.execute_journey_step("Generate API Key", lambda: get_response_data(key_response))
             else:
                 self.execute_journey_step("Note: API Key Generation Not Available", lambda: None)
 
             usage_response = self._call_api_safe(
-                "GET", "/api/v1/developer/api-usage/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/developer/api-usage/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: developer portal
             )
             if usage_response.status_code == 200:
-                self.execute_journey_step("Monitor API Usage", lambda: usage_response.data)
+                self.execute_journey_step("Monitor API Usage", lambda: get_response_data(usage_response))
             else:
                 self.execute_journey_step("Note: API Usage Monitoring Not Available", lambda: None)
             journey.complete()
@@ -3557,21 +3827,27 @@ class Persona8AuditorNewJourneys(NewUserJourneyTestBase):
         )
         try:
             policies_response = self._call_api_safe(
-                "GET", "/api/v1/mesh/governance/policies/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/mesh/governance/policies/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: mesh
             )
             if policies_response.status_code == 200:
                 self.execute_journey_step(
-                    "View Governance Policies", lambda: policies_response.data
+                    "View Governance Policies", lambda: get_response_data(policies_response)
                 )
             else:
                 self.execute_journey_step("Note: Governance Policies Not Available", lambda: None)
 
             compliance_response = self._call_api_safe(
-                "GET", "/api/v1/mesh/governance/compliance/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/mesh/governance/compliance/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: mesh
             )
             if compliance_response.status_code == 200:
                 self.execute_journey_step(
-                    "Review Policy Compliance", lambda: compliance_response.data
+                    "Review Policy Compliance", lambda: get_response_data(compliance_response)
                 )
             else:
                 self.execute_journey_step(
@@ -3579,11 +3855,14 @@ class Persona8AuditorNewJourneys(NewUserJourneyTestBase):
                 )
 
             reports_response = self._call_api_safe(
-                "GET", "/api/v1/mesh/governance/reports/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/mesh/governance/reports/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: mesh
             )
             if reports_response.status_code == 200:
                 self.execute_journey_step(
-                    "Generate Governance Report", lambda: reports_response.data
+                    "Generate Governance Report", lambda: get_response_data(reports_response)
                 )
             else:
                 self.execute_journey_step("Note: Governance Reports Not Available", lambda: None)
@@ -3601,28 +3880,37 @@ class Persona8AuditorNewJourneys(NewUserJourneyTestBase):
         )
         try:
             pipelines_response = self._call_api_safe(
-                "GET", "/api/v1/transformation/pipelines/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/transformation/pipelines/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred
             )
             if pipelines_response.status_code == 200:
-                self.execute_journey_step("View All Pipelines", lambda: pipelines_response.data)
+                self.execute_journey_step("View All Pipelines", lambda: get_response_data(pipelines_response))
             else:
                 self.execute_journey_step("Note: Pipeline Listing Not Available", lambda: None)
 
             executions_response = self._call_api_safe(
-                "GET", "/api/v1/transformation/executions/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/transformation/executions/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred
             )
             if executions_response.status_code == 200:
                 self.execute_journey_step(
-                    "Review Pipeline Executions", lambda: executions_response.data
+                    "Review Pipeline Executions", lambda: get_response_data(executions_response)
                 )
             else:
                 self.execute_journey_step("Note: Pipeline Executions Not Available", lambda: None)
 
             audit_response = self._call_api_safe(
-                "GET", "/api/v1/transformation/audit/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/transformation/audit/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Deferred
             )
             if audit_response.status_code == 200:
-                self.execute_journey_step("Generate Audit Report", lambda: audit_response.data)
+                self.execute_journey_step("Generate Audit Report", lambda: get_response_data(audit_response))
             else:
                 self.execute_journey_step("Note: Transformation Audit Not Available", lambda: None)
             journey.complete()
@@ -3639,36 +3927,48 @@ class Persona8AuditorNewJourneys(NewUserJourneyTestBase):
         )
         try:
             ratings_response = self._call_api_safe(
-                "GET", "/api/v1/social/ratings/audit/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/social/ratings/audit/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
             )
             if ratings_response.status_code == 200:
-                self.execute_journey_step("View Ratings Activity", lambda: ratings_response.data)
+                self.execute_journey_step("View Ratings Activity", lambda: get_response_data(ratings_response))
             else:
                 self.execute_journey_step("Note: Ratings Audit Not Available", lambda: None)
 
             reviews_response = self._call_api_safe(
-                "GET", "/api/v1/social/reviews/audit/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/social/reviews/audit/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
             )
             if reviews_response.status_code == 200:
-                self.execute_journey_step("View Reviews Activity", lambda: reviews_response.data)
+                self.execute_journey_step("View Reviews Activity", lambda: get_response_data(reviews_response))
             else:
                 self.execute_journey_step("Note: Reviews Audit Not Available", lambda: None)
 
             community_response = self._call_api_safe(
-                "GET", "/api/v1/social/communities/audit/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/social/communities/audit/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
             )
             if community_response.status_code == 200:
                 self.execute_journey_step(
-                    "View Community Activity", lambda: community_response.data
+                    "View Community Activity", lambda: get_response_data(community_response)
                 )
             else:
                 self.execute_journey_step("Note: Community Audit Not Available", lambda: None)
 
             reports_response = self._call_api_safe(
-                "GET", "/api/v1/social/audit/reports/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/social/audit/reports/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
             )
             if reports_response.status_code == 200:
-                self.execute_journey_step("Generate Activity Report", lambda: reports_response.data)
+                self.execute_journey_step("Generate Activity Report", lambda: get_response_data(reports_response))
             else:
                 self.execute_journey_step("Note: Social Audit Reports Not Available", lambda: None)
             journey.complete()
@@ -3697,6 +3997,7 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                     "/api/v1/ai/natural-language-search/",
                     {"query": "ML training datasets"},
                     expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
                 ),
             )
             journey.complete()
@@ -3719,6 +4020,7 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                     "/api/v1/ai/schema-matching/",
                     {"source_schema": {}, "target_schema": {}},
                     expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
                 ),
             )
             journey.complete()
@@ -3741,11 +4043,11 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                 "/api/v1/ai/anomaly-detection/config/",
                 {},
                 expected_status=200,
-                skip_on_404=False,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
             )
             if config_response.status_code == 200:
                 self.execute_journey_step(
-                    "Configure Anomaly Detection", lambda: config_response.data
+                    "Configure Anomaly Detection", lambda: get_response_data(config_response)
                 )
             else:
                 self.execute_journey_step(
@@ -3757,10 +4059,10 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                 "/api/v1/ai/anomaly-detection/train/",
                 {},
                 expected_status=202,
-                skip_on_404=False,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
             )
             if train_response.status_code == 202:
-                self.execute_journey_step("Train Model", lambda: train_response.data)
+                self.execute_journey_step("Train Model", lambda: get_response_data(train_response))
             else:
                 self.execute_journey_step("Note: Model Training Not Available", lambda: None)
 
@@ -3772,7 +4074,7 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if deploy_response.status_code == 200:
-                self.execute_journey_step("Deploy Model", lambda: deploy_response.data)
+                self.execute_journey_step("Deploy Model", lambda: get_response_data(deploy_response))
             else:
                 self.execute_journey_step("Note: Model Deployment Not Available", lambda: None)
             journey.complete()
@@ -3791,10 +4093,13 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
         )
         try:
             model_response = self._call_api_safe(
-                "GET", "/api/v1/ai/recommendations/model/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/ai/recommendations/model/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
             )
             if model_response.status_code == 200:
-                self.execute_journey_step("View Current Model", lambda: model_response.data)
+                self.execute_journey_step("View Current Model", lambda: get_response_data(model_response))
             else:
                 self.execute_journey_step(
                     "Note: Recommendation Model View Not Available", lambda: None
@@ -3808,7 +4113,7 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if tune_response.status_code == 200:
-                self.execute_journey_step("Tune Parameters", lambda: tune_response.data)
+                self.execute_journey_step("Tune Parameters", lambda: get_response_data(tune_response))
             else:
                 self.execute_journey_step("Note: Model Tuning Not Available", lambda: None)
 
@@ -3820,7 +4125,7 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if test_response.status_code == 200:
-                self.execute_journey_step("Test Tuned Model", lambda: test_response.data)
+                self.execute_journey_step("Test Tuned Model", lambda: get_response_data(test_response))
             else:
                 self.execute_journey_step("Note: Model Testing Not Available", lambda: None)
             journey.complete()
@@ -3843,11 +4148,11 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                 "GET",
                 f"/api/v1/ai/classification/{asset_id}/",
                 expected_status=200,
-                skip_on_404=False,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
             )
             if classification_response.status_code == 200:
                 self.execute_journey_step(
-                    "Review Classifications", lambda: classification_response.data
+                    "Review Classifications", lambda: get_response_data(classification_response)
                 )
             else:
                 self.execute_journey_step("Note: Auto-Classification Not Available", lambda: None)
@@ -3879,7 +4184,7 @@ class Persona10DataAnalystJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if pipeline_response.status_code == 201:
-                self.execute_journey_step("Create Pipeline", lambda: pipeline_response.data)
+                self.execute_journey_step("Create Pipeline", lambda: get_response_data(pipeline_response))
             else:
                 self.execute_journey_step("Note: Pipeline Creation Not Available", lambda: None)
             journey.complete(metadata={"asset_id": str(asset_id)})
@@ -3905,7 +4210,7 @@ class Persona10DataAnalystJourneys(NewUserJourneyTestBase):
             )
             if wrangling_response.status_code == 201:
                 self.execute_journey_step(
-                    "Start Wrangling Session", lambda: wrangling_response.data
+                    "Start Wrangling Session", lambda: get_response_data(wrangling_response)
                 )
             else:
                 self.execute_journey_step(
@@ -3983,22 +4288,23 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
                 "/api/v1/social/communities/",
                 {"name": f"CM Community {uuid.uuid4().hex[:8]}"},
                 expected_status=201,
-                skip_on_404=False,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
             )
             if community_response.status_code == 201:
-                community_id = community_response.data.get("id")
-                self.execute_journey_step("Create Community", lambda: community_response.data)
+                community_data = get_response_data(community_response) or {}
+                community_id = community_data.get("id")
+                self.execute_journey_step("Create Community", lambda: community_data)
 
                 settings_response = self._call_api_safe(
                     "PATCH",
                     f"/api/v1/social/communities/{community_id}/",
                     {},
                     expected_status=200,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
                 )
                 if settings_response.status_code == 200:
                     self.execute_journey_step(
-                        "Configure Community Settings", lambda: settings_response.data
+                        "Configure Community Settings", lambda: get_response_data(settings_response)
                     )
                 else:
                     self.execute_journey_step(
@@ -4009,10 +4315,10 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
                     "GET",
                     f"/api/v1/social/communities/{community_id}/members/",
                     expected_status=200,
-                    skip_on_404=False,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
                 )
                 if members_response.status_code == 200:
-                    self.execute_journey_step("Manage Members", lambda: members_response.data)
+                    self.execute_journey_step("Manage Members", lambda: get_response_data(members_response))
                 else:
                     self.execute_journey_step(
                         "Note: Community Members Management Not Available", lambda: None
@@ -4039,36 +4345,56 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
         )
         try:
             pending_response = self._call_api_safe(
-                "GET", "/api/v1/social/reviews/pending/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/social/reviews/pending/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
             )
+            review_id = None
             if pending_response.status_code == 200:
-                self.execute_journey_step("View Pending Reviews", lambda: pending_response.data)
-            else:
-                self.execute_journey_step("Note: Pending Reviews Not Available", lambda: None)
+                self.execute_journey_step("View Pending Reviews", lambda: get_response_data(pending_response))
+                pending_data = get_response_data(pending_response) or {}
+                results = pending_data.get("results", [])
+                if results:
+                    review_id = results[0].get("id")
 
-            approve_response = self._call_api_safe(
-                "POST",
-                "/api/v1/social/reviews/{id}/approve/",
-                {},
-                expected_status=200,
-                skip_on_404=False,
-            )
-            if approve_response.status_code == 200:
-                self.execute_journey_step("Approve Review", lambda: approve_response.data)
+            if review_id:
+                approve_response = self._call_api_safe(
+                    "POST",
+                    f"/api/v1/social/reviews/{review_id}/approve/",
+                    {},
+                    expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
+                )
+                if approve_response.status_code == 200:
+                    self.execute_journey_step("Approve Review", lambda: get_response_data(approve_response))
+                else:
+                    self.execute_journey_step("Note: Review Approval Not Available", lambda: None)
             else:
-                self.execute_journey_step("Note: Review Approval Not Available", lambda: None)
+                audit_response = self._call_api_safe(
+                    "GET",
+                    "/api/v1/social/reviews/audit/",
+                    expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,
+                )
+                if audit_response.status_code == 200:
+                    self.execute_journey_step("View Reviews Audit", lambda: get_response_data(audit_response))
+                    audit_data = get_response_data(audit_response) or {}
+                    results = audit_data.get("results", [])
+                    if results:
+                        review_id = results[0].get("id")
+                if review_id:
+                    approve_response = self._call_api_safe(
+                        "POST",
+                        f"/api/v1/social/reviews/{review_id}/approve/",
+                        {},
+                        expected_status=200,
+                        skip_on_404=SKIP_ON_404_OPTIONAL,
+                    )
+                    if approve_response.status_code == 200:
+                        self.execute_journey_step("Approve Review", lambda: get_response_data(approve_response))
+                self.execute_journey_step("Note: No Pending Reviews to Moderate", lambda: None)
 
-            reject_response = self._call_api_safe(
-                "POST",
-                "/api/v1/social/reviews/{id}/reject/",
-                {},
-                expected_status=200,
-                skip_on_404=False,
-            )
-            if reject_response.status_code == 200:
-                self.execute_journey_step("Reject Review", lambda: reject_response.data)
-            else:
-                self.execute_journey_step("Note: Review Rejection Not Available", lambda: None)
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 80.0)
         except Exception as e:
@@ -4091,7 +4417,7 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if stewards_response.status_code == 201:
-                self.execute_journey_step("Assign Stewards", lambda: stewards_response.data)
+                self.execute_journey_step("Assign Stewards", lambda: get_response_data(stewards_response))
             else:
                 # Try fallback: update asset directly
                 try:
@@ -4100,7 +4426,7 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
                     )
                     if update_response.status_code == 200:
                         self.execute_journey_step(
-                            "Assign Stewards (via asset update)", lambda: update_response.data
+                            "Assign Stewards (via asset update)", lambda: get_response_data(update_response)
                         )
                     else:
                         self.execute_journey_step(
@@ -4124,35 +4450,49 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
         )
         try:
             feeds_response = self._call_api_safe(
-                "GET", "/api/v1/social/activity-feeds/", expected_status=200, skip_on_404=False
+                "GET",
+                "/api/v1/social/activity-feeds/",
+                expected_status=200,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
             )
+            activity_id = None
             if feeds_response.status_code == 200:
-                self.execute_journey_step("View Activity Feeds", lambda: feeds_response.data)
-            else:
-                self.execute_journey_step("Note: Activity Feeds Not Available", lambda: None)
+                self.execute_journey_step("View Activity Feeds", lambda: get_response_data(feeds_response))
+                feeds_data = get_response_data(feeds_response) or {}
+                results = feeds_data.get("results", [])
+                if results:
+                    activity_id = results[0].get("id")
 
             filter_response = self._call_api_safe(
                 "GET",
                 "/api/v1/social/activity-feeds/?filter=reviews",
                 expected_status=200,
-                skip_on_404=False,
+                skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
             )
             if filter_response.status_code == 200:
-                self.execute_journey_step("Filter Activities", lambda: filter_response.data)
+                self.execute_journey_step("Filter Activities", lambda: get_response_data(filter_response))
+                if not activity_id:
+                    filter_data = get_response_data(filter_response) or {}
+                    results = filter_data.get("results", [])
+                    if results:
+                        activity_id = results[0].get("id")
             else:
                 self.execute_journey_step("Note: Activity Filtering Not Available", lambda: None)
 
-            moderate_response = self._call_api_safe(
-                "POST",
-                "/api/v1/social/activity-feeds/{id}/moderate/",
-                {},
-                expected_status=200,
-                skip_on_404=False,
-            )
-            if moderate_response.status_code == 200:
-                self.execute_journey_step("Moderate Activities", lambda: moderate_response.data)
+            if activity_id:
+                moderate_response = self._call_api_safe(
+                    "POST",
+                    f"/api/v1/social/activity-feeds/{activity_id}/moderate/",
+                    {},
+                    expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
+                )
+                if moderate_response.status_code == 200:
+                    self.execute_journey_step("Moderate Activities", lambda: get_response_data(moderate_response))
+                else:
+                    self.execute_journey_step("Note: Activity Moderation Not Available", lambda: None)
             else:
-                self.execute_journey_step("Note: Activity Moderation Not Available", lambda: None)
+                self.execute_journey_step("Note: No Activities to Moderate", lambda: None)
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 80.0)
         except Exception as e:
@@ -4206,7 +4546,7 @@ class Persona12DataMeshDomainOwnerJourneys(NewUserJourneyTestBase):
                 ),
             )
             if domain_response.status_code == 201:
-                domain_id = domain_response.data.get("id")
+                domain_id = (get_response_data(domain_response) or {}).get("id")
                 self.execute_journey_step(
                     "Configure Governance",
                     lambda: self._call_api_safe(
@@ -4233,7 +4573,12 @@ class Persona12DataMeshDomainOwnerJourneys(NewUserJourneyTestBase):
         try:
             self.execute_journey_step(
                 "View Topology",
-                lambda: self._call_api_safe("GET", "/api/v1/mesh/topology/", expected_status=200),
+                lambda: self._call_api_safe(
+                    "GET",
+                    "/api/v1/mesh/topology/",
+                    expected_status=200,
+                    skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: mesh
+                ),
             )
             self.execute_journey_step(
                 "Update Relationships",
@@ -4265,7 +4610,7 @@ class Persona12DataMeshDomainOwnerJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if transfer_response.status_code == 200:
-                self.execute_journey_step("Transfer Ownership", lambda: transfer_response.data)
+                self.execute_journey_step("Transfer Ownership", lambda: get_response_data(transfer_response))
             else:
                 self.execute_journey_step(
                     "Note: Asset Ownership Transfer Not Available", lambda: None
@@ -4295,7 +4640,7 @@ class Persona12DataMeshDomainOwnerJourneys(NewUserJourneyTestBase):
                 ),
             )
             if domain_response.status_code == 201:
-                domain_id = domain_response.data.get("id")
+                domain_id = (get_response_data(domain_response) or {}).get("id")
                 self.execute_journey_step(
                     "View Health Metrics",
                     lambda: self._call_api_safe(

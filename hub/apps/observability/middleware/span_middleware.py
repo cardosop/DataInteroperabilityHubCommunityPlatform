@@ -52,49 +52,51 @@ class SpanMiddleware(MiddlewareMixin):
             route = getattr(request.resolver_match, 'route', None) if hasattr(request, 'resolver_match') else None
             span_name = route or request.path
 
-            # Start span
-            span = tracer.start_as_current_span(
+            # Start span: start_as_current_span returns a context manager; __enter__ yields the span
+            span_cm = tracer.start_as_current_span(
                 f"HTTP {request.method} {span_name}",
                 kind=trace.SpanKind.SERVER
             )
+            span = span_cm.__enter__()
 
-            # Add request attributes
-            attributes = {
-                "http.method": request.method,
-                "http.url": request.build_absolute_uri(),
-                "http.route": request.path,
-                "http.scheme": request.scheme,
-                "http.host": request.get_host(),
-            }
+            # Add request attributes (guard: no-op tracer may return object without set_attribute)
+            if hasattr(span, 'set_attribute'):
+                attributes = {
+                    "http.method": request.method,
+                    "http.url": request.build_absolute_uri(),
+                    "http.route": request.path,
+                    "http.scheme": request.scheme,
+                    "http.host": request.get_host(),
+                }
 
-            # Add user agent if available
-            user_agent = request.META.get('HTTP_USER_AGENT', '')
-            if user_agent:
-                attributes["http.user_agent"] = user_agent
+                # Add user agent if available
+                user_agent = request.META.get('HTTP_USER_AGENT', '')
+                if user_agent:
+                    attributes["http.user_agent"] = user_agent
 
-            # Add user and tenant info if available
-            if hasattr(request, 'user') and request.user.is_authenticated:
-                attributes["user.id"] = str(request.user.id)
-                if hasattr(request.user, 'tenant_id'):
-                    attributes["tenant.id"] = str(request.user.tenant_id)
-                if hasattr(request.user, 'email'):
-                    attributes["user.email"] = request.user.email
+                # Add user and tenant info if available
+                if hasattr(request, 'user') and request.user.is_authenticated:
+                    attributes["user.id"] = str(request.user.id)
+                    if hasattr(request.user, 'tenant_id'):
+                        attributes["tenant.id"] = str(request.user.tenant_id)
+                    if hasattr(request.user, 'email'):
+                        attributes["user.email"] = request.user.email
 
-            # Add trace ID if available
-            if hasattr(request, 'trace_id'):
-                attributes["trace.id"] = request.trace_id
+                # Add trace ID if available
+                if hasattr(request, 'trace_id'):
+                    attributes["trace.id"] = request.trace_id
 
-            # Set attributes on span
-            for key, value in attributes.items():
-                try:
-                    if value is not None:
-                        span.set_attribute(key, str(value))
-                except Exception:
-                    pass
+                for key, value in attributes.items():
+                    try:
+                        if value is not None:
+                            span.set_attribute(key, str(value))
+                    except Exception:
+                        pass
 
-            # Store start time and span in request
+            # Store start time, span, and context manager (for __exit__ in process_response)
             request._span_start_time = time.time()
             request._span = span
+            request._span_cm = span_cm
 
         except Exception as e:
             logger.debug(f"Failed to create span for request: {e}")
@@ -113,80 +115,87 @@ class SpanMiddleware(MiddlewareMixin):
             return response
 
         span = getattr(request, '_span', None)
+        span_cm = getattr(request, '_span_cm', None)
         if not span:
             return response
 
         try:
-            # Calculate duration
-            start_time = getattr(request, '_span_start_time', None)
-            if start_time:
-                duration_ms = (time.time() - start_time) * 1000
-                span.set_attribute("http.response.duration_ms", duration_ms)
+            # Add response attributes (guard: no-op span may lack set_attribute)
+            if hasattr(span, 'set_attribute'):
+                # Calculate duration
+                start_time = getattr(request, '_span_start_time', None)
+                if start_time:
+                    duration_ms = (time.time() - start_time) * 1000
+                    span.set_attribute("http.response.duration_ms", duration_ms)
 
-            # Add response attributes
-            span.set_attribute("http.status_code", response.status_code)
+                span.set_attribute("http.status_code", response.status_code)
 
-            # Set span status based on HTTP status code
-            is_error = False
-            if response.status_code >= 500:
-                span.set_status(Status(StatusCode.ERROR, f"HTTP {response.status_code}"))
-                is_error = True
-            elif response.status_code >= 400:
-                span.set_status(Status(StatusCode.ERROR, f"HTTP {response.status_code}"))
-                is_error = True
-            else:
-                span.set_status(Status(StatusCode.OK))
+                # Set span status based on HTTP status code
+                is_error = False
+                if response.status_code >= 500:
+                    span.set_status(Status(StatusCode.ERROR, f"HTTP {response.status_code}"))
+                    is_error = True
+                elif response.status_code >= 400:
+                    span.set_status(Status(StatusCode.ERROR, f"HTTP {response.status_code}"))
+                    is_error = True
+                else:
+                    span.set_status(Status(StatusCode.OK))
 
-            # Ensure error spans are sampled (100% sampling for errors)
-            # Note: We can't change sampling decision after span creation,
-            # but we can mark error spans and ensure they're exported
-            if is_error:
-                span_context = span.get_span_context()
-                # Check if span was sampled
-                is_sampled = bool(span_context.trace_flags & trace.TraceFlags.SAMPLED)
+                # Ensure error spans are sampled (100% sampling for errors)
+                if is_error and hasattr(span, 'get_span_context'):
+                    span_context = span.get_span_context()
+                    is_sampled = bool(span_context.trace_flags & trace.TraceFlags.SAMPLED)
 
-                # Mark error span with attributes for filtering/analysis
-                span.set_attribute("error.sampled", is_sampled)
-                span.set_attribute("sampling.priority", "high")
+                    span.set_attribute("error.sampled", is_sampled)
+                    span.set_attribute("sampling.priority", "high")
 
-                if not is_sampled:
-                    # Create a new sampled span for the error to ensure it's traced
-                    # Use the same trace context but with sampled flag
-                    tracer = trace.get_tracer(__name__)
+                    if not is_sampled:
+                        tracer = trace.get_tracer(__name__)
+                        with tracer.start_as_current_span(
+                            f"HTTP {request.method} {request.path} [ERROR]",
+                            context=trace.set_span_in_context(span),
+                            kind=trace.SpanKind.SERVER
+                        ) as error_span:
+                            if hasattr(error_span, 'set_attribute'):
+                                error_span.set_attribute("http.method", request.method)
+                                error_span.set_attribute("http.url", request.build_absolute_uri())
+                                error_span.set_attribute("http.route", request.path)
+                                error_span.set_attribute("http.status_code", response.status_code)
+                                error_span.set_attribute("sampling.forced", True)
+                                error_span.set_attribute("sampling.reason", "http_error")
+                                error_span.set_status(Status(StatusCode.ERROR, f"HTTP {response.status_code}"))
+                                if hasattr(request, 'user') and request.user.is_authenticated:
+                                    error_span.set_attribute("user.id", str(request.user.id))
+                                    if hasattr(request.user, 'tenant_id'):
+                                        error_span.set_attribute("tenant.id", str(request.user.tenant_id))
 
-                    # Create a new span in the same trace
-                    with tracer.start_as_current_span(
-                        f"HTTP {request.method} {request.path} [ERROR]",
-                        context=trace.set_span_in_context(span),
-                        kind=trace.SpanKind.SERVER
-                    ) as error_span:
-                        # Copy key attributes
-                        error_span.set_attribute("http.method", request.method)
-                        error_span.set_attribute("http.url", request.build_absolute_uri())
-                        error_span.set_attribute("http.route", request.path)
-                        error_span.set_attribute("http.status_code", response.status_code)
-                        error_span.set_attribute("sampling.forced", True)
-                        error_span.set_attribute("sampling.reason", "http_error")
-                        error_span.set_status(Status(StatusCode.ERROR, f"HTTP {response.status_code}"))
+                            logger.debug(
+                                "trace_sampling_error_span_created",
+                                trace_id=format(span_context.trace_id, '032x'),
+                                status_code=response.status_code,
+                                path=request.path
+                            )
 
-                        # Add user/tenant info if available
-                        if hasattr(request, 'user') and request.user.is_authenticated:
-                            error_span.set_attribute("user.id", str(request.user.id))
-                            if hasattr(request.user, 'tenant_id'):
-                                error_span.set_attribute("tenant.id", str(request.user.tenant_id))
-
-                        logger.debug(
-                            "trace_sampling_error_span_created",
-                            trace_id=format(span_context.trace_id, '032x'),
-                            status_code=response.status_code,
-                            path=request.path
-                        )
-
-            # End span
-            span.end()
+            # End span: use context manager __exit__ if available, else span.end()
+            if span_cm is not None:
+                try:
+                    span_cm.__exit__(None, None, None)
+                except Exception:
+                    if hasattr(span, 'end'):
+                        span.end()
+            elif hasattr(span, 'end'):
+                span.end()
 
         except Exception as e:
             logger.debug(f"Failed to update span with response: {e}")
+            # Ensure span is closed even on error
+            try:
+                if span_cm is not None:
+                    span_cm.__exit__(None, None, None)
+                elif hasattr(span, 'end'):
+                    span.end()
+            except Exception:
+                pass
 
         return response
 
@@ -200,21 +209,29 @@ class SpanMiddleware(MiddlewareMixin):
             return None
 
         span = getattr(request, '_span', None)
+        span_cm = getattr(request, '_span_cm', None)
         if not span:
             return None
 
         try:
-            # Record exception
-            span.record_exception(exception)
-            span.set_status(Status(StatusCode.ERROR, str(exception)))
-
-            # Add error attributes
-            span.set_attribute("error", True)
-            span.set_attribute("error.type", type(exception).__name__)
-            span.set_attribute("error.message", str(exception))
+            if hasattr(span, 'record_exception'):
+                span.record_exception(exception)
+            if hasattr(span, 'set_status'):
+                span.set_status(Status(StatusCode.ERROR, str(exception)))
+            if hasattr(span, 'set_attribute'):
+                span.set_attribute("error", True)
+                span.set_attribute("error.type", type(exception).__name__)
+                span.set_attribute("error.message", str(exception))
 
             # End span
-            span.end()
+            if span_cm is not None:
+                try:
+                    span_cm.__exit__(type(exception), exception, exception.__traceback__)
+                except Exception:
+                    if hasattr(span, 'end'):
+                        span.end()
+            elif hasattr(span, 'end'):
+                span.end()
 
         except Exception:
             pass

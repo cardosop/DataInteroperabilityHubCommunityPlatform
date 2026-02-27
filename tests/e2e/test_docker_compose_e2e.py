@@ -49,9 +49,28 @@ class DockerComposeE2EManager:
         self.compose_file = compose_file
         self.project_name = project_name
         self.services_started = False
-    
+
+    @staticmethod
+    def _docker_available() -> bool:
+        """Check if Docker CLI is available (tests run on host, not inside container)."""
+        try:
+            result = subprocess.run(
+                ["docker", "info"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return result.returncode == 0
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+
     def _run_command(self, command: List[str], check: bool = True, timeout: int = 600) -> subprocess.CompletedProcess:
         """Run docker compose command."""
+        if not self._docker_available():
+            raise RuntimeError(
+                "Docker CLI not available. These tests must run on the host with Docker installed, "
+                "not inside a container. Use --docker-compose-runtime when Docker is available."
+            )
         cmd = ["docker", "compose", "-f", str(self.compose_file), "-p", self.project_name] + command
         result = subprocess.run(
             cmd,
@@ -307,6 +326,11 @@ def docker_compose_config(docker_compose_file):
 @pytest.fixture(scope="module")
 def docker_compose_manager(docker_compose_file):
     """Create Docker Compose manager."""
+    if not DockerComposeE2EManager._docker_available():
+        pytest.skip(
+            "Docker CLI not available. Run these tests on the host with Docker installed, "
+            "not inside a container (e.g. api-service-test)."
+        )
     manager = DockerComposeE2EManager(docker_compose_file)
     yield manager
     # Cleanup
@@ -1184,9 +1208,31 @@ def pytest_configure(config):
 
 def pytest_collection_modifyitems(config, items):
     """Modify test items based on command-line options."""
+    # Check if Docker CLI is available first
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        docker_available = result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        docker_available = False
+
+    if not docker_available:
+        # Docker not available (e.g. running inside api-service-test container) - skip all
+        skip_docker = pytest.mark.skip(
+            reason="Docker CLI not available. Run on host with Docker, not inside container."
+        )
+        for item in items:
+            if "docker_compose_runtime" in item.keywords:
+                item.add_marker(skip_docker)
+        return
+
     # Check if --docker-compose-runtime flag is set
     runtime_flag = config.getoption("--docker-compose-runtime", default=False)
-    
+
     if not runtime_flag:
         # Check if we can auto-detect running services
         try:
@@ -1201,7 +1247,7 @@ def pytest_collection_modifyitems(config, items):
                 return
         except Exception:
             pass
-        
+
         # Skip tests if flag not set and services not detected
         skip_runtime = pytest.mark.skip(reason="need --docker-compose-runtime option to run or Docker Compose services must be running")
         for item in items:

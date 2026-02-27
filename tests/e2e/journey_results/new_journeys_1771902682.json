@@ -1,0 +1,123 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 4.078973293304443
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-007-9444aee2",
+      "journey_name": "Create Transformation Pipeline for Data",
+      "persona": "Data Consumer",
+      "status": "completed",
+      "start_time": 1771902678.65598,
+      "end_time": 1771902682.7349534,
+      "duration": 4.078973293304443,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Data Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771902678.6559825,
+          "end_time": 1771902682.7161117,
+          "duration": 4.060129165649414,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771902682.7161267,
+          "end_time": 1771902682.7206252,
+          "duration": 0.004498481750488281,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Design Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771902682.7206297,
+          "end_time": 1771902682.7206326,
+          "duration": 2.86102294921875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Transformations",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771902682.7243295,
+          "end_time": 1771902682.724333,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Preview Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771902682.728031,
+          "end_time": 1771902682.7280345,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Execute Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771902682.731683,
+          "end_time": 1771902682.7316864,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Download Transformed Data",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771902682.7349484,
+          "end_time": 1771902682.734952,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "917a83d2-5f2c-44c5-a032-fcffc8c319ff"
+      }
+    }
+  ],
+  "exported_at": "2026-02-24T03:11:22.735038"
+}

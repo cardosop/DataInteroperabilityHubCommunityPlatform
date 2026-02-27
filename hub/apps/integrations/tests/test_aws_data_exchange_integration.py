@@ -6,9 +6,17 @@ Tests check for AWS credentials and skip if not available.
 
 Requirements:
 - AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY environment variables (or AWS credentials configured)
-- Optional: AWS_SESSION_TOKEN for temporary credentials
-- Optional: AWS_ROLE_ARN for IAM role assumption
+- Optional: AWS_SESSION_TOKEN for temporary credentials (tests for session-token auth skip if unset)
+- Optional: AWS_ROLE_ARN for IAM role assumption (tests for role assumption skip if unset)
+- Optional: AWS_DATA_EXCHANGE_TEST_DATASET_ID to use a specific dataset for get_listing/list_resources
+  (when unset, a dataset ID is taken from list_listings(limit=1); if the account has no listings,
+  those tests skip with "No test dataset ID available")
 - AWS_REGION environment variable (default: us-east-1)
+
+To run with zero skips: set AWS_ROLE_ARN, AWS_SESSION_TOKEN, and AWS_DATA_EXCHANGE_TEST_DATASET_ID
+(or have at least one listing so test_dataset_id is discovered). To run without optional tests
+and get zero skips when optional env is unset: use -m "integration and not requires_aws_role_arn
+and not requires_aws_session_token and not requires_aws_test_dataset".
 """
 
 import os
@@ -17,6 +25,7 @@ import pytest
 from django.test import TestCase
 
 from hub.apps.assets.models import AssetSourceType
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.core.services.base import ConnectionError, NotFoundError, PermissionError
 from hub.apps.integrations.base import (
     MarketplaceListing,
@@ -26,6 +35,10 @@ from hub.apps.integrations.base import (
     SyncStatus,
 )
 from hub.apps.integrations.connectors.aws_data_exchange_connector import AWSDataExchangeConnector
+
+# AWS Data Exchange DataSetId must be >= 30 chars and alphanumeric only. Use a valid-format
+# but non-existent ID so the API returns ResourceNotFoundException and connector raises NotFoundError.
+FAKE_DATASET_ID_VALID_FORMAT = "0" * 32
 
 
 def get_aws_credentials() -> dict:
@@ -77,6 +90,9 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
     def setUpClass(cls):
         """Set up test class with real AWS credentials."""
         super().setUpClass()
+        # Reset shared circuit breaker so we do not inherit OPEN state from
+        # other test files (e.g. batch 51 connector tests) or previous runs.
+        reset_circuit_breaker_by_name("aws-data-exchange-connector")
 
         try:
             credentials = get_aws_credentials()
@@ -89,17 +105,25 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
                     "Cannot connect to AWS Data Exchange - check credentials and permissions"
                 )
 
-            # Cache a test dataset ID for get_listing and list_resources tests
-            cls.test_dataset_id = None
-            try:
-                listings = cls.connector.list_listings(limit=1)
-                if listings:
-                    cls.test_dataset_id = listings[0].marketplace_id
-            except Exception:
-                pass
+            # Cache a test dataset ID for get_listing and list_resources tests.
+            # Prefer AWS_DATA_EXCHANGE_TEST_DATASET_ID when set (e.g. CI or account with no listings).
+            cls.test_dataset_id = os.getenv("AWS_DATA_EXCHANGE_TEST_DATASET_ID")
+            if not cls.test_dataset_id:
+                try:
+                    listings = cls.connector.list_listings(limit=1)
+                    if listings:
+                        cls.test_dataset_id = listings[0].marketplace_id
+                except Exception:
+                    pass
 
         except Exception as e:
             pytest.skip(f"Cannot set up AWS Data Exchange connector: {e}")
+
+    @classmethod
+    def tearDownClass(cls):
+        """Reset circuit breaker so other test files in the same batch do not see OPEN."""
+        reset_circuit_breaker_by_name("aws-data-exchange-connector")
+        super().tearDownClass()
 
     def setUp(self):
         """Set up test fixtures."""
@@ -119,6 +143,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
         self.assertTrue(result)
         self.assertTrue(connector._authenticated)
 
+    @pytest.mark.requires_aws_session_token
     def test_authentication_with_session_token(self):
         """Test authentication with session token."""
         credentials = get_aws_credentials()
@@ -136,6 +161,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
         self.assertTrue(result)
         self.assertTrue(connector._authenticated)
 
+    @pytest.mark.requires_aws_role_arn
     def test_authentication_with_role_arn(self):
         """Test authentication with IAM role ARN."""
         credentials = get_aws_credentials()
@@ -191,6 +217,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
         second_page = self.connector.list_listings(limit=5, offset=5)
         self.assertIsInstance(second_page, list)
 
+    @pytest.mark.requires_aws_test_dataset
     def test_get_listing_success(self):
         """Test getting a specific listing."""
         if not self.test_dataset_id:
@@ -204,10 +231,11 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
         self.assertIsNotNone(listing.title)
 
     def test_get_listing_not_found(self):
-        """Test getting a non-existent listing."""
+        """Test getting a non-existent listing (valid-format ID so AWS returns ResourceNotFoundException)."""
         with self.assertRaises(NotFoundError):
-            self.connector.get_listing("non-existent-dataset-id-12345")
+            self.connector.get_listing(FAKE_DATASET_ID_VALID_FORMAT)
 
+    @pytest.mark.requires_aws_test_dataset
     def test_list_resources_success(self):
         """Test listing resources for a dataset."""
         if not self.test_dataset_id:
@@ -233,6 +261,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
         self.assertIn("mappings", result.metadata)
         self.assertIsInstance(result.metadata["mappings"], list)
 
+    @pytest.mark.requires_aws_test_dataset
     def test_sync_pull_with_listing_ids(self):
         """Test sync_pull with specific listing IDs."""
         if not self.test_dataset_id:
@@ -253,6 +282,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
         # Dry run should not create mappings
         self.assertEqual(len(result.metadata.get("mappings", [])), 0)
 
+    @pytest.mark.requires_aws_test_dataset
     def test_map_to_hub_asset_success(self):
         """Test mapping a listing to Hub asset."""
         if not self.test_dataset_id:
@@ -280,9 +310,9 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
             )
 
     def test_error_handling_dataset_not_found(self):
-        """Test error handling when dataset is not found."""
+        """Test error handling when dataset is not found (valid-format ID so AWS returns ResourceNotFoundException)."""
         with self.assertRaises(NotFoundError):
-            self.connector.get_listing("non-existent-dataset-id-12345")
+            self.connector.get_listing(FAKE_DATASET_ID_VALID_FORMAT)
 
     def test_error_handling_permission_denied(self):
         """Test error handling when permissions are denied."""
@@ -291,6 +321,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
         # (This is hard to test without a specific dataset ID we don't have access to)
         pass
 
+    @pytest.mark.requires_aws_role_arn
     def test_iam_role_assumption(self):
         """Test IAM role assumption if role_arn provided."""
         credentials = get_aws_credentials()
@@ -327,22 +358,22 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
 
     def test_get_listing_with_empty_id(self):
         """Test get_listing() error handling with empty ID"""
-        with self.assertRaises((ValueError, NotFoundError)):
+        with self.assertRaises(ValueError):
             self.connector.get_listing("")
 
     def test_get_listing_with_none_id(self):
         """Test get_listing() error handling with None ID"""
-        with self.assertRaises((ValueError, TypeError, NotFoundError)):
+        with self.assertRaises(TypeError):
             self.connector.get_listing(None)  # type: ignore[arg-type]
 
     def test_list_resources_with_empty_listing_id(self):
         """Test list_resources() error handling with empty listing ID"""
-        with self.assertRaises((ValueError, NotFoundError)):
+        with self.assertRaises(ValueError):
             self.connector.list_resources("")
 
     def test_list_resources_with_none_listing_id(self):
         """Test list_resources() error handling with None listing ID"""
-        with self.assertRaises((ValueError, TypeError, NotFoundError)):
+        with self.assertRaises(TypeError):
             self.connector.list_resources(None)  # type: ignore[arg-type]
 
     def test_sync_pull_with_empty_listing_ids(self):

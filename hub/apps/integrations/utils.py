@@ -404,7 +404,8 @@ def validate_marketplace_config(
                 details={"field": "timeout", "value": timeout}
             )
 
-    return config
+    # Return a shallow copy to avoid callers mutating the original config
+    return dict(config)
 
 
 def normalize_marketplace_metadata(

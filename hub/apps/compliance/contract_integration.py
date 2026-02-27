@@ -2,9 +2,63 @@
 Compliance Service Integration with Contract Compliance Policy (GAP-8.2.2).
 
 Reads compliance policy from HubContract and integrates it with compliance service execution.
+Validates contract terms schema before use (5.4.2); invalid payloads are rejected with 400 at API boundary.
 """
 from typing import Dict, Any, List, Optional
+
 from hub.apps.contracts.models import Contract
+
+
+class ContractComplianceSchemaError(Exception):
+    """Raised when contract compliance payload does not match expected schema (5.4.2)."""
+    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
+        self.message = message
+        self.details = details or {}
+        super().__init__(message)
+
+
+def validate_contract_compliance_payload(hub_contract: Dict[str, Any]) -> None:
+    """
+    Validate hub_contract (or its privacy_compliance section) for compliance use (5.4.2).
+    Raises ContractComplianceSchemaError if invalid; use at API boundary and return 400.
+    """
+    if not isinstance(hub_contract, dict):
+        raise ContractComplianceSchemaError(
+            "Contract compliance payload must be a JSON object",
+            details={"type": type(hub_contract).__name__},
+        )
+    section = hub_contract.get("privacy_compliance")
+    if section is None:
+        return
+    if not isinstance(section, dict):
+        raise ContractComplianceSchemaError(
+            "privacy_compliance must be a JSON object",
+            details={"privacy_compliance_type": type(section).__name__},
+        )
+    if "contains_personal_data" in section and not isinstance(section["contains_personal_data"], bool):
+        raise ContractComplianceSchemaError(
+            "privacy_compliance.contains_personal_data must be a boolean",
+            details={"value": section["contains_personal_data"]},
+        )
+    for list_key in ("personal_data_categories", "jurisdictions", "legal_bases"):
+        if list_key in section and section[list_key] is not None:
+            if not isinstance(section[list_key], list):
+                raise ContractComplianceSchemaError(
+                    f"privacy_compliance.{list_key} must be a list",
+                    details={list_key: type(section[list_key]).__name__},
+                )
+            for i, item in enumerate(section[list_key]):
+                if not isinstance(item, str):
+                    raise ContractComplianceSchemaError(
+                        f"privacy_compliance.{list_key}[{i}] must be a string",
+                        details={list_key: item},
+                    )
+    if "retention_policy" in section and section["retention_policy"] is not None:
+        if not isinstance(section["retention_policy"], dict):
+            raise ContractComplianceSchemaError(
+                "privacy_compliance.retention_policy must be an object or null",
+                details={"retention_policy_type": type(section["retention_policy"]).__name__},
+            )
 
 # Import vocabulary mappings - handle import path with hyphen
 import sys
@@ -36,6 +90,7 @@ class ContractCompliancePolicyExtractor:
     def extract_compliance_policy(contract: Contract) -> Dict[str, Any]:
         """
         Extract compliance policy from contract's HubContract JSON.
+        Validates schema before use (5.4.2); raises ContractComplianceSchemaError if invalid.
         
         Args:
             contract: Contract instance
@@ -49,6 +104,7 @@ class ContractCompliancePolicyExtractor:
             - retention_policy: Retention policy dictionary
         """
         hub_contract = contract.hub_contract_json or {}
+        validate_contract_compliance_payload(hub_contract)
         compliance_section = hub_contract.get('privacy_compliance', {})
         
         return {

@@ -32,6 +32,7 @@ Complete documentation for the Data Interoperability Hub platform.
 
 ### Features
 - **[Features](FEATURES.md)** - Complete feature documentation
+- **[Landing Page](LANDING_PAGE.md)** - Public landing at `/` (frontend-only; auth-based switch)
 - **[Scheduled Export Guide](SCHEDULED_EXPORT_GUIDE.md)** - User and operator guide for scheduled exports
 
 ### Development
@@ -54,9 +55,10 @@ Complete documentation for the Data Interoperability Hub platform.
 - **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
 - **[Runbooks](RUNBOOKS.md)** - Operational runbooks
 - **[ODCS to ODPS Migration Guide](ODCS_TO_ODPS_MIGRATION_GUIDE.md)** - Complete guide for migrating ODCS contracts to ODPS
+- **[Internal vs External Marketplace](MARKETPLACE_INTERNAL_VS_EXTERNAL.md)** - Separation of internal marketplace (`/api/v1/marketplace/`) vs external integrations (`/api/v1/integrations/marketplace/`)
 - **[Marketplace Integration Framework](MARKETPLACE_INTEGRATION_FRAMEWORK.md)** - Marketplace integration architecture and framework
 - **[Marketplace Connector Development Guide](MARKETPLACE_CONNECTOR_DEVELOPMENT_GUIDE.md)** - Guide for developing marketplace connectors
-- **[Marketplace API Reference](MARKETPLACE_API_REFERENCE.md)** - Complete marketplace API documentation
+- **[Marketplace API Reference](MARKETPLACE_API_REFERENCE.md)** - External marketplace API (connections, sync, mappings)
 - **[Marketplace Integration User Guide](MARKETPLACE_INTEGRATION_USER_GUIDE.md)** - User guide for marketplace integrations
 - **[Marketplace Use Cases](MARKETPLACE_USE_CASES.md)** - Marketplace use cases and scenarios
 - **[Marketplace User Journeys](MARKETPLACE_USER_JOURNEYS.md)** - Marketplace user journey documentation

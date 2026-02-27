@@ -17,6 +17,7 @@ from django_rq import get_queue, enqueue
 from django_rq.jobs import Job as RQJob
 
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.assets.models import Asset
@@ -184,6 +185,7 @@ class JobCancellationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",

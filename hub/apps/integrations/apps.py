@@ -25,7 +25,9 @@ class IntegrationsConfig(AppConfig):
 
         logger = logging.getLogger(__name__)
 
-        # Register CKAN connector
+        # Register CKAN connector for CKAN_INSTANCE. Instance-specific connectors
+        # (e.g. DadosGovBrConnector for dados.gov.br) are chosen by
+        # create_ckan_connector_from_instance/create_connector via instance config.
         try:
             from hub.apps.integrations.connectors.ckan_connector import CKANConnector
             MarketplaceConnectorFactory.register_connector(
@@ -35,19 +37,6 @@ class IntegrationsConfig(AppConfig):
         except ImportError as e:
             # Log but don't fail if connector can't be imported
             logger.warning(f"Failed to register CKAN connector: {e}")
-
-        # Register dados.gov.br connector (uses CKAN_INSTANCE type for compatibility)
-        try:
-            from hub.apps.integrations.connectors.dados_gov_br_connector import DadosGovBrConnector
-            # Note: DadosGovBrConnector uses CKAN_INSTANCE type for compatibility
-            # It's already registered via CKANConnector above, but we register it explicitly
-            # to ensure it's available when using marketplace instance config
-            MarketplaceConnectorFactory.register_connector(
-                MarketplaceType.CKAN_INSTANCE,
-                DadosGovBrConnector
-            )
-        except ImportError as e:
-            logger.warning(f"Failed to register dados.gov.br connector: {e}")
 
         # Register Snowflake Data Marketplace connector
         try:
@@ -88,4 +77,26 @@ class IntegrationsConfig(AppConfig):
             )
         except ImportError as e:
             logger.warning(f"Failed to register Databricks connector: {e}")
+
+        # Register Azure Marketplace connector
+        try:
+            from hub.apps.integrations.connectors.azure_marketplace_connector import (
+                AzureMarketplaceConnector,
+            )
+            MarketplaceConnectorFactory.register_connector(
+                MarketplaceType.AZURE_MARKETPLACE,
+                AzureMarketplaceConnector
+            )
+        except ImportError as e:
+            logger.warning(f"Failed to register Azure Marketplace connector: {e}")
+
+        # Register in-memory fake connector for tests (documented fake; no mocks in critical path).
+        try:
+            from hub.apps.integrations.connectors.in_memory_connector import InMemoryMarketplaceConnector
+            MarketplaceConnectorFactory.register_connector(
+                MarketplaceType.IN_MEMORY_FAKE,
+                InMemoryMarketplaceConnector
+            )
+        except ImportError as e:
+            logger.warning(f"Failed to register InMemory connector: {e}")
 

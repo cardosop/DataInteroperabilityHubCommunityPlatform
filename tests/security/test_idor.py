@@ -60,7 +60,7 @@ class AssetIDORTest(IDORSecurityTestBase):
             status=AssetStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f"/api/v1/assets/assets/{asset_b.id}/")
+        response = self.client.get(f"/api/v1/assets/{asset_b.id}/")
         self.assertIn(
             response.status_code,
             (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),
@@ -75,7 +75,7 @@ class AssetIDORTest(IDORSecurityTestBase):
             status=AssetStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f"/api/v1/assets/assets/{asset_a.id}/")
+        response = self.client.get(f"/api/v1/assets/{asset_a.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 

@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.8596649169921875e-05
+  },
+  "journeys": [
+    {
+      "journey_id": "DEV-003-b50d3a0a",
+      "journey_name": "Integrate via CLI",
+      "persona": "External Developer / Integrator",
+      "status": "completed",
+      "start_time": 1771262399.8688462,
+      "end_time": 1771262399.8688648,
+      "duration": 1.8596649169921875e-05,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Install CLI",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771262399.8688502,
+          "end_time": 1771262399.8688548,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Configure CLI",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771262399.8688567,
+          "end_time": 1771262399.8688583,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Authenticate",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771262399.86886,
+          "end_time": 1771262399.8688614,
+          "duration": 1.430511474609375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Execute Commands",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771262399.8688629,
+          "end_time": 1771262399.8688643,
+          "duration": 1.430511474609375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T17:19:59.868924"
+}

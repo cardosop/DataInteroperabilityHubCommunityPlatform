@@ -108,7 +108,7 @@ class TestDockerComposeIntegration:
     def test_all_services_have_healthchecks(self, docker_compose_config):
         """Test that all application services have health checks."""
         services = docker_compose_config.get("services", {})
-        # Infrastructure services may not need health checks (redis-cache, redis-queue, etc. in docker-compose.yml)
+        # Infrastructure and auxiliary services that may not have healthchecks
         infrastructure_services = {
             "postgres",
             "redis-cache",
@@ -129,6 +129,7 @@ class TestDockerComposeIntegration:
             "redis-exporter-queue",
             "redis-exporter-events",
             "redis-exporter-channels",
+            "mock-server",  # Distroless image - no shell/curl for healthcheck
         }
 
         for service_name, service_config in services.items():

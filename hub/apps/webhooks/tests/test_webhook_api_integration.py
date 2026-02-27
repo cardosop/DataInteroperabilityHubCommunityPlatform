@@ -12,6 +12,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 from hub.apps.webhooks.models import Webhook, WebhookEventType, WebhookStatus
 
@@ -28,6 +29,7 @@ class WebhookAPIIntegrationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
             email="user@example.com",
@@ -182,6 +184,7 @@ class WebhookAPIIntegrationTest(TestCase):
 
     def test_list_webhooks_unauthenticated_returns_401(self):
         """Error handling: list endpoint returns 401 when unauthenticated."""
+        self.client.force_authenticate(user=None)
         response = self.client.get("/api/v1/webhooks/webhooks/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -222,7 +225,12 @@ class WebhookAPIIntegrationTest(TestCase):
         fake_id = uuid.uuid4()
         response = self.client.get(f"/api/v1/webhooks/webhooks/{fake_id}/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertIn("detail", response.data)
+        # API uses custom error format: {"error": {"code": "NOT_FOUND", "message": ...}}
+        data = response.data or {}
+        self.assertTrue(
+            "detail" in data or ("error" in data and "message" in data.get("error", {})),
+            f"Expected error details in response: {data}",
+        )
 
     def test_create_webhook_response_structure_tdd(self):
         """TDD: create response contains required keys."""

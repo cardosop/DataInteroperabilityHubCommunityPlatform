@@ -6,8 +6,12 @@ Tests verify:
 - Fallback mechanism returns error response instead of failing
 - Circuit breaker state transitions work correctly
 - Redis-backed state persistence
+
+Uses a unique service_name per test to isolate Redis state when tests run
+in parallel (xdist); otherwise workers share circuit_breaker:dq-service keys
+and interfere with each other.
 """
-from datetime import datetime, timedelta
+import uuid
 from unittest.mock import Mock, patch
 from django.conf import settings
 from django.test import TestCase
@@ -20,6 +24,7 @@ from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerState,
     CircuitBreakerError,
+    get_redis_client,
 )
 
 
@@ -51,7 +56,15 @@ class TestDQServiceClientCircuitBreaker(TestCase):
             self.skipTest("Redis not available for integration tests")
 
         self.service_client = DQServiceClient()
-        self.service_name = "dq-service"
+        # Unique service_name per test for parallel isolation (xdist)
+        self.service_name = f"dq-service-test-{uuid.uuid4().hex[:12]}"
+        self.service_client._circuit_breaker = CircuitBreaker(
+            service_name=self.service_name,
+            failure_threshold=5,
+            timeout_seconds=60,
+            success_threshold=2,
+            redis_client=get_redis_client(),
+        )
 
         # Clean up any existing circuit breaker state and reset
         try:
@@ -59,7 +72,6 @@ class TestDQServiceClientCircuitBreaker(TestCase):
             keys = self.redis_client.keys(pattern)
             if keys:
                 self.redis_client.delete(*keys)
-            # Explicitly reset circuit breaker to ensure clean state
             self.service_client._circuit_breaker.reset()
         except Exception:
             pass

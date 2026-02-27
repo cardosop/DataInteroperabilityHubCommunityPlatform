@@ -22,7 +22,8 @@
 .app-title {
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-primary-700);
+  /* WCAG 2 AA: primary-800 (#1565C0) on neutral-50 (#fafafa) = 5.5:1; primary-700 = 4.4:1 */
+  color: var(--color-primary-800);
   margin: 0;
 }
 

@@ -27,10 +27,18 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract
 from hub.apps.governance.models import ComplianceReport
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
+pytestmark = [
+    pytest.mark.uc_journey_persona,
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.e2e,
+    pytest.mark.persona("Auditor"),
+    pytest.mark.journey("JOURNEY-AUD-001"),
+    pytest.mark.journey("JOURNEY-AUD-002"),
+    pytest.mark.journey("JOURNEY-AUD-003"),
+]
 
 
 class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
@@ -120,10 +128,11 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            events = data
         else:
-            events = response.data.get('results', [])
+            events = data.get('results', [])
         
         # Should see audit events for the tenant
         self.assertGreater(len(events), 0)
@@ -145,10 +154,11 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            events = data
         else:
-            events = response.data.get('results', [])
+            events = data.get('results', [])
         
         # All events should be ASSET type
         for event in events:
@@ -159,10 +169,11 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            events = data
         else:
-            events = response.data.get('results', [])
+            events = data.get('results', [])
         
         # All events should be CONTRACT type
         for event in events:
@@ -177,10 +188,11 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            events = data
         else:
-            events = response.data.get('results', [])
+            events = data.get('results', [])
         
         # All events should have ASSET_CREATED action
         for event in events:
@@ -200,10 +212,11 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            events = data
         else:
-            events = response.data.get('results', [])
+            events = data.get('results', [])
         
         # Verify all events are within time range
         for event in events:
@@ -221,10 +234,11 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            events = data
         else:
-            events = response.data.get('results', [])
+            events = data.get('results', [])
         
         # All events should be from the auditor user
         for event in events:
@@ -239,10 +253,11 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            events = data
         else:
-            events = response.data.get('results', [])
+            events = data.get('results', [])
         
         if events:
             event_id = events[0]['id']
@@ -250,11 +265,12 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
             # Get event details
             response = self.client.get(f'/api/v1/audit/audit-events/{event_id}/')
             self.assertEqual(response.status_code, status.HTTP_200_OK)
-            self.assertEqual(response.data['id'], event_id)
-            self.assertIn('timestamp', response.data)
-            self.assertIn('resource_type', response.data)
-            self.assertIn('action', response.data)
-            self.assertIn('details_json', response.data)
+            data = get_response_data(response) or {}
+            self.assertEqual(data['id'], event_id)
+            self.assertIn('timestamp', data)
+            self.assertIn('resource_type', data)
+            self.assertIn('action', data)
+            self.assertIn('details_json', data)
     
     def test_audit_logs_are_read_only(self):
         """
@@ -265,10 +281,11 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            events = data
         else:
-            events = response.data.get('results', [])
+            events = data.get('results', [])
         
         if events:
             event_id = events[0]['id']
@@ -371,10 +388,11 @@ class JourneyAUD002GenerateAuditReportsTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            events = data
         else:
-            events = response.data.get('results', [])
+            events = data.get('results', [])
         
         # Generate summary report
         summary = {
@@ -435,20 +453,22 @@ class JourneyAUD002GenerateAuditReportsTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            asset_events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            asset_events = data
         else:
-            asset_events = response.data.get('results', [])
+            asset_events = data.get('results', [])
         
         # Filter by action for report
         response = self.client.get('/api/v1/audit/audit-events/?action=ASSET_CREATED')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            created_events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            created_events = data
         else:
-            created_events = response.data.get('results', [])
+            created_events = data.get('results', [])
         
         # Verify filters work
         self.assertGreaterEqual(len(asset_events), 0)
@@ -706,10 +726,11 @@ class AuditorUseCasesTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            events = data
         else:
-            events = response.data.get('results', [])
+            events = data.get('results', [])
         self.assertGreater(len(events), 0)
         
         # Step 2: Filter by resource type
@@ -717,10 +738,11 @@ class AuditorUseCasesTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            asset_events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            asset_events = data
         else:
-            asset_events = response.data.get('results', [])
+            asset_events = data.get('results', [])
         self.assertGreaterEqual(len(asset_events), 0)
         
         # Step 3: Get details of specific event
@@ -728,7 +750,8 @@ class AuditorUseCasesTests(E2ETestBase):
             event_id = asset_events[0]['id']
             response = self.client.get(f'/api/v1/audit/audit-events/{event_id}/')
             self.assertEqual(response.status_code, status.HTTP_200_OK)
-            self.assertEqual(response.data['id'], event_id)
+            data = get_response_data(response) or {}
+            self.assertEqual(data['id'], event_id)
         
         # Step 4: Export filtered events
         response = self.client.get(
@@ -749,10 +772,11 @@ class AuditorUseCasesTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            events = data
         else:
-            events = response.data.get('results', [])
+            events = data.get('results', [])
         
         # Verify all events match filters
         for event in events:
@@ -768,10 +792,11 @@ class AuditorUseCasesTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            events = data
         else:
-            events = response.data.get('results', [])
+            events = data.get('results', [])
         
         # Generate aggregated report
         report = {
@@ -908,10 +933,11 @@ class AuditorErrorScenariosTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            events = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            events = data
         else:
-            events = response.data.get('results', [])
+            events = data.get('results', [])
         
         # Verify no events from other tenant
         for event in events:

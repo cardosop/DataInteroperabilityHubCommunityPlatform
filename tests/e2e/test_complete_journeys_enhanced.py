@@ -34,7 +34,7 @@ from hub.apps.semantic.models import SemanticResource, ResourceType, SemanticRes
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant, KYCStatus
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
@@ -338,6 +338,10 @@ class CompleteMarketplaceJourneyE2ETest(E2ETestBase):
             slug='consumer-tenant',
             kyc_status=KYCStatus.VERIFIED
         )
+        # Consumer tenant needs active subscription so TenantSuspensionMiddleware allows order creation
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+        ensure_tenant_has_active_subscription(self.consumer_tenant)
         from django.contrib.auth import get_user_model
         from hub.apps.users.models import UserStatus
         User = get_user_model()
@@ -388,7 +392,8 @@ class CompleteMarketplaceJourneyE2ETest(E2ETestBase):
             },
             format='json'
         )
-        listing_id = listing_response.data['id']
+        self.assertEqual(listing_response.status_code, status.HTTP_201_CREATED, get_response_data(listing_response))
+        listing_id = get_response_data(listing_response)['id']
         
         # Provider side: Publish listing
         # Try publish endpoint first, if it doesn't exist, use PATCH to update status
@@ -429,7 +434,23 @@ class CompleteMarketplaceJourneyE2ETest(E2ETestBase):
             {'listing_id': listing_id},
             format='json'
         )
-        order_id = order_response.data['id']
+        self.assertEqual(
+            order_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Order creation failed: {get_response_data(order_response)}",
+        )
+        order_data = get_response_data(order_response)
+        if order_data is None:
+            self.fail(f"Order response could not be parsed: {order_response.content!r}")
+        # Order API returns {"order": {"id": ...}} - extract id from nested structure
+        order_id = None
+        if isinstance(order_data, dict):
+            order_obj = order_data.get("order")
+            if isinstance(order_obj, dict):
+                order_id = order_obj.get("id")
+            if order_id is None:
+                order_id = order_data.get("id")
+        self.assertIsNotNone(order_id, f"Order response missing id, got: {order_data}")
         
         # Verify order created
         order = Order.objects.get(id=order_id)

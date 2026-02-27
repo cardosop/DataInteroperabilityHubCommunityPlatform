@@ -42,13 +42,18 @@ REAL_SERVICE_ACCOUNT_JSON = {
 
 
 def get_test_credentials():
-    """Get test credentials from environment or use default"""
+    """Get test credentials from environment or use default.
+
+    If GCP_SERVICE_ACCOUNT_JSON is set but not valid JSON (e.g. corrupted by
+    shell when sourcing .env), fall back to REAL_SERVICE_ACCOUNT_JSON so tests
+    run instead of skipping.
+    """
     env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     if env_json:
         try:
             return json.loads(env_json)
         except json.JSONDecodeError:
-            pytest.skip("Invalid GCP_SERVICE_ACCOUNT_JSON format")
+            return REAL_SERVICE_ACCOUNT_JSON
     return REAL_SERVICE_ACCOUNT_JSON
 
 

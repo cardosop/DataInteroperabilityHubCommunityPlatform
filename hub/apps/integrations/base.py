@@ -36,6 +36,8 @@ class MarketplaceType(str, Enum):
     EUROPEAN_DATA_PORTAL = "EUROPEAN_DATA_PORTAL"
     CKAN_INSTANCE = "CKAN_INSTANCE"
     CUSTOM = "CUSTOM"
+    # Documented fake for tests: in-memory implementation of connector interface (no mocks in critical path).
+    IN_MEMORY_FAKE = "IN_MEMORY_FAKE"
 
 
 class SyncDirection(str, Enum):

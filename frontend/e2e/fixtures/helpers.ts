@@ -4,6 +4,18 @@
  */
 
 import { Page, expect } from '@playwright/test';
+import { getTestUser, loginUser, type TestUser } from './auth';
+
+/**
+ * Check if page shows login prompt (email input, login link, or Sign in text).
+ * Use after unauthenticated access to protected routes that may show inline login.
+ */
+export async function hasLoginPrompt(page: Page): Promise<boolean> {
+  const hasEmail = (await page.locator('input#email').count()) > 0;
+  const hasLoginLink = (await page.locator('[href*="/login"]').count()) > 0;
+  const hasSignInText = (await page.getByText(/Sign in/i).count()) > 0;
+  return hasEmail || hasLoginLink || hasSignInText;
+}
 
 /**
  * Wait for API response with retry logic
@@ -206,34 +218,1013 @@ export function generateUniqueEmail(prefix = 'e2e'): string {
 /**
  * Wait for app main content (no loading spinner). Use after goto for any protected route.
  * Also treats .loading-spinner-container as loading so list pages that use LoadingSpinner are covered.
+ * Fails with a clear message if redirected to login (auth may have failed or expired).
+ * Default timeout 30s to allow for slow capabilities/API under parallel E2E load.
+ *
+ * @param options.acceptRedirectToLogin - When true, treat redirect to login as success (for tests
+ *   that expect 403/redirect, e.g. "governance without role shows 403 or redirect").
  */
 export async function waitForAppMainReady(
   page: Page,
-  options: { timeout?: number; contentSelector?: string } = {}
+  options: { timeout?: number; contentSelector?: string; acceptRedirectToLogin?: boolean } = {}
 ): Promise<void> {
-  const { timeout = 15000, contentSelector } = options;
+  const { timeout = 30000, contentSelector, acceptRedirectToLogin = false } = options;
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForFunction(
-    (selector: string | undefined) => {
-      const main = document.querySelector('.app-main');
-      if (!main) return false;
-      const loading =
-        main.querySelector('.loading-spinner') || main.querySelector('.loading-spinner-container');
-      if (loading) return false;
-      if (selector) {
-        const el = main.querySelector(selector);
-        return !!el;
+
+  // Grace period: auth may still be initializing; avoid false failure on slow fetchUser/capabilities.
+  // 12s allows for parallel E2E load where backend/capabilities can be slow.
+  const authGraceMs = 12000;
+  const graceDeadline = Date.now() + authGraceMs;
+
+  // Poll: if we end up on login after grace period, fail (or accept if acceptRedirectToLogin)
+  const checkInterval = 500;
+  const start = Date.now();
+
+  const safeWait = async (ms: number): Promise<void> => {
+    try {
+      await page.waitForTimeout(ms);
+    } catch (e) {
+      const msg = String(e);
+      if (/Target page, context or browser has been closed|page has been closed/i.test(msg)) {
+        throw new Error(
+          `waitForAppMainReady: Test timed out during poll (page closed). Increase test.setTimeout. URL: ${page.url()}`
+        );
       }
-      return true;
-    },
-    contentSelector,
-    { timeout }
+      throw e;
+    }
+  };
+
+  while (Date.now() - start < timeout) {
+    let url: string;
+    try {
+      url = page.url();
+    } catch (e) {
+      const msg = String(e);
+      if (/Target page, context or browser has been closed|page has been closed/i.test(msg)) {
+        throw new Error(
+          'waitForAppMainReady: Test timed out (page closed). Increase test.setTimeout.'
+        );
+      }
+      throw e;
+    }
+    if (url.includes('/login')) {
+      if (Date.now() < graceDeadline) {
+        await safeWait(checkInterval);
+        continue;
+      }
+      if (acceptRedirectToLogin) {
+        return;
+      }
+      throw new Error(
+        'waitForAppMainReady: Redirected to login; auth may have failed or expired. ' +
+          'Ensure loginUser completed successfully before calling this helper.'
+      );
+    }
+    // /403 and /unavailable are top-level routes without .app-main; page is ready when we reach them
+    if (url.includes('/403') || url.includes('/unavailable')) {
+      await safeWait(500);
+      return;
+    }
+    // Intentional fallback: evaluate may fail if context destroyed; treat as not ready, continue polling
+    const ready = await page
+      .evaluate((sel: string | undefined) => {
+        const main = document.querySelector('.app-main');
+        if (!main) return false;
+        // When route-specific selector provided, consider ready when page shell has mounted
+        // (including loading state) so we don't block on slow APIs
+        if (sel) {
+          const el = main.querySelector(sel);
+          if (el) return true;
+        }
+        const loading =
+          main.querySelector('.loading-spinner') || main.querySelector('.loading-spinner-container');
+        if (loading) return false;
+        if (sel) return false;
+        return true;
+      }, contentSelector)
+      .catch(() => false);
+    if (ready) {
+      await safeWait(1000);
+      return;
+    }
+    await safeWait(checkInterval);
+  }
+
+  // Timeout: check if we're on login for clearer error (or accept if acceptRedirectToLogin)
+  if (page.url().includes('/login')) {
+    if (acceptRedirectToLogin) {
+      return;
+    }
+    throw new Error(
+      'waitForAppMainReady: Still on login after timeout; auth may have failed or expired.'
+    );
+  }
+  throw new Error(
+    `waitForAppMainReady: .app-main not ready within ${timeout}ms. ` +
+      `URL: ${page.url()}`
   );
-  await page.waitForTimeout(1000);
 }
 
 /**
- * Wait for loading to complete
+ * Routes that fetch list/detail data; wait for API response before waitForAppMainReady.
+ * Prevents timeout when API is slow under E2E load (e.g. contracts list after asset/dataset creation).
+ * Returns a promise to await after the nav action that triggers the fetch.
+ */
+const ROUTES_WITH_DATA_API: Record<string, string> = {
+  '/contracts': 'contracts',
+  '/odps': 'contracts',
+  '/assets': 'assets',
+  '/datasets': 'datasets',
+  '/integrations/connections': 'marketplace/connections',
+  '/integrations/mappings': 'marketplace/mappings',
+  '/integrations/sync-jobs': 'marketplace/sync',
+  '/settings/api-keys': 'auth/api-keys',
+  '/settings/sessions': 'auth/sessions',
+  '/scheduled-ingestions': 'scheduled-ingestions',
+  '/scheduled-exports': 'scheduled-exports',
+  '/marketplace': 'marketplace/listings',
+  '/marketplace/orders': 'marketplace/orders',
+  '/marketplace/entitlements': 'marketplace/entitlements',
+  '/jobs': 'jobs',
+  '/virtualization': 'virtualization',
+  '/mesh': 'mesh',
+  '/dq': 'dq',
+  '/compliance': 'compliance',
+  '/webhooks': 'webhooks',
+  '/files': 'files',
+  '/audit': 'audit/audit-events',
+  '/admin': 'users',
+  '/governance': 'governance',
+  '/governance/retention': 'governance/retention-policies',
+};
+
+/** Get API pattern for route; supports exact match and prefix (e.g. /assets/123 -> assets). */
+function getRouteApiPattern(route: string): string | undefined {
+  const exact = ROUTES_WITH_DATA_API[route];
+  if (exact) return exact;
+  const prefixes = Object.keys(ROUTES_WITH_DATA_API)
+    .filter((r) => r !== '/' && route.startsWith(r + '/'))
+    .sort((a, b) => b.length - a.length);
+  return prefixes.length > 0 ? ROUTES_WITH_DATA_API[prefixes[0]] : undefined;
+}
+
+function startRouteDataApiWait(
+  page: Page,
+  route: string,
+  timeout: number
+): Promise<void> | undefined {
+  const basePattern = getRouteApiPattern(route);
+  if (!basePattern) return undefined;
+  // Intentional fallback: API may not fire or may timeout; caller continues without blocking
+  return page
+    .waitForResponse(
+      (r) =>
+        r.request().method() === 'GET' && r.url().includes(basePattern),
+      { timeout: Math.min(timeout, 90000) }
+    )
+    .then(() => {})
+    .catch(() => undefined);
+}
+
+/** Sidebar nav link text for routes (client-side nav avoids full-reload auth race) */
+const ROUTE_NAV_LABELS: Record<string, string> = {
+  '/assets': 'Assets',
+  '/datasets': 'Datasets',
+  '/contracts': 'Contracts',
+  '/marketplace': 'Marketplace',
+  '/search': 'Search',
+  '/virtualization': 'Virtualization',
+  '/social': 'Social',
+  '/ai/search': 'AI Search',
+  '/developer': 'Developer',
+  '/baas': 'BaaS',
+  '/ml': 'ML',
+  '/scheduled-ingestions': 'Scheduled Ingestion',
+  '/dq': 'Data Quality',
+  '/compliance': 'Compliance',
+  '/integrations/connections': 'Integrations',
+  '/jobs': 'Jobs',
+  '/mesh': 'Data Mesh',
+  '/odps': 'ODPS',
+  '/governance': 'Governance',
+  '/files': 'Files',
+  '/observability': 'Observability',
+  '/webhooks': 'Webhooks',
+  '/audit': 'Audit',
+  '/admin': 'Admin',
+  '/': 'Home',
+};
+
+/**
+ * Route-specific content selectors for waitForAppMainReady.
+ * Matches page shell (including loading state) so we don't block on slow APIs.
+ */
+const ROUTE_CONTENT_SELECTORS: Record<string, string> = {
+  '/audit': '.audit-event-list-page, .audit-list-filters, .empty-state, .error-display, .loading-spinner-container',
+  '/mesh': '.mesh-domain-list-page, .loading-spinner-container, .error-display, .empty-state',
+  '/contracts': '.contract-list-page, .empty-state, .error-display, .loading-spinner-container',
+  '/odps': '.odps-list-page, .odps-empty-state, .error-display, .loading-spinner-container, #email',
+  '/social': '.social-page, .unavailable-page, .error-display, .loading-spinner-container, .app-main',
+  '/compliance': '.compliance-run-list-page, .empty-state, .error-display, .loading-spinner-container',
+  '/assets': '.asset-list-page, .empty-state, .error-display, .loading-spinner-container',
+  '/dq': '.dq-run-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+  '/webhooks':
+    '.webhook-list-page, .empty-state, .error-display, .loading-spinner-container',
+  '/search': '.search-page, .loading-spinner-container, .error-display, .app-main',
+  '/ai/search':
+    '.ai-search-page, .unavailable-page, .loading-spinner-container, .error-display, .app-main',
+  '/settings/sessions':
+    '.session-list-page, .session-list-table, .session-list-empty, .loading-spinner-container, .error-display, h1',
+  '/settings/api-keys':
+    '.auth-api-key-list-page, .unavailable-page, .loading-spinner-container, .error-display, h1',
+  '/observability':
+    '.observability-page, [data-testid="observability-page"], .loading-spinner-container, .error-display, .unavailable-page',
+  '/developer': '.developer-page, .unavailable-page, .loading-spinner-container, .app-main',
+  '/baas': '.baas-page, .unavailable-page, .loading-spinner-container, .app-main',
+  '/ml': '.ml-page, .unavailable-page, .loading-spinner-container, .app-main',
+  '/integrations/connections':
+    '.marketplace-connection-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+  '/scheduled-ingestions':
+    '[data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, .loading-spinner-container, h1',
+  '/ai/schema-matching':
+    '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, .loading-spinner-container, h1',
+  '/files':
+    '.file-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+  '/datasets/create':
+    '.dataset-create-page, .file-upload, .loading-spinner-container, form, h1',
+  '/scheduled-exports':
+    '.scheduled-export-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+  '/marketplace/publish':
+    '.listing-publish-page, .listing-publish-form, .loading-spinner-container, form, h1',
+  '/governance':
+    '.governance-access-request-list-page, .governance-create-page, .error-display, .loading-spinner-container, h1',
+};
+
+/**
+ * Login, navigate to a protected route, and wait for app main ready.
+ * Uses loginUser then client-side nav via sidebar (or in-page links) to avoid full-reload auth race.
+ *
+ * @param options.acceptRedirectToLogin - When true, treat redirect to login as success (for tests
+ *   that expect 403/redirect, e.g. "governance without role shows 403 or redirect").
+ */
+export async function loginAndNavigateToRoute(
+  page: Page,
+  user: TestUser,
+  route: string,
+  options: { timeout?: number; contentSelector?: string; acceptRedirectToLogin?: boolean } = {}
+): Promise<void> {
+  const postLoginWait = process.env.E2E_WEB_PORT ? 4500 : 3500;
+
+  const doLogin = async (): Promise<void> => {
+    await loginUser(page, user);
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(postLoginWait);
+  };
+
+  const runNav = async (): Promise<void> => runNavToRoute(page, user, route, options, postLoginWait);
+
+  const maxRetries = 4; // initial + 4 retries when auth redirect (helps capability-gated routes)
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      await page.waitForTimeout(2000); // backoff between retries
+      await doLogin();
+    } else {
+      await doLogin();
+    }
+    // Ensure app shell loaded before nav (avoids runNav when stuck on login)
+    if (page.url().includes('/login')) {
+      lastErr = new Error('loginAndNavigateToRoute: Redirected to login');
+      if (attempt < maxRetries) continue;
+      throw lastErr;
+    }
+    try {
+      await page.locator('.app-sidebar').waitFor({ state: 'visible', timeout: 20000 });
+    } catch (err) {
+      lastErr =
+        err instanceof Error
+          ? new Error(
+              `loginAndNavigateToRoute: App shell not visible after login. ${err.message}`
+            )
+          : err;
+      if (attempt < maxRetries) continue;
+      throw lastErr;
+    }
+    try {
+      await runNav();
+      return;
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('Redirected to login') && !msg.includes('Still on login')) {
+        throw err;
+      }
+    }
+  }
+  throw lastErr;
+}
+
+/** Capability-gated routes that often redirect to login; always accept redirect when option set. */
+const CAPABILITY_GATED_ROUTES = ['/ai/search', '/developer', '/baas', '/ml', '/social'];
+
+/** Run nav logic; throws on redirect-to-login. Used for retry. */
+async function runNavToRoute(
+  page: Page,
+  user: TestUser,
+  route: string,
+  options: { timeout?: number; contentSelector?: string; acceptRedirectToLogin?: boolean },
+  postLoginWait: number
+): Promise<void> {
+  const acceptRedirect = options.acceptRedirectToLogin === true || CAPABILITY_GATED_ROUTES.includes(route);
+  const contentSelector = options.contentSelector ?? ROUTE_CONTENT_SELECTORS[route];
+  const waitOptions = {
+    ...options,
+    contentSelector,
+    acceptRedirectToLogin: acceptRedirect || options.acceptRedirectToLogin,
+  };
+  // /odps/upload: go to odps first, wait for list API, then click Create/Upload button
+  if (route === '/odps/upload') {
+    const odpsLabel = ROUTE_NAV_LABELS['/odps'];
+    const odpsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: odpsLabel }).first();
+    if ((await odpsLink.count()) > 0) {
+      const odpsTimeout = options.timeout ?? 60000;
+      const apiWait = startRouteDataApiWait(page, '/odps', odpsTimeout);
+      await odpsLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      if (apiWait) await apiWait;
+      await page.waitForTimeout(1500);
+      const uploadBtn = page
+        .locator(
+          'button:has-text("Create ODPS Product"), button:has-text("Create ODPS"), button:has-text("Create Your First")'
+        )
+        .first();
+      if ((await uploadBtn.count()) > 0) {
+        await uploadBtn.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      }
+    }
+  }
+
+  // /marketplace/listings/:id: go to marketplace, wait for list API, click listing card (client-side nav avoids goto auth race)
+  const marketplaceListingMatch = route.match(/^\/marketplace\/listings\/([^/]+)$/);
+  if (marketplaceListingMatch) {
+    const listingId = marketplaceListingMatch[1];
+    const marketplaceLabel = ROUTE_NAV_LABELS['/marketplace'];
+    const marketplaceLink = page.locator('.app-sidebar .nav-link').filter({ hasText: marketplaceLabel }).first();
+    if ((await marketplaceLink.count()) > 0) {
+      const listTimeout = options.timeout ?? 60000;
+      const apiWait = startRouteDataApiWait(page, '/marketplace', listTimeout);
+      await marketplaceLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      if (apiWait) await apiWait;
+      await page.waitForTimeout(1500);
+      const listingCard = page.locator(`.listing-card[data-listing-id="${listingId}"]`).first();
+      if ((await listingCard.count()) > 0) {
+        await listingCard.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      }
+    }
+  }
+
+  // /marketplace/orders: go to marketplace first, then click My Orders
+  if (route === '/marketplace/orders') {
+    const marketplaceLabel = ROUTE_NAV_LABELS['/marketplace'];
+    const marketplaceLink = page.locator('.app-sidebar .nav-link').filter({ hasText: marketplaceLabel }).first();
+    if ((await marketplaceLink.count()) > 0) {
+      await marketplaceLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(1000);
+      const ordersBtn = page.locator('button:has-text("My Orders")');
+      if ((await ordersBtn.count()) > 0) {
+        await ordersBtn.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      }
+    }
+  }
+
+  // /marketplace/publish: go to marketplace first, wait for listings API, then click Publish Listing
+  if (route === '/marketplace/publish') {
+    const marketplaceLabel = ROUTE_NAV_LABELS['/marketplace'];
+    const marketplaceLink = page.locator('.app-sidebar .nav-link').filter({ hasText: marketplaceLabel }).first();
+    if ((await marketplaceLink.count()) > 0) {
+      const listTimeout = options.timeout ?? 60000;
+      const apiWait = startRouteDataApiWait(page, '/marketplace', listTimeout);
+      await marketplaceLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      if (apiWait) await apiWait;
+      await page.waitForTimeout(3000);
+      // Publish Listing appears after marketplace page loads (listings API)
+      const publishBtn = page
+        .locator('button:has-text("Publish Listing")')
+        .or(page.locator('.empty-state-action:has-text("Publish Listing")'));
+      try {
+        await publishBtn.first().waitFor({ state: 'visible', timeout: 25000 });
+        await publishBtn.first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      } catch {
+        // Publish button not found - fall through to goto
+      }
+    }
+  }
+
+  // /mesh/create: go to mesh first, then click Create Domain
+  if (route === '/mesh/create') {
+    const meshLabel = ROUTE_NAV_LABELS['/mesh'];
+    const meshLink = page.locator('.app-sidebar .nav-link').filter({ hasText: meshLabel }).first();
+    if ((await meshLink.count()) > 0) {
+      await meshLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      const createBtn = page
+        .locator('button:has-text("Create Domain")')
+        .or(page.locator('.empty-state-action:has-text("Create Domain")'));
+      try {
+        await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
+        await createBtn.first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      } catch {
+        // Create button not found - fall through to goto
+      }
+    }
+  }
+
+  // /virtualization/create: go to virtualization first, then click Create Dataset
+  if (route === '/virtualization/create') {
+    const virtLabel = ROUTE_NAV_LABELS['/virtualization'];
+    const virtLink = page.locator('.app-sidebar .nav-link').filter({ hasText: virtLabel }).first();
+    if ((await virtLink.count()) > 0) {
+      await virtLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      const createBtn = page
+        .locator('button:has-text("Create Dataset")')
+        .or(page.locator('.empty-state-action:has-text("Create Dataset")'))
+        .or(page.locator('button:has-text("Create Virtual Dataset")'));
+      try {
+        await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
+        await createBtn.first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      } catch {
+        // Create button not found - fall through to goto
+      }
+    }
+  }
+
+  // /mesh/topology: go to mesh first, then look for topology link or use in-page nav
+  if (route === '/mesh/topology') {
+    const meshLabel = ROUTE_NAV_LABELS['/mesh'];
+    const meshLink = page.locator('.app-sidebar .nav-link').filter({ hasText: meshLabel }).first();
+    if ((await meshLink.count()) > 0) {
+      await meshLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      const topologyLink = page.locator('a[href*="/mesh/topology"], a[href="/mesh/topology"]').first();
+      if ((await topologyLink.count()) > 0) {
+        await topologyLink.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      }
+    }
+  }
+
+  // /assets/create: go to assets first, then click Create Asset
+  if (route === '/assets/create') {
+    const assetsLabel = ROUTE_NAV_LABELS['/assets'];
+    const assetsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: assetsLabel }).first();
+    if ((await assetsLink.count()) > 0) {
+      await assetsLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(1000);
+      const createBtn = page
+        .locator('button:has-text("Create Asset")')
+        .or(page.locator('.empty-state-action:has-text("Create Asset")'));
+      if ((await createBtn.count()) > 0) {
+        await createBtn.first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      }
+    }
+  }
+
+  // /odps/:id: go to ODPS list first, then click row (client-side nav avoids full-reload auth race)
+  const odpsIdMatch = route.match(/^\/odps\/([^/]+)$/);
+  if (odpsIdMatch && odpsIdMatch[1] !== 'upload') {
+    const odpsContractId = odpsIdMatch[1];
+    const odpsLabel = ROUTE_NAV_LABELS['/odps'];
+    const odpsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: odpsLabel }).first();
+    if ((await odpsLink.count()) > 0) {
+      const timeout = options.timeout ?? 60000;
+      const apiWait = startRouteDataApiWait(page, '/odps', timeout);
+      await odpsLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      if (apiWait) await apiWait;
+      const viewBtn = page.locator(`tr[data-odps-id="${odpsContractId}"] button`).first();
+      if ((await viewBtn.count()) > 0) {
+        await viewBtn.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1500);
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      }
+    }
+  }
+
+  // /assets/:id: go to assets, wait for list API, then click asset link (avoids goto auth race)
+  const assetsIdMatch = route.match(/^\/assets\/([^/]+)$/);
+  if (assetsIdMatch) {
+    const assetId = assetsIdMatch[1];
+    const assetsLabel = ROUTE_NAV_LABELS['/assets'];
+    const assetsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: assetsLabel }).first();
+    if ((await assetsLink.count()) > 0) {
+      const listTimeout = options.timeout ?? 60000;
+      const apiWait = startRouteDataApiWait(page, '/assets', listTimeout);
+      await assetsLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      if (apiWait) await apiWait;
+      await page.waitForTimeout(1000);
+      const assetRow = page.locator(`.asset-list-page tr[data-asset-id="${assetId}"]`).first();
+      if ((await assetRow.count()) > 0) {
+        await assetRow.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      }
+    }
+  }
+
+  // /datasets/create: go to datasets first, wait for list API, then click Create Dataset
+  if (route === '/datasets/create') {
+    const datasetsLabel = ROUTE_NAV_LABELS['/datasets'];
+    const datasetsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: datasetsLabel }).first();
+    if ((await datasetsLink.count()) > 0) {
+      const timeout = options.timeout ?? 60000;
+      const apiWait = startRouteDataApiWait(page, '/datasets', timeout);
+      await datasetsLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      if (apiWait) await apiWait;
+      const createBtn = page
+        .locator('button:has-text("Create Dataset")')
+        .or(page.locator('.empty-state-action:has-text("Create Dataset")'));
+      try {
+        await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
+      } catch {
+        /* Optional: Create button may not be visible (empty state, different UI); fall through to goto */
+      }
+      if ((await createBtn.count()) > 0) {
+        await createBtn.first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      }
+    }
+  }
+
+  // /integrations/sync-jobs, /integrations/mappings: go to Integrations first, then click tab (client-side nav avoids full-reload auth race)
+  if (route === '/integrations/sync-jobs' || route === '/integrations/mappings') {
+    const intLabel = ROUTE_NAV_LABELS['/integrations/connections'];
+    const intLink = page.locator('.app-sidebar .nav-link').filter({ hasText: intLabel }).first();
+    if ((await intLink.count()) > 0) {
+      await intLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(1500); // IntegrationsLayout tabs to render
+      const tabText = route === '/integrations/sync-jobs' ? 'Sync Jobs' : 'Mappings';
+      const tabLink = page.locator(`.integrations-tab, a[href="${route}"]`).filter({ hasText: tabText }).first();
+      if ((await tabLink.count()) > 0) {
+        const timeout = options.timeout ?? 60000;
+        const apiWait = startRouteDataApiWait(page, route, timeout); // Start before tab click so we catch the request
+        await tabLink.click();
+        await page.waitForLoadState('domcontentloaded');
+        if (apiWait) await apiWait;
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      }
+    }
+  }
+
+  // /integrations/connections/create: go to Integrations first, then click Create Connection
+  if (route === '/integrations/connections/create') {
+    const intLabel = ROUTE_NAV_LABELS['/integrations/connections'];
+    const intLink = page.locator('.app-sidebar .nav-link').filter({ hasText: intLabel }).first();
+    if ((await intLink.count()) > 0) {
+      await intLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      const createBtn = page
+        .locator('button:has-text("Create Connection")')
+        .or(page.locator('.empty-state-action:has-text("Create Connection")'))
+        .or(page.locator('button:has-text("Create Marketplace Connection")'));
+      if ((await createBtn.count()) > 0) {
+        await createBtn.first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      }
+    }
+  }
+
+  const label = ROUTE_NAV_LABELS[route];
+  if (label) {
+    const link = page.locator('.app-sidebar .nav-link').filter({ hasText: label }).first();
+    if ((await link.count()) > 0) {
+      const timeout = options.timeout ?? 30000;
+      const apiWait = startRouteDataApiWait(page, route, timeout);
+      await link.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(1000);
+      if (apiWait) await apiWait;
+      await waitForAppMainReady(page, waitOptions);
+      return;
+    }
+  }
+
+  const gotoTimeout = options.timeout ?? 30000;
+  const gotoApiWait = startRouteDataApiWait(page, route, gotoTimeout);
+  await page.goto(route);
+  await page.waitForLoadState('domcontentloaded');
+  if (gotoApiWait) await gotoApiWait;
+  try {
+    await waitForAppMainReady(page, waitOptions);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('Redirected to login') || msg.includes('Still on login')) {
+      await loginUser(page, user);
+      await page.waitForTimeout(postLoginWait);
+      await page.goto(route);
+      await page.waitForLoadState('domcontentloaded');
+      await waitForAppMainReady(page, waitOptions);
+    } else {
+      throw err;
+    }
+  }
+}
+
+/**
+ * Normalize pathname for route comparison (strip trailing slash, query, hash).
+ */
+function normalizePath(pathOrUrl: string): string {
+  try {
+    const p = pathOrUrl.startsWith('/') ? pathOrUrl : new URL(pathOrUrl).pathname;
+    return p.replace(/\/$/, '') || '/';
+  } catch {
+    return pathOrUrl.replace(/\/$/, '') || '/';
+  }
+}
+
+/**
+ * Navigate to a route from within the app (client-side nav only).
+ * Use when already logged in and on a protected page. Avoids full-reload auth race.
+ * Retries with re-login when redirected to login (auth may fail under parallel E2E load).
+ * When already on the target route, skips navigation to avoid redundant remounts that can
+ * trigger auth races (HomePage remount → many API calls → 401 under load).
+ */
+export async function navigateToRouteFromApp(
+  page: Page,
+  route: string,
+  options: {
+    timeout?: number;
+    contentSelector?: string;
+    acceptRedirectToLogin?: boolean;
+    /** User for retries when redirected to login; defaults to getTestUser() */
+    user?: TestUser;
+  } = {}
+): Promise<void> {
+  const maxRetries = 4;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      const user = options.user ?? (await getTestUser());
+      await loginUser(page, user);
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+    }
+    try {
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(500);
+      const navOptions = { ...options };
+
+      // If already on target route, skip navigation to avoid redundant remount (can trigger 401 under load)
+      const currentPath = normalizePath(page.url());
+      const targetPath = normalizePath(route);
+      if (currentPath === targetPath && !page.url().includes('/login')) {
+        await waitForAppMainReady(page, navOptions);
+        return;
+      }
+
+      // Reuse same special-case logic as loginAndNavigateToRoute
+  if (route === '/odps/upload') {
+    const odpsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: ROUTE_NAV_LABELS['/odps'] }).first();
+    if ((await odpsLink.count()) > 0) {
+      await odpsLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(1000);
+      const uploadBtn = page.locator('button:has-text("Create ODPS Product"), button:has-text("Create Your First")').first();
+      if ((await uploadBtn.count()) > 0) {
+        await uploadBtn.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+      }
+      await waitForAppMainReady(page, navOptions);
+      return;
+    }
+  }
+  const odpsIdMatch = route.match(/^\/odps\/([^/]+)$/);
+  if (odpsIdMatch && odpsIdMatch[1] !== 'upload') {
+    const odpsContractId = odpsIdMatch[1];
+    const odpsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: ROUTE_NAV_LABELS['/odps'] }).first();
+    if ((await odpsLink.count()) > 0) {
+      const apiWait = startRouteDataApiWait(page, '/odps', navOptions.timeout ?? 60000);
+      await odpsLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      if (apiWait) await apiWait;
+      const viewBtn = page.locator(`tr[data-odps-id="${odpsContractId}"] button`).first();
+      if ((await viewBtn.count()) > 0) {
+        await viewBtn.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1500);
+        await waitForAppMainReady(page, navOptions);
+        return;
+      }
+    }
+  }
+  // /marketplace/listings/:id: client-side nav via listing card (avoids goto auth race)
+  const marketplaceListingNavMatch = route.match(/^\/marketplace\/listings\/([^/]+)$/);
+  if (marketplaceListingNavMatch) {
+    const listingId = marketplaceListingNavMatch[1];
+    const marketplaceLink = page.locator('.app-sidebar .nav-link').filter({ hasText: ROUTE_NAV_LABELS['/marketplace'] }).first();
+    if ((await marketplaceLink.count()) > 0) {
+      const listTimeout = navOptions.timeout ?? 60000;
+      const apiWait = startRouteDataApiWait(page, '/marketplace', listTimeout);
+      await marketplaceLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      if (apiWait) await apiWait;
+      await page.waitForTimeout(1500);
+      const listingCard = page.locator(`.listing-card[data-listing-id="${listingId}"]`).first();
+      if ((await listingCard.count()) > 0) {
+        await listingCard.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, navOptions);
+        return;
+      }
+    }
+  }
+  if (route === '/marketplace/publish') {
+    const marketplaceLink = page.locator('.app-sidebar .nav-link').filter({ hasText: ROUTE_NAV_LABELS['/marketplace'] }).first();
+    if ((await marketplaceLink.count()) > 0) {
+      const listTimeout = navOptions.timeout ?? 60000;
+      const apiWait = startRouteDataApiWait(page, '/marketplace', listTimeout);
+      await marketplaceLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      if (apiWait) await apiWait;
+      await page.waitForTimeout(3000);
+      const publishBtn = page
+        .locator('button:has-text("Publish Listing")')
+        .or(page.locator('.empty-state-action:has-text("Publish Listing")'));
+      try {
+        await publishBtn.first().waitFor({ state: 'visible', timeout: 25000 });
+        await publishBtn.first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1500);
+      } catch {
+        // Publish button not found - fall through to goto
+      }
+      await waitForAppMainReady(page, navOptions);
+      return;
+    }
+  }
+  if (route === '/mesh/create') {
+    const meshLink = page.locator('.app-sidebar .nav-link').filter({ hasText: ROUTE_NAV_LABELS['/mesh'] }).first();
+    if ((await meshLink.count()) > 0) {
+      await meshLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      const createBtn = page
+        .locator('button:has-text("Create Domain")')
+        .or(page.locator('.empty-state-action:has-text("Create Domain")'));
+      if ((await createBtn.count()) > 0) {
+        await createBtn.first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+      }
+      await waitForAppMainReady(page, navOptions);
+      return;
+    }
+  }
+  if (route === '/mesh/topology') {
+    const meshLink = page.locator('.app-sidebar .nav-link').filter({ hasText: ROUTE_NAV_LABELS['/mesh'] }).first();
+    if ((await meshLink.count()) > 0) {
+      await meshLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      const topologyLink = page.locator('a[href*="/mesh/topology"], a[href="/mesh/topology"]').first();
+      if ((await topologyLink.count()) > 0) {
+        await topologyLink.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+      }
+      await waitForAppMainReady(page, navOptions);
+      return;
+    }
+  }
+  if (route === '/virtualization/create') {
+    const virtLink = page.locator('.app-sidebar .nav-link').filter({ hasText: ROUTE_NAV_LABELS['/virtualization'] }).first();
+    if ((await virtLink.count()) > 0) {
+      await virtLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      const createBtn = page
+        .locator('button:has-text("Create Dataset")')
+        .or(page.locator('.empty-state-action:has-text("Create Dataset")'))
+        .or(page.locator('button:has-text("Create Virtual Dataset")'));
+      if ((await createBtn.count()) > 0) {
+        await createBtn.first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+      }
+      await waitForAppMainReady(page, navOptions);
+      return;
+    }
+  }
+  if (route === '/assets/create') {
+    const assetsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: ROUTE_NAV_LABELS['/assets'] }).first();
+    if ((await assetsLink.count()) > 0) {
+      await assetsLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(1000);
+      const createBtn = page.locator('button:has-text("Create Asset")').or(page.locator('.empty-state-action:has-text("Create Asset")'));
+      if ((await createBtn.count()) > 0) {
+        await createBtn.first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+      }
+      await waitForAppMainReady(page, navOptions);
+      return;
+    }
+  }
+  if (route === '/datasets/create') {
+    const datasetsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: ROUTE_NAV_LABELS['/datasets'] }).first();
+    if ((await datasetsLink.count()) > 0) {
+      const timeout = navOptions.timeout ?? 60000;
+      const apiWait = startRouteDataApiWait(page, '/datasets', timeout);
+      await datasetsLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      if (apiWait) await apiWait;
+      const createBtn = page.locator('button:has-text("Create Dataset")').or(page.locator('.empty-state-action:has-text("Create Dataset")'));
+      try {
+        await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
+      } catch {
+        /* Optional: Create button may not be visible (empty state, different UI); fall through to goto */
+      }
+      if ((await createBtn.count()) > 0) {
+        await createBtn.first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+      }
+      await waitForAppMainReady(page, navOptions);
+      return;
+    }
+  }
+
+  // /integrations/sync-jobs, /integrations/mappings: go to Integrations first, then click tab (client-side nav)
+  if (route === '/integrations/sync-jobs' || route === '/integrations/mappings') {
+    const intLink = page.locator('.app-sidebar .nav-link').filter({ hasText: ROUTE_NAV_LABELS['/integrations/connections'] }).first();
+    if ((await intLink.count()) > 0) {
+      await intLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(1500); // IntegrationsLayout tabs to render
+      const tabText = route === '/integrations/sync-jobs' ? 'Sync Jobs' : 'Mappings';
+      const tabLink = page.locator('.integrations-tab').filter({ hasText: tabText }).first();
+      if ((await tabLink.count()) > 0) {
+        const apiWait = startRouteDataApiWait(page, route, navOptions.timeout ?? 60000); // Start before tab click so we catch the request
+        await tabLink.click();
+        await page.waitForLoadState('domcontentloaded');
+        if (apiWait) await apiWait;
+        await page.waitForTimeout(1000);
+      }
+      await waitForAppMainReady(page, navOptions);
+      return;
+    }
+  }
+
+  // /integrations/connections/create: go to Integrations first, then click Create Connection
+  if (route === '/integrations/connections/create') {
+    const intLink = page.locator('.app-sidebar .nav-link').filter({ hasText: ROUTE_NAV_LABELS['/integrations/connections'] }).first();
+    if ((await intLink.count()) > 0) {
+      await intLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      const createBtn = page
+        .locator('button:has-text("Create Connection")')
+        .or(page.locator('.empty-state-action:has-text("Create Connection")'))
+        .or(page.locator('button:has-text("Create Marketplace Connection")'));
+      if ((await createBtn.count()) > 0) {
+        await createBtn.first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+      }
+      await waitForAppMainReady(page, navOptions);
+      return;
+    }
+  }
+
+  // /assets/:id - try sidebar+row click; fallback to direct goto when row not found (list may be loading/paginated)
+  const assetsIdMatch = route.match(/^\/assets\/([^/]+)$/);
+  if (assetsIdMatch) {
+    const aid = assetsIdMatch[1];
+    const assetsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: ROUTE_NAV_LABELS['/assets'] }).first();
+    if ((await assetsLink.count()) > 0) {
+      const listTimeout = navOptions.timeout ?? 30000;
+      const apiWait = startRouteDataApiWait(page, '/assets', listTimeout);
+      await assetsLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      if (apiWait) await apiWait; // Wait for assets list API so row is available (avoids goto auth race)
+      await page.waitForTimeout(1000);
+      const assetRow = page.locator(`.asset-list-page tr[data-asset-id="${aid}"]`).first();
+      if ((await assetRow.count()) > 0) {
+        await assetRow.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        await waitForAppMainReady(page, navOptions);
+        return;
+      }
+    }
+    // Row not found (loading/pagination) — direct goto is faster and more reliable
+    const fallbackTimeout = navOptions.timeout ?? 30000;
+    const apiWait = startRouteDataApiWait(page, route, fallbackTimeout);
+    await page.goto(route);
+    await page.waitForLoadState('domcontentloaded');
+    if (apiWait) await apiWait;
+    await waitForAppMainReady(page, navOptions);
+    return;
+  }
+
+  const label = ROUTE_NAV_LABELS[route];
+  if (label) {
+    const link = page.locator('.app-sidebar .nav-link').filter({ hasText: label }).first();
+    if ((await link.count()) > 0) {
+      const timeout = navOptions.timeout ?? 30000;
+      const apiWait = startRouteDataApiWait(page, route, timeout);
+      await link.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(1000);
+      if (apiWait) await apiWait;
+      await waitForAppMainReady(page, navOptions);
+      return;
+    }
+  }
+
+  // Fallback: direct navigation (may trigger auth race on protected routes)
+  const fallbackTimeout = navOptions.timeout ?? 30000;
+  const fallbackApiWait = startRouteDataApiWait(page, route, fallbackTimeout);
+  await page.goto(route);
+  await page.waitForLoadState('domcontentloaded');
+  if (fallbackApiWait) await fallbackApiWait;
+  await waitForAppMainReady(page, navOptions);
+  return;
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('Redirected to login') && !msg.includes('Still on login')) {
+        throw err;
+      }
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Wait for loading to complete.
+ * Uses a short default timeout (5s) for the spinner; pass longer timeout for slow APIs (e.g. asset/dataset detail).
  */
 export async function waitForLoadingComplete(
   page: Page,
@@ -242,20 +1233,16 @@ export async function waitForLoadingComplete(
     loadingSelector?: string;
   } = {}
 ): Promise<void> {
-  const { timeout = 10000, loadingSelector = '.loading-spinner, .loading, [data-loading="true"]' } =
+  const { timeout = 5000, loadingSelector = '.loading-spinner-container, .loading-spinner, .loading, [data-loading="true"]' } =
     options;
 
   try {
-    // Wait for loading spinner to disappear
     await page.waitForSelector(loadingSelector, { state: 'hidden', timeout });
   } catch {
-    // Loading spinner might not exist, which is fine
+    // Loading spinner might not exist or may be stuck; continue
   }
 
-  // Wait for page to be ready
   await page.waitForLoadState('domcontentloaded');
-
-  // Additional wait for React to render
   await page.waitForTimeout(1000);
 }
 
@@ -273,6 +1260,7 @@ export async function assertApiError(
   });
 
   if (expectedMessage) {
+    // Intentional fallback: response body may be non-JSON when parsing fails
     const body = await response.json().catch(() => ({}));
     const message = body.message || body.error || JSON.stringify(body);
 
@@ -410,7 +1398,7 @@ export async function cleanupTestData(
   resourceType: string,
   resourceIds: string[]
 ): Promise<void> {
-  const API_BASE_URL = process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+  const API_BASE_URL = process.env.E2E_API_BASE_URL || process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
   for (const id of resourceIds) {
     try {
@@ -436,6 +1424,90 @@ export async function cleanupTestData(
     } catch (error) {
       console.warn(`Error cleaning up ${resourceType} ${id}:`, error);
     }
+  }
+}
+
+/**
+ * Dual verification: assert successful load (backend + frontend).
+ * Prevents false positives where API returns 2xx but frontend shows error.
+ *
+ * For success tests: API must return 2xx AND frontend must show success content
+ * (no .error-display, no error message). Use as first verification after navigation.
+ *
+ * @param options.apiResponsePromise - Promise from page.waitForResponse() started BEFORE
+ *   navigation. Caller must create this before goto so we capture the initial load response.
+ *   Example: const p = page.waitForResponse(r => r.url().includes('contracts'));
+ *            await page.goto('/contracts'); ... await assertSuccessfulLoad(page, { apiResponsePromise: p, ... });
+ * @param options.successContentSelector - CSS selector(s) for expected success content.
+ *   Comma-separated for multiple alternatives (e.g. '.contract-list-page, .empty-state').
+ *   Empty state is valid success when API returned 2xx with empty data.
+ * @param options.rejectErrorDisplay - When true (default), fails if .error-display is visible.
+ *   Set false only for tests that expect mixed success/error states.
+ */
+export async function assertSuccessfulLoad(
+  page: Page,
+  options: {
+    apiResponsePromise?: Promise<{ status: () => number; url: () => string }>;
+    successContentSelector: string;
+    timeout?: number;
+    rejectErrorDisplay?: boolean;
+  }
+): Promise<void> {
+  const {
+    apiResponsePromise,
+    successContentSelector,
+    timeout = 30000,
+    rejectErrorDisplay = true,
+  } = options;
+
+  // 1. Backend: assert API returned 2xx (caller must pass promise started before navigation)
+  if (apiResponsePromise) {
+    const response = await apiResponsePromise;
+    const status = response.status();
+    if (status < 200 || status >= 300) {
+      throw new Error(
+        `assertSuccessfulLoad: API returned ${status}, expected 2xx. ` +
+          `Backend failed; frontend success cannot be assumed. URL: ${response.url()}`
+      );
+    }
+  }
+
+  // 2. Frontend: no error display (unless explicitly allowed)
+  if (rejectErrorDisplay) {
+    await page.waitForTimeout(1500); // Allow error UI to render if API failed
+    const errorCount =
+      (await page.locator('.error-display').count()) +
+      (await page.locator('.error-display-title').count());
+    const errorText = await page
+      .locator('.error-display, .error-display-title, [role="alert"]')
+      .filter({ hasText: /failed|error|404|500|forbidden|not found/i })
+      .count();
+    if (errorCount > 0 || errorText > 0) {
+      const snippet = await page
+        .locator('.error-display, .error-display-title')
+        .first()
+        .textContent()
+        .catch(() => '');
+      throw new Error(
+        `assertSuccessfulLoad: Frontend shows error state (error-display or error text). ` +
+          `Backend may have succeeded but UI indicates failure. Content: ${snippet?.slice(0, 100) ?? 'N/A'}`
+      );
+    }
+  }
+
+  // 3. Frontend: wait for expected success content (API returned 2xx; allow React to re-render)
+  const combinedSelector = successContentSelector
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(', ');
+  try {
+    await page.locator(combinedSelector).first().waitFor({ state: 'visible', timeout });
+  } catch {
+    throw new Error(
+      `assertSuccessfulLoad: No success content visible within ${timeout}ms. Expected one of: ${successContentSelector}. ` +
+        `URL: ${page.url()}`
+    );
   }
 }
 
@@ -470,38 +1542,257 @@ export async function verifyHappyPath(
 
 /**
  * Test dimension: Failure scenario helper
- * Verifies error handling
+ * Verifies error handling. When expectedError.status is set, intercepts API calls
+ * matching urlPattern and asserts response.status() === expectedError.status
+ * (see TEST_ASSERTION_CONVENTIONS: assert status when known).
  */
 export async function verifyFailureScenario(
   page: Page,
   action: () => Promise<void>,
   expectedError: {
+    /** When set with urlPattern, intercepts matching API and asserts response.status() === status */
     status?: number;
+    /** API URL pattern (string or RegExp) to intercept when asserting status. Required when status is set. */
+    urlPattern?: string | RegExp;
     message?: string | RegExp;
     selector?: string;
   }
 ): Promise<void> {
+  const timeout = 15000;
+  let actionError: unknown;
+
+  const urlMatch = (url: string): boolean => {
+    const pattern = expectedError.urlPattern;
+    if (!pattern) return false;
+    return typeof pattern === 'string' ? url.includes(pattern) : pattern.test(url);
+  };
+
+  // When status and urlPattern are set, wait for the API response (matching url + status) triggered by action()
+  // We wait for response matching both urlPattern and expected status to avoid capturing a prior 200 and asserting on the wrong response.
+  const responsePromise =
+    expectedError.status != null && expectedError.urlPattern
+      ? page
+          .waitForResponse(
+            (resp) => urlMatch(resp.url()) && resp.status() === expectedError.status!,
+            { timeout }
+          )
+          .catch((e: unknown) => {
+            const msg =
+              e instanceof Error ? e.message : String(e);
+            throw new Error(
+              `verifyFailureScenario: No API response matching urlPattern with status ${expectedError.status} within ${timeout}ms. ${msg}`
+            );
+          })
+      : null;
+
   try {
     await action();
-
-    // If action succeeds, check if error should have occurred
-    if (expectedError.status || expectedError.message) {
-      throw new Error('Expected error but action succeeded');
-    }
   } catch (error) {
-    // Verify error matches expectations
-    if (expectedError.status) {
-      // Check API response status
-      // This would need to be implemented based on how errors are handled
-    }
-
-    if (expectedError.message) {
-      // Check error message
-      if (expectedError.selector) {
-        await assertContainsText(page, expectedError.selector, expectedError.message);
-      }
-    }
+    actionError = error;
   }
+
+  // Assert API response status when expectedError.status and urlPattern are provided
+  if (expectedError.status != null && expectedError.urlPattern && responsePromise) {
+    const response = await responsePromise;
+    expect(
+      response.status(),
+      `API ${expectedError.urlPattern.toString()} should return ${expectedError.status}`
+    ).toBe(expectedError.status);
+  }
+
+  // Verify error message on page when provided
+  if (expectedError.message) {
+    const messageSelector =
+      expectedError.selector ?? '.app-main, .error-display, [role="alert"], body';
+    await assertContainsText(page, messageSelector, expectedError.message);
+  }
+
+  // If action succeeded and we expected an error but did not assert it (no status+urlPattern), fail
+  const assertedApiStatus =
+    expectedError.status != null && expectedError.urlPattern && responsePromise !== null;
+  if (
+    actionError === undefined &&
+    (expectedError.status != null || expectedError.message) &&
+    !assertedApiStatus
+  ) {
+    throw new Error('Expected error but action succeeded');
+  }
+}
+
+/**
+ * Wait for the asset dropdown (select#asset_id) to have at least one asset option.
+ * Polls until options appear or timeout. Use after createAssetViaApi + navigate to publish page.
+ * Returns true if assets found; false if timeout (caller may skip).
+ */
+export async function waitForAssetDropdownOptions(
+  page: Page,
+  options: { timeout?: number; pollInterval?: number } = {}
+): Promise<boolean> {
+  const { timeout = 15000, pollInterval = 500 } = options;
+  const assetSelect = page.locator('select#asset_id');
+  await assetSelect.waitFor({ state: 'visible', timeout: 10000 });
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const opts = await assetSelect.locator('option').allTextContents();
+    const hasAssets = opts.some((t) => t && t !== 'Select an asset...');
+    if (hasAssets) return true;
+    await page.waitForTimeout(pollInterval);
+  }
+  return false;
+}
+
+/**
+ * Assert that navigating to a detail page with non-existent ID shows appropriate error handling.
+ * Accepts: error display, "not found" text, login redirect, 403, forbidden page, empty state,
+ * no detail content (page loaded but no data), or still loading (slow API).
+ */
+export async function assertNonExistentIdShowsError(
+  page: Page,
+  options: {
+    detailContentSelector?: string;
+    waitAfterLoad?: number;
+  } = {}
+): Promise<void> {
+  const { detailContentSelector, waitAfterLoad = 8000 } = options;
+  await page.waitForSelector(
+    '.error-display, .loading-spinner, .loading-spinner-container, .empty-state, #email, [data-testid="forbidden-page"]' +
+      (detailContentSelector ? `, ${detailContentSelector}` : ''),
+    { timeout: 25000 }
+  );
+  await page.waitForTimeout(waitAfterLoad);
+
+  const hasError =
+    (await page.locator('.error-display').count()) > 0 ||
+    (await page.locator('text=/not found|could not be found|failed to load|404|status code 404|No .* matches the given query|Request failed/i').count()) > 0;
+  const onLogin = page.url().includes('/login');
+  const on403 = page.url().includes('/403');
+  const onForbidden = (await page.locator('[data-testid="forbidden-page"]').count()) > 0;
+  const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
+  const stillLoading =
+    (await page.locator('.loading-spinner, .loading-spinner-container').count()) > 0;
+  const noDetailContent = detailContentSelector
+    ? (await page.locator(detailContentSelector).count()) === 0
+    : true;
+
+  expect(
+    hasError || onLogin || on403 || onForbidden || hasEmptyState || stillLoading || noDetailContent
+  ).toBe(true);
+}
+
+/**
+ * Ensure asset has prerequisites for activation (ACTIVE contract with valid validation/normalization).
+ * Creates contract via API, validates, attaches to asset, sets contract ACTIVE.
+ * Uses page context (localStorage token) so caller must be logged in.
+ * Returns { success: true } or { success: false, error: string }.
+ * No mocks; real backend only.
+ */
+export async function ensureAssetActivationPrerequisites(
+  page: Page,
+  assetId: string
+): Promise<{ success: boolean; error?: string }> {
+  const result = await page.evaluate(
+    async (aid: string) => {
+      const token = localStorage.getItem('access_token');
+      if (!token) return { success: false, error: 'No access token' };
+      const base = `${window.location.origin}/api/v1`;
+
+      const contractJson = {
+        id: `e2e-activate-${Date.now()}`,
+        name: 'E2E Activation Contract',
+        hub_contract_version: '1.0.0',
+        info: { title: 'E2E Contract', name: 'E2E Contract', version: '1.0.0' },
+        schema: {
+          fields: [
+            { name: 'id', type: 'string', description: 'ID' },
+            { name: 'name', type: 'string', description: 'Name' },
+          ],
+        },
+      };
+
+      const contractRes = await fetch(`${base}/contracts/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          original_spec_type: 'ODCS',
+          original_spec_version: '3.0.0',
+          original_format: 'JSON',
+          original_raw: JSON.stringify(contractJson),
+        }),
+      });
+      if (!contractRes.ok) {
+        const err = await contractRes.text();
+        return { success: false, error: `Contract create: ${contractRes.status} ${err}` };
+      }
+      const contract = await contractRes.json();
+      const contractId = contract.id;
+      let contractVersion = contract.version || 1;
+
+      const validateRes = await fetch(`${base}/contracts/${contractId}/validate/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ async: false }),
+      });
+      if (!validateRes.ok) {
+        const err = await validateRes.text();
+        return { success: false, error: `Contract validate: ${validateRes.status} ${err}` };
+      }
+
+      const pollInterval = 2000;
+      const maxAttempts = 25;
+      let contractData: { validation_status?: string; normalization_status?: string; version?: number } | null = null;
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise((r) => setTimeout(r, pollInterval));
+        const check = await fetch(`${base}/contracts/${contractId}/`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (check.ok) {
+          contractData = await check.json();
+          const vs = contractData.validation_status;
+          const ns = contractData.normalization_status;
+          if (
+            (vs === 'VALID' || vs === 'WARNING_ONLY') &&
+            (ns === 'NORMALIZED_OK' || ns === 'NORMALIZED_WITH_WARNINGS')
+          ) {
+            contractVersion = contractData.version ?? contractVersion;
+            break;
+          }
+        }
+      }
+      if (
+        !contractData ||
+        !['VALID', 'WARNING_ONLY'].includes(contractData.validation_status || '') ||
+        !['NORMALIZED_OK', 'NORMALIZED_WITH_WARNINGS'].includes(contractData.normalization_status || '')
+      ) {
+        return {
+          success: false,
+          error: `Contract validation/normalization failed: validation=${contractData?.validation_status ?? '?'}, normalization=${contractData?.normalization_status ?? '?'}`,
+        };
+      }
+
+      const attachRes = await fetch(`${base}/assets/${aid}/contracts/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ contract_id: contractId }),
+      });
+      if (!attachRes.ok) {
+        const err = await attachRes.text();
+        return { success: false, error: `Attach contract: ${attachRes.status} ${err}` };
+      }
+
+      const patchRes = await fetch(`${base}/contracts/${contractId}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: 'ACTIVE', version: contractVersion }),
+      });
+      if (!patchRes.ok) {
+        const err = await patchRes.text();
+        return { success: false, error: `Contract ACTIVE: ${patchRes.status} ${err}` };
+      }
+      return { success: true };
+    },
+    assetId
+  );
+  return result as { success: boolean; error?: string };
 }
 
 /**

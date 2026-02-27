@@ -165,6 +165,7 @@ MIDDLEWARE = [
     "hub.apps.api.middleware.cache_headers.CacheHeadersMiddleware",  # HTTP cache headers (ETag, Last-Modified, Cache-Control)
     "hub.apps.rate_limiting.middleware.RateLimitMiddleware",  # Advanced rate limiting (replaces basic middleware)
     "hub.apps.api.analytics.middleware.APIAnalyticsMiddleware",  # API analytics tracking
+    "hub.apps.baas.middleware.BaaSUsageRecordingMiddleware",  # BaaS usage recording (API-key requests)
     "hub.apps.governance.middleware.AccessLoggingMiddleware",  # Access logging for analytics
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -394,7 +395,7 @@ if "test" in sys.argv or "pytest" in sys.modules:
         except psycopg2.OperationalError as e:
             last_error = e
             error_msg = str(e).lower()
-            # Check if this is a "starting up" error that we should retry
+            # Retry on "starting up" and on transient DNS (Docker DNS can fail briefly)
             is_starting_up = any(
                 phrase in error_msg
                 for phrase in [
@@ -404,9 +405,18 @@ if "test" in sys.argv or "pytest" in sys.modules:
                     "connection to server",
                 ]
             )
+            is_name_resolution = any(
+                phrase in error_msg
+                for phrase in [
+                    "could not translate host name",
+                    "temporary failure in name resolution",
+                    "name or service not known",
+                ]
+            )
+            is_retryable = is_starting_up or is_name_resolution
 
-            if is_starting_up and attempt < max_retries - 1:
-                # Retry for "starting up" errors
+            if is_retryable and attempt < max_retries - 1:
+                # Retry for "starting up" or transient DNS (e.g. Docker DNS)
                 import os
                 import warnings
 
@@ -415,19 +425,31 @@ if "test" in sys.argv or "pytest" in sys.modules:
                     os.getenv("DOCKER_COMPOSE_E2E_TEST", "").lower() == "true"
                     or os.getenv("VERBOSE", "").lower() == "true"
                 ):
+                    reason = "name resolution" if is_name_resolution else "starting up"
                     warnings.warn(
-                        f"PostgreSQL is starting up, retrying in {retry_delay}s "
+                        f"PostgreSQL connection failed ({reason}), retrying in {retry_delay}s "
                         f"(attempt {attempt + 1}/{max_retries}). "
                         f"Host: {postgres_host}:{postgres_port}, DB: {postgres_db}."
                     )
                 time.sleep(retry_delay)
                 continue
-            elif is_starting_up:
-                # Max retries reached, but it's a "starting up" error
-                # Allow it for Docker Compose E2E tests (they will retry later)
+            elif is_retryable:
+                # Max retries reached
                 import os
                 import warnings
 
+                if is_name_resolution:
+                    # DNS failed repeatedly - raise with actionable hint
+                    hint = (
+                        " Host 'postgres-test' resolves only inside the test Docker network. "
+                        "Run tests via: ./scripts/run_phase_12a_batched.sh (or exec into api-service-test)."
+                    )
+                    raise RuntimeError(
+                        f"PostgreSQL connection failed after {max_retries} retries (name resolution). "
+                        f"Host: {postgres_host}:{postgres_port}, DB: {postgres_db}. "
+                        f"Error: {e}.{hint}"
+                    ) from e
+                # "Starting up" only: allow connection to be retried later for Docker Compose E2E
                 if not os.getenv("DOCKER_COMPOSE_E2E_TEST", "").lower() == "true":
                     warnings.warn(
                         f"PostgreSQL connection failed after {max_retries} retries "
@@ -436,32 +458,42 @@ if "test" in sys.argv or "pytest" in sys.modules:
                         f"Host: {postgres_host}:{postgres_port}, DB: {postgres_db}. "
                         f"Error: {e}"
                     )
-                # Don't raise - allow connection to be retried later
                 break
             else:
-                # Not a "starting up" error - raise immediately
+                # Non-retryable error - raise with actionable message
+                hint = ""
+                if "postgres-test" in error_msg and (
+                    "translate host name" in error_msg or "name resolution" in error_msg
+                ):
+                    hint = (
+                        " The hostname 'postgres-test' resolves only inside the test Docker network. "
+                        "Run tests inside the container: docker compose -f docker-compose.test.yml exec api-service-test bash -c '...' "
+                        "Or use ./scripts/run_phase_12a_batched.sh to run batches."
+                    )
                 raise RuntimeError(
                     f"PostgreSQL connection failed for tests. "
                     f"Host: {postgres_host}:{postgres_port}, DB: {postgres_db}, User: {postgres_user}. "
                     f"Error: {e}. "
-                    f"Please ensure PostgreSQL is running and accessible. "
+                    f"Please ensure PostgreSQL is running and accessible.{hint} "
                     f"SQLite is not supported for e2e tests."
                 ) from e
 
     # If we exhausted retries and still have an error, check if we should raise
     if last_error and attempt == max_retries - 1:
         error_msg = str(last_error).lower()
-        is_starting_up = any(
+        is_retryable_final = any(
             phrase in error_msg
             for phrase in [
                 "starting up",
                 "the database system is starting up",
                 "connection refused",
                 "connection to server",
+                "could not translate host name",
+                "temporary failure in name resolution",
+                "name or service not known",
             ]
         )
-        if not is_starting_up:
-            # Non-starting-up error after retries - raise it
+        if not is_retryable_final:
             raise RuntimeError(
                 f"PostgreSQL connection failed for tests after {max_retries} retries. "
                 f"Host: {postgres_host}:{postgres_port}, DB: {postgres_db}, User: {postgres_user}. "
@@ -469,19 +501,39 @@ if "test" in sys.argv or "pytest" in sys.modules:
                 f"Please ensure PostgreSQL is running and accessible. "
                 f"SQLite is not supported for e2e tests."
             ) from last_error
+        hint = ""
+        if "postgres-test" in error_msg and (
+            "translate host name" in error_msg or "name resolution" in error_msg
+        ):
+            hint = (
+                " Host 'postgres-test' did not resolve after retries (transient Docker DNS?). "
+                "Ensure test stack is up and run tests inside the container via run_phase_12a_batched.sh."
+            )
+        if hint:
+            raise RuntimeError(
+                f"PostgreSQL connection failed for tests after {max_retries} retries. "
+                f"Host: {postgres_host}:{postgres_port}, DB: {postgres_db}. "
+                f"Error: {last_error}.{hint}"
+            ) from last_error
 
     # Use PostgreSQL for tests - supports proper transaction handling
     # For SDK tests, use the same database as API service so API can see test data
     use_production_db = os.getenv("USE_PRODUCTION_DB_FOR_SDK_TESTS", "").lower() == "1"
+    test_db_suffix = os.getenv("TEST_DB_SUFFIX", "")
+    # When TEST_DB_SUFFIX is set (e.g. "shared"), use fixed DB name so external services (prefect-integration) can connect
+    use_shared_test_db = bool(test_db_suffix)
 
     if use_production_db:
         # Use production database for SDK tests (allows API service to see test data)
         test_db_name = postgres_db
+    elif use_shared_test_db:
+        # Use shared test DB (hub_test_test_<suffix>) - ensure-test-db creates it; don't create/drop
+        test_db_name = f"{postgres_db}_test_{test_db_suffix}"
     else:
         # Use a unique test database name to avoid conflicts
         import uuid
 
-        test_db_suffix = os.getenv("TEST_DB_SUFFIX", str(uuid.uuid4())[:8])
+        test_db_suffix = str(uuid.uuid4())[:8]
         test_db_name = f"{postgres_db}_test_{test_db_suffix}"
 
     # CRITICAL: Ensure we use the detected password, not the env var
@@ -502,9 +554,9 @@ if "test" in sys.argv or "pytest" in sys.modules:
             "TEST": {
                 "NAME": test_db_name,
                 "SERIALIZE": False,  # Allow parallel test execution
-                "MIGRATE": not use_production_db,  # Skip migrations if using production DB (already migrated)
+                "MIGRATE": not (use_production_db or use_shared_test_db),  # Skip if using existing DB
                 "DEPENDENCIES": [],  # No dependencies - migrations handle this
-                "CREATE_DB": not use_production_db,  # Don't create DB if using production
+                "CREATE_DB": not (use_production_db or use_shared_test_db),  # Don't create if using existing
             },
             "CONN_MAX_AGE": 0,  # Don't reuse connections in tests
             "OPTIONS": {
@@ -569,6 +621,29 @@ else:
             },
         }
     }
+
+# BaaS dedicated instances (optional). See design D1b and docs/runbooks/BAAS_INFRASTRUCTURE.md
+# When set, BaaS usage/quota use these; when unset, main DATABASE and REDIS_URL are used.
+BAAS_DATABASE_URL = env("BAAS_DATABASE_URL", default=None)
+BAAS_REDIS_URL = env("BAAS_REDIS_URL", default=None)
+# postgres | redis; default postgres. See docs/runbooks/BAAS_INFRASTRUCTURE.md.
+BAAS_USAGE_STORAGE_BACKEND = env(
+    "BAAS_USAGE_STORAGE_BACKEND", default="postgres"
+).lower()
+if BAAS_USAGE_STORAGE_BACKEND not in ("postgres", "redis"):
+    BAAS_USAGE_STORAGE_BACKEND = "postgres"
+if BAAS_DATABASE_URL:
+    _baas_db_config = env.db_url_config(BAAS_DATABASE_URL)
+    _baas_db_config.setdefault("OPTIONS", {})
+    _baas_db_config.setdefault("CONN_MAX_AGE", 60)
+    DATABASES["baas"] = _baas_db_config
+    DATABASE_ROUTERS = ["hub.apps.baas.db_router.BaaSDBRouter"]
+
+# Marketplace: KYC required for orders/entitlements (feat1 2.4). Optional allowlist of tenant IDs
+# (UUID strings) exempt from KYC for orders/entitlements. Default empty. See RUNBOOKS.md.
+MARKETPLACE_KYC_ALLOWLIST_TENANT_IDS = env.list(
+    "MARKETPLACE_KYC_ALLOWLIST_TENANT_IDS", default=[]
+)
 
 # Redis Configuration
 # Separate Redis instances for cache, queue, events, and channels
@@ -1048,6 +1123,9 @@ DATACONTRACT_VALIDATION_SYNC_SIZE_LIMIT = env.int(
     "DATACONTRACT_VALIDATION_SYNC_SIZE_LIMIT", default=100 * 1024
 )  # 100KB
 
+# Webhook delivery timeout (seconds). Used by WebhookDeliveryService; tests may override for faster runs.
+WEBHOOK_DELIVERY_TIMEOUT = env.int("WEBHOOK_DELIVERY_TIMEOUT", default=30)
+
 # Email Service Configuration
 # EMAIL_BACKEND: 'sendgrid', 'ses', or 'smtp'
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="smtp")
@@ -1324,6 +1402,12 @@ JOB_TIMEOUT_SEMANTIC_MAPPING = env.int("JOB_TIMEOUT_SEMANTIC_MAPPING", default=3
 # For default: datacontract-service uses port 8080 externally
 _default_datacontract_url = "http://datacontract-service:8080"
 # Detect test environment and use localhost with appropriate port
+# Event bus: in tests, persist events synchronously so Event.objects sees them without RQ worker
+if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
+    EVENT_BUS_FORCE_SYNC_PERSISTENCE = True
+else:
+    EVENT_BUS_FORCE_SYNC_PERSISTENCE = env.bool("EVENT_BUS_FORCE_SYNC_PERSISTENCE", default=False)
+
 if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
     # Try to detect staging vs default by checking port availability
     try:
@@ -1369,12 +1453,13 @@ ODH_SERVICE_TIMEOUT = env.int("ODH_SERVICE_TIMEOUT", default=1800)  # 30 minutes
 
 # ODH Inference Scheduler URL - defaults to odh-inference-scheduler service
 _default_odh_inference_url = "http://odh-inference-scheduler:8080"
-# Detect test environment and use localhost with appropriate port
-if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
-    # In test environment, use localhost with external port (8097)
+# When running tests inside Docker (api-service-test), use test stack hostname so integration tests reach the scheduler
+if os.path.exists("/.dockerenv") and ("pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING")):
+    _default_odh_inference_url = "http://odh-inference-scheduler-test:8080"
+elif "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
+    # Test from host: use localhost with external port (8097)
     _default_odh_inference_url = "http://localhost:8097"
 else:
-    # In Docker, use service name with internal port
     _default_odh_inference_url = "http://odh-inference-scheduler:8080"
 
 ODH_INFERENCE_SCHEDULER_URL = env("ODH_INFERENCE_SCHEDULER_URL", default=_default_odh_inference_url)
@@ -1383,15 +1468,15 @@ COMPLIANCE_SERVICE_TIMEOUT = env.int("COMPLIANCE_SERVICE_TIMEOUT", default=1800)
 
 # Semantic Service Configuration
 SEMANTIC_SERVICE_URL = env("SEMANTIC_SERVICE_URL", default="http://semantic-service:8081")
-# Reduce timeout in test environment for faster failure detection
+# Test env: 60s - Fuseki/SPARQL can be slow (cold start, complex queries). Prod: 15s fail-fast.
 if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
     SEMANTIC_SERVICE_TIMEOUT = env.int(
-        "SEMANTIC_SERVICE_TIMEOUT", default=15
-    )  # 15 seconds (optimized for faster failure detection)
+        "SEMANTIC_SERVICE_TIMEOUT", default=60
+    )  # 60 seconds for tests - resolve_uri/map_contract SPARQL can be slow
 else:
     SEMANTIC_SERVICE_TIMEOUT = env.int(
         "SEMANTIC_SERVICE_TIMEOUT", default=15
-    )  # 15 seconds (optimized for faster failure detection)
+    )  # 15 seconds for production (fail-fast when service unavailable)
 HUB_DOMAIN = env("HUB_DOMAIN", default="hub.example.com")
 
 # SPARQL Endpoint Configuration

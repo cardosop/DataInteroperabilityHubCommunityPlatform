@@ -2262,91 +2262,114 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
             'tenant_id': tenant_id,
         }
 
-        # Validate user has permission to create/manage connections
-        try:
-            from hub.apps.users.models import User
-
-            try:
-                user = User.objects.get(id=user_id)
-                details['user_found'] = True
-                details['user_email'] = user.email if hasattr(user, 'email') else None
-            except User.DoesNotExist:
-                errors.append(f"User {user_id} not found")
-                details['user_found'] = False
-                return ValidationResult(
-                    is_valid=False,
-                    errors=errors,
-                    warnings=warnings,
-                    details=details
-                )
-
-            # Platform admins have all permissions
-            if user.is_platform_admin:
-                details['user_is_platform_admin'] = True
-                details['has_permission'] = True
-            else:
-                details['user_is_platform_admin'] = False
-
-                # For non-platform admins, verify tenant matches
-                if str(user.tenant_id) != tenant_id:
-                    errors.append(
-                        f"User {user_id} does not belong to tenant {tenant_id}"
-                    )
-                    details['tenant_match'] = False
-                    details['has_permission'] = False
+        # Validate user_id and tenant_id are valid UUIDs before ORM lookups (avoids DB/ValidationError for malformed ids)
+        import uuid as uuid_module
+        valid_user_id = True
+        valid_tenant_id = True
+        for name, val in [("user_id", user_id), ("tenant_id", tenant_id)]:
+            if val is None or (isinstance(val, str) and not val.strip()):
+                errors.append(f"{name} is required")
+                if name == "user_id":
+                    valid_user_id = False
                 else:
-                    details['tenant_match'] = True
-
-                    # Check if user has required role (DATA_PROVIDER or TENANT_ADMIN)
-                    has_required_role = user.has_role("DATA_PROVIDER", "TENANT_ADMIN")
-                    if not has_required_role:
-                        errors.append(
-                            f"User {user_id} does not have required role "
-                            f"(DATA_PROVIDER or TENANT_ADMIN) for marketplace connection management"
-                        )
-                        details['has_permission'] = False
-                        details['user_roles'] = (
-                            [ur.role.name for ur in user.user_roles.all()]
-                            if hasattr(user, 'user_roles') else []
-                        )
-                    else:
-                        details['has_permission'] = True
-                        details['user_roles'] = (
-                            [ur.role.name for ur in user.user_roles.all()]
-                            if hasattr(user, 'user_roles') else []
-                        )
-        except Exception as e:
-            errors.append(f"Error checking user permissions: {str(e)}")
-            details['permission_check_error'] = str(e)
-            logger.exception("Error checking user permissions", extra=details)
-
-        # Validate tenant has marketplace integration enabled
-        try:
-            from hub.apps.tenants.models import Tenant
-
+                    valid_tenant_id = False
+                continue
             try:
-                tenant = Tenant.objects.get(id=tenant_id)
-                details['tenant_found'] = True
-                details['tenant_name'] = tenant.name
+                uuid_module.UUID(str(val))
+            except (ValueError, TypeError, AttributeError):
+                errors.append(f"Invalid {name}: {val!r} is not a valid UUID")
+                if name == "user_id":
+                    valid_user_id = False
+                else:
+                    valid_tenant_id = False
 
-                # Check if tenant can publish to marketplace (requires KYC verification)
-                can_publish = tenant.can_publish_to_marketplace()
-                details['marketplace_integration_enabled'] = can_publish
-                details['tenant_kyc_status'] = tenant.kyc_status.value if hasattr(tenant.kyc_status, 'value') else str(tenant.kyc_status)
-                details['tenant_status'] = tenant.status.value if hasattr(tenant.status, 'value') else str(tenant.status)
+        # Validate user has permission to create/manage connections (only when user_id is a valid UUID)
+        if valid_user_id:
+            try:
+                from hub.apps.users.models import User
 
-                if not can_publish:
-                    errors.append(
-                        f"Tenant {tenant_id} does not have marketplace integration enabled. "
-                        f"Tenant must have VERIFIED KYC status and ACTIVE status to create marketplace connections."
+                try:
+                    user = User.objects.get(id=user_id)
+                    details['user_found'] = True
+                    details['user_email'] = user.email if hasattr(user, 'email') else None
+                except User.DoesNotExist:
+                    errors.append(f"User {user_id} not found")
+                    details['user_found'] = False
+                    return ValidationResult(
+                        is_valid=False,
+                        errors=errors,
+                        warnings=warnings,
+                        details=details
                     )
-            except Tenant.DoesNotExist:
-                errors.append(f"Tenant {tenant_id} not found")
-                details['tenant_found'] = False
-        except Exception as e:
-            errors.append(f"Error checking tenant marketplace integration: {str(e)}")
-            details['integration_check_error'] = str(e)
-            logger.exception("Error checking tenant marketplace integration", extra=details)
+
+                # Platform admins have all permissions
+                if user.is_platform_admin:
+                    details['user_is_platform_admin'] = True
+                    details['has_permission'] = True
+                else:
+                    details['user_is_platform_admin'] = False
+
+                    # For non-platform admins, verify tenant matches
+                    if str(user.tenant_id) != tenant_id:
+                        errors.append(
+                            f"User {user_id} does not belong to tenant {tenant_id}"
+                        )
+                        details['tenant_match'] = False
+                        details['has_permission'] = False
+                    else:
+                        details['tenant_match'] = True
+
+                        # Check if user has required role (DATA_PROVIDER or TENANT_ADMIN)
+                        has_required_role = user.has_role("DATA_PROVIDER", "TENANT_ADMIN")
+                        if not has_required_role:
+                            errors.append(
+                                f"User {user_id} does not have required role "
+                                f"(DATA_PROVIDER or TENANT_ADMIN) for marketplace connection management"
+                            )
+                            details['has_permission'] = False
+                            details['user_roles'] = (
+                                [ur.role.name for ur in user.user_roles.all()]
+                                if hasattr(user, 'user_roles') else []
+                            )
+                        else:
+                            details['has_permission'] = True
+                            details['user_roles'] = (
+                                [ur.role.name for ur in user.user_roles.all()]
+                                if hasattr(user, 'user_roles') else []
+                            )
+            except Exception as e:
+                errors.append(f"Error checking user permissions: {str(e)}")
+                details['permission_check_error'] = str(e)
+                logger.exception("Error checking user permissions", extra=details)
+
+        # Validate tenant has marketplace integration enabled (only when tenant_id is a valid UUID)
+        if valid_tenant_id:
+            try:
+                from hub.apps.tenants.models import Tenant
+
+                try:
+                    tenant = Tenant.objects.get(id=tenant_id)
+                    details['tenant_found'] = True
+                    details['tenant_name'] = tenant.name
+
+                    # Check if tenant can publish to marketplace (requires KYC verification)
+                    can_publish = tenant.can_publish_to_marketplace()
+                    details['marketplace_integration_enabled'] = can_publish
+                    details['tenant_kyc_status'] = tenant.kyc_status.value if hasattr(tenant.kyc_status, 'value') else str(tenant.kyc_status)
+                    details['tenant_status'] = tenant.status.value if hasattr(tenant.status, 'value') else str(tenant.status)
+
+                    if not can_publish:
+                        errors.append(
+                            f"Tenant {tenant_id} does not have marketplace integration enabled. "
+                            f"Tenant must have VERIFIED KYC status and ACTIVE status to create marketplace connections."
+                        )
+                except Tenant.DoesNotExist:
+                    errors.append(f"Tenant {tenant_id} not found")
+                    details['tenant_found'] = False
+            except Exception as e:
+                errors.append(f"Error checking tenant marketplace integration: {str(e)}")
+                details['integration_check_error'] = str(e)
+                logger.exception("Error checking tenant marketplace integration", extra=details)
 
         # Check resource quotas (max connections per tenant)
         try:

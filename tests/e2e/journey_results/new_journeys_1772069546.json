@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.016102313995361328
+  },
+  "journeys": [
+    {
+      "journey_id": "CM-002-5cddbbe9",
+      "journey_name": "Moderate Reviews and Ratings",
+      "persona": "Community Manager",
+      "status": "completed",
+      "start_time": 1772069546.2773674,
+      "end_time": 1772069546.2934697,
+      "duration": 0.016102313995361328,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Pending Reviews",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069546.287376,
+          "end_time": 1772069546.2873828,
+          "duration": 6.9141387939453125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "View Reviews Audit",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069546.2934577,
+          "end_time": 1772069546.2934644,
+          "duration": 6.67572021484375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Note: No Pending Reviews to Moderate",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069546.2934668,
+          "end_time": 1772069546.2934685,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-26T01:32:26.293537"
+}

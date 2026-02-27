@@ -89,6 +89,42 @@ class HealthService(BaseService):
             "unhealthy_instances": unhealthy_instances,
         }
 
+    def check_baas_health(self) -> Dict[str, Any]:
+        """
+        Check BaaS Postgres and Redis when BAAS_DATABASE_URL / BAAS_REDIS_URL are set.
+
+        Returns:
+            Dict with 'postgres', 'redis', 'all_healthy'. Only includes keys for
+            configured URLs. When neither is set, returns {'all_healthy': True}.
+        """
+        result = {"all_healthy": True}
+        baas_db_url = getattr(settings, "BAAS_DATABASE_URL", None)
+        baas_redis_url = getattr(settings, "BAAS_REDIS_URL", None)
+        if not baas_db_url and not baas_redis_url:
+            return result
+        if baas_db_url and "baas" in getattr(settings, "DATABASES", {}):
+            try:
+                from django.db import connections
+
+                with connections["baas"].cursor() as cursor:
+                    cursor.execute("SELECT 1")
+                result["postgres"] = "connected"
+            except Exception as e:
+                result["postgres"] = f"error: {e}"
+                result["all_healthy"] = False
+        if baas_redis_url:
+            try:
+                import redis
+
+                client = redis.from_url(baas_redis_url)
+                client.ping()
+                client.close()
+                result["redis"] = "connected"
+            except Exception as e:
+                result["redis"] = f"error: {e}"
+                result["all_healthy"] = False
+        return result
+
     def get_overall_health_status(self) -> Dict[str, Any]:
         """
         Get overall health status including database and Redis.
@@ -122,6 +158,15 @@ class HealthService(BaseService):
         status["redis"] = redis_health["instances"]
         if not redis_health["all_healthy"]:
             status["status"] = "unhealthy"
+
+        # Check BaaS Postgres/Redis when BAAS_*_URL are set
+        baas_health = self.check_baas_health()
+        if "postgres" in baas_health or "redis" in baas_health:
+            status["baas"] = {
+                k: v for k, v in baas_health.items() if k != "all_healthy"
+            }
+            if not baas_health.get("all_healthy", True):
+                status["status"] = "unhealthy"
 
         http_status = 200 if status["status"] == "healthy" else 503
         status["http_status"] = http_status

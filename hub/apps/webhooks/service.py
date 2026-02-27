@@ -14,6 +14,8 @@ from datetime import timedelta
 from django.db import transaction
 import structlog
 
+from django.conf import settings as django_settings
+
 from .models import Webhook, WebhookDelivery, WebhookStatus, DeliveryStatus, WebhookEventType
 from .service_client import WebhookDeliveryClient
 from .odps_webhook_errors import (
@@ -34,7 +36,14 @@ class WebhookDeliveryService:
     """
 
     DEFAULT_RETRY_INTERVALS = [1, 5, 30, 300, 1800]  # 1s, 5s, 30s, 5m, 30m
-    REQUEST_TIMEOUT = 30  # seconds
+    REQUEST_TIMEOUT = 30  # seconds (default when WEBHOOK_DELIVERY_TIMEOUT not set)
+
+    @staticmethod
+    def _get_request_timeout() -> int:
+        """Return configured webhook delivery timeout (for tests and production)."""
+        return getattr(
+            django_settings, "WEBHOOK_DELIVERY_TIMEOUT", WebhookDeliveryService.REQUEST_TIMEOUT
+        )
 
     @staticmethod
     def trigger_webhook(
@@ -275,7 +284,9 @@ class WebhookDeliveryService:
         }
 
         # Use WebhookDeliveryClient for circuit breaker and retry logic
-        webhook_client = WebhookDeliveryClient(timeout=WebhookDeliveryService.REQUEST_TIMEOUT)
+        webhook_client = WebhookDeliveryClient(
+            timeout=WebhookDeliveryService._get_request_timeout()
+        )
 
         try:
             # Make HTTP request using service client
@@ -321,7 +332,7 @@ class WebhookDeliveryService:
                 error = ODPSWebhookDeliveryError(
                     message=f"Webhook delivery timeout: {str(e)}",
                     error_code=ODPSWebhookDeliveryError.ERROR_CODE_TIMEOUT,
-                    user_message=f"Webhook delivery to '{webhook.url}' timed out after {WebhookDeliveryService.REQUEST_TIMEOUT} seconds",
+                    user_message=f"Webhook delivery to '{webhook.url}' timed out after {WebhookDeliveryService._get_request_timeout()} seconds",
                     tenant_id=str(webhook.tenant_id),
                     webhook_id=str(webhook.id),
                     delivery_id=str(delivery.id),

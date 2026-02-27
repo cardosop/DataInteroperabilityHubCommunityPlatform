@@ -6,6 +6,7 @@ throughout the entire lifecycle of marketplace operations.
 """
 
 import pytest
+from django.db import models
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -14,8 +15,11 @@ from hub.apps.core.events.models import Event
 from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.integrations.base import (
     DataMarketplaceConnector,
+    MarketplaceAssetMapping,
     MarketplaceListing,
+    MarketplaceResource,
     MarketplaceType,
+    SyncResult,
     SyncDirection,
     SyncStatus,
 )
@@ -109,10 +113,88 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             def download_resource(self, resource_id: str, destination_path: str):
                 return destination_path
 
+            def map_to_hub_asset(
+                self,
+                listing: MarketplaceListing,
+                sync_job_id=None,
+            ) -> MarketplaceAssetMapping:
+                return MarketplaceAssetMapping(
+                    asset_data={"name": listing.title, "description": listing.description or ""},
+                    source_type=AssetSourceType.FEDERATED,
+                    source_metadata={
+                        "marketplace_type": self.marketplace_type.value,
+                        "listing_id": listing.marketplace_id,
+                    },
+                    odps_metadata=None,
+                    odcs_metadata=None,
+                    resources=[],
+                )
+
+            def map_from_hub_asset(
+                self,
+                asset_data: dict,
+                odps_metadata=None,
+                odcs_metadata=None,
+            ) -> MarketplaceListing:
+                return MarketplaceListing(
+                    marketplace_id=asset_data.get("id", "test"),
+                    marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+                    title=asset_data.get("name", "Unknown"),
+                )
+
+            def sync_push(self, asset_ids: list, options=None) -> SyncResult:
+                return SyncResult(
+                    status=SyncStatus.COMPLETED,
+                    total_items=len(asset_ids),
+                    successful_items=len(asset_ids),
+                )
+
+            def sync_pull(
+                self,
+                listing_ids=None,
+                filters=None,
+                options=None,
+            ) -> SyncResult:
+                return SyncResult(
+                    status=SyncStatus.COMPLETED,
+                    total_items=0,
+                    successful_items=0,
+                    metadata={"mappings": []},
+                )
+
         factory = MarketplaceConnectorFactory()
+        # Save original connector to restore in tearDown (avoids polluting other tests)
+        self._original_snowflake = factory._connectors.get(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
+        )
         factory.register_connector(
             MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, TestSnowflakeConnector
         )
+
+    def tearDown(self):
+        """Restore original connector and reconnect signals"""
+        try:
+            MarketplaceConnectorFactory.unregister_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+            )
+            if self._original_snowflake is not None:
+                MarketplaceConnectorFactory.register_connector(
+                    MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, self._original_snowflake
+                )
+        except ValueError:
+            pass
+
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.connect(asset_saved, sender=Asset, weak=False)
+            post_save.connect(contract_saved, sender=Contract, weak=False)
+        except (ImportError, AttributeError):
+            pass
 
     def test_connection_lifecycle_publishes_marketplace_events(self):
         """E2E test: Verify marketplace events are published throughout connection lifecycle"""
@@ -125,7 +207,11 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             config=self.config,
         )
 
-        created_events = Event.objects.filter(event_type="marketplace.connection.created")
+        # Scope by connection_id to avoid events from other tests (shared DB)
+        created_events = Event.objects.filter(
+            event_type="marketplace.connection.created",
+            data__connection_id=str(connection.id),
+        )
         self.assertEqual(created_events.count(), 1)
         created_event = created_events.first()
         self.assertEqual(created_event.data["connection_id"], str(connection.id))
@@ -139,7 +225,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             is_active=False,
         )
 
-        updated_events = Event.objects.filter(event_type="marketplace.connection.updated")
+        updated_events = Event.objects.filter(
+            event_type="marketplace.connection.updated",
+            data__connection_id=str(connection.id),
+        )
         self.assertEqual(updated_events.count(), 1)
         updated_event = updated_events.first()
         self.assertEqual(updated_event.data["connection_id"], str(connection.id))
@@ -153,7 +242,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             reason="E2E test deletion",
         )
 
-        deleted_events = Event.objects.filter(event_type="marketplace.connection.deleted")
+        deleted_events = Event.objects.filter(
+            event_type="marketplace.connection.deleted",
+            data__connection_id=str(connection.id),
+        )
         self.assertEqual(deleted_events.count(), 1)
         deleted_event = deleted_events.first()
         self.assertEqual(deleted_event.data["connection_id"], str(connection.id))
@@ -186,7 +278,11 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             user_id=str(self.user.id),
         )
 
-        created_events = Event.objects.filter(event_type="marketplace.mapping.created")
+        # Scope by mapping_id to avoid events from other tests (shared DB)
+        created_events = Event.objects.filter(
+            event_type="marketplace.mapping.created",
+            data__mapping_id=str(mapping.id),
+        )
         self.assertEqual(created_events.count(), 1)
         created_event = created_events.first()
         self.assertEqual(created_event.data["mapping_id"], str(mapping.id))
@@ -199,7 +295,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             user_id=str(self.user.id),
         )
 
-        updated_events = Event.objects.filter(event_type="marketplace.mapping.updated")
+        updated_events = Event.objects.filter(
+            event_type="marketplace.mapping.updated",
+            data__mapping_id=str(mapping.id),
+        )
         self.assertEqual(updated_events.count(), 1)
         updated_event = updated_events.first()
         self.assertEqual(updated_event.data["mapping_id"], str(mapping.id))
@@ -212,7 +311,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             reason="E2E test deletion",
         )
 
-        deleted_events = Event.objects.filter(event_type="marketplace.mapping.deleted")
+        deleted_events = Event.objects.filter(
+            event_type="marketplace.mapping.deleted",
+            data__mapping_id=str(mapping.id),
+        )
         self.assertEqual(deleted_events.count(), 1)
         deleted_event = deleted_events.first()
         self.assertEqual(deleted_event.data["mapping_id"], str(mapping.id))
@@ -236,7 +338,11 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             listing_ids=["listing-1"],
         )
 
-        started_events = Event.objects.filter(event_type="marketplace.sync.started")
+        # Scope by sync_job_id to avoid events from other tests (shared DB)
+        started_events = Event.objects.filter(
+            event_type="marketplace.sync.started",
+            data__sync_job_id=str(sync_job.id),
+        )
         self.assertEqual(started_events.count(), 1)
         started_event = started_events.first()
         self.assertEqual(started_event.data["sync_job_id"], str(sync_job.id))
@@ -284,7 +390,11 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             asset_ids=[str(asset.id)],
         )
 
-        started_events = Event.objects.filter(event_type="marketplace.sync.started")
+        # Scope by sync_job_id to avoid events from other tests (shared DB)
+        started_events = Event.objects.filter(
+            event_type="marketplace.sync.started",
+            data__sync_job_id=str(sync_job.id),
+        )
         self.assertEqual(started_events.count(), 1)
         started_event = started_events.first()
         self.assertEqual(started_event.data["sync_job_id"], str(sync_job.id))
@@ -301,7 +411,11 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             config=self.config,
         )
         self.assertEqual(
-            Event.objects.filter(event_type="marketplace.connection.created").count(), 1
+            Event.objects.filter(
+                event_type="marketplace.connection.created",
+                data__connection_id=str(connection.id),
+            ).count(),
+            1,
         )
 
         # Step 2: Create asset
@@ -320,7 +434,13 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
         )
-        self.assertEqual(Event.objects.filter(event_type="marketplace.mapping.created").count(), 1)
+        self.assertEqual(
+            Event.objects.filter(
+                event_type="marketplace.mapping.created",
+                data__mapping_id=str(mapping.id),
+            ).count(),
+            1,
+        )
 
         # Step 4: Start sync
         sync_job = self.service.sync_assets_to_marketplace(
@@ -329,10 +449,22 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             user_id=str(self.user.id),
             asset_ids=[str(asset.id)],
         )
-        self.assertEqual(Event.objects.filter(event_type="marketplace.sync.started").count(), 1)
+        self.assertEqual(
+            Event.objects.filter(
+                event_type="marketplace.sync.started",
+                data__sync_job_id=str(sync_job.id),
+            ).count(),
+            1,
+        )
 
-        # Verify all marketplace events were published
-        all_marketplace_events = Event.objects.filter(event_type__startswith="marketplace.")
+        # Verify all marketplace events were published (scope by our entities)
+        all_marketplace_events = Event.objects.filter(
+            event_type__startswith="marketplace."
+        ).filter(
+            models.Q(data__connection_id=str(connection.id))
+            | models.Q(data__mapping_id=str(mapping.id))
+            | models.Q(data__sync_job_id=str(sync_job.id))
+        )
         self.assertGreaterEqual(all_marketplace_events.count(), 3)
 
         # Verify event types
@@ -343,23 +475,28 @@ class MarketplaceEventPublishingE2ETest(TestCase):
 
     def test_event_publishing_with_invalid_connection_id(self):
         """Test event publishing error handling with invalid connection ID"""
+        import uuid
+
         from hub.apps.core.services.base import NotFoundError
 
-        # Try to get non-existent connection
+        # Use a valid UUID that does not exist so get_connection raises NotFoundError
+        # (invalid-connection-id would cause Django ValidationError before the query)
         with self.assertRaises(NotFoundError):
             self.service.get_connection(
-                connection_id="invalid-connection-id",
+                connection_id=str(uuid.uuid4()),
                 tenant_id=str(self.tenant.id),
             )
 
     def test_event_publishing_with_invalid_sync_job_id(self):
         """Test event publishing error handling with invalid sync job ID"""
+        import uuid
+
         from hub.apps.core.services.base import NotFoundError
 
-        # Try to get non-existent sync job
+        # Use a valid UUID that does not exist so get_sync_job raises NotFoundError
         with self.assertRaises(NotFoundError):
             self.service.get_sync_job(
-                sync_job_id="invalid-sync-job-id",
+                sync_job_id=str(uuid.uuid4()),
                 tenant_id=str(self.tenant.id),
             )
 
@@ -390,10 +527,11 @@ class MarketplaceEventPublishingE2ETest(TestCase):
 
     def test_event_publishing_with_none_tenant_id(self):
         """Test event publishing error handling with None tenant ID"""
-        from hub.apps.core.services.base import ValidationError
+        from hub.apps.core.services.base import NotFoundError, ValidationError
 
-        # Try to create connection with None tenant_id
-        with self.assertRaises((ValidationError, TypeError)):
+        # Try to create connection with None tenant_id; service raises NotFoundError
+        # ("Tenant with id None not found") or ValidationError if validated earlier
+        with self.assertRaises((ValidationError, NotFoundError, TypeError)):
             self.service.create_connection(
                 tenant_id=None,  # type: ignore[arg-type]
                 user_id=str(self.user.id),
@@ -401,17 +539,3 @@ class MarketplaceEventPublishingE2ETest(TestCase):
                 name="Test Connection",
                 config=self.config,
             )
-
-    def tearDown(self):
-        """Reconnect signals after test"""
-        from django.db.models.signals import post_save
-
-        try:
-            from hub.apps.assets.models import Asset
-            from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
-
-            post_save.connect(contract_saved, sender=Contract, weak=False)
-            post_save.connect(asset_saved, sender=Asset, weak=False)
-        except (ImportError, AttributeError):
-            pass

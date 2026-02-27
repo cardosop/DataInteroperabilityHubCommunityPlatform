@@ -92,8 +92,9 @@ class PerformanceMetricsService {
       const clsObserver = new PerformanceObserver((list) => {
         const entries = list.getEntries();
         entries.forEach((entry) => {
-          if (!(entry as LayoutShift).hadRecentInput) {
-            clsValue += (entry as LayoutShift).value;
+          const ls = entry as { hadRecentInput?: boolean; value?: number };
+          if (!ls.hadRecentInput) {
+            clsValue += ls.value ?? 0;
           }
         });
         this.recordMetric('web_vital_cls', clsValue);

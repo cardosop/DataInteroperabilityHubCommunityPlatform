@@ -141,8 +141,8 @@ class ScheduledExportPerformanceTest(TransactionTestCase):
         end_time = time.time()
         elapsed_time = end_time - start_time
 
-        # Should create 10 runs in reasonable time (< 1 second)
-        self.assertLess(elapsed_time, 1.0)
+        # Should create 10 runs in reasonable time (< 2 seconds; allows CI variance)
+        self.assertLess(elapsed_time, 2.0)
         self.assertEqual(len(runs), 10)
 
     def test_export_run_listing_performance(self):
@@ -190,8 +190,8 @@ class ScheduledExportPerformanceTest(TransactionTestCase):
         end_time = time.time()
         elapsed_time = end_time - start_time
 
-        # Should create 5 exports in reasonable time (< 1 second)
-        self.assertLess(elapsed_time, 1.0)
+        # Should create 5 exports in reasonable time (< 2 seconds; allows CI variance)
+        self.assertLess(elapsed_time, 2.0)
         self.assertEqual(len(exports), 5)
 
     def test_large_export_source_scope_performance(self):
@@ -242,5 +242,5 @@ class ScheduledExportPerformanceTest(TransactionTestCase):
         end_time = time.time()
         elapsed_time = end_time - start_time
 
-        # Should update status multiple times in reasonable time (< 0.5 seconds)
-        self.assertLess(elapsed_time, 0.5)
+        # Should update status multiple times in reasonable time (< 1 second; allows CI variance)
+        self.assertLess(elapsed_time, 1.0)

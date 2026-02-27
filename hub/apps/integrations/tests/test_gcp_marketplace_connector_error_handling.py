@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 from django.test import TestCase
 
-from hub.apps.core.services.base import NotFoundError, PermissionError
+from hub.apps.core.services.base import ConnectionError, NotFoundError, PermissionError
 from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 
 # Optional Google Cloud imports - skip tests if not available

@@ -11,6 +11,7 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, ComplianceStatus, DQStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -31,13 +32,14 @@ class AssetCRUDTest(TestCase):
         # Active subscription required so TenantSuspensionMiddleware allows writes.
         ensure_tenant_has_active_subscription(self.tenant)
 
-        # Create user
+        # Create user with DATA_PROVIDER role (required for asset create/update)
         self.user = User.objects.create_user(
             email="user@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        ensure_user_has_data_provider_role(self.user)
 
     def test_create_asset_returns_201(self):
         """Test creating an asset returns 201 status code"""
@@ -746,3 +748,20 @@ class AssetCRUDTest(TestCase):
         self.assertIn(
             response.status_code, [status.HTTP_200_OK, status.HTTP_500_INTERNAL_SERVER_ERROR]
         )
+
+    def test_recommendations_no_tenant_returns_empty_list(self):
+        """Recommendations endpoint returns 200 with empty list when user has no tenant (graceful degradation)."""
+        # User without tenant (e.g. newly registered without tenant_id)
+        user_no_tenant = User.objects.create_user(
+            email="no-tenant@example.com",
+            password="testpass123",
+            tenant=None,
+            status=UserStatus.ACTIVE,
+        )
+        self.client.force_authenticate(user=user_no_tenant)
+
+        response = self.client.get("/api/v1/assets/recommendations/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        self.assertEqual(len(response.data), 0)

@@ -29,6 +29,9 @@ class MarketplaceStructuredLoggingTest(TestCase):
         self.log_capture = []
         self.original_config = structlog.get_config()
 
+        # Reset to clear any cached loggers from app config (observability)
+        structlog.reset_defaults()
+
         # Add a processor to capture logs (before JSON renderer)
         def capture_processor(logger, method_name, event_dict):
             if isinstance(event_dict, dict):

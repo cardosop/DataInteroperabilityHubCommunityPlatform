@@ -17,6 +17,12 @@
   font-weight: var(--font-weight-bold);
 }
 
+.listing-list-header-actions {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+}
+
 .listing-list-filters {
   display: flex;
   gap: var(--spacing-md);

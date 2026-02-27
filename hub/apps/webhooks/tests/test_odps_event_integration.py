@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from hub.apps.webhooks.models import Webhook, WebhookEventType, WebhookStatus, DeliveryStatus
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -33,6 +34,7 @@ class ODPSEventIntegrationTest(TestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
@@ -215,6 +217,7 @@ class ODPSEventIntegrationTest(TestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(other_tenant)
 
         # Create webhook in current tenant
         my_webhook = Webhook.objects.create(

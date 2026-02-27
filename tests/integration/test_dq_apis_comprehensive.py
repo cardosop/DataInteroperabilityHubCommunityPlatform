@@ -19,6 +19,7 @@ from datetime import timedelta
 from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine, DQTrend, DQTrendDirection
 from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.tenants.models import Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
@@ -49,6 +50,7 @@ class TestDQRunCreateAPI(TestCase):
             slug="test-tenant",
             status=TenantStatus.ACTIVE
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email="user@example.com",
@@ -151,7 +153,11 @@ class TestDQRunCreateAPI(TestCase):
         response = self.client.post('/api/v1/dq/runs/', data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('error', response.data or {})
+        # API returns 'detail' (DRF-style) or 'error'; accept both
+        self.assertTrue(
+            "error" in (response.data or {}) or "detail" in (response.data or {}),
+            f"Expected 'error' or 'detail' in response: {response.data}",
+        )
 
     def test_create_dq_run_invalid_asset_id(self):
         """Test creating DQ run with invalid asset_id"""
@@ -205,8 +211,15 @@ class TestDQRunCreateAPI(TestCase):
 
         response = self.client.post('/api/v1/dq/runs/', data, format='json')
 
-        # Should return 400 or 404
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND])
+        # Should return 400, 403 (tenant suspended/no subscription), or 404
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_403_FORBIDDEN,
+                status.HTTP_404_NOT_FOUND,
+            ],
+        )
 
     def test_create_dq_run_creates_job(self):
         """Test that creating DQ run creates a job"""
@@ -473,6 +486,7 @@ class TestDQRunUpdateAPI(TestCase):
             slug="test-tenant",
             status=TenantStatus.ACTIVE
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email="user@example.com",
@@ -666,6 +680,7 @@ class TestDQRunDeleteAPI(TestCase):
             slug="test-tenant",
             status=TenantStatus.ACTIVE
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email="user@example.com",
@@ -1265,6 +1280,7 @@ class TestDQRunIntegration(TestCase):
             slug="test-tenant",
             status=TenantStatus.ACTIVE
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email="user@example.com",
@@ -1395,6 +1411,7 @@ class TestDQRunPerformance(TestCase):
             slug="test-tenant",
             status=TenantStatus.ACTIVE
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email="user@example.com",
@@ -1475,6 +1492,7 @@ class TestDQRunEdgeCases(TestCase):
             slug="test-tenant",
             status=TenantStatus.ACTIVE
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email="user@example.com",

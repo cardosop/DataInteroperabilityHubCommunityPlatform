@@ -21,7 +21,7 @@ from hub.apps.users.models import User, UserStatus, Role, UserRole
 from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.audit.models import AuditEvent
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
@@ -63,7 +63,7 @@ class UserManagementE2ETest(E2ETestBase):
         )
         
         response = self.client.post(
-            '/api/v1/users/users/',
+            '/api/v1/users/',
             {
                 'email': 'newuser@example.com',
                 'display_name': 'New User',
@@ -74,12 +74,12 @@ class UserManagementE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['email'], 'newuser@example.com')
-        self.assertEqual(response.data['display_name'], 'New User')
-        self.assertEqual(response.data['status'], UserStatus.ACTIVE)  # No invitation
+        self.assertEqual((get_response_data(response) or {})['email'], 'newuser@example.com')
+        self.assertEqual((get_response_data(response) or {})['display_name'], 'New User')
+        self.assertEqual((get_response_data(response) or {})['status'], UserStatus.ACTIVE)  # No invitation
         
         # Verify user exists in database
-        user = User.objects.get(id=response.data['id'])
+        user = User.objects.get(id=(get_response_data(response) or {})['id'])
         self.assertEqual(user.email, 'newuser@example.com')
         self.assertEqual(user.status, UserStatus.ACTIVE)
         self.assertEqual(user.tenant, self.tenant)
@@ -101,7 +101,7 @@ class UserManagementE2ETest(E2ETestBase):
     def test_create_user_with_invitation(self):
         """Test creating user with invitation"""
         response = self.client.post(
-            '/api/v1/users/users/',
+            '/api/v1/users/',
             {
                 'email': 'invited@example.com',
                 'display_name': 'Invited User',
@@ -111,10 +111,10 @@ class UserManagementE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['status'], UserStatus.INVITED)
+        self.assertEqual((get_response_data(response) or {})['status'], UserStatus.INVITED)
         
         # Verify user exists with INVITED status
-        user = User.objects.get(id=response.data['id'])
+        user = User.objects.get(id=(get_response_data(response) or {})['id'])
         self.assertEqual(user.status, UserStatus.INVITED)
         self.assertIsNotNone(user.invitation_token)
         self.assertIsNotNone(user.invitation_token_expires_at)
@@ -136,14 +136,14 @@ class UserManagementE2ETest(E2ETestBase):
         )
         
         # List all users
-        response = self.client.get('/api/v1/users/users/')
+        response = self.client.get('/api/v1/users/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data['results']), 2)
+        self.assertGreaterEqual(len((get_response_data(response) or {})['results']), 2)
         
         # Filter by status
-        response = self.client.get('/api/v1/users/users/?status=ACTIVE')
+        response = self.client.get('/api/v1/users/?status=ACTIVE')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        user_emails = {u['email'] for u in response.data['results']}
+        user_emails = {u['email'] for u in (get_response_data(response) or {})['results']}
         self.assertIn('active@example.com', user_emails)
         self.assertNotIn('invited@example.com', user_emails)
     
@@ -157,13 +157,13 @@ class UserManagementE2ETest(E2ETestBase):
             status=UserStatus.ACTIVE
         )
         
-        response = self.client.get(f'/api/v1/users/users/{test_user.id}/')
+        response = self.client.get(f'/api/v1/users/{test_user.id}/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(test_user.id))
-        self.assertEqual(response.data['email'], 'testuser@example.com')
-        self.assertEqual(response.data['display_name'], 'Test User')
-        self.assertEqual(response.data['status'], UserStatus.ACTIVE)
+        self.assertEqual((get_response_data(response) or {})['id'], str(test_user.id))
+        self.assertEqual((get_response_data(response) or {})['email'], 'testuser@example.com')
+        self.assertEqual((get_response_data(response) or {})['display_name'], 'Test User')
+        self.assertEqual((get_response_data(response) or {})['status'], UserStatus.ACTIVE)
     
     def test_update_user_display_name(self):
         """Test updating user display name"""
@@ -176,13 +176,13 @@ class UserManagementE2ETest(E2ETestBase):
         )
         
         response = self.client.patch(
-            f'/api/v1/users/users/{test_user.id}/',
+            f'/api/v1/users/{test_user.id}/',
             {'display_name': 'Updated Name'},
             format='json'
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['display_name'], 'Updated Name')
+        self.assertEqual((get_response_data(response) or {})['display_name'], 'Updated Name')
         
         # Verify database updated
         test_user.refresh_from_db()
@@ -217,7 +217,7 @@ class UserManagementE2ETest(E2ETestBase):
         
         # Assign role via manage_roles endpoint
         response = self.client.post(
-            f'/api/v1/users/users/{test_user.id}/roles/',
+            f'/api/v1/users/{test_user.id}/roles/',
             {
                 'role_id': str(data_provider_role.id),
                 'action': 'assign'
@@ -242,7 +242,7 @@ class UserManagementE2ETest(E2ETestBase):
     def test_invite_user(self):
         """Test inviting a user via invite endpoint"""
         response = self.client.post(
-            '/api/v1/users/users/invite/',
+            '/api/v1/users/invite/',
             {
                 'email': 'invitee@example.com',
                 'display_name': 'Invitee User'
@@ -251,11 +251,11 @@ class UserManagementE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['email'], 'invitee@example.com')
-        self.assertEqual(response.data['status'], UserStatus.INVITED)
+        self.assertEqual((get_response_data(response) or {})['email'], 'invitee@example.com')
+        self.assertEqual((get_response_data(response) or {})['status'], UserStatus.INVITED)
         
         # Verify user exists with invitation token
-        user = User.objects.get(id=response.data['id'])
+        user = User.objects.get(id=(get_response_data(response) or {})['id'])
         self.assertEqual(user.status, UserStatus.INVITED)
         self.assertIsNotNone(user.invitation_token)
         
@@ -277,7 +277,7 @@ class UserManagementE2ETest(E2ETestBase):
         )
         user_id = test_user.id
         
-        response = self.client.delete(f'/api/v1/users/users/{test_user.id}/')
+        response = self.client.delete(f'/api/v1/users/{test_user.id}/')
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
@@ -312,7 +312,7 @@ class UserManagementE2ETest(E2ETestBase):
             created_by=test_user
         )
         
-        response = self.client.delete(f'/api/v1/users/users/{test_user.id}/')
+        response = self.client.delete(f'/api/v1/users/{test_user.id}/')
         
         # User with resources returns 200 with message (soft delete)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -324,10 +324,10 @@ class UserManagementE2ETest(E2ETestBase):
     
     def test_delete_self_fails(self):
         """Test that users cannot delete themselves"""
-        response = self.client.delete(f'/api/v1/users/users/{self.user.id}/')
+        response = self.client.delete(f'/api/v1/users/{self.user.id}/')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('cannot delete themselves', response.data['error'].lower())
+        self.assertIn('cannot delete themselves', (get_response_data(response) or {})['error'].lower())
         
         # Verify user still exists
         self.user.refresh_from_db()
@@ -342,7 +342,7 @@ class UserManagementE2ETest(E2ETestBase):
         )
         
         response = self.client.post(
-            '/api/v1/users/users/',
+            '/api/v1/users/',
             {
                 'email': 'duplicate@example.com',
                 'display_name': 'Duplicate User',
@@ -352,12 +352,12 @@ class UserManagementE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('email', response.data)
+        self.assertIn('email', (get_response_data(response) or {}))
     
     def test_create_user_invalid_email_fails(self):
         """Test creating user with invalid email format fails"""
         response = self.client.post(
-            '/api/v1/users/users/',
+            '/api/v1/users/',
             {
                 'email': 'invalid-email',
                 'display_name': 'Invalid User',
@@ -367,7 +367,7 @@ class UserManagementE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('email', response.data)
+        self.assertIn('email', (get_response_data(response) or {}))
     
     def test_update_user_status(self):
         """Test updating user status"""
@@ -379,13 +379,13 @@ class UserManagementE2ETest(E2ETestBase):
         )
         
         response = self.client.patch(
-            f'/api/v1/users/users/{test_user.id}/',
+            f'/api/v1/users/{test_user.id}/',
             {'status': UserStatus.DISABLED},
             format='json'
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['status'], UserStatus.DISABLED)
+        self.assertEqual((get_response_data(response) or {})['status'], UserStatus.DISABLED)
         
         # Verify database updated
         test_user.refresh_from_db()

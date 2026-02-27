@@ -1008,7 +1008,6 @@ class ProductCreationWorkflow:
             ) from e
 
     @staticmethod
-    @transaction.atomic
     def _create_odcs_contract_task(
         input_data: Dict[str, Any], instance: WorkflowInstance, step
     ) -> Dict[str, Any]:
@@ -1158,7 +1157,6 @@ class ProductCreationWorkflow:
         }
 
     @staticmethod
-    @transaction.atomic
     def _create_odps_contract_task(
         input_data: Dict[str, Any], instance: WorkflowInstance, step
     ) -> Dict[str, Any]:
@@ -1385,7 +1383,6 @@ class ProductCreationWorkflow:
         }
 
     @staticmethod
-    @transaction.atomic
     def _link_contracts_task(
         input_data: Dict[str, Any], instance: WorkflowInstance, step
     ) -> Dict[str, Any]:
@@ -1671,7 +1668,6 @@ class ProductCreationWorkflow:
             ) from e
 
     @staticmethod
-    @transaction.atomic
     def _link_data_file_task(
         input_data: Dict[str, Any], instance: WorkflowInstance, step
     ) -> Dict[str, Any]:
@@ -2098,7 +2094,6 @@ class ProductCreationWorkflow:
         return {"rolled_back": True}
 
     @staticmethod
-    @transaction.atomic
     def _rollback_odcs_contract_task(
         input_data: Dict[str, Any], instance: WorkflowInstance, step
     ) -> Dict[str, Any]:
@@ -2124,7 +2119,6 @@ class ProductCreationWorkflow:
         return {"rolled_back": True}
 
     @staticmethod
-    @transaction.atomic
     def _rollback_odps_contract_task(
         input_data: Dict[str, Any], instance: WorkflowInstance, step
     ) -> Dict[str, Any]:
@@ -2150,7 +2144,6 @@ class ProductCreationWorkflow:
         return {"rolled_back": True}
 
     @staticmethod
-    @transaction.atomic
     def _rollback_link_contracts_task(
         input_data: Dict[str, Any], instance: WorkflowInstance, step
     ) -> Dict[str, Any]:
@@ -2193,7 +2186,6 @@ class ProductCreationWorkflow:
         return {"rolled_back": True}
 
     @staticmethod
-    @transaction.atomic
     def _rollback_link_data_file_task(
         input_data: Dict[str, Any], instance: WorkflowInstance, step
     ) -> Dict[str, Any]:

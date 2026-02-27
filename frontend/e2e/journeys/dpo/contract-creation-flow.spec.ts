@@ -4,18 +4,32 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
-import { waitForLoadingComplete } from '../../fixtures/helpers';
+import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
+import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('Contract Creation Flow', () => {
-  test.setTimeout(120000); // 2 minutes
+  test.setTimeout(180000); // 3 min: login + ODPS upload + contract creation under Docker
+
+  test.describe('Failure', () => {
+    test('unauthenticated access to contracts redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|contracts)/, { timeout: 20_000 });
+      const url = page.url();
+      const onLogin = url.includes('/login');
+      const onContractsWithLoginPrompt =
+        url.includes('/contracts') &&
+        (await hasLoginPrompt(page));
+      expect(onLogin || onContractsWithLoginPrompt).toBe(true);
+    });
+  });
 
   test('should create contract successfully', async ({ page }) => {
     const testUser = await getTestUser();
-    await loginUser(page, testUser);
-
-    // Navigate to contracts page
-    await page.goto('/contracts');
+    await loginAndNavigateToRoute(page, testUser, '/contracts', {
+      timeout: 60000,
+      contentSelector: '.contract-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+    });
     await waitForLoadingComplete(page);
 
     // Wait for page to load - may show empty state or list
@@ -62,12 +76,24 @@ test.describe('Contract Creation Flow', () => {
       await createButton.first().click();
       await page.waitForTimeout(1000);
     } else {
-      // Fallback: navigate directly to ODPS upload
-      await page.goto('/odps/upload');
+      // Fallback: click ODPS in sidebar to reach upload (client-side nav)
+      const odpsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: 'ODPS' }).first();
+      await odpsLink.click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(1000);
+      const uploadBtn = page.locator('button:has-text("Create ODPS Product"), button:has-text("Create Your First")').first();
+      if ((await uploadBtn.count()) > 0) {
+        await uploadBtn.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+      }
       await waitForLoadingComplete(page);
     }
 
-    // Wait for navigation - button now navigates to /odps/upload
+    // Wait for navigation - button now navigates to /odps/upload (or redirect to login if auth failed)
+    if (page.url().includes('/login')) {
+      throw new Error('Unexpected redirect to login after contracts page - auth may have failed');
+    }
     await expect(page).toHaveURL(/\/odps\/upload/, { timeout: 15000 });
     await waitForLoadingComplete(page);
 
@@ -75,7 +101,7 @@ test.describe('Contract Creation Flow', () => {
     // ODPS format requires: schema (string URL), version, product.details, product.dataSchema
     const contentTextarea = page.locator('textarea#odps-content, textarea').first();
     await expect(contentTextarea).toBeVisible({ timeout: 10000 });
-    await contentTextarea.fill(
+    await     contentTextarea.fill(
       JSON.stringify({
         schema: 'https://opendataproducts.org/schema/v4.1',
         version: '4.1',
@@ -94,6 +120,22 @@ test.describe('Contract Creation Flow', () => {
               { name: 'name', type: 'string' },
             ],
           },
+          contract: {
+            spec: {
+              apiVersion: 'odcs.io/v3.0.2',
+              kind: 'DataContract',
+              id: `test-odcs-${Date.now()}`,
+              name: 'Test ODCS Contract',
+              version: '1.0.0',
+              description: 'E2E test ODCS contract',
+              schema: {
+                fields: [
+                  { name: 'id', type: 'string', nullable: false, description: 'ID' },
+                  { name: 'name', type: 'string', nullable: false, description: 'Name' },
+                ],
+              },
+            },
+          },
         },
       })
     );
@@ -107,25 +149,41 @@ test.describe('Contract Creation Flow', () => {
     await expect(submitButton).toBeEnabled({ timeout: 5000 }); // Wait for button to be enabled (content must be filled)
     await submitButton.click();
 
-    // Wait for workflow to start - may redirect to workflow status or contract detail
-    await page.waitForTimeout(5000);
+    // Wait for API response (success or error)
+    await page.waitForTimeout(8000);
     await waitForLoadingComplete(page);
 
-    // Check URL - may be workflow status or contract detail
+    // Check URL - may be workflow status, contract detail, or still on upload (with error)
     const finalUrl = page.url();
     if (finalUrl.includes('/contracts/') && !finalUrl.includes('/edit')) {
-      // Contract detail page
-      await expect(page.locator('.contract-detail-page, .contract-detail-content, h1')).toBeVisible(
+      // Contract detail page - success
+      await expect(page.locator('.contract-detail-page, .contract-detail-content, h1').first()).toBeVisible(
+        { timeout: 15000 }
+      );
+    } else if (finalUrl.includes('/odps/') && !finalUrl.includes('/upload')) {
+      // ODPS detail page - success (navigated after workflow completed)
+      await expect(page.locator('.odps-detail-page, .contract-detail-page, h1').first()).toBeVisible(
         { timeout: 15000 }
       );
     } else if (finalUrl.includes('/status') || finalUrl.includes('/workflow')) {
       // Workflow status page - contract creation in progress
       await expect(
-        page.locator('h1, .workflow-status, .status, [data-testid="workflow-status"]')
+        page.locator('h1, .workflow-status, .status, [data-testid="workflow-status"]').first()
       ).toBeVisible({ timeout: 10000 });
+    } else if (finalUrl.includes('/odps/upload')) {
+      // Still on upload page - verify page content (form or error)
+      const uploadContent = page.locator('.odps-upload-page, .upload-form, .error-display').first();
+      await expect(uploadContent).toBeVisible({ timeout: 10000 });
+      // If error display is shown, fail with the API error for debugging
+      const errorDisplay = page.locator('.error-display');
+      if ((await errorDisplay.count()) > 0 && (await errorDisplay.first().isVisible())) {
+        const errorText = await errorDisplay.first().textContent();
+        throw new Error(
+          `Contract creation failed. API error: ${errorText?.replace(/\s+/g, ' ').substring(0, 500) ?? 'Unknown'}`
+        );
+      }
     } else {
-      // Still on upload page - workflow may be processing, verify form was submitted
-      await expect(page.locator('.odps-upload-page, .upload-form')).toBeVisible({ timeout: 10000 });
+      throw new Error(`Unexpected URL after submit: ${finalUrl}`);
     }
   });
 });

@@ -47,6 +47,8 @@ from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.datasets.models import Dataset, DatasetKind
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from tests.fixtures.test_data_factories import (
     AssetFactory,
     ContractFactory,
@@ -59,7 +61,10 @@ from tests.utils.test_data_management import TestDatabaseIsolationMixin
 
 User = get_user_model()
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.integration]
+# Use default transaction=False so the test client and middleware share the same DB
+# connection; with transaction=True the client can use a different connection and
+# TenantSuspensionMiddleware does not see the subscription created in setUp (403).
+pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
 class AssetListAPITest(TestCase):
@@ -72,6 +77,8 @@ class AssetListAPITest(TestCase):
         # Create tenants
         self.tenant1 = TenantFactory.create_tenant(name="Tenant 1", slug="tenant-1")
         self.tenant2 = TenantFactory.create_tenant(name="Tenant 2", slug="tenant-2")
+        ensure_tenant_has_active_subscription(self.tenant1)
+        ensure_tenant_has_active_subscription(self.tenant2)
 
         # Create users
         self.user1 = UserFactory.create_user(tenant=self.tenant1, email="user1@example.com")
@@ -506,7 +513,9 @@ class AssetCreateAPITest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
+        ensure_user_has_data_provider_role(self.user)
         self.client.force_authenticate(user=self.user)
 
     # ========== Success Scenarios ==========
@@ -699,6 +708,8 @@ class AssetRetrieveAPITest(TestCase):
         self.client = APIClient()
         self.tenant1 = TenantFactory.create_tenant()
         self.tenant2 = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant1)
+        ensure_tenant_has_active_subscription(self.tenant2)
         self.user1 = UserFactory.create_user(tenant=self.tenant1)
         self.user2 = UserFactory.create_user(tenant=self.tenant2)
 
@@ -770,9 +781,7 @@ class AssetRetrieveAPITest(TestCase):
     def test_retrieve_asset_invalid_uuid(self):
         """Test retrieving asset with invalid UUID"""
         self.client.force_authenticate(user=self.user1)
-        from django.urls import reverse
-        url = reverse('asset-list')
-        response = self.client.get(url)
+        response = self.client.get("/api/v1/assets/invalid-uuid/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -811,6 +820,8 @@ class AssetUpdateAPITest(TestCase):
         self.client = APIClient()
         self.tenant1 = TenantFactory.create_tenant()
         self.tenant2 = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant1)
+        ensure_tenant_has_active_subscription(self.tenant2)
         self.user1 = UserFactory.create_user(tenant=self.tenant1)
         self.user2 = UserFactory.create_user(tenant=self.tenant2)
 
@@ -976,6 +987,7 @@ class AssetActivateAPITest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
         self.client.force_authenticate(user=self.user)
 
@@ -1295,6 +1307,8 @@ class AssetDeleteAPITest(TestCase):
         self.client = APIClient()
         self.tenant1 = TenantFactory.create_tenant()
         self.tenant2 = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant1)
+        ensure_tenant_has_active_subscription(self.tenant2)
         self.user1 = UserFactory.create_user(tenant=self.tenant1)
         self.user2 = UserFactory.create_user(tenant=self.tenant2)
 
@@ -1409,6 +1423,7 @@ class AssetAPIEdgeCasesTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
         self.client.force_authenticate(user=self.user)
 
@@ -1470,6 +1485,7 @@ class AssetAPIPerformanceTest(TransactionTestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
         self.client.force_authenticate(user=self.user)
 
@@ -1548,6 +1564,7 @@ class AssetListAPIAdvancedTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
         self.client.force_authenticate(user=self.user)
 
@@ -1893,6 +1910,7 @@ class AssetCreateAPIAdvancedTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
         self.client.force_authenticate(user=self.user)
 
@@ -1930,6 +1948,7 @@ class AssetCreateAPIAdvancedTest(TestCase):
     def test_create_asset_duplicate_key_different_tenant(self):
         """Test that duplicate keys are allowed in different tenants"""
         tenant2 = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(tenant2)
         user2 = UserFactory.create_user(tenant=tenant2)
 
         # Create asset in tenant1
@@ -2068,6 +2087,7 @@ class AssetUpdateAPIAdvancedTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
 
         self.asset = AssetFactory.create_asset(
@@ -2175,6 +2195,7 @@ class AssetActivateAPIAdvancedTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
         self.client.force_authenticate(user=self.user)
 
@@ -2352,7 +2373,8 @@ class AssetActivateAPIAdvancedTest(TestCase):
             f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK, f"Response: {response.data}")
+        msg = response.content.decode() if response.content else str(response.status_code)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, f"Response: {msg}")
         asset.refresh_from_db()
         self.assertEqual(asset.version, original_version + 1)
 
@@ -2364,6 +2386,7 @@ class AssetDeleteAPIAdvancedTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
 
     def test_delete_asset_unauthorized(self):

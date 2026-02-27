@@ -19,7 +19,7 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.jobs.models import Job, JobStatus, JobType
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e1]
 
@@ -222,7 +222,8 @@ class EnhancedContractNormalizationE2ETest(E2ETestBase):
 
         # Handle semantic service unavailability (500 error)
         if response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR:
-            error_msg = str(response.data) if hasattr(response, "data") else ""
+            data = get_response_data(response)
+            error_msg = str(data) if data is not None else ""
             if (
                 "name resolution" in error_msg.lower()
                 or "temporary failure" in error_msg.lower()
@@ -231,11 +232,10 @@ class EnhancedContractNormalizationE2ETest(E2ETestBase):
             ):
                 pytest.skip("Semantic service not available for contract remapping")
             else:
-                # Other 500 error - might be a real bug
                 self.assertEqual(
                     response.status_code,
                     status.HTTP_200_OK,
-                    f"Contract update failed: {response.data}",
+                    f"Contract update failed: {data}",
                 )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)

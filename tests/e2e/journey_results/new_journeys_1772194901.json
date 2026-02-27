@@ -1,0 +1,95 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.01877117156982422
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-008-41d2ed98",
+      "journey_name": "Manage Consent Tracking",
+      "persona": "Compliance Officer",
+      "status": "completed",
+      "start_time": 1772194901.9410424,
+      "end_time": 1772194901.9598136,
+      "duration": 0.01877117156982422,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Configure Consent Tracking",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772194901.9410496,
+          "end_time": 1772194901.947355,
+          "duration": 0.0063054561614990234,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Note: Consent Tracking API Not Yet Implemented",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772194901.9473603,
+          "end_time": 1772194901.9473634,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Consent Records Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772194901.9514246,
+          "end_time": 1772194901.9514277,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Consent Update Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772194901.9557674,
+          "end_time": 1772194901.9557707,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Consent Reports Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772194901.9598076,
+          "end_time": 1772194901.9598122,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-27T12:21:41.959887"
+}

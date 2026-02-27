@@ -199,7 +199,8 @@ def refresh_token(request):
 
 @extend_schema(
     request=inline_serializer(
-        name="TokenRefreshRequest", fields={"refresh_token": serializers.CharField(required=True)}
+        name="TokenRefreshRequest",
+        fields={"refresh_token": serializers.CharField(required=False, allow_blank=True)},
     ),
     responses={200: OpenApiResponse(description="Logged out successfully")},
     tags=["Authentication"],
@@ -211,30 +212,33 @@ def logout(request):
     User logout endpoint.
 
     POST /auth/logout
-    Body: {"refresh_token": "token_string"} (required)
+    Body: {"refresh_token": "token_string"} (optional)
 
-    Revokes the given refresh token. Invalid/missing token returns 400; unknown token returns 200 (idempotent).
+    When refresh_token is provided: revokes that specific token.
+    When refresh_token is omitted: revokes all refresh tokens for the authenticated user (full session cleanup).
+    Invalid/unknown token returns 200 with revoked_count=0 (idempotent).
     """
-    # Require refresh_token in body
     refresh_token_str = request.data.get("refresh_token") if request.data else None
-    if not refresh_token_str or not str(refresh_token_str).strip():
-        return Response(
-            {"error": "Refresh token is required"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    refresh_token_str = str(refresh_token_str).strip() if refresh_token_str else None
 
     revoked_count = 0
-    refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
-    refresh_token_obj = RefreshToken.objects.filter(
-        token_hash=refresh_token_hash, user_id=request.user.id
-    ).first()
+    if refresh_token_str:
+        refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
+        refresh_token_obj = RefreshToken.objects.filter(
+            token_hash=refresh_token_hash, user_id=request.user.id
+        ).first()
 
-    if refresh_token_obj:
-        if not refresh_token_obj.revoked_at:
-            refresh_token_obj.revoked_at = timezone.now()
-            refresh_token_obj.save(update_fields=["revoked_at", "updated_at"])
-        revoked_count = 1
-    # else: invalid/unknown token → 200 with revoked_count=0 (idempotent)
+        if refresh_token_obj:
+            if not refresh_token_obj.revoked_at:
+                refresh_token_obj.revoked_at = timezone.now()
+                refresh_token_obj.save(update_fields=["revoked_at", "updated_at"])
+            revoked_count = 1
+    else:
+        # No refresh_token: revoke all refresh tokens for this user (session cleanup)
+        revoked = RefreshToken.objects.filter(
+            user_id=request.user.id, revoked_at__isnull=True
+        ).update(revoked_at=timezone.now())
+        revoked_count = revoked
 
     # Log audit event
     log_auth_operation(
@@ -452,7 +456,7 @@ def register(request):
     name = serializer.validated_data["name"]
     tenant_id = serializer.validated_data.get("tenant_id")
 
-    # Get tenant if provided; otherwise use default tenant so tenant-scoped features (e.g. webhooks) work
+    # Get tenant if provided; when not provided, user registers without tenant (tenant_id=null in response)
     tenant = None
     if tenant_id:
         from hub.apps.tenants.models import Tenant
@@ -463,15 +467,6 @@ def register(request):
                 raise ValidationError({"tenant_id": "Tenant is not active"})
         except Tenant.DoesNotExist:
             raise ValidationError({"tenant_id": "Tenant not found"})
-    else:
-        from hub.apps.tenants.models import Tenant, TenantStatus
-
-        tenant, _ = Tenant.objects.get_or_create(
-            slug="default",
-            defaults={"name": "Default Tenant", "status": TenantStatus.ACTIVE},
-        )
-        if not tenant.is_active():
-            tenant = None
 
     # Create user
     user = User.objects.create_user(
@@ -590,10 +585,13 @@ def me(request):
     if cached_response:
         return Response(cached_response, status=status.HTTP_200_OK)
 
-    # Get roles
+    # Get roles (include PLATFORM_ADMIN when is_platform_admin for frontend ProtectedRoute)
     roles = []
     if hasattr(user, "user_roles"):
         roles = [ur.role.name for ur in user.user_roles.all()]
+    if hasattr(user, "is_platform_admin") and user.is_platform_admin:
+        if "PLATFORM_ADMIN" not in roles:
+            roles = list(roles) + ["PLATFORM_ADMIN"]
 
     # Get permissions
     from .serializers import get_user_permissions

@@ -74,6 +74,7 @@ test.describe('{JOURNEY_ID}: {JOURNEY_TITLE}', () => {
    * Failure Scenario: Invalid input validation
    *
    * Verifies that the system handles invalid input gracefully.
+   * Pass urlPattern so the helper asserts API response status (400) per TEST_ASSERTION_CONVENTIONS.
    */
   test('failure scenario: invalid input', async ({ page }) => {
     test.setTimeout(60000);
@@ -88,6 +89,7 @@ test.describe('{JOURNEY_ID}: {JOURNEY_TITLE}', () => {
       },
       {
         status: 400,
+        urlPattern: '/api/v1/', // TODO: set to the API path this submit triggers (e.g. /api/v1/assets/)
         message: /validation error|invalid/i,
         selector: '.error-message',
       }
@@ -98,6 +100,7 @@ test.describe('{JOURNEY_ID}: {JOURNEY_TITLE}', () => {
    * Failure Scenario: Unauthorized access
    *
    * Verifies that unauthorized users cannot access protected resources.
+   * Pass urlPattern so the helper asserts API response status (401) per TEST_ASSERTION_CONVENTIONS.
    */
   test('failure scenario: unauthorized access', async ({ page }) => {
     test.setTimeout(30000);
@@ -115,6 +118,7 @@ test.describe('{JOURNEY_ID}: {JOURNEY_TITLE}', () => {
       },
       {
         status: 401,
+        urlPattern: '/api/v1/', // API called when loading protected route; assert 401
         message: /unauthorized|login/i,
         selector: '.error-message, h1',
       }

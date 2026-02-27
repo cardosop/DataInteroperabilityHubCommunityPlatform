@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.006056308746337891
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-009-bfac8de3",
+      "journey_name": "Join Data Community",
+      "persona": "Data Consumer",
+      "status": "completed",
+      "start_time": 1771295564.9888585,
+      "end_time": 1771295564.9949148,
+      "duration": 0.006056308746337891,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Browse Communities",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771295564.9888644,
+          "end_time": 1771295564.994912,
+          "duration": 0.006047487258911133,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-17T02:32:44.994966"
+}

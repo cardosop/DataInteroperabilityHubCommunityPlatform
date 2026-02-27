@@ -2,7 +2,9 @@
 Integration tests for VirtualizationService and VirtualizationWorkflow integration
 
 Tests the integration between VirtualizationService.execute_query() and VirtualizationWorkflow.
+Feat1 2.1.3: workflow vs REST parity and single execution path (no mocks).
 """
+import uuid
 import pytest
 from django.test import TestCase
 from django.utils import timezone
@@ -14,11 +16,12 @@ from hub.apps.virtualization.models import (
     QueryExecution,
     QueryExecutionStatus,
     QueryExecutionMode,
-    QueryType
+    QueryType,
 )
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.users.models import User, UserStatus
+from hub.apps.assets.models import Asset, AssetSourceType, DataStrategy
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -298,4 +301,290 @@ class ServiceWorkflowIntegrationTest(TestCase):
                         execution.workflow_instance = workflow_instance
                         execution.save()
                         self.assertEqual(execution.workflow_instance.id, workflow_instance.id)
+
+    def test_execute_query_multi_source_federated_metadata(self):
+        """Test execute_query with multi-source federated dataset (metadata-only sources)."""
+        from hub.apps.assets.models import Asset, AssetSourceType, DataStrategy
+        import uuid as uuid_mod
+
+        asset1 = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"fed-svc-1-{uuid_mod.uuid4()}",
+            name="Service Fed 1",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY
+        )
+        asset2 = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"fed-svc-2-{uuid_mod.uuid4()}",
+            name="Service Fed 2",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY
+        )
+        multi_vd = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Service Multi Federated",
+            query="SELECT * FROM combined",
+            query_type=QueryType.FEDERATED,
+            sources=[
+                {"type": "federated_asset", "asset_id": str(asset1.id)},
+                {"type": "federated_asset", "asset_id": str(asset2.id)},
+            ],
+            status=VirtualDatasetStatus.ACTIVE
+        )
+        execution = self.service.execute_query(
+            virtual_dataset_id=str(multi_vd.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            parameters={},
+            execution_mode=QueryExecutionMode.ASYNC
+        )
+        self.assertIsNotNone(execution)
+        self.assertIsNotNone(execution.workflow_instance)
+        self.assertEqual(execution.workflow_instance.workflow_name, "virtualization_query_execution")
+        instance = execution.workflow_instance
+        instance.refresh_from_db()
+        self.assertEqual(
+            instance.status,
+            WorkflowStatus.COMPLETED,
+            "Multi-source federated (metadata-only) workflow should complete successfully",
+        )
+        self.assertIn("execution_results", instance.state_data)
+        self.assertEqual(
+            instance.state_data["execution_results"].get("source_count"),
+            2,
+            "Federated query with two sources must report source_count=2",
+        )
+
+    def test_service_and_workflow_parity_single_federated_source(self):
+        """Test service execution and workflow execution parity for single federated_asset source."""
+        from hub.apps.assets.models import Asset, AssetSourceType, DataStrategy
+        import uuid as uuid_mod
+
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"fed-parity-svc-{uuid_mod.uuid4()}",
+            name="Parity Asset",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY
+        )
+        vd = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Parity VD",
+            query="SELECT * FROM t",
+            query_type=QueryType.SQL,
+            sources=[{"type": "federated_asset", "asset_id": str(asset.id)}],
+            status=VirtualDatasetStatus.ACTIVE
+        )
+        direct_result = self.service._execute_query_against_sources(
+            query=vd.query,
+            query_type=vd.query_type,
+            sources=vd.sources,
+            parameters={},
+            timeout_seconds=300
+        )
+        self.assertEqual(len(direct_result), 1)
+        direct_row_count = direct_result[0].get("row_count", 0)
+        execution = self.service.execute_query(
+            virtual_dataset_id=str(vd.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            parameters={},
+            execution_mode=QueryExecutionMode.ASYNC
+        )
+        self.assertIsNotNone(execution.workflow_instance)
+        execution.workflow_instance.refresh_from_db()
+        self.assertEqual(
+            execution.workflow_instance.status,
+            WorkflowStatus.COMPLETED,
+            "Single federated (metadata-only) workflow must complete for parity assertion",
+        )
+        wr = execution.workflow_instance.state_data.get("execution_results", {})
+        self.assertEqual(
+            wr.get("row_count"),
+            direct_row_count,
+            "Workflow execution row_count must match direct service execution (parity)",
+        )
+
+    def test_workflow_and_service_sources_produce_same_result(self):
+        """
+        Feat1 2.1.3: Multi-source query via workflow produces same result as same query
+        via the service's _execute_query_against_sources + _aggregate_results path.
+        No mocks; uses federated_asset METADATA_ONLY (real code path).
+        """
+        # Virtual dataset with single federated_asset source (METADATA_ONLY, no external calls)
+        federated_asset = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"parity-test-{uuid.uuid4()}",
+            name="Parity Test Federated Asset",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY,
+        )
+        sources = [
+            {
+                "type": "federated_asset",
+                "asset_id": str(federated_asset.id),
+                "query": "SELECT * FROM metadata",
+            }
+        ]
+        vd = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Parity Test Virtual Dataset",
+            query="SELECT * FROM metadata",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE,
+        )
+
+        query = vd.query
+        params = {}
+        timeout = 60
+
+        # Direct path: same entrypoint the workflow uses internally
+        results = self.service._execute_query_against_sources(
+            query, vd.query_type, vd.sources or [], params, timeout
+        )
+        aggregated = self.service._aggregate_results(results, vd.query_type)
+        all_columns = set()
+        for r in results:
+            all_columns.update(r.get("columns", []))
+        direct_result = {
+            "data": aggregated,
+            "columns": list(all_columns),
+            "row_count": len(aggregated),
+            "source_type": results[0].get("source_type", "unknown") if results else "unknown",
+            "query_type": vd.query_type,
+        }
+
+        # Workflow path (REST uses this): execute_query SYNC runs the workflow
+        execution = self.service.execute_query(
+            virtual_dataset_id=str(vd.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            parameters=params,
+            execution_mode=QueryExecutionMode.SYNC,
+            timeout_seconds=timeout,
+        )
+
+        self.assertEqual(execution.status, QueryExecutionStatus.COMPLETED)
+        workflow_result = execution.metrics or {}
+
+        # Assert parity: same data shape and content
+        self.assertEqual(
+            workflow_result.get("row_count"),
+            direct_result["row_count"],
+            "row_count must match between workflow and service path",
+        )
+        self.assertEqual(
+            sorted(workflow_result.get("columns", [])),
+            sorted(direct_result["columns"]),
+            "columns must match between workflow and service path",
+        )
+        self.assertEqual(
+            len(workflow_result.get("data", [])),
+            len(direct_result["data"]),
+            "data length must match between workflow and service path",
+        )
+        # Data content: at least one row with expected metadata keys (federated_asset_metadata)
+        wf_data = workflow_result.get("data", [])
+        dr_data = direct_result["data"]
+        if wf_data and dr_data:
+            self.assertIn("asset_id", wf_data[0])
+            self.assertIn("asset_name", wf_data[0])
+            self.assertEqual(wf_data[0].get("asset_id"), str(federated_asset.id))
+            self.assertEqual(dr_data[0].get("asset_id"), str(federated_asset.id))
+
+    def test_workflow_and_service_sources_produce_same_result_multi_source(self):
+        """
+        Feat1 2.1.3: Multi-source query via workflow produces same result as
+        same query via service (_execute_query_against_sources + _aggregate_results).
+        Uses two federated_asset METADATA_ONLY sources; no mocks.
+        """
+        asset1 = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"parity-multi-1-{uuid.uuid4()}",
+            name="Parity Multi 1",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY,
+        )
+        asset2 = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"parity-multi-2-{uuid.uuid4()}",
+            name="Parity Multi 2",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY,
+        )
+        sources = [
+            {"type": "federated_asset", "asset_id": str(asset1.id), "query": "SELECT * FROM m1"},
+            {"type": "federated_asset", "asset_id": str(asset2.id), "query": "SELECT * FROM m2"},
+        ]
+        vd = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Parity Multi Virtual Dataset",
+            query="SELECT * FROM combined",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE,
+        )
+        query = vd.query
+        params = {}
+        timeout = 60
+
+        # Direct path (same as workflow's _execute_via_service_sources)
+        results = self.service._execute_query_against_sources(
+            query, vd.query_type, vd.sources or [], params, timeout
+        )
+        aggregated = self.service._aggregate_results(results, vd.query_type)
+        all_columns = set()
+        for r in results:
+            all_columns.update(r.get("columns", []))
+        direct_result = {
+            "data": aggregated,
+            "columns": list(all_columns),
+            "row_count": len(aggregated),
+        }
+
+        # Workflow path (SYNC = same as REST for this flow)
+        execution = self.service.execute_query(
+            virtual_dataset_id=str(vd.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            parameters=params,
+            execution_mode=QueryExecutionMode.SYNC,
+            timeout_seconds=timeout,
+        )
+
+        self.assertEqual(execution.status, QueryExecutionStatus.COMPLETED)
+        workflow_result = execution.metrics or {}
+
+        self.assertEqual(
+            workflow_result.get("row_count"),
+            direct_result["row_count"],
+            "row_count must match for multi-source",
+        )
+        self.assertEqual(
+            sorted(workflow_result.get("columns", [])),
+            sorted(direct_result["columns"]),
+            "columns must match for multi-source",
+        )
+        self.assertEqual(
+            len(workflow_result.get("data", [])),
+            len(direct_result["data"]),
+            "data length must match for multi-source",
+        )
+        # Two sources => two metadata rows
+        self.assertEqual(direct_result["row_count"], 2)
+        asset_ids = {str(asset1.id), str(asset2.id)}
+        wf_asset_ids = {row.get("asset_id") for row in workflow_result.get("data", [])}
+        self.assertEqual(wf_asset_ids, asset_ids)
 

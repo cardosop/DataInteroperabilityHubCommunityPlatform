@@ -74,19 +74,18 @@ class VolumeMonitor:
             period_start = item['hour']
             period_end = period_start + timedelta(hours=1)
             
-            # Check if trend already exists
-            trend_filter = Q(
-                tenant_id=tenant_id,
-                period_type='HOURLY',
-                period_start=period_start
-            )
+            # Lookup kwargs for update_or_create (defaults= first, rest are lookup)
+            lookup = {
+                'tenant_id': tenant_id,
+                'period_type': 'HOURLY',
+                'period_start': period_start,
+            }
             if item.get('dataset_id'):
-                trend_filter &= Q(dataset_id=item['dataset_id'])
+                lookup['dataset_id'] = item['dataset_id']
             if item.get('asset_id'):
-                trend_filter &= Q(asset_id=item['asset_id'])
-            
+                lookup['asset_id'] = item['asset_id']
+
             trend, created = VolumeTrend.objects.update_or_create(
-                trend_filter,
                 defaults={
                     'period_end': period_end,
                     'avg_row_count': int(item['avg_row_count']) if item['avg_row_count'] else None,
@@ -96,7 +95,8 @@ class VolumeMonitor:
                     'min_size_bytes': int(item['min_size_bytes']) if item['min_size_bytes'] else None,
                     'max_size_bytes': int(item['max_size_bytes']) if item['max_size_bytes'] else None,
                     'sample_count': item['sample_count']
-                }
+                },
+                **lookup
             )
             
             # Detect anomalies
@@ -163,19 +163,18 @@ class VolumeMonitor:
             period_start = item['day']
             period_end = period_start + timedelta(days=1)
             
-            # Check if trend already exists
-            trend_filter = Q(
-                tenant_id=tenant_id,
-                period_type='DAILY',
-                period_start=period_start
-            )
+            # Lookup kwargs for update_or_create (first arg is defaults, rest are lookup)
+            lookup = {
+                'tenant_id': tenant_id,
+                'period_type': 'DAILY',
+                'period_start': period_start,
+            }
             if item.get('dataset_id'):
-                trend_filter &= Q(dataset_id=item['dataset_id'])
+                lookup['dataset_id'] = item['dataset_id']
             if item.get('asset_id'):
-                trend_filter &= Q(asset_id=item['asset_id'])
-            
+                lookup['asset_id'] = item['asset_id']
+
             trend, created = VolumeTrend.objects.update_or_create(
-                trend_filter,
                 defaults={
                     'period_end': period_end,
                     'avg_row_count': int(item['avg_row_count']) if item['avg_row_count'] else None,
@@ -185,7 +184,8 @@ class VolumeMonitor:
                     'min_size_bytes': int(item['min_size_bytes']) if item['min_size_bytes'] else None,
                     'max_size_bytes': int(item['max_size_bytes']) if item['max_size_bytes'] else None,
                     'sample_count': item['sample_count']
-                }
+                },
+                **lookup
             )
             
             # Detect anomalies

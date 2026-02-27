@@ -37,7 +37,7 @@ pytestmark = pytest.mark.skipif(
 
 from django.test import TestCase
 
-from hub.apps.core.services.base import NotFoundError, PermissionError
+from hub.apps.core.services.base import ConnectionError, NotFoundError, PermissionError
 from hub.apps.integrations.base import (
     MarketplaceType,
     SyncDirection,

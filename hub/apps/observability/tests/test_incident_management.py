@@ -139,21 +139,26 @@ class IncidentManagerTest(TestCase):
 
     def test_get_incidents_dashboard(self):
         """Test getting incidents dashboard"""
-        # Create incidents
+        # Create incidents (create_incident does not accept status; status is DETECTED by default)
         IncidentManager.create_incident(
             tenant_id=str(self.tenant.id),
             title="Incident 1",
             description="Description 1",
             incident_type="FRESHNESS_VIOLATION",
-            status="DETECTED",
         )
 
-        IncidentManager.create_incident(
+        incident2 = IncidentManager.create_incident(
             tenant_id=str(self.tenant.id),
             title="Incident 2",
             description="Description 2",
             incident_type="QUALITY_VIOLATION",
+        )
+        # Resolve the second incident so summary counts are correct
+        IncidentManager.update_incident_status(
+            incident_id=str(incident2.id),
             status="RESOLVED",
+            resolution_notes="Resolved",
+            resolved_by_id=str(self.user.id),
         )
 
         dashboard = IncidentManager.get_incidents_dashboard(tenant_id=str(self.tenant.id), limit=10)

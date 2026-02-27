@@ -83,11 +83,21 @@ def is_odps_contract(contract_data: Dict[str, Any]) -> bool:
         # Strong ODCS indicator - don't check version field for ODPS
         return False
 
-    # Try version detection - if it returns a valid version, it's ODPS
-    # Only do this if we don't have strong ODCS indicators
-    odps_version = detect_odps_version(contract_data)
-    if odps_version and odps_version != "unknown":
-        return True
+    # ODCS-like structure without ODPS schema/product: has "schema" with "fields" (not schema URL)
+    # or "info" with "owners" - do not use version alone to classify as ODPS
+    if "schema" in contract_data and isinstance(contract_data.get("schema"), dict):
+        if "fields" in contract_data["schema"]:
+            return False  # ODCS schema shape
+    if "info" in contract_data and isinstance(contract_data.get("info"), dict):
+        if "owners" in contract_data["info"]:
+            return False  # ODCS info shape
+
+    # Try version detection only when we already have product (ODPS shape)
+    # Prevents ODCS contracts with "version": "1.0.0" from being misclassified as ODPS
+    if "product" in contract_data:
+        odps_version = detect_odps_version(contract_data)
+        if odps_version and odps_version != "unknown":
+            return True
 
     return False
 

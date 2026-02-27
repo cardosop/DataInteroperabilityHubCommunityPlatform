@@ -40,11 +40,21 @@ from hub.apps.mesh.models import (
 )
 from hub.apps.mesh.services import DataMeshService
 from hub.apps.tenants.models import KYCStatus, TenantStatus
-from hub.apps.users.models import UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
+
+
+def _ensure_tenant_admin(user, tenant):
+    """Ensure user has TENANT_ADMIN role so create_domain permission check passes."""
+    role, _ = Role.objects.get_or_create(
+        tenant=tenant,
+        name="TENANT_ADMIN",
+        defaults={"description": "Tenant admin role"},
+    )
+    UserRole.objects.get_or_create(user=user, role=role, defaults={})
 
 
 class TestDomainManagement(TransactionTestCase):
@@ -98,6 +108,7 @@ class TestDomainManagement(TransactionTestCase):
                     tenant=self.tenant,
                     status=UserStatus.ACTIVE,
                 )
+                _ensure_tenant_admin(self.user, self.tenant)
                 self.service = DataMeshService(
                     tenant_id=str(self.tenant.id), user_id=str(self.user.id)
                 )
@@ -128,10 +139,13 @@ class TestDomainManagement(TransactionTestCase):
                 continue
 
     def tearDown(self):
-        """Clean up test data and close database connections"""
+        """Clean up test data; ensure connection is open for teardown and subsequent tests."""
         from django.db import connection
 
-        connection.close()
+        try:
+            connection.ensure_connection()
+        except Exception:
+            pass
 
     def test_domain_creation(self):
         """Test domain creation with all fields"""
@@ -506,6 +520,7 @@ class TestFederatedGovernance(TransactionTestCase):
                     tenant=self.tenant,
                     status=UserStatus.ACTIVE,
                 )
+                _ensure_tenant_admin(self.user, self.tenant)
                 self.service = DataMeshService(
                     tenant_id=str(self.tenant.id), user_id=str(self.user.id)
                 )
@@ -526,6 +541,21 @@ class TestFederatedGovernance(TransactionTestCase):
                     conditions={"user": {"role": "admin"}},
                 )
 
+                # ABAC: allow domain creation for this tenant so further create_domain calls (e.g. test_compliance_check_with_violations) pass
+                AccessPolicy.objects.get_or_create(
+                    tenant=self.tenant,
+                    name="Allow Domain Creation (FederatedGovernance Test)",
+                    defaults={
+                        "conditions": {
+                            "user": {"tenant_id": str(self.tenant.id)},
+                            "resource": {"type": "DATA_MESH_DOMAIN"},
+                        },
+                        "effect": "ALLOW",
+                        "enabled": True,
+                        "description": "Allow domain creation for test user",
+                    },
+                )
+
                 # Success - break out of retry loop
                 break
             except Exception as e:
@@ -536,10 +566,13 @@ class TestFederatedGovernance(TransactionTestCase):
                 continue
 
     def tearDown(self):
-        """Clean up test data and close database connections"""
+        """Clean up test data; ensure connection is open for teardown and subsequent tests."""
         from django.db import connection
 
-        connection.close()
+        try:
+            connection.ensure_connection()
+        except Exception:
+            pass
 
     def test_policy_application(self):
         """Test policy application to domain"""
@@ -859,6 +892,7 @@ class TestMeshTopology(TransactionTestCase):
                     tenant=self.tenant,
                     status=UserStatus.ACTIVE,
                 )
+                _ensure_tenant_admin(self.user, self.tenant)
                 self.service = DataMeshService(
                     tenant_id=str(self.tenant.id), user_id=str(self.user.id)
                 )
@@ -889,10 +923,13 @@ class TestMeshTopology(TransactionTestCase):
                 continue
 
     def tearDown(self):
-        """Clean up test data and close database connections"""
+        """Clean up test data; ensure connection is open for teardown and subsequent tests."""
         from django.db import connection
 
-        connection.close()
+        try:
+            connection.ensure_connection()
+        except Exception:
+            pass
 
     def test_topology_visualization(self):
         """Test topology visualization"""
@@ -1148,6 +1185,7 @@ class TestDomainAssetManagement(TransactionTestCase):
                     tenant=self.tenant,
                     status=UserStatus.ACTIVE,
                 )
+                _ensure_tenant_admin(self.user, self.tenant)
                 self.service = DataMeshService(
                     tenant_id=str(self.tenant.id), user_id=str(self.user.id)
                 )
@@ -1172,10 +1210,13 @@ class TestDomainAssetManagement(TransactionTestCase):
                 continue
 
     def tearDown(self):
-        """Clean up test data and close database connections"""
+        """Clean up test data; ensure connection is open for teardown and subsequent tests."""
         from django.db import connection
 
-        connection.close()
+        try:
+            connection.ensure_connection()
+        except Exception:
+            pass
 
     def test_asset_assignment_to_domain(self):
         """Test asset assignment to domain"""
@@ -1439,6 +1480,7 @@ class TestDataMeshODPSIntegration(TransactionTestCase):
                     tenant=self.tenant,
                     status=UserStatus.ACTIVE,
                 )
+                _ensure_tenant_admin(self.user, self.tenant)
                 self.service = DataMeshService(
                     tenant_id=str(self.tenant.id), user_id=str(self.user.id)
                 )
@@ -1459,10 +1501,13 @@ class TestDataMeshODPSIntegration(TransactionTestCase):
                 continue
 
     def tearDown(self):
-        """Clean up test data and close database connections"""
+        """Clean up test data; ensure connection is open for teardown and subsequent tests."""
         from django.db import connection
 
-        connection.close()
+        try:
+            connection.ensure_connection()
+        except Exception:
+            pass
 
     def test_odps_contracts_in_mesh_domains(self):
         """Test ODPS contracts in mesh domains"""

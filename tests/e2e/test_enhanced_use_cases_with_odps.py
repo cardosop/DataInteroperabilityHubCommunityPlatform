@@ -38,11 +38,21 @@ from hub.apps.marketplace.models import (
 )
 from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
+pytestmark = [
+    pytest.mark.uc_journey_persona,
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.e2e,
+    pytest.mark.uc("UC-AM-001"),
+    pytest.mark.uc("UC-CM-001"),
+    pytest.mark.uc("UC-MKT-001"),
+    pytest.mark.uc("UC-MKT-002"),
+    pytest.mark.uc("UC-DC-001"),
+]
 
 
 # ============================================================================
@@ -132,6 +142,7 @@ class UC_AM_001_Enhanced_DataFirstFlowWithODPSTest(E2ETestBase):
                         "description": "Product created via data-first flow",
                     }
                 },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}, {"name": "value", "type": "number"}]},
                 "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                 "marketplace": {
                     "pricingPlans": [
@@ -405,6 +416,7 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
                         "description": "Product created via technical-first flow",
                     }
                 },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
                 "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                 "marketplace": {
                     "pricingPlans": [
@@ -534,6 +546,7 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
                         "name": "Existing ODPS Product",
                     }
                 },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
                 "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
             },
         }
@@ -644,6 +657,7 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
                         "description": "Product with marketplace configuration",
                     }
                 },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
                 "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                 "marketplace": {
                     "pricingPlans": [
@@ -699,9 +713,11 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
         self.assertEqual(
             listing_response.status_code,
             status.HTTP_201_CREATED,
-            f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}",
+            f"Failed to create listing: {get_response_data(listing_response) or listing_response.content}",
         )
-        listing_id = listing_response.data["id"]
+        listing_data = get_response_data(listing_response) or {}
+        listing_id = listing_data.get("id")
+        self.assertIsNotNone(listing_id)
 
         # Step 5: Publish listing
         publish_response = self.client.patch(
@@ -834,10 +850,12 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
         self.assertEqual(
             listing_response.status_code,
             status.HTTP_201_CREATED,
-            f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}",
+            f"Failed to create listing: {get_response_data(listing_response) or listing_response.content}",
         )
 
-        listing_id = listing_response.data["id"]
+        listing_data = get_response_data(listing_response) or {}
+        listing_id = listing_data.get("id")
+        self.assertIsNotNone(listing_id)
 
         # Publish listing
         publish_response = self.client.patch(
@@ -877,12 +895,24 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
         self.provider_tenant = Tenant.objects.create(
             name="Provider Tenant", slug="provider-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.provider_tenant)
         self.provider_user = User.objects.create_user(
             email="provider@example.com",
             password="testpass123",
             tenant=self.provider_tenant,
             status=UserStatus.ACTIVE,
         )
+        # DATA_PROVIDER role required for asset creation (POST /api/v1/assets/)
+        from hub.apps.users.models import Role, UserRole
+
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.provider_tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        UserRole.objects.get_or_create(user=self.provider_user, role=provider_role)
+        self.provider_user.refresh_from_db()
+
         self.provider_client = APIClient()
         self.provider_client.force_authenticate(user=self.provider_user)
 
@@ -890,6 +920,7 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
         self.consumer_tenant = Tenant.objects.create(
             name="Consumer Tenant", slug="consumer-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
             email="consumer@example.com",
             password="testpass123",
@@ -947,6 +978,7 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
                         "description": "Product with ODPS details",
                     }
                 },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
                 "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                 "marketplace": {
                     "pricingPlans": [
@@ -995,7 +1027,9 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
             format="json",
         )
         self.assertEqual(listing_response.status_code, status.HTTP_201_CREATED)
-        listing_id = listing_response.data["id"]
+        listing_data = get_response_data(listing_response) or {}
+        listing_id = listing_data.get("id")
+        self.assertIsNotNone(listing_id)
 
         publish_response = self.provider_client.patch(
             f"/api/v1/marketplace/listings/{listing_id}/",
@@ -1010,7 +1044,7 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
         search_response = self.consumer_client.get("/api/v1/marketplace/listings/search/")
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
-        listings = search_response.data.get("results", [])
+        listings = (get_response_data(search_response) or {}).get("results", [])
         our_listing = next((l for l in listings if l["id"] == str(listing_id)), None)
         self.assertIsNotNone(our_listing, "Should find our listing")
 
@@ -1019,8 +1053,8 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
             f"/api/v1/marketplace/listings/{listing_id}/"
         )
         self.assertEqual(listing_detail_response.status_code, status.HTTP_200_OK)
-        listing_data = listing_detail_response.data
-        self.assertEqual(listing_data["id"], str(listing_id))
+        listing_data = get_response_data(listing_detail_response) or {}
+        self.assertEqual(listing_data.get("id"), str(listing_id))
 
         # Step 5: Consumer purchases asset
         order_response = self.consumer_client.post(
@@ -1028,7 +1062,8 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
         )
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
 
-        order_data = order_response.data.get("order", order_response.data)
+        order_resp_data = get_response_data(order_response) or {}
+        order_data = order_resp_data.get("order", order_resp_data)
         order_id = order_data["id"]
         self.assertEqual(order_data["status"], OrderStatus.REQUESTED.value)
 
@@ -1046,7 +1081,7 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
         entitlements_response = self.consumer_client.get("/api/v1/marketplace/entitlements/")
         self.assertEqual(entitlements_response.status_code, status.HTTP_200_OK)
 
-        entitlements = entitlements_response.data.get("results", [])
+        entitlements = (get_response_data(entitlements_response) or {}).get("results", [])
         our_entitlement = next(
             (e for e in entitlements if str(e.get("asset", "")) == str(asset_id)), None
         )
@@ -1101,7 +1136,9 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
             },
             format="json",
         )
-        listing_id = listing_response.data["id"]
+        listing_data = get_response_data(listing_response) or {}
+        listing_id = listing_data.get("id")
+        self.assertIsNotNone(listing_id)
 
         publish_response = self.provider_client.patch(
             f"/api/v1/marketplace/listings/{listing_id}/",
@@ -1163,7 +1200,9 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
             },
             format="json",
         )
-        listing_id = listing_response.data["id"]
+        listing_data = get_response_data(listing_response) or {}
+        listing_id = listing_data.get("id")
+        self.assertIsNotNone(listing_id)
 
         publish_response = self.provider_client.patch(
             f"/api/v1/marketplace/listings/{listing_id}/",
@@ -1180,7 +1219,8 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
         )
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
 
-        order_data = order_response.data.get("order", order_response.data)
+        order_resp_data = get_response_data(order_response) or {}
+        order_data = order_resp_data.get("order", order_resp_data)
         # For FREE_AUTO_APPROVE, order should be fulfilled
         self.assertEqual(order_data["status"], OrderStatus.FULFILLED.value)
 
@@ -1258,6 +1298,7 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
                             "description": f"Product {i} for discovery test",
                         }
                     },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
                     "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                     "marketplace": {
                         "pricingPlans": [
@@ -1304,9 +1345,11 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
             self.assertEqual(
                 listing_response.status_code,
                 status.HTTP_201_CREATED,
-                f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}",
+                f"Failed to create listing: {get_response_data(listing_response) or listing_response.content}",
             )
-            listing_id = listing_response.data["id"]
+            listing_data = get_response_data(listing_response) or {}
+            listing_id = listing_data.get("id")
+            self.assertIsNotNone(listing_id)
 
             self.client.patch(
                 f"/api/v1/marketplace/listings/{listing_id}/",
@@ -1320,7 +1363,7 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
         search_response = self.client.get("/api/v1/marketplace/listings/search/")
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
-        listings = search_response.data.get("results", [])
+        listings = (get_response_data(search_response) or {}).get("results", [])
         self.assertGreater(len(listings), 0, "Should have at least one listing")
 
         # Step 3: Verify results include ODPS product details (if implemented)
@@ -1331,7 +1374,7 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
             listing_id = listings[0]["id"]
             detail_response = self.client.get(f"/api/v1/marketplace/listings/{listing_id}/")
             self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
-            listing_data = detail_response.data
+            listing_data = get_response_data(detail_response) or {}
             self.assertIsNotNone(listing_data)
 
     def test_alternate_flow_search_without_odps_should_still_work(self):
@@ -1381,9 +1424,11 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
         self.assertEqual(
             listing_response.status_code,
             status.HTTP_201_CREATED,
-            f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}",
+            f"Failed to create listing: {get_response_data(listing_response) or listing_response.content}",
         )
-        listing_id = listing_response.data["id"]
+        listing_data = get_response_data(listing_response) or {}
+        listing_id = listing_data.get("id")
+        self.assertIsNotNone(listing_id)
 
         self.client.patch(
             f"/api/v1/marketplace/listings/{listing_id}/",
@@ -1395,7 +1440,7 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
         search_response = self.client.get("/api/v1/marketplace/listings/search/")
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
-        listings = search_response.data.get("results", [])
+        listings = (get_response_data(search_response) or {}).get("results", [])
         our_listing = next((l for l in listings if l["id"] == str(listing_id)), None)
         self.assertIsNotNone(our_listing, "Should find listing without ODPS")
 
@@ -1448,6 +1493,7 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
                         "description": "Produkt med flerspråkiga detaljer",
                     },
                 },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
                 "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
             },
         }
@@ -1481,9 +1527,11 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
         self.assertEqual(
             listing_response.status_code,
             status.HTTP_201_CREATED,
-            f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}",
+            f"Failed to create listing: {get_response_data(listing_response) or listing_response.content}",
         )
-        listing_id = listing_response.data["id"]
+        listing_data = get_response_data(listing_response) or {}
+        listing_id = listing_data.get("id")
+        self.assertIsNotNone(listing_id)
 
         self.client.patch(
             f"/api/v1/marketplace/listings/{listing_id}/",
@@ -1495,6 +1543,6 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
         search_response = self.client.get("/api/v1/marketplace/listings/search/")
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
-        listings = search_response.data.get("results", [])
+        listings = (get_response_data(search_response) or {}).get("results", [])
         our_listing = next((l for l in listings if l["id"] == str(listing_id)), None)
         self.assertIsNotNone(our_listing, "Should find multilingual listing")

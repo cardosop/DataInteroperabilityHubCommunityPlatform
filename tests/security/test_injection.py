@@ -78,7 +78,7 @@ class SQLInjectionAPITest(InjectionSecurityTestBase):
         ]
         for order in payloads:
             response = self.client.get(
-                "/api/v1/contracts/contracts/",
+                "/api/v1/contracts/",
                 data={"ordering": order},
                 HTTP_ACCEPT="application/json",
             )

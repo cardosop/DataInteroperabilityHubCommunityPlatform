@@ -525,7 +525,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
 
     # --- sync_assets_to_marketplace integration tests ---
     def test_sync_assets_to_marketplace_creates_sync_job_and_job(self):
-        """Test that sync_assets_to_marketplace creates sync job and background job."""
+        """Test that sync_assets_to_marketplace creates sync job and workflow instance."""
         connection = self.service.create_connection(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -534,7 +534,18 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
             config=self.config,
         )
 
-        asset_ids = ["asset-1", "asset-2", "asset-3"]
+        # Use real asset UUIDs so workflow validate_assets step succeeds (Asset.id is UUID)
+        asset1 = Asset.objects.create(
+            tenant=self.tenant, key="sync-asset-1", name="Sync Asset 1"
+        )
+        asset2 = Asset.objects.create(
+            tenant=self.tenant, key="sync-asset-2", name="Sync Asset 2"
+        )
+        asset3 = Asset.objects.create(
+            tenant=self.tenant, key="sync-asset-3", name="Sync Asset 3"
+        )
+        asset_ids = [str(asset1.id), str(asset2.id), str(asset3.id)]
+
         sync_job = self.service.sync_assets_to_marketplace(
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
@@ -549,16 +560,10 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertEqual(sync_job.status, SyncStatus.PENDING.value)
         self.assertEqual(sync_job.metadata["asset_ids"], asset_ids)
 
-        # Verify background job was created
-        self.assertIn("job_id", sync_job.metadata)
-        job_id = sync_job.metadata["job_id"]
-        job = Job.objects.get(id=job_id)
-        self.assertEqual(job.type, JobType.MARKETPLACE_SYNC)
-        self.assertEqual(job.resource_type, "MARKETPLACE_SYNC_JOB")
-        self.assertEqual(str(job.resource_id), str(sync_job.id))
-        self.assertEqual(job.status, JobStatus.PENDING)
+        # Service uses workflow engine; sync job metadata includes workflow_instance_id
+        self.assertIn("workflow_instance_id", sync_job.metadata)
 
-        # Verify audit log
+        # Verify audit log (when job is created; workflow path may publish different events)
         import time
 
         time.sleep(0.1)  # Allow for transaction commit
@@ -617,13 +622,8 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertEqual(sync_job.metadata["listing_ids"], listing_ids)
         self.assertEqual(sync_job.metadata["filters"], filters)
 
-        # Verify background job was created
-        self.assertIn("job_id", sync_job.metadata)
-        job_id = sync_job.metadata["job_id"]
-        job = Job.objects.get(id=job_id)
-        self.assertEqual(job.type, JobType.MARKETPLACE_SYNC)
-        self.assertEqual(job.resource_type, "MARKETPLACE_SYNC_JOB")
-        self.assertEqual(str(job.resource_id), str(sync_job.id))
+        # Service uses workflow engine; sync job metadata includes workflow_instance_id
+        self.assertIn("workflow_instance_id", sync_job.metadata)
 
         # Verify audit log
         import time

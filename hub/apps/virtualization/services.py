@@ -365,6 +365,30 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                         code="INVALID_SCHEMA_FORMAT"
                     )
 
+    @staticmethod
+    def _map_source_type_to_connector_type(source_type: str) -> Optional[str]:
+        """
+        Map hub source type (postgresql, rest, etc.) to connector factory type (DATABASE, HTTP, S3, ...).
+        Aligns with hub.apps.virtualization.business_rules.VirtualizationBusinessRules.
+        """
+        if not source_type:
+            return None
+        st = source_type.lower()
+        if st in ("postgresql", "mysql", "sqlserver", "mssql", "oracle", "sqlite"):
+            return "DATABASE"
+        if st in ("rest", "http", "https"):
+            return "HTTP"
+        if st == "s3":
+            return "S3"
+        if st == "gcs":
+            return "GCS"
+        if st in ("azure_blob", "azureblob"):
+            return "AZURE_BLOB"
+        if st in ("ftp", "sftp"):
+            return st.upper()
+        # sparql, graphql, minio, federated_asset, external_resource have no connector
+        return None
+
     def _validate_source_connectivity(
         self,
         sources: Optional[List[Dict[str, Any]]],
@@ -432,6 +456,12 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
 
             # Test connection using connector factory for traditional sources
             try:
+                # Map hub source type (postgresql, rest, etc.) to connector factory type (DATABASE, HTTP, S3, ...)
+                connector_type = self._map_source_type_to_connector_type(source_type)
+                if connector_type is None:
+                    # SPARQL, GraphQL, etc. have no connector - skip connectivity check
+                    continue
+
                 # Import connector factory
                 import sys
                 import os
@@ -451,8 +481,18 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     )
                     continue
 
-                # Get connector and test connection
-                connector = SourceConnectorFactory.get_connector(source_type)
+                # Get connector (factory may not have DATABASE if optional dependency missing)
+                try:
+                    connector = SourceConnectorFactory.get_connector(connector_type)
+                except ValueError:
+                    # Connector type not registered (e.g. DATABASE when DatabaseConnector import failed)
+                    logger.warning(
+                        "Connector type %s not available in factory, skipping connectivity check",
+                        connector_type,
+                        extra={"source_index": i, "source_type": source_type}
+                    )
+                    continue
+
                 if hasattr(connector, 'test_connection'):
                     # Some connectors return dict with 'success' key
                     test_result = connector.test_connection(source_config)

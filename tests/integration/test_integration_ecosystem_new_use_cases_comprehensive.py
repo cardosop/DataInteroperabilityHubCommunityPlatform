@@ -33,6 +33,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,
@@ -43,24 +44,43 @@ from tests.utils.test_data_management import TestDatabaseIsolationMixin
 
 User = get_user_model()
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.integration]
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.integration,
+    pytest.mark.uc("UC-INT-001"),
+    pytest.mark.uc("UC-INT-002"),
+    pytest.mark.uc("UC-INT-003"),
+    pytest.mark.uc("UC-INT-004"),
+    pytest.mark.uc("UC-INT-005"),
+]
 
 
 class IntegrationEcosystemNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):
     """Base test class for Integration Ecosystem new use cases"""
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    @classmethod
+    def _fixture_teardown(cls):
+        """Override to skip database flush for integration tests."""
+        pass
 
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
         self.client = APIClient()
 
-        # Create tenant
+        # Create tenant (use unique name/slug to avoid conflicts between tests;
+        # _fixture_teardown skips flush so data persists across tests)
+        unique_id = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {unique_id}",
+            slug=f"test-tenant-{unique_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create roles
         self.data_provider_role, _ = Role.objects.get_or_create(
@@ -74,16 +94,16 @@ class IntegrationEcosystemNewUseCasesTestBase(TransactionTestCase, TestDatabaseI
             defaults={"description": "Tenant Admin"},
         )
 
-        # Create users
+        # Create users (use unique emails to avoid conflicts between tests)
         self.dpo_user = UserFactory.create_user(
             tenant=self.tenant,
-            email="dpo@example.com",
+            email=f"dpo-{unique_id}@example.com",
         )
         UserRole.objects.get_or_create(user=self.dpo_user, role=self.data_provider_role)
 
         self.admin_user = UserFactory.create_user(
             tenant=self.tenant,
-            email="admin@example.com",
+            email=f"admin-{unique_id}@example.com",
         )
         UserRole.objects.get_or_create(user=self.admin_user, role=self.tenant_admin_role)
 

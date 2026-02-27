@@ -12,7 +12,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, Spec
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import NotFound
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 
@@ -48,26 +48,50 @@ class OpenAPISchemaView(SpectacularAPIView):
 
     def get(self, request, *args, **kwargs):
         """Return JSON format schema with validation and enhancement"""
+        import structlog
+
         from drf_spectacular.generators import SchemaGenerator
 
         from .openapi_enhancement import OpenAPISpecEnhancer
         from .openapi_validation import OpenAPISpecValidator
 
+        logger = structlog.get_logger(__name__)
+
         # Generate schema using the generator
-        generator = SchemaGenerator(urlconf=self.urlconf)
-        schema = generator.get_schema(request=request, public=True)
+        try:
+            generator = SchemaGenerator(urlconf=self.urlconf)
+            schema = generator.get_schema(request=request, public=True)
+        except Exception as e:
+            logger.warning("openapi_schema_generation_failed", error=str(e), exc_info=True)
+            # Return minimal schema so capabilities/register/password-reset can load
+            schema = {
+                "openapi": "3.0.0",
+                "info": {"title": "Data Interoperability Hub", "version": "1.0"},
+                "paths": {
+                    "/api/v1/auth/register/": {"post": {"operationId": "auth_register_create"}},
+                    "/api/v1/auth/password-reset/": {"post": {"operationId": "auth_password_reset_create"}},
+                    "/api/v1/auth/password-reset/confirm/": {
+                        "post": {"operationId": "auth_password_reset_confirm_create"}
+                    },
+                },
+            }
 
         # Validate schema
         is_valid, errors = OpenAPISpecValidator.validate_spec(schema)
         if not is_valid:
-            import structlog
-
-            logger = structlog.get_logger(__name__)
             logger.warning("openapi_spec_validation_errors", errors=errors)
 
         # Enhance schema with validation and additional documentation
         schema = OpenAPISpecValidator.enhance_spec(schema)
-        schema = OpenAPISpecEnhancer.enhance_spec(schema)
+        try:
+            schema = OpenAPISpecEnhancer.enhance_spec(schema)
+        except Exception as enh_err:
+            logger.warning(
+                "openapi_enhancement_failed",
+                error=str(enh_err),
+                exc_info=True,
+            )
+            # Return schema without enhancement so capabilities can load
 
         # Check if YAML format requested
         format_type = request.query_params.get("format", "json")
@@ -91,26 +115,48 @@ class OpenAPIYAMLView(SpectacularAPIView):
 
     def get(self, request, *args, **kwargs):
         """Return YAML format schema with validation and enhancement"""
+        import structlog
+
         from drf_spectacular.generators import SchemaGenerator
 
         from .openapi_enhancement import OpenAPISpecEnhancer
         from .openapi_validation import OpenAPISpecValidator
 
+        logger = structlog.get_logger(__name__)
+
         # Generate schema using the generator
-        generator = SchemaGenerator(urlconf=self.urlconf)
-        schema = generator.get_schema(request=request, public=True)
+        try:
+            generator = SchemaGenerator(urlconf=self.urlconf)
+            schema = generator.get_schema(request=request, public=True)
+        except Exception as e:
+            logger.warning("openapi_schema_generation_failed", error=str(e), exc_info=True)
+            schema = {
+                "openapi": "3.0.0",
+                "info": {"title": "Data Interoperability Hub", "version": "1.0"},
+                "paths": {
+                    "/api/v1/auth/register/": {"post": {"operationId": "auth_register_create"}},
+                    "/api/v1/auth/password-reset/": {"post": {"operationId": "auth_password_reset_create"}},
+                    "/api/v1/auth/password-reset/confirm/": {
+                        "post": {"operationId": "auth_password_reset_confirm_create"}
+                    },
+                },
+            }
 
         # Validate schema
         is_valid, errors = OpenAPISpecValidator.validate_spec(schema)
         if not is_valid:
-            import structlog
-
-            logger = structlog.get_logger(__name__)
             logger.warning("openapi_spec_validation_errors", errors=errors)
 
         # Enhance schema with validation and additional documentation
         schema = OpenAPISpecValidator.enhance_spec(schema)
-        schema = OpenAPISpecEnhancer.enhance_spec(schema)
+        try:
+            schema = OpenAPISpecEnhancer.enhance_spec(schema)
+        except Exception as enh_err:
+            logger.warning(
+                "openapi_enhancement_failed",
+                error=str(enh_err),
+                exc_info=True,
+            )
 
         # Export as YAML
         yaml_content = OpenAPISpecValidator.export_spec(schema, format="yaml")
@@ -231,3 +277,40 @@ def api_not_found(request):
     This ensures all 404s within /api/v1/ return standardized error format.
     """
     raise NotFound("Resource not found")
+
+
+# Must match ensure_e2e_user_roles.E2E_USERS and ensure_e2e_subscription.E2E_EMAILS
+E2E_EMAILS = (
+    "e2e_test@example.com",
+    "e2e_consumer@example.com",
+    "e2e_admin@example.com",
+    "e2e_platform@example.com",
+    "e2e_auditor@example.com",
+    "e2e_cpo@example.com",
+    "e2e_developer@example.com",
+    "e2e_dmo@example.com",
+)
+
+
+@extend_schema(exclude=True, tags=["API"])
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def ensure_e2e_subscription(request):
+    """
+    Ensure E2E test user's tenant has active subscription and VERIFIED KYC.
+
+    Subscription enables writes; KYC enables marketplace publish. Only available
+    when ENVIRONMENT=test or DEBUG=True. Only for E2E test user emails.
+    """
+    from django.conf import settings
+
+    if not (getattr(settings, "ENVIRONMENT", "") == "test" or settings.DEBUG):
+        raise NotFound("Resource not found")
+    if request.user.email not in E2E_EMAILS:
+        raise NotFound("Resource not found")
+    if not request.user.tenant_id:
+        return Response({"ok": False, "error": "no tenant"}, status=400)
+    from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+
+    ensure_e2e_tenant_ready(request.user.tenant)
+    return Response({"ok": True})

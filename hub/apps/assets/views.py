@@ -131,8 +131,24 @@ class AssetViewSet(viewsets.ModelViewSet):
             "domain": "marketing",
             "visibility": "INTERNAL"
         }
-        Views call AssetService only; business rules run in service.
+        Requires DATA_PROVIDER or TENANT_ADMIN role. Views call AssetService only;
+        business rules run in service.
         """
+        # Enforce role: only DATA_PROVIDER or TENANT_ADMIN can create assets
+        user = request.user
+        has_write_role = (
+            user.has_role("DATA_PROVIDER", "TENANT_ADMIN") if hasattr(user, "has_role") else False
+        )
+        is_platform_admin = hasattr(user, "is_platform_admin") and user.is_platform_admin
+        if not (has_write_role or is_platform_admin):
+            return Response(
+                {
+                    "error": "Permission denied: DATA_PROVIDER or TENANT_ADMIN role required to create assets",
+                    "code": "PERMISSION_DENIED",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         serializer = AssetCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -763,6 +779,23 @@ class AssetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # 5.4.3: Block activation when related compliance run has allowed_to_store=False or UNKNOWN/None
+        from hub.apps.compliance.models import ComplianceRunStatus
+        latest_succeeded = (
+            asset.compliance_runs.filter(status=ComplianceRunStatus.SUCCEEDED)
+            .order_by("-completed_at")
+            .first()
+        )
+        if latest_succeeded is not None and latest_succeeded.allowed_to_store is not True:
+            return Response(
+                {
+                    "error": "Cannot activate asset: compliance run does not allow storage",
+                    "code": "compliance_not_allowed_to_store",
+                    "details": {"compliance_run_id": str(latest_succeeded.id)},
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         # Store old status for audit
         old_status = asset.status
 
@@ -846,11 +879,8 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         tenant_id = get_tenant_id_from_request(request)
         if not tenant_id:
-            return api_error_response(
-                message="Tenant ID is required",
-                status_code=status.HTTP_400_BAD_REQUEST,
-                code="VALIDATION_ERROR",
-            )
+            # Graceful degradation: users without tenant (e.g. newly registered) get empty list
+            return Response([], status=status.HTTP_200_OK)
         user_id = request.query_params.get("user_id")
         asset_id = request.query_params.get("asset_id")
         limit = int(request.query_params.get("limit", 10))
@@ -929,8 +959,8 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         try:
             asset = self.get_object()
-            recalculate = request.query_params.get("recalculate", "false").lower() == "true"
-            include_breakdown = request.query_params.get("breakdown", "false").lower() == "true"
+        except NotFound:
+            raise  # Let DRF return 404 for non-existent asset
         except Exception as e:
             logger.error(
                 "Failed to get asset in health_score endpoint", error=str(e), exc_info=True
@@ -939,6 +969,9 @@ class AssetViewSet(viewsets.ModelViewSet):
                 {"error": "Failed to get asset", "details": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+        recalculate = request.query_params.get("recalculate", "false").lower() == "true"
+        include_breakdown = request.query_params.get("breakdown", "false").lower() == "true"
 
         try:
             if recalculate:

@@ -14,6 +14,7 @@ Tests cover:
 All tests use real implementations (no mocks/stubs).
 """
 
+import json
 import uuid
 
 import pytest
@@ -30,6 +31,7 @@ from hub.apps.gdpr.models import (
     ErasureRequestStatus,
 )
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -44,6 +46,9 @@ class DataExportJobViewSetTest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant", status="ACTIVE")
+
+        # Ensure tenant has active subscription so POST export-data is not 403
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
@@ -64,6 +69,10 @@ class DataExportJobViewSetTest(TestCase):
             tenant=self.other_tenant,
             display_name="Other User",
         )
+
+    def _response_data(self, response):
+        """Parse response body to dict; DRF Response has .data, JsonResponse needs json.loads."""
+        return _response_data(response)
 
     # ========== LIST ENDPOINT TESTS ==========
 
@@ -235,8 +244,9 @@ class DataExportJobViewSetTest(TestCase):
         # Should return error (400 or 409)
         self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT])
         # Verify error response format (from handle_service_exception)
-        self.assertIn("detail", response.data or {})
-        self.assertIn("code", response.data or {})
+        data = self._response_data(response)
+        self.assertIn("detail", data)
+        self.assertIn("code", data)
 
     def test_export_data_error_response_format(self):
         """Test that export_data returns standardized error format"""
@@ -249,13 +259,14 @@ class DataExportJobViewSetTest(TestCase):
 
         response = self.client.post("/api/v1/users/me/export-jobs/export-data/")
 
-        # Verify standardized error format
+        # Verify standardized error format (use _response_data for JsonResponse/middleware 403)
+        data = self._response_data(response)
         if response.status_code >= 400:
-            self.assertIn("detail", response.data)
-            self.assertIn("code", response.data)
+            self.assertIn("detail", data)
+            self.assertIn("code", data)
             # Error code should be meaningful
             self.assertIn(
-                response.data["code"], ["VALIDATION_ERROR", "CONFLICT_ERROR", "EXPORT_IN_PROGRESS"]
+                data["code"], ["VALIDATION_ERROR", "CONFLICT_ERROR", "EXPORT_IN_PROGRESS"]
             )
 
     def test_export_data_allows_multiple_completed_jobs(self):
@@ -292,6 +303,15 @@ class DataExportJobViewSetTest(TestCase):
         self.assertIn("count", response.data)
 
 
+def _response_data(response):
+    """Parse response body to dict; DRF Response has .data, JsonResponse needs json.loads."""
+    if getattr(response, "data", None) is not None:
+        return response.data
+    if response.get("Content-Type", "").startswith("application/json"):
+        return json.loads(response.content.decode(response.charset or "utf-8"))
+    return {}
+
+
 class ErasureRequestViewSetTest(TestCase):
     """Comprehensive tests for ErasureRequestViewSet"""
 
@@ -301,6 +321,9 @@ class ErasureRequestViewSetTest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant", status="ACTIVE")
+
+        # Ensure tenant has active subscription so POST request-erasure is not 403
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
@@ -513,8 +536,9 @@ class ErasureRequestViewSetTest(TestCase):
         # Should return error (400 or 409)
         self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT])
         # Verify error response format (from handle_service_exception)
-        self.assertIn("detail", response.data or {})
-        self.assertIn("code", response.data or {})
+        data = _response_data(response)
+        self.assertIn("detail", data)
+        self.assertIn("code", data)
 
     def test_request_erasure_error_response_format(self):
         """Test that request_erasure returns standardized error format"""
@@ -527,13 +551,14 @@ class ErasureRequestViewSetTest(TestCase):
 
         response = self.client.post("/api/v1/users/me/erasure-requests/request-erasure/")
 
-        # Verify standardized error format
+        # Verify standardized error format (use _response_data for JsonResponse/middleware 403)
+        data = _response_data(response)
         if response.status_code >= 400:
-            self.assertIn("detail", response.data)
-            self.assertIn("code", response.data)
+            self.assertIn("detail", data)
+            self.assertIn("code", data)
             # Error code should be meaningful
             self.assertIn(
-                response.data["code"], ["VALIDATION_ERROR", "CONFLICT_ERROR", "ERASURE_IN_PROGRESS"]
+                data["code"], ["VALIDATION_ERROR", "CONFLICT_ERROR", "ERASURE_IN_PROGRESS"]
             )
 
     def test_request_erasure_allows_multiple_completed_requests(self):

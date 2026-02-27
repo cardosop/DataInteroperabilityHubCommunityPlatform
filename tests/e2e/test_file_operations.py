@@ -26,7 +26,7 @@ from rest_framework import status
 from hub.apps.files.models import File, FileStatus
 from hub.apps.audit.models import AuditEvent
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e1]
@@ -120,11 +120,11 @@ class FileOperationsE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        file_id = response.data['file_id']
-        self.assertIn('upload_url', response.data)
-        # expires_in may not be in response, check if present
-        if 'expires_in' in response.data:
-            self.assertIsInstance(response.data['expires_in'], (int, str))
+        data = get_response_data(response) or {}
+        file_id = data['file_id']
+        self.assertIn('upload_url', data)
+        if 'expires_in' in data:
+            self.assertIsInstance(data['expires_in'], (int, str))
         
         # Complete upload
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
@@ -156,8 +156,8 @@ class FileOperationsE2ETest(E2ETestBase):
             # Redirect to pre-signed URL
             self.assertIn('Location', response)
         elif response.status_code == status.HTTP_200_OK:
-            # Direct download
-            self.assertIn('download_url', response.data)
+            data = get_response_data(response) or {}
+            self.assertIn('download_url', data)
     
     def test_file_download_not_found(self):
         """Test downloading non-existent file fails"""
@@ -260,7 +260,8 @@ class FileOperationsE2ETest(E2ETestBase):
         
         # Init should succeed
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        file_id = response.data['file_id']
+        data = get_response_data(response) or {}
+        file_id = data['file_id']
         
         # Complete with actual content (smaller than declared)
         content_hash = hashlib.sha256(test_content).hexdigest()
@@ -387,11 +388,12 @@ class FileOperationsE2ETest(E2ETestBase):
         response = self.client.get(f'/api/v1/files/{file_id}/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(file_id))
-        self.assertEqual(response.data['name'], 'metadata_test.csv')
-        self.assertEqual(response.data['content_type'], 'text/csv')
-        self.assertEqual(response.data['size'], len(test_content))
-        self.assertEqual(response.data['status'], FileStatus.ACTIVE)
+        data = get_response_data(response) or {}
+        self.assertEqual(data['id'], str(file_id))
+        self.assertEqual(data['name'], 'metadata_test.csv')
+        self.assertEqual(data['content_type'], 'text/csv')
+        self.assertEqual(data['size'], len(test_content))
+        self.assertEqual(data['status'], FileStatus.ACTIVE)
     
     def test_file_upload_verifies_s3_storage(self):
         """Test that file upload verifies S3 storage"""

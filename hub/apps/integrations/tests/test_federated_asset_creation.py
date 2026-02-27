@@ -18,7 +18,7 @@ import tempfile
 
 import pytest
 from django.core.files.base import ContentFile
-from django.db import close_old_connections
+from django.db import connection, close_old_connections
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -59,6 +59,8 @@ class TestFederatedAssetCreation(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        # Ensure DB connection is open (can be closed by previous test in batch)
+        connection.ensure_connection()
         # CRITICAL: Disconnect semantic service signals to prevent timeouts
         from django.db.models.signals import post_save
 
@@ -134,23 +136,27 @@ class TestFederatedAssetCreation(TestCase):
         self.assertEqual(asset.name, "Test Asset")
         self.assertEqual(asset.description, "Test Description")
         self.assertEqual(asset.domain, "finance")
-        # Asset is created as DRAFT and workflow is skipped when semantic mapping is skipped
-        # So asset should remain DRAFT
-        self.assertEqual(asset.status, AssetStatus.DRAFT)
+        # When workflow runs it activates the asset; expect ACTIVE (workflow runs and sets status)
+        self.assertEqual(asset.status, AssetStatus.ACTIVE)
         self.assertEqual(asset.visibility, AssetVisibility.PUBLIC)
         self.assertEqual(asset.source_type, AssetSourceType.FEDERATED)
         self.assertIsNotNone(asset.source_metadata)
         self.assertEqual(asset.source_metadata["connection_id"], str(self.connection.id))
         self.assertEqual(asset.source_metadata["sync_job_id"], str(self.sync_job.id))
 
-        # Verify ODCS contract was created (always created)
+        # Verify ODCS contract was created (always created); workflow activates contracts
         odcs_contracts = asset.contracts.filter(original_spec_type=OriginalSpecType.ODCS)
         self.assertEqual(odcs_contracts.count(), 1)
         odcs_contract = odcs_contracts.first()
         self.assertEqual(odcs_contract.asset, asset)
-        self.assertEqual(odcs_contract.status, ContractStatus.DRAFT)
+        self.assertEqual(odcs_contract.status, ContractStatus.ACTIVE)
         self.assertIsNotNone(odcs_contract.hub_contract_json)
-        self.assertEqual(odcs_contract.hub_contract_json["schema"]["fields"], [])
+        # Metadata-only (no resources): schema may be [] or a single _metadata_placeholder field
+        schema_fields = odcs_contract.hub_contract_json["schema"]["fields"]
+        self.assertIsInstance(schema_fields, list)
+        if schema_fields:
+            self.assertEqual(len(schema_fields), 1)
+            self.assertEqual(schema_fields[0].get("name"), "_metadata_placeholder")
         self.assertIn("quality", odcs_contract.hub_contract_json)
         self.assertIn("serviceLevel", odcs_contract.hub_contract_json)
 

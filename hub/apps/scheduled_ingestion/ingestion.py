@@ -37,9 +37,10 @@ def _get_source_connector_factory():
 # Import Django models
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract
-from hub.apps.datasets.models import Dataset, DatasetKind
+from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.files.storage import S3StorageClient
+from hub.apps.scheduled_ingestion.exceptions import ConnectorNotAvailableError
 from hub.apps.scheduled_ingestion.incremental_state import IncrementalStateManager
 from hub.apps.scheduled_ingestion.models import ScheduledIngestion
 
@@ -104,6 +105,28 @@ class ScheduledIngestionProcessor:
             output_data = workflow_result.get("output_data", {})
             state_summary = output_data.get("state_summary", {})
 
+            # Sync from model so result matches DB (rollback may have updated ingestion_state
+            # after update_ingestion_state ran; model is authoritative).
+            self.scheduled_ingestion.refresh_from_db()
+            state = self.scheduled_ingestion.ingestion_state or {}
+            model_failed = state.get("failed_files", [])
+            if isinstance(model_failed, list) and model_failed:
+                # Use model's failed_files so result and test assertions are correct
+                state_summary = dict(state_summary)
+                state_summary["total_failed"] = len(model_failed)
+                state_summary["failed_files"] = model_failed
+
+            # Persist failed_files list to model when workflow reported them (state_summary is source)
+            failed_files_list = state_summary.get("failed_files")
+            if isinstance(failed_files_list, list) and failed_files_list:
+                self.scheduled_ingestion.refresh_from_db()
+                state = self.scheduled_ingestion.ingestion_state or {}
+                existing_failed = state.get("failed_files", [])
+                if not existing_failed or len(existing_failed) < len(failed_files_list):
+                    state["failed_files"] = failed_files_list
+                    self.scheduled_ingestion.ingestion_state = state
+                    self.scheduled_ingestion.save(update_fields=["ingestion_state", "updated_at"])
+
             result = {
                 "files_found": output_data.get("files_found", 0),
                 "files_processed": state_summary.get("total_processed", 0),
@@ -151,14 +174,21 @@ class ScheduledIngestionProcessor:
         try:
             factory = self._connector_factory or _get_source_connector_factory()
             if factory is None:
-                raise ConnectionError(
-                    "Source connector factory not available; cannot discover files"
+                raise ConnectorNotAvailableError(
+                    self.source_type, role="source", message="connector not registered (factory unavailable)"
                 )
-            connector = factory.get_connector(self.source_type)
+            try:
+                connector = factory.get_connector(self.source_type)
+            except ValueError as e:
+                raise ConnectorNotAvailableError(
+                    self.source_type, role="source", message="connector not registered"
+                ) from e
             # Use default pattern that matches all files if pattern is None
             file_pattern = self.file_pattern or ".*"
             files = connector.discover_files(self.source_config, file_pattern)
             return files
+        except ConnectorNotAvailableError:
+            raise
         except Exception as e:
             logger.error(
                 "Failed to discover files",
@@ -188,8 +218,15 @@ class ScheduledIngestionProcessor:
         filtered = []
         factory = self._connector_factory or _get_source_connector_factory()
         if factory is None:
-            raise ConnectionError("Source connector factory not available; cannot filter files")
-        connector = factory.get_connector(self.source_type)
+            raise ConnectorNotAvailableError(
+                self.source_type, role="source", message="connector not registered (factory unavailable)"
+            )
+        try:
+            connector = factory.get_connector(self.source_type)
+        except ValueError as e:
+            raise ConnectorNotAvailableError(
+                self.source_type, role="source", message="connector not registered"
+            ) from e
 
         for file_path in files:
             # Check if file should be processed using state manager
@@ -274,10 +311,15 @@ class ScheduledIngestionProcessor:
             try:
                 factory = self._connector_factory or _get_source_connector_factory()
                 if factory is None:
-                    raise ConnectionError(
-                        "Source connector factory not available; cannot process file"
+                    raise ConnectorNotAvailableError(
+                        self.source_type, role="source", message="connector not registered (factory unavailable)"
                     )
-                connector = factory.get_connector(self.source_type)
+                try:
+                    connector = factory.get_connector(self.source_type)
+                except ValueError as e:
+                    raise ConnectorNotAvailableError(
+                        self.source_type, role="source", message="connector not registered"
+                    ) from e
 
                 # Create temporary file
                 temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_path).suffix)
@@ -688,7 +730,7 @@ class ScheduledIngestionProcessor:
                 ),
             }
 
-        # Create dataset
+        # Create dataset (Dataset model has snapshot_metadata for DQ/version metadata, no kind/metadata_json)
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=asset,
@@ -699,8 +741,7 @@ class ScheduledIngestionProcessor:
             format=file_format,
             version=version,
             created_by=self.scheduled_ingestion.created_by,
-            kind=DatasetKind.FILE,
-            metadata_json=metadata_json if metadata_json else None,
+            snapshot_metadata=metadata_json if metadata_json else {},
         )
 
         # Initialize version history

@@ -72,6 +72,7 @@ TEST_CATEGORIES = [
     "unit",
     "integration",
     "e2e",
+    "uc_journey_persona",
     "smoke",
     "security",
     "performance",
@@ -207,8 +208,8 @@ class TestSummaryReportGenerator:
         errors_all = 0
         duration_all = 0.0
 
-        # Backend: unit, integration, e2e (from phase_12a_1_summary.json)
-        for category in ("unit", "integration", "e2e"):
+        # Backend: unit, integration, e2e, uc_journey_persona (from phase_12a_1_summary.json)
+        for category in ("unit", "integration", "e2e", "uc_journey_persona"):
             junit_path = self.report_dir / category / "junit.xml"
             results = self._parse_junit_xml(junit_path)
             if results:
@@ -327,9 +328,17 @@ class TestSummaryReportGenerator:
         return True
 
     def _load_test_results(self, test_type: str) -> Optional[Dict[str, Any]]:
-        """Load test results for a specific test type."""
+        """Load test results for a specific test type.
+
+        Tries results.json first; if not found, tries junit.xml (e.g. from
+        standalone run_uc_journey_persona_tests.sh or other category scripts).
+        """
         results_file = self.report_dir / test_type / "results.json"
-        return self._load_json_file(results_file)
+        results = self._load_json_file(results_file)
+        if results:
+            return results
+        junit_path = self.report_dir / test_type / "junit.xml"
+        return self._parse_junit_xml(junit_path)
 
     def _load_coverage_data(self) -> Optional[Dict[str, Any]]:
         """Load coverage data from coverage.json."""

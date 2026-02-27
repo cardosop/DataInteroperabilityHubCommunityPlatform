@@ -291,3 +291,75 @@ class APIAnalyticsViewSet(viewsets.ViewSet):
         
         return Response(metrics, status=status.HTTP_200_OK)
 
+
+class CostsViewSet(viewsets.ViewSet):
+    """
+    ViewSet for cost tracking analytics.
+
+    GET /api/v1/analytics/costs/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_tenant_id(self, request):
+        if hasattr(request, "tenant_id") and request.tenant_id:
+            return str(request.tenant_id)
+        tenant = getattr(request, "tenant", None)
+        if tenant and hasattr(tenant, "id"):
+            return str(tenant.id)
+        return None
+
+    def list(self, request):
+        """Get cost tracking summary for tenant."""
+        tenant_id = self._get_tenant_id(request)
+        # Return placeholder - cost data may come from scheduled_ingestion, billing, etc.
+        return Response({
+            "tenant_id": tenant_id,
+            "costs": [],
+            "total_cost": 0,
+            "period": "month",
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="breakdown")
+    def breakdown(self, request):
+        """
+        Get cost breakdown by category.
+
+        GET /api/v1/analytics/costs/breakdown/
+        """
+        tenant_id = self._get_tenant_id(request)
+        return Response({
+            "tenant_id": tenant_id,
+            "breakdown": [],
+            "total_cost": 0,
+            "period": request.query_params.get("period", "month"),
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="by-asset")
+    def by_asset(self, request):
+        """GET /api/v1/analytics/costs/by-asset/"""
+        tenant_id = self._get_tenant_id(request)
+        return Response({
+            "tenant_id": tenant_id,
+            "by_asset": [],
+            "total_cost": 0,
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="recommendations")
+    def recommendations(self, request):
+        """GET /api/v1/analytics/costs/recommendations/"""
+        tenant_id = self._get_tenant_id(request)
+        return Response({
+            "tenant_id": tenant_id,
+            "recommendations": [],
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="trends")
+    def trends(self, request):
+        """GET /api/v1/analytics/costs/trends/"""
+        tenant_id = self._get_tenant_id(request)
+        return Response({
+            "tenant_id": tenant_id,
+            "trends": [],
+            "period": request.query_params.get("period", "month"),
+        }, status=status.HTTP_200_OK)
+

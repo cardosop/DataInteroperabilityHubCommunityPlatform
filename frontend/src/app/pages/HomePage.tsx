@@ -5,6 +5,7 @@
 
 import { Link } from 'react-router-dom';
 import { useAssetRecommendations, useAssets } from '../../features/assets/hooks/useAssets';
+import { useAuthStore } from '../../features/auth/store/authStore';
 import { useDatasets } from '../../features/datasets/hooks/useDatasets';
 import { useJobs } from '../../features/jobs/hooks/useJobs';
 import { EmptyState } from '../../shared/components/EmptyState';
@@ -14,11 +15,16 @@ import { useHealth } from '../../shared/hooks/useHealth';
 import './HomePage.css';
 
 export function HomePage() {
+  const { user } = useAuthStore();
   // Fetch recent items (most recent first)
   const recentAssets = useAssets({ ordering: '-created_at', page_size: 5 });
   const recentDatasets = useDatasets({ ordering: '-created_at', page_size: 5 });
   const recentJobs = useJobs({ ordering: '-created_at', page_size: 5 });
-  const recommendations = useAssetRecommendations({ limit: 5 });
+  // Skip recommendations when user has no tenant (avoids 400; backend also returns [] for no-tenant)
+  const recommendations = useAssetRecommendations(
+    { limit: 5 },
+    { enabled: !!user?.tenant_id }
+  );
   const health = useHealth();
 
   const formatDate = (dateString: string) => {
@@ -234,16 +240,18 @@ export function HomePage() {
             </div>
             <div className="items-list">
               {recommendations.data.slice(0, 5).map((rec) => (
-                <Link key={rec.id} to={`/assets/${rec.id}`} className="item-card">
+                <Link key={rec.asset_id} to={`/assets/${rec.asset_id}`} className="item-card">
                   <div className="item-header">
-                    <span className="item-title">{rec.name}</span>
-                    {rec.relevance_score && (
+                    <span className="item-title">{rec.asset_name}</span>
+                    {rec.score != null && (
                       <span className="item-score">
-                        {Math.round(rec.relevance_score * 100)}% match
+                        {Math.round(rec.score * 100)}% match
                       </span>
                     )}
                   </div>
-                  {rec.description && <p className="item-description">{rec.description}</p>}
+                  {rec.reasons?.length ? (
+                    <p className="item-description">{rec.reasons.map((r) => r.reason).join(', ')}</p>
+                  ) : null}
                 </Link>
               ))}
             </div>

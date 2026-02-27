@@ -1,7 +1,7 @@
 # Test Traceability Matrix
 
-**Last Updated**: 2026-02-08
-**Version**: 1.2.0
+**Last Updated**: 2026-02-16
+**Version**: 1.3.0
 
 ---
 
@@ -18,6 +18,7 @@ This document provides comprehensive traceability between:
 - All core features: Auth, Contracts, ODPS, Assets, Datasets, DQ, Compliance, Marketplace, etc.
 - **Scheduled Export**: UC-EXPORT-001–004, JOURNEY-EXPORT-001–002; backend, integration, E2E, frontend unit/E2E; see [Scheduled Export](#scheduled-export) and [Scheduled Export Use Cases](#scheduled-export-use-cases).
 - **Trust signals config API** (Marketplace): UC-MKT-ADV-003, UC-MKT-ADV-005; backend/integration tests; see [Marketplace](#marketplace) and [Gap Remediation Traceability](#gap-remediation-traceability) Phase 4.
+- **UC/Journey/Persona E2E tests** (Task 6.7): 17 backend E2E files with `uc_journey_persona` marker; run via `./scripts/run_uc_journey_persona_tests.sh` or `pytest tests/e2e/ -v -m uc_journey_persona`. See [UC/Journey/Persona E2E Tests](#ucjourney-persona-e2e-tests-task-67) and [UC_JOURNEY_TEST_RUN_GUIDE.md](UC_JOURNEY_TEST_RUN_GUIDE.md).
 
 **Test Naming Convention**:
 - Backend tests: `test_uc_{use_case_id}_{description}.py` or `test_journey_{journey_id}_{description}.py`
@@ -33,13 +34,14 @@ This document provides comprehensive traceability between:
 2. [Use Case → Test Mapping](#use-case--test-mapping)
 3. [User Journey → Test Mapping](#user-journey--test-mapping)
 4. [Persona → Test Mapping](#persona--test-mapping)
-5. [Complete Use Case Index](#complete-use-case-index)
-6. [Complete User Journey Index](#complete-user-journey-index)
-7. [Phase 25 (SaaS Platform) Traceability](#phase-25-saas-platform-traceability)
-8. [Phase 26 (CLI/SDK) Traceability](#phase-26-clisdk-traceability)
-9. [Gap Remediation Traceability](#gap-remediation-traceability) — includes [Gap implementation plan (gapfix1)](#gap-implementation-plan-gapfix1--full-test-run-and-sign-off)
-10. [Test Coverage Summary](#test-coverage-summary)
-11. [Evidence Links](#evidence-links)
+5. [UC/Journey/Persona E2E Tests (Task 6.7)](#ucjourney-persona-e2e-tests-task-67)
+6. [Complete Use Case Index](#complete-use-case-index)
+7. [Complete User Journey Index](#complete-user-journey-index)
+8. [Phase 25 (SaaS Platform) Traceability](#phase-25-saas-platform-traceability)
+9. [Phase 26 (CLI/SDK) Traceability](#phase-26-clisdk-traceability)
+10. [Gap Remediation Traceability](#gap-remediation-traceability) — includes [Gap implementation plan (gapfix1)](#gap-implementation-plan-gapfix1--full-test-run-and-sign-off)
+11. [Test Coverage Summary](#test-coverage-summary)
+12. [Evidence Links](#evidence-links)
 
 ---
 
@@ -238,7 +240,7 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 **Feature**: Scheduled ingestion jobs, runs, configuration
 
 **Backend Tests**:
-- `hub/apps/scheduled_ingestion/tests/test_views.py` - Scheduled ingestion views
+- `hub/apps/scheduled_ingestion/tests/test_scheduled_ingestion_views.py` - Scheduled ingestion views
 - `hub/apps/scheduled_ingestion/tests/test_internal_worker_api.py` - Worker API
 - `hub/apps/scheduled_ingestion/tests/test_prefect_full_flow_integration.py` - Prefect integration
 - `hub/apps/scheduled_ingestion/tests/test_phase7_comprehensive.py` - Comprehensive tests
@@ -410,12 +412,14 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 
 **Backend Tests**:
 - `hub/apps/baas/tests/` - BaaS app tests
+- `hub/apps/developer/tests/` - Developer plugins, SDK docs
+- `tests/integration/test_developer_experience_new_use_cases_comprehensive.py` - UC-DEV-001…004, UC-DEV-007…009
 - `tests/e2e/test_persona_dev_comprehensive.py` - Developer persona E2E
 
 **Frontend Specs**:
 - Covered by developer portal and integrations-jobs-webhooks routes
 
-**Use Cases**: UC-DEV-004, UC-DEV-009
+**Use Cases**: UC-DEV-001, UC-DEV-002, UC-DEV-003, UC-DEV-004, UC-DEV-007, UC-DEV-008, UC-DEV-009
 **Journeys**: JOURNEY-DEV-001, JOURNEY-DEV-009
 
 ---
@@ -426,13 +430,14 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 
 **Backend Tests**:
 - `hub/apps/integrations/` - Integration app tests (if present)
+- `tests/integration/test_developer_experience_new_use_cases_comprehensive.py` - UC-DEV-007 (connector framework API)
 - `tests/e2e/test_cross_capability_e2e.py` - Cross-capability E2E
 - Integration coverage in marketplace and scheduled ingestion/export tests
 
 **Frontend Specs**:
 - `frontend/e2e/journeys/integrations-jobs-webhooks/integrations-jobs-webhooks-routes.spec.ts`
 
-**Use Cases**: UC-INT-001 through UC-INT-005
+**Use Cases**: UC-INT-001 through UC-INT-005, UC-DEV-007 (connector framework)
 **Journeys**: JOURNEY-DE-010, JOURNEY-DE-011, JOURNEY-TA-008
 
 ---
@@ -492,7 +497,7 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 
 **Backend Tests**:
 - `hub/apps/ai/tests/` - AI app tests
-- `tests/e2e/test_ai_ml_new_use_cases_comprehensive.py` - AI/ML use cases E2E (if present)
+- `tests/integration/test_ai_ml_new_use_cases_comprehensive.py` - AI/ML use cases (integration)
 - Persona and journey tests covering search and recommendations
 
 **Frontend Specs**:
@@ -937,11 +942,43 @@ This section maps each persona from [USER_PERSONAS.md](USER_PERSONAS.md) to thei
 | **External Developer / Integrator** | Persona E2E: `tests/e2e/test_persona_dev_comprehensive.py`; Backend: BaaS, webhooks, API, integrations tests; Frontend: integrations-jobs-webhooks, developer portal routes, JOURNEY-DEV-* specs. |
 | **Auditor** | Persona E2E: `tests/e2e/test_persona_aud_comprehensive.py`; Backend: `hub/apps/audit/tests/`; Frontend: admin-audit-settings routes, JOURNEY-AUD-* specs. |
 | **Data Scientist / ML Engineer** | E2E: `tests/e2e/test_new_user_journeys_comprehensive.py`, AI/ML use cases; Backend: AI, ML, DQ tests; Frontend: mesh-search-ai routes, JOURNEY-DS-* specs. |
+
+**Failure paths and edge cases (Task 6.5)**: `tests/e2e/test_persona_failure_paths_comprehensive.py` — 401, 403, 404, 400 per persona; service-unavailable (DQ/Compliance); cross-tenant isolation.
 | **Data Analyst** | E2E: new user journeys, virtualization/transformation flows; Backend: search, virtualization, transformation tests; Frontend: JOURNEY-DA-* specs. |
 | **Community Manager / Data Steward** | E2E: social and governance journeys; Backend: social, governance, asset steward tests; Frontend: JOURNEY-CM-* specs. |
 | **Data Mesh Domain Owner** | E2E: data mesh and topology journeys; Backend: `hub/apps/mesh/tests/`; Frontend: mesh-virtualization-search-ai routes, JOURNEY-DMO-* specs. |
 
 All 13 personas (Visitor / Prospect plus 12 role-based) have test coverage documented above. See [USER_PERSONAS.md](USER_PERSONAS.md) for persona details and [E2E_TEST_GAP_ANALYSIS.md](../openspec/changes/testreview1/E2E_TEST_GAP_ANALYSIS.md) for journey-to-test mapping.
+
+---
+
+## UC/Journey/Persona E2E Tests (Task 6.7)
+
+Backend E2E tests tagged with `uc_journey_persona` (equivalent to `uc or journey or persona`). Run via `./scripts/run_uc_journey_persona_tests.sh` or `pytest tests/e2e/ -v -m uc_journey_persona`. See [UC_JOURNEY_TEST_RUN_GUIDE.md](UC_JOURNEY_TEST_RUN_GUIDE.md) for prerequisites, duration, and interpreting results.
+
+**Backend E2E Test Files** (17 files):
+
+| Test File | Use Cases | Journeys | Personas |
+|-----------|-----------|----------|----------|
+| `tests/e2e/test_authentication.py` | UC-AUTH-001 … UC-AUTH-004 | JOURNEY-AUTH-001 … JOURNEY-AUTH-004 | Visitor |
+| `tests/e2e/test_persona_dpo_comprehensive.py` | — | JOURNEY-DPO-001 … JOURNEY-DPO-006 | Data Product Owner |
+| `tests/e2e/test_persona_data_engineer_comprehensive.py` | — | JOURNEY-DE-001 … JOURNEY-DE-006 | Data Engineer |
+| `tests/e2e/test_persona_cpo_comprehensive.py` | — | JOURNEY-CPO-001 … JOURNEY-CPO-005 | Compliance Officer |
+| `tests/e2e/test_persona_dc_comprehensive.py` | — | JOURNEY-DC-001 … JOURNEY-DC-005 | Data Consumer |
+| `tests/e2e/test_persona_ta_comprehensive.py` | — | JOURNEY-TA-001 … JOURNEY-TA-004 | Tenant Admin |
+| `tests/e2e/test_persona_pa_comprehensive.py` | — | JOURNEY-PA-001, JOURNEY-MPA-001 … JOURNEY-MPA-004 | Platform Admin, Marketplace Platform Admin |
+| `tests/e2e/test_persona_dev_comprehensive.py` | — | JOURNEY-DEV-001 … JOURNEY-DEV-004 | External Developer |
+| `tests/e2e/test_persona_aud_comprehensive.py` | — | JOURNEY-AUD-001 … JOURNEY-AUD-003 | Auditor |
+| `tests/e2e/test_user_journeys_comprehensive.py` | — | JOURNEY-DPO-001 … JOURNEY-AUD-003 | All 9 role personas |
+| `tests/e2e/test_new_user_journeys_comprehensive.py` | — | JOURNEY-DPO-007 … JOURNEY-AUD-004 | DPO, DE, CPO, DC, TA, DEV, AUD |
+| `tests/e2e/test_persona_failure_paths_comprehensive.py` | — | — | All 9 role personas (failure paths) |
+| `tests/e2e/test_enhanced_journeys_with_odps.py` | — | JOURNEY-DPO-001, JOURNEY-DPO-002, JOURNEY-DE-001 | DPO, DE, DC |
+| `tests/e2e/test_enhanced_use_cases_with_odps.py` | UC-AM-001, UC-CM-001, UC-MKT-001, UC-MKT-002, UC-DC-001 | — | — |
+| `tests/e2e/test_workflow_use_case_integration_e2e.py` | UC-AM-001, UC-CM-001, UC-MKT-001, UC-DQ-001, UC-COMP-001 | — | — |
+| `tests/e2e/test_workflow_user_journey_integration_e2e.py` | — | JOURNEY-DPO-001, JOURNEY-DPO-002, JOURNEY-DPO-015, JOURNEY-DE-001, JOURNEY-DE-014 | — |
+| `tests/e2e/test_odps_journeys_comprehensive.py` | — | JOURNEY-ODPS-001 … JOURNEY-ODPS-005 | — |
+
+**Artifacts**: `test_reports_comprehensive/{date}/uc_journey_persona/` (JUnit XML, log). Included in Phase 12A.1.3b via `run_phase_12a_backend_suites.sh`.
 
 ---
 
@@ -1053,7 +1090,7 @@ All **96 user journeys** from [USER_JOURNEYS.md](USER_JOURNEYS.md) and [MARKETPL
 
 **Backend Tests**:
 - `hub/apps/gdpr/tests/test_erasure_integration.py` - Erasure integration tests
-- `hub/apps/gdpr/tests/test_data_portability.py` - Data portability (if exists)
+- `hub/apps/gdpr/tests/test_gdpr_services.py` - GDPR services (erasure, data portability)
 
 **CLI Tests**:
 - `cli/tests/integration/test_phase26_cli_integration.py::TestGDPRCLI` - GDPR CLI commands
@@ -1352,7 +1389,7 @@ This section maps **Gap Remediation Plan** phases (see [openspec/changes/testrev
 | **3** | Workflows API | `hub/apps/orchestration/tests/test_workflows_api_integration.py` | [FEATURES.md](FEATURES.md#workflows), [API_ENDPOINTS_REFERENCE.md](API_ENDPOINTS_REFERENCE.md) |
 | **4** | Data preview & trust signals | `hub/apps/marketplace/tests/test_preview.py`; Trust signals config API: `tests/integration/test_trust_signals_config_api_comprehensive.py` | [FEATURES.md](FEATURES.md#marketplace), [API_ENDPOINTS_REFERENCE.md](API_ENDPOINTS_REFERENCE.md) (Marketplace / Data preview, Trust signals config API) |
 | **5** | Transformation pipeline | Deferred (no implementation) | [USER_JOURNEYS.md](USER_JOURNEYS.md), [USE_CASES.md](USE_CASES.md) (JOURNEY-DPO-008 etc. **Deferred**); [GAP_REMEDIATION_PLAN.md](../openspec/changes/testreview1/GAP_REMEDIATION_PLAN.md) Section 8 |
-| **6** | Feature list & traceability | This matrix; [TEST_COVERAGE_MATRIX.md](TEST_COVERAGE_MATRIX.md) | [FEATURES.md](FEATURES.md) (29 features + Supporting capabilities); traceability updated |
+| **6** | Feature list & traceability | This matrix; [TEST_COVERAGE_MATRIX.md](TEST_COVERAGE_MATRIX.md); [TEST_SCENARIO_MATRIX.md](TEST_SCENARIO_MATRIX.md) (Success/Failure/Edge per feature) | [FEATURES.md](FEATURES.md) (29 features + Supporting capabilities); traceability updated |
 
 **Supporting capabilities** (Notifications, Billing, Platform, Tenants, Users, Analytics, Events) are covered in [Supporting Capabilities](#supporting-capabilities) above and in [FEATURES.md](FEATURES.md#supporting-capabilities). They are not standalone product features; coverage is via the features that use them.
 
@@ -1363,7 +1400,7 @@ This subsection links the **gap implementation plan** ([openspec/changes/gapfix1
 | Item | Details |
 |------|---------|
 | **Phase 12A execution** | Backend: `scripts/run_phase_12a_backend_suites.sh`. Full suite: `scripts/run_phase_12a_full_suites.sh` (backend → frontend unit/E2E → security, performance, concurrency, regression). Commands per [TEST_EXECUTION_PLAN.md](TEST_EXECUTION_PLAN.md). Per gapfix1 7.2.4. |
-| **Evidence layout** | `test_reports_comprehensive/{date}/` with subdirs: unit, integration, e2e, security, performance, concurrency, regression, frontend-unit, frontend-e2e. Summaries: `phase_12a_1_summary.json` (backend), `phase_12a_3_summary.json` (security/performance/concurrency/regression). Per [EVIDENCE_COLLECTION_PLAN.md](EVIDENCE_COLLECTION_PLAN.md). |
+| **Evidence layout** | `test_reports_comprehensive/{date}/` with subdirs: unit, integration, e2e, uc_journey_persona (Task 6.7), security, performance, concurrency, regression, frontend-unit, frontend-e2e. Summaries: `phase_12a_1_summary.json` (backend, includes uc_journey_persona), `phase_12a_3_summary.json` (security/performance/concurrency/regression). Per [EVIDENCE_COLLECTION_PLAN.md](EVIDENCE_COLLECTION_PLAN.md). |
 | **Test summary report** | Generated from evidence by `scripts/generate_test_summary_report.sh` or `.py` (script/process from gapfix1 Phase 7.4). Report includes pass/fail, duration, coverage, evidence links. |
 | **Sign-off criterion** | [GAP_REMEDIATION_PLAN.md §11](../openspec/changes/testreview1/GAP_REMEDIATION_PLAN.md) — product/tech lead confirms doc and implementation; gap items resolved or deferred; evidence and report location recorded. Phase 16 GR-7 (16.1–16.3) in [testreview1/tasks.md](../openspec/changes/testreview1/tasks.md). |
 | **Features covered** | Every gapfix1-delivered feature is covered by the same full test run and appears in the test summary report by feature/category: **(1) Scheduled Export** ([FEATURES.md](FEATURES.md#scheduled-export) section and implementation; feature #26; UC-EXPORT-001–004, JOURNEY-EXPORT-001–002). **(2) Trust signals config API** (Marketplace Phase 4; planned or implemented; UC-MKT-ADV-003, UC-MKT-ADV-005). **(3) §11→Phase 16 tasks** (GR-7 / 16.1–16.3: full 12A run, test summary report, sign-off). |
@@ -1454,5 +1491,5 @@ This document should be updated when:
 
 ---
 
-**Last Updated**: 2026-02-08
-**Version**: 1.2.0
+**Last Updated**: 2026-02-16
+**Version**: 1.3.0

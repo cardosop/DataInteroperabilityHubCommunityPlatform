@@ -149,7 +149,12 @@ class User(AbstractBaseUser, PermissionsMixin):
         ]
     
     def __str__(self):
-        return f"{self.email} ({self.tenant.name if self.tenant else 'Platform Admin'})"
+        if self.tenant_id is None:
+            return f"{self.email} (Platform Admin)"
+        try:
+            return f"{self.email} ({self.tenant.name})"
+        except Exception:
+            return f"{self.email} (tenant_id={self.tenant_id})"
     
     def is_active(self) -> bool:
         """Check if user is active"""

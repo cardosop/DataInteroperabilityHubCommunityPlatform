@@ -381,8 +381,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     @transaction.atomic
     def update_connection(
@@ -645,8 +648,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     @transaction.atomic
     def delete_connection(
@@ -831,8 +837,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     def list_connections(
         self,
@@ -938,8 +947,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     def get_connection(
         self,
@@ -1024,8 +1036,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     def test_connection(
         self,
@@ -1282,8 +1297,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     def sync_assets_to_marketplace(
         self,
@@ -1560,8 +1578,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     @transaction.atomic
     def sync_from_marketplace(
@@ -1597,6 +1618,16 @@ class MarketplaceIntegrationService(
             ValidationError: If input data is invalid.
             ServiceError: For other unexpected errors.
         """
+        if tenant_id is not None and (
+            tenant_id == "" or (isinstance(tenant_id, str) and not tenant_id.strip())
+        ):
+            raise ValueError("tenant_id cannot be empty")
+        if user_id is None:
+            raise ValueError("user_id is required")
+        if user_id is not None and (
+            user_id == "" or (isinstance(user_id, str) and not user_id.strip())
+        ):
+            raise ValueError("user_id cannot be empty")
         from django.contrib.auth import get_user_model
         from opentelemetry.trace import StatusCode
 
@@ -1837,8 +1868,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     def get_sync_job(
         self,
@@ -1925,8 +1959,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     def list_sync_jobs(
         self,
@@ -2035,8 +2072,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     @transaction.atomic
     def cancel_sync_job(
@@ -2235,8 +2275,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     @transaction.atomic
     def create_mapping(
@@ -2449,8 +2492,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     @transaction.atomic
     def create_federated_asset_with_contracts(
@@ -3025,8 +3071,11 @@ class MarketplaceIntegrationService(
                             # Cleanup temp file
                             try:
                                 os.remove(downloaded_path)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug(
+                                    "integrations_non_critical_failed",
+                                    extra={"error_type": type(e).__name__, "error": str(e)},
+                                )
 
                             return {"file": file_obj, "dataset": dataset}
                         except Exception as e:
@@ -3207,8 +3256,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     def _create_odps_contract_from_metadata(
         self,
@@ -4159,8 +4211,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     def list_mappings(
         self,
@@ -4270,8 +4325,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     @transaction.atomic
     def update_mapping(
@@ -4492,8 +4550,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     @transaction.atomic
     def delete_mapping(
@@ -4660,8 +4721,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     def sync_workflow_status_to_sync_job(
         self,
@@ -4688,9 +4752,10 @@ class MarketplaceIntegrationService(
 
         effective_tenant_id = tenant_id or self.tenant_id
 
-        # Get sync job
-        sync_job = self.get_resource_or_raise(
-            MarketplaceSyncJob, sync_job_id, tenant_id=effective_tenant_id
+        # Get sync job (get_sync_job handles invalid UUID -> NotFoundError)
+        sync_job = self.get_sync_job(
+            tenant_id=effective_tenant_id,
+            sync_job_id=sync_job_id,
         )
 
         # Get workflow instance ID from metadata
@@ -4843,9 +4908,10 @@ class MarketplaceIntegrationService(
         """
         effective_tenant_id = tenant_id or self.tenant_id
 
-        # Get sync job
-        sync_job = self.get_resource_or_raise(
-            MarketplaceSyncJob, sync_job_id, tenant_id=effective_tenant_id
+        # Get sync job (get_sync_job handles invalid UUID -> NotFoundError)
+        sync_job = self.get_sync_job(
+            tenant_id=effective_tenant_id,
+            sync_job_id=sync_job_id,
         )
 
         # Update progress in metadata
@@ -5109,8 +5175,11 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )
 
     @transaction.atomic
     def unschedule_sync(
@@ -5259,5 +5328,8 @@ class MarketplaceIntegrationService(
             if span_context:
                 try:
                     span_context.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "integrations_non_critical_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e)},
+                    )

@@ -1,0 +1,86 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.11925745010375977
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-003-b740d716",
+      "journey_name": "Update Asset Contract",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1771273590.2767549,
+      "end_time": 1771273590.3960123,
+      "duration": 0.11925745010375977,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset with Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771273590.2767596,
+          "end_time": 1771273590.345499,
+          "duration": 0.06873941421508789,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "tuple"
+          }
+        },
+        {
+          "step_name": "Update Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771273590.3455095,
+          "end_time": 1771273590.3460467,
+          "duration": 0.0005371570587158203,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Validate Updated Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771273590.3460498,
+          "end_time": 1771273590.3644779,
+          "duration": 0.01842808723449707,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Update Asset with New Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771273590.364487,
+          "end_time": 1771273590.3960066,
+          "duration": 0.03151965141296387,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "ReturnDict"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "8a199dc5-d5c7-47de-85c2-52dec4cbf55b",
+        "original_contract_id": "15606fb8-419d-4c11-85c7-f86f07f67886",
+        "updated_contract_id": "15606fb8-419d-4c11-85c7-f86f07f67886"
+      }
+    }
+  ],
+  "exported_at": "2026-02-16T20:26:30.396094"
+}

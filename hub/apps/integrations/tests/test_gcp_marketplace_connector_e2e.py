@@ -51,13 +51,18 @@ REAL_SERVICE_ACCOUNT_JSON = {
 
 
 def get_test_credentials():
-    """Get test credentials from environment or use default"""
+    """Get test credentials from environment or use default.
+
+    If GCP_SERVICE_ACCOUNT_JSON is set but not valid JSON (e.g. corrupted by
+    shell when sourcing .env), fall back to REAL_SERVICE_ACCOUNT_JSON so tests
+    run instead of skipping.
+    """
     env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     if env_json:
         try:
             return json.loads(env_json)
         except json.JSONDecodeError:
-            pytest.skip("Invalid GCP_SERVICE_ACCOUNT_JSON format")
+            return REAL_SERVICE_ACCOUNT_JSON
     return REAL_SERVICE_ACCOUNT_JSON
 
 
@@ -130,7 +135,11 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
             self.skipTest(f"No listings available: {e}")
 
         if not listings:
-            self.skipTest("No listings available for testing")
+            self.skipTest(
+                "No listings available for testing. GCP project must have at least one "
+                "Analytics Hub data exchange and listing; create one in the project or use "
+                "a project with sample data to run this test."
+            )
 
         # Step 5: Create sync job
         sync_job = MarketplaceSyncJob.objects.create(
@@ -173,7 +182,10 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
             self.skipTest(f"Could not list listings: {e}")
 
         if not listings:
-            self.skipTest("No listings available for testing")
+            self.skipTest(
+                "No listings available for testing. GCP project must have at least one "
+                "Analytics Hub listing to run this test."
+            )
 
         listing = listings[0]
 
@@ -216,7 +228,10 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
             self.skipTest(f"Could not list listings: {e}")
 
         if not listings:
-            self.skipTest("No listings available for testing")
+            self.skipTest(
+                "No listings available for testing. GCP project must have at least one "
+                "Analytics Hub listing to run this test."
+            )
 
         listing = listings[0]
 
@@ -257,7 +272,10 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
             self.skipTest(f"Could not list listings: {e}")
 
         if not listings:
-            self.skipTest("No listings available for testing")
+            self.skipTest(
+                "No listings available for testing. GCP project must have at least one "
+                "Analytics Hub listing to run this test."
+            )
 
         listing = listings[0]
 

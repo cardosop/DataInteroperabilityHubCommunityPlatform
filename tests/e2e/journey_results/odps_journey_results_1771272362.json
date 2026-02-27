@@ -1,0 +1,111 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.4780435562133789
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-005-4a7e6454",
+      "journey_name": "ODPS Product Strategy Journey",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1771272362.4323878,
+      "end_time": 1771272362.9104314,
+      "duration": 0.4780435562133789,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771272362.432396,
+          "end_time": 1771272362.4523501,
+          "duration": 0.019954204559326172,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS with Product Strategy",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771272362.4523625,
+          "end_time": 1771272362.4524257,
+          "duration": 6.318092346191406e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771272362.4524283,
+          "end_time": 1771272362.9078758,
+          "duration": 0.4554474353790283,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Verify Product Details",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771272362.9082427,
+          "end_time": 1771272362.9091418,
+          "duration": 0.0008990764617919922,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Verify Multilingual Support",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771272362.909145,
+          "end_time": 1771272362.909795,
+          "duration": 0.0006499290466308594,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Verify Product Versioning",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771272362.9097981,
+          "end_time": 1771272362.9104292,
+          "duration": 0.0006310939788818359,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "odps_contract_id": "a72468ee-f4c7-4bb8-8a74-0db375d75cd4",
+        "product_strategy_configured": true
+      }
+    }
+  ],
+  "exported_at": "2026-02-16T20:06:02.910511"
+}

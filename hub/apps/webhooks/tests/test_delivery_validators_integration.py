@@ -18,7 +18,9 @@ from django.utils import timezone
 
 from tests.utils.polling import wait_until
 
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User
 from hub.apps.webhooks.delivery_validators import WebhookDeliveryValidator
 from hub.apps.webhooks.models import (
@@ -102,10 +104,12 @@ class WebhookDeliveryValidatorIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        reset_circuit_breaker_by_name("webhook-delivery")
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             slug="test-tenant",
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             tenant=self.tenant,
@@ -290,7 +294,8 @@ class WebhookDeliveryValidatorIntegrationTest(TestCase):
 
     def test_integration_validation_after_retry_flow(self):
         """Test validation after retry flow: server returns 500 then 200 (stateful server)."""
-        with StatefulTestWebhookServer([500, 200]) as server:
+        # Client retries on 5xx (max_retries=2 → 3 attempts). Need 3×500 so first attempt fails.
+        with StatefulTestWebhookServer([500, 500, 500, 200]) as server:
             webhook = self._create_webhook(server.get_url())
             event_data = {"contract_id": str(uuid.uuid4())}
             WebhookDeliveryService.trigger_webhook(
@@ -322,7 +327,8 @@ class WebhookDeliveryValidatorIntegrationTest(TestCase):
         # First delivery hits slow server (times out); we then retry against a fast server.
         # Use stateful server: we cannot simulate timeout then 200 with one server without delay.
         # So we test: 500 then 200 (retry after failure) - same flow as test_integration_validation_after_retry_flow.
-        with StatefulTestWebhookServer([500, 200]) as server:
+        # Client retries on 5xx (max_retries=2 → 3 attempts). Need 3×500 so first attempt fails.
+        with StatefulTestWebhookServer([500, 500, 500, 200]) as server:
             webhook = self._create_webhook(server.get_url())
             event_data = {"contract_id": str(uuid.uuid4())}
             WebhookDeliveryService.trigger_webhook(

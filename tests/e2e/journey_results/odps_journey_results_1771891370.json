@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.07569003105163574
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-002-EXISTING-dc16dcee",
+      "journey_name": "ODPS Linking - Existing ODPS",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1771891370.6321144,
+      "end_time": 1771891370.7078044,
+      "duration": 0.07569003105163574,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-24T00:02:50.707867"
+}

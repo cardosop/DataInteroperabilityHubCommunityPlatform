@@ -82,9 +82,12 @@ class MarketplaceConnectionCreateSerializer(serializers.Serializer):
     )
 
     def validate_name(self, value):
-        """Pass through; empty/whitespace rejected by MarketplaceIntegrationBusinessRules in service."""
+        """Reject empty and whitespace-only names at serializer level."""
         if value is not None and isinstance(value, str):
-            return value.strip() if value.strip() else value
+            stripped = value.strip()
+            if not stripped:
+                raise serializers.ValidationError("Connection name cannot be empty")
+            return stripped
         return value
 
     def validate_config(self, value):
@@ -153,6 +156,16 @@ class MarketplaceConnectionUpdateSerializer(serializers.Serializer):
         if not attrs:
             raise serializers.ValidationError("At least one field must be provided for update")
         return attrs
+
+    def update(self, instance, validated_data):
+        """Update marketplace connection with validated data."""
+        for attr, value in validated_data.items():
+            if attr == "config":
+                instance.set_config(value)
+            else:
+                setattr(instance, attr, value)
+        instance.save()
+        return instance
 
 
 class MarketplaceConnectionTestResponseSerializer(serializers.Serializer):

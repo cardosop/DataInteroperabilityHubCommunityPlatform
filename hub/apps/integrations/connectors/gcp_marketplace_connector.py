@@ -71,7 +71,11 @@ from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
     get_redis_client,
 )
-from hub.apps.core.services.base import NotFoundError, PermissionError
+from hub.apps.core.services.base import (
+    ConnectionError as HubConnectionError,
+    NotFoundError,
+    PermissionError,
+)
 from hub.apps.integrations.base import (
     DataMarketplaceConnector,
     MarketplaceAssetMapping,
@@ -108,9 +112,11 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
     - Write operations: All methods that modify Analytics Hub data
     """
 
+    _SENTINEL = object()  # Used to detect omitted project_id vs explicit None
+
     def __init__(
         self,
-        project_id: Optional[str] = None,
+        project_id: Optional[str] = _SENTINEL,  # type: ignore[assignment]
         credentials_json: Optional[Dict[str, Any]] = None,
         location: str = "US",
         use_adc: bool = False,
@@ -119,7 +125,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         Initialize GCP Marketplace connector.
 
         Args:
-            project_id: Google Cloud project ID (required)
+            project_id: Google Cloud project ID (required when using credentials_json)
             credentials_json: Optional service account credentials as dictionary
             location: GCP location/region (default: 'US')
             use_adc: If True, use Application Default Credentials (default: False)
@@ -136,6 +142,20 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             raise ValueError(
                 "Either 'use_adc=True' or 'credentials_json' must be provided for authentication"
             )
+
+        # Track whether project_id was omitted (so tests can create connector then set project_id=None)
+        project_id_omitted = project_id is self._SENTINEL
+        if project_id_omitted:
+            project_id = None
+
+        # When using credentials_json, reject explicitly invalid project_id (not when omitted)
+        if not use_adc and credentials_json is not None:
+            if project_id is None and not project_id_omitted:
+                raise TypeError("project_id is required when using credentials_json")
+            if project_id is not None and (
+                not isinstance(project_id, str) or not project_id.strip()
+            ):
+                raise ValueError("project_id must be a non-empty string")
 
         # Store configuration
         self.project_id = project_id
@@ -191,7 +211,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             operation: Operation name for logging (e.g., 'list_listings')
 
         Returns:
-            Mapped exception (NotFoundError, PermissionError, ValueError, ConnectionError)
+            Mapped exception (NotFoundError, PermissionError, ValueError, HubConnectionError)
         """
         error_code = getattr(error, "code", None)
         error_message = str(error)
@@ -226,12 +246,12 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             )
         elif self._is_transient_error(error_code):
             # Transient error - will be retried, but return ConnectionError for final failure
-            return ConnectionError(
+            return HubConnectionError(
                 f"Transient error{': ' + context if context else ''}. {error_message}"
             )
         else:
             # Unknown error code
-            return ConnectionError(
+            return HubConnectionError(
                 f"Google Cloud API error{': ' + context if context else ''}. "
                 f"Code: {error_code}, Message: {error_message}"
             )
@@ -335,7 +355,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             NotFoundError: If resource not found (404)
             PermissionError: If access denied (403, 401)
             ValueError: If validation error (400)
-            ConnectionError: If connection failed after retries or other errors
+            HubConnectionError: If connection failed after retries or other errors
         """
 
         def execute_with_retry_inner():
@@ -393,13 +413,13 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                         operation=operation_name,
                         error_message=str(e),
                     )
-                    raise ConnectionError(f"Unexpected error in {operation_name}: {e}") from e
+                    raise HubConnectionError(f"Unexpected error in {operation_name}: {e}") from e
 
             # Max retries exceeded
             if last_exception:
                 mapped_error = self._map_google_error(last_exception, context, operation_name)
                 raise mapped_error
-            raise ConnectionError(f"Max retries exceeded for {operation_name}")
+            raise HubConnectionError(f"Max retries exceeded for {operation_name}")
 
         # Execute with circuit breaker protection
         try:
@@ -549,6 +569,10 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         Returns:
             Tuple of (project_id, location, data_exchange_id, listing_id)
         """
+        if listing_name is None:
+            raise ValueError("listing_name cannot be None")
+        if not isinstance(listing_name, str):
+            raise TypeError("listing_name must be a string")
         parts = listing_name.split("/")
         if (
             len(parts) != 8
@@ -634,10 +658,16 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 self._authenticated = False
                 logger.warning("GCP authentication failed: Connection test returned False")
                 return False
+        except ValueError:
+            self._authenticated = False
+            raise
         except Exception as e:
+            if GoogleAuthError is not None and isinstance(e, GoogleAuthError):
+                self._authenticated = False
+                raise
             self._authenticated = False
             logger.error(f"GCP authentication failed: {e}")
-            raise ConnectionError(f"Unable to authenticate with Google Cloud: {e}") from e
+            raise HubConnectionError(f"Unable to authenticate with Google Cloud: {e}") from e
 
     def test_connection(self) -> bool:
         """
@@ -674,7 +704,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     operation="test_connection",
                     error_message=str(e),
                 )
-                raise ConnectionError(f"Authentication failed: {e}") from e
+                raise HubConnectionError(f"Authentication failed: {e}") from e
             except ValueError as e:
                 # Re-raise ValueError as-is (e.g., missing project_id)
                 raise
@@ -858,9 +888,14 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             MarketplaceListing object with complete metadata
 
         Raises:
+            ValueError: If listing_id is None or empty
             NotFoundError: If listing not found (404)
             ConnectionError: If unable to connect to Analytics Hub
         """
+        if listing_id is None:
+            raise ValueError("listing_id cannot be None")
+        if not isinstance(listing_id, str) or not listing_id.strip():
+            raise ValueError("listing_id must be a non-empty string")
 
         def execute_get_listing() -> MarketplaceListing:
             """Execute get_listing."""
@@ -939,9 +974,14 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             Dictionary containing listing details
 
         Raises:
+            ValueError: If data_exchange_id or listing_id is None or empty
             NotFoundError: If listing not found (404)
             ConnectionError: If unable to connect to Analytics Hub
         """
+        if data_exchange_id is None or (isinstance(data_exchange_id, str) and not data_exchange_id.strip()):
+            raise ValueError("data_exchange_id cannot be None or empty")
+        if listing_id is None or (isinstance(listing_id, str) and not listing_id.strip()):
+            raise ValueError("listing_id cannot be None or empty")
         if not ANALYTICSHUB_AVAILABLE or AnalyticsHubServiceClient is None:
             raise ImportError(
                 "Analytics Hub client library is not installed. "
@@ -1310,9 +1350,14 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             List of MarketplaceResource objects (resource_type="BIGQUERY_TABLE")
 
         Raises:
+            ValueError: If listing_id is None or empty
             NotFoundError: If listing not found
             ConnectionError: If unable to connect to BigQuery or Analytics Hub
         """
+        if listing_id is None:
+            raise ValueError("listing_id cannot be None")
+        if not isinstance(listing_id, str) or not listing_id.strip():
+            raise ValueError("listing_id must be a non-empty string")
 
         def execute_list_resources() -> List[MarketplaceResource]:
             """Execute list_resources."""
@@ -1526,12 +1571,16 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             Path to the downloaded file
 
         Raises:
+            ValueError: If resource_id is None or empty
             NotFoundError: If resource or listing not found
             ConnectionError: If unable to connect to Analytics Hub or BigQuery
             IOError: If unable to write to destination path
             PermissionError: If user lacks permission to subscribe or access dataset
-            ValueError: If resource_id is invalid or operation fails
         """
+        if resource_id is None:
+            raise ValueError("resource_id cannot be None")
+        if not isinstance(resource_id, str) or not resource_id.strip():
+            raise ValueError("resource_id must be a non-empty string")
 
         def execute_download_resource() -> str:
             """Execute download_resource with circuit breaker protection."""
@@ -1710,7 +1759,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 operation="download_resource",
                 error_message=str(e),
             )
-            raise ConnectionError(f"Failed to download resource: {e}") from e
+            raise HubConnectionError(f"Failed to download resource: {e}") from e
 
     def _subscribe_to_listing(self, listing_id: str, data_exchange_id: str) -> str:
         """
@@ -1923,10 +1972,10 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 raise PermissionError(
                     f"Permission denied accessing table {project_id}.{dataset_id}.{table_id}"
                 ) from e
-            raise ConnectionError(f"Unable to extract schema: {e}") from e
+            raise HubConnectionError(f"Unable to extract schema: {e}") from e
         except Exception as e:
             logger.error(f"Unexpected error extracting schema: {e}", exc_info=True)
-            raise ConnectionError(f"Failed to extract schema: {e}") from e
+            raise HubConnectionError(f"Failed to extract schema: {e}") from e
 
     def _map_bigquery_type(self, bigquery_type: str) -> str:
         """

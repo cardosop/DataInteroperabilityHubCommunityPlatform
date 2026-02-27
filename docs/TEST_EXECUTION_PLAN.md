@@ -1,7 +1,7 @@
 # Test Execution Plan
 
-**Document Version**: 1.1.0
-**Last Updated**: 2026-02-08
+**Document Version**: 1.2.0
+**Last Updated**: 2026-02-20
 **Status**: ✅ Active
 **Task**: Phase 1.3 - Test Execution Plan Documentation; gapfix1 Phase 2.1 - Six mandatory principles and test pyramid order (2.1.1, 2.1.2)
 
@@ -14,10 +14,11 @@
 3. [Test Execution Commands](#test-execution-commands)
 4. [Test Execution Order](#test-execution-order)
 5. [Parallelization Strategy](#parallelization-strategy)
-6. [CI/CD Integration](#cicd-integration)
-7. [Environment Configuration](#environment-configuration)
-8. [Troubleshooting](#troubleshooting)
-9. [Best Practices](#best-practices)
+6. [Test Isolation and Parallel Execution Constraints](#test-isolation-and-parallel-execution-constraints)
+7. [CI/CD Integration](#cicd-integration)
+8. [Environment Configuration](#environment-configuration)
+9. [Troubleshooting](#troubleshooting)
+10. [Best Practices](#best-practices)
 
 ---
 
@@ -47,6 +48,7 @@ These six principles are enforced throughout all test phases. Canonical source: 
 - **Performance Tests**: Load and performance tests (5-60 minutes per test)
 - **Concurrency Tests**: Race condition and thread safety tests (5-20 minutes per test)
 - **Regression Tests**: Existing functionality verification tests (5-30 seconds per test)
+- **Chaos Tests**: Resilience and failure-injection tests (manual only; 5–20 minutes). Not in CI or nightly.
 - **Frontend Unit Tests**: React component and utility tests (< 1 second per test)
 - **Frontend E2E Tests**: Playwright browser-based tests (30-300 seconds per test)
 
@@ -56,12 +58,21 @@ These six principles are enforced throughout all test phases. Canonical source: 
 
 ### Environment Setup
 
-1. **Python Environment**: Python 3.12+ with virtual environment activated
-2. **Django Settings**: `DJANGO_SETTINGS_MODULE=hub.settings` must be set
-3. **Database**: PostgreSQL database accessible (test database created automatically)
-4. **Redis**: Redis server running (for rate limiting and job queue tests)
-5. **Docker Compose**: For integration and E2E tests requiring services
-6. **Node.js**: Node.js 18+ for frontend tests
+**Backend tests (unit, integration, E2E, security, performance, concurrency, regression)** are run **inside Docker Compose** (see [Running tests in Docker](#running-tests-in-docker-recommended)). You need:
+
+**If some services stay in "Created" after `docker compose up -d`:** Run `./scripts/bring-up-test-stack.sh` to start api-service-test and dependents. Or run `docker compose -f docker-compose.test.yml up -d api-service-test` then `docker compose -f docker-compose.test.yml up -d` again.
+
+1. **Docker Compose**: Stack up (e.g. `docker compose -f docker-compose.test.yml up -d`). The API service container provides Python 3.12, Django, and pytest; no local Python env is required for running backend tests in Docker.
+2. **Compose file choice**: Use `docker-compose.test.yml` for test stack (`api-service-test`) or `docker-compose.dev.yml` for dev stack (`api-service`).
+
+**If you run backend tests on the host** (optional):
+
+3. **Python Environment**: Python 3.12+ with virtual environment activated
+4. **Django Settings**: `DJANGO_SETTINGS_MODULE=hub.settings` must be set
+5. **Database**: PostgreSQL accessible (test database created automatically by pytest)
+6. **Redis**: Redis running (for rate limiting and job queue tests)
+
+**Frontend tests**: Run on the host with Node.js 18+ (see [Frontend Unit Tests](#frontend-unit-tests) and [Frontend E2E Tests](#frontend-e2e-tests)).
 
 ### Required Packages
 
@@ -93,6 +104,8 @@ docker compose -f docker-compose.dev.yml up -d
 ./scripts/health-checks/health-check-all.sh
 ```
 
+**E2E test stack** (docker-compose.test.yml): Use `./scripts/health-checks/health-check-e2e.sh` to verify core services. See [E2E_ENVIRONMENT_REQUIREMENTS.md](E2E_ENVIRONMENT_REQUIREMENTS.md) for services per test group and [E2E_TEST_SEMANTICS.md](E2E_TEST_SEMANTICS.md) for test semantics (strict, environment-dependent, deferred). Assertion conventions: [TEST_ASSERTION_CONVENTIONS.md](TEST_ASSERTION_CONVENTIONS.md).
+
 ### Docker Compose and test runtime (integration and E2E)
 
 Integration and E2E tests require a running stack. Use one of the following so `pytest tests/integration/ -v --docker-compose-runtime` and E2E run consistently with no silent dependency gaps.
@@ -115,7 +128,7 @@ All three compose files provide at least:
 - **MinIO** (object storage for file tests)
 - **Worker service** (for job/queue tests when required)
 
-Optional for specific tests: Fuseki, semantic-service, dq-service, compliance-service, prefect-server, etc. Bring up the full stack or the minimal set required by the suite; see `docs/DOCKER_COMPOSE_DEPLOYMENT.md` for per-service startup.
+Optional for specific tests: Fuseki, semantic-service, dq-service, compliance-service, prefect-server, etc. **ODH Inference Scheduler** (`odh-inference-scheduler-test` in `docker-compose.test.yml`): required for ML real inference integration tests in `hub/apps/ml/tests/test_inference_real_integration.py`; when the scheduler is up and reachable (e.g. via `scripts/run_phase_12a_batched.sh` which includes it in `TEST_SERVICES`), those tests run; otherwise they skip at runtime. Bring up the full stack or the minimal set required by the suite; see `docs/DOCKER_COMPOSE_DEPLOYMENT.md` for per-service startup.
 
 #### Environment variable required for integration and E2E
 
@@ -139,7 +152,7 @@ PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/integration/ -v --docker-compose-ru
    - Dev: `docker compose -f docker-compose.dev.yml up -d`
    - Test: `COMPOSE_FILE=docker-compose.test.yml docker compose up -d`
    - Full: `docker compose -f docker-compose.yml up -d`
-2. **Wait for services** (e.g. health checks or `docker compose ps`).
+2. **Wait for services** (e.g. `./scripts/health-checks/health-check-e2e.sh` for test stack, or `./scripts/health-checks/health-check-all.sh` for dev/full, or `docker compose ps`).
 3. **Run tests** with `PYTEST_DOCKER_COMPOSE_RUNTIME=1` and `--docker-compose-runtime` as in this document.
 
 Phase 12A scripts (`scripts/run_phase_12a_backend_suites.sh`, `scripts/run_phase_12a_full_suites.sh`) assume the stack is already up and use the default compose file unless `COMPOSE_FILE` is set; when `COMPOSE_FILE=docker-compose.test.yml` they use the `api-service-test` service name so integration and E2E run consistently against the test stack.
@@ -148,59 +161,104 @@ Phase 12A scripts (`scripts/run_phase_12a_backend_suites.sh`, `scripts/run_phase
 
 ## Test Execution Commands
 
+All backend tests (unit, integration, E2E, security, performance, concurrency, regression) are intended to run **inside Docker Compose** so the same environment, dependencies, and DB are used as in CI and Phase 12A scripts. Commands below use the **Docker (recommended)** form first; optional **On host** forms are for when you run pytest on your machine against an already-up stack.
+
+### Running tests in Docker (recommended)
+
+**Prerequisites**: Stack must be up (e.g. `docker compose -f docker-compose.test.yml up -d` or `docker compose -f docker-compose.dev.yml up -d`).
+
+**Convention**:
+- **Test stack**: `COMPOSE_FILE=docker-compose.test.yml`, service name `api-service-test`
+- **Dev stack**: `COMPOSE_FILE=docker-compose.dev.yml`, service name `api-service`
+
+**Generic form** (set `API_SVC` to `api-service-test` or `api-service` to match your compose file):
+```bash
+docker compose -f "${COMPOSE_FILE:-docker-compose.test.yml}" exec -T "${API_SVC:-api-service-test}" bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest <path> <pytest-args>"
+```
+
+**One-liner for test stack** (default):
+```bash
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest <path> <args>"
+```
+
+**One-liner for dev stack**:
+```bash
+docker compose -f docker-compose.dev.yml exec -T api-service bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest <path> <args>"
+```
+
+Phase 12A scripts (`scripts/run_phase_12a_backend_suites.sh`, `scripts/run_phase_12a_full_suites.sh`) use this pattern with the test stack by default.
+
+---
+
 ### Unit Tests
 
 **Description**: Fast, isolated tests for individual components, business logic, and utilities.
 
-**Command**:
+**Command** (Docker — recommended):
 ```bash
-pytest hub/apps/*/tests/test_*.py -v --cov=hub --cov-report=html --cov-report=term
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest hub/apps/ tests/unit/ -v -m \"not integration and not e2e\" --reuse-db --timeout=300 --cov=hub --cov-report=html --cov-report=term"
 ```
 
-**CI/CD Command** (with XML and JUnit reports):
+**CI/CD Command** (Docker, with XML and JUnit reports):
 ```bash
-pytest hub/apps/*/tests/test_*.py -v \
-  --cov=hub \
-  --cov-report=xml \
-  --cov-report=term-missing \
-  --cov-report=html \
-  --junit-xml=unit-test-results.xml \
-  --tb=short
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest hub/apps/ tests/unit/ -v -m \"not integration and not e2e\" --reuse-db --timeout=300 --cov=hub --cov-report=xml --cov-report=term-missing --cov-report=html --junit-xml=/tmp/junit_unit.xml --tb=short"
 ```
 
-**With Markers**:
+**With Markers** (Docker):
 ```bash
-pytest hub/apps/*/tests/test_*.py -v -m unit --cov=hub --cov-report=html
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest hub/apps/ tests/unit/ -v -m unit --reuse-db --cov=hub --cov-report=html"
 ```
 
-**Specific App**:
+**Specific App** (Docker):
 ```bash
-pytest hub/apps/assets/tests/ -v --cov=hub.apps.assets --cov-report=html
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest hub/apps/assets/tests/ -v --reuse-db --cov=hub.apps.assets --cov-report=html"
 ```
 
-**Specific Test File**:
+**Specific Test File** (Docker):
 ```bash
-pytest hub/apps/assets/tests/test_asset_crud.py -v
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest hub/apps/assets/tests/test_asset_crud.py -v --reuse-db"
 ```
 
-**Specific Test Class/Method**:
+**Specific Test Class/Method** (Docker):
 ```bash
-pytest hub/apps/assets/tests/test_asset_crud.py::TestAssetCRUD::test_create_asset -v
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest hub/apps/assets/tests/test_asset_crud.py::TestAssetCRUD::test_create_asset -v --reuse-db"
 ```
 
-**Parallel Execution**:
+**Parallel Execution** (Docker):
 ```bash
-pytest hub/apps/*/tests/test_*.py -v -n auto --cov=hub --cov-report=html
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest hub/apps/ tests/unit/ -v -m \"not integration and not e2e\" --reuse-db -n auto --cov=hub --cov-report=html"
 ```
 
-**Exclude Integration/E2E**:
+**Exclude Integration/E2E** (Docker):
 ```bash
-pytest hub/apps/*/tests/test_*.py -v -m "unit and not integration and not e2e" --cov=hub
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest hub/apps/ tests/unit/ -v -m \"unit and not integration and not e2e\" --reuse-db --cov=hub"
 ```
 
-**Duration**: 5-10 minutes
+**On host** (when stack is up; requires `PYTHONPATH`, `DJANGO_SETTINGS_MODULE`, and DB reachable):
+```bash
+pytest hub/apps/ tests/unit/ -v -m "not integration and not e2e" --cov=hub --cov-report=html --cov-report=term
+```
+
+**Duration**: 5-10 minutes (batched+parallel); 30+ min (sequential full suite)
 **Per Test**: < 1 second
 **Parallel**: Yes (recommended)
+
+**Batched + Parallel (Phase 12A backend script)**:
+`scripts/run_phase_12a_backend_suites.sh` runs unit tests in **25 batches** with **pytest-xdist** (`-n 4` by default) for ~18k tests. Set `PYTEST_PARALLEL_WORKERS=0` to disable parallel; `PYTEST_PARALLEL_WORKERS=8` for more workers. **Slowness**: Each batch starts a new pytest process (Django init + DB check). See [TEST_SLOWNESS_INVESTIGATION.md](TEST_SLOWNESS_INVESTIGATION.md) for root causes and mitigations (e.g. `./scripts/setup_test_db.sh`, `SKIP_DB_CONNECTIVITY_CHECK` for batches 2+).
+
+```bash
+# Default: 4 workers, batched
+./scripts/run_phase_12a_backend_suites.sh
+
+# Sequential (no parallel)
+PYTEST_PARALLEL_WORKERS=0 ./scripts/run_phase_12a_backend_suites.sh
+
+# More workers
+PYTEST_PARALLEL_WORKERS=8 ./scripts/run_phase_12a_backend_suites.sh
+```
+
+**Batched execution (incremental fix cycle)**:
+`scripts/run_phase_12a_batched.sh` runs tests in batches by app/module; supports `--batch=N`, `--start-from=N`. Also uses `PYTEST_PARALLEL_WORKERS` (default 4). Use `scripts/split_batches_to_cap.py --max 200` to generate smaller batches.
 
 ---
 
@@ -208,46 +266,57 @@ pytest hub/apps/*/tests/test_*.py -v -m "unit and not integration and not e2e" -
 
 **Description**: Tests for API endpoints, service interactions, and cross-service integration.
 
-**Command** (with Docker Compose runtime):
+**Command** (Docker — recommended):
+```bash
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && LOG_LEVEL=WARNING PYTHONUNBUFFERED=1 PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/integration/ -v --docker-compose-runtime --reuse-db --timeout=600"
+```
+
+**With Coverage** (Docker):
+```bash
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/integration/ -v --docker-compose-runtime --reuse-db --timeout=600 --cov=hub --cov-report=html --cov-report=xml"
+```
+
+**CI/CD Command** (Docker, with XML and JUnit reports):
+```bash
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/integration/ -v --docker-compose-runtime --reuse-db --timeout=600 --cov=hub --cov-append --cov-report=xml --cov-report=html --junit-xml=/tmp/junit_integration.xml --tb=short"
+```
+
+**Specific Integration Test** (Docker):
+```bash
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/integration/test_auth_apis_comprehensive.py -v --docker-compose-runtime --reuse-db"
+```
+
+**With Markers** (Docker):
+```bash
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/integration/ -v -m \"integration and docker_compose_runtime\" --docker-compose-runtime --reuse-db"
+```
+
+**Parallel Execution** (Docker; use with caution — some tests need sequential run):
+```bash
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && LOG_LEVEL=WARNING PYTHONUNBUFFERED=1 PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/integration/ -v --docker-compose-runtime --reuse-db -n 4 --timeout=600"
+```
+
+**Batched Execution** (Docker — recommended for incremental runs):
+```bash
+# Run all integration batches (15 batches by domain)
+./scripts/run_integration_tests_batched.sh
+
+# Run from batch N to end
+./scripts/run_integration_tests_batched.sh --start-from=5
+
+# Run only batch N
+./scripts/run_integration_tests_batched.sh --batch=3
+
+# List batch definitions
+./scripts/run_integration_tests_batched.sh --list-batches
+```
+Batches: 1 Auth & Platform, 2 Assets & Contracts, 3 Marketplace, 4 Jobs & Workers, 5 Compliance & DQ, 6 Files & Storage, 7 Monitoring & Observability, 8 Redis & Event Bus, 9 API & REST, 10 Health Search Billing, 11 ODPS Semantic Lineage, 12 Docker & Kubernetes, 13 Scheduled Workflow Notifications, 14 Use Cases & Documentation, 15 Cross-service & Misc. Reports: `test_reports_integration/<date>/batches/`.
+
+**If pytest appears to hang** (no output for 2–3 min): Add `PYTHONUNBUFFERED=1` and `LOG_LEVEL=WARNING` so output streams immediately. Conftest load + collection of ~159 integration files can take 2–5 min; you should see "Starting pytest (integration/E2E)..." and "Collecting tests..." within seconds. Try without `-n` first; use `-n 4` instead of `-n auto` if workers cause issues.
+
+**On host** (when stack is up; set `PYTEST_DOCKER_COMPOSE_RUNTIME=1`):
 ```bash
 PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/integration/ -v --docker-compose-runtime
-```
-
-**Command** (services already running):
-```bash
-pytest tests/integration/ -v
-```
-
-**With Coverage**:
-```bash
-PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/integration/ -v --docker-compose-runtime --cov=hub --cov-report=html
-```
-
-**CI/CD Command** (with XML and JUnit reports, append coverage):
-```bash
-PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/integration/ -v --docker-compose-runtime \
-  --cov=hub \
-  --cov-report=xml \
-  --cov-report=term-missing \
-  --cov-report=html \
-  --cov-append \
-  --junit-xml=integration-test-results.xml \
-  --tb=short
-```
-
-**Specific Integration Test**:
-```bash
-pytest tests/integration/test_auth_apis_comprehensive.py -v --docker-compose-runtime
-```
-
-**With Markers**:
-```bash
-pytest tests/integration/ -v -m "integration and docker_compose_runtime" --docker-compose-runtime
-```
-
-**Parallel Execution** (where possible):
-```bash
-PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/integration/ -v --docker-compose-runtime -n auto
 ```
 
 **Note**: Some integration tests may require sequential execution due to shared state or resource constraints.
@@ -262,54 +331,42 @@ PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/integration/ -v --docker-compose-ru
 
 **Description**: End-to-end tests for complete user journeys and full-stack workflows.
 
-**Command** (with Docker Compose runtime):
+**Command** (Docker — recommended):
 ```bash
-PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/e2e/ -v --docker-compose-runtime
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/ -v --docker-compose-runtime --reuse-db --timeout=900"
 ```
 
-**Command** (services already running):
+**With Coverage** (Docker):
 ```bash
-pytest tests/e2e/ -v
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/ -v --docker-compose-runtime --reuse-db --timeout=900 --cov=hub --cov-report=html --cov-report=xml"
 ```
 
-**With Coverage**:
+**CI/CD Command** (Docker, with XML and JUnit reports):
 ```bash
-PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/e2e/ -v --docker-compose-runtime --cov=hub --cov-report=html
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/ -v --docker-compose-runtime --reuse-db --timeout=900 --cov=hub --cov-append --cov-report=xml --cov-report=html --junit-xml=/tmp/junit_e2e.xml --tb=short"
 ```
 
-**CI/CD Command** (with XML and JUnit reports, append coverage):
+**Specific E2E Test** (Docker):
 ```bash
-PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/e2e/ -v --docker-compose-runtime \
-  --cov=hub \
-  --cov-report=xml \
-  --cov-report=term-missing \
-  --cov-report=html \
-  --cov-append \
-  --junit-xml=e2e-test-results.xml \
-  --tb=short
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/test_marketplace_comprehensive.py -v --docker-compose-runtime --reuse-db"
 ```
 
-**Specific E2E Test**:
-```bash
-pytest tests/e2e/test_marketplace_comprehensive.py -v --docker-compose-runtime
-```
-
-**E2E Batches** (for parallel execution):
+**E2E Batches** (Docker):
 ```bash
 # Batch 1: Core API, Contracts, Assets
-pytest tests/e2e/ -v -m e2e_batch1 --docker-compose-runtime
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/ -v -m e2e_batch1 --docker-compose-runtime --reuse-db"
 
-# Batch 2: Worker Service, Jobs, DQ, Compliance
-pytest tests/e2e/ -v -m e2e_batch2 --docker-compose-runtime
+# Batch 2–5: similarly, replace e2e_batch1 with e2e_batch2, e2e_batch3, e2e_batch4, e2e_batch5
+```
 
-# Batch 3: Email, Notifications, Rate Limiting
-pytest tests/e2e/ -v -m e2e_batch3 --docker-compose-runtime
+**Sequential with fail-fast** (Docker):
+```bash
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/ -v --docker-compose-runtime --reuse-db -x"
+```
 
-# Batch 4: Tenant Config, Personas, CLI
-pytest tests/e2e/ -v -m e2e_batch4 --docker-compose-runtime
-
-# Batch 5: Marketplace, Semantic, Monitoring, Edge Cases
-pytest tests/e2e/ -v -m e2e_batch5 --docker-compose-runtime
+**On host** (when stack is up):
+```bash
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/e2e/ -v --docker-compose-runtime
 ```
 
 **E2E in CI vs E2E workflow (Gap 11)**: Backend E2E (`tests/e2e/`) runs in **two places** by design:
@@ -321,11 +378,6 @@ pytest tests/e2e/ -v -m e2e_batch5 --docker-compose-runtime
 
 We do **not** deduplicate into one place: the CI gate keeps a single job for developer feedback; the E2E workflow provides extended E2E (Prefect, scheduled flows) and can be run on demand. See [.github/workflows/README.md](../.github/workflows/README.md).
 
-**Sequential Execution** (recommended for full stack):
-```bash
-PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/e2e/ -v --docker-compose-runtime -x
-```
-
 **Duration**: 30-60 minutes
 **Per Test**: 30-300 seconds
 **Parallel**: Sequential recommended (full stack)
@@ -336,35 +388,34 @@ PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/e2e/ -v --docker-compose-runtime -x
 
 **Description**: Security and vulnerability tests for authentication, authorization, secrets, CORS, and security features.
 
-**Command**:
+**Command** (Docker — recommended):
+```bash
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/security/ -v -m security --reuse-db --timeout=600"
+```
+
+**CI/CD Command** (Docker, with XML and JUnit reports):
+```bash
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/security/ -v -m security --reuse-db --timeout=600 --cov=hub --cov-append --cov-report=xml --cov-report=term-missing --junit-xml=/tmp/junit_security.xml --tb=short"
+```
+
+**With Verbose Output** (Docker):
+```bash
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/security/ -v -m security --reuse-db --tb=long"
+```
+
+**Specific Security Test** (Docker):
+```bash
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/security/test_security_features.py -v --reuse-db"
+```
+
+**Parallel Execution** (Docker):
+```bash
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/security/ -v -m security --reuse-db -n auto"
+```
+
+**On host** (when stack is up):
 ```bash
 pytest tests/security/ -v -m security
-```
-
-**CI/CD Command** (with XML and JUnit reports):
-```bash
-pytest tests/security/ -v -m security \
-  --cov=hub \
-  --cov-report=xml \
-  --cov-report=term-missing \
-  --cov-append \
-  --junit-xml=security-test-results.xml \
-  --tb=short
-```
-
-**With Verbose Output**:
-```bash
-pytest tests/security/ -v -m security --tb=long
-```
-
-**Specific Security Test**:
-```bash
-pytest tests/security/test_security_features.py -v
-```
-
-**Parallel Execution**:
-```bash
-pytest tests/security/ -v -m security -n auto
 ```
 
 **Duration**: 10-20 minutes
@@ -377,55 +428,67 @@ pytest tests/security/ -v -m security -n auto
 
 **Description**: Load and performance tests using Locust for throughput, latency, and resource utilization.
 
-**Prerequisites**:
+**Prerequisites**: Stack must be up (API reachable). For test stack, API is on port 8001; for dev stack, 8000.
+
+**Command** (Docker — pytest performance tests):
 ```bash
-# Start API server
-python hub/manage.py runserver
-
-# Create test users (optional)
-python tests/performance/setup_test_users.py
-
-# Or set environment variables
-export PERF_TEST_USER_EMAIL=perf-test@example.com
-export PERF_TEST_USER_PASSWORD=perf-test-password-123
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/performance/ -v -m performance --reuse-db --timeout=600"
 ```
 
-**Command** (using pytest):
+**With Baseline Comparison** (Docker):
 ```bash
-pytest tests/performance/ -v -m performance
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/performance/ -v -m performance --reuse-db --performance-baseline"
 ```
 
-**Command** (using Locust script - recommended):
+**Batched Execution** (Docker — pytest performance tests):
 ```bash
-# Run all performance tests
-./tests/performance/run_performance_tests.sh
+# Run all performance batches (9 batches by domain)
+./scripts/run_performance_tests_batched.sh
+
+# Run from batch N to end
+./scripts/run_performance_tests_batched.sh --start-from=5
+
+# Run only batch N
+./scripts/run_performance_tests_batched.sh --batch=3
+
+# List batch definitions
+./scripts/run_performance_tests_batched.sh --list-batches
+```
+Batches: 1 Core & Health, 2 Data & Versioning, 3 Marketplace & ODPS, 4 Compliance & Governance, 5 AI ML Workflows, 6 Lineage & Integrations, 7 Webhooks Social Export, 8 CLI & SDK, 9 Baseline & Misc. Reports: `test_reports_performance/<date>/batches/`.
+
+**Locust Batches** (run from host; one type per run):
+```bash
+# Run Locust tests in batches by type (file, job, db, api)
+TEST_TYPE=file API_HOST=http://localhost:8001 ./tests/performance/run_performance_tests.sh
+TEST_TYPE=job API_HOST=http://localhost:8001 ./tests/performance/run_performance_tests.sh
+TEST_TYPE=db API_HOST=http://localhost:8001 ./tests/performance/run_performance_tests.sh
+TEST_TYPE=api API_HOST=http://localhost:8001 ./tests/performance/run_performance_tests.sh
+```
+
+**Locust / run script** (run from repo root; API must be reachable):
+```bash
+# Run all performance tests (host)
+API_HOST=http://localhost:8001 ./tests/performance/run_performance_tests.sh
 
 # Run specific test type
-TEST_TYPE=api ./tests/performance/run_performance_tests.sh
-TEST_TYPE=file ./tests/performance/run_performance_tests.sh
-TEST_TYPE=job ./tests/performance/run_performance_tests.sh
-TEST_TYPE=db ./tests/performance/run_performance_tests.sh
+TEST_TYPE=api API_HOST=http://localhost:8001 ./tests/performance/run_performance_tests.sh
+```
+If `locust` is not installed on the host, the script runs Locust inside Docker (api-service-test has locust). Use `API_HOST=http://localhost:8001` (test stack) or `http://localhost:8000` (dev) for auto Docker fallback. To run Locust on host: `pip install locust` or `pip install -r requirements-dev.txt`.
+
+**Custom Parameters** (host):
+```bash
+API_HOST=http://localhost:8001 USERS=100 SPAWN_RATE=10 RUN_TIME=10m TEST_TYPE=all ./tests/performance/run_performance_tests.sh
 ```
 
-**Custom Parameters**:
+**Interactive Locust UI** (host; point to API):
 ```bash
-API_HOST=http://localhost:8000 \
-USERS=100 \
-SPAWN_RATE=10 \
-RUN_TIME=10m \
-TEST_TYPE=all \
-./tests/performance/run_performance_tests.sh
-```
-
-**Interactive Locust UI**:
-```bash
-locust -f tests/performance/locustfile.py --host=http://localhost:8000
+locust -f tests/performance/locustfile.py --host=http://localhost:8001
 # Then open http://localhost:8089 in browser
 ```
 
-**With Baseline Comparison**:
+**On host** (pytest only, when stack is up):
 ```bash
-pytest tests/performance/ -v -m performance --performance-baseline
+pytest tests/performance/ -v -m performance
 ```
 
 **Duration**: 60-120 minutes
@@ -440,24 +503,29 @@ pytest tests/performance/ -v -m performance --performance-baseline
 
 **Note**: Concurrency tests are integrated into other test suites (unit, integration, E2E) rather than having a dedicated directory. They are marked with appropriate markers.
 
-**Command** (from unit tests):
+**Command** (Docker — from unit tests):
 ```bash
-pytest hub/apps/*/tests/test_*.py -v -m "unit and concurrency"
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest hub/apps/ tests/unit/ -v -m \"unit and concurrency\" --reuse-db"
 ```
 
-**Command** (from integration tests):
+**Command** (Docker — from integration tests):
 ```bash
-pytest tests/integration/ -v -m "integration and concurrency" --docker-compose-runtime
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/integration/ -v -m \"integration and concurrency\" --docker-compose-runtime --reuse-db"
 ```
 
-**Command** (from E2E tests):
+**Command** (Docker — from E2E tests):
 ```bash
-pytest tests/e2e/ -v -m "e2e and concurrency" --docker-compose-runtime
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/ -v -m \"e2e and concurrency\" --docker-compose-runtime --reuse-db"
 ```
 
-**Sequential Execution** (required for concurrency testing):
+**Sequential Execution** (Docker; required for concurrency testing):
 ```bash
-pytest hub/apps/*/tests/test_*.py -v -m concurrency
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest hub/apps/ tests/unit/ -v -m concurrency --reuse-db"
+```
+
+**On host** (when stack is up):
+```bash
+pytest hub/apps/ tests/unit/ -v -m concurrency
 ```
 
 **Duration**: 20-40 minutes
@@ -470,24 +538,29 @@ pytest hub/apps/*/tests/test_*.py -v -m concurrency
 
 **Description**: Tests to verify existing functionality hasn't regressed after changes.
 
-**Command**:
+**Command** (Docker — recommended):
+```bash
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/regression/ -v -m regression --reuse-db --timeout=600"
+```
+
+**With Coverage** (Docker):
+```bash
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/regression/ -v -m regression --reuse-db --cov=hub --cov-report=html"
+```
+
+**Specific Regression Test** (Docker):
+```bash
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/regression/test_api_endpoints.py -v --reuse-db"
+```
+
+**Parallel Execution** (Docker; where possible):
+```bash
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/regression/ -v -m regression --reuse-db -n auto"
+```
+
+**On host** (when stack is up):
 ```bash
 pytest tests/regression/ -v -m regression
-```
-
-**With Coverage**:
-```bash
-pytest tests/regression/ -v -m regression --cov=hub --cov-report=html
-```
-
-**Specific Regression Test**:
-```bash
-pytest tests/regression/test_api_endpoints.py -v
-```
-
-**Parallel Execution** (where possible):
-```bash
-pytest tests/regression/ -v -m regression -n auto
 ```
 
 **Duration**: 30-60 minutes
@@ -498,9 +571,9 @@ pytest tests/regression/ -v -m regression -n auto
 
 ### Frontend Unit Tests
 
-**Description**: React component tests, utility tests, and frontend logic tests using Vitest.
+**Description**: React component tests, utility tests, and frontend logic tests using Vitest. These run **on the host** (Node/npm); no Docker required unless the project adds a frontend test container.
 
-**Command**:
+**Command** (on host):
 ```bash
 cd frontend && npm test
 ```
@@ -529,25 +602,30 @@ cd frontend && npm test -- src/components/AssetCard.test.tsx
 **Per Test**: < 1 second
 **Parallel**: Yes (default)
 
----
+**Frontend Coverage Improvement Plan** (Task 7.11.3; see `frontend/vitest.config.ts`):
+- Current thresholds: lines 10%, statements 10%, functions 52%, branches 60% (set so CI passes).
+- Short-term: Q1 — lines/statements 20%, functions 60%, branches 65%; Q2 — lines/statements 40%, functions 70%, branches 70%.
+- Target: 80% across all metrics. Raise thresholds as tests are added; run `npm run test:coverage:check` to enforce.
 
+---
+""
 ### Frontend E2E Tests
 
-**Description**: Browser-based end-to-end tests using Playwright for complete user journeys.
+**Description**: Browser-based end-to-end tests using Playwright for complete user journeys. These run **on the host** (Node/Playwright); backend and frontend must be up (Docker for backend, dev server for frontend).
 
 **Prerequisites**:
 ```bash
 # Install Playwright browsers (first time only)
 cd frontend && npx playwright install
 
-# Start backend services
+# Start backend services (Docker)
 docker compose -f docker-compose.dev.yml up -d
 
 # Start frontend dev server (in separate terminal)
 cd frontend && npm run dev
 ```
 
-**Command**:
+**Command** (on host):
 ```bash
 cd frontend && npm run test:e2e
 ```
@@ -577,19 +655,57 @@ cd frontend && npm run test:e2e -- e2e/journeys/auth/JOURNEY-AUTH-001.spec.ts
 cd frontend && npm run test:e2e:routes
 ```
 
-**Batch Execution**:
+**Batch Execution** (iterate-and-fix cycles):
+
+Full suite (~1924 tests) split into 7 batches for run → fix → rerun cycles. The same ~642 unique tests run 3× across projects (chromium, visible, chromium-routes).
+
 ```bash
-# Batch 1
-cd frontend && npm run test:e2e:routes:batch1
+# List batch definitions
+cd frontend && npm run test:e2e:batches:list
 
-# Batch 2
-cd frontend && npm run test:e2e:routes:batch2
+# Run individual batches (matches full run scope)
+cd frontend && npm run test:e2e:batch1   # auth, setup, cross-cutting (79)
+cd frontend && npm run test:e2e:batch2   # routes: contracts, marketplace, dq, mesh, integrations, admin (121)
+cd frontend && npm run test:e2e:batch3   # DPO journeys (253)
+cd frontend && npm run test:e2e:batch4   # auth, DC, DE journeys (376)
+cd frontend && npm run test:e2e:batch5   # TA, PA, Dev, Aud journeys (352)
+cd frontend && npm run test:e2e:batch6   # CPO, DS, DMO, DA, CM, Marketplace journeys (364)
+cd frontend && npm run test:e2e:batch7   # features, phase specs, governance, scheduled (400)
 
-# Batch 3
-cd frontend && npm run test:e2e:routes:batch3
+# Faster iteration (single project, ~642 total)
+E2E_PROJECT=chromium npm run test:e2e:batch1   # ~27 tests
 ```
 
-**Duration**: 30-60 minutes
+**Route-only batches** (subset of batch 2; chromium-routes project):
+
+```bash
+cd frontend && npm run test:e2e:routes:batch1   # contracts-odps + marketplace-dc
+cd frontend && npm run test:e2e:routes:batch2   # dq-compliance + mesh-search-ai
+cd frontend && npm run test:e2e:routes:batch3   # integrations + admin + alternate-flows
+```
+
+**Dual verification (backend + frontend)** — prevents false positives:
+
+Success tests must verify both backend (API 2xx) and frontend (no error UI, expected content). Use `assertSuccessfulLoad()` from `e2e/fixtures/helpers.ts`:
+
+```typescript
+// Start API listener BEFORE navigation
+const apiPromise = page.waitForResponse(
+  (r) => r.url().includes('/contracts') && r.request().method() === 'GET',
+  { timeout: 60000 }
+);
+await page.goto('/contracts');
+await waitForAppMainReady(page, { ... });
+await assertSuccessfulLoad(page, {
+  apiResponsePromise: apiPromise,
+  successContentSelector: '.contract-list-page, .empty-state',
+  rejectErrorDisplay: true,
+});
+```
+
+See `frontend/e2e/journeys/contracts-odps/contracts-odps-routes.spec.ts` for the pattern. New route tests should adopt this pattern.
+
+**Duration**: 30-60 minutes (full suite); ~5–15 minutes per batch
 **Per Test**: 30-300 seconds
 **Parallel**: Sequential recommended (browser-based)
 
@@ -597,32 +713,42 @@ cd frontend && npm run test:e2e:routes:batch3
 
 ### Full Test Suite
 
-**Description**: Run all backend tests (unit + integration + E2E + security + regression).
+**Description**: Run all backend tests (unit + integration + E2E + security + regression). Use the Phase 12A script for the full orchestrated run (backend in Docker, then smoke, frontend, 12A.3).
 
-**Command**:
+**Command** (Docker — backend only; recommended):
 ```bash
-PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/ -v --docker-compose-runtime --cov=hub --cov-report=html --cov-report=term
+# Unit
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest hub/apps/ tests/unit/ -v -m \"not integration and not e2e\" --reuse-db --cov=hub --cov-report=html --cov-report=term"
+# Integration
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/integration/ -v --docker-compose-runtime --reuse-db --cov=hub --cov-append --cov-report=html"
+# E2E
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/ -v --docker-compose-runtime --reuse-db --cov=hub --cov-append --cov-report=html"
+# Security, regression (and optionally performance): use same exec pattern for tests/security/, tests/regression/
 ```
 
-**CI/CD Command** (with XML and JUnit reports):
+**Single script (all backend suites in Docker)**:
 ```bash
-PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/ -v --docker-compose-runtime \
-  --cov=hub \
-  --cov-report=xml \
-  --cov-report=term-missing \
-  --cov-report=html \
-  --junit-xml=test-results.xml \
-  --tb=short
+# Prerequisite: docker compose -f docker-compose.test.yml up -d
+./scripts/run_phase_12a_backend_suites.sh
 ```
 
-**Excluding Performance**:
+**Full Phase 12A (backend + smoke + frontend + security/performance/concurrency/regression)**:
 ```bash
-PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/ -v --docker-compose-runtime -m "not performance" --cov=hub --cov-report=html
+# Prerequisite: docker compose -f docker-compose.test.yml up -d
+./scripts/run_phase_12a_full_suites.sh
 ```
 
-**With JSON Report**:
+**CI/CD-style** (Docker, with XML and JUnit; run each suite and merge artifacts):
 ```bash
-PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/ -v --docker-compose-runtime --cov=hub --cov-report=html --json-report --json-report-file=test-results.json
+COMPOSE_FILE=docker-compose.test.yml ./scripts/run_phase_12a_backend_suites.sh
+# JUnit/coverage artifacts are under test_reports_comprehensive/<date>/unit|integration|e2e/
+```
+
+**Excluding Performance** (Docker): Omit the performance suite or run with `-m "not performance"` when invoking pytest for the full path.
+
+**On host** (when stack is up):
+```bash
+PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/ -v --docker-compose-runtime -m "not performance" --cov=hub --cov-report=html --cov-report=term
 ```
 
 **Duration**: 60-120 minutes
@@ -653,7 +779,7 @@ Tests should be executed in the following order to maximize efficiency and catch
 #### 1. Unit Tests (First)
 - **Rationale**: Fast, no dependencies, catch quick failures early
 - **Duration**: 5-10 minutes (target &lt; 15–20 min; split into multiple jobs if needed)
-- **Command (canonical)**: `pytest hub/apps/ tests/unit/ -v -m "not integration and not e2e" --cov=hub --cov-report=xml --cov-report=term-missing --junit-xml=unit-test-results.xml --tb=short`
+- **Command (canonical, Docker)**: `docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest hub/apps/ tests/unit/ -v -m \"not integration and not e2e\" --reuse-db --cov=hub --cov-report=xml --cov-report=term-missing --junit-xml=/tmp/junit_unit.xml --tb=short"`
 - **Exclusion**: The unit phase does **not** include `tests/integration/` or `tests/e2e/` (path-based). Tests under `hub/apps/` that are marked `integration` or `e2e` are excluded by marker `-m "not integration and not e2e"` so the unit job stays fast. See Gap #1 (task 1.3) in GAP_FIX_AND_FULL_TEST_EXECUTION_PLAN.md.
 - **Parallel**: Yes
 - **Stop on Failure**: Optional (`-x` flag)
@@ -661,53 +787,63 @@ Tests should be executed in the following order to maximize efficiency and catch
 #### 2. Integration Tests (Second)
 - **Rationale**: Service dependencies required, verify API endpoints and service interactions
 - **Duration**: 15-30 minutes
-- **Command**: `PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/integration/ -v --docker-compose-runtime`
+- **Command (Docker)**: `PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/integration/ -v --docker-compose-runtime --reuse-db"`
 - **Parallel**: Yes (where possible)
-- **Prerequisites**: Docker Compose services running
-- **CI (Gap #3, task 1.7):** In `.github/workflows/ci.yml`, the "Run integration tests" step sets `PYTEST_DOCKER_COMPOSE_RUNTIME=1` and passes `--docker-compose-runtime` so integration tests that require the compose runtime are not skipped for wrong env. CI uses GitHub Actions services (postgres, redis) and docker-run microservices (datacontract, dq, compliance, semantic, worker) on localhost; tests that need full docker-compose networking may still skip or fail in CI. **Alignment with local:** For local runs use `docker-compose.test.yml` (e.g. `docker compose -f docker-compose.test.yml up -d`), then run the same command with `PYTEST_DOCKER_COMPOSE_RUNTIME=1` and `--docker-compose-runtime` so the same set of integration tests runs. See [Environment Configuration](#environment-configuration) and the variable `PYTEST_DOCKER_COMPOSE_RUNTIME` in the table there.
+- **Prerequisites**: Docker Compose services running (`docker compose -f docker-compose.test.yml up -d`)
+- **CI (Gap #3, task 1.7):** In `.github/workflows/ci.yml`, the "Run integration tests" step sets `PYTEST_DOCKER_COMPOSE_RUNTIME=1` and passes `--docker-compose-runtime`. **Alignment with local:** Use the Docker command above so the same set of integration tests runs. See [Environment Configuration](#environment-configuration) and the variable `PYTEST_DOCKER_COMPOSE_RUNTIME` in the table there.
 
 #### 3. E2E Tests (Third)
 - **Rationale**: Full stack required, verify complete user journeys
 - **Duration**: 30-60 minutes
-- **Command**: `PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest tests/e2e/ -v --docker-compose-runtime`
+- **Command (Docker)**: `PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/ -v --docker-compose-runtime --reuse-db"`
 - **Parallel**: Sequential recommended
 - **Prerequisites**: All services running
 
 #### 4. Security Tests (Fourth - Parallel with E2E)
 - **Rationale**: Can run in parallel with E2E tests, independent verification
 - **Duration**: 10-20 minutes
-- **Command**: `pytest tests/security/ -v -m security`
+- **Command (Docker)**: `docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/security/ -v -m security --reuse-db"`
 - **Parallel**: Yes
 - **Can Run With**: E2E tests (parallel)
 
 #### 5. Performance Tests (Fifth)
 - **Rationale**: Long-running, resource intensive, verify performance targets
 - **Duration**: 60-120 minutes
-- **Command**: `./tests/performance/run_performance_tests.sh`
+- **Command**: Pytest performance tests in Docker: `docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/performance/ -v -m performance --reuse-db"`. Locust/script: from host with `API_HOST=http://localhost:8001 ./tests/performance/run_performance_tests.sh`
 - **Parallel**: Sequential (resource intensive)
-- **Prerequisites**: API server running, test users created
+- **Prerequisites**: API server running (stack up), test users created if required
 
 #### 6. Concurrency Tests (Sixth)
 - **Rationale**: Test concurrency behavior, requires sequential execution
 - **Duration**: 20-40 minutes
-- **Command**: `pytest hub/apps/*/tests/test_*.py tests/integration/ -v -m concurrency`
+- **Command (Docker)**: `docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest hub/apps/ tests/unit/ -v -m concurrency --reuse-db"`
 - **Parallel**: Sequential (test concurrency)
 - **Note**: Integrated into other test suites
 
 #### 7. Regression Tests (Seventh)
 - **Rationale**: Verify existing functionality hasn't regressed
 - **Duration**: 30-60 minutes
-- **Command**: `pytest tests/regression/ -v -m regression`
+- **Command (Docker)**: `docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/regression/ -v -m regression --reuse-db"`
 - **Parallel**: Yes (where possible)
 - **Run After**: All other tests pass
+
+#### Chaos tests (manual only)
+
+Chaos tests are **manual only**: they are **not** run in CI or in nightly workflows. See [RUNBOOKS.md — Chaos tests (manual only)](RUNBOOKS.md#chaos-tests-manual-only) for the full runbook.
+
+- **When to run**: Pre-release, after major orchestration or workflow changes, or during incident investigation when validating resilience.
+- **Command (Docker)**: `docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/chaos/ -v --tb=short --reuse-db"`
+- **Required environment**: Docker Compose stack (`docker-compose.test.yml` or `docker-compose.dev.yml`); PostgreSQL, Redis, API service. Same minimal services as integration/E2E per [Docker Compose and test runtime](#docker-compose-and-test-runtime-integration-and-e2e).
+- **Duration**: Typically 5–20 minutes (ODPS workflow chaos and any future chaos scenarios).
+- **CI / Nightly**: **Excluded**. Chaos tests are not part of `ci.yml`, `phase-12a-nightly.yml`, or `phase-12a-release.yml`. Run on demand only.
 
 #### Smoke Tests (after API and services are up)
 - **Rationale**: Quick health checks for API and microservices; run once the stack is up (Gap #8, task 1.4).
 - **Duration**: 1-2 minutes
-- **Command**: `pytest tests/smoke/ -v --tb=short --junit-xml=smoke-test-results.xml`
-- **Defaults**: Aligned with `docker-compose.test.yml` host ports — `API_BASE_URL=http://localhost:8001`, `DATACONTRACT_SERVICE_URL=http://localhost:8093`, `DQ_SERVICE_URL=http://localhost:8084`, `COMPLIANCE_SERVICE_URL=http://localhost:8085`, `SEMANTIC_SERVICE_URL=http://localhost:8086`. Override in CI (API on 8000, services on 8080/8083/8082/8081).
+- **Command (Docker)**: `docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/smoke/ -v --tb=short --junit-xml=/tmp/smoke-test-results.xml"`
+- **Command (on host)**: With stack up and `API_BASE_URL` set: `pytest tests/smoke/ -v --tb=short --junit-xml=smoke-test-results.xml`
+- **Defaults**: Aligned with `docker-compose.test.yml` host ports — `API_BASE_URL=http://localhost:8001`, etc. Override in CI as needed.
 - **CI**: In `ci.yml`, smoke runs after migrations and after the API server is started (same job as unit/integration/E2E); JUnit artifact `smoke-test-results.xml` is uploaded.
-- **Local**: With `docker-compose.test.yml` up, run `pytest tests/smoke/ -v` from repo root (no env needed). See GAP_FIX_AND_FULL_TEST_EXECUTION_PLAN.md §4.4.
 - **Full suite (Phase 12A, task 4.1b)**: The Phase 12A full run **includes smoke**. When you run `scripts/run_phase_12a_full_suites.sh`, smoke runs after 12A.1 (backend) as step 12A.1.5; artifacts are under `test_reports_comprehensive/{date}/smoke/` (`smoke.log`, `junit.xml`). Smoke failure fails the full suite. This is the **single canonical place** that states the full suite includes smoke and where it runs.
 
 ### Execution Flow Diagram
@@ -770,10 +906,10 @@ Use this in automation (e.g. `scripts/run_phase_12a_full_suites.sh`) so Vitest d
 cd frontend && npm run test:coverage
 ```
 
-**Duration**: 2–5 minutes.  
+**Duration**: 2–5 minutes.
 **Artifacts**: When run via `scripts/run_phase_12a_full_suites.sh`, output is captured in `test_reports_comprehensive/{date}/frontend-unit/frontend-unit.log`. For JUnit/coverage in that layout, use `scripts/collect_test_evidence.sh` or run with Vitest reporters configured to write under that path.
 
-**Prerequisites**: `cd frontend && npm install`. No backend required (only external HTTP mocked at axios/apiClient boundary).
+**Prerequisites**: `cd frontend && npm install`. No backend required for unit tests (integration tests excluded). For real-API integration tests (auth, assets, contracts, marketplace): `npm run test:integration:api` — requires backend up; see [FRONTEND_INTEGRATION_API_MIGRATION_PLAN.md](FRONTEND_INTEGRATION_API_MIGRATION_PLAN.md).
 
 #### 12A.2.2 Frontend E2E tests
 
@@ -788,7 +924,7 @@ cd frontend && npx playwright install
 cd frontend && npm run test:e2e
 ```
 
-**Duration**: 10–60 minutes (depends on journey count and backend).  
+**Duration**: 10–60 minutes (depends on journey count and backend).
 **Artifacts**: When run via `scripts/run_phase_12a_full_suites.sh`, output is in `test_reports_comprehensive/{date}/frontend-e2e/frontend-e2e.log`. Playwright reports (screenshots, traces, videos) can be collected to `frontend-e2e/` per `docs/EVIDENCE_COLLECTION_PLAN.md`.
 
 #### 12A.2.3 Evidence layout
@@ -1052,6 +1188,62 @@ wait
 
 ---
 
+## Test Isolation and Parallel Execution Constraints
+
+This section documents which tests share database/state, when DB reset or isolation is required, markers for isolation-sensitive tests, and parallel execution constraints. Task 7.12.
+
+### Which Tests Share DB/State
+
+| Test Type | Shared State | Scope |
+|-----------|--------------|-------|
+| **Backend unit** | Single test DB (`hub_test`); each test runs in a transaction that rolls back | Per-process; pytest-xdist workers each get a DB copy when using `--create-db` |
+| **Backend integration** | Same DB; `TransactionTestCase` / `django_db(transaction=True)` use real commits; `TestDatabaseIsolationMixin` cleans up per test | All integration tests share `hub_test`; use `--reuse-db` to avoid recreate |
+| **Backend E2E** | Same DB; `TransactionTestCase`; fixtures create tenants/users/assets; E2E personas (e2e_test@example.com, etc.) shared | `ensure_e2e_user_roles` seeds shared users; tests create/delete data |
+| **Frontend unit** | No DB; jsdom only | Isolated |
+| **Frontend integration API** | Same backend DB as E2E; uses e2e_test@example.com | Requires backend up; shares auth state |
+| **Frontend E2E** | Same backend DB; Playwright hits real API; shared auth storage (e2e_test) | Workers capped at 4 to reduce auth rate-limit pressure |
+| **Concurrency** | Same DB; `TransactionTestCase`; tests race conditions | Must run sequentially; do not parallelize |
+| **Security** | Same DB; tenant isolation tests create multi-tenant data | Independent per test when using rollback |
+
+### When DB Reset or Isolation Required
+
+| Scenario | Action |
+|----------|--------|
+| **First run after stack up** | Let pytest create DB; migrations run once |
+| **Re-runs (batch, CI)** | Use `--reuse-db` to avoid migration storm; DB persists across runs |
+| **Postgres restarted/OOM** | DB may be recreated; re-run with `--create-db` or omit `--reuse-db` once |
+| **Flaky "connection closed"** | Ensure Postgres is healthy before run; use `DB_CONNECTIVITY_CHECK_RETRIES` (see hub/conftest.py) |
+| **TransactionTestCase flush fails** | `hub/conftest.py` patches `sql_flush` with `allow_cascade=True` for FK constraints |
+| **Redis job consumption** | Use `REDIS_QUEUE_URL=.../1` so test process uses different Redis DB than worker (see hub/conftest.py) |
+
+### Markers for Isolation-Sensitive Tests
+
+| Marker | Purpose | Usage |
+|--------|---------|-------|
+| `@pytest.mark.isolation` | Tests that require isolation (cache/DB pollution risk) | `pytest -m "not isolation" -n auto` to parallelize the rest; run isolation tests separately |
+| `@pytest.mark.django_db(transaction=True)` | Test uses real commits; needs `TransactionTestCase`-style flush | Required for tests that use `TransactionTestCase` or need visibility across connections |
+| `docker_compose_runtime` | Requires Docker Compose services | Set `PYTEST_DOCKER_COMPOSE_RUNTIME=1`; use `--docker-compose-runtime` |
+
+**Isolation marker usage**: `tests/integration/test_auth_apis_comprehensive.py` and `tests/integration/test_marketplace_apis_comprehensive.py` use `@pytest.mark.isolation` for tests that create tenants/users/listings and may affect shared state. Run with `pytest tests/integration/ -v -m "not isolation" -n auto` for parallel runs; run `pytest tests/integration/ -v -m isolation` separately.
+
+### Parallel Execution Constraints
+
+| Constraint | Test Type | Limit | Rationale |
+|------------|-----------|-------|-----------|
+| **pytest-xdist workers** | Backend unit | `-n auto` or `-n 4` | Each worker gets DB copy; too many workers can exhaust connections or cause OOM |
+| **pytest-xdist workers** | Backend integration | `-n 2` recommended | Shared DB; TransactionTestCase flush; resource contention |
+| **pytest-xdist** | Backend E2E | Do not use `-n` | Shared DB, services; sequential recommended |
+| **pytest-xdist** | Concurrency tests | Do not use `-n` | Tests concurrency itself; must run sequentially |
+| **Playwright workers** | Frontend E2E | Capped at 4 | Auth rate limits; `e2e-detect-api.sh` caps `--workers=4` |
+| **Vitest** | Frontend unit | `maxThreads: 1` (config) | Some tests OOM with multiple workers; ProtectedRoute excluded |
+| **Batch runs** | `run_phase_12a_batched.sh` | Sequential batches | Same stack; DB shared; fix → rerun cycle |
+| **Marketplace framework** | `test_marketplace_framework.py` | Run first in isolation when in batch | Avoids connection-already-closed; `run_phase_12a_batched.sh` runs framework before rest of batch |
+| **Playwright CI** | Frontend E2E | 1 worker in CI | `playwright.config.ts`: `workers: process.env.CI ? 1 : 4`; reduces auth/rate-limit flakiness |
+
+**Redis isolation**: When testing job enqueue (e.g. `test_create_job`), the worker may consume the job before assertion. Use a separate Redis DB for the test process (`REDIS_QUEUE_URL=.../1`) so the worker (on db 0) does not consume it.
+
+---
+
 ## CI/CD Integration
 
 ### CI/CD execution stages (gapfix1 Phase 5.1, aligned with testreview1 Phase 12)
@@ -1113,6 +1305,38 @@ PYTEST_DOCKER_COMPOSE_RUNTIME=1 pytest hub/apps/*/tests/test_*.py tests/integrat
 
 **Duration**: 20-40 minutes
 **Coverage**: Unit and integration tests (backend); frontend unit
+
+---
+
+### Traceability CI Gate (phased rollout)
+
+The **Traceability CI Gate** ensures critical use cases (UC-*) and user journeys (JOURNEY-*) from [USE_CASES.md](USE_CASES.md) and [USER_JOURNEYS.md](USER_JOURNEYS.md) have at least one test, and that overall UC/journey coverage meets configurable thresholds. See [openspec/changes/testsfix1 — Traceability CI Gate](openspec/changes/testsfix1/tasks.md#traceability-ci-gate).
+
+**Script**: `scripts/report_uc_journey_test_coverage.py`
+**Critical list**: `docs/CRITICAL_UC_JOURNEY_IDS.yaml` (auth, contracts, assets, marketplace, DQ, compliance, governance, billing).
+
+**Phased rollout**:
+
+| Phase | Behavior | How to run / enable |
+|-------|----------|---------------------|
+| **Phase 1 — Report only** | Report is produced; CI job does not fail the pipeline. | Run `python scripts/report_uc_journey_test_coverage.py --ci-mode --output traceability-report.json`. In CI, set the traceability-gate job with `continue-on-error: true` so the job runs but does not fail the workflow. |
+| **Phase 2 — Critical-list gate** | CI fails if any *critical* UC or journey has zero tests. | Use `--ci-mode` (default). Remove `continue-on-error` from the traceability-gate job. Ensure every ID in `docs/CRITICAL_UC_JOURNEY_IDS.yaml` has at least one test (docstring, name, or `@pytest.mark.uc` / `@pytest.mark.journey`). |
+| **Phase 3 — Coverage threshold** | In addition to Phase 2, CI fails if overall UC coverage &lt; threshold (e.g. 70%) or journey coverage &lt; threshold (e.g. 60%). | Thresholds are in `docs/CRITICAL_UC_JOURNEY_IDS.yaml` under `thresholds.uc_coverage_percent` and `thresholds.journey_coverage_percent`. Override with `--uc-threshold` and `--journey-threshold` if needed. |
+
+**CI job**: In `.github/workflows/ci.yml`, the job `traceability-gate` runs `python scripts/report_uc_journey_test_coverage.py --ci-mode --output traceability-report.json` and uploads `traceability-report.json` as an artifact. The job **fails** when the gate fails (exit code 1).
+
+**How to run locally**:
+```bash
+# Report only (Markdown)
+python scripts/report_uc_journey_test_coverage.py
+
+# CI gate (exit 1 on failure; JSON to file)
+python scripts/report_uc_journey_test_coverage.py --ci-mode --output traceability-report.json
+```
+
+**How to update the critical list**: Edit `docs/CRITICAL_UC_JOURNEY_IDS.yaml`. Add or remove IDs under `critical_use_cases` and `critical_journeys`. IDs must exist in `docs/USE_CASES.md` (pattern `**ID**: UC-XXX`) or `docs/USER_JOURNEYS.md` (pattern `**Journey ID**: JOURNEY-XXX`). Then run the script with `--ci-mode` to verify.
+
+**Runbook**: See [RUNBOOKS.md — Use case and journey test coverage report](RUNBOOKS.md#use-case-and-journey-test-coverage-report-phase-55).
 
 ---
 
@@ -1290,6 +1514,7 @@ pytest tests/e2e/ -v --junit-xml=e2e-test-results.xml
 | `DATE` | Override date for `test_reports_comprehensive/{date}/` (default: `YYYY-MM-DD`). | When you want a specific date dir for evidence (e.g. in CI). |
 | `COMPOSE_FILE` | Compose file to use (e.g. `docker-compose.test.yml`). When set to a file containing `docker-compose.test`, Phase 12A scripts use service `api-service-test`. | When using the test stack for integration/E2E. |
 | `API_SERVICE_NAME` | Override the API service name used by Phase 12A scripts (default: `api-service` or `api-service-test` when `COMPOSE_FILE` contains `docker-compose.test`). | When your stack uses a different service name. |
+| `REAL_SCHEDULED_E2E` | Set to `1` to run tests marked `real_scheduled_e2e` (real scheduled ingestion/export with real storage and credentials; no mocks). When unset, those tests are skipped. | Manual or env-gated validation only. Exclude from CI/default runs with `-m 'not real_scheduled_e2e'`. See [runbooks/REAL_SCHEDULED_INGESTION_EXPORT_E2E.md](runbooks/REAL_SCHEDULED_INGESTION_EXPORT_E2E.md). |
 
 Coverage and report paths: Phase 12A scripts write under `test_reports_comprehensive/{date}/` (unit/, integration/, e2e/, etc.). Coverage is produced via `--cov=hub`, `--cov-report=xml`, `--cov-report=html`; JUnit XML and logs go into the same subdirs. See [EVIDENCE_COLLECTION_PLAN.md](EVIDENCE_COLLECTION_PLAN.md#directory-structure).
 
@@ -1325,6 +1550,9 @@ export RUN_TIME=5m
 ```
 
 **Frontend E2E Configuration**:
+- Test stack: `docker compose -f docker-compose.test.yml --env-file .env.test up -d` (use `.env.test` so Postgres uses `hub_test` credentials; avoids `.env` override).
+- Verify: `./scripts/verify_test_stack.sh` or `curl -sf http://localhost:8001/health/` and `curl -sf http://localhost:8025/`.
+- Persona users: `ensure_e2e_user_roles` runs automatically via `e2e-detect-api.sh` when API on 8001.
 ```bash
 export E2E_VISIBLE=1  # For visible browser mode
 export PLAYWRIGHT_BROWSERS_PATH=~/.cache/ms-playwright
@@ -1398,12 +1626,62 @@ cd frontend && npx playwright install
 - Ensure test database isolation per worker
 - Check database connection pool settings
 
-#### 7. Tests Are Slow
+#### 7. Integration/E2E Tests Hang (No Output for Minutes)
 
-**Solution**:
-- Run tests in parallel: `-n auto`
+**Cause**: Output buffering; conftest load + collection of 150+ integration files can take 2–5 minutes before the first test runs.
+
+**Solutions**:
+- Add `PYTHONUNBUFFERED=1` so output streams immediately (e.g. in the `bash -c` env)
+- Add `LOG_LEVEL=WARNING` to reduce logging overhead
+- You should see "Starting pytest (integration/E2E)..." and "Collecting tests..." within seconds
+- Try without `-n` first; use `-n 4` instead of `-n auto` if workers cause hangs
+
+#### 8. Tests Are Slow
+
+**Investigation**: See [TEST_SLOWNESS_INVESTIGATION.md](TEST_SLOWNESS_INVESTIGATION.md) for root causes (25× pytest startup, Django init, DB check) and diagnostic commands.
+
+**Solutions**:
+- Run `./scripts/setup_test_db.sh` once so `--reuse-db` skips migrations (saves 10–45 min on first run)
+- Run tests in parallel: `PYTEST_PARALLEL_WORKERS=4` (default in Phase 12A scripts)
 - Use markers to skip slow tests: `-m "not slow"`
 - Run only relevant tests: `pytest path/to/specific/test.py`
+
+#### 9. Batch Run: "FATAL: the database system is shutting down" / OperationalError (10 errors, 0 passed)
+
+**Symptom**: Many tests report `django.db.utils.OperationalError: connection to server at "postgres-test" (…), port 5432 failed: FATAL: the database system is shutting down` or `server closed the connection unexpectedly`. Failures occur during **setup** (not test logic).
+
+**Root cause**: **Infrastructure** — the PostgreSQL container (e.g. `postgres-test`) was shutting down or restarted during the batch. This is not a test or application bug.
+
+**What to do**:
+
+1. **Before running a batch**: Ensure the test stack is up and stable.
+   ```bash
+   docker compose -f docker-compose.test.yml --env-file .env.test up -d
+   # Wait until postgres is healthy (see docker compose ps / health checks)
+   docker compose -f docker-compose.test.yml exec postgres-test pg_isready -U hub_test
+   ```
+2. **Avoid stopping the DB during the run**: Do not run `docker compose down` or restart the postgres service while the batch is running. Ensure enough resources (memory/CPU) so the DB is not OOM-killed.
+3. **Re-run the batch**: Once PostgreSQL is stable, re-run the same batch. No code change is required.
+4. **CI/automation**: If batches run in CI, ensure the test database service has a stable lifecycle for the full batch duration and is not restarted by another job or a short health-check timeout.
+
+#### 10. api-service-test Container Stuck in "Created" State
+
+**Symptom**: `docker compose -f docker-compose.test.yml exec api-service-test ...` fails with "container not running", or `docker ps -a` shows `hub-test-api` (or `*_hub-test-api`) with status "Created" instead of "Up".
+
+**Root cause**: A stale container from a previous compose run (e.g. after `docker compose up` was interrupted) remains in Created state and blocks the new one.
+
+**Solution**:
+```bash
+# Remove the stale container (use the name shown by docker ps -a)
+docker rm -f hub-test-api 2>/dev/null || true
+# Or if prefixed: docker rm -f <prefix>_hub-test-api
+
+# Recreate and start api-service-test
+docker compose -f docker-compose.test.yml up -d api-service-test
+
+# Verify it is Up and healthy
+docker compose -f docker-compose.test.yml ps api-service-test
+```
 
 ---
 

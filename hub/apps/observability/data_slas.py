@@ -182,7 +182,7 @@ class DataSLAMonitor:
                     tenant=sla.tenant,
                     asset=resource if sla.asset else None,
                     dataset=resource if sla.dataset else None,
-                    status=DQRunStatus.COMPLETED
+                    status=DQRunStatus.SUCCEEDED
                 ).order_by('-completed_at').first()
                 
                 if latest_dq_run and latest_dq_run.quality_score is not None:

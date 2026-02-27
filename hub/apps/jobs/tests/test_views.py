@@ -25,6 +25,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.jobs.tests.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 
@@ -48,6 +49,10 @@ class JobViewSetTest(TestCase):
         self.other_tenant = Tenant.objects.create(
             name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
         )
+
+        # Active subscription required so TenantSuspensionMiddleware allows writes (POST/PATCH)
+        ensure_tenant_has_active_subscription(self.tenant)
+        ensure_tenant_has_active_subscription(self.other_tenant)
 
         # Create platform admin user
         self.platform_admin = User.objects.create_user(

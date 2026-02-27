@@ -11,6 +11,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 from hub.apps.webhooks.models import (
     DeliveryStatus,
@@ -36,6 +37,7 @@ class WebhookModelTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
             email="user@example.com",
@@ -84,6 +86,7 @@ class WebhookDeliveryServiceTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="user@example.com",
             password="testpass123",

@@ -192,6 +192,9 @@ All REST endpoints follow consistent standards:
 - `GET /api/v1/compliance/runs/{id}/results/` - Get compliance run results
 
 #### Marketplace
+
+Internal marketplace (Hub catalog, orders, entitlements): `/api/v1/marketplace/`. External integrations (connections, sync, mappings): `/api/v1/integrations/marketplace/`. See [Internal vs External Marketplace](MARKETPLACE_INTERNAL_VS_EXTERNAL.md) for the full split and URLs.
+
 - `GET /api/v1/marketplace/listings/` - List marketplace listings
 - `POST /api/v1/marketplace/listings/` - Create listing
 - `GET /api/v1/marketplace/listings/{id}/` - Get listing

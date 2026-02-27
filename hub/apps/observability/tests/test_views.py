@@ -20,6 +20,7 @@ from hub.apps.observability.freshness import FreshnessMonitor
 from hub.apps.observability.schema_drift import SchemaDriftDetector
 from hub.apps.observability.volume import VolumeMonitor
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -165,6 +166,7 @@ class DataIncidentsIntegrationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
             email="user@example.com",
@@ -240,6 +242,7 @@ class DataIncidentsIntegrationTest(TestCase):
                 "resource_type": "ASSET",
                 "resource_id": str(self.asset.id),
             },
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -255,6 +258,7 @@ class DataIncidentsIntegrationTest(TestCase):
         response = self.client.patch(
             f"/api/v1/observability/incidents/update/?incident_id={incident.id}",
             {"status": "TRIAGED"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -279,6 +283,7 @@ class ObservabilityViewSetTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
             email="user@example.com",
@@ -310,7 +315,6 @@ class ObservabilityViewSetTest(TestCase):
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
-            name="Test Dataset",
             schema_json={"fields": [{"name": "email", "type": "string"}]},
             format="CSV",
             version=1,

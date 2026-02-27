@@ -25,10 +25,6 @@ from hub.apps.mesh.business_rules import (
     TopologyBusinessRules,
     ValidationResult as MeshValidationResult
 )
-from hub.apps.transformation.business_rules import (
-    TransformationBusinessRules,
-    ValidationResult as TransformationValidationResult
-)
 from hub.apps.virtualization.business_rules import (
     VirtualizationBusinessRules,
     QueryExecutionBusinessRules,
@@ -45,7 +41,6 @@ class TestBusinessRulesFrameworkStructure:
         validation_result_classes = [
             ContractsValidationResult,
             MeshValidationResult,
-            TransformationValidationResult,
             VirtualizationValidationResult,
         ]
 
@@ -95,7 +90,6 @@ class TestBusinessRulesFrameworkStructure:
             DataMeshBusinessRules,
             PolicyBusinessRules,
             TopologyBusinessRules,
-            TransformationBusinessRules,
             VirtualizationBusinessRules,
             QueryExecutionBusinessRules,
             ResultBusinessRules,
@@ -111,7 +105,6 @@ class TestBusinessRulesFrameworkStructure:
         test_classes = [
             (ODPSBusinessRules, {}),  # Static methods, no __init__
             (DataMeshBusinessRules, {'tenant_id': 'test-tenant', 'user_id': 'test-user'}),
-            (TransformationBusinessRules, {'tenant_id': 'test-tenant', 'user_id': 'test-user'}),
             (VirtualizationBusinessRules, {'tenant_id': 'test-tenant', 'user_id': 'test-user'}),
         ]
 
@@ -225,7 +218,6 @@ class TestFrameworkGaps:
         validation_results = [
             ContractsValidationResult,
             MeshValidationResult,
-            TransformationValidationResult,
             VirtualizationValidationResult,
         ]
 
@@ -319,7 +311,6 @@ class TestCodeReviewCompleteness:
         """Test that all business rules follow common patterns."""
         business_rules_classes = [
             DataMeshBusinessRules,
-            TransformationBusinessRules,
             VirtualizationBusinessRules,
         ]
 
@@ -344,7 +335,6 @@ class TestCodeReviewCompleteness:
         # Also note: Some implementations have 'details' field, others don't (inconsistency)
         results = [
             MeshValidationResult(),  # Has defaults, includes 'details'
-            TransformationValidationResult(is_valid=True, errors=[], warnings=[], details={}),  # Requires all params, includes 'details'
             VirtualizationValidationResult(),  # Has defaults, includes 'details'
         ]
 

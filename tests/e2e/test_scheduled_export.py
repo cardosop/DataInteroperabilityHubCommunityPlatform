@@ -24,10 +24,13 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 from tests.utils.polling import wait_until
 
+from .conftest import get_response_data
+
 pytestmark = [
     pytest.mark.django_db(transaction=True),
     pytest.mark.e2e,
     pytest.mark.scheduled_export,
+    pytest.mark.requires_prefect,
 ]
 
 
@@ -124,7 +127,8 @@ class ScheduledExportE2ETest(TestCase):
             return
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        export_id = response.data["id"]
+        data = get_response_data(response) or {}
+        export_id = data["id"]
 
         # Step 2: Verify export created
         export_ = ScheduledExport.objects.get(id=export_id)
@@ -161,7 +165,8 @@ class ScheduledExportE2ETest(TestCase):
             return
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        flow_run_id = response.data.get("flow_run_id")
+        data = get_response_data(response) or {}
+        flow_run_id = data.get("flow_run_id")
 
         if not flow_run_id:
             pytest.skip("Trigger did not return flow_run_id - Prefect may not be available")
@@ -231,10 +236,11 @@ class ScheduledExportE2ETest(TestCase):
         # Step 6: Verify run status via API
         response = self.client.get(f"/api/v1/scheduled-exports/{export_id}/runs/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        if isinstance(response.data, list):
-            runs_data = response.data
+        data = get_response_data(response) or {}
+        if isinstance(data, list):
+            runs_data = data
         else:
-            runs_data = response.data.get("results", [])
+            runs_data = data.get("results", [])
         self.assertGreater(len(runs_data), 0)
         run_data = next((r for r in runs_data if r["id"] == str(run.id)), None)
         self.assertIsNotNone(run_data)
@@ -257,9 +263,9 @@ class ScheduledExportE2ETest(TestCase):
             [status.HTTP_200_OK, status.HTTP_503_SERVICE_UNAVAILABLE],
         )
         if response.status_code == status.HTTP_200_OK:
-            self.assertEqual(response.data["name"], "Updated Export Name")
-            # Verify schedule_config was updated
-            self.assertIn("schedule_config", response.data)
+            data = get_response_data(response) or {}
+            self.assertEqual(data["name"], "Updated Export Name")
+            self.assertIn("schedule_config", data)
 
         # Step 8: Delete export
         response = self.client.delete(f"/api/v1/scheduled-exports/{export_id}/")
@@ -346,7 +352,8 @@ class ScheduledExportE2ETest(TestCase):
             return
 
         self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
-        export1_id = response1.data["id"]
+        data1_resp = get_response_data(response1) or {}
+        export1_id = data1_resp["id"]
 
         # Create test asset for tenant2
         asset2 = Asset.objects.create(
@@ -376,16 +383,17 @@ class ScheduledExportE2ETest(TestCase):
             return
 
         self.assertEqual(response2.status_code, status.HTTP_201_CREATED)
-        export2_id = response2.data["id"]
+        data2 = get_response_data(response2) or {}
+        export2_id = data2["id"]
 
         # List exports for tenant1 - should only see tenant1's
         response = self.client.get("/api/v1/scheduled-exports/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Handle paginated response (may be dict with 'results' key or list)
-        if isinstance(response.data, dict) and "results" in response.data:
-            export_list = response.data["results"]
+        data = get_response_data(response) or {}
+        if isinstance(data, dict) and "results" in data:
+            export_list = data["results"]
         else:
-            export_list = response.data if isinstance(response.data, list) else []
+            export_list = data if isinstance(data, list) else []
         export_ids = [item["id"] if isinstance(item, dict) else str(item) for item in export_list]
         self.assertIn(export1_id, export_ids)
         self.assertNotIn(export2_id, export_ids)
@@ -393,11 +401,11 @@ class ScheduledExportE2ETest(TestCase):
         # List exports for tenant2 - should only see tenant2's
         response = client2.get("/api/v1/scheduled-exports/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Handle paginated response (may be dict with 'results' key or list)
-        if isinstance(response.data, dict) and "results" in response.data:
-            export_list = response.data["results"]
+        data = get_response_data(response) or {}
+        if isinstance(data, dict) and "results" in data:
+            export_list = data["results"]
         else:
-            export_list = response.data if isinstance(response.data, list) else []
+            export_list = data if isinstance(data, list) else []
         export_ids = [item["id"] if isinstance(item, dict) else str(item) for item in export_list]
         self.assertNotIn(export1_id, export_ids)
         self.assertIn(export2_id, export_ids)

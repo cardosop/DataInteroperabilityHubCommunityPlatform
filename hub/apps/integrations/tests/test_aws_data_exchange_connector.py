@@ -18,7 +18,8 @@ from unittest.mock import MagicMock, Mock, patch
 from botocore.exceptions import BotoCoreError, ClientError
 from django.test import TestCase
 
-from hub.apps.core.services.base import NotFoundError, PermissionError
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+from hub.apps.core.services.base import ConnectionError, NotFoundError, PermissionError
 from hub.apps.integrations.base import (
     MarketplaceListing,
     MarketplaceResource,
@@ -27,6 +28,10 @@ from hub.apps.integrations.base import (
     SyncStatus,
 )
 from hub.apps.integrations.connectors.aws_data_exchange_connector import AWSDataExchangeConnector
+
+import pytest
+
+pytestmark = [pytest.mark.django_db(transaction=True)]
 
 
 class TestAWSDataExchangeConnectorInitialization(TestCase):
@@ -260,7 +265,8 @@ class TestAWSDataExchangeConnectorConnectionTest(TestCase):
     """Test AWS Data Exchange connector connection testing"""
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures and reset shared circuit breaker for deterministic tests."""
+        reset_circuit_breaker_by_name("aws-data-exchange-connector")
         self.connector = AWSDataExchangeConnector(
             aws_access_key_id="test-key-id", aws_secret_access_key="test-secret-key"
         )
@@ -574,7 +580,8 @@ class TestAWSDataExchangeConnectorDiscoveryOperations(TestCase):
     """Test AWS Data Exchange connector discovery operations"""
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures and reset shared circuit breaker for deterministic tests."""
+        reset_circuit_breaker_by_name("aws-data-exchange-connector")
         self.connector = AWSDataExchangeConnector(
             aws_access_key_id="test-key-id", aws_secret_access_key="test-secret-key"
         )
@@ -1308,9 +1315,13 @@ class TestAWSDataExchangeConnectorPullOperations(TestCase):
         mock_client.get_job.return_value = {"Job": {"State": "IN_PROGRESS", "Id": "job-123"}}
         mock_boto3.client.return_value = mock_client
 
+        # Patch time where the connector uses it so the mock is applied; provide enough
+        # return values so the loop never exhausts side_effect (start_time=0, then
+        # elapsed checks until timeout).
+        time_module = "hub.apps.integrations.connectors.aws_data_exchange_connector.time"
         with (
             mock_patch("time.sleep"),
-            mock_patch("time.time", side_effect=[0, 3700]),
+            mock_patch(f"{time_module}.time", side_effect=[0, 3700] + [3700] * 20),
         ):  # Exceed timeout
             with self.assertRaises(TimeoutError):
                 self.connector._wait_for_job_completion("job-123", timeout_seconds=3600)

@@ -127,8 +127,8 @@ export function TopologyVisualization() {
         <div className="topology-summary">
           <span>{topology.summary.total_domains} Domains</span>
           <span>{topology.summary.total_relationships} Relationships</span>
-          {topology.summary.average_health_score !== undefined && (
-            <span>Avg Health: {topology.summary.average_health_score.toFixed(1)}</span>
+          {topology.summary.average_health_score != null && (
+            <span>Avg Health: {Number(topology.summary.average_health_score).toFixed(1)}</span>
           )}
         </div>
       </div>

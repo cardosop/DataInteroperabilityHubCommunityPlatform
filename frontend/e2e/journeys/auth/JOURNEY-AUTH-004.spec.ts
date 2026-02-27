@@ -28,6 +28,19 @@ test.describe('JOURNEY-AUTH-004: Unauthenticated User Accesses Public Resources'
       expect(page.url()).toContain('/public');
       expect(page.url()).not.toContain('/login');
     });
+
+    test('unauthenticated access to protected route redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/assets', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|assets)/, { timeout: 20_000 });
+      const url = page.url();
+      const onLogin = url.includes('/login');
+      const onAssetsWithLoginPrompt =
+        url.includes('/assets') &&
+        ((await page.locator('input#email, [href*="/login"]').count()) > 0 ||
+          (await page.locator('text=Sign in').count()) > 0);
+      expect(onLogin || onAssetsWithLoginPrompt).toBe(true);
+    });
   });
 
   test.describe('Edge', () => {

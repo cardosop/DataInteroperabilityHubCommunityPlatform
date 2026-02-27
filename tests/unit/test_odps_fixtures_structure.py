@@ -15,43 +15,52 @@ except ImportError:
 import os
 from pathlib import Path
 from django.test import TestCase
+from django.conf import settings
 
 
 class ODPSFixturesDirectoryStructureTest(TestCase):
     """Test ODPS test fixtures directory structure"""
 
     def setUp(self):
-        """Set up test fixtures"""
-        # Get the base directory for tests
-        self.base_dir = Path(__file__).parent.parent.parent
-        self.fixtures_dir = self.base_dir / "tests" / "fixtures"
-        self.odps_fixtures_dir = self.fixtures_dir / "odps"
+        """Set up test fixtures. Use Django BASE_DIR for robust path resolution (Docker, xdist)."""
+        # BASE_DIR in hub.settings is project root (parent of hub/)
+        base = settings.BASE_DIR
+        self._base_str = str(base)
+        self._fixtures_str = str(base / "tests" / "fixtures")
+        self._odps_str = str(base / "tests" / "fixtures" / "odps")
+
+    def _path(self, *parts):
+        """Build path from base; avoids storing Path in instance for xdist."""
+        return Path(self._base_str).joinpath(*parts)
 
     def test_fixtures_directory_exists(self):
         """Test that fixtures directory exists"""
+        fixtures_dir = self._path("tests", "fixtures")
         self.assertTrue(
-            self.fixtures_dir.exists(),
-            f"Fixtures directory should exist at: {self.fixtures_dir}"
+            fixtures_dir.exists(),
+            f"Fixtures directory should exist at: {fixtures_dir}"
         )
         self.assertTrue(
-            self.fixtures_dir.is_dir(),
-            f"Fixtures should be a directory: {self.fixtures_dir}"
+            fixtures_dir.is_dir(),
+            f"Fixtures should be a directory: {fixtures_dir}"
         )
 
     def test_odps_fixtures_directory_exists(self):
         """Test that ODPS fixtures directory exists"""
+        odps_dir = self._path("tests", "fixtures", "odps")
         self.assertTrue(
-            self.odps_fixtures_dir.exists(),
-            f"ODPS fixtures directory should exist at: {self.odps_fixtures_dir}"
+            odps_dir.exists(),
+            f"ODPS fixtures directory should exist at: {odps_dir}"
         )
         self.assertTrue(
-            self.odps_fixtures_dir.is_dir(),
-            f"ODPS fixtures should be a directory: {self.odps_fixtures_dir}"
+            odps_dir.is_dir(),
+            f"ODPS fixtures should be a directory: {odps_dir}"
         )
 
     def test_odps_fixtures_directory_is_python_package(self):
         """Test that ODPS fixtures directory has __init__.py file"""
-        init_file = self.odps_fixtures_dir / "__init__.py"
+        odps_dir = self._path("tests", "fixtures", "odps")
+        init_file = odps_dir / "__init__.py"
         self.assertTrue(
             init_file.exists(),
             f"__init__.py should exist in ODPS fixtures directory: {init_file}"
@@ -64,9 +73,10 @@ class ODPSFixturesDirectoryStructureTest(TestCase):
     def test_odps_version_directories_exist(self):
         """Test that all required ODPS version directories exist"""
         required_versions = ["v4.1", "v4.0", "v3.x", "v2.x", "v1.x"]
+        odps_dir = self._path("tests", "fixtures", "odps")
 
         for version in required_versions:
-            version_dir = self.odps_fixtures_dir / version
+            version_dir = odps_dir / version
             with self.subTest(version=version):
                 self.assertTrue(
                     version_dir.exists(),
@@ -79,7 +89,7 @@ class ODPSFixturesDirectoryStructureTest(TestCase):
 
     def test_odps_v4_1_subdirectories_exist(self):
         """Test that ODPS v4.1 subdirectories exist"""
-        v4_1_dir = self.odps_fixtures_dir / "v4.1"
+        v4_1_dir = self._path("tests", "fixtures", "odps", "v4.1")
         required_subdirs = ["valid", "invalid", "with_refs"]
 
         for subdir in required_subdirs:
@@ -96,7 +106,7 @@ class ODPSFixturesDirectoryStructureTest(TestCase):
 
     def test_security_directory_exists(self):
         """Test that security directory exists"""
-        security_dir = self.odps_fixtures_dir / "security"
+        security_dir = self._path("tests", "fixtures", "odps", "security")
         self.assertTrue(
             security_dir.exists(),
             f"Security directory should exist at: {security_dir}"
@@ -108,7 +118,7 @@ class ODPSFixturesDirectoryStructureTest(TestCase):
 
     def test_malicious_directory_exists(self):
         """Test that malicious directory exists"""
-        malicious_dir = self.odps_fixtures_dir / "security" / "malicious"
+        malicious_dir = self._path("tests", "fixtures", "odps", "security", "malicious")
         self.assertTrue(
             malicious_dir.exists(),
             f"Malicious directory should exist at: {malicious_dir}"
@@ -120,23 +130,25 @@ class ODPSFixturesDirectoryStructureTest(TestCase):
 
     def test_directory_structure_completeness(self):
         """Test that the complete directory structure is present"""
+        odps = self._path("tests", "fixtures", "odps")
+        fixtures = self._path("tests", "fixtures")
         expected_structure = [
-            self.fixtures_dir,
-            self.odps_fixtures_dir,
-            self.odps_fixtures_dir / "v4.1",
-            self.odps_fixtures_dir / "v4.1" / "valid",
-            self.odps_fixtures_dir / "v4.1" / "invalid",
-            self.odps_fixtures_dir / "v4.1" / "with_refs",
-            self.odps_fixtures_dir / "v4.0",
-            self.odps_fixtures_dir / "v3.x",
-            self.odps_fixtures_dir / "v2.x",
-            self.odps_fixtures_dir / "v1.x",
-            self.odps_fixtures_dir / "security",
-            self.odps_fixtures_dir / "security" / "malicious",
+            fixtures,
+            odps,
+            odps / "v4.1",
+            odps / "v4.1" / "valid",
+            odps / "v4.1" / "invalid",
+            odps / "v4.1" / "with_refs",
+            odps / "v4.0",
+            odps / "v3.x",
+            odps / "v2.x",
+            odps / "v1.x",
+            odps / "security",
+            odps / "security" / "malicious",
         ]
 
         for directory in expected_structure:
-            with self.subTest(directory=directory):
+            with self.subTest(directory=str(directory)):
                 self.assertTrue(
                     directory.exists(),
                     f"Directory should exist: {directory}"
@@ -148,23 +160,24 @@ class ODPSFixturesDirectoryStructureTest(TestCase):
 
     def test_all_directories_have_init_files(self):
         """Test that all directories have __init__.py files (Python package structure)"""
+        odps = self._path("tests", "fixtures", "odps")
         directories_to_check = [
-            self.odps_fixtures_dir,
-            self.odps_fixtures_dir / "v4.1",
-            self.odps_fixtures_dir / "v4.1" / "valid",
-            self.odps_fixtures_dir / "v4.1" / "invalid",
-            self.odps_fixtures_dir / "v4.1" / "with_refs",
-            self.odps_fixtures_dir / "v4.0",
-            self.odps_fixtures_dir / "v3.x",
-            self.odps_fixtures_dir / "v2.x",
-            self.odps_fixtures_dir / "v1.x",
-            self.odps_fixtures_dir / "security",
-            self.odps_fixtures_dir / "security" / "malicious",
+            odps,
+            odps / "v4.1",
+            odps / "v4.1" / "valid",
+            odps / "v4.1" / "invalid",
+            odps / "v4.1" / "with_refs",
+            odps / "v4.0",
+            odps / "v3.x",
+            odps / "v2.x",
+            odps / "v1.x",
+            odps / "security",
+            odps / "security" / "malicious",
         ]
 
         for directory in directories_to_check:
             init_file = directory / "__init__.py"
-            with self.subTest(directory=directory):
+            with self.subTest(directory=str(directory)):
                 self.assertTrue(
                     init_file.exists(),
                     f"__init__.py should exist in {directory}: {init_file}"

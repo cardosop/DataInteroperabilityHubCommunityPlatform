@@ -157,3 +157,54 @@ class VirtualizationWorkflowE2ETest(TestCase):
             workflow_instance = workflow_instances.first()
             self.assertIn(workflow_instance.status, [WorkflowStatus.FAILED, WorkflowStatus.ROLLING_BACK])
 
+    def test_e2e_multi_source_federated_metadata(self):
+        """E2E: multi-source federated query with two metadata-only federated assets."""
+        from hub.apps.assets.models import Asset, AssetSourceType
+        from hub.apps.assets.models import DataStrategy
+        import uuid as uuid_mod
+
+        asset1 = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"fed-e2e-1-{uuid_mod.uuid4()}",
+            name="E2E Federated 1",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY
+        )
+        asset2 = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"fed-e2e-2-{uuid_mod.uuid4()}",
+            name="E2E Federated 2",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY
+        )
+        multi_vd = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="E2E Multi Federated",
+            query="SELECT * FROM combined",
+            query_type=QueryType.FEDERATED,
+            sources=[
+                {"type": "federated_asset", "asset_id": str(asset1.id)},
+                {"type": "federated_asset", "asset_id": str(asset2.id)},
+            ],
+            status=VirtualDatasetStatus.ACTIVE
+        )
+        result = VirtualizationWorkflow.execute(
+            virtual_dataset_id=str(multi_vd.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            parameters={},
+            execution_mode=QueryExecutionMode.ASYNC,
+            engine=self.engine,
+            registry=self.registry
+        )
+        self.assertTrue(result["success"])
+        self.assertIn("execution_id", result)
+        instance = WorkflowInstance.objects.get(id=result["workflow_instance_id"])
+        self.assertEqual(instance.status, WorkflowStatus.COMPLETED)
+        self.assertEqual(instance.state_data["execution_results"]["source_count"], 2)
+        execution = QueryExecution.objects.get(id=result["execution_id"])
+        self.assertEqual(execution.status, QueryExecutionStatus.COMPLETED)
+

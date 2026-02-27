@@ -82,6 +82,23 @@ class DataMeshGovernanceIntegrationTest(TestCase):
             user_id=str(self.tenant_admin_user.id)
         )
 
+        # ABAC: create_domain requires an ALLOW policy for DATA_MESH_DOMAIN when policies exist.
+        # Default deny applies when no policy matches; add tenant-wide allow for domain creation.
+        AccessPolicy.objects.get_or_create(
+            tenant=self.tenant,
+            name="Allow Domain Creation (Test Default)",
+            defaults={
+                "conditions": {
+                    "user": {"tenant_id": self.tenant_id},
+                    "resource": {"type": "DATA_MESH_DOMAIN"},
+                },
+                "effect": "ALLOW",
+                "priority": 100,
+                "enabled": True,
+                "created_by_id": self.tenant_admin_user.id,
+            },
+        )
+
         # Clear cache
         cache.clear()
 

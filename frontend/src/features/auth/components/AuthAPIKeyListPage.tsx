@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import type { ApiError } from '../../../shared/types/api';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type {
@@ -21,7 +22,7 @@ export function AuthAPIKeyListPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState<ApiError | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createdKey, setCreatedKey] = useState<AuthAPIKeyCreateResponse | null>(null);
   const [createForm, setCreateForm] = useState<AuthAPIKeyCreate>({

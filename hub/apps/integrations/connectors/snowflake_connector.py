@@ -43,7 +43,7 @@ from hub.apps.integrations.base import (
     MarketplaceAssetMapping,
 )
 from hub.apps.assets.models import AssetSourceType
-from hub.apps.core.services.base import NotFoundError
+from hub.apps.core.services.base import ConnectionError as ServiceConnectionError, NotFoundError
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
     get_redis_client,
@@ -208,7 +208,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
                     "error_type": type(e).__name__,
                 }
             )
-            raise ConnectionError(f"Unable to connect to Snowflake: {e}") from e
+            raise ServiceConnectionError(f"Unable to connect to Snowflake: {e}") from e
 
     def _execute_sql(self, sql: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
@@ -248,9 +248,9 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 else:
                     raise ValueError(f"SQL execution error: {error_msg}") from e
             except snowflake.connector.errors.DatabaseError as e:
-                raise ConnectionError(f"Database error: {e}") from e
+                raise ServiceConnectionError(f"Database error: {e}") from e
             except Exception as e:
-                raise ConnectionError(f"Unexpected error executing SQL: {e}") from e
+                raise ServiceConnectionError(f"Unexpected error executing SQL: {e}") from e
 
         # Execute with circuit breaker protection
         try:
@@ -330,7 +330,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
         except Exception as e:
             self._authenticated = False
             logger.error(f"Authentication test failed for Snowflake: {e}")
-            raise ConnectionError(f"Unable to authenticate with Snowflake: {e}") from e
+            raise ServiceConnectionError(f"Unable to authenticate with Snowflake: {e}") from e
 
     def test_connection(self) -> bool:
         """
@@ -356,7 +356,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 return False
         except Exception as e:
             logger.error(f"Connection test failed for Snowflake: {e}")
-            raise ConnectionError(f"Unable to connect to Snowflake: {e}") from e
+            raise ServiceConnectionError(f"Unable to connect to Snowflake: {e}") from e
 
     def list_listings(
         self,
@@ -455,7 +455,9 @@ class SnowflakeConnector(DataMarketplaceConnector):
             if limit is not None:
                 if not isinstance(limit, int) or limit < 0:
                     raise ValueError("limit must be a non-negative integer")
-                if limit > 0:
+                if limit == 0:
+                    results = []
+                elif limit > 0:
                     results = results[:limit]
 
             # Get full details for each listing and build MarketplaceListing objects
@@ -492,7 +494,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
             return listings
         except Exception as e:
             logger.error(f"Failed to list Snowflake listings: {e}")
-            raise ConnectionError(f"Unable to list Snowflake listings: {e}") from e
+            raise ServiceConnectionError(f"Unable to list Snowflake listings: {e}") from e
 
     def get_listing(self, listing_id: str) -> MarketplaceListing:
         """
@@ -521,7 +523,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
             raise
         except Exception as e:
             logger.error(f"Failed to get Snowflake listing {listing_id}: {e}")
-            raise ConnectionError(f"Unable to get Snowflake listing: {e}") from e
+            raise ServiceConnectionError(f"Unable to get Snowflake listing: {e}") from e
 
     def list_resources(self, listing_id: str) -> List[MarketplaceResource]:
         """
@@ -666,7 +668,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
             raise
         except Exception as e:
             logger.error(f"Failed to list resources for listing {listing_id}: {e}")
-            raise ConnectionError(f"Unable to list resources: {e}") from e
+            raise ServiceConnectionError(f"Unable to list resources: {e}") from e
 
     def _get_listing_details(self, listing_id: str) -> Dict[str, Any]:
         """
@@ -731,7 +733,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
             raise
         except Exception as e:
             logger.error(f"Failed to get listing details for {listing_id}: {e}")
-            raise ConnectionError(f"Unable to get listing details: {e}") from e
+            raise ServiceConnectionError(f"Unable to get listing details: {e}") from e
 
     def _extract_odps_metadata(self, listing_details: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -1221,6 +1223,9 @@ class SnowflakeConnector(DataMarketplaceConnector):
         import csv
         import re
 
+        if not resource_id or (isinstance(resource_id, str) and not resource_id.strip()):
+            raise ValueError("resource_id must be a non-empty string")
+
         try:
             # Ensure destination directory exists
             os.makedirs(
@@ -1356,7 +1361,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
             raise
         except Exception as e:
             logger.error(f"Failed to download resource '{resource_id}': {e}", exc_info=True)
-            raise ConnectionError(f"Unable to download resource: {e}") from e
+            raise ServiceConnectionError(f"Unable to download resource: {e}") from e
 
     def _download_table(self, table_identifier: str, destination_path: str, file_format: str) -> str:
         """
@@ -1447,7 +1452,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
             raise
         except Exception as e:
             logger.error(f"Failed to download table '{table_identifier}': {e}", exc_info=True)
-            raise ConnectionError(f"Unable to download table: {e}") from e
+            raise ServiceConnectionError(f"Unable to download table: {e}") from e
 
     def _request_listing(self, listing_id: str) -> bool:
         """
@@ -1503,7 +1508,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 raise PermissionError(f"Permission denied to request listing '{listing_id}'") from e
             else:
                 logger.error(f"Failed to request listing '{listing_id}': {e}")
-                raise ConnectionError(f"Unable to request listing: {e}") from e
+                raise ServiceConnectionError(f"Unable to request listing: {e}") from e
 
     def _accept_legal_terms(self, listing_id: str) -> bool:
         """
@@ -1622,7 +1627,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 raise PermissionError(f"Permission denied to create database from listing '{listing_id}'") from e
             else:
                 logger.error(f"Failed to create database from listing '{listing_id}': {e}")
-                raise ConnectionError(f"Unable to create database from listing: {e}") from e
+                raise ServiceConnectionError(f"Unable to create database from listing: {e}") from e
 
     def _map_snowflake_type(self, snowflake_type: str) -> str:
         """
@@ -1787,7 +1792,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
             raise
         except Exception as e:
             logger.error(f"Failed to extract schema metadata from database '{database_name}': {e}")
-            raise ConnectionError(f"Unable to extract schema metadata: {e}") from e
+            raise ServiceConnectionError(f"Unable to extract schema metadata: {e}") from e
 
     def sync_pull(
         self,

@@ -708,6 +708,16 @@ def process_background_job(job_id):
 
 ---
 
+## Ruff E722 (Bare Except)
+
+Bare `except:` clauses are forbidden in production code. They catch `BaseException` (including `KeyboardInterrupt` and `SystemExit`), making programs hard to interrupt and hiding bugs.
+
+- **Ruff rule:** E722 (bare except). Enabled in `pyproject.toml` under `[tool.ruff.lint]` select.
+- **CI:** `ruff check .` runs in CI; any use of bare `except:` will fail the build.
+- **Fix:** Use `except Exception as e:` and log with context, or catch specific exception types. See [EXCEPTION_HANDLING_AUDIT_PLAN.md](./EXCEPTION_HANDLING_AUDIT_PLAN.md) for patterns.
+
+---
+
 ## Summary
 
 Error handling ensures:

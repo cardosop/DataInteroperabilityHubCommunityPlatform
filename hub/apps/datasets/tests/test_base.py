@@ -15,6 +15,7 @@ from hub.apps.datasets.services import DatasetService
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 User = get_user_model()
 
@@ -103,6 +104,8 @@ class DatasetsAPITestBase(DatasetsTestBase):
     def setUp(self):
         """Set up API test fixtures."""
         super().setUp()
+        # Ensure tenant has active subscription so TenantSuspensionMiddleware allows writes (POST/PUT/PATCH/DELETE)
+        ensure_tenant_has_active_subscription(self.tenant)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
@@ -113,5 +116,7 @@ class DatasetsAPITransactionTestBase(DatasetsTransactionTestBase):
     def setUp(self):
         """Set up API test fixtures."""
         super().setUp()
+        # Ensure tenant has active subscription so TenantSuspensionMiddleware allows writes (POST/PUT/PATCH/DELETE)
+        ensure_tenant_has_active_subscription(self.tenant)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)

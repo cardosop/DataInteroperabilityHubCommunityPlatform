@@ -1,59 +1,67 @@
 /**
  * E2E Setup: Persist auth state for route specs (Phase 13).
- * Runs once before chromium-routes; avoids per-test login and auth rate limits.
+ * Runs once before chromium/visible/chromium-routes; avoids per-test login and auth rate limits.
  * Real backend only; no mocks.
- * If UI login times out (e.g. proxy/network), falls back to API login and injects tokens into page.
+ * Uses UI login first (exercises proxy); falls back to API login + inject if UI fails.
  */
 
 import { expect, test } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getTestUser } from '../fixtures/auth';
+import { getTestUser, loginViaApi } from '../fixtures/auth';
+
+/** Wait for app shell after auth; allows up to 30s for capabilities and fetchUser. */
+async function waitForAppShell(page: import('@playwright/test').Page): Promise<boolean> {
+  return page
+    .locator('.app-sidebar')
+    .waitFor({ state: 'visible', timeout: 30000 })
+    .then(() => true)
+    .catch(() => false);
+}
+
+/** Inject API tokens into page and reload so app picks them up. */
+async function injectAndReload(
+  page: import('@playwright/test').Page,
+  apiAuth: { access_token: string; refresh_token: string; user: object },
+  base: string
+): Promise<void> {
+  await page.goto(base, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(({ access_token, refresh_token, user: u }) => {
+    localStorage.setItem('access_token', access_token);
+    localStorage.setItem('refresh_token', refresh_token);
+    localStorage.setItem('user', JSON.stringify(u));
+  }, apiAuth);
+  await page.goto(base, { waitUntil: 'domcontentloaded' });
+  const shellVisible = await waitForAppShell(page);
+  if (!shellVisible && page.url().includes('/login')) {
+    throw new Error(
+      'Auth storage: API login succeeded but app still on /login after reload. ' +
+        'Check that authStore.initialize() reads from localStorage and VITE_PROXY_TARGET matches backend.'
+    );
+  }
+}
 
 const AUTH_DIR = path.join(process.cwd(), 'e2e', '.auth');
 const STORAGE_STATE_PATH = path.join(AUTH_DIR, 'user.json');
-const API_BASE = process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
-
-interface ApiAuth {
-  access_token: string;
-  refresh_token: string;
-  user: { id: string; email: string; name: string; roles: string[]; [k: string]: unknown };
-}
-
-/** Login via backend API from Node; returns tokens and user for storage injection. */
-async function loginViaApi(email: string, password: string): Promise<ApiAuth> {
-  const loginRes = await fetch(`${API_BASE}/auth/login/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!loginRes.ok) {
-    const text = await loginRes.text();
-    throw new Error(`API login failed: ${loginRes.status} ${text}`);
-  }
-  const loginData = (await loginRes.json()) as {
-    access_token: string;
-    refresh_token: string;
-  };
-  const meRes = await fetch(`${API_BASE}/auth/me/`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${loginData.access_token}` },
-  });
-  if (!meRes.ok) {
-    throw new Error(`API /auth/me/ failed: ${meRes.status}`);
-  }
-  const user = (await meRes.json()) as ApiAuth['user'];
-  return {
-    access_token: loginData.access_token,
-    refresh_token: loginData.refresh_token,
-    user,
-  };
-}
 
 test.describe('Auth storage setup', () => {
-  test.setTimeout(300000);
+  test.setTimeout(300000); // 5 min: webServer startup + API login + inject + reload
   test('save authenticated session for route specs', async ({ page, baseURL }) => {
     const user = await getTestUser();
+    const base = baseURL || 'http://localhost:5173';
+
+    // Reset auth rate limits so login and fetchUser succeed (avoids 429 after prior runs)
+    try {
+      const { execSync } = await import('child_process');
+      execSync('docker exec hub-test-api python hub/manage.py reset_e2e_auth_rate_limits', {
+        stdio: 'pipe',
+        encoding: 'utf8',
+      });
+    } catch {
+      // Ignore if docker/command unavailable
+    }
+
+    // 1. Try UI login first (exercises proxy; API inject can fail if proxy misconfigured)
     const attemptLogin = async (): Promise<boolean> => {
       await page.goto('/login', { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('h1', { timeout: 10000 });
@@ -69,7 +77,6 @@ test.describe('Auth storage setup', () => {
         .locator('button[type="submit"]')
         .or(page.locator('button.login-button'));
       await submitButton.waitFor({ state: 'visible', timeout: 10000 });
-      // Accept any response from login URL so we don't timeout on 401/500; handle below
       const responsePromise = page.waitForResponse((r) => r.url().includes('/auth/login/'), {
         timeout: 60000,
       });
@@ -96,20 +103,28 @@ test.describe('Auth storage setup', () => {
     };
 
     let ok = await attemptLogin();
-    for (let retry = 0; !ok && retry < 3; retry++) {
-      await page.waitForTimeout(65000);
-      ok = await attemptLogin();
-    }
-
     if (!ok) {
-      // Fallback: login via API and inject into page so route specs get valid session
-      const apiAuth = await loginViaApi(user.email, user.password);
-      await page.goto(baseURL || 'http://localhost:5173/', { waitUntil: 'domcontentloaded' });
-      await page.evaluate(({ access_token, refresh_token, user: u }) => {
-        localStorage.setItem('access_token', access_token);
-        localStorage.setItem('refresh_token', refresh_token);
-        localStorage.setItem('user', JSON.stringify(u));
-      }, apiAuth);
+      // 2. Fallback: API login and inject (when UI fails e.g. proxy/network)
+      let apiAuth: Awaited<ReturnType<typeof loginViaApi>> | null = null;
+      try {
+        apiAuth = await loginViaApi(user.email, user.password);
+      } catch {
+        // API unavailable; will retry UI below
+      }
+      if (apiAuth) {
+        await injectAndReload(page, apiAuth, base);
+      } else {
+        for (let retry = 0; retry < 3; retry++) {
+          await page.waitForTimeout(65000);
+          ok = await attemptLogin();
+          if (ok) break;
+        }
+        if (!ok) {
+          throw new Error(
+            'Auth storage: UI and API login failed. Ensure backend is running and VITE_PROXY_TARGET points to it.'
+          );
+        }
+      }
     }
 
     const hasToken = await page.evaluate(

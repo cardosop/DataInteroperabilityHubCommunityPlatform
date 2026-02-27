@@ -1,0 +1,93 @@
+# Critical Use Case and User Journey IDs for Traceability CI Gate
+#
+# This file defines which UC-* and JOURNEY-* IDs are considered critical for the
+# traceability report CI gate. The script report_uc_journey_test_coverage.py uses
+# this list in --ci-mode to fail when any critical ID has zero tests or when
+# coverage falls below threshold.
+#
+# Domains: auth, contracts, assets, marketplace, DQ, compliance, governance, billing.
+# Source: docs/USE_CASES.md, docs/USER_JOURNEYS.md.
+# Update this file when adding or retiring critical capabilities.
+#
+# See: openspec/changes/testsfix1 (Traceability CI Gate), docs/TEST_EXECUTION_PLAN.md,
+#      docs/RUNBOOKS.md (Use case and journey test coverage report).
+
+version: "1.0"
+description: "Critical UC and Journey IDs for CI traceability gate"
+
+# Critical use case IDs (must have at least one test each in CI mode)
+critical_use_cases:
+  # Authentication & Access
+  - UC-AUTH-001  # User Registers
+  - UC-AUTH-002  # User Logs In
+  - UC-AUTH-003  # User Resets Password
+  - UC-AUTH-004  # Unauthenticated User Accesses Public Resources
+  # Asset Management
+  - UC-AM-001    # Create Asset via Data-First Flow
+  - UC-AM-002    # Publish Asset to Marketplace
+  # Contract / Community Management
+  - UC-CM-001    # Manage Data Community
+  - UC-CM-002    # Moderate Reviews and Ratings
+  - UC-CM-003    # Assign Data Steward
+  - UC-CM-004    # Manage Activity Feed
+  # Data Quality
+  - UC-DQ-001    # Run Data Quality Check / Monitor Asset Quality
+  # Compliance
+  - UC-COMP-001  # Run Compliance Scan / Review Compliance for Asset
+  # Marketplace (core + advanced)
+  - UC-MKT-ADV-001  # Configure Usage-Based Pricing
+  - UC-MKT-ADV-002  # Preview Data Before Purchase
+  # Advanced Governance
+  - UC-GOV-ADV-001  # Configure Automated Compliance
+  - UC-GOV-ADV-002  # GDPR Right to be Forgotten
+  - UC-GOV-ADV-003  # Manage Consent Tracking
+  - UC-GOV-ADV-004  # Configure Automated Retention
+  # Billing / Cost (Tenant Admin)
+  - UC-TA-007    # Monitor Cost Tracking
+  # Scheduled Export (critical flow)
+  - UC-EXPORT-001  # Schedule Recurring Export
+  - UC-EXPORT-002  # Configure Export Destination
+  - UC-EXPORT-003  # Monitor Export Runs
+
+# Critical user journey IDs (must have at least one test each in CI mode)
+critical_journeys:
+  # Authentication
+  - JOURNEY-AUTH-001  # First-Time Visitor Registers
+  - JOURNEY-AUTH-002  # User Logs In
+  - JOURNEY-AUTH-003  # User Resets Password
+  - JOURNEY-AUTH-004  # Unauthenticated User Accesses Public Resources
+  # Data Product Owner (assets, contracts, marketplace)
+  - JOURNEY-DPO-001   # Onboard New Asset via Data-First Flow
+  - JOURNEY-DPO-002   # Publish Asset to Marketplace
+  - JOURNEY-DPO-003   # Manage Asset Lifecycle
+  - JOURNEY-DPO-004   # Monitor Asset Quality
+  - JOURNEY-DPO-005   # Configure Data Contracts
+  - JOURNEY-DPO-006   # Manage Marketplace Listings
+  # Data Engineer (contracts, DQ, compliance)
+  - JOURNEY-DE-001    # Programmatic Contract-First Onboarding
+  - JOURNEY-DE-003    # Configure Data Quality Checks
+  - JOURNEY-DE-004    # Set Up Compliance Scanning
+  # Compliance Officer
+  - JOURNEY-CPO-001   # Run Compliance Scan for Asset
+  - JOURNEY-CPO-006   # Configure Automated Compliance
+  - JOURNEY-CPO-007   # Execute GDPR Right to be Forgotten
+  - JOURNEY-CPO-008   # Manage Consent Tracking
+  - JOURNEY-CPO-009   # Configure Automated Retention
+  - JOURNEY-CPO-010   # Review Retention Reports
+  # Data Consumer (marketplace)
+  - JOURNEY-DC-001   # Discover and Purchase Asset
+  # Tenant Admin (billing / cost)
+  - JOURNEY-TA-007   # Monitor Cost Tracking
+  - JOURNEY-TA-008   # Configure Integration Ecosystem
+  # Platform Admin / Marketplace
+  - JOURNEY-PA-001   # Onboard Marketplace Instance
+  - JOURNEY-MPA-005  # (Marketplace Admin journey)
+  # Scheduled Export
+  - JOURNEY-EXPORT-001  # Create and Run Scheduled Export
+  - JOURNEY-EXPORT-002  # Monitor and Troubleshoot Export Runs
+
+# Optional: coverage thresholds (used by --ci-mode when thresholds enabled)
+# Phase 1: report only; Phase 2: critical-list gate; Phase 3: coverage threshold
+thresholds:
+  uc_coverage_percent: 70
+  journey_coverage_percent: 60

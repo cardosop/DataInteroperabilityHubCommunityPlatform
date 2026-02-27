@@ -33,6 +33,7 @@ from hub.apps.webhooks.odps_webhook_errors import (
     ODPSWebhookPayloadError,
 )
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.core.events.bus import get_event_bus
@@ -152,9 +153,13 @@ class TestWebhookServer:
         """Get the server URL."""
         return f"http://localhost:{self.port}/webhook"
 
+    def received_count(self) -> int:
+        """Return number of requests in queue without consuming. Use for wait conditions."""
+        return self.request_queue.qsize()
+
     def get_received_requests(self, timeout: float = 5.0) -> List[Dict[str, Any]]:
         """
-        Get all received requests.
+        Get all received requests (consumes from queue).
 
         Args:
             timeout: Maximum time to wait for requests
@@ -169,8 +174,7 @@ class TestWebhookServer:
             try:
                 request = self.request_queue.get(timeout=0.1)
                 requests.append(request)
-            except:
-                # Check if we should continue waiting
+            except Exception:
                 if time.time() - start_time >= timeout:
                     break
 
@@ -208,6 +212,7 @@ class ODPSWebhookIntegrationTest(TestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(

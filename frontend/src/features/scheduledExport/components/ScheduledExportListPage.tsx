@@ -115,6 +115,7 @@ export function ScheduledExportListPage() {
                 <tr
                   key={export_.id}
                   className="row-link"
+                  data-testid="scheduled-export-row"
                   onClick={() => handleRowClick(export_.id)}
                   onKeyDown={(e) => e.key === 'Enter' && handleRowClick(export_.id)}
                   role="button"

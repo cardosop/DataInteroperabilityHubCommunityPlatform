@@ -26,10 +26,14 @@ from hub.apps.scheduled_ingestion.models import (
     ScheduleType
 )
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.e2e5,
+    pytest.mark.requires_prefect,
+]
 User = get_user_model()
 
 
@@ -88,7 +92,8 @@ class ScheduledIngestionCreationUseCasesTest(E2ETestBase):
         ])
         
         if response.status_code == status.HTTP_201_CREATED:
-            ingestion_id = response.data['id']
+            data = get_response_data(response) or {}
+            ingestion_id = data['id']
             
             # Verify ingestion created
             ingestion = ScheduledIngestion.objects.get(id=ingestion_id)
@@ -139,7 +144,8 @@ class ScheduledIngestionCreationUseCasesTest(E2ETestBase):
         ])
         
         if response.status_code == status.HTTP_201_CREATED:
-            ingestion_id = response.data['id']
+            data = get_response_data(response) or {}
+            ingestion_id = data['id']
             
             # Verify ingestion created
             ingestion = ScheduledIngestion.objects.get(id=ingestion_id)
@@ -182,7 +188,8 @@ class ScheduledIngestionCreationUseCasesTest(E2ETestBase):
         ])
         
         if response.status_code == status.HTTP_201_CREATED:
-            ingestion_id = response.data['id']
+            data = get_response_data(response) or {}
+            ingestion_id = data['id']
             
             # Verify ingestion created
             ingestion = ScheduledIngestion.objects.get(id=ingestion_id)
@@ -274,9 +281,9 @@ class ScheduledIngestionExecutionUseCasesTest(E2ETestBase):
         ])
         
         if response.status_code in [status.HTTP_200_OK, status.HTTP_202_ACCEPTED]:
-            # Verify run created
-            if 'run_id' in response.data:
-                run_id = response.data['run_id']
+            data = get_response_data(response) or {}
+            if 'run_id' in data:
+                run_id = data['run_id']
                 run = ScheduledIngestionRun.objects.get(id=run_id)
                 self.assertEqual(run.scheduled_ingestion, self.ingestion)
                 self.assertIn(run.status, [
@@ -303,9 +310,8 @@ class ScheduledIngestionExecutionUseCasesTest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
-        # Verify runs are returned
-        runs_data = response.data
+        data = get_response_data(response) or {}
+        runs_data = data
         if isinstance(runs_data, list):
             run_ids = [r.get('id') for r in runs_data if isinstance(r, dict)]
             self.assertIn(str(run1.id), run_ids)
@@ -326,8 +332,9 @@ class ScheduledIngestionExecutionUseCasesTest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(run.id))
-        self.assertEqual(response.data['status'], ScheduledIngestionRunStatus.COMPLETED)
+        data = get_response_data(response) or {}
+        self.assertEqual(data['id'], str(run.id))
+        self.assertEqual(data['status'], ScheduledIngestionRunStatus.COMPLETED)
     
     def test_monitor_ingestion_dashboard_success(self):
         """Test monitoring ingestion dashboard"""
@@ -343,13 +350,11 @@ class ScheduledIngestionExecutionUseCasesTest(E2ETestBase):
         ])
         
         if response.status_code == status.HTTP_200_OK:
-            # Verify dashboard data structure
-            # Dashboard returns summary, ingestions, recent_runs, and trends
-            self.assertIn('summary', response.data or {})
-            self.assertIn('ingestions', response.data or {})
-            # Verify ingestion is in the list if scheduled_ingestion_id was provided
-            if 'ingestions' in response.data:
-                ingestion_ids = [ing.get('id') for ing in response.data['ingestions'] if isinstance(ing, dict)]
+            data = get_response_data(response) or {}
+            self.assertIn('summary', data)
+            self.assertIn('ingestions', data)
+            if 'ingestions' in data:
+                ingestion_ids = [ing.get('id') for ing in data['ingestions'] if isinstance(ing, dict)]
                 self.assertIn(str(self.ingestion.id), ingestion_ids)
     
     def test_handle_ingestion_failure(self):
@@ -373,7 +378,8 @@ class ScheduledIngestionExecutionUseCasesTest(E2ETestBase):
         )
         
         if response.status_code == status.HTTP_200_OK:
-            runs_data = response.data
+            data = get_response_data(response) or {}
+            runs_data = data
             if isinstance(runs_data, list):
                 failed_runs = [r for r in runs_data if isinstance(r, dict) and r.get('status') == ScheduledIngestionRunStatus.FAILED]
                 self.assertGreater(len(failed_runs), 0)
@@ -513,9 +519,9 @@ class ScheduledIngestionManagementUseCasesTest(E2ETestBase):
         ])
         
         if response.status_code in [status.HTTP_200_OK, status.HTTP_202_ACCEPTED]:
-            # Verify response structure
-            if 'run_id' in response.data:
-                run_id = response.data['run_id']
+            data = get_response_data(response) or {}
+            if 'run_id' in data:
+                run_id = data['run_id']
                 run = ScheduledIngestionRun.objects.get(id=run_id)
                 self.assertEqual(run.scheduled_ingestion, self.ingestion)
     
@@ -538,9 +544,8 @@ class ScheduledIngestionManagementUseCasesTest(E2ETestBase):
         response = self.client.get('/api/v1/scheduled-ingestions/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
-        # Verify both ingestions are in the list
-        results = response.data.get('results', response.data)
+        data = get_response_data(response) or {}
+        results = data.get('results', data)
         if isinstance(results, list):
             ingestion_ids = [item.get('id') for item in results if isinstance(item, dict)]
             self.assertIn(str(self.ingestion.id), ingestion_ids)
@@ -553,9 +558,10 @@ class ScheduledIngestionManagementUseCasesTest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(self.ingestion.id))
-        self.assertEqual(response.data['name'], 'Management Test Ingestion')
-        self.assertEqual(response.data['source_type'], SourceType.S3)
+        data = get_response_data(response) or {}
+        self.assertEqual(data['id'], str(self.ingestion.id))
+        self.assertEqual(data['name'], 'Management Test Ingestion')
+        self.assertEqual(data['source_type'], SourceType.S3)
     
     def test_filter_ingestions_by_status_success(self):
         """Test filtering scheduled ingestions by status"""
@@ -580,8 +586,8 @@ class ScheduledIngestionManagementUseCasesTest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
-        results = response.data.get('results', response.data)
+        data = get_response_data(response) or {}
+        results = data.get('results', data)
         if isinstance(results, list):
             # Check if status filter is supported
             # If status filter is not implemented, all ingestions may be returned

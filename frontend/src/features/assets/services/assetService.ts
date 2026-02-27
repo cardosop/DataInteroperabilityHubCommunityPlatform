@@ -78,11 +78,10 @@ export const assetService = {
    * Requires version field for optimistic locking
    */
   async activate(id: string, version: number): Promise<Asset> {
+    // 60s timeout: activation may trigger semantic mapping on backend; E2E/CI load can be slow
     const response = await apiClient
       .getClient()
-      .post<Asset>(`${ASSETS_BASE_PATH}/${id}/activate/`, {
-        version,
-      });
+      .post<Asset>(`${ASSETS_BASE_PATH}/${id}/activate/`, { version }, { timeout: 60000 });
     return response.data;
   },
 

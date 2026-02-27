@@ -22,7 +22,7 @@ from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
 from hub.apps.assets.models import Asset, DQStatus
 from hub.apps.jobs.models import Job, JobType, JobStatus
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e2]
@@ -151,7 +151,7 @@ class DQServiceE2ETest(E2ETestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['profile_key'], 'intake_basic_gx')
+        self.assertEqual((get_response_data(response) or {}).get('profile_key'), 'intake_basic_gx')
 
     def test_list_dq_runs_with_filters(self):
         """Test listing DQ runs with filters"""
@@ -176,13 +176,15 @@ class DQServiceE2ETest(E2ETestBase):
 
         # List all DQ runs
         response = self.client.get('/api/v1/dq/runs/')
+        data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data['results']), 2)
+        self.assertGreaterEqual(len(data.get('results', [])), 2)
 
         # Filter by asset
         response = self.client.get(f'/api/v1/dq/runs/?asset_id={asset_id1}')
+        data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        dq_run_ids = {d['id'] for d in response.data['results']}
+        dq_run_ids = {d['id'] for d in data.get('results', [])}
         self.assertIn(str(dq_run_id1), dq_run_ids)
 
     def test_get_dq_run_details(self):
@@ -197,10 +199,11 @@ class DQServiceE2ETest(E2ETestBase):
 
         response = self.client.get(f'/api/v1/dq/runs/{dq_run_id}/')
 
+        data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(dq_run_id))
-        self.assertEqual(response.data['status'], DQRunStatus.PENDING)
-        self.assertIn('profile_key', response.data)
+        self.assertEqual(data.get('id'), str(dq_run_id))
+        self.assertEqual(data.get('status'), DQRunStatus.PENDING)
+        self.assertIn('profile_key', data)
 
     def test_dq_run_result_structure(self):
         """Test that DQ run result has correct structure"""
@@ -256,7 +259,7 @@ class DQServiceE2ETest(E2ETestBase):
 
         # Dataset creation may fail for empty/invalid files - that's expected
         response = self.client.post(
-            '/api/v1/datasets/datasets/',
+            '/api/v1/datasets/',
             {
                 'file_id': file_id,
                 'asset_id': asset_id,
@@ -265,22 +268,22 @@ class DQServiceE2ETest(E2ETestBase):
             format='json'
         )
 
+        resp_data = get_response_data(response) or {}
         if response.status_code == status.HTTP_201_CREATED:
-            dataset_id = response.data['id']
+            dataset_id = resp_data.get('id')
         elif response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR]:
             # Expected error for empty/invalid files - verify error message is appropriate
             # Note: 500 is returned when schema inference fails, which is acceptable for empty/invalid files
-            error_data = response.data if hasattr(response, 'data') else {}
-            error_msg = str(error_data).lower()
+            error_msg = str(resp_data).lower()
             self.assertTrue(
                 'empty' in error_msg or 'no headers' in error_msg or 'schema inference' in error_msg or 'no data' in error_msg,
-                f"Expected error about empty file, got: {error_data}"
+                f"Expected error about empty file, got: {resp_data}"
             )
             # Test passes - error handling works correctly
             return
         else:
             # Other status codes are unexpected
-            self.fail(f"Unexpected status code {response.status_code} for invalid file: {response.data if hasattr(response, 'data') else 'N/A'}")
+            self.fail(f"Unexpected status code {response.status_code} for invalid file: {resp_data}")
 
         # Try to create DQ run (may fail or handle gracefully)
         response = self.client.post(
@@ -294,8 +297,9 @@ class DQServiceE2ETest(E2ETestBase):
         )
 
         # May succeed (creates run) but execution may fail
+        resp_data = get_response_data(response) or {}
         if response.status_code == status.HTTP_201_CREATED:
-            dq_run_id = response.data['id']
+            dq_run_id = resp_data.get('id')
             dq_run = DQRun.objects.get(id=dq_run_id)
 
             # Wait for execution

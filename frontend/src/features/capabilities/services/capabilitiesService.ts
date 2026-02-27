@@ -36,22 +36,68 @@ class CapabilitiesService {
     }
 
     try {
-      // Fetch OpenAPI schema
-      const response = await apiClient.getClient().get<OpenAPISchema>('/openapi.json');
+      // 25s timeout: E2E/CI load (4 workers) can congest backend; retry handles transient failures
+      const CAPABILITIES_TIMEOUT_MS = 25000;
+      let response: { data: OpenAPISchema };
+      try {
+        response = await apiClient.getClient().get<OpenAPISchema>('/openapi.json', {
+          timeout: CAPABILITIES_TIMEOUT_MS,
+        });
+      } catch (firstError) {
+        if (import.meta.env.MODE !== 'test') {
+          console.error('Failed to load capabilities (first attempt):', firstError);
+        }
+        // Retry once after delay (handles dev server warm-up and backend congestion)
+        await new Promise((r) => setTimeout(r, 1500));
+        response = await apiClient.getClient().get<OpenAPISchema>('/openapi.json', {
+          timeout: CAPABILITIES_TIMEOUT_MS,
+        });
+      }
+
       this.openApiSchema = response.data;
 
       // Derive capabilities from OpenAPI paths
       this.capabilities = this.deriveCapabilitiesFromOpenAPI(this.openApiSchema);
 
-      // Cache capabilities
+      // Cache capabilities only when we have a valid schema (never cache empty on error)
       this.cacheCapabilities(this.capabilities);
 
       return this.capabilities;
     } catch (error) {
-      console.error('Failed to load capabilities:', error);
-      // Return empty capabilities on error
-      return {};
+      if (import.meta.env.MODE !== 'test') {
+        console.error('Failed to load capabilities:', error);
+      }
+      // Do NOT cache empty capabilities so next load will retry.
+      // Fallback: assume auth endpoints available (backend has them; fail-open for registration/password-reset)
+      this.capabilities = this.getAuthFallbackCapabilities();
+      return this.capabilities;
     }
+  }
+
+  /**
+   * Fallback capabilities when schema fetch fails. Assumes auth endpoints available (backend has them).
+   */
+  private getAuthFallbackCapabilities(): CapabilitiesMap {
+    return {
+      'auth.register': {
+        name: 'User Registration',
+        available: true,
+        endpoint: '/api/v1/auth/register/',
+        operationId: 'auth_register_create',
+      },
+      'auth.password-reset': {
+        name: 'Password Reset Request',
+        available: true,
+        endpoint: '/api/v1/auth/password-reset/',
+        operationId: 'auth_password_reset_create',
+      },
+      'auth.password-reset-confirm': {
+        name: 'Password Reset Confirmation',
+        available: true,
+        endpoint: '/api/v1/auth/password-reset/confirm/',
+        operationId: 'auth_password_reset_confirm_create',
+      },
+    };
   }
 
   /**
@@ -62,23 +108,33 @@ class CapabilitiesService {
     const paths = schema.paths || {};
 
     // Auth capabilities (Visitor persona)
+    // Support both /api/v1/auth/... and /auth/... path formats (drf-spectacular may vary)
+    const authRegisterAvailable =
+      '/api/v1/auth/register/' in paths ||
+      Object.keys(paths).some((p) => p.includes('auth/register') || p.endsWith('auth/register/'));
     capabilities['auth.register'] = {
       name: 'User Registration',
-      available: '/api/v1/auth/register/' in paths,
+      available: authRegisterAvailable,
       endpoint: '/api/v1/auth/register/',
       operationId: 'auth_register_create',
     };
 
+    const authPasswordResetAvailable =
+      '/api/v1/auth/password-reset/' in paths ||
+      Object.keys(paths).some((p) => p.includes('auth/password-reset') && !p.includes('confirm'));
     capabilities['auth.password-reset'] = {
       name: 'Password Reset Request',
-      available: '/api/v1/auth/password-reset/' in paths,
+      available: authPasswordResetAvailable,
       endpoint: '/api/v1/auth/password-reset/',
       operationId: 'auth_password_reset_create',
     };
 
+    const authPasswordResetConfirmAvailable =
+      '/api/v1/auth/password-reset/confirm/' in paths ||
+      Object.keys(paths).some((p) => p.includes('auth/password-reset') && p.includes('confirm'));
     capabilities['auth.password-reset-confirm'] = {
       name: 'Password Reset Confirmation',
-      available: '/api/v1/auth/password-reset/confirm/' in paths,
+      available: authPasswordResetConfirmAvailable,
       endpoint: '/api/v1/auth/password-reset/confirm/',
       operationId: 'auth_password_reset_confirm_create',
     };
@@ -223,6 +279,14 @@ class CapabilitiesService {
     };
 
     return capabilities;
+  }
+
+  /**
+   * Force use of auth fallback capabilities (e.g. when load times out).
+   * Ensures auth routes (register, password-reset) remain accessible.
+   */
+  useFallbackCapabilities(): void {
+    this.capabilities = this.getAuthFallbackCapabilities();
   }
 
   /**

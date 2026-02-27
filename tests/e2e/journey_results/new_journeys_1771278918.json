@@ -1,0 +1,95 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 0,
+    "in_progress": 1,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-013-756b1c80",
+      "journey_name": "Use Asset Recommendations",
+      "persona": "Data Consumer",
+      "status": "in_progress",
+      "start_time": 1771278918.8580315,
+      "end_time": null,
+      "duration": null,
+      "completion_rate": 80.0,
+      "success_rate": 80.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Recommendations",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771278918.8580365,
+          "end_time": 1771278918.8640358,
+          "duration": 0.005999326705932617,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "View Recommended for You",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771278918.8640404,
+          "end_time": 1771278918.864045,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "View Similar Assets",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771278918.8640466,
+          "end_time": 1771278918.8640482,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "View Also Used",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771278918.86405,
+          "end_time": 1771278918.8640509,
+          "duration": 9.5367431640625e-07,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Explore Recommended Assets",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771278918.8640523,
+          "end_time": 1771278918.8687634,
+          "duration": 0.004711151123046875,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T21:55:18.873902"
+}

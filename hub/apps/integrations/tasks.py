@@ -83,6 +83,12 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
             sync_job = MarketplaceSyncJob.objects.select_related(
                 'connection', 'tenant'
             ).get(id=sync_job_id)
+        except (DjangoValidationError, ValueError) as e:
+            error_msg = f"Invalid sync job ID format: {sync_job_id}"
+            if span:
+                record_span_exception(e)
+                set_span_status(StatusCode.ERROR)
+            raise ValueError(error_msg) from e
         except MarketplaceSyncJob.DoesNotExist:
             error_msg = f"Sync job {sync_job_id} not found"
             correlation_context = get_correlation_context()
@@ -325,6 +331,10 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                         asset_ids=asset_ids,
                         options=options
                     )
+                    if sync_result is None:
+                        error_msg = "Sync operation returned no result"
+                        sync_job.mark_failed(error_message=error_msg)
+                        raise ServiceError(error_msg)
                     sync_duration = time.time() - sync_start_time
                     status = "success" if sync_result.status == SyncStatus.COMPLETED else "error"
                     marketplace_connector_operations_total.labels(
@@ -345,6 +355,9 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                             error_type=sync_result.status.value,
                             tenant_id=str(sync_job.tenant.id),
                         ).inc()
+                except ConnectionError as e:
+                    sync_job.mark_failed(error_message=str(e))
+                    raise
                 except Exception as e:
                     sync_duration = time.time() - sync_start_time
                     try:
@@ -372,6 +385,7 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                         ).inc()
                     except Exception:
                         pass
+                    sync_job.mark_failed(error_message=str(e))
                     raise
 
             elif sync_direction == SyncDirection.PULL:
@@ -411,6 +425,10 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                         filters=filters if filters else None,
                         options=options
                     )
+                    if sync_result is None:
+                        error_msg = "Sync operation returned no result"
+                        sync_job.mark_failed(error_message=error_msg)
+                        raise ServiceError(error_msg)
                     sync_duration = time.time() - sync_start_time
                     status = "success" if sync_result.status == SyncStatus.COMPLETED else "error"
                     marketplace_connector_operations_total.labels(
@@ -431,6 +449,9 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                             error_type=sync_result.status.value,
                             tenant_id=str(sync_job.tenant.id),
                         ).inc()
+                except ConnectionError as e:
+                    sync_job.mark_failed(error_message=str(e))
+                    raise
                 except Exception as e:
                     sync_duration = time.time() - sync_start_time
                     try:
@@ -458,6 +479,7 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                         ).inc()
                     except Exception:
                         pass
+                    sync_job.mark_failed(error_message=str(e))
                     raise
 
             elif sync_direction == SyncDirection.BIDIRECTIONAL:

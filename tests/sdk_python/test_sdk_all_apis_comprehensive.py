@@ -687,7 +687,7 @@ class TestSDKVersioningAPI(SDKTestBase):
             status=AssetStatus.ACTIVE,
         )
         dataset = await sync_to_async(Dataset.objects.create)(
-            tenant=self.tenant, asset=asset, version="1.0.0", file_format="CSV"
+            tenant=self.tenant, asset=asset, format="CSV", version=1
         )
 
         config = await self.get_sdk_config()
@@ -705,7 +705,7 @@ class TestSDKVersioningAPI(SDKTestBase):
             status=AssetStatus.ACTIVE,
         )
         dataset = await sync_to_async(Dataset.objects.create)(
-            tenant=self.tenant, asset=asset, version="1.0.0", file_format="CSV"
+            tenant=self.tenant, asset=asset, format="CSV", version=1
         )
 
         config = await self.get_sdk_config()
@@ -723,7 +723,7 @@ class TestSDKVersioningAPI(SDKTestBase):
             status=AssetStatus.ACTIVE,
         )
         dataset = await sync_to_async(Dataset.objects.create)(
-            tenant=self.tenant, asset=asset, version="1.0.0", file_format="CSV"
+            tenant=self.tenant, asset=asset, format="CSV", version=1
         )
 
         config = await self.get_sdk_config()
@@ -746,7 +746,7 @@ class TestSDKVersioningAPI(SDKTestBase):
             status=AssetStatus.ACTIVE,
         )
         dataset = await sync_to_async(Dataset.objects.create)(
-            tenant=self.tenant, asset=asset, version="1.0.0", file_format="CSV"
+            tenant=self.tenant, asset=asset, format="CSV", version=1
         )
 
         config = await self.get_sdk_config()

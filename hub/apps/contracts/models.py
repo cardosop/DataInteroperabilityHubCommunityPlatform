@@ -116,7 +116,7 @@ class Contract(models.Model):
         help_text="HubContract version (e.g., 1.0.0)"
     )
     hub_contract_json = models.JSONField(
-        db_index=True,  # GIN index for JSONB queries (Django 6)
+        db_index=False,  # No full-column index: large JSON (>8KB) exceeds PostgreSQL index key limit.
         null=True,
         blank=True,
         help_text="Normalized HubContract JSON"

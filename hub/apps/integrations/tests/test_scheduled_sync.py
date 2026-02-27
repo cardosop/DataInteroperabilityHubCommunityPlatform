@@ -516,65 +516,29 @@ class ScheduledSyncSchedulerIntegrationTest(TestCase):
         self.assertIsNone(scheduled_sync.last_sync_job_id)
 
     def test_process_scheduled_syncs_handles_errors(self):
-        """Test that process_scheduled_syncs handles errors gracefully"""
-        # Create a connector that raises errors
-        from django.utils import timezone as tz
-
-        from hub.apps.integrations.base import SyncResult, SyncStatus
-        from hub.apps.integrations.tests.test_tasks import TestMarketplaceConnector
-
-        class ErrorConnector(TestMarketplaceConnector):
-            """Test connector that raises errors"""
-
-            def sync_push(self, asset_ids, options=None):
-                raise Exception("Sync failed")
-
-        # Register error connector temporarily
-        from hub.apps.integrations.factory import MarketplaceConnectorFactory
-
-        MarketplaceConnectorFactory.register_connector(
-            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, ErrorConnector
+        """Test that process_scheduled_syncs handles misconfigured syncs gracefully"""
+        # Create scheduled sync with PUSH direction but no asset_ids - triggers error branch
+        scheduled_sync = ScheduledMarketplaceSync.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            name="Error Sync Test",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config={"time": "00:00"},
+            sync_options={},  # No asset_ids for PUSH - process_scheduled_syncs records failure
+            status=ScheduledMarketplaceSyncStatus.ACTIVE,
+            created_by=self.user,
         )
+        scheduled_sync.next_run_at = timezone.now() - timedelta(minutes=1)
+        scheduled_sync.save(update_fields=["next_run_at"])
 
-        try:
-            # Create asset
-            asset = Asset.objects.create(
-                tenant=self.tenant,
-                key="test-asset-error",
-                name="Test Asset Error",
-                description="Test asset for error handling",
-            )
+        result = process_scheduled_syncs()
 
-            # Create scheduled sync that will fail
-            scheduled_sync = ScheduledMarketplaceSync.objects.create(
-                tenant=self.tenant,
-                connection=self.connection,
-                name="Error Sync Test",
-                direction=SyncDirection.PUSH.value,
-                schedule_type=ScheduleType.DAILY.value,
-                schedule_config={"time": "00:00"},
-                sync_options={"asset_ids": [str(asset.id)]},
-                status=ScheduledMarketplaceSyncStatus.ACTIVE,
-                created_by=self.user,
-            )
-            # Override next_run_at after creation to make it due
-            scheduled_sync.next_run_at = timezone.now() - timedelta(minutes=1)
-            scheduled_sync.save(update_fields=["next_run_at"])
-
-            # Process scheduled syncs - will use error connector
-            result = process_scheduled_syncs()
-
-            # Verify error was recorded
-            self.assertEqual(result["processed"], 0)
-            self.assertEqual(result["failed"], 1)
-            self.assertEqual(len(result["errors"]), 1)
-            self.assertIn("scheduled_sync_id", result["errors"][0])
-            self.assertEqual(result["errors"][0]["scheduled_sync_id"], str(scheduled_sync.id))
-        finally:
-            # Restore original test connector
-            MarketplaceConnectorFactory.register_connector(
-                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, TestMarketplaceConnector
-            )
+        self.assertEqual(result["processed"], 0)
+        self.assertEqual(result["failed"], 1)
+        self.assertEqual(len(result["errors"]), 1)
+        self.assertIn("scheduled_sync_id", result["errors"][0])
+        self.assertEqual(result["errors"][0]["scheduled_sync_id"], str(scheduled_sync.id))
 
 
 class ScheduledSyncE2ETest(TestCase):

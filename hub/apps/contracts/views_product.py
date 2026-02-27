@@ -56,7 +56,6 @@ class ContractProductMixin:
         tags=["Contracts", "Products"],
     )
     @action(detail=False, methods=["post"], url_path="products", url_name="create-product")
-    @transaction.atomic
     def create_product(self, request):
         """
         Create product using Product-First flow (ODPS).
@@ -141,14 +140,17 @@ class ContractProductMixin:
             )
 
         # Execute ProductCreationWorkflow
-        # In test environments, execute synchronously to return contracts directly
+        # In test/E2E environments, execute synchronously to return contracts directly
         # In production, execute asynchronously and return workflow instance ID
+        import os
         import sys
         from django.conf import settings
-        
+
         is_test_env = False
-        # Detect test environment
-        if hasattr(sys, "argv"):
+        # Detect test environment (E2E uses docker-compose.test with ENVIRONMENT=test, hub_test DB)
+        if os.environ.get("ENVIRONMENT") == "test":
+            is_test_env = True
+        if not is_test_env and hasattr(sys, "argv"):
             test_indicators = ["test", "pytest", "unittest"]
             is_test_env = any(
                 any(indicator in arg.lower() for indicator in test_indicators)
@@ -217,9 +219,13 @@ class ContractProductMixin:
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except Exception as e:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.exception("Product creation failed: %s", e)
             return Response(
                 {
-                    "error": "Product creation failed",
+                    "error": f"Product creation failed: {str(e)}",
                     "code": "INTERNAL_ERROR",
                     "details": {"error": str(e)},
                 },
@@ -262,30 +268,93 @@ class ContractProductMixin:
 
         Returns workflow status and results.
         """
-        from hub.apps.orchestration.workflow_engine import WorkflowEngine
+        from hub.apps.contracts.models import Contract
+        from hub.apps.contracts.serializers import ContractSerializer
+        from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
+
+        tenant = (
+            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
+        )
+        if not tenant:
+            return Response(
+                {"error": "User must belong to a tenant"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
-            workflow_instance = WorkflowEngine.get_workflow_instance(
-                workflow_instance_id=workflow_instance_id
+            workflow_instance = WorkflowInstance.objects.get(
+                id=workflow_instance_id, tenant_id=tenant.id
             )
-
-            if not workflow_instance:
-                return Response(
-                    {"error": "Workflow instance not found"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            # Get workflow status
-            status_data = WorkflowEngine.get_workflow_status(
-                workflow_instance_id=workflow_instance_id
-            )
-
-            return Response(status_data, status=status.HTTP_200_OK)
-        except Exception as e:
+            workflow_instance.refresh_from_db()
+        except WorkflowInstance.DoesNotExist:
             return Response(
-                {"error": f"Failed to get workflow status: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                {"error": "Workflow instance not found"},
+                status=status.HTTP_404_NOT_FOUND,
             )
+
+        # Map internal status to API status
+        status_map = {
+            WorkflowStatus.DRAFT: "PENDING",
+            WorkflowStatus.RUNNING: "RUNNING",
+            WorkflowStatus.COMPLETED: "COMPLETED",
+            WorkflowStatus.FAILED: "FAILED",
+            WorkflowStatus.CANCELLED: "FAILED",
+            WorkflowStatus.PAUSED: "RUNNING",
+            WorkflowStatus.ROLLING_BACK: "RUNNING",
+            WorkflowStatus.ROLLED_BACK: "FAILED",
+        }
+        api_status = status_map.get(workflow_instance.status, "PENDING")
+
+        if workflow_instance.status == WorkflowStatus.RUNNING:
+            status_data = {
+                "workflow_instance_id": str(workflow_instance.id),
+                "status": "RUNNING",
+                "message": "Workflow is still running",
+                "progress_percentage": workflow_instance.state_data.get("progress_percentage", 0),
+                "current_step_name": workflow_instance.state_data.get("current_step_name"),
+            }
+        elif workflow_instance.status == WorkflowStatus.DRAFT:
+            status_data = {
+                "workflow_instance_id": str(workflow_instance.id),
+                "status": "PENDING",
+                "message": "Workflow is pending execution",
+                "progress_percentage": 0,
+            }
+        elif workflow_instance.status == WorkflowStatus.COMPLETED:
+            odps_contract_id = workflow_instance.state_data.get("odps_contract_id")
+            odcs_contract_id = workflow_instance.state_data.get("odcs_contract_id")
+            odps_contract = None
+            odcs_contract = None
+            if odps_contract_id:
+                try:
+                    odps_contract = Contract.objects.get(id=odps_contract_id)
+                except Contract.DoesNotExist:
+                    pass
+            if odcs_contract_id:
+                try:
+                    odcs_contract = Contract.objects.get(id=odcs_contract_id)
+                except Contract.DoesNotExist:
+                    pass
+            status_data = {
+                "workflow_instance_id": str(workflow_instance.id),
+                "status": "COMPLETED",
+                "odps_contract": ContractSerializer(odps_contract).data if odps_contract else None,
+                "odcs_contract": ContractSerializer(odcs_contract).data if odcs_contract else None,
+            }
+        else:
+            # FAILED, CANCELLED, ROLLED_BACK
+            error_message = (
+                workflow_instance.state_data.get("error")
+                or workflow_instance.error_message
+                or f"Workflow ended with status: {workflow_instance.status}"
+            )
+            status_data = {
+                "workflow_instance_id": str(workflow_instance.id),
+                "status": "FAILED",
+                "message": error_message,
+            }
+
+        return Response(status_data, status=status.HTTP_200_OK)
 
     @extend_schema(
         summary="Get payment gateways",

@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-005-1cd64965",
+      "journey_name": "ODPS Product Strategy Journey",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1771260857.3948135,
+      "end_time": 1771260857.428119,
+      "duration": 0.03330540657043457,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "400 != 201 : ODPS create failed: {'error': \"ODPS 'product.dataSchema' field is required\", 'code': 'BUSINESS_RULES_VALIDATION', 'details': {'validation_errors': [\"ODPS 'product.dataSchema' field is required\"], 'warnings': [], 'version': '4.1'}}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771260857.3948233,
+          "end_time": 1771260857.4189532,
+          "duration": 0.024129867553710938,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS with Product Strategy",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771260857.4189703,
+          "end_time": 1771260857.4190347,
+          "duration": 6.437301635742188e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771260857.4190373,
+          "end_time": 1771260857.4280887,
+          "duration": 0.009051322937011719,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T16:54:17.428258"
+}

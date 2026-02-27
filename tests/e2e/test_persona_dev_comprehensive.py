@@ -21,6 +21,7 @@ from django.utils import timezone
 from rest_framework import status
 
 from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 from hub.apps.auth.models import APIKey
 from hub.apps.webhooks.models import Webhook, WebhookDelivery, WebhookStatus, WebhookEventType, DeliveryStatus
@@ -31,7 +32,16 @@ from hub.apps.audit.models import AuditEvent
 from .conftest import E2ETestBase
 
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
+pytestmark = [
+    pytest.mark.uc_journey_persona,
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.e2e,
+    pytest.mark.persona("External Developer"),
+    pytest.mark.journey("JOURNEY-DEV-001"),
+    pytest.mark.journey("JOURNEY-DEV-002"),
+    pytest.mark.journey("JOURNEY-DEV-003"),
+    pytest.mark.journey("JOURNEY-DEV-004"),
+]
 
 
 class JourneyDEV001BuildCustomIntegrationTests(E2ETestBase):
@@ -47,6 +57,7 @@ class JourneyDEV001BuildCustomIntegrationTests(E2ETestBase):
             slug="developer-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.developer_user = User.objects.create_user(
             email="developer@example.com",
@@ -54,6 +65,16 @@ class JourneyDEV001BuildCustomIntegrationTests(E2ETestBase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+        # DATA_PROVIDER role required for asset creation (POST /api/v1/assets/)
+        from hub.apps.users.models import Role, UserRole
+
+        dev_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        UserRole.objects.get_or_create(user=self.developer_user, role=dev_role)
+        self.developer_user.refresh_from_db()
 
         # Authenticate as developer
         self.client.force_authenticate(user=self.developer_user)
@@ -258,6 +279,7 @@ class JourneyDEV002IntegrateViaSDKTests(E2ETestBase):
             slug="sdk-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.developer_user = User.objects.create_user(
             email="sdk@developer.com",
@@ -304,6 +326,7 @@ class JourneyDEV003IntegrateViaCLITests(E2ETestBase):
             slug="cli-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.developer_user = User.objects.create_user(
             email="cli@developer.com",
@@ -351,6 +374,7 @@ class JourneyDEV004SetUpWebhooksTests(E2ETestBase):
             slug="webhook-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.developer_user = User.objects.create_user(
             email="webhook@developer.com",
@@ -739,6 +763,7 @@ class ExternalDeveloperUseCasesTests(E2ETestBase):
             slug="usecase-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.developer_user = User.objects.create_user(
             email="usecase@developer.com",
@@ -746,6 +771,16 @@ class ExternalDeveloperUseCasesTests(E2ETestBase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+        # DATA_PROVIDER role required for asset creation (POST /api/v1/assets/)
+        from hub.apps.users.models import Role, UserRole
+
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        UserRole.objects.get_or_create(user=self.developer_user, role=provider_role)
+        self.developer_user.refresh_from_db()
 
         # Authenticate as developer
         self.client.force_authenticate(user=self.developer_user)
@@ -900,6 +935,7 @@ class ExternalDeveloperErrorScenariosTests(E2ETestBase):
             slug="error-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.developer_user = User.objects.create_user(
             email="error@developer.com",

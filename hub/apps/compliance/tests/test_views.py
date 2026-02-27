@@ -27,6 +27,7 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus, RiskLevel
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -57,6 +58,8 @@ class ComplianceRunViewSetTest(TestCase):
         self.other_tenant = Tenant.objects.create(
             name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
+        ensure_tenant_has_active_subscription(self.other_tenant)
 
         self.other_user = User.objects.create_user(
             email="other@example.com",
@@ -531,6 +534,53 @@ class ComplianceRunViewSetTest(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("id", response.data)
+
+    def test_create_compliance_run_rejects_invalid_contract_schema(self):
+        """5.4.2: Creating run with asset whose contract has invalid privacy_compliance returns 400; real validation, no mocks."""
+        from hub.apps.contracts.models import Contract, ContractStatus
+        from hub.apps.contracts.models import (
+            NormalizationStatus,
+            OriginalFormat,
+            OriginalSpecType,
+            ValidationStatus,
+        )
+
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="asset-invalid-schema",
+            name="Asset Invalid Schema",
+            status=AssetStatus.DRAFT,
+            created_by=self.user,
+        )
+        Contract.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            status=ContractStatus.ACTIVE,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id": "test"}',
+            validation_status=ValidationStatus.VALID,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            hub_contract_json={
+                "privacy_compliance": {
+                    "contains_personal_data": "yes",  # invalid: must be bool
+                },
+            },
+            created_by=self.user,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            "/api/v1/compliance/runs/",
+            {"asset_id": str(asset.id), "scan_mode": "internal"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get("code"), "contract_compliance_schema_invalid")
+        self.assertIn("error", response.data)
+        self.assertIn("invalid", response.data.get("error", "").lower())
 
     def test_create_compliance_run_requires_tenant(self):
         """Test creating compliance run requires user to belong to tenant"""

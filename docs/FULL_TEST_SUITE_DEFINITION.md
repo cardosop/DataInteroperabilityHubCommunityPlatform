@@ -50,6 +50,7 @@ No mocks/stubs; root-cause fixes only; evidence under `test_reports_comprehensiv
 | 11 | SDK (Python) | `tests/sdk_python/` | 5–15 min |
 | 12 | Scripts | `tests/scripts/` | 5–15 min |
 | 13 | Frontend unit | Vitest (frontend/) | 2–10 min |
+| 13b | Frontend integration API | Real API (auth, assets, contracts, marketplace); `npm run test:integration:api` | 1–2 min |
 | 14 | Frontend component | Component tests (if configured) | 2–5 min |
 | 15 | Frontend a11y | Accessibility tests (if configured) | 2–5 min |
 | 16 | Frontend coverage check | Coverage threshold | &lt; 1 min |
@@ -71,17 +72,18 @@ Canonical order used by Phase 12A and referenced by runbooks:
 | 6 | Regression | tests/regression/ (can be last batch or nightly) |
 | 7 | Concurrency | tests/concurrency/ |
 | 8 | Performance | tests/performance/ |
-| 9 | Chaos | tests/chaos/ (nightly or manual) |
+| 9 | Chaos | tests/chaos/ (**manual only**; not in CI or nightly) |
 | 10 | UAT | tests/uat/ (nightly or manual) |
 | 11 | SDK Python | tests/sdk_python/ (nightly or manual) |
 | 12 | Scripts | tests/scripts/ (nightly or manual) |
 | 13 | Frontend unit | cd frontend && npm run test:run |
+| 13b | Frontend integration API | cd frontend && npm run test:integration:api (requires backend up; see [FRONTEND_INTEGRATION_API_MIGRATION_PLAN.md](FRONTEND_INTEGRATION_API_MIGRATION_PLAN.md)) |
 | 14 | Frontend component | cd frontend && npm run test:component (if present) |
 | 15 | Frontend a11y | cd frontend && npm run test:a11y (if present) |
 | 16 | Frontend coverage check | cd frontend && npm run test:coverage:check (if present) |
 | 17 | Frontend E2E | cd frontend && npm run test:e2e |
 
-Steps 1–5 and 13–17 are the **CI gate** (or equivalent). Steps 6–8 run in **nightly** and **release**. Steps 9–12 run **nightly or manual** only (see [Optional / Extended Suites](#optional--extended-suites-nightly-or-manual)).
+Steps 1–5 and 13–17 are the **CI gate** (or equivalent). Steps 6–8 run in **nightly** and **release**. Step 9 (Chaos) runs **manual only** — not in CI or nightly. Steps 10–12 run **nightly or manual** only (see [Optional / Extended Suites](#optional--extended-suites-nightly-or-manual)).
 
 ---
 
@@ -93,21 +95,31 @@ Steps 1–5 and 13–17 are the **CI gate** (or equivalent). Steps 6–8 run in 
 | 2 Backend unit | `pytest hub/apps/ tests/unit/ -v -m "not integration and not e2e" ...` or `run_phase_12a_backend_suites.sh` (step 12A.1.1) | `.../unit/` |
 | 3 Backend integration | `pytest tests/integration/ -v --docker-compose-runtime ...` or 12A.1.2 | `.../integration/` |
 | 4 Backend E2E | `pytest tests/e2e/ -v --docker-compose-runtime ...` or 12A.1.3 | `.../e2e/` |
+| 4b UC/Journey/Persona | `pytest tests/e2e/ -v -m uc_journey_persona ...` or `./scripts/run_uc_journey_persona_tests.sh` (12A.1.3b) | `.../uc_journey_persona/` |
 | 5 Security | `pytest tests/security/ -v --tb=short --junit-xml=...` or 12A.3.1 | `.../security/` |
 | 6 Regression | `pytest tests/regression/ -v -m regression ...` or 12A.3.4 | `.../regression/` |
 | 7 Concurrency | `pytest tests/concurrency/ -v ...` or 12A.3.3 | `.../concurrency/` |
 | 8 Performance | `pytest tests/performance/ ...` or `tests/performance/run_performance_tests.sh` or 12A.3.2 | `.../performance/` |
-| 9 Chaos | `pytest tests/chaos/ -v --tb=short` (manual or nightly) | Optional: `.../chaos/` |
+| 9 Chaos | `pytest tests/chaos/ -v --tb=short` (**manual only**; not in CI or nightly) | Optional: `.../chaos/` |
 | 10 UAT | `pytest tests/uat/ -v --tb=short` (manual or nightly) | Optional: `.../uat/` |
 | 11 SDK Python | `pytest tests/sdk_python/ -v --tb=short` (manual or nightly) | Optional: `.../sdk_python/` |
 | 12 Scripts | `pytest tests/scripts/ -v --tb=short` (manual or nightly) | Optional: `.../scripts/` |
 | 13 Frontend unit | `cd frontend && npm run test:run` or 12A.2.1 | `.../frontend-unit/` |
+| 13b Frontend integration API | `cd frontend && npm run test:integration:api` (backend must be up) | — |
 | 14 Frontend component | `cd frontend && npm run test:component` (if present) | As configured |
 | 15 Frontend a11y | `cd frontend && npm run test:a11y` (if present) | As configured |
 | 16 Frontend coverage | `cd frontend && npm run test:coverage:check` (if present) | — |
 | 17 Frontend E2E | `cd frontend && npm run test:e2e` or 12A.2.2 | `.../frontend-e2e/` |
 
-**Full-suite script**: `scripts/run_phase_12a_full_suites.sh` runs backend (steps 2–4: unit, integration, e2e), then smoke (step 1), then frontend (steps 13, 17), then 12A.3 (steps 5–8: security, performance, concurrency, regression). It does **not** run chaos, UAT, SDK, or scripts; those are documented here as nightly or manual.
+**Full-suite script**: `scripts/run_phase_12a_full_suites.sh` runs backend (steps 2–4: unit, integration, e2e), then smoke (step 1), then frontend (steps 13, 17), then 12A.3 (steps 5–8: security, performance, concurrency, regression). It does **not** run chaos (manual only), UAT, SDK, or scripts; chaos is manual only; UAT, SDK, and scripts are nightly or manual.
+
+**UC/Journey/Persona subset** (Task 6.7): Run UC-, journey-, and persona-tagged E2E tests only:
+```bash
+pytest tests/e2e/ -v -m uc_journey_persona
+# Or equivalently: -m "uc or journey or persona"
+# Or use script: ./scripts/run_uc_journey_persona_tests.sh
+```
+Artifacts: `test_reports_comprehensive/{date}/uc_journey_persona/`. See [RUNBOOKS.md — UC/Journey/Persona E2E tests](RUNBOOKS.md#ucjourneypersona-e2e-tests-task-67).
 
 ---
 
@@ -127,11 +139,11 @@ Performance, regression, and concurrency are **optional for the PR gate**; they 
 
 ## Optional / Extended Suites (Nightly or Manual)
 
-These suites are **not** part of `run_phase_12a_full_suites.sh`. Run them nightly or manually when needed. Exact commands:
+These suites are **not** part of `run_phase_12a_full_suites.sh`. Chaos is **manual only** (not in CI or nightly); UAT, SDK, and Scripts are run nightly or manually when needed. Exact commands:
 
 | Suite | Command | When |
 |-------|---------|------|
-| **Chaos** | `pytest tests/chaos/ -v --tb=short` (stack must be up; may require services) | Nightly or manual |
+| **Chaos** | `pytest tests/chaos/ -v --tb=short` (stack must be up; may require services) | **Manual only** (pre-release, incident investigation). Not in CI or nightly. See [RUNBOOKS.md — Chaos tests (manual only)](RUNBOOKS.md#chaos-tests-manual-only). |
 | **UAT** | `pytest tests/uat/ -v --tb=short` | Nightly or manual (e.g. compatibility) |
 | **SDK Python** | `pytest tests/sdk_python/ -v --tb=short` (API and env as for integration) | Nightly or manual |
 | **Scripts** | `pytest tests/scripts/ -v --tb=short` | Nightly or manual |
@@ -140,7 +152,7 @@ To run with the same stack as Phase 12A:
 
 ```bash
 # Ensure test stack is up
-docker compose -f docker-compose.test.yml up -d
+docker compose -f docker-compose.test.yml --env-file .env.test up -d
 # Then, from repo root:
 PYTHONPATH=. DJANGO_SETTINGS_MODULE=hub.settings pytest tests/chaos/ -v --tb=short
 PYTHONPATH=. DJANGO_SETTINGS_MODULE=hub.settings pytest tests/uat/ -v --tb=short

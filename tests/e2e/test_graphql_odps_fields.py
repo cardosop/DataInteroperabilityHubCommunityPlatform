@@ -64,7 +64,8 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "name": "E2E Test Product",
                         "description": "Product for E2E GraphQL test"
                     }
-                }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}
             }
         })
 
@@ -97,16 +98,15 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
 
     def test_odps_link_field_e2e(self):
         """Test odpsLink field via GraphQL API with real linked contracts"""
-        # Create ODCS contract
-        odcs_content = json.dumps({
+        # Create ODCS contract (schema.fields required by ODCS normalizer)
+        odcs_data = {
             "apiVersion": "odcs/v3",
             "kind": "DataContract",
             "id": f"e2e-odcs-{uuid.uuid4().hex[:8]}",
-            "info": {
-                "name": "E2E ODCS Contract",
-                "version": "1.0.0"
-            }
-        })
+            "info": {"name": "E2E ODCS Contract", "version": "1.0.0"},
+            "schema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+        }
+        odcs_content = json.dumps(odcs_data)
 
         odcs_contract = self.contract_service.create_contract(
             original_raw=odcs_content,
@@ -114,7 +114,8 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
             original_spec_type=OriginalSpecType.ODCS
         )
 
-        # Create ODPS contract and link it
+        # Create ODPS contract and link it (dataSchema required by ODPS business rules)
+        # product.contract.spec must be a dict, not a JSON string
         odps_content = json.dumps({
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -125,9 +126,8 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "name": "E2E Test Product"
                     }
                 },
-                "contract": {
-                    "spec": odcs_content  # Include full ODCS contract data
-                }
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+                "contract": {"spec": odcs_data}
             }
         })
 
@@ -178,16 +178,15 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
 
     def test_odcs_link_field_e2e(self):
         """Test odcsLink field via GraphQL API with real linked contracts"""
-        # Create ODCS contract
-        odcs_content = json.dumps({
+        # Create ODCS contract (schema.fields required by ODCS normalizer)
+        odcs_data = {
             "apiVersion": "odcs/v3",
             "kind": "DataContract",
             "id": f"e2e-odcs-{uuid.uuid4().hex[:8]}",
-            "info": {
-                "name": "E2E ODCS Contract",
-                "version": "1.0.0"
-            }
-        })
+            "info": {"name": "E2E ODCS Contract", "version": "1.0.0"},
+            "schema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+        }
+        odcs_content = json.dumps(odcs_data)
 
         odcs_contract = self.contract_service.create_contract(
             original_raw=odcs_content,
@@ -195,7 +194,8 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
             original_spec_type=OriginalSpecType.ODCS
         )
 
-        # Create ODPS contract and link it
+        # Create ODPS contract and link it (dataSchema required by ODPS business rules)
+        # product.contract.spec must be a dict, not a JSON string
         odps_content = json.dumps({
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -206,9 +206,8 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "name": "E2E Test Product"
                     }
                 },
-                "contract": {
-                    "spec": odcs_content  # Include full ODCS contract data
-                }
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+                "contract": {"spec": odcs_data}
             }
         })
 
@@ -259,7 +258,7 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
 
     def test_pricing_plans_field_e2e(self):
         """Test pricingPlans field via GraphQL API with real ODPS contract"""
-        # Create ODPS contract with pricing plans
+        # Create ODPS contract with pricing plans (dataSchema required by ODPS business rules)
         odps_content = json.dumps({
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -269,7 +268,8 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "productID": f"e2e-product-{uuid.uuid4().hex[:8]}",
                         "name": "E2E Test Product"
                     }
-                }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}
             },
             "marketplace": {
                 "pricingPlans": [
@@ -351,7 +351,7 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
 
     def test_access_methods_field_e2e(self):
         """Test accessMethods field via GraphQL API with real ODPS contract"""
-        # Create ODPS contract with access methods
+        # Create ODPS contract with access methods (dataSchema required by ODPS business rules)
         odps_content = json.dumps({
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -361,7 +361,8 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "productID": f"e2e-product-{uuid.uuid4().hex[:8]}",
                         "name": "E2E Test Product"
                     }
-                }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}
             },
             "marketplace": {
                 "accessMethods": {
@@ -449,7 +450,8 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "productID": f"e2e-product-{uuid.uuid4().hex[:8]}",
                         "name": "E2E Test Product"
                     }
-                }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}
             },
             "marketplace": {
                 "paymentGateways": {
@@ -510,7 +512,8 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "productID": f"e2e-product-{uuid.uuid4().hex[:8]}",
                         "name": "E2E Test Product"
                     }
-                }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}
             },
             "productStrategy": {
                 "objectives": {
@@ -578,7 +581,8 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "name": "Testituote",
                         "description": "Testituotteen kuvaus"
                     }
-                }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}
             }
         })
 
@@ -654,7 +658,8 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "name": "E2E Comprehensive Product",
                         "description": "Comprehensive test product"
                     }
-                }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}
             },
             "marketplace": {
                 "pricingPlans": [

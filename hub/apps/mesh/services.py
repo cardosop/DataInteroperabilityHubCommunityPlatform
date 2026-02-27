@@ -298,8 +298,49 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import User
 
-        tenant_obj = Tenant.objects.get(id=effective_tenant_id)
+        try:
+            tenant_obj = Tenant.objects.get(id=effective_tenant_id)
+        except Tenant.DoesNotExist:
+            raise ValidationError(f"Invalid or non-existent tenant: {effective_tenant_id}")
+
+        # Validate owner_id if provided: must exist and belong to tenant
+        if owner_id:
+            try:
+                User.objects.get(id=owner_id, tenant_id=effective_tenant_id)
+            except User.DoesNotExist:
+                raise ValidationError(
+                    f"Owner user {owner_id} not found or does not belong to tenant"
+                )
+
+        # Permission checks before workflow (wrong tenant, missing TENANT_ADMIN, ABAC deny)
         user_obj = User.objects.get(id=self.user_id) if self.user_id else None
+        if self.user_id:
+            from hub.apps.core.services.base import PermissionError
+            from hub.apps.governance.services import GovernanceService
+            try:
+                GovernanceService(
+                    tenant_id=effective_tenant_id, user_id=self.user_id
+                ).check_user_permissions_for_domain_creation(
+                    self.user_id, effective_tenant_id
+                )
+            except PermissionError:
+                raise
+            # ABAC: skip for platform admins (they transcend tenant boundaries); otherwise enforce when tenant has policies for DATA_MESH_DOMAIN
+            if not (user_obj and getattr(user_obj, "is_platform_admin", False)):
+                from hub.apps.governance.abac import ABACEngine
+                applicable = ABACEngine._get_applicable_policies(
+                    effective_tenant_id, "DATA_MESH_DOMAIN", ""
+                )
+                if applicable:
+                    abac_result = ABACEngine.evaluate_access(
+                        user_id=self.user_id,
+                        tenant_id=effective_tenant_id,
+                        resource_type="DATA_MESH_DOMAIN",
+                        resource_id="",
+                        access_type="WRITE",
+                    )
+                    if not abac_result.allowed:
+                        raise PermissionError("ABAC policy denied access for domain creation")
         payload_domain = DataMeshDomain(
             tenant_id=effective_tenant_id,
             name=name.strip(),
@@ -402,6 +443,14 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             error_msg = str(e)
             if "already exists" in error_msg.lower():
                 raise ConflictError(error_msg) from e
+            # Rollback path may omit step message; treat validate_domain step failure as duplicate if name exists
+            if "validate_domain" in error_msg and ("step failure" in error_msg or "rolled back" in error_msg):
+                if DataMeshDomain.objects.filter(
+                    tenant_id=effective_tenant_id, name=name.strip()
+                ).exists():
+                    raise ConflictError(
+                        f"Domain with name '{name.strip()}' already exists for tenant"
+                    ) from e
             raise ValidationError(error_msg) from e
         except Exception as e:
             creation_duration = time.time() - start_time

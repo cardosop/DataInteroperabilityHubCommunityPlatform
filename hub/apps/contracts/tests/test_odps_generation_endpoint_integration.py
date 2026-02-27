@@ -25,6 +25,7 @@ from hub.apps.contracts.models import (
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory
 
@@ -360,6 +361,7 @@ class ODPSGenerationEndpointIntegrationTest(ContractsAPITestBase):
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value,
         )
+        ensure_tenant_has_active_subscription(other_tenant)
         other_user = UserFactory.create_user(
             email="other@example.com",
             tenant=other_tenant,

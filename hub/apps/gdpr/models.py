@@ -53,10 +53,10 @@ class DataExportJob(models.Model):
         help_text="Path in storage (S3/MinIO) for export archive",
     )
     download_url = models.URLField(
-        max_length=2048,
+        max_length=4096,
         null=True,
         blank=True,
-        help_text="Signed URL for downloading export (short-lived)",
+        help_text="Signed URL for downloading export (short-lived); presigned URLs can exceed 2KB",
     )
     download_url_expires_at = models.DateTimeField(
         null=True, blank=True, help_text="When download URL expires"

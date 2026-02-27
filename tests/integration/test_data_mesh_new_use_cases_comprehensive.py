@@ -34,6 +34,7 @@ from rest_framework.test import APIClient
 from hub.apps.mesh.models import DataMeshDomain, DomainStatus
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,
@@ -76,6 +77,7 @@ class DataMeshNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixi
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create roles
         self.data_provider_role, _ = Role.objects.get_or_create(
@@ -89,16 +91,16 @@ class DataMeshNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixi
             defaults={"description": "Tenant Admin"},
         )
 
-        # Create users
+        # Create users (use unique emails to avoid conflicts between tests)
         self.dpo_user = UserFactory.create_user(
             tenant=self.tenant,
-            email="dpo@example.com",
+            email=f"dpo-{unique_id}@example.com",
         )
         UserRole.objects.get_or_create(user=self.dpo_user, role=self.data_provider_role)
 
         self.admin_user = UserFactory.create_user(
             tenant=self.tenant,
-            email="admin@example.com",
+            email=f"admin-{unique_id}@example.com",
         )
         UserRole.objects.get_or_create(user=self.admin_user, role=self.tenant_admin_role)
 
@@ -173,10 +175,14 @@ class UCMESH001CreateDataMeshDomainTest(DataMeshNewUseCasesTestBase):
         response1 = self.client.post(domain_url, domain_data, format="json")
         self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
 
-        # Try to create duplicate
+        # Try to create duplicate (API returns 409 Conflict for duplicate resource)
         response2 = self.client.post(domain_url, domain_data, format="json")
-        self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)
-    @pytest.mark.performance
+        self.assertIn(
+            response2.status_code,
+            [status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT],
+            "Duplicate domain should return 400 or 409",
+        )
+
     @pytest.mark.performance
     def test_create_data_mesh_domain_performance(self):
         """Test performance target: domain creation should be < 5000ms"""

@@ -17,6 +17,9 @@ class DomainSerializer(serializers.ModelSerializer):
     owner_email = serializers.EmailField(source='owner.email', read_only=True, allow_null=True)
     tenant_name = serializers.CharField(source='tenant.name', read_only=True)
     status = serializers.ChoiceField(choices=DomainStatus.choices)
+    boundaries = serializers.JSONField(required=False, allow_null=True)
+    capabilities = serializers.JSONField(required=False, allow_null=True)
+    resource_quota = serializers.JSONField(required=False, allow_null=True)
 
     class Meta:
         model = DataMeshDomain
@@ -90,6 +93,7 @@ class DomainCreateSerializer(serializers.Serializer):
     boundaries = serializers.DictField(
         required=False,
         allow_empty=True,
+        allow_null=True,
         help_text="Domain boundaries as JSON"
     )
     capabilities = serializers.DictField(
@@ -287,7 +291,9 @@ class ApplyPolicySerializer(serializers.Serializer):
     )
     overrides = serializers.DictField(
         required=False,
+        allow_null=True,
         allow_empty=True,
+        default=dict,
         help_text="Policy overrides as JSON (conditions, effect, priority, etc.)"
     )
 
@@ -386,16 +392,19 @@ class TopologyNodeSerializer(serializers.Serializer):
     id = serializers.UUIDField(help_text="Domain ID")
     name = serializers.CharField(help_text="Domain name")
     description = serializers.CharField(
+        required=False,
         allow_null=True,
         allow_blank=True,
         help_text="Domain description"
     )
     status = serializers.CharField(help_text="Domain status")
     owner_id = serializers.UUIDField(
+        required=False,
         allow_null=True,
         help_text="Owner user ID"
     )
     created_at = serializers.DateTimeField(
+        required=False,
         allow_null=True,
         help_text="Domain creation timestamp"
     )

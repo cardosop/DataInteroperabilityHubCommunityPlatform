@@ -1,6 +1,8 @@
 """
 Unit tests for Ingestion Templates
 """
+import uuid
+
 import pytest
 from django.test import TestCase
 
@@ -19,14 +21,15 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 class IngestionTemplateTest(TestCase):
     """Test IngestionTemplate model"""
-    
+
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures (unique slug per test to avoid collisions with --reuse-db)."""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         
         self.user = User.objects.create_user(
@@ -108,14 +111,15 @@ class IngestionTemplateTest(TestCase):
 
 class IngestionTemplateManagerTest(TestCase):
     """Test IngestionTemplateManager"""
-    
+
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures (unique slug per test to avoid collisions with --reuse-db)."""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         
         self.user = User.objects.create_user(
@@ -279,12 +283,13 @@ class IngestionTemplateManagerTest(TestCase):
             file_pattern_template=".*"
         )
         
-        # Create another tenant's template
+        # Create another tenant's template (unique slug to avoid collision with --reuse-db)
+        other_slug = f"other-tenant-{uuid.uuid4().hex[:8]}"
         other_tenant = Tenant.objects.create(
             name="Other Tenant",
-            slug="other-tenant",
+            slug=other_slug,
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         other_template = IngestionTemplate.objects.create(
             tenant=other_tenant,

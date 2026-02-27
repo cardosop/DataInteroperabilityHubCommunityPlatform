@@ -19,9 +19,11 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract
 from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 User = get_user_model()
 
@@ -91,18 +93,21 @@ class AuditLoggingE2ETest(E2ETestBase):
         # List all audit events
         response = self.client.get('/api/v1/audit/audit-events/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data['results']), 2)
+        data = get_response_data(response) or {}
+        self.assertGreaterEqual(len(data.get('results', [])), 2)
         
         # Filter by action
         response = self.client.get('/api/v1/audit/audit-events/?action=ASSET_CREATED')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        actions = {e['action'] for e in response.data['results']}
+        data = get_response_data(response) or {}
+        actions = {e['action'] for e in data.get('results', [])}
         self.assertEqual(actions, {'ASSET_CREATED'})
         
         # Filter by resource_type
         response = self.client.get('/api/v1/audit/audit-events/?resource_type=ASSET')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        resource_types = {e['resource_type'] for e in response.data['results']}
+        data = get_response_data(response) or {}
+        resource_types = {e['resource_type'] for e in data.get('results', [])}
         self.assertEqual(resource_types, {'ASSET'})
     
     def test_audit_event_export_csv(self):
@@ -177,13 +182,15 @@ class AuditLoggingE2ETest(E2ETestBase):
             slug='other-tenant',
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(other_tenant)
         other_user = User.objects.create_user(
             email='other@example.com',
             password='testpass123',
             tenant=other_tenant,
             status=UserStatus.ACTIVE
         )
-        
+        ensure_user_has_data_provider_role(other_user)
+
         # Switch to other user
         self.client.force_authenticate(user=other_user)
         
@@ -193,9 +200,9 @@ class AuditLoggingE2ETest(E2ETestBase):
         # List audit events (should only see current tenant's events)
         response = self.client.get('/api/v1/audit/audit-events/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+        data = get_response_data(response) or {}
         # Verify only other tenant's events are visible
-        asset_ids = {e.get('resource_id') for e in response.data['results'] if e.get('resource_type') == 'ASSET'}
+        asset_ids = {e.get('resource_id') for e in data.get('results', []) if e.get('resource_type') == 'ASSET'}
         self.assertIn(str(asset_id2), asset_ids)
         self.assertNotIn(str(asset_id1), asset_ids)
     

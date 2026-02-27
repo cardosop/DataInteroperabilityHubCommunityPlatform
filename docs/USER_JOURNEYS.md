@@ -1,7 +1,7 @@
 # User Journeys
 
-**Last Updated**: 2026-02-07
-**Version**: 2.4.0
+**Last Updated**: 2026-02-16
+**Version**: 2.4.1
 
 ---
 
@@ -21,22 +21,42 @@ This document provides detailed user journey maps for **Visitor** (unauthenticat
 
 ---
 
+## Deferred Journeys (Transformation Pipeline)
+
+The following **6 journeys** are **deferred until the transformation pipeline exists**. No public transformation-pipeline API is implemented; these journeys are documented for future scope.
+
+| Journey ID | Title | Persona |
+|------------|-------|---------|
+| JOURNEY-DPO-008 | Create Transformation Pipeline for Asset | Data Product Owner |
+| JOURNEY-DE-007 | Create Transformation Pipeline | Data Engineer |
+| JOURNEY-DC-007 | Create Transformation Pipeline for Data | Data Consumer |
+| JOURNEY-AUD-005 | Audit Transformation Pipelines | Auditor |
+| JOURNEY-DA-001 | Create Transformation Pipeline | Data Analyst |
+| JOURNEY-DEV-006 | Integrate Transformation Pipeline API | External Developer |
+
+**Rationale**: A dedicated transformation-pipeline API (create/validate/execute pipelines, visual builder, asset-linked pipelines) is not yet implemented. See [Gap Remediation Plan](../openspec/changes/testreview1/GAP_REMEDIATION_PLAN.md) Phase 5 and [Transformation Pipeline Backlog](BACKLOG_TRANSFORMATION_PIPELINE.md).
+
+**When implemented**: Each journey will be un-deferred; tests and traceability will be updated.
+
+---
+
 ## Table of Contents
 
-1. [Visitor / Authentication Journeys](#visitor--authentication-journeys) - 4 journeys (NEW)
-2. [Data Product Owner Journeys](#data-product-owner-journeys) - 17 journeys (6 original + 11 new)
-3. [Data Engineer Journeys](#data-engineer-journeys) - 14 journeys (6 original + 8 new)
-4. [Compliance Officer Journeys](#compliance-officer-journeys) - 10 journeys (5 original + 5 new)
-5. [Data Consumer Journeys](#data-consumer-journeys) - 15 journeys (5 original + 10 new)
-6. [Tenant Admin Journeys](#tenant-admin-journeys) - 8 journeys (4 original + 4 new)
-7. [Platform Admin Journeys](#platform-admin-journeys) - 10 journeys (4 original + 6 new)
-8. [External Developer Journeys](#external-developer-journeys) - 9 journeys (4 original + 5 new)
-9. [Auditor Journeys](#auditor-journeys) - 6 journeys (3 original + 3 new)
-10. [Data Scientist Journeys](#data-scientist-journeys) - 5 journeys (NEW)
-11. [Data Analyst Journeys](#data-analyst-journeys) - 4 journeys (NEW)
-12. [Community Manager Journeys](#community-manager-journeys) - 4 journeys (NEW)
-13. [Data Mesh Domain Owner Journeys](#data-mesh-domain-owner-journeys) - 5 journeys (NEW)
-14. [Journey Map Matrix](#journey-map-matrix)
+1. [Deferred Journeys (Transformation Pipeline)](#deferred-journeys-transformation-pipeline) — 6 journeys (deferred until transformation pipeline exists)
+2. [Visitor / Authentication Journeys](#visitor--authentication-journeys) - 4 journeys (NEW)
+3. [Data Product Owner Journeys](#data-product-owner-journeys) - 17 journeys (6 original + 11 new)
+4. [Data Engineer Journeys](#data-engineer-journeys) - 14 journeys (6 original + 8 new)
+5. [Compliance Officer Journeys](#compliance-officer-journeys) - 10 journeys (5 original + 5 new)
+6. [Data Consumer Journeys](#data-consumer-journeys) - 15 journeys (5 original + 10 new)
+7. [Tenant Admin Journeys](#tenant-admin-journeys) - 8 journeys (4 original + 4 new)
+8. [Platform Admin Journeys](#platform-admin-journeys) - 10 journeys (4 original + 6 new)
+9. [External Developer Journeys](#external-developer-journeys) - 9 journeys (4 original + 5 new)
+10. [Auditor Journeys](#auditor-journeys) - 6 journeys (3 original + 3 new)
+11. [Data Scientist Journeys](#data-scientist-journeys) - 5 journeys (NEW)
+12. [Data Analyst Journeys](#data-analyst-journeys) - 4 journeys (NEW)
+13. [Community Manager Journeys](#community-manager-journeys) - 4 journeys (NEW)
+14. [Data Mesh Domain Owner Journeys](#data-mesh-domain-owner-journeys) - 5 journeys (NEW)
+15. [Journey Map Matrix](#journey-map-matrix)
 
 ---
 
@@ -2570,13 +2590,14 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 
 ---
 
-**Last Updated**: 2026-02-07
-**Version**: 2.4.0 (Phase 0 Gap Remediation: JOURNEY-DPO-008, JOURNEY-DE-007, JOURNEY-DC-007, JOURNEY-DEV-006, JOURNEY-AUD-005, JOURNEY-DA-001 marked **Deferred**; see GAP_REMEDIATION_PLAN.md)
+**Last Updated**: 2026-02-16
+**Version**: 2.4.1 (Task 6.4: Deferred journeys consolidated in [Deferred Journeys (Transformation Pipeline)](#deferred-journeys-transformation-pipeline); backlog item [BACKLOG_TRANSFORMATION_PIPELINE.md](BACKLOG_TRANSFORMATION_PIPELINE.md))
 
 ---
 
 ## Related Documentation
 
+- **[Transformation Pipeline Backlog](BACKLOG_TRANSFORMATION_PIPELINE.md)** - Backlog item for transformation pipeline; links to deferred journeys (JOURNEY-DPO-008, DE-007, DC-007, AUD-005, DA-001, DEV-006)
 - **[Use Cases](USE_CASES.md)** - Use cases including Authentication & Access (UC-AUTH-001–004)
 - **[User Personas](USER_PERSONAS.md)** - Personas including Visitor/Prospect
 - **[Features](FEATURES.md)** - Feature documentation and Capabilities ↔ Use Cases matrix

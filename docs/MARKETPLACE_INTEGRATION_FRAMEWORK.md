@@ -26,7 +26,7 @@ Complete architecture documentation for the Data Interoperability Hub Marketplac
 
 ## Overview
 
-The Marketplace Integration Framework enables bidirectional synchronization between the Data Interoperability Hub and external data marketplaces (CKAN, Snowflake Data Marketplace, AWS Data Exchange, Azure Data Share, GCP Marketplace, Databricks, etc.).
+The Marketplace Integration Framework enables bidirectional synchronization between the Data Interoperability Hub and external data marketplaces (CKAN, Snowflake Data Marketplace, AWS Data Exchange, Azure Data Share, GCP Marketplace, Databricks, etc.). All external marketplace APIs live under `/api/v1/integrations/marketplace/`. For the distinction between the Hub’s internal marketplace (listings, orders, entitlements under `/api/v1/marketplace/`) and these external integrations, see [Internal vs External Marketplace](MARKETPLACE_INTERNAL_VS_EXTERNAL.md).
 
 ### Key Capabilities
 

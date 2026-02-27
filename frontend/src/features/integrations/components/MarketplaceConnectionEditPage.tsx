@@ -83,14 +83,14 @@ export function MarketplaceConnectionEditPage() {
     }
   };
 
-  if (isLoading || !connection) {
-    return <LoadingSpinner message="Loading connection..." />;
-  }
-
   if (error) {
     return (
       <ErrorDisplay error={error} title="Failed to load connection" onRetry={() => refetch()} />
     );
+  }
+
+  if (isLoading || !connection) {
+    return <LoadingSpinner message="Loading connection..." />;
   }
 
   return (

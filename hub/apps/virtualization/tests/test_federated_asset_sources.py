@@ -462,7 +462,7 @@ class VirtualDatasetFederatedAssetQueryExecutionTest(TestCase):
         )
 
     def test_execute_query_against_federated_asset_metadata_only(self):
-        """Test executing metadata-only query against federated asset"""
+        """Test executing metadata-only query against federated asset (virtual dataset creation)."""
         # Set asset to METADATA_ONLY
         self.federated_asset.data_strategy = DataStrategy.METADATA_ONLY
         self.federated_asset.save()
@@ -483,8 +483,171 @@ class VirtualDatasetFederatedAssetQueryExecutionTest(TestCase):
             sources=sources
         )
 
-        # Note: Actual query execution would require mocking the marketplace connector
-        # For now, we test that the virtual dataset is created successfully
         self.assertIsNotNone(virtual_dataset)
         self.assertEqual(len(virtual_dataset.sources), 1)
 
+    def test_execute_query_federated_asset_metadata_only_real_path(self):
+        """
+        Feat1 2.1.3: Execute query against federated_asset source using real code path.
+        Uses METADATA_ONLY strategy and VirtualizationService._execute_query_against_federated_asset
+        -> _execute_metadata_only_query; no mocks, no stubs.
+        """
+        from hub.apps.virtualization.models import QueryExecutionStatus, QueryExecutionMode
+
+        self.federated_asset.data_strategy = DataStrategy.METADATA_ONLY
+        self.federated_asset.save()
+
+        sources = [
+            {
+                "type": "federated_asset",
+                "asset_id": str(self.federated_asset.id),
+                "query": "SELECT * FROM metadata",
+            }
+        ]
+        virtual_dataset = self.service.create_virtual_dataset(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="Federated Metadata Query Dataset",
+            query="SELECT * FROM metadata",
+            query_type=QueryType.SQL,
+            sources=sources,
+        )
+        self.assertIsNotNone(virtual_dataset)
+
+        execution = self.service.execute_query(
+            virtual_dataset_id=str(virtual_dataset.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            parameters={},
+            execution_mode=QueryExecutionMode.SYNC,
+            timeout_seconds=60,
+        )
+
+        self.assertEqual(execution.status, QueryExecutionStatus.COMPLETED)
+        metrics = execution.metrics or {}
+        self.assertIn("data", metrics)
+        self.assertIn("columns", metrics)
+        self.assertIn("row_count", metrics)
+        self.assertIn("source_type", metrics)
+        self.assertEqual(metrics.get("source_type"), "federated_asset_metadata")
+        self.assertGreaterEqual(metrics.get("row_count", 0), 1)
+        data = metrics.get("data", [])
+        self.assertGreaterEqual(len(data), 1)
+        self.assertEqual(data[0].get("asset_id"), str(self.federated_asset.id))
+        self.assertEqual(data[0].get("asset_name"), self.federated_asset.name)
+
+
+class VirtualDatasetFederatedAssetInMemoryConnectorTest(TestCase):
+    """
+    Test federated asset query execution using the documented in-memory connector.
+
+    No mocks in critical path: uses InMemoryMarketplaceConnector (real implementation
+    of DataMarketplaceConnector interface) so that Asset.download_external_resource
+    and VirtualizationService._execute_query_against_federated_asset run against
+    real code paths with preloaded in-memory content.
+    """
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant",
+            slug="test-tenant-inmem",
+            kyc_status=KYCStatus.VERIFIED
+        )
+        self.data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"}
+        )
+        self.user = User.objects.create_user(
+            email="inmem@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE
+        )
+        UserRole.objects.get_or_create(user=self.user, role=self.data_provider_role)
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id)
+        )
+
+        # Connection using IN_MEMORY_FAKE connector with preloaded CSV content
+        self.connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.IN_MEMORY_FAKE.value,
+            name="In-Memory Test Connection",
+            config={
+                "resources": {
+                    "res-csv-1": b"id,name\n1,Alice\n2,Bob\n3,Carol",
+                }
+            },
+        )
+        self.federated_asset = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"federated-inmem-{uuid.uuid4()}",
+            name="In-Memory Federated Asset",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.DOWNLOAD_ALL,
+        )
+        ExternalResourceReference.objects.create(
+            asset=self.federated_asset,
+            resource_id="res-csv-1",
+            name="Test CSV",
+            url="https://example.com/data.csv",
+            format="CSV",
+            size_bytes=1024,
+            marketplace_type=MarketplaceType.IN_MEMORY_FAKE.value,
+            connection_id=self.connection.id,
+        )
+
+    def test_execute_query_against_federated_asset_with_in_memory_connector(self):
+        """Execute query against federated asset using in-memory connector (no mocks)."""
+        source = {
+            "type": "federated_asset",
+            "asset_id": str(self.federated_asset.id),
+            "query": "SELECT * FROM resource",
+        }
+        result = self.service._execute_query_against_federated_asset(
+            query="SELECT * FROM resource",
+            query_type=QueryType.SQL,
+            source=source,
+            parameters={},
+            timeout_seconds=300,
+            source_index=0,
+        )
+        self.assertIn("data", result)
+        self.assertIn("row_count", result)
+        self.assertIn("columns", result)
+        self.assertEqual(result["row_count"], 3)
+        self.assertEqual(result["source_type"], "file_csv")
+        self.assertEqual(len(result["data"]), 3)
+        self.assertEqual(result["columns"], ["id", "name"])
+
+    def test_create_virtual_dataset_and_execute_with_in_memory_connector(self):
+        """Create virtual dataset with federated_asset source and run execute_query path."""
+        sources = [
+            {
+                "type": "federated_asset",
+                "asset_id": str(self.federated_asset.id),
+                "query": "SELECT * FROM resource",
+            }
+        ]
+        vd = self.service.create_virtual_dataset(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="VD In-Memory",
+            query="SELECT * FROM federated_source",
+            query_type=QueryType.SQL,
+            sources=sources,
+        )
+        self.assertIsNotNone(vd)
+        results = self.service._execute_query_against_sources(
+            query=vd.query,
+            query_type=vd.query_type,
+            sources=vd.sources,
+            parameters={},
+            timeout_seconds=300,
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["row_count"], 3)
+        self.assertEqual(len(results[0]["data"]), 3)

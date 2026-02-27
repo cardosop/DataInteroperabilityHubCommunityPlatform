@@ -4,13 +4,16 @@ Unit tests for Data Mesh metrics.
 Tests Prometheus metrics collection for mesh operations.
 """
 import pytest
+import uuid
 from django.test import TestCase
+from django.core.cache import cache
 from unittest.mock import patch, MagicMock
 import time
 
 from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User
+from hub.apps.users.models import User, Role, UserRole
 from hub.apps.mesh.models import DataMeshDomain, DomainStatus
+from hub.apps.governance.models import AccessPolicy
 from hub.apps.mesh.services import DataMeshService
 from hub.apps.mesh.metrics import (
     mesh_domain_created_total,
@@ -35,17 +38,45 @@ class MeshMetricsTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        slug = f"test-tenant-{uuid.uuid4().hex[:8]}"
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
-            slug="test-tenant",
+            slug=slug,
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
+        # create_domain requires TENANT_ADMIN
+        tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant admin role"},
+        )
+        UserRole.objects.get_or_create(
+            user=self.user,
+            role=tenant_admin_role,
+            defaults={},
+        )
         self.service = DataMeshService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+
+        # ABAC: create_domain requires an ALLOW policy for DATA_MESH_DOMAIN (default deny when none match)
+        AccessPolicy.objects.get_or_create(
+            tenant=self.tenant,
+            name="Allow Domain Creation (Metrics Test)",
+            defaults={
+                "conditions": {
+                    "user": {"tenant_id": str(self.tenant.id)},
+                    "resource": {"type": "DATA_MESH_DOMAIN"},
+                },
+                "effect": "ALLOW",
+                "priority": 100,
+                "enabled": True,
+            },
+        )
+        cache.clear()
 
     def test_metrics_initialized(self):
         """Test that all mesh metrics are properly initialized"""

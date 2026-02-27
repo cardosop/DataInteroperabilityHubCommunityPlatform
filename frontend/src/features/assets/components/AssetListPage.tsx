@@ -162,6 +162,7 @@ export function AssetListPage() {
             {data.results.map((asset) => (
               <tr
                 key={asset.id}
+                data-asset-id={asset.id}
                 onClick={() => handleAssetClick(asset.id)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {

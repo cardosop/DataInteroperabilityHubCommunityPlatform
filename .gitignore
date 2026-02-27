@@ -25,12 +25,16 @@ db.sqlite3-journal
 /staticfiles
 /static
 
-# Environment
+# Environment (never commit files that may contain secrets)
 .env
 .env.local
 .env.*.local
+.env.test
 .env.test.ckan
+.env.e2e
+.gcp-sa-test.json
 !.env.example
+!.env.test.example
 
 # Testing
 .pytest_cache/

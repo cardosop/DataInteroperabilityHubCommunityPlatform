@@ -3,6 +3,7 @@ Service Redis connection tests.
 
 Tests that all services connect to the correct Redis instance.
 """
+import json
 import pytest
 from django.test import override_settings
 from django.conf import settings
@@ -23,14 +24,17 @@ class TestServiceRedisConnections:
             # In production, it should use REDIS_CACHE_URL
 
     def test_rq_queues_uses_queue_instance(self):
-        """Test that RQ_QUEUES uses redis-queue instance."""
-        with override_settings(
-            REDIS_QUEUE_URL="redis://queue-host:6380/0",
-            REDIS_URL="redis://fallback:6379/0"
-        ):
-            assert hasattr(settings, 'RQ_QUEUES')
-            for queue_name, queue_config in settings.RQ_QUEUES.items():
-                assert queue_config["URL"] == settings.REDIS_QUEUE_URL
+        """Test that RQ_QUEUES uses REDIS_QUEUE_URL.
+
+        RQ_QUEUES is built at Django load time from REDIS_QUEUE_URL.
+        Verify all queues use the configured REDIS_QUEUE_URL.
+        """
+        assert hasattr(settings, 'RQ_QUEUES')
+        assert settings.REDIS_QUEUE_URL, "REDIS_QUEUE_URL must be set"
+        for queue_name, queue_config in settings.RQ_QUEUES.items():
+            assert queue_config["URL"] == settings.REDIS_QUEUE_URL, (
+                f"Queue {queue_name} URL {queue_config['URL']!r} != REDIS_QUEUE_URL {settings.REDIS_QUEUE_URL!r}"
+            )
 
     def test_event_bus_uses_events_instance(self):
         """Test that EventBus uses redis-events instance."""
@@ -84,7 +88,7 @@ class TestServiceRedisConnections:
             response = health_check(request)
 
             assert response.status_code in [200, 503]  # May be unhealthy if services not running
-            data = response.json()
+            data = json.loads(response.content)
             assert 'redis' in data
             assert isinstance(data['redis'], dict)
             assert 'cache' in data['redis']
@@ -99,11 +103,9 @@ class TestServiceRedisConnections:
         """Test that worker service health check uses redis-queue."""
         try:
             from services.worker.health import ready
-            from django.test import RequestFactory
 
-            factory = RequestFactory()
-            request = factory.get('/ready')
-            status_code, response_data = ready(request)
+            # Call with request=None to get (status_code, response_data) tuple
+            status_code, response_data = ready(None)
 
             assert status_code in [200, 503]  # May be unhealthy if services not running
             assert 'checks' in response_data
@@ -117,11 +119,9 @@ class TestServiceRedisConnections:
         """Test that workflow engine service health check uses redis-events."""
         try:
             from services.workflow_engine.health import ready
-            from django.test import RequestFactory
 
-            factory = RequestFactory()
-            request = factory.get('/ready')
-            status_code, response_data = ready(request)
+            # Call with request=None to get (status_code, response_data) tuple
+            status_code, response_data = ready(None)
 
             assert status_code in [200, 503]  # May be unhealthy if services not running
             assert 'checks' in response_data

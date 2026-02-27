@@ -2,13 +2,14 @@
 Integration Tests: JSON-LD Context.
 
 Tests that JSON-LD context includes all standard vocabulary prefixes.
-Uses real semantic service (no mocks - skips if service unavailable).
+Uses real semantic service (no mocks - skips at runtime if service unavailable).
 """
 
 import pytest
 from django.test import TestCase
 
 from hub.apps.semantic.service_client import SemanticServiceClient
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 
 
 def check_semantic_service_available():
@@ -21,18 +22,26 @@ def check_semantic_service_available():
         return False
 
 
-@pytest.mark.skipif(not check_semantic_service_available(), reason="Semantic service not available")
+def _skip_if_circuit_breaker(context):
+    """Skip test when semantic service returns circuit breaker (unavailable at runtime)."""
+    if isinstance(context, dict) and context.get("error") and "circuit breaker" in str(context.get("error", "")).lower():
+        pytest.skip("Semantic service unavailable (circuit breaker open)")
+
+
 class JSONLDContextTest(TestCase):
-    """Test JSON-LD context includes all prefixes"""
+    """Test JSON-LD context includes all prefixes. Skips at runtime if semantic service unavailable."""
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures. Check semantic service at runtime so batch runs can pass when service is up."""
+        reset_circuit_breaker_by_name("semantic-service")
+        if not check_semantic_service_available():
+            pytest.skip("Semantic service not available")
         self.client = SemanticServiceClient()
 
     def test_jsonld_context_includes_all_prefixes(self):
         """Test that JSON-LD context includes all standard vocabulary prefixes"""
         context = self.client.get_jsonld_context()
-
+        _skip_if_circuit_breaker(context)
         self.assertNotIn("error", context)
         self.assertIsInstance(context, dict)
 
@@ -73,7 +82,7 @@ class JSONLDContextTest(TestCase):
     def test_jsonld_context_structure(self):
         """Test that JSON-LD context has correct structure"""
         context = self.client.get_jsonld_context()
-
+        _skip_if_circuit_breaker(context)
         self.assertNotIn("error", context)
         self.assertIsInstance(context, dict)
 
@@ -92,7 +101,7 @@ class JSONLDContextTest(TestCase):
     def test_jsonld_context_prefixes_are_uris(self):
         """Test that JSON-LD context prefixes map to valid URIs"""
         context = self.client.get_jsonld_context()
-
+        _skip_if_circuit_breaker(context)
         self.assertNotIn("error", context)
 
         if "@context" in context:

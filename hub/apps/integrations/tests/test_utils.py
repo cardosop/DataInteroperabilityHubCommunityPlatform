@@ -532,7 +532,7 @@ class TestMarketplaceSyncError:
             result = parse_marketplace_datetime("invalid-date")
             # If it returns None, that's acceptable
             assert result is None or isinstance(result, datetime)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, MarketplaceError):
             # If it raises error, that's also acceptable
             pass
 
@@ -546,9 +546,13 @@ class TestMarketplaceSyncError:
 
     def test_sanitize_id_with_empty_string(self):
         """Test that sanitize_marketplace_id handles empty string"""
-        sanitized = sanitize_marketplace_id("")
-        # May return empty string or raise error
-        assert isinstance(sanitized, str)
+        # May return empty string or raise MarketplaceError (implementation raises)
+        try:
+            sanitized = sanitize_marketplace_id("")
+            assert isinstance(sanitized, str)
+        except MarketplaceError:
+            # Implementation raises when empty - acceptable
+            pass
 
     # ========== EDGE CASES TESTS ==========
 
@@ -593,12 +597,12 @@ class TestMarketplaceSyncError:
 
     # ========== TDD COMPLIANCE TESTS ==========
 
-    def test_validate_config_returns_same_dict(self):
-        """Test that validate_config returns the same dict when valid"""
+    def test_validate_config_returns_copy(self):
+        """Test that validate_config returns a copy of the dict when valid (defensive: avoids mutating caller's config)"""
         config = {"api_key": "test", "endpoint": "https://api.example.com"}
         result = validate_marketplace_config(config)
         assert result == config
-        assert result is not config  # Should be a copy or same reference
+        assert result is not config  # Must return a copy, not the original
 
     def test_normalize_metadata_preserves_structure(self):
         """Test that normalize_marketplace_metadata preserves structure"""

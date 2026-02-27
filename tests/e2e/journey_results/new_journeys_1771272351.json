@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.46445560455322266
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-010-adfcc42c",
+      "journey_name": "Publish Asset with Usage-Based Pricing",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1771272351.3485065,
+      "end_time": 1771272351.812962,
+      "duration": 0.46445560455322266,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771272351.3485103,
+          "end_time": 1771272351.7836952,
+          "duration": 0.43518495559692383,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Usage-Based Pricing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771272351.7915595,
+          "end_time": 1771272351.8057063,
+          "duration": 0.014146804809570312,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Create Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771272351.805714,
+          "end_time": 1771272351.8129585,
+          "duration": 0.007244586944580078,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "1d0affb2-db9d-4cdc-9a31-4a6128cab967"
+      }
+    }
+  ],
+  "exported_at": "2026-02-16T20:05:51.813039"
+}

@@ -41,9 +41,9 @@ class RedisStreamsComparisonTest(TestCase):
 
         # Check Redis availability
         try:
-            from hub.apps.core.redis_pools import get_redis_pubsub_client
+            from hub.apps.core.redis_pools import get_redis_events_client
 
-            redis_client = get_redis_pubsub_client()
+            redis_client = get_redis_events_client()
             redis_client.ping()
             self.redis_available = True
         except Exception:
@@ -394,9 +394,9 @@ class RedisStreamsMigrationTest(TestCase):
 
         # Check Redis availability
         try:
-            from hub.apps.core.redis_pools import get_redis_pubsub_client
+            from hub.apps.core.redis_pools import get_redis_events_client
 
-            redis_client = get_redis_pubsub_client()
+            redis_client = get_redis_events_client()
             redis_client.ping()
             self.redis_available = True
         except Exception:

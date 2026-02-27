@@ -53,10 +53,6 @@ export function ScheduledIngestionDetailPage() {
     if (id) navigate(`/scheduled-ingestions/${id}/edit`);
   };
 
-  if (isLoading) {
-    return <LoadingSpinner message="Loading scheduled ingestion..." />;
-  }
-
   if (error) {
     return (
       <ErrorDisplay
@@ -65,6 +61,10 @@ export function ScheduledIngestionDetailPage() {
         onRetry={() => refetch()}
       />
     );
+  }
+
+  if (isLoading) {
+    return <LoadingSpinner message="Loading scheduled ingestion..." />;
   }
 
   if (!schedule) {

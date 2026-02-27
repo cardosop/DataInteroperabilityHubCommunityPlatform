@@ -283,7 +283,7 @@ class TestMonitoringServicesIntegration:
         self.grafana_url = os.getenv("GRAFANA_URL", "http://localhost:3000")
         self.api_url = os.getenv("API_BASE_URL", "http://localhost:8000")
 
-    def _check_service_available(self, url: str, timeout: int = 2) -> bool:
+    def _check_service_available(self, url: str, timeout: int = 15) -> bool:
         """Check if service is available"""
         try:
             response = requests.get(url, timeout=timeout)
@@ -304,7 +304,10 @@ class TestMonitoringServicesIntegration:
 
     def test_api_service_metrics_endpoint(self):
         """Test that API service metrics endpoint works"""
-        if not self._check_service_available(self.api_url):
+        # Use /health/live/ for availability check (always 200 when process is up);
+        # root URL may return 404 and would incorrectly skip
+        api_health_url = f"{self.api_url.rstrip('/')}/health/live/"
+        if not self._check_service_available(api_health_url):
             pytest.skip("API service not available")
 
         try:

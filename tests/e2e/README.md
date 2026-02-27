@@ -76,45 +76,50 @@ This directory contains engineering-grade End-to-End (E2E) tests for the Data In
 
 ### Prerequisites
 
-1. **Start Services** (if not already running):
+E2E tests **must** run with the project Python environment (Django and dependencies). Do **not** run with system Python or a Python that does not have the project's `requirements.txt` / `requirements-dev.txt` installed—you will get `ModuleNotFoundError: No module named 'django'` (and many collection errors). Use one of the following:
+
+1. **Docker (recommended)**  
+   Start the test stack, then run pytest inside the API container (same as CI):
    ```bash
-   docker-compose up -d
+   docker compose -f docker-compose.test.yml up -d
+   docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/ -v -c tests/e2e/pytest.ini -o timeout_func_only=true"
    ```
 
-2. **Apply Migrations**:
+2. **On host**  
+   Use Python 3.12, install project deps, set env, then run pytest:
    ```bash
-   python hub/manage.py migrate
+   pip install -r requirements.txt -r requirements-dev.txt
+   PYTHONPATH=. DJANGO_SETTINGS_MODULE=hub.settings pytest tests/e2e/ -v -c tests/e2e/pytest.ini -o timeout_func_only=true
    ```
+
+3. **Apply migrations** (when using DB): if not already applied, run `python hub/manage.py migrate` (or equivalent in Docker).
 
 ### Run All E2E Tests
 
+**Docker (recommended):**
 ```bash
-pytest tests/e2e/ -v
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/ -v -c tests/e2e/pytest.ini -o timeout_func_only=true"
+```
+
+**On host (with venv/requirements installed):**
+```bash
+PYTHONPATH=. DJANGO_SETTINGS_MODULE=hub.settings pytest tests/e2e/ -v -c tests/e2e/pytest.ini -o timeout_func_only=true
 ```
 
 ### Run Specific Test File
 
+Use the same Docker or host command as above, appending the file path and any options, e.g.:
 ```bash
-pytest tests/e2e/test_data_first_comprehensive.py -v
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/test_data_first_comprehensive.py -v -c tests/e2e/pytest.ini -o timeout_func_only=true"
 ```
 
-### Run Specific Test Class
+### Run Specific Test Class or Test
 
-```bash
-pytest tests/e2e/test_data_first_comprehensive.py::DataFirstFlowSuccessTests -v
-```
-
-### Run Specific Test
-
-```bash
-pytest tests/e2e/test_data_first_comprehensive.py::DataFirstFlowSuccessTests::test_complete_data_first_journey_happy_path -v
-```
+Append the test class or test name to the path, e.g. `tests/e2e/test_data_first_comprehensive.py::DataFirstFlowSuccessTests` or `...::DataFirstFlowSuccessTests::test_complete_data_first_journey_happy_path`.
 
 ### Run with Coverage
 
-```bash
-pytest tests/e2e/ --cov=hub --cov-report=html --cov-report=term-missing
-```
+Add `--cov=hub --cov-report=html --cov-report=term-missing` to the pytest invocation (Docker or host).
 
 ## CI/CD Integration
 
@@ -145,7 +150,7 @@ E2E tests use real services; no mocks of application code. Some tests skip when 
 | Service / condition | Required by (examples) | Skip behavior |
 |---------------------|------------------------|----------------|
 | **Redis** | Event bus, rate limiting, job queue, cache | Tests skip with "Redis not available" or similar. |
-| **MinIO / S3** | File storage, asset uploads | `conftest.complete_file_upload` can use S3 fallback (mark file ACTIVE in DB without upload) when MinIO unavailable; prefer running with MinIO up. |
+| **MinIO / S3** | File storage, asset uploads | When `mock_s3=False` (default), `complete_file_upload` requires MinIO; S3 failures fail the test (Phase 7.2.2). Use `mock_s3=True` only when MinIO is intentionally unavailable; otherwise run with MinIO up. |
 | **Prefect** | Scheduled ingestion, scheduled export, workflow runs | test_scheduled_ingestion*.py, test_scheduled_export.py skip when Prefect not available. |
 | **DataContract service** | Contract validation, normalize, migrate, convert | test_contract_migration.py, test_contract_operations.py may skip when endpoint returns 400/unavailable. |
 | **DQ service** | Data quality checks, activation blocking | test_dq_service.py, test_complete_user_journeys.py, test_contract_first_flow.py, test_data_first_flow.py skip or accept 503 when DQ down. |
@@ -168,15 +173,12 @@ E2E tests use real services; no mocks of application code. Some tests skip when 
 
 ### Generate Coverage Reports
 
+Use the same Docker or host run command with coverage options, e.g.:
 ```bash
-# HTML report
-pytest tests/e2e/ --cov=hub --cov-report=html
-
-# View report
+# Docker: HTML report
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/ -v -c tests/e2e/pytest.ini -o timeout_func_only=true --cov=hub --cov-report=html --cov-report=xml"
+# View report (if report is in container, copy out or use host run with --cov-report=html)
 open htmlcov/index.html
-
-# XML report (for CI)
-pytest tests/e2e/ --cov=hub --cov-report=xml
 ```
 
 ## Test Organization
@@ -195,7 +197,7 @@ All tests inherit from `E2ETestBase` which provides:
 - Helper methods for common operations:
   - `create_asset()`
   - `init_file_upload()`
-  - `complete_file_upload()` (with S3 mocking support)
+  - `complete_file_upload()` (use `mock_s3=True` when MinIO unavailable; otherwise requires real S3)
   - `create_dataset()`
   - `run_compliance_check()`
   - `run_dq_check()`
@@ -212,7 +214,7 @@ All tests inherit from `E2ETestBase` which provides:
 1. **Use Base Class**: All tests inherit from `E2ETestBase`
 2. **Service Health Checks**: Tests verify services before running
 3. **Real Services**: Tests use real services (not mocks) when possible
-4. **S3 Mocking**: Use `mock_s3=True` in helper methods when MinIO is not available
+4. **S3/MinIO**: Use `mock_s3=True` only when MinIO is intentionally unavailable; otherwise MinIO is required and S3 failures fail the test (Phase 7.2.2)
 5. **Comprehensive Assertions**: Tests verify both success and failure paths
 6. **Error Handling**: Tests verify graceful error handling
 7. **Test Isolation**: Each test is independent and can run in any order
@@ -221,9 +223,9 @@ All tests inherit from `E2ETestBase` which provides:
 
 ### S3/MinIO Connection Errors
 
-**Problem**: Some tests fail with S3 connection errors
-**Solution**: Helper methods support S3 mocking
-**Action**: Use `mock_s3=True` in `complete_file_upload()` calls
+**Problem**: Tests that use `complete_file_upload` with `mock_s3=False` (default) fail when MinIO is unavailable.
+**Solution**: Start MinIO (e.g. `docker compose -f docker-compose.test.yml up -d minio-test`) or use `mock_s3=True` when MinIO is intentionally unavailable.
+**Note**: Phase 7.2.2 — no silent fallback to mock mode; S3 failures re-raise.
 
 ### API Endpoint Verification
 

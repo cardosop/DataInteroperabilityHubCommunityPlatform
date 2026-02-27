@@ -222,13 +222,13 @@ class TenantConfigurationIsolationTest(TenantIsolationRegressionTest):
         
         # User 1 should only see tenant 1 config
         self.client.force_authenticate(user=self.user1)
-        # Correct URL pattern: /api/v1/tenants/tenants/{id}/config/
-        response = self.client.get(f'/api/v1/tenants/tenants/{self.tenant1.id}/config/')
+        # Correct URL pattern: /api/v1/tenants/{id}/config/
+        response = self.client.get(f'/api/v1/tenants/{self.tenant1.id}/config/')
         # User may need TENANT_ADMIN role or platform admin to access config
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
         
         # User 1 should not access tenant 2 config
-        response = self.client.get(f'/api/v1/tenants/tenants/{self.tenant2.id}/config/')
+        response = self.client.get(f'/api/v1/tenants/{self.tenant2.id}/config/')
         self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
 
 
@@ -239,11 +239,11 @@ class TenantUserIsolationTest(TenantIsolationRegressionTest):
         """Test users are isolated by tenant"""
         # User 1 should only see tenant 1 users
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get('/api/v1/users/users/')
+        response = self.client.get('/api/v1/users/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # User 1 should not access tenant 2 user
-        response = self.client.get(f'/api/v1/users/users/{self.user2.id}/')
+        response = self.client.get(f'/api/v1/users/{self.user2.id}/')
         self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
 
 

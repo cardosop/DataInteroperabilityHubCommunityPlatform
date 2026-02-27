@@ -26,7 +26,7 @@ export function SessionListPage() {
       const data = await authService.listSessions();
       setSessions(data);
     } catch (err) {
-      setError(err);
+      setError(normalizeError(err));
     } finally {
       setLoading(false);
     }

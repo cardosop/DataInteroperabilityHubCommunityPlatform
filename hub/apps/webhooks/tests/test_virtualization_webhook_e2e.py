@@ -19,6 +19,7 @@ from django.utils import timezone
 from hub.apps.core.events.models import Event
 from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User
 from hub.apps.webhooks.models import (
     DeliveryStatus,
@@ -38,6 +39,7 @@ class VirtualizationWebhookE2ETest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant
         )

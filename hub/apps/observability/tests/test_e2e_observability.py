@@ -25,6 +25,7 @@ from hub.apps.observability.models import (
 )
 from hub.apps.observability.pipeline_monitoring import PipelineMonitor
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -259,6 +260,7 @@ class DataIncidentsE2ETest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
             email="user@example.com",
@@ -273,6 +275,7 @@ class DataIncidentsE2ETest(TestCase):
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             description="Test asset",
+            created_by=self.user,
         )
 
         self.client.force_authenticate(user=self.user)
@@ -290,6 +293,7 @@ class DataIncidentsE2ETest(TestCase):
                 "resource_type": "ASSET",
                 "resource_id": str(self.asset.id),
             },
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -307,6 +311,7 @@ class DataIncidentsE2ETest(TestCase):
         response = self.client.patch(
             f"/api/v1/observability/incidents/update/?incident_id={incident_id}",
             {"status": "TRIAGED"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -328,6 +333,7 @@ class DataIncidentsE2ETest(TestCase):
                 "resolution_notes": "Fixed pipeline configuration",
                 "root_cause": "Incorrect source configuration",
             },
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)

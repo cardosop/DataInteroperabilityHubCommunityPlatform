@@ -33,6 +33,7 @@ from rest_framework.test import APIClient
 from hub.apps.virtualization.models import VirtualDataset, VirtualDatasetStatus, QueryType
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,
@@ -80,6 +81,7 @@ class VirtualizationNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolati
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create roles
         self.data_provider_role, _ = Role.objects.get_or_create(
@@ -93,16 +95,16 @@ class VirtualizationNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolati
             defaults={"description": "Data Consumer"},
         )
 
-        # Create users
+        # Create users (use unique emails to avoid conflicts between tests)
         self.dpo_user = UserFactory.create_user(
             tenant=self.tenant,
-            email="dpo@example.com",
+            email=f"dpo-{unique_id}@example.com",
         )
         UserRole.objects.get_or_create(user=self.dpo_user, role=self.data_provider_role)
 
         self.dc_user = UserFactory.create_user(
             tenant=self.tenant,
-            email="dc@example.com",
+            email=f"dc-{unique_id}@example.com",
         )
         UserRole.objects.get_or_create(user=self.dc_user, role=self.data_consumer_role)
 
@@ -164,6 +166,9 @@ class UCVIRT001CreateVirtualDatasetTest(VirtualizationNewUseCasesTestBase):
             "description": "Virtual dataset combining customer data from multiple sources",
             "query": "SELECT * FROM customers",
             "query_type": QueryType.SQL,
+            "sources": [
+                {"type": "federated_asset", "asset_id": str(self.asset1.id)},
+            ],
             "schema": {
                 "type": "object",
                 "properties": {
@@ -171,8 +176,6 @@ class UCVIRT001CreateVirtualDatasetTest(VirtualizationNewUseCasesTestBase):
                     "customer_name": {"type": "string"},
                 }
             },
-            # Sources are optional - can be configured later
-            # For federated_asset type, the asset must have source_type=FEDERATED
         }
         dataset_url = reverse("virtual-dataset-list")
         response = self.client.post(dataset_url, virtual_dataset_data, format="json")
@@ -215,6 +218,9 @@ class UCVIRT001CreateVirtualDatasetTest(VirtualizationNewUseCasesTestBase):
             "name": f"Performance Test Dataset {uuid.uuid4()}",
             "query": "SELECT * FROM test",
             "query_type": QueryType.SQL,
+            "sources": [
+                {"type": "federated_asset", "asset_id": str(self.asset1.id)},
+            ],
         }
         dataset_url = reverse("virtual-dataset-list")
 

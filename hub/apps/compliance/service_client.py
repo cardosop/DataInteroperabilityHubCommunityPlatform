@@ -8,7 +8,9 @@ Client for interacting with the compliance-service microservice.
 - Endpoints are microservice-specific paths (e.g., '/health', '/scan-file')
 - For Django API endpoint construction, use `hub.apps.api.utils.api_url_builder.APIURLBuilder`
 - This client follows service-to-service communication patterns with circuit breaker protection
+- Sends X-Correlation-Id to compliance-service for request tracing (5.4.1); logs it.
 """
+import uuid
 import httpx
 import logging
 import time
@@ -76,17 +78,13 @@ class ComplianceServiceClient:
         )
 
     def _request_with_retry(self, method: str, endpoint: str, **kwargs) -> httpx.Response:
-        """Helper to make HTTP requests with retry logic"""
-        # Add trace headers if available
+        """Helper to make HTTP requests with retry logic. Caller headers (e.g. X-Correlation-Id) take precedence over trace headers."""
         from hub.apps.api.middleware.trace_propagation import get_trace_headers
 
-        trace_headers = get_trace_headers()
-        if trace_headers:
-            # Merge trace headers into existing headers
-            if 'headers' in kwargs:
-                kwargs['headers'].update(trace_headers)
-            else:
-                kwargs['headers'] = trace_headers
+        trace_headers = get_trace_headers() or {}
+        caller_headers = kwargs.get('headers') or {}
+        # Merge so caller headers (e.g. X-Correlation-Id) are preserved
+        kwargs['headers'] = {**trace_headers, **caller_headers}
 
         for attempt in range(self.max_retries + 1):
             try:
@@ -129,7 +127,9 @@ class ComplianceServiceClient:
         file_format: str,
         scan_mode: str = "internal",
         applicable_regulations: Optional[list] = None,
-        contract: Optional[Any] = None
+        contract: Optional[Any] = None,
+        tenant_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Scan file for PII and compliance issues.
@@ -140,22 +140,34 @@ class ComplianceServiceClient:
             scan_mode: Scan mode ('internal' or 'external' for scan-only)
             applicable_regulations: Optional list of regulations to check (e.g., ['GDPR', 'HIPAA'])
             contract: Optional Contract instance to extract compliance policy from (GAP-8.2.2)
+            tenant_id: Optional tenant ID for metrics/logging (5.3.2); Hub always passes this.
+            correlation_id: Optional correlation ID for tracing (5.4.1); sent as X-Correlation-Id and logged.
 
         Returns:
             Compliance scan result dictionary
         """
-        # Define fallback response
+        # Define fallback response (fail-closed: allowed_to_store must be False when service unavailable)
         def fallback_response(*args, **kwargs) -> Dict[str, Any]:
             """Fallback response when circuit breaker is open or service fails."""
             return {
                 "overall_status": "UNKNOWN",
                 "risk_level": "UNKNOWN",
-                "allowed_to_store": None,
-                "detected_categories": {},
+                "allowed_to_store": False,
+                "detected_categories": [],
                 "column_findings": [],
                 "regulation_mapping": {},
-                "error": "Compliance service unavailable (circuit breaker open)"
+                "applicable_regulations": [],
+                "issues": [],
+                "metadata": {},
+                "error": "Compliance service unavailable (circuit breaker open)",
             }
+
+        # Correlation ID for tracing (5.4.1): use provided or generate; service echoes it in response
+        effective_correlation_id = correlation_id or str(uuid.uuid4())
+        logger.info(
+            "Calling compliance service scan_file",
+            extra={"correlation_id": effective_correlation_id, "tenant_id": tenant_id or "unknown"},
+        )
 
         # Execute with circuit breaker protection
         def execute_scan() -> Dict[str, Any]:
@@ -183,6 +195,8 @@ class ComplianceServiceClient:
             data = {
                 'scan_mode': scan_mode
             }
+            # Always pass tenant_id (5.3.2): UUID from Hub or "unknown" when absent
+            data['tenant_id'] = tenant_id if tenant_id else "unknown"
             if effective_regulations:
                 import json
                 data['applicable_regulations'] = json.dumps(effective_regulations) if isinstance(effective_regulations, list) else effective_regulations
@@ -194,7 +208,8 @@ class ComplianceServiceClient:
                 "POST",
                 "/scan-file",
                 files=files,
-                data=data
+                data=data,
+                headers={"X-Correlation-Id": effective_correlation_id},
             )
             return response.json()
 

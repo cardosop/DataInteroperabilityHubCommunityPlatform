@@ -4,7 +4,7 @@ Migration tests for DataMeshDomain model.
 Tests forward and backward migrations to ensure data integrity.
 """
 import pytest
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.core.management import call_command
 from django.db import connection
 
@@ -245,8 +245,13 @@ class DataMeshDomainMigrationTest(TestCase):
         self.assertEqual(domain.status, DomainStatus.ACTIVE)
 
 
-class PolicyApplicationComplianceReportMigrationTest(TestCase):
-    """Test migration for PolicyApplication and ComplianceReport models"""
+class PolicyApplicationComplianceReportMigrationTest(TransactionTestCase):
+    """Test migration for PolicyApplication and ComplianceReport models.
+
+    Uses TransactionTestCase so migrate/rollback run without a wrapping test
+    transaction, avoiding PostgreSQL "cannot ALTER TABLE ... because it has
+    pending trigger events" when rolling back (e.g. data_mesh_domains FK).
+    """
 
     def setUp(self):
         """Set up test fixtures"""

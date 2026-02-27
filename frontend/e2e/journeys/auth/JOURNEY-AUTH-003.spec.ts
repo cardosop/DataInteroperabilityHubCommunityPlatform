@@ -29,24 +29,14 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
       } catch {
         // ignore
       }
+      // Skip when MailHog unavailable (optional service for password reset flow).
+      // See E2E_ENVIRONMENT_REQUIREMENTS.md and E2E_TEST_SEMANTICS.md.
       test.skip(
         !mailhogReachable,
-        `MailHog not reachable at ${MAILHOG_BASE_URL}. For full E2E: docker compose up -d mailhog, SMTP_HOST=mailhog SMTP_PORT=1025`
+        `MailHog not reachable at ${MAILHOG_BASE_URL}. Password reset requires MailHog for email delivery. ` +
+          `Start: docker compose up -d mailhog, SMTP_HOST=mailhog SMTP_PORT=1025`
       );
-      try {
-        await runJOURNEY_AUTH_003_Success(page);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        // Report skip when MailHog unavailable or password-reset email not received (no mocks)
-        if (
-          msg.includes('E2E_SKIP_PASSWORD_RESET') ||
-          msg.includes('MailHog not reachable') ||
-          msg.includes('not reachable at')
-        ) {
-          test.skip(true, msg);
-        }
-        throw err;
-      }
+      await runJOURNEY_AUTH_003_Success(page);
     });
   });
 
@@ -54,9 +44,21 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
     test('password reset page shows generic success even when email unknown', async ({ page }) => {
       await clearAuthStorage(page);
       await page.goto('/password-reset', { waitUntil: 'domcontentloaded' });
-      await expect(page.getByRole('heading', { name: /Reset password/i })).toBeVisible({
-        timeout: 10_000,
-      });
+      if (page.url().includes('/login')) {
+        await page.getByRole('link', { name: /Forgot your password/i }).click();
+        await page.waitForURL((url) => url.pathname.includes('password-reset'), { timeout: 5000 });
+      }
+      // CapabilityRoute blocks with LoadingSpinner until capabilities load (up to 30s)
+      const resetOrUnavailable = page
+        .getByRole('heading', { name: /Reset password/i })
+        .or(page.locator('.unavailable-page h1'));
+      await expect(resetOrUnavailable.first()).toBeVisible({ timeout: 35_000 });
+      if (page.url().includes('/unavailable')) {
+        throw new Error(
+          'Password reset unavailable (capabilities/schema). JOURNEY-AUTH-003 requires password reset to be enabled. ' +
+            'Enable password reset in deployment capabilities or schema.'
+        );
+      }
       await page.fill('input#email', 'nonexistent@example.com');
       await page.click('button[type="submit"]');
       await expect(page.locator('.success-message')).toContainText(
@@ -72,9 +74,16 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
       await page.goto('/password-reset/confirm?token=00000000-0000-0000-0000-000000000000', {
         waitUntil: 'domcontentloaded',
       });
-      await expect(page.getByRole('heading', { name: /Set a new password/i })).toBeVisible({
-        timeout: 10_000,
-      });
+      // CapabilityRoute blocks with LoadingSpinner until capabilities load (up to 30s)
+      await expect(
+        page.getByRole('heading', { name: /Set a new password/i }).or(page.locator('.unavailable-page h1'))
+      ).toBeVisible({ timeout: 35_000 });
+      if (page.url().includes('/unavailable')) {
+        throw new Error(
+          'Password reset confirm unavailable (capabilities/schema). JOURNEY-AUTH-003 requires password reset to be enabled. ' +
+            'Enable password reset in deployment capabilities or schema.'
+        );
+      }
       await page.fill('input#new_password', 'NewSecurePass123');
       await page.click('button[type="submit"]');
       await page.locator('.error-message, .success-message').first().waitFor({ timeout: 15_000 });
@@ -87,10 +96,48 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
     test('reset not enabled: UI shows contact admin or 501', async ({ page }) => {
       await clearAuthStorage(page);
       await page.goto('/password-reset', { waitUntil: 'domcontentloaded' });
-      await expect(page.getByRole('heading', { name: /Reset password/i })).toBeVisible({
-        timeout: 10_000,
-      });
+      if (page.url().includes('/login')) {
+        await page.getByRole('link', { name: /Forgot your password/i }).click();
+        await page.waitForURL((url) => url.pathname.includes('password-reset'), { timeout: 5000 });
+      }
+      // CapabilityRoute blocks with LoadingSpinner until capabilities load (up to 30s)
+      const resetOrUnavailable = page
+        .getByRole('heading', { name: /Reset password/i })
+        .or(page.locator('.unavailable-page h1'));
+      await expect(resetOrUnavailable.first()).toBeVisible({ timeout: 35_000 });
+      if (page.url().includes('/unavailable')) {
+        throw new Error(
+          'Password reset unavailable (capabilities/schema). JOURNEY-AUTH-003 requires password reset to be enabled. ' +
+            'Enable password reset in deployment capabilities or schema.'
+        );
+      }
       expect(page.url()).toContain('password-reset');
+    });
+
+    test('password reset form with empty email stays on page or shows validation', async ({
+      page,
+    }) => {
+      await clearAuthStorage(page);
+      await page.goto('/password-reset', { waitUntil: 'domcontentloaded' });
+      if (page.url().includes('/login')) {
+        await page.getByRole('link', { name: /Forgot your password/i }).click();
+        await page.waitForURL((url) => url.pathname.includes('password-reset'), { timeout: 5000 });
+      }
+      const heading = page
+        .getByRole('heading', { name: /Reset password/i })
+        .or(page.locator('.unavailable-page h1'));
+      await expect(heading.first()).toBeVisible({ timeout: 35_000 });
+      if (page.url().includes('/unavailable')) {
+        return;
+      }
+      await page.fill('input#email', '');
+      await page.locator('button[type="submit"]').click();
+      await page.waitForTimeout(500);
+      const stillOnReset = page.url().includes('password-reset');
+      const hasValidation =
+        (await page.locator('input#email:invalid').count()) > 0 ||
+        (await page.locator('.error-message').count()) > 0;
+      expect(stillOnReset || hasValidation).toBe(true);
     });
   });
 });

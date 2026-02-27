@@ -1,0 +1,85 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.01674509048461914
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-004-c2369dbf",
+      "journey_name": "Monitor Asset Quality",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1772136899.37068,
+      "end_time": 1772136899.3874252,
+      "duration": 0.01674509048461914,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset with DQ Runs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772136899.3706849,
+          "end_time": 1772136899.386932,
+          "duration": 0.016247034072875977,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Retrieve DQ Runs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772136899.3869379,
+          "end_time": 1772136899.387414,
+          "duration": 0.0004761219024658203,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Analyze DQ Metrics",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772136899.387417,
+          "end_time": 1772136899.3874207,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Review Quality Scores",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772136899.3874218,
+          "end_time": 1772136899.3874238,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "da81a904-0129-42da-8bd3-c7ae1daef8fe",
+        "dq_runs_count": 1
+      }
+    }
+  ],
+  "exported_at": "2026-02-26T20:14:59.387491"
+}

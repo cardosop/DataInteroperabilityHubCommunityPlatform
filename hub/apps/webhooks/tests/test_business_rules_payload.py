@@ -12,6 +12,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 from hub.apps.webhooks.business_rules import MAX_PAYLOAD_SIZE, WebhooksBusinessRules
 from hub.apps.webhooks.models import (
@@ -30,6 +31,7 @@ class WebhookPayloadValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
@@ -269,6 +271,7 @@ class WebhookPayloadValidationIntegrationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",

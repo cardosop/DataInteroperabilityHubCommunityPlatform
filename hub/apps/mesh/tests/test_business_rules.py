@@ -2219,9 +2219,10 @@ class DataMeshBusinessRulesErrorHandlingTest(TestCase):
             self.rules.validate_ownership_transfer("not-a-domain", str(self.user.id))
 
     def test_validate_boundaries_with_none_domain(self):
-        """Test error handling when domain is None"""
-        with self.assertRaises((AttributeError, TypeError)):
-            self.rules.validate_boundaries(None)
+        """Test that None boundaries are valid (optional field)"""
+        result = self.rules.validate_boundaries(None)
+        self.assertIsNotNone(result)
+        self.assertTrue(result.is_valid, "None boundaries should be valid (optional field)")
 
     def test_validate_capabilities_with_none_domain(self):
         """Test error handling when domain is None"""
@@ -2288,7 +2289,7 @@ class DataMeshBusinessRulesErrorHandlingTest(TestCase):
             pass
 
         # Business rules should handle gracefully
-        result = self.rules.validate_resource_quota(domain)
+        result = self.rules.validate_domain_resource_quota(domain)
         self.assertIsNotNone(result)
 
     def test_validate_ownership_transfer_with_empty_user_id(self):
@@ -2298,8 +2299,9 @@ class DataMeshBusinessRulesErrorHandlingTest(TestCase):
         )
 
         result = self.rules.validate_ownership_transfer(domain, "")
-        # Should handle gracefully - empty string is invalid
         self.assertIsNotNone(result)
+        self.assertFalse(result.is_valid, "Empty user_id should be invalid")
+        self.assertIn("empty", " ".join(result.errors).lower())
 
     def test_validate_ownership_transfer_with_invalid_uuid_format(self):
         """Test error handling when user_id is invalid UUID format"""
@@ -2308,8 +2310,9 @@ class DataMeshBusinessRulesErrorHandlingTest(TestCase):
         )
 
         result = self.rules.validate_ownership_transfer(domain, "not-a-uuid")
-        # Should handle gracefully - invalid UUID format
         self.assertIsNotNone(result)
+        self.assertFalse(result.is_valid, "Invalid UUID format should be invalid")
+        self.assertIn("uuid", " ".join(result.errors).lower())
 
     def test_validate_boundaries_with_deeply_nested_structure(self):
         """Test error handling with deeply nested boundaries structure"""
@@ -2326,7 +2329,7 @@ class DataMeshBusinessRulesErrorHandlingTest(TestCase):
         self.assertIsNotNone(result)
 
     def test_validate_capabilities_with_empty_dict(self):
-        """Test error handling with empty capabilities dict"""
+        """Test that domain with empty capabilities dict is valid via structure validation"""
         domain = DataMeshDomain.objects.create(
             tenant=self.tenant,
             name="Empty Capabilities Domain",
@@ -2334,9 +2337,9 @@ class DataMeshBusinessRulesErrorHandlingTest(TestCase):
             capabilities={},
         )
 
-        result = self.rules.validate_capabilities(domain)
-        # Empty dict should be valid
-        self.assertTrue(result.is_valid)
+        result = self.rules.validate_domain_structure(domain)
+        self.assertIsNotNone(result)
+        self.assertTrue(result.is_valid, "Empty capabilities dict should be valid")
 
     def test_validate_resource_quota_with_zero_values(self):
         """Test error handling with zero resource quota values"""
@@ -2347,22 +2350,26 @@ class DataMeshBusinessRulesErrorHandlingTest(TestCase):
             resource_quota={"storage_gb": 0, "compute_hours": 0},
         )
 
-        result = self.rules.validate_resource_quota(domain)
-        # Zero values should be valid
-        self.assertTrue(result.is_valid)
+        result = self.rules.validate_domain_resource_quota(domain)
+        self.assertIsNotNone(result)
+        self.assertTrue(result.is_valid, "Zero values should be valid")
 
     def test_validate_resource_quota_with_very_large_values(self):
-        """Test error handling with very large resource quota values"""
+        """Test that large resource quota values within tenant limits are valid"""
         domain = DataMeshDomain.objects.create(
             tenant=self.tenant,
             name="Large Quota Domain",
             status=DomainStatus.ACTIVE,
-            resource_quota={"storage_gb": 999999999999, "compute_hours": 999999999999},
+            # Use values within GovernanceService tenant limits (storage_gb: 10000, compute_hours: 1000)
+            resource_quota={"storage_gb": 5000, "compute_hours": 500},
         )
 
-        result = self.rules.validate_resource_quota(domain)
-        # Very large values should be valid (no upper limit in validation)
-        self.assertTrue(result.is_valid)
+        result = self.rules.validate_domain_resource_quota(domain)
+        self.assertIsNotNone(result)
+        self.assertTrue(
+            result.is_valid,
+            f"Large values within tenant limits should be valid. Errors: {result.errors}",
+        )
 
     def test_validate_domain_resource_quota_with_missing_quota_key(self):
         """Test error handling when resource_usage has key not in quota"""

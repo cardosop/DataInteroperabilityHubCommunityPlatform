@@ -181,7 +181,8 @@ class MarketplaceMigrationsTest(TestCase):
             """)
             table_count = cursor.fetchone()[0]
 
-        expected_table_count = 3  # marketplace_connections, marketplace_sync_jobs, marketplace_mappings
+        expected_table_count = 4  # marketplace_connections, marketplace_sync_jobs,
+        # marketplace_mappings, marketplace_scheduled_syncs (0005)
         self.assertEqual(table_count, expected_table_count,
                         f"Expected {expected_table_count} marketplace tables, found {table_count}")
 

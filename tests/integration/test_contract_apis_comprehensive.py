@@ -47,12 +47,14 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
     OriginalFormat
 )
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
 from tests.fixtures.test_data_factories import UserFactory, TenantFactory
 
-pytestmark = pytest.mark.django_db(transaction=True)
+# Use default transaction=False so TenantSuspensionMiddleware sees subscription from setUp
+pytestmark = pytest.mark.django_db
 User = get_user_model()
 
 
@@ -77,6 +79,8 @@ class TestContractListAPI(TestCase):
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
         )
+        ensure_tenant_has_active_subscription(self.tenant_a)
+        ensure_tenant_has_active_subscription(self.tenant_b)
 
         # Create users
         self.user_a = UserFactory.create_user(
@@ -654,6 +658,7 @@ class TestContractCreateAPI(TestCase):
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email="user@example.com",
@@ -1307,6 +1312,8 @@ class TestContractRetrieveAPI(TestCase):
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
         )
+        ensure_tenant_has_active_subscription(self.tenant_a)
+        ensure_tenant_has_active_subscription(self.tenant_b)
 
         self.user_a = UserFactory.create_user(
             email="user_a@example.com",
@@ -1514,6 +1521,7 @@ class TestContractUpdateAPI(TestCase):
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email="user@example.com",
@@ -1889,6 +1897,7 @@ class TestContractUpdateAPI(TestCase):
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
         )
+        ensure_tenant_has_active_subscription(other_tenant)
         other_user = UserFactory.create_user(
             email="other@example.com",
             tenant=other_tenant,
@@ -2002,6 +2011,7 @@ class TestContractValidateAPI(TestCase):
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email="user@example.com",
@@ -2211,6 +2221,7 @@ class TestContractValidateAPI(TestCase):
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
         )
+        ensure_tenant_has_active_subscription(other_tenant)
         other_user = UserFactory.create_user(
             email="other@example.com",
             tenant=other_tenant,

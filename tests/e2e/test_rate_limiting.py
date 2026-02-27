@@ -15,7 +15,7 @@ import time
 from django.test import TestCase
 from rest_framework import status
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e3]
@@ -63,8 +63,9 @@ class RateLimitingE2ETest(E2ETestBase):
             # If rate limit is hit, should return 429
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 # Verify error format
-                if 'error' in response.data:
-                    error = response.data['error']
+                data = get_response_data(response) or {}
+                if 'error' in data:
+                    error = data['error'] if isinstance(data.get('error'), dict) else {}
                     self.assertIn('code', error)
                     code = error.get('code', '').upper()
                     self.assertIn('RATE_LIMIT', code)
@@ -121,9 +122,9 @@ class RateLimitingE2ETest(E2ETestBase):
         if rate_limited_response:
             # Verify error format
             self.assertEqual(rate_limited_response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
-            
-            if 'error' in rate_limited_response.data:
-                error = rate_limited_response.data['error']
+            data = get_response_data(rate_limited_response) or {}
+            if 'error' in data:
+                error = data['error'] if isinstance(data.get('error'), dict) else {}
                 self.assertIn('code', error)
                 code = error.get('code', '').upper()
                 self.assertIn('RATE_LIMIT', code)

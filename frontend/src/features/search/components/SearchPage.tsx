@@ -8,7 +8,9 @@ import { Link } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import type { ApiError } from '../../../shared/types/api';
 import type { SearchResponse, SearchResultType } from '../../../shared/types/search';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { searchService } from '../services/searchService';
 import './SearchPage.css';
 

@@ -24,10 +24,21 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel, Order, OrderStatus
 from hub.apps.audit.models import AuditEvent
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
+pytestmark = [
+    pytest.mark.uc_journey_persona,
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.e2e,
+    pytest.mark.persona("Platform Admin"),
+    pytest.mark.persona("Marketplace Platform Admin"),
+    pytest.mark.journey("JOURNEY-PA-001"),
+    pytest.mark.journey("JOURNEY-MPA-001"),
+    pytest.mark.journey("JOURNEY-MPA-002"),
+    pytest.mark.journey("JOURNEY-MPA-003"),
+    pytest.mark.journey("JOURNEY-MPA-004"),
+]
 
 
 class JourneyPA001OnboardNewTenantTests(E2ETestBase):
@@ -64,7 +75,7 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        tenant_data = response.data
+        tenant_data = (get_response_data(response) or {})
         tenant_id = tenant_data['id']
 
         # Verify tenant was created with ACTIVE status and UNVERIFIED KYC
@@ -121,7 +132,7 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        tenant_id = response.data['id']
+        tenant_id = (get_response_data(response) or {})['id']
 
         # Update KYC status to VERIFIED
         response = self.client.patch(
@@ -132,7 +143,7 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['kyc_status'], KYCStatus.VERIFIED.value)
+        self.assertEqual((get_response_data(response) or {})['kyc_status'], KYCStatus.VERIFIED.value)
 
         # Verify audit log
         self.verify_audit_log(
@@ -153,7 +164,7 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
         # List all tenants
         response = self.client.get('/api/v1/tenants/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        tenants = response.data.get('results', [])
+        tenants = (get_response_data(response) or {}).get('results', [])
 
         # Should see all tenants (at least the ones we created)
         tenant_names = [t['name'] for t in tenants]
@@ -178,7 +189,7 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['status'], TenantStatus.SUSPENDED.value)
+        self.assertEqual((get_response_data(response) or {})['status'], TenantStatus.SUSPENDED.value)
 
         # Verify audit log
         self.verify_audit_log(
@@ -205,7 +216,7 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['status'], TenantStatus.ACTIVE.value)
+        self.assertEqual((get_response_data(response) or {})['status'], TenantStatus.ACTIVE.value)
 
         # Verify audit log
         self.verify_audit_log(
@@ -281,6 +292,8 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
             slug="provider-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.provider_tenant)
         self.provider_user = User.objects.create_user(
             email="provider@tenant.com",
             password="testpass123",
@@ -336,7 +349,7 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
         # Platform admin should see all listings
         response = self.client.get('/api/v1/marketplace/listings/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        listings = response.data.get('results', [])
+        listings = (get_response_data(response) or {}).get('results', [])
 
         # Should see listings from both tenants
         listing_ids = [l['id'] for l in listings]
@@ -357,8 +370,8 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
 
         response = self.client.get(f'/api/v1/marketplace/listings/{listing.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(listing.id))
-        self.assertEqual(response.data['status'], ListingStatus.PUBLISHED.value)
+        self.assertEqual((get_response_data(response) or {})['id'], str(listing.id))
+        self.assertEqual((get_response_data(response) or {})['status'], ListingStatus.PUBLISHED.value)
 
     def test_filter_listings_by_status(self):
         """
@@ -397,10 +410,10 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
         response = self.client.get('/api/v1/marketplace/listings/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            listings = response.data
+        if isinstance((get_response_data(response) or {}), list):
+            listings = (get_response_data(response) or {})
         else:
-            listings = response.data.get('results', [])
+            listings = (get_response_data(response) or {}).get('results', [])
 
         # Verify we can see both listings
         listing_ids = [l['id'] for l in listings]
@@ -422,7 +435,13 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
             asset=self.asset,
             status=ListingStatus.PUBLISHED,
             pricing_model=PricingModel.FREE,
-            metadata_json={'title': 'Test Listing'}
+            metadata_json={
+                'title': 'Test Listing',
+                'short_description': 'Test description',
+                'long_description': 'Full description',
+                'price_amount': 0.0,
+                'currency': 'USD',
+            }
         )
 
         # Unpublish listing
@@ -434,7 +453,7 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['status'], ListingStatus.UNLISTED.value)
+        self.assertEqual((get_response_data(response) or {})['status'], ListingStatus.UNLISTED.value)
 
         # Verify in database
         listing.refresh_from_db()
@@ -522,10 +541,10 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
         response = self.client.get('/api/v1/marketplace/orders/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            orders = response.data
+        if isinstance((get_response_data(response) or {}), list):
+            orders = (get_response_data(response) or {})
         else:
-            orders = response.data.get('results', [])
+            orders = (get_response_data(response) or {}).get('results', [])
 
         # Should see orders from both listings
         order_ids = [o['id'] for o in orders]
@@ -544,8 +563,8 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
 
         response = self.client.get(f'/api/v1/marketplace/orders/{order.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(order.id))
-        self.assertEqual(response.data['status'], OrderStatus.REQUESTED.value)
+        self.assertEqual((get_response_data(response) or {})['id'], str(order.id))
+        self.assertEqual((get_response_data(response) or {})['status'], OrderStatus.REQUESTED.value)
 
     def test_filter_orders_by_status(self):
         """
@@ -567,10 +586,10 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
         response = self.client.get('/api/v1/marketplace/orders/?status=REQUESTED')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            orders = response.data
+        if isinstance((get_response_data(response) or {}), list):
+            orders = (get_response_data(response) or {})
         else:
-            orders = response.data.get('results', [])
+            orders = (get_response_data(response) or {}).get('results', [])
         for order in orders:
             self.assertEqual(order['status'], OrderStatus.REQUESTED.value)
 
@@ -578,10 +597,10 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
         response = self.client.get('/api/v1/marketplace/orders/?status=APPROVED')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            orders = response.data
+        if isinstance((get_response_data(response) or {}), list):
+            orders = (get_response_data(response) or {})
         else:
-            orders = response.data.get('results', [])
+            orders = (get_response_data(response) or {}).get('results', [])
         for order in orders:
             self.assertEqual(order['status'], OrderStatus.APPROVED.value)
 
@@ -599,8 +618,8 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
         # Platform admin can view order details
         response = self.client.get(f'/api/v1/marketplace/orders/{order.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(order.id))
-        self.assertEqual(response.data['status'], OrderStatus.REQUESTED.value)
+        self.assertEqual((get_response_data(response) or {})['id'], str(order.id))
+        self.assertEqual((get_response_data(response) or {})['status'], OrderStatus.REQUESTED.value)
 
         # Platform admin cannot approve (only provider can)
         # This is by design - platform admin monitors, provider approves
@@ -726,7 +745,7 @@ class JourneyMPA003MonitorPlatformHealthTests(E2ETestBase):
         # List all tenants
         response = self.client.get('/api/v1/tenants/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        tenants = response.data.get('results', [])
+        tenants = (get_response_data(response) or {}).get('results', [])
 
         # Should see all tenants
         self.assertGreaterEqual(len(tenants), 2)
@@ -769,7 +788,7 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
         """
         # Configure tenant 1 settings
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{self.tenant1.id}/config/',
+            f'/api/v1/tenants/{self.tenant1.id}/config/',
             {
                 'default_dq_profile': 'intake_basic_soda',
                 'data_retention_days': 1825
@@ -777,12 +796,12 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['default_dq_profile'], 'intake_basic_soda')
-        self.assertEqual(response.data['data_retention_days'], 1825)
+        self.assertEqual((get_response_data(response) or {})['default_dq_profile'], 'intake_basic_soda')
+        self.assertEqual((get_response_data(response) or {})['data_retention_days'], 1825)
 
         # Configure tenant 2 with different settings
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{self.tenant2.id}/config/',
+            f'/api/v1/tenants/{self.tenant2.id}/config/',
             {
                 'default_dq_profile': 'intake_basic_gx',
                 'data_retention_days': 2555
@@ -790,24 +809,24 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['default_dq_profile'], 'intake_basic_gx')
-        self.assertEqual(response.data['data_retention_days'], 2555)
+        self.assertEqual((get_response_data(response) or {})['default_dq_profile'], 'intake_basic_gx')
+        self.assertEqual((get_response_data(response) or {})['data_retention_days'], 2555)
 
     def test_cross_tenant_configuration_access(self):
         """
         Test platform admin can access and configure any tenant's settings
         """
         # Get tenant 1 config
-        response = self.client.get(f'/api/v1/tenants/tenants/{self.tenant1.id}/config/')
+        response = self.client.get(f'/api/v1/tenants/{self.tenant1.id}/config/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Get tenant 2 config
-        response = self.client.get(f'/api/v1/tenants/tenants/{self.tenant2.id}/config/')
+        response = self.client.get(f'/api/v1/tenants/{self.tenant2.id}/config/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Update tenant 1 config
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{self.tenant1.id}/config/',
+            f'/api/v1/tenants/{self.tenant1.id}/config/',
             {
                 'max_job_concurrency': 10
             },
@@ -817,7 +836,7 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
 
         # Update tenant 2 config
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{self.tenant2.id}/config/',
+            f'/api/v1/tenants/{self.tenant2.id}/config/',
             {
                 'max_job_concurrency': 15
             },
@@ -847,7 +866,7 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
 
         # Configure tenant 1
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{self.tenant1.id}/config/',
+            f'/api/v1/tenants/{self.tenant1.id}/config/',
             {'rate_limits': rate_limits_tenant1},
             format='json'
         )
@@ -855,7 +874,7 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
 
         # Configure tenant 2
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{self.tenant2.id}/config/',
+            f'/api/v1/tenants/{self.tenant2.id}/config/',
             {'rate_limits': rate_limits_tenant2},
             format='json'
         )
@@ -921,7 +940,7 @@ class PlatformAdminUseCasesTests(E2ETestBase):
         # Step 1: View all listings
         response = self.client.get('/api/v1/marketplace/listings/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        listings = response.data.get('results', [])
+        listings = (get_response_data(response) or {}).get('results', [])
         self.assertGreater(len(listings), 0)
 
         # Step 2: Create an order
@@ -935,17 +954,17 @@ class PlatformAdminUseCasesTests(E2ETestBase):
         response = self.client.get('/api/v1/marketplace/orders/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Handle both paginated and non-paginated responses
-        if isinstance(response.data, list):
-            orders = response.data
+        if isinstance((get_response_data(response) or {}), list):
+            orders = (get_response_data(response) or {})
         else:
-            orders = response.data.get('results', [])
+            orders = (get_response_data(response) or {}).get('results', [])
         order_ids = [o['id'] for o in orders]
         self.assertIn(str(order.id), order_ids)
 
         # Step 4: View order details (platform admin can monitor but not approve)
         response = self.client.get(f'/api/v1/marketplace/orders/{order.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(order.id))
+        self.assertEqual((get_response_data(response) or {})['id'], str(order.id))
         # Note: Approval is done by provider, platform admin monitors
 
     def test_complete_tenant_management_workflow(self):
@@ -963,11 +982,11 @@ class PlatformAdminUseCasesTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        tenant_id = response.data['id']
+        tenant_id = (get_response_data(response) or {})['id']
 
         # Step 2: Configure tenant
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{tenant_id}/config/',
+            f'/api/v1/tenants/{tenant_id}/config/',
             {
                 'default_dq_profile': 'intake_basic_soda',
                 'max_job_concurrency': 8
@@ -979,7 +998,7 @@ class PlatformAdminUseCasesTests(E2ETestBase):
         # Step 3: Monitor tenant (list tenants)
         response = self.client.get('/api/v1/tenants/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        tenants = response.data.get('results', [])
+        tenants = (get_response_data(response) or {}).get('results', [])
         tenant_ids = [t['id'] for t in tenants]
         self.assertIn(tenant_id, tenant_ids)
 
@@ -1039,7 +1058,7 @@ class PlatformAdminErrorScenariosTests(E2ETestBase):
 
         # Invalid DQ profile
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{tenant.id}/config/',
+            f'/api/v1/tenants/{tenant.id}/config/',
             {
                 'default_dq_profile': 'invalid_profile'
             },
@@ -1049,7 +1068,7 @@ class PlatformAdminErrorScenariosTests(E2ETestBase):
 
         # Invalid retention days
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{tenant.id}/config/',
+            f'/api/v1/tenants/{tenant.id}/config/',
             {
                 'data_retention_days': 50  # Below minimum
             },

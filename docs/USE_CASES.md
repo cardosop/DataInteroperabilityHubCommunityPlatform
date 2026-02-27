@@ -246,7 +246,7 @@ A user who is not logged in accesses resources that do not require authenticatio
 
 **Alternate Flows**:
 - **A1**: Resource requires auth → system returns 401 and may redirect to login
-- **A2**: No public landing → root redirects to login; documented as intentional
+- **A2**: When a public landing is configured, root `/` shows the landing (unauthenticated) or dashboard (authenticated). See [Landing Page](LANDING_PAGE.md). Deployments without a public landing may redirect root to login; documented as intentional.
 
 **Postconditions**:
 - User has accessed public content only
@@ -2283,7 +2283,7 @@ This section closes documentation gaps for use case IDs that were referenced in 
 
 ### Deferred — Transformation Pipeline (Phase 5)
 
-The following **transformation pipeline** use cases and user journeys are **Deferred** (Phase 5 Option A). No public transformation-pipeline API is implemented; they are documented for future scope. See [Gap Remediation Plan](../openspec/changes/testreview1/GAP_REMEDIATION_PLAN.md).
+The following **transformation pipeline** use cases and user journeys are **Deferred** (Phase 5 Option A). No public transformation-pipeline API is implemented; they are documented for future scope. See [Gap Remediation Plan](../openspec/changes/testreview1/GAP_REMEDIATION_PLAN.md), [USER_JOURNEYS.md — Deferred Journeys](USER_JOURNEYS.md#deferred-journeys-transformation-pipeline), and [Transformation Pipeline Backlog](BACKLOG_TRANSFORMATION_PIPELINE.md).
 
 **Related user journeys** (all **Deferred**): JOURNEY-DPO-008 (Create Transformation Pipeline for Asset), JOURNEY-DE-007 (Create Transformation Pipeline), JOURNEY-DC-007 (Create Transformation Pipeline for Data), JOURNEY-DEV-006 (Integrate Transformation Pipeline API), JOURNEY-AUD-005 (Audit Transformation Pipelines), JOURNEY-DA-001 (Create Transformation Pipeline). Any use case that would map to a dedicated "Create/Execute/Validate Transformation Pipeline" API is deferred with these journeys.
 

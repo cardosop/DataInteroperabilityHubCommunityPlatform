@@ -26,6 +26,7 @@ from hub.apps.integrations.views import (
     MarketplaceSyncJobViewSet,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserStatus
 
 User = get_user_model()
@@ -228,6 +229,8 @@ class MarketplaceIntegrationURLIntegrationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        # Active subscription required so TenantSuspensionMiddleware allows API writes
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -236,11 +239,12 @@ class MarketplaceIntegrationURLIntegrationTest(TestCase):
             status=UserStatus.ACTIVE,
         )
 
-        data_provider_role = Role.objects.filter(name="DATA_PROVIDER").first()
-        if not data_provider_role:
-            data_provider_role = Role.objects.create(
-                name="DATA_PROVIDER", description="Data Provider Role"
-            )
+        # Role is tenant-scoped; use get_or_create with tenant
+        data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
         self.user.user_roles.create(role=data_provider_role)
 
         plaintext_key = APIKey.generate_key()

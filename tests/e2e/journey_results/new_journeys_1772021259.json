@@ -1,0 +1,58 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.29545140266418457
+  },
+  "journeys": [
+    {
+      "journey_id": "CM-003-ffe3f82d",
+      "journey_name": "Assign Data Stewards",
+      "persona": "Community Manager",
+      "status": "completed",
+      "start_time": 1772021259.681755,
+      "end_time": 1772021259.9772065,
+      "duration": 0.29545140266418457,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021259.6817603,
+          "end_time": 1772021259.9568765,
+          "duration": 0.2751162052154541,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Assign Stewards (via asset update)",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021259.9771988,
+          "end_time": 1772021259.9772048,
+          "duration": 5.9604644775390625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "ReturnDict"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "32df5069-ae3a-4105-8375-c909cb504b39"
+      }
+    }
+  ],
+  "exported_at": "2026-02-25T12:07:39.977268"
+}

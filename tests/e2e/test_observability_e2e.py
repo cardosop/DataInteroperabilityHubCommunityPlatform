@@ -20,7 +20,7 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
@@ -36,6 +36,15 @@ class ObservabilityE2ETest(E2ETestBase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
         
+        # E2ETestBase does not create an asset; observability tests need one for Dataset
+        self.asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-observability-asset",
+            name="Test Observability Asset",
+            status=AssetStatus.DRAFT,
+            created_by=self.user,
+        )
+        
         self.file = File.objects.create(
             tenant=self.tenant,
             name="test.csv",
@@ -47,11 +56,11 @@ class ObservabilityE2ETest(E2ETestBase):
             created_by=self.user
         )
         
+        # Dataset model has no 'name' field (metadata is in schema_json / asset)
         self.dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
-            name="Test Dataset",
             schema_json={
                 "fields": [
                     {"name": "email", "type": "string", "nullable": False},
@@ -83,8 +92,9 @@ class ObservabilityE2ETest(E2ETestBase):
         url = reverse('observability-get-freshness-dashboard')
         response = self.client.get(url)
         
+        data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('results', response.data)
+        self.assertIn('results', data)
         
         # Step 3: Aggregate volume trends
         VolumeMonitor.aggregate_daily_trends(
@@ -97,8 +107,9 @@ class ObservabilityE2ETest(E2ETestBase):
         url = reverse('observability-get-volume-dashboard')
         response = self.client.get(url, {'period_type': 'DAILY'})
         
+        data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('results', response.data)
+        self.assertIn('results', data)
         
         # Step 5: Detect schema drift
         new_schema = {
@@ -122,8 +133,9 @@ class ObservabilityE2ETest(E2ETestBase):
         url = reverse('observability-get-schema-drift-dashboard')
         response = self.client.get(url)
         
+        data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('results', response.data)
+        self.assertIn('results', data)
     
     def test_stale_data_detection_workflow(self):
         """Test stale data detection workflow"""
@@ -148,8 +160,9 @@ class ObservabilityE2ETest(E2ETestBase):
         url = reverse('observability-get-stale-data')
         response = self.client.get(url)
         
+        data = get_response_data(response)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(response.data, list)
+        self.assertIsInstance(data, list)
     
     def test_volume_anomaly_detection_workflow(self):
         """Test volume anomaly detection workflow"""

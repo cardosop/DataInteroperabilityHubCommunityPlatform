@@ -20,6 +20,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User
 from hub.apps.webhooks.delivery_validators import WebhookDeliveryValidator
 from hub.apps.webhooks.models import (
@@ -38,6 +39,7 @@ class WebhookDeliveryRetryValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
@@ -208,6 +210,7 @@ class WebhookDeliveryTimeoutValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
@@ -312,6 +315,7 @@ class WebhookDeliveryStatusValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
@@ -518,6 +522,7 @@ class WebhookDeliveryDLQValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
@@ -634,6 +639,7 @@ class WebhookDeliveryComprehensiveValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,

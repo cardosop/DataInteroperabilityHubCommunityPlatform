@@ -57,7 +57,7 @@ class APISpecComplianceTest(TestCase):
         """Verify GET response matches API spec (§13.1) exactly (field names, types, structure)"""
         self.client.force_authenticate(user=self.tenant_admin)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.data
@@ -107,7 +107,7 @@ class APISpecComplianceTest(TestCase):
         
         data = {"default_dq_profile": "intake_basic_soda"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -126,7 +126,7 @@ class APISpecComplianceTest(TestCase):
         # Trigger a validation error
         invalid_data = {"default_dq_profile": "invalid_profile"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             invalid_data,
             format="json"
         )
@@ -159,7 +159,7 @@ class APISpecComplianceTest(TestCase):
         config = TenantConfig.objects.create(tenant=self.tenant)
         
         self.client.force_authenticate(user=self.tenant_admin)
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -191,7 +191,7 @@ class APISpecComplianceTest(TestCase):
         fake_tenant_id = uuid.uuid4()
         
         self.client.force_authenticate(user=self.tenant_admin)
-        response = self.client.get(f"/api/v1/tenants/tenants/{fake_tenant_id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{fake_tenant_id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         
@@ -209,7 +209,7 @@ class APISpecComplianceTest(TestCase):
         
         invalid_data = {"default_dq_profile": "invalid_profile"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             invalid_data,
             format="json"
         )
@@ -276,7 +276,7 @@ class APISpecComplianceTest(TestCase):
         self.client.force_authenticate(user=self.tenant_admin)
         
         # Make actual API call
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify response structure matches expected schema
@@ -315,14 +315,14 @@ class APISpecComplianceTest(TestCase):
         UserRole.objects.create(user=provider_user, role=provider_role)
         
         self.client.force_authenticate(user=provider_user)
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(response.data["error"]["code"], "AUTH_FORBIDDEN")
     
     def test_401_returns_auth_unauthorized_error_code(self):
         """Verify 401 returns AUTH_UNAUTHORIZED"""
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(response.data["error"]["code"], "AUTH_UNAUTHORIZED")
@@ -337,7 +337,7 @@ class APISpecComplianceTest(TestCase):
             "data_retention_days": 50  # Below minimum
         }
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             invalid_data,
             format="json"
         )

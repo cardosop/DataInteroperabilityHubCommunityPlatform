@@ -75,6 +75,9 @@ class MarketplaceConnection(models.Model):
     def __str__(self):
         return f"{self.name} ({self.get_marketplace_type_display()}) - {self.tenant.name}"
 
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self.name} ({self.id})>"
+
     def clean(self):
         """
         Validate model fields before saving.
@@ -241,6 +244,9 @@ class MarketplaceSyncJob(models.Model):
 
     def __str__(self):
         return f"Sync {self.direction} - {self.status} ({self.connection.name})"
+
+    def __repr__(self):
+        return f"<MarketplaceSyncJob {self.id}: {self!s}>"
 
     def clean(self):
         """
@@ -507,6 +513,9 @@ class MarketplaceMapping(models.Model):
 
     def __str__(self):
         return f"{self.hub_asset.name} -> {self.connection.name} ({self.external_listing_id})"
+
+    def __repr__(self):
+        return f"<MarketplaceMapping {self.id}: {self!s}>"
 
     def clean(self):
         """

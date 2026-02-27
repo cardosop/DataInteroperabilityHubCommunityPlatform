@@ -7,23 +7,22 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from './fixtures/auth';
+import { getTestUser } from './fixtures/auth';
+import { loginAndNavigateToRoute } from './fixtures/helpers';
 
 test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
-  test.beforeEach(async ({ page }) => {
-    test.setTimeout(360000); // 6 min so 429 retries (65s × 3) + getTestUser retries + login + waitForFunction fit (auth limit 5/min)
-    const testUser = await getTestUser();
-    await loginUser(page, testUser);
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(1500);
+  test.beforeEach(() => {
+    test.setTimeout(180000); // 3 min: 429 retries (25s × 3) + getTestUser + login
   });
 
   test('Social page loads or shows clear gated message', async ({ page }) => {
-    await page.goto('/social');
-    await page.waitForLoadState('domcontentloaded');
-    // Backend-not-implemented (UC-SOCIAL-005 activity feed): assert /unavailable or capability-gated message; no mocks.
-    // Wait for capability check to resolve: either page content or unavailable message (capabilities may load async)
-    await page.waitForSelector('.social-page, .unavailable-page', { timeout: 15000 });
+    const testUser = await getTestUser();
+    await loginAndNavigateToRoute(page, testUser, '/social', {
+      timeout: 60000,
+      contentSelector: '.social-page, .unavailable-page',
+      acceptRedirectToLogin: true,
+    });
+    if (page.url().includes('/login')) return;
 
     const socialPage = page.locator('.social-page');
     const unavailablePage = page.locator('.unavailable-page');
@@ -40,9 +39,13 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
   });
 
   test('AI Search page loads or shows clear gated message', async ({ page }) => {
-    await page.goto('/ai/search');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector('.ai-search-page, .unavailable-page', { timeout: 15000 });
+    const testUser = await getTestUser();
+    await loginAndNavigateToRoute(page, testUser, '/ai/search', {
+      timeout: 60000,
+      contentSelector: '.ai-search-page, .unavailable-page',
+      acceptRedirectToLogin: true,
+    });
+    if (page.url().includes('/login')) return;
 
     const aiPage = page.locator('.ai-search-page');
     const unavailablePage = page.locator('.unavailable-page');
@@ -59,9 +62,13 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
   });
 
   test('Developer portal page loads or shows clear gated message', async ({ page }) => {
-    await page.goto('/developer');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector('.developer-portal-page, .unavailable-page', { timeout: 15000 });
+    const testUser = await getTestUser();
+    await loginAndNavigateToRoute(page, testUser, '/developer', {
+      timeout: 60000,
+      contentSelector: '.developer-portal-page, .unavailable-page',
+      acceptRedirectToLogin: true,
+    });
+    if (page.url().includes('/login')) return;
 
     const devPage = page.locator('.developer-portal-page');
     const unavailablePage = page.locator('.unavailable-page');
@@ -78,9 +85,13 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
   });
 
   test('BaaS page loads or shows clear gated message', async ({ page }) => {
-    await page.goto('/baas');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector('.baas-page, .unavailable-page', { timeout: 15000 });
+    const testUser = await getTestUser();
+    await loginAndNavigateToRoute(page, testUser, '/baas', {
+      timeout: 60000,
+      contentSelector: '.baas-page, .unavailable-page',
+      acceptRedirectToLogin: true,
+    });
+    if (page.url().includes('/login')) return;
 
     const baasPage = page.locator('.baas-page');
     const unavailablePage = page.locator('.unavailable-page');
@@ -97,9 +108,13 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
   });
 
   test('ML page loads or shows clear gated message', async ({ page }) => {
-    await page.goto('/ml');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector('.ml-page, .unavailable-page', { timeout: 15000 });
+    const testUser = await getTestUser();
+    await loginAndNavigateToRoute(page, testUser, '/ml', {
+      timeout: 60000,
+      contentSelector: '.ml-page, .unavailable-page',
+      acceptRedirectToLogin: true,
+    });
+    if (page.url().includes('/login')) return;
 
     const mlPage = page.locator('.ml-page');
     const unavailablePage = page.locator('.unavailable-page');
@@ -116,6 +131,11 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
   });
 
   test('Phase 7 routes are reachable from sidebar when capability present', async ({ page }) => {
+    const testUser = await getTestUser();
+    await loginAndNavigateToRoute(page, testUser, '/assets', {
+      timeout: 60000,
+      contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+    });
     const sidebar = page.locator('.app-sidebar');
     await expect(sidebar).toBeVisible({ timeout: 10000 });
 

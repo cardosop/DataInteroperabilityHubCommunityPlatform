@@ -19,8 +19,9 @@ from rest_framework import status
 
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.audit.models import AuditEvent
+from hub.apps.users.models import Role, UserRole
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
@@ -48,7 +49,7 @@ class TenantManagementE2ETest(E2ETestBase):
     def test_create_tenant_success(self):
         """Test creating a tenant with valid data"""
         response = self.client.post(
-            '/api/v1/tenants/tenants/',
+            '/api/v1/tenants/',
             {
                 'name': 'New Test Tenant',
                 'slug': 'new-test-tenant',
@@ -58,13 +59,14 @@ class TenantManagementE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['name'], 'New Test Tenant')
-        self.assertEqual(response.data['slug'], 'new-test-tenant')
-        self.assertEqual(response.data['status'], TenantStatus.ACTIVE)
-        self.assertEqual(response.data['kyc_status'], KYCStatus.UNVERIFIED)
-        
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('name'), 'New Test Tenant')
+        self.assertEqual(data.get('slug'), 'new-test-tenant')
+        self.assertEqual(data.get('status'), TenantStatus.ACTIVE)
+        self.assertEqual(data.get('kyc_status'), KYCStatus.UNVERIFIED)
+
         # Verify tenant exists in database
-        tenant = Tenant.objects.get(id=response.data['id'])
+        tenant = Tenant.objects.get(id=data['id'])
         self.assertEqual(tenant.name, 'New Test Tenant')
         self.assertEqual(tenant.slug, 'new-test-tenant')
         self.assertEqual(tenant.status, TenantStatus.ACTIVE)
@@ -89,7 +91,7 @@ class TenantManagementE2ETest(E2ETestBase):
         
         # Try to create second tenant with same slug
         response = self.client.post(
-            '/api/v1/tenants/tenants/',
+            '/api/v1/tenants/',
             {
                 'name': 'Second Tenant',
                 'slug': 'duplicate-slug',
@@ -99,7 +101,8 @@ class TenantManagementE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('slug', response.data)
+        data = get_response_data(response) or {}
+        self.assertIn('slug', data)
     
     def test_get_tenant_success(self):
         """Test retrieving tenant details"""
@@ -111,14 +114,15 @@ class TenantManagementE2ETest(E2ETestBase):
             kyc_status=KYCStatus.VERIFIED
         )
         
-        response = self.client.get(f'/api/v1/tenants/tenants/{tenant.id}/')
+        response = self.client.get(f'/api/v1/tenants/{tenant.id}/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(tenant.id))
-        self.assertEqual(response.data['name'], unique_name)
-        self.assertEqual(response.data['slug'], 'test-tenant-get')
-        self.assertEqual(response.data['status'], TenantStatus.ACTIVE)
-        self.assertEqual(response.data['kyc_status'], KYCStatus.VERIFIED)
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('id'), str(tenant.id))
+        self.assertEqual(data.get('name'), unique_name)
+        self.assertEqual(data.get('slug'), 'test-tenant-get')
+        self.assertEqual(data.get('status'), TenantStatus.ACTIVE)
+        self.assertEqual(data.get('kyc_status'), KYCStatus.VERIFIED)
     
     def test_update_tenant_success(self):
         """Test updating tenant name and description"""
@@ -129,7 +133,7 @@ class TenantManagementE2ETest(E2ETestBase):
         )
         
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{tenant.id}/',
+            f'/api/v1/tenants/{tenant.id}/',
             {
                 'name': 'Updated Name',
                 'kyc_status': KYCStatus.VERIFIED
@@ -138,9 +142,10 @@ class TenantManagementE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['name'], 'Updated Name')
-        self.assertEqual(response.data['kyc_status'], KYCStatus.VERIFIED)
-        
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('name'), 'Updated Name')
+        self.assertEqual(data.get('kyc_status'), KYCStatus.VERIFIED)
+
         # Verify database updated
         tenant.refresh_from_db()
         self.assertEqual(tenant.name, 'Updated Name')
@@ -163,7 +168,7 @@ class TenantManagementE2ETest(E2ETestBase):
         )
         
         response = self.client.post(
-            f'/api/v1/tenants/tenants/{tenant.id}/suspend/',
+            f'/api/v1/tenants/{tenant.id}/suspend/',
             {
                 'reason': 'Violation of terms of service'
             },
@@ -171,13 +176,14 @@ class TenantManagementE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['status'], TenantStatus.SUSPENDED)
-        
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('status'), TenantStatus.SUSPENDED)
+
         # Verify database updated
         tenant.refresh_from_db()
         self.assertEqual(tenant.status, TenantStatus.SUSPENDED)
         self.assertTrue(tenant.is_suspended())
-        
+
         # Verify audit log created
         self.verify_audit_log(
             action='TENANT_SUSPENDED',
@@ -196,13 +202,14 @@ class TenantManagementE2ETest(E2ETestBase):
         tenant.soft_delete()
         
         response = self.client.post(
-            f'/api/v1/tenants/tenants/{tenant.id}/suspend/',
+            f'/api/v1/tenants/{tenant.id}/suspend/',
             {'reason': 'Test'},
             format='json'
         )
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('deleted', response.data['error'].lower())
+        data = get_response_data(response) or {}
+        self.assertIn('deleted', (data.get('error') or '').lower())
     
     def test_reactivate_tenant_success(self):
         """Test reactivating a suspended tenant"""
@@ -216,18 +223,19 @@ class TenantManagementE2ETest(E2ETestBase):
         tenant.suspend()
         
         response = self.client.post(
-            f'/api/v1/tenants/tenants/{tenant.id}/reactivate/',
+            f'/api/v1/tenants/{tenant.id}/reactivate/',
             format='json'
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['status'], TenantStatus.ACTIVE)
-        
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('status'), TenantStatus.ACTIVE)
+
         # Verify database updated
         tenant.refresh_from_db()
         self.assertEqual(tenant.status, TenantStatus.ACTIVE)
         self.assertFalse(tenant.is_suspended())
-        
+
         # Verify audit log created
         self.verify_audit_log(
             action='TENANT_REACTIVATED',
@@ -247,7 +255,7 @@ class TenantManagementE2ETest(E2ETestBase):
         )
         
         response = self.client.post(
-            f'/api/v1/tenants/tenants/{tenant.id}/reactivate/',
+            f'/api/v1/tenants/{tenant.id}/reactivate/',
             format='json'
         )
         
@@ -262,7 +270,7 @@ class TenantManagementE2ETest(E2ETestBase):
         )
         
         response = self.client.delete(
-            f'/api/v1/tenants/tenants/{tenant.id}/'
+            f'/api/v1/tenants/{tenant.id}/'
         )
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
@@ -392,9 +400,10 @@ class TenantManagementE2ETest(E2ETestBase):
                 self.fail(f"Middleware should block suspended tenant, but returned: {middleware_response}")
         else:
             # Request was blocked - verify it's a suspension error
+            data = get_response_data(response) or {}
             self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN,
-                           f"Expected 403 Forbidden, got {response.status_code}. Response: {response.data}")
-            error_msg = response.data.get('error', '')
+                           f"Expected 403 Forbidden, got {response.status_code}. Response: {data}")
+            error_msg = data.get('error', '')
             if isinstance(error_msg, dict):
                 error_msg = error_msg.get('message', '') or str(error_msg)
             else:
@@ -435,18 +444,28 @@ class TenantManagementE2ETest(E2ETestBase):
     
     def test_kyc_status_verification_for_marketplace(self):
         """Test that KYC status affects marketplace publishing"""
-        # Create tenant with UNVERIFIED KYC status
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+        # Create tenant with UNVERIFIED KYC status (subscription needed to pass middleware; KYC intentionally unverified)
         unverified_tenant = Tenant.objects.create(
             name='Unverified Tenant',
             slug='unverified-tenant',
             kyc_status=KYCStatus.UNVERIFIED
         )
-        
+        ensure_tenant_has_active_subscription(unverified_tenant)
+
         unverified_user = User.objects.create_user(
             email='unverified@example.com',
             password='testpass123',
             tenant=unverified_tenant
         )
+        # Assign DATA_PROVIDER so user can create asset; KYC is enforced at marketplace publish
+        data_provider_role, _ = Role.objects.get_or_create(
+            tenant=unverified_tenant,
+            name='DATA_PROVIDER',
+            defaults={'description': 'Data provider'}
+        )
+        UserRole.objects.get_or_create(user=unverified_user, role=data_provider_role)
         self.client.force_authenticate(user=unverified_user)
         
         # Create and activate asset
@@ -468,7 +487,8 @@ class TenantManagementE2ETest(E2ETestBase):
         
         # Should fail if KYC is required (may be 400 for validation or 403 for KYC)
         if response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN]:
-            error_msg = response.data.get('error', '')
+            data = get_response_data(response) or {}
+            error_msg = data.get('error', '')
             if isinstance(error_msg, dict):
                 error_msg = error_msg.get('message', '') or str(error_msg)
             else:
@@ -486,7 +506,7 @@ class TenantManagementE2ETest(E2ETestBase):
         # Update KYC status to VERIFIED
         self.client.force_authenticate(user=self.platform_admin)
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{unverified_tenant.id}/',
+            f'/api/v1/tenants/{unverified_tenant.id}/',
             {'kyc_status': KYCStatus.VERIFIED},
             format='json'
         )

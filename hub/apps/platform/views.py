@@ -170,8 +170,11 @@ class PlatformUserViewSet(viewsets.ReadOnlyModelViewSet):
 
     from django.contrib.auth import get_user_model
 
+    from hub.apps.users.serializers import UserSerializer
+
     User = get_user_model()
     queryset = User.objects.all()
+    serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsPlatformAdmin]
     lookup_field = "id"
 

@@ -9,6 +9,9 @@ import { errorReportingService } from '../services/errorReporting';
 import { performanceMetricsService } from '../services/performanceMetrics';
 import type { ApiError } from '../types/api';
 
+/** Raw API error response - backend may return nested { error: {...} } or flat { error, code, ... } */
+type RawErrorResponse = ApiError | Record<string, unknown>;
+
 // Use relative URL in browser to leverage Vite proxy, or full URL if explicitly set
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
@@ -101,7 +104,7 @@ export class ApiClient {
 
         return response;
       },
-      async (error: AxiosError<ApiError>) => {
+      async (error: AxiosError<RawErrorResponse>) => {
         const originalRequest = error.config as InternalAxiosRequestConfig & {
           _retry?: boolean;
           _correlationId?: string;
@@ -125,10 +128,11 @@ export class ApiClient {
         }
 
         // Extract correlation ID from error response
+        const errData = error.response?.data as { error?: { request_id?: string } } | undefined;
         const correlationId =
           error.response?.headers['x-correlation-id'] ||
           error.response?.headers['x-request-id'] ||
-          error.response?.data?.error?.request_id ||
+          errData?.error?.request_id ||
           originalRequest._correlationId;
 
         if (correlationId) {
@@ -148,43 +152,49 @@ export class ApiClient {
         // Normalize error shape
         // Handle both flat ({ error: string, code: string, details: object })
         // and nested ({ error: { code: string, message: string, ... } }) shapes
-        const responseData = error.response?.data;
+        const responseData = error.response?.data as RawErrorResponse | undefined;
         let normalizedError: ApiError['error'];
 
-        if (
-          responseData?.error &&
-          typeof responseData.error === 'object' &&
-          'code' in responseData.error
-        ) {
+        const errObj = responseData?.error;
+        const hasNested =
+          errObj &&
+          typeof errObj === 'object' &&
+          !Array.isArray(errObj) &&
+          'code' in errObj;
+
+        if (hasNested) {
           // Nested shape: { error: { code: string, message: string, ... } }
+          const e = errObj as ApiError['error'];
           normalizedError = {
-            code: responseData.error.code || 'UNKNOWN_ERROR',
-            message: responseData.error.message || error.message || 'An error occurred',
+            code: e.code || 'UNKNOWN_ERROR',
+            message: e.message || error.message || 'An error occurred',
             http_status: error.response?.status || 500,
-            request_id: correlationId || responseData.error.request_id || 'unknown',
-            timestamp: responseData.error.timestamp || new Date().toISOString(),
-            details: responseData.error.details,
-            field_errors: responseData.error.field_errors,
+            request_id: correlationId || e.request_id || 'unknown',
+            timestamp: e.timestamp || new Date().toISOString(),
+            details: e.details,
+            field_errors: e.field_errors,
           };
-        } else if (responseData?.error || responseData?.code) {
+        } else if (responseData && typeof responseData === 'object') {
           // Flat shape: { error: string, code: string, details: object }
+          // DRF 404 returns { detail: "Not found." } - use detail when error/code absent
+          const r = responseData as Record<string, unknown>;
+          const detailMsg = typeof r.detail === 'string' ? r.detail : undefined;
+          const errorMsg = typeof r.error === 'string' ? r.error : undefined;
           normalizedError = {
-            code: responseData.code || 'UNKNOWN_ERROR',
+            code: (r.code as string) || 'UNKNOWN_ERROR',
             message:
-              typeof responseData.error === 'string'
-                ? responseData.error
-                : error.message || 'An error occurred',
+              errorMsg ?? detailMsg ?? error.message ?? 'An error occurred',
             http_status: error.response?.status || 500,
             request_id: correlationId || 'unknown',
-            timestamp: responseData.timestamp || new Date().toISOString(),
+            timestamp: (r.timestamp as string) || new Date().toISOString(),
             details:
-              responseData.details ||
-              (typeof responseData.error === 'object' &&
-              responseData.error !== null &&
-              !Array.isArray(responseData.error)
-                ? responseData.error
+              (r.details as Record<string, unknown>) ||
+              (typeof r.error === 'object' &&
+              r.error !== null &&
+              !Array.isArray(r.error)
+                ? (r.error as Record<string, unknown>)
                 : undefined),
-            field_errors: responseData.field_errors,
+            field_errors: r.field_errors as ApiError['error']['field_errors'],
           };
         } else {
           // Fallback: no structured error data

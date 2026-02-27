@@ -1,7 +1,7 @@
 # Current API Inventory from Codebase
 
 **Document Version**: 2.0.0
-**Last Updated**: 2026-02-08
+**Last Updated**: 2026-02-25
 **Source**: Static analysis of Django URL patterns and ViewSets
 **Task**: 9.6.3.3.2 - Update API inventory files
 
@@ -15,13 +15,50 @@ This document inventories all API endpoints extracted from the Django codebase b
 3. Extracting function-based views
 4. Verifying endpoint patterns match standardized conventions
 
-**Total Endpoints Found**: 431
+**Total Endpoints Found**: 568
 
 ---
 
 ## Endpoints by Application
 
-### Analytics (10 endpoints)
+### Ai (30 endpoints)
+
+**Base Route**: `/api/v1/ai/`
+
+| Method | Path | View | Action | Type |
+|--------|------|------|--------|------|
+| GET | `/api/v1/ai/anomaly-detection/` | `AnomalyDetectionViewSet.list` | list | Standard |
+| POST | `/api/v1/ai/anomaly-detection/` | `AnomalyDetectionViewSet.create` | create | Standard |
+| GET | `/api/v1/ai/anomaly-detection/config/` | `AnomalyDetectionConfigViewSet.list` | list | Standard |
+| POST | `/api/v1/ai/anomaly-detection/config/` | `AnomalyDetectionConfigViewSet.create` | create | Standard |
+| DELETE | `/api/v1/ai/anomaly-detection/config/{id}/` | `AnomalyDetectionConfigViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/ai/anomaly-detection/config/{id}/` | `AnomalyDetectionConfigViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/ai/anomaly-detection/config/{id}/` | `AnomalyDetectionConfigViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/ai/anomaly-detection/config/{id}/` | `AnomalyDetectionConfigViewSet.update` | update | Standard |
+| POST | `/api/v1/ai/anomaly-detection/train/` | `AnomalyDetectionViewSet.train` | train | Custom |
+| DELETE | `/api/v1/ai/anomaly-detection/{id}/` | `AnomalyDetectionViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/ai/anomaly-detection/{id}/` | `AnomalyDetectionViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/ai/anomaly-detection/{id}/` | `AnomalyDetectionViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/ai/anomaly-detection/{id}/` | `AnomalyDetectionViewSet.update` | update | Standard |
+| GET | `/api/v1/ai/classification/` | `ClassificationViewSet.list` | list | Standard |
+| POST | `/api/v1/ai/classification/` | `ClassificationViewSet.create` | create | Standard |
+| DELETE | `/api/v1/ai/classification/{id}/` | `ClassificationViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/ai/classification/{id}/` | `ClassificationViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/ai/classification/{id}/` | `ClassificationViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/ai/classification/{id}/` | `ClassificationViewSet.update` | update | Standard |
+| GET | `/api/v1/ai/classification/{id}/report/` | `ClassificationViewSet.report` | report | Custom |
+| PATCH | `/api/v1/ai/classification/{id}/rules/` | `ClassificationViewSet.rules` | rules | Custom |
+| POST | `/api/v1/ai/classification/{id}/validate/` | `ClassificationViewSet.validate` | validate | Custom |
+| GET | `/api/v1/ai/recommendations/` | `RecommendationsViewSet.list` | list | Standard |
+| POST | `/api/v1/ai/recommendations/` | `RecommendationsViewSet.create` | create | Standard |
+| POST | `/api/v1/ai/recommendations/feedback/` | `RecommendationsViewSet.feedback` | feedback | Custom |
+| GET | `/api/v1/ai/recommendations/model/` | `RecommendationsViewSet.model` | model | Custom |
+| DELETE | `/api/v1/ai/recommendations/{id}/` | `RecommendationsViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/ai/recommendations/{id}/` | `RecommendationsViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/ai/recommendations/{id}/` | `RecommendationsViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/ai/recommendations/{id}/` | `RecommendationsViewSet.update` | update | Standard |
+
+### Analytics (20 endpoints)
 
 **Base Route**: `/api/v1/analytics/`
 
@@ -37,6 +74,16 @@ This document inventories all API endpoints extracted from the Django codebase b
 | GET | `/api/v1/analytics/api/{id}/` | `APIAnalyticsViewSet.retrieve` | retrieve | Standard |
 | PATCH | `/api/v1/analytics/api/{id}/` | `APIAnalyticsViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/analytics/api/{id}/` | `APIAnalyticsViewSet.update` | update | Standard |
+| GET | `/api/v1/analytics/costs/` | `CostsViewSet.list` | list | Standard |
+| POST | `/api/v1/analytics/costs/` | `CostsViewSet.create` | create | Standard |
+| GET | `/api/v1/analytics/costs/breakdown/` | `CostsViewSet.breakdown` | breakdown | Custom |
+| GET | `/api/v1/analytics/costs/by-asset/` | `CostsViewSet.by_asset` | by_asset | Custom |
+| GET | `/api/v1/analytics/costs/recommendations/` | `CostsViewSet.recommendations` | recommendations | Custom |
+| GET | `/api/v1/analytics/costs/trends/` | `CostsViewSet.trends` | trends | Custom |
+| DELETE | `/api/v1/analytics/costs/{id}/` | `CostsViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/analytics/costs/{id}/` | `CostsViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/analytics/costs/{id}/` | `CostsViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/analytics/costs/{id}/` | `CostsViewSet.update` | update | Standard |
 
 ### Audit (7 endpoints)
 
@@ -51,6 +98,27 @@ This document inventories all API endpoints extracted from the Django codebase b
 | GET | `/api/v1/audit/audit-events/{id}/` | `AuditEventViewSet.retrieve` | retrieve | Standard |
 | PATCH | `/api/v1/audit/audit-events/{id}/` | `AuditEventViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/audit/audit-events/{id}/` | `AuditEventViewSet.update` | update | Standard |
+
+### Assets (14 endpoints)
+
+**Base Route**: `/api/v1/assets/`
+
+| Method | Path | View | Action | Type |
+|--------|------|------|--------|------|
+| GET | `/api/v1/assets/` | `AssetViewSet.list` | list | Standard |
+| POST | `/api/v1/assets/` | `AssetViewSet.create` | create | Standard |
+| GET | `/api/v1/assets/recommendations/` | `AssetViewSet.recommendations` | recommendations | Custom |
+| GET | `/api/v1/assets/{id}/` | `AssetViewSet.retrieve` | retrieve | Standard |
+| PUT | `/api/v1/assets/{id}/` | `AssetViewSet.update` | update | Standard |
+| PATCH | `/api/v1/assets/{id}/` | `AssetViewSet.partial_update` | partial_update | Standard |
+| DELETE | `/api/v1/assets/{id}/` | `AssetViewSet.destroy` | destroy | Standard |
+| POST | `/api/v1/assets/{id}/activate/` | `AssetViewSet.activate` | activate | Custom |
+| POST | `/api/v1/assets/{id}/contracts/` | `AssetViewSet.attach_contract` | attach_contract | Custom |
+| POST | `/api/v1/assets/{id}/datasets/` | `AssetViewSet.attach_dataset` | attach_dataset | Custom |
+| GET | `/api/v1/assets/{id}/dependencies/` | `AssetViewSet.dependencies` | dependencies | Custom |
+| GET | `/api/v1/assets/{id}/health-score/` | `AssetViewSet.health_score` | health_score | Custom |
+| POST | `/api/v1/assets/{id}/track-download/` | `AssetViewSet.track_download` | track_download | Custom |
+| POST | `/api/v1/assets/{id}/track-view/` | `AssetViewSet.track_view` | track_view | Custom |
 
 ### Auth (32 endpoints)
 
@@ -155,24 +223,64 @@ This document inventories all API endpoints extracted from the Django codebase b
 | PUT | `/api/v1/compliance/runs/{id}/` | `ComplianceRunViewSet.update` | update | Standard |
 | GET | `/api/v1/compliance/runs/{id}/results/` | `ComplianceRunViewSet.results` | results | Custom |
 
-### Developer (12 endpoints)
+### Developer (40 endpoints)
 
 **Base Route**: `/api/v1/developer/`
 
 | Method | Path | View | Action | Type |
 |--------|------|------|--------|------|
+| GET | `/api/v1/developer/api-keys/` | `APIKeysViewSet.list` | list | Standard |
+| POST | `/api/v1/developer/api-keys/` | `APIKeysViewSet.create` | create | Standard |
+| DELETE | `/api/v1/developer/api-keys/{id}/` | `APIKeysViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/developer/api-keys/{id}/` | `APIKeysViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/developer/api-keys/{id}/` | `APIKeysViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/developer/api-keys/{id}/` | `APIKeysViewSet.update` | update | Standard |
+| GET | `/api/v1/developer/api-usage/` | `APIUsageViewSet.list` | list | Standard |
+| POST | `/api/v1/developer/api-usage/` | `APIUsageViewSet.create` | create | Standard |
+| DELETE | `/api/v1/developer/api-usage/{id}/` | `APIUsageViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/developer/api-usage/{id}/` | `APIUsageViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/developer/api-usage/{id}/` | `APIUsageViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/developer/api-usage/{id}/` | `APIUsageViewSet.update` | update | Standard |
+| GET | `/api/v1/developer/documentation/` | `DocumentationViewSet.list` | list | Standard |
+| POST | `/api/v1/developer/documentation/` | `DocumentationViewSet.create` | create | Standard |
+| DELETE | `/api/v1/developer/documentation/{id}/` | `DocumentationViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/developer/documentation/{id}/` | `DocumentationViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/developer/documentation/{id}/` | `DocumentationViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/developer/documentation/{id}/` | `DocumentationViewSet.update` | update | Standard |
 | GET | `/api/v1/developer/plugins/` | `PluginViewSet.list` | list | Standard |
 | POST | `/api/v1/developer/plugins/` | `PluginViewSet.create` | create | Standard |
+| POST | `/api/v1/developer/plugins/install/` | `PluginViewSet.install` | install | Custom |
+| GET | `/api/v1/developer/plugins/marketplace/` | `PluginViewSet.marketplace` | marketplace | Custom |
+| GET | `/api/v1/developer/plugins/marketplace/usage/` | `PluginViewSet.marketplace_usage` | marketplace_usage | Custom |
 | DELETE | `/api/v1/developer/plugins/{id}/` | `PluginViewSet.destroy` | destroy | Standard |
 | GET | `/api/v1/developer/plugins/{id}/` | `PluginViewSet.retrieve` | retrieve | Standard |
 | PATCH | `/api/v1/developer/plugins/{id}/` | `PluginViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/developer/plugins/{id}/` | `PluginViewSet.update` | update | Standard |
+| POST | `/api/v1/developer/plugins/{id}/execute/` | `PluginViewSet.execute` | execute | Custom |
+| GET | `/api/v1/developer/portal/` | `PortalViewSet.list` | list | Standard |
+| POST | `/api/v1/developer/portal/` | `PortalViewSet.create` | create | Standard |
+| DELETE | `/api/v1/developer/portal/{id}/` | `PortalViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/developer/portal/{id}/` | `PortalViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/developer/portal/{id}/` | `PortalViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/developer/portal/{id}/` | `PortalViewSet.update` | update | Standard |
 | GET | `/api/v1/developer/sdk/` | `SDKDocumentationViewSet.list` | list | Standard |
 | POST | `/api/v1/developer/sdk/` | `SDKDocumentationViewSet.create` | create | Standard |
 | DELETE | `/api/v1/developer/sdk/{id}/` | `SDKDocumentationViewSet.destroy` | destroy | Standard |
 | GET | `/api/v1/developer/sdk/{id}/` | `SDKDocumentationViewSet.retrieve` | retrieve | Standard |
 | PATCH | `/api/v1/developer/sdk/{id}/` | `SDKDocumentationViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/developer/sdk/{id}/` | `SDKDocumentationViewSet.update` | update | Standard |
+
+### Datasets (5 endpoints)
+
+**Base Route**: `/api/v1/datasets/`
+
+| Method | Path | View | Action | Type |
+|--------|------|------|--------|------|
+| GET | `/api/v1/datasets/` | `DatasetViewSet.list` | list | Standard |
+| POST | `/api/v1/datasets/` | `DatasetViewSet.create` | create | Standard |
+| GET | `/api/v1/datasets/{id}/` | `DatasetViewSet.retrieve` | retrieve | Standard |
+| GET | `/api/v1/datasets/{id}/versions/` | `DatasetViewSet.versions` | versions | Custom |
+| GET | `/api/v1/datasets/{id}/versions/compare/` | `DatasetViewSet.compare_versions` | compare_versions | Custom |
 
 ### Dq (7 endpoints)
 
@@ -348,7 +456,7 @@ This document inventories all API endpoints extracted from the Django codebase b
 | PATCH | `/api/v1/marketplace/payment-gateways/{id}/` | `PaymentGatewayViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/marketplace/payment-gateways/{id}/` | `PaymentGatewayViewSet.update` | update | Standard |
 
-### Mesh (22 endpoints)
+### Mesh (45 endpoints)
 
 **Base Route**: `/api/v1/mesh/`
 
@@ -361,13 +469,36 @@ This document inventories all API endpoints extracted from the Django codebase b
 | PATCH | `/api/v1/mesh/domains/{id}/` | `DomainViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/mesh/domains/{id}/` | `DomainViewSet.update` | update | Standard |
 | GET | `/api/v1/mesh/domains/{id}/analytics/` | `DomainViewSet.analytics` | analytics | Custom |
+| POST | `/api/v1/mesh/domains/{id}/assets/` | `DomainViewSet.assets` | assets | Custom |
+| PATCH | `/api/v1/mesh/domains/{id}/boundaries/` | `DomainViewSet.boundaries` | boundaries | Custom |
 | POST | `/api/v1/mesh/domains/{id}/compliance/check/` | `DomainViewSet.check_compliance` | check_compliance | Custom |
 | GET | `/api/v1/mesh/domains/{id}/compliance/reports/` | `DomainViewSet.list_compliance_reports` | list_compliance_reports | Custom |
 | GET | `/api/v1/mesh/domains/{id}/compliance/reports/(?P<report_id>[^/.]+)/` | `DomainViewSet.get_compliance_report` | get_compliance_report | Custom |
+| POST | `/api/v1/mesh/domains/{id}/deploy/` | `DomainViewSet.deploy` | deploy | Custom |
+| GET | `/api/v1/mesh/domains/{id}/governance/` | `DomainViewSet.governance` | governance | Custom |
+| POST | `/api/v1/mesh/domains/{id}/governance/` | `DomainViewSet.governance` | governance | Custom |
+| GET | `/api/v1/mesh/domains/{id}/health/` | `DomainViewSet.health` | health | Custom |
+| GET | `/api/v1/mesh/domains/{id}/infrastructure/` | `DomainViewSet.infrastructure` | infrastructure | Custom |
+| POST | `/api/v1/mesh/domains/{id}/infrastructure/` | `DomainViewSet.infrastructure` | infrastructure | Custom |
+| GET | `/api/v1/mesh/domains/{id}/monitoring/` | `DomainViewSet.monitoring` | monitoring | Custom |
+| PATCH | `/api/v1/mesh/domains/{id}/ownership/` | `DomainViewSet.ownership` | ownership | Custom |
 | GET | `/api/v1/mesh/domains/{id}/policies/` | `DomainViewSet.list_policies` | list_policies | Custom |
 | DELETE | `/api/v1/mesh/domains/{id}/policies/(?P<policy_id>[^/.]+)/` | `DomainViewSet.remove_policy` | remove_policy | Custom |
 | POST | `/api/v1/mesh/domains/{id}/policies/apply/` | `DomainViewSet.apply_policy` | apply_policy | Custom |
+| GET | `/api/v1/mesh/domains/{id}/quotas/` | `DomainViewSet.quotas` | quotas | Custom |
+| POST | `/api/v1/mesh/domains/{id}/quotas/` | `DomainViewSet.quotas` | quotas | Custom |
+| GET | `/api/v1/mesh/domains/{id}/self-serve/` | `DomainViewSet.self_serve` | self_serve | Custom |
+| POST | `/api/v1/mesh/domains/{id}/self-serve/` | `DomainViewSet.self_serve` | self_serve | Custom |
 | POST | `/api/v1/mesh/domains/{id}/transfer-ownership/` | `DomainViewSet.transfer_ownership` | transfer_ownership | Custom |
+| GET | `/api/v1/mesh/governance/` | `MeshGovernanceViewSet.list` | list | Standard |
+| POST | `/api/v1/mesh/governance/` | `MeshGovernanceViewSet.create` | create | Standard |
+| GET | `/api/v1/mesh/governance/compliance/` | `MeshGovernanceViewSet.compliance` | compliance | Custom |
+| GET | `/api/v1/mesh/governance/policies/` | `MeshGovernanceViewSet.policies` | policies | Custom |
+| GET | `/api/v1/mesh/governance/reports/` | `MeshGovernanceViewSet.reports` | reports | Custom |
+| DELETE | `/api/v1/mesh/governance/{id}/` | `MeshGovernanceViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/mesh/governance/{id}/` | `MeshGovernanceViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/mesh/governance/{id}/` | `MeshGovernanceViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/mesh/governance/{id}/` | `MeshGovernanceViewSet.update` | update | Standard |
 | GET | `/api/v1/mesh/topology/` | `TopologyViewSet.list` | list | Standard |
 | POST | `/api/v1/mesh/topology/` | `TopologyViewSet.create` | create | Standard |
 | GET | `/api/v1/mesh/topology/health/` | `TopologyViewSet.health` | health | Custom |
@@ -419,8 +550,8 @@ This document inventories all API endpoints extracted from the Django codebase b
 | POST | `/api/v1/observability/observability/` | `ObservabilityViewSet.create` | create | Standard |
 | GET | `/api/v1/observability/observability/freshness/` | `ObservabilityViewSet.get_freshness_dashboard` | get_freshness_dashboard | Custom |
 | GET | `/api/v1/observability/observability/freshness/stale/` | `ObservabilityViewSet.get_stale_data` | get_stale_data | Custom |
-| GET | `/api/v1/observability/observability/incidents/` | `ObservabilityViewSet.get_incidents_dashboard` | get_incidents_dashboard | Custom |
-| POST | `/api/v1/observability/observability/incidents/` | `ObservabilityViewSet.create_incident` | create_incident | Custom |
+| GET | `/api/v1/observability/observability/incidents/` | `ObservabilityViewSet.incidents` | incidents | Custom |
+| POST | `/api/v1/observability/observability/incidents/` | `ObservabilityViewSet.incidents` | incidents | Custom |
 | PATCH | `/api/v1/observability/observability/incidents/update/` | `ObservabilityViewSet.update_incident` | update_incident | Custom |
 | GET | `/api/v1/observability/observability/lineage/` | `ObservabilityViewSet.get_lineage` | get_lineage | Custom |
 | POST | `/api/v1/observability/observability/metrics/` | `ObservabilityViewSet.record_metric` | record_metric | Custom |
@@ -508,12 +639,26 @@ This document inventories all API endpoints extracted from the Django codebase b
 | GET | `/api/v1/semantic/sparql/` | `sparql_query` | sparql_query | Function-based |
 | POST | `/api/v1/semantic/sparql/` | `sparql_query` | sparql_query | Function-based |
 
-### Social (24 endpoints)
+### Social (51 endpoints)
 
 **Base Route**: `/api/v1/social/`
 
 | Method | Path | View | Action | Type |
 |--------|------|------|--------|------|
+| GET | `/api/v1/social/activity-feeds/` | `ActivityFeedViewSet.list` | list | Standard |
+| POST | `/api/v1/social/activity-feeds/` | `ActivityFeedViewSet.create` | create | Standard |
+| DELETE | `/api/v1/social/activity-feeds/{id}/` | `ActivityFeedViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/social/activity-feeds/{id}/` | `ActivityFeedViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/social/activity-feeds/{id}/` | `ActivityFeedViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/social/activity-feeds/{id}/` | `ActivityFeedViewSet.update` | update | Standard |
+| POST | `/api/v1/social/activity-feeds/{id}/moderate/` | `ActivityFeedViewSet.moderate` | moderate | Custom |
+| GET | `/api/v1/social/audit/` | `SocialAuditViewSet.list` | list | Standard |
+| POST | `/api/v1/social/audit/` | `SocialAuditViewSet.create` | create | Standard |
+| GET | `/api/v1/social/audit/reports/` | `SocialAuditViewSet.reports` | reports | Custom |
+| DELETE | `/api/v1/social/audit/{id}/` | `SocialAuditViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/social/audit/{id}/` | `SocialAuditViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/social/audit/{id}/` | `SocialAuditViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/social/audit/{id}/` | `SocialAuditViewSet.update` | update | Standard |
 | GET | `/api/v1/social/comments/` | `CommentViewSet.list` | list | Standard |
 | POST | `/api/v1/social/comments/` | `CommentViewSet.create` | create | Standard |
 | DELETE | `/api/v1/social/comments/{id}/` | `CommentViewSet.destroy` | destroy | Standard |
@@ -522,22 +667,35 @@ This document inventories all API endpoints extracted from the Django codebase b
 | PUT | `/api/v1/social/comments/{id}/` | `CommentViewSet.update` | update | Standard |
 | GET | `/api/v1/social/communities/` | `CommunityViewSet.list` | list | Standard |
 | POST | `/api/v1/social/communities/` | `CommunityViewSet.create` | create | Standard |
+| GET | `/api/v1/social/communities/audit/` | `CommunityViewSet.audit` | audit | Custom |
 | DELETE | `/api/v1/social/communities/{id}/` | `CommunityViewSet.destroy` | destroy | Standard |
 | GET | `/api/v1/social/communities/{id}/` | `CommunityViewSet.retrieve` | retrieve | Standard |
 | PATCH | `/api/v1/social/communities/{id}/` | `CommunityViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/social/communities/{id}/` | `CommunityViewSet.update` | update | Standard |
+| GET | `/api/v1/social/communities/{id}/assets/` | `CommunityViewSet.assets` | assets | Custom |
+| POST | `/api/v1/social/communities/{id}/assets/` | `CommunityViewSet.assets` | assets | Custom |
+| GET | `/api/v1/social/communities/{id}/discussions/` | `CommunityViewSet.discussions` | discussions | Custom |
+| POST | `/api/v1/social/communities/{id}/discussions/` | `CommunityViewSet.discussions` | discussions | Custom |
+| POST | `/api/v1/social/communities/{id}/join/` | `CommunityViewSet.join` | join | Custom |
+| GET | `/api/v1/social/communities/{id}/knowledge-base/` | `CommunityViewSet.knowledge_base` | knowledge_base | Custom |
+| GET | `/api/v1/social/communities/{id}/members/` | `CommunityViewSet.members` | members | Custom |
 | GET | `/api/v1/social/ratings/` | `RatingViewSet.list` | list | Standard |
 | POST | `/api/v1/social/ratings/` | `RatingViewSet.create` | create | Standard |
+| GET | `/api/v1/social/ratings/audit/` | `RatingViewSet.audit` | audit | Custom |
 | DELETE | `/api/v1/social/ratings/{id}/` | `RatingViewSet.destroy` | destroy | Standard |
 | GET | `/api/v1/social/ratings/{id}/` | `RatingViewSet.retrieve` | retrieve | Standard |
 | PATCH | `/api/v1/social/ratings/{id}/` | `RatingViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/social/ratings/{id}/` | `RatingViewSet.update` | update | Standard |
 | GET | `/api/v1/social/reviews/` | `ReviewViewSet.list` | list | Standard |
 | POST | `/api/v1/social/reviews/` | `ReviewViewSet.create` | create | Standard |
+| GET | `/api/v1/social/reviews/audit/` | `ReviewViewSet.audit` | audit | Custom |
+| GET | `/api/v1/social/reviews/pending/` | `ReviewViewSet.pending` | pending | Custom |
 | DELETE | `/api/v1/social/reviews/{id}/` | `ReviewViewSet.destroy` | destroy | Standard |
 | GET | `/api/v1/social/reviews/{id}/` | `ReviewViewSet.retrieve` | retrieve | Standard |
 | PATCH | `/api/v1/social/reviews/{id}/` | `ReviewViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/social/reviews/{id}/` | `ReviewViewSet.update` | update | Standard |
+| POST | `/api/v1/social/reviews/{id}/approve/` | `ReviewViewSet.approve` | approve | Custom |
+| POST | `/api/v1/social/reviews/{id}/reject/` | `ReviewViewSet.reject` | reject | Custom |
 
 ### Tenants (8 endpoints)
 
@@ -650,26 +808,26 @@ This document inventories all API endpoints extracted from the Django codebase b
 
 ## Summary Statistics
 
-- **Total Endpoints**: 431
-- **Standard CRUD Actions**: 312
-- **Custom Actions**: 75
+- **Total Endpoints**: 549
+- **Standard CRUD Actions**: 384
+- **Custom Actions**: 121
 - **Function-based Views**: 44
 
 ### Methods Breakdown
 
-- **DELETE**: 53 endpoints
-- **GET**: 173 endpoints
-- **PATCH**: 53 endpoints
-- **POST**: 100 endpoints
-- **PUT**: 52 endpoints
+- **DELETE**: 65 endpoints
+- **GET**: 223 endpoints
+- **PATCH**: 68 endpoints
+- **POST**: 129 endpoints
+- **PUT**: 64 endpoints
 
 ## Notes
 
 ### Standardized Endpoint Patterns
 
 All endpoints follow standardized patterns:
-- Compliance runs: `/api/v1/compliance/runs/` (not `/compliance-runs/`)
-- Data quality runs: `/api/v1/dq/runs/` (not `/dq-runs/`)
+- Compliance runs: `/api/v1/compliance/runs/` (legacy compliance-runs path is deprecated)
+- Data quality runs: `/api/v1/dq/runs/` (legacy dq-runs path is deprecated)
 
 ### Extraction Methodology
 
@@ -681,4 +839,4 @@ All endpoints follow standardized patterns:
 ---
 
 **Document Status**: ✅ Complete
-**Total Endpoints Extracted**: 431
+**Total Endpoints Extracted**: 568

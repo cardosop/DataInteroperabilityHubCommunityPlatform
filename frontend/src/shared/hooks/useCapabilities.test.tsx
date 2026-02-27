@@ -1,7 +1,7 @@
 /**
  * useCapabilities hook tests.
  * Real useCapabilities and capabilitiesService; only axios mocked.
- * Scenarios: success (capabilities loaded), error (empty capabilities), loading then success.
+ * Scenarios: success (capabilities loaded), error (fallback capabilities), loading then success.
  */
 
 import { renderHook, waitFor } from '@testing-library/react';
@@ -55,16 +55,23 @@ describe('useCapabilities', () => {
     expect(result.current.isCapabilityAvailable('auth.register')).toBe(true);
   });
 
-  it('should have empty capabilities on error', async () => {
+  it('should use fallback capabilities on error', async () => {
     vi.mocked(mockAxiosInstance.get).mockRejectedValue(new Error('Network error'));
 
     const { result } = renderHook(() => useCapabilities());
 
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
+    // Service retries once after 1500ms; wait long enough for both attempts to complete
+    await waitFor(
+      () => {
+        expect(result.current.isLoading).toBe(false);
+      },
+      { timeout: 2500 }
+    );
 
-    expect(result.current.capabilities).toEqual({});
+    // On error the service fails open: returns auth fallback, not empty (so auth routes stay usable)
+    expect(result.current.capabilities).toBeDefined();
+    expect(result.current.isCapabilityAvailable('auth.register')).toBe(true);
+    expect(result.current.isCapabilityAvailable('auth.password-reset')).toBe(true);
   });
 
   it('should return capability via getCapability when available', async () => {

@@ -1,6 +1,8 @@
 # Marketplace Integration API Reference
 
-Complete API reference for the Marketplace Integration Framework.
+Complete API reference for the **external** marketplace APIs (connections, sync, mappings).
+
+> **Internal vs external:** For a clear split between the Hub’s own marketplace (listings, orders, entitlements, preview under `/api/v1/marketplace/`) and external marketplace integrations (this API, under `/api/v1/integrations/marketplace/`), see [Internal vs External Marketplace](MARKETPLACE_INTERNAL_VS_EXTERNAL.md).
 
 **Last Updated**: 2026-01-10
 **Version**: 1.0.0

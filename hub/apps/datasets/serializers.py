@@ -14,6 +14,9 @@ class DatasetSerializer(serializers.ModelSerializer):
         for key in ("id", "tenant", "asset", "file", "parent_version", "created_by"):
             if key in data and data[key] is not None:
                 data[key] = str(data[key])
+        # Add computed name and size_bytes for frontend (Dataset has no name field)
+        data["name"] = instance.file.name if instance.file else str(instance)
+        data["size_bytes"] = instance.file.size if instance.file else 0
         return data
 
     class Meta:

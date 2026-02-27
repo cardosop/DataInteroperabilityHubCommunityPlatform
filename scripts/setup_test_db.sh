@@ -4,12 +4,19 @@
 #
 # This script creates the test database and runs migrations once.
 # After this, subsequent test runs with --reuse-db will be fast.
+#
+# Prerequisites: Test stack must be up. Run first:
+#   docker compose -f docker-compose.test.yml up -d
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
+
+# Align with run_phase_12a_backend_suites.sh: default to test compose
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yml}"
+export COMPOSE_FILE
 
 # API service name
 if [[ -n "${API_SERVICE_NAME:-}" ]]; then
@@ -20,9 +27,25 @@ else
   API_SVC="api-service"
 fi
 
+# Pre-check: service must be running
+if [[ -z "$(docker compose ps -q "${API_SVC}" 2>/dev/null)" ]]; then
+  echo "=========================================="
+  echo "Error: ${API_SVC} is not running"
+  echo "=========================================="
+  echo ""
+  echo "Start the test stack first:"
+  echo "  docker compose -f docker-compose.test.yml up -d"
+  echo ""
+  echo "Then re-run this script:"
+  echo "  ./scripts/setup_test_db.sh"
+  echo ""
+  exit 1
+fi
+
 echo "=========================================="
 echo "Pre-creating pytest test database"
 echo "=========================================="
+echo "Compose: ${COMPOSE_FILE}"
 echo "Service: ${API_SVC}"
 echo ""
 echo "This will:"

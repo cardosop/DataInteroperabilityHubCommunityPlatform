@@ -14,7 +14,7 @@ from rest_framework import status
 
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.users.models import User, UserStatus
-from tests.e2e.conftest import E2ETestBase
+from tests.e2e.conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
 User = get_user_model()
@@ -49,52 +49,54 @@ class PlatformAdminPersonaTest(E2ETestBase):
     
     def test_platform_admin_can_get_own_tenant_config(self):
         """Test Platform Admin can GET any tenant configuration"""
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
-        
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("default_dq_profile", response.data)
+        self.assertIn("default_dq_profile", resp_data)
     
     def test_platform_admin_can_get_other_tenant_config(self):
         """Test Platform Admin can GET other tenant configuration"""
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.other_tenant.id}/config/")
-        
+        response = self.client.get(f"/api/v1/tenants/{self.other_tenant.id}/config/")
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("default_dq_profile", response.data)
+        self.assertIn("default_dq_profile", resp_data)
     
     def test_platform_admin_can_patch_any_tenant_config(self):
         """Test Platform Admin can PATCH any tenant configuration"""
         data = {"default_dq_profile": "intake_basic_gx"}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["default_dq_profile"], "intake_basic_gx")
+        self.assertEqual(resp_data["default_dq_profile"], "intake_basic_gx")
     
     def test_platform_admin_can_patch_other_tenant_config(self):
         """Test Platform Admin can PATCH other tenant configuration"""
         data = {"default_dq_profile": "intake_basic_soda"}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.other_tenant.id}/config/",
+            f"/api/v1/tenants/{self.other_tenant.id}/config/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["default_dq_profile"], "intake_basic_soda")
+        self.assertEqual(resp_data["default_dq_profile"], "intake_basic_soda")
     
     def test_platform_admin_can_list_all_tenants(self):
         """Test Platform Admin can list all tenants"""
-        response = self.client.get("/api/v1/tenants/tenants/")
-        
+        response = self.client.get("/api/v1/tenants/")
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("results", response.data)
+        self.assertIn("results", resp_data)
         # Should see both tenants
-        tenant_ids = [t["id"] for t in response.data["results"]]
+        tenant_ids = [t["id"] for t in resp_data.get("results", [])]
         self.assertIn(str(self.tenant.id), tenant_ids)
         self.assertIn(str(self.other_tenant.id), tenant_ids)
     
@@ -107,26 +109,28 @@ class PlatformAdminPersonaTest(E2ETestBase):
         }
         
         response = self.client.post(
-            "/api/v1/tenants/tenants/",
+            "/api/v1/tenants/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["name"], "New Tenant")
+        self.assertEqual(resp_data["name"], "New Tenant")
     
     def test_platform_admin_can_update_tenant(self):
         """Test Platform Admin can update tenants"""
         data = {"name": "Updated Tenant Name"}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/",
+            f"/api/v1/tenants/{self.tenant.id}/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["name"], "Updated Tenant Name")
+        self.assertEqual(resp_data["name"], "Updated Tenant Name")
     
     def test_platform_admin_can_view_system_metrics(self):
         """Test Platform Admin can view system-wide metrics"""
@@ -134,8 +138,8 @@ class PlatformAdminPersonaTest(E2ETestBase):
         # This would typically be a metrics endpoint
         # For now, we verify they can access tenant info across tenants
         
-        response1 = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/")
-        response2 = self.client.get(f"/api/v1/tenants/tenants/{self.other_tenant.id}/")
+        response1 = self.client.get(f"/api/v1/tenants/{self.tenant.id}/")
+        response2 = self.client.get(f"/api/v1/tenants/{self.other_tenant.id}/")
         
         # Should be able to access both
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
@@ -153,20 +157,21 @@ class PlatformAdminPersonaTest(E2ETestBase):
         }
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["default_dq_profile"], "intake_basic_gx")
+        self.assertEqual(resp_data["default_dq_profile"], "intake_basic_gx")
     
     def test_platform_admin_cross_tenant_config_access(self):
         """Test Platform Admin can access configs across all tenants"""
         # Configure tenant1
         data1 = {"default_dq_profile": "intake_basic_gx"}
         response1 = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data1,
             format="json"
         )
@@ -175,25 +180,26 @@ class PlatformAdminPersonaTest(E2ETestBase):
         # Configure tenant2
         data2 = {"default_dq_profile": "intake_basic_soda"}
         response2 = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.other_tenant.id}/config/",
+            f"/api/v1/tenants/{self.other_tenant.id}/config/",
             data2,
             format="json"
         )
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
         
         # Verify both configs
-        get_response1 = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
-        get_response2 = self.client.get(f"/api/v1/tenants/tenants/{self.other_tenant.id}/config/")
-        
-        self.assertEqual(get_response1.data["default_dq_profile"], "intake_basic_gx")
-        self.assertEqual(get_response2.data["default_dq_profile"], "intake_basic_soda")
+        get_response1 = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
+        get_response2 = self.client.get(f"/api/v1/tenants/{self.other_tenant.id}/config/")
+        data1 = get_response_data(get_response1) or {}
+        data2 = get_response_data(get_response2) or {}
+        self.assertEqual(data1["default_dq_profile"], "intake_basic_gx")
+        self.assertEqual(data2["default_dq_profile"], "intake_basic_soda")
     
     def test_platform_admin_can_suspend_tenant(self):
         """Test Platform Admin can suspend tenants"""
         data = {"reason": "Test suspension"}
         
         response = self.client.post(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/suspend/",
+            f"/api/v1/tenants/{self.tenant.id}/suspend/",
             data,
             format="json"
         )
@@ -215,7 +221,7 @@ class PlatformAdminPersonaTest(E2ETestBase):
         self.assertEqual(self.tenant.status, TenantStatus.SUSPENDED)
         
         response = self.client.post(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/reactivate/",
+            f"/api/v1/tenants/{self.tenant.id}/reactivate/",
             {},
             format="json"
         )
@@ -229,25 +235,27 @@ class PlatformAdminPersonaTest(E2ETestBase):
     
     def test_platform_admin_can_view_all_users(self):
         """Test Platform Admin can view all users across tenants"""
-        response = self.client.get("/api/v1/users/users/")
+        response = self.client.get("/api/v1/users/")
         
         # Should be able to list users
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("results", response.data)
+        self.assertIn("results", resp_data)
     
     def test_platform_admin_can_manage_tenant_kyc(self):
         """Test Platform Admin can manage tenant KYC status"""
         data = {"kyc_status": "VERIFIED"}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/",
+            f"/api/v1/tenants/{self.tenant.id}/",
             data,
             format="json"
         )
         
         # Should be able to update KYC status
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["kyc_status"], "VERIFIED")
+        self.assertEqual(resp_data["kyc_status"], "VERIFIED")
     
     def test_platform_admin_tenant_isolation_override(self):
         """Test Platform Admin can override tenant isolation"""
@@ -255,8 +263,8 @@ class PlatformAdminPersonaTest(E2ETestBase):
         # This is tested through cross-tenant config access above
         
         # Verify can access both tenants' configs
-        response1 = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
-        response2 = self.client.get(f"/api/v1/tenants/tenants/{self.other_tenant.id}/config/")
+        response1 = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
+        response2 = self.client.get(f"/api/v1/tenants/{self.other_tenant.id}/config/")
         
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
@@ -267,8 +275,8 @@ class PlatformAdminPersonaTest(E2ETestBase):
         # Test by accessing various admin endpoints
         
         endpoints = [
-            "/api/v1/tenants/tenants/",
-            "/api/v1/users/users/",
+            "/api/v1/tenants/",
+            "/api/v1/users/",
         ]
         
         for endpoint in endpoints:
@@ -282,6 +290,6 @@ class PlatformAdminPersonaTest(E2ETestBase):
         self.assertIsNone(self.platform_admin.tenant)
         
         # Should be able to access any tenant
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 

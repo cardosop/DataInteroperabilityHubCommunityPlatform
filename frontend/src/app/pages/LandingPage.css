@@ -1,0 +1,124 @@
+.landing-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-secondary-50) 100%);
+}
+
+.landing-hero {
+  text-align: center;
+  margin-bottom: var(--spacing-2xl);
+  max-width: 640px;
+}
+
+.landing-hero-title {
+  font-size: var(--font-size-4xl);
+  font-weight: 700;
+  color: var(--color-primary-800);
+  margin: 0 0 var(--spacing-md);
+  line-height: 1.2;
+}
+
+.landing-hero-subtitle {
+  font-size: var(--font-size-lg);
+  color: var(--color-neutral-700);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.landing-value {
+  margin-bottom: var(--spacing-2xl);
+  max-width: 480px;
+}
+
+.landing-value-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--font-size-base);
+  color: var(--color-neutral-700);
+  line-height: 1.6;
+}
+
+.landing-value-list li {
+  padding: var(--spacing-xs) 0;
+  padding-left: var(--spacing-lg);
+  position: relative;
+}
+
+.landing-value-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.6em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary-500);
+}
+
+.landing-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.landing-button {
+  display: inline-block;
+  padding: var(--spacing-md) var(--spacing-xl);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+  min-width: 200px;
+  text-align: center;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.landing-button-primary {
+  background-color: var(--color-primary-700);
+  color: white;
+}
+
+.landing-button-primary:hover {
+  background-color: var(--color-primary-800);
+  color: white;
+}
+
+.landing-button-secondary {
+  background-color: white;
+  color: var(--color-primary-700);
+  border: 2px solid var(--color-primary-700);
+}
+
+.landing-button-secondary:hover {
+  background-color: var(--color-primary-50);
+  color: var(--color-primary-800);
+}
+
+.landing-link {
+  font-size: var(--font-size-sm);
+  color: var(--color-primary-800);
+  text-decoration: none;
+  margin-top: var(--spacing-sm);
+}
+
+.landing-link:hover {
+  text-decoration: underline;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

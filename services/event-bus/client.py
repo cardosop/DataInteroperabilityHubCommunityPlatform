@@ -246,13 +246,17 @@ class EventBusClient:
             return {"error": "Connection pool not available"}
         
         pool = self._redis_client.connection_pool
+        # redis-py uses _created_connections (private); fallback for older versions with created_connections
+        created = getattr(pool, "created_connections", getattr(pool, "_created_connections", 0))
+        max_conn = getattr(pool, "max_connections", getattr(pool, "_max_connections", 1))
+        available = len(getattr(pool, "_available_connections", []))
         return {
-            "created_connections": pool.created_connections,
-            "available_connections": len(pool._available_connections),
-            "in_use_connections": pool.created_connections - len(pool._available_connections),
-            "max_connections": pool.max_connections,
+            "created_connections": created,
+            "available_connections": available,
+            "in_use_connections": created - available,
+            "max_connections": max_conn,
             "connection_utilization": round(
-                (pool.created_connections / pool.max_connections * 100) if pool.max_connections > 0 else 0,
+                (created / max_conn * 100) if max_conn > 0 else 0,
                 2
             )
         }

@@ -12,8 +12,9 @@ Features:
 """
 import httpx
 import logging
-import time
 import os
+import stat
+import time
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
@@ -31,7 +32,7 @@ from hub.apps.integrations.base import (
     MarketplaceAssetMapping,
 )
 from hub.apps.assets.models import AssetSourceType
-from hub.apps.core.services.base import NotFoundError
+from hub.apps.core.services.base import ConnectionError as HubConnectionError, NotFoundError
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
     get_redis_client,
@@ -187,7 +188,7 @@ class CKANConnector(DataMarketplaceConnector):
                         time.sleep(delay)
                         continue
                     raise
-            raise ConnectionError("Max retries exceeded for CKAN API request.")
+            raise HubConnectionError("Max retries exceeded for CKAN API request.")
 
         # Execute with circuit breaker protection
         try:
@@ -263,7 +264,7 @@ class CKANConnector(DataMarketplaceConnector):
         except Exception as e:
             self._authenticated = False
             logger.error(f"CKAN authentication failed: {e}")
-            raise ConnectionError(f"Unable to authenticate with CKAN instance: {e}") from e
+            raise HubConnectionError(f"Unable to authenticate with CKAN instance: {e}") from e
 
     def test_connection(self) -> bool:
         """
@@ -292,7 +293,7 @@ class CKANConnector(DataMarketplaceConnector):
                 return False
         except Exception as e:
             logger.error(f"Connection test failed for CKAN instance: {e}")
-            raise ConnectionError(f"Unable to connect to CKAN instance: {e}") from e
+            raise HubConnectionError(f"Unable to connect to CKAN instance: {e}") from e
 
     def list_listings(
         self,
@@ -332,9 +333,24 @@ class CKANConnector(DataMarketplaceConnector):
                 raise ValueError(f"CKAN API error: {data.get('error', 'Unknown error')}")
 
             package_ids = data.get('result', [])
+            if isinstance(package_ids, dict):
+                package_ids = package_ids.get('results', []) or []
+            if not isinstance(package_ids, list):
+                package_ids = []
             listings = []
 
-            # Fetch details for each package (in batches to avoid overwhelming the API)
+            # If result is list of package dicts (e.g. package_search shape), convert directly
+            if package_ids and isinstance(package_ids[0], dict):
+                for package_data in package_ids:
+                    try:
+                        listing = self._package_to_listing(package_data)
+                        listings.append(listing)
+                    except Exception as e:
+                        logger.warning(f"Failed to convert package to listing: {e}")
+                        continue
+                return listings
+
+            # List of package id strings: fetch each via package_show
             batch_size = 10
             for i in range(0, len(package_ids), batch_size):
                 batch = package_ids[i:i + batch_size]
@@ -349,11 +365,11 @@ class CKANConnector(DataMarketplaceConnector):
             return listings
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                raise ConnectionError(f"CKAN API endpoint not found: {e}") from e
-            raise ConnectionError(f"CKAN API error: {e}") from e
+                raise HubConnectionError(f"CKAN API endpoint not found: {e}") from e
+            raise HubConnectionError(f"CKAN API error: {e}") from e
         except httpx.RequestError as e:
             # Handle connection errors (ConnectError, TimeoutException, etc.)
-            raise ConnectionError(f"Unable to connect to CKAN instance: {e}") from e
+            raise HubConnectionError(f"Unable to connect to CKAN instance: {e}") from e
 
     def _list_listings_via_search(
         self,
@@ -362,6 +378,9 @@ class CKANConnector(DataMarketplaceConnector):
         offset: Optional[int] = None
     ) -> List[MarketplaceListing]:
         """List listings using package_search API (supports pagination and filters)."""
+        if limit is not None and limit == 0:
+            return []
+
         params: Dict[str, Any] = {
             'rows': limit or 100,  # Default to 100 if not specified
             'start': offset or 0,
@@ -403,11 +422,11 @@ class CKANConnector(DataMarketplaceConnector):
             return listings
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                raise ConnectionError(f"CKAN API endpoint not found: {e}") from e
-            raise ConnectionError(f"CKAN API error: {e}") from e
+                raise HubConnectionError(f"CKAN API endpoint not found: {e}") from e
+            raise HubConnectionError(f"CKAN API error: {e}") from e
         except httpx.RequestError as e:
             # Handle connection errors (ConnectError, TimeoutException, etc.)
-            raise ConnectionError(f"Unable to connect to CKAN instance: {e}") from e
+            raise HubConnectionError(f"Unable to connect to CKAN instance: {e}") from e
 
     def get_listing(self, listing_id: str) -> MarketplaceListing:
         """
@@ -420,9 +439,14 @@ class CKANConnector(DataMarketplaceConnector):
             MarketplaceListing object
 
         Raises:
+            ValueError: If listing_id is empty or invalid
             NotFoundError: If package not found
             ConnectionError: If unable to connect to CKAN instance
         """
+        if listing_id is None or (isinstance(listing_id, str) and not listing_id.strip()):
+            raise ValueError("listing id must be non-empty")
+        if not isinstance(listing_id, str):
+            raise ValueError("listing id must be a string")
         try:
             response = self._request_with_retry(
                 'GET',
@@ -442,10 +466,10 @@ class CKANConnector(DataMarketplaceConnector):
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise NotFoundError(f"Package '{listing_id}' not found in CKAN instance") from e
-            raise ConnectionError(f"CKAN API error: {e}") from e
+            raise HubConnectionError(f"CKAN API error: {e}") from e
         except httpx.RequestError as e:
             # Handle connection errors (ConnectError, TimeoutException, etc.)
-            raise ConnectionError(f"Unable to connect to CKAN instance: {e}") from e
+            raise HubConnectionError(f"Unable to connect to CKAN instance: {e}") from e
 
     def _package_to_listing(self, package_data: Dict[str, Any]) -> MarketplaceListing:
         """Convert CKAN package data to MarketplaceListing."""
@@ -460,17 +484,19 @@ class CKANConnector(DataMarketplaceConnector):
         organization = package_data.get('organization', {})
         category = organization.get('name', '') if organization else None
 
-        # Extract timestamps
+        # Extract timestamps (only parse string values)
         created_at = None
         updated_at = None
-        if package_data.get('metadata_created'):
+        metadata_created = package_data.get('metadata_created')
+        if metadata_created and isinstance(metadata_created, str):
             try:
-                created_at = datetime.fromisoformat(package_data['metadata_created'].replace('Z', '+00:00'))
+                created_at = datetime.fromisoformat(metadata_created.replace('Z', '+00:00'))
             except (ValueError, AttributeError):
                 pass
-        if package_data.get('metadata_modified'):
+        metadata_modified = package_data.get('metadata_modified')
+        if metadata_modified and isinstance(metadata_modified, str):
             try:
-                updated_at = datetime.fromisoformat(package_data['metadata_modified'].replace('Z', '+00:00'))
+                updated_at = datetime.fromisoformat(metadata_modified.replace('Z', '+00:00'))
             except (ValueError, AttributeError):
                 pass
 
@@ -1009,10 +1035,10 @@ class CKANConnector(DataMarketplaceConnector):
                 raise NotFoundError(f"Resource '{resource_id}' not found") from e
             if e.response.status_code == 403:
                 raise PermissionError(f"Permission denied: Unable to access resource '{resource_id}'") from e
-            raise ConnectionError(f"CKAN API error: {e}") from e
+            raise HubConnectionError(f"CKAN API error: {e}") from e
         except httpx.RequestError as e:
             # Handle connection errors (ConnectError, TimeoutException, etc.)
-            raise ConnectionError(f"Unable to connect to CKAN instance: {e}") from e
+            raise HubConnectionError(f"Unable to connect to CKAN instance: {e}") from e
 
         # Download the resource
         try:
@@ -1028,6 +1054,18 @@ class CKANConnector(DataMarketplaceConnector):
             # Check if destination is a directory (invalid)
             if os.path.exists(destination_path) and os.path.isdir(destination_path):
                 raise IOError(f"Destination path is a directory, not a file: {destination_path}")
+
+            # If destination file exists and has no write bits (e.g. chmod 0o444), fail before
+            # downloading. Use mode bits so we detect read-only even when process is root.
+            if os.path.exists(destination_path) and os.path.isfile(destination_path):
+                try:
+                    dest_mode = os.stat(destination_path).st_mode
+                    if not (dest_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)):
+                        raise PermissionError(
+                            f"Destination path is not writable: {destination_path}"
+                        )
+                except PermissionError:
+                    raise
 
             # Download file with retry logic
             download_response = None
@@ -1056,7 +1094,7 @@ class CKANConnector(DataMarketplaceConnector):
                         raise PermissionError(f"Permission denied: Unable to download resource '{resource_id}'") from e
                     elif e.response.status_code == 404:
                         raise NotFoundError(f"Resource URL not found: {resource_url}") from e
-                    raise ConnectionError(f"Failed to download resource: HTTP {e.response.status_code}") from e
+                    raise HubConnectionError(f"Failed to download resource: HTTP {e.response.status_code}") from e
                 except httpx.RequestError as e:
                     if attempt < max_download_retries:
                         delay = self.backoff_factor * (2 ** attempt)
@@ -1066,26 +1104,28 @@ class CKANConnector(DataMarketplaceConnector):
                         )
                         time.sleep(delay)
                         continue
-                    raise ConnectionError(f"Failed to download resource: {e}") from e
+                    raise HubConnectionError(f"Failed to download resource: {e}") from e
 
             if download_response is None:
-                raise ConnectionError("Failed to download resource after retries")
+                raise HubConnectionError("Failed to download resource after retries")
 
             # Write to file atomically (write to temp file first, then rename)
             temp_path = destination_path + '.tmp'
             try:
+                bytes_written = 0
                 with open(temp_path, 'wb') as f:
                     # Write in chunks for large files
                     chunk_size = 8192  # 8KB chunks
                     for chunk in download_response.iter_bytes(chunk_size):
                         f.write(chunk)
+                        bytes_written += len(chunk)
 
                 # Atomic rename
                 os.replace(temp_path, destination_path)
 
                 logger.info(
                     f"Downloaded resource {resource_id} to {destination_path} "
-                    f"({len(download_response.content)} bytes)"
+                    f"({bytes_written} bytes)"
                 )
                 return destination_path
             except IOError as e:
@@ -1097,15 +1137,15 @@ class CKANConnector(DataMarketplaceConnector):
                         pass
                 raise IOError(f"Failed to write to destination path {destination_path}: {e}") from e
         except httpx.RequestError as e:
-            raise ConnectionError(f"Failed to download resource: {e}") from e
+            raise HubConnectionError(f"Failed to download resource: {e}") from e
         except IOError:
             # Re-raise IOError as-is
             raise
         except Exception as e:
             # Catch any other exceptions and convert appropriately
-            if isinstance(e, (NotFoundError, PermissionError, ConnectionError, IOError, ValueError)):
+            if isinstance(e, (NotFoundError, PermissionError, HubConnectionError, IOError, ValueError)):
                 raise
-            raise ConnectionError(f"Unexpected error downloading resource: {e}") from e
+            raise HubConnectionError(f"Unexpected error downloading resource: {e}") from e
 
     def map_to_hub_asset(
         self,
@@ -1367,6 +1407,34 @@ class CKANConnector(DataMarketplaceConnector):
         skipped_items = 0
         errors = []
         mappings = []
+
+        # Explicit empty listing_ids: sync nothing (do not fall through to list all)
+        if listing_ids is not None and len(listing_ids) == 0:
+            return SyncResult(
+                status=SyncStatus.COMPLETED,
+                total_items=0,
+                successful_items=0,
+                failed_items=0,
+                skipped_items=0,
+                errors=[],
+                metadata={'dry_run': dry_run, 'reason': 'empty_listing_ids'},
+                started_at=started_at,
+                completed_at=datetime.now()
+            )
+
+        # Zero limit: sync nothing
+        if limit is not None and limit == 0:
+            return SyncResult(
+                status=SyncStatus.COMPLETED,
+                total_items=0,
+                successful_items=0,
+                failed_items=0,
+                skipped_items=0,
+                errors=[],
+                metadata={'dry_run': dry_run, 'reason': 'zero_limit'},
+                started_at=started_at,
+                completed_at=datetime.now()
+            )
 
         # Get listings to sync
         try:

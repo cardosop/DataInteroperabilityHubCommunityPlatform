@@ -33,9 +33,11 @@ from hub.apps.webhooks.models import (
     WebhookStatus,
     DeliveryStatus,
 )
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.webhooks.service import WebhookDeliveryService
 from hub.apps.webhooks.odps_event_subscriber import ODPSEventSubscriber, get_odps_event_subscriber
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.core.events.bus import get_event_bus
@@ -159,6 +161,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        reset_circuit_breaker_by_name("webhook-delivery")
         # Create tenant
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
@@ -166,6 +169,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
@@ -647,17 +651,21 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
         self.assertEqual(count, 1)
         time.sleep(2.0)
 
-        # Manually trigger retries until max retries exceeded
+        # Run _attempt_delivery and _schedule_retry until DEAD_LETTER (same pattern as
+        # test_error_handling_max_retries_exceeded)
         delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
-        if delivery and delivery.status == DeliveryStatus.FAILED:
-            # Simulate retries
-            for attempt in range(webhook.max_retries):
-                if delivery.next_retry_at and delivery.next_retry_at <= timezone.now():
-                    # Retry delivery
-                    WebhookDeliveryService.retry_delivery(str(delivery.id))
-                    delivery.refresh_from_db()
-                    time.sleep(0.5)
+        self.assertIsNotNone(delivery)
+        for _ in range(webhook.max_retries + 1):
+            WebhookDeliveryService._attempt_delivery(delivery)
+            delivery.refresh_from_db()
 
-            # After max retries, should be in dead letter queue
             if delivery.attempt_number >= webhook.max_retries:
-                self.assertEqual(delivery.status, DeliveryStatus.DEAD_LETTER)
+                WebhookDeliveryService._schedule_retry(delivery)
+                delivery.refresh_from_db()
+                break
+
+            WebhookDeliveryService._schedule_retry(delivery)
+            delivery.refresh_from_db()
+
+        self.assertEqual(delivery.status, DeliveryStatus.DEAD_LETTER)
+        self.assertIsNone(delivery.next_retry_at)

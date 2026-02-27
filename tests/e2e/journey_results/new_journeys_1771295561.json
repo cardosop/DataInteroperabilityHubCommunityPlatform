@@ -1,0 +1,108 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.033391475677490234
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-006-2135cce1",
+      "journey_name": "Use Natural Language Search",
+      "persona": "Data Consumer",
+      "status": "completed",
+      "start_time": 1771295561.3140786,
+      "end_time": 1771295561.34747,
+      "duration": 0.033391475677490234,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Enter Natural Language Query",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771295561.3140867,
+          "end_time": 1771295561.3310633,
+          "duration": 0.016976594924926758,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Review Query Interpretation",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771295561.3310711,
+          "end_time": 1771295561.3310766,
+          "duration": 5.4836273193359375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Execute Query",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771295561.3310788,
+          "end_time": 1771295561.3310802,
+          "duration": 1.430511474609375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Review Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771295561.3310816,
+          "end_time": 1771295561.3310838,
+          "duration": 2.1457672119140625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Refine Query",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771295561.3310847,
+          "end_time": 1771295561.3432376,
+          "duration": 0.012152910232543945,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Note: Saved Queries Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771295561.3474615,
+          "end_time": 1771295561.3474686,
+          "duration": 7.152557373046875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-17T02:32:41.347559"
+}

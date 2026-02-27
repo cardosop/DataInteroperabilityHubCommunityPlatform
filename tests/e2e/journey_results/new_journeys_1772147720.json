@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.013090372085571289
+  },
+  "journeys": [
+    {
+      "journey_id": "CM-002-32125918",
+      "journey_name": "Moderate Reviews and Ratings",
+      "persona": "Community Manager",
+      "status": "completed",
+      "start_time": 1772147720.589987,
+      "end_time": 1772147720.6030774,
+      "duration": 0.013090372085571289,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Pending Reviews",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147720.5978327,
+          "end_time": 1772147720.5978389,
+          "duration": 6.198883056640625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "View Reviews Audit",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147720.603069,
+          "end_time": 1772147720.6030724,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Note: No Pending Reviews to Moderate",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147720.6030748,
+          "end_time": 1772147720.6030765,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-26T23:15:20.603140"
+}

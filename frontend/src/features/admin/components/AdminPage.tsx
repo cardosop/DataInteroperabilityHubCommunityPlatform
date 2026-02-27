@@ -232,17 +232,34 @@ export function AdminPage() {
                             <td>
                               {user.roles && user.roles.length > 0 ? (
                                 <div className="roles-list">
-                                  {user.roles.map((role) => (
-                                    <span key={role} className="role-badge">
-                                      {role}
-                                    </span>
-                                  ))}
+                                  {user.roles.map((role, idx) => {
+                                    const roleName =
+                                      typeof role === 'object' && role !== null && 'name' in role
+                                        ? (role as { name: string }).name
+                                        : String(role);
+                                    const roleKey =
+                                      typeof role === 'object' && role !== null && 'id' in role
+                                        ? (role as { id: string }).id
+                                        : `${roleName}-${idx}`;
+                                    return (
+                                      <span key={roleKey} className="role-badge">
+                                        {roleName}
+                                      </span>
+                                    );
+                                  })}
                                 </div>
                               ) : (
                                 '-'
                               )}
                             </td>
-                            <td>{user.tenant_name || user.tenant || '-'}</td>
+                            <td>
+                              {user.tenant_name ??
+                                (typeof user.tenant === 'object' && user.tenant !== null && 'name' in user.tenant
+                                  ? (user.tenant as { name: string }).name
+                                  : typeof user.tenant === 'string'
+                                    ? user.tenant
+                                    : '-')}
+                            </td>
                             <td>{formatDate(user.created_at)}</td>
                           </tr>
                         ))}

@@ -15,6 +15,7 @@ from hub.apps.notifications.tasks import (
 from hub.apps.notifications.models import EmailDelivery, EmailType, EmailDeliveryStatus
 from hub.apps.notifications.services import EmailServiceError
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 User = get_user_model()
 
@@ -28,6 +29,7 @@ class EmailSendingIntegrationTest(TestCase):
             name='Test Tenant',
             slug='test-tenant'
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email='test@example.com',
             tenant=self.tenant,

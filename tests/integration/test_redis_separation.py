@@ -154,15 +154,17 @@ class TestRedisConfigurationIntegration:
             # In test environment, it may use LocMemCache, which is OK
 
     def test_rq_queues_uses_redis_queue_url(self):
-        """Test that RQ_QUEUES setting uses REDIS_QUEUE_URL."""
-        with override_settings(
-            REDIS_QUEUE_URL="redis://queue-host:6380/0",
-            REDIS_URL="redis://fallback:6379/0"
-        ):
-            assert hasattr(settings, 'RQ_QUEUES')
-            # RQ_QUEUES should use REDIS_QUEUE_URL
-            for queue_name, queue_config in settings.RQ_QUEUES.items():
-                assert queue_config["URL"] == settings.REDIS_QUEUE_URL
+        """Test that RQ_QUEUES setting uses REDIS_QUEUE_URL.
+
+        RQ_QUEUES is built at Django load time from REDIS_QUEUE_URL.
+        Verify all queues use the configured REDIS_QUEUE_URL.
+        """
+        assert hasattr(settings, 'RQ_QUEUES')
+        assert settings.REDIS_QUEUE_URL, "REDIS_QUEUE_URL must be set"
+        for queue_name, queue_config in settings.RQ_QUEUES.items():
+            assert queue_config["URL"] == settings.REDIS_QUEUE_URL, (
+                f"Queue {queue_name} URL {queue_config['URL']!r} != REDIS_QUEUE_URL {settings.REDIS_QUEUE_URL!r}"
+            )
 
     def test_channel_layers_uses_redis_channels_url(self):
         """Test that CHANNEL_LAYERS setting uses REDIS_CHANNELS_URL."""

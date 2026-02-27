@@ -5,7 +5,6 @@ End-to-end tests for complete impact analysis workflows.
 """
 import pytest
 from django.test import TestCase
-from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
 
@@ -17,7 +16,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 from hub.apps.assets.models import Asset, AssetStatus
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
@@ -33,10 +32,9 @@ class ImpactAnalysisE2ETest(E2ETestBase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
         
-        # Create source contract
+        # Create source contract (Contract model has no 'name' field; name is in hub_contract_json.info)
         self.source_contract = Contract.objects.create(
             tenant=self.tenant,
-            name="Source Contract",
             original_spec_type="ODCS",
             original_spec_version="3.0.2",
             original_format="JSON",
@@ -58,10 +56,9 @@ class ImpactAnalysisE2ETest(E2ETestBase):
             created_by=self.user
         )
         
-        # Create dependent contract
+        # Create dependent contract (Contract model has no 'name' field)
         self.dependent_contract = Contract.objects.create(
             tenant=self.tenant,
-            name="Dependent Contract",
             original_spec_type="ODCS",
             original_spec_version="3.0.2",
             original_format="JSON",
@@ -119,24 +116,22 @@ class ImpactAnalysisE2ETest(E2ETestBase):
         # May be False if severity is too low, which is expected behavior
     
     def test_impact_analysis_api_workflow(self):
-        """Test impact analysis via API"""
-        # Get impact analysis
-        url = reverse('contract-impact-analysis', kwargs={'pk': self.source_contract.id})
-        response = self.client.get(url)
-        
+        """Test impact analysis via API (use direct path to avoid NoReverseMatch in E2E urlconf)."""
+        base = f"/api/v1/contracts/{self.source_contract.id}/impact-analysis/"
+        response = self.client.get(base)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("nodes", response.data)
-        self.assertIn("summary", response.data)
-        
-        # Get CSV export
-        response = self.client.get(url, {'format': 'csv'})
+        data = get_response_data(response)
+        self.assertIn("nodes", data)
+        self.assertIn("summary", data)
+
+        response = self.client.get(base, {"output": "csv"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response['content-type'], 'text/csv')
-        
-        # Get paths
-        response = self.client.get(url, {'format': 'paths'})
+        self.assertEqual(response["content-type"], "text/csv")
+
+        response = self.client.get(base, {"output": "paths"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("paths", response.data)
+        data = get_response_data(response)
+        self.assertIn("paths", data)
     
     def test_impact_analysis_with_asset_criticality(self):
         """Test impact analysis with asset criticality weighting"""

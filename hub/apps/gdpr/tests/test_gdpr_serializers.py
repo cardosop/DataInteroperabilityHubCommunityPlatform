@@ -151,8 +151,8 @@ class DataExportJobSerializerTest(TestCase):
 
         # Read-only fields should be ignored during update
         serializer.is_valid()
-        # Original values should remain
-        self.assertEqual(str(self.job.id), serializer.instance.id)
+        # Original values should remain (compare same types: UUID to UUID)
+        self.assertEqual(self.job.id, serializer.instance.id)
         self.assertEqual(self.job.status, serializer.instance.status)
 
     def test_all_fields_are_read_only(self):
@@ -184,7 +184,7 @@ class DataExportJobSerializerTest(TestCase):
 
     def test_serializer_with_long_error_message(self):
         """Test serializer with long error message"""
-        long_error = "Error: " + "x" * 1000
+        long_error = "Error: " + "x" * 1000  # 7 + 1000 = 1007 chars
         job = DataExportJob.objects.create(
             user=self.user,
             tenant=self.tenant,
@@ -195,7 +195,7 @@ class DataExportJobSerializerTest(TestCase):
         serializer = DataExportJobSerializer(job)
         data = serializer.data
 
-        self.assertEqual(len(data["error_message"]), 1006)
+        self.assertEqual(len(data["error_message"]), 1007)
 
 
 class ErasureRequestSerializerTest(TestCase):
@@ -336,8 +336,8 @@ class ErasureRequestSerializerTest(TestCase):
 
         # Read-only fields should be ignored during update
         serializer.is_valid()
-        # Original values should remain
-        self.assertEqual(str(self.request.id), serializer.instance.id)
+        # Original values should remain (compare same types: UUID to UUID)
+        self.assertEqual(self.request.id, serializer.instance.id)
         self.assertEqual(self.request.status, serializer.instance.status)
 
     def test_all_fields_are_read_only(self):

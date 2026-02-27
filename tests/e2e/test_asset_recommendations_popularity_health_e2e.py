@@ -22,7 +22,10 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.search.models import SearchAnalytics
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
+
+from tests.e2e.conftest import get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
@@ -107,7 +110,7 @@ class AssetRecommendationsE2ETest(TestCase):
 
         # Step 3: Verify recommendations
         self.assertEqual(response.status_code, 200)
-        recommendations = response.data
+        recommendations = (get_response_data(response) or {})
 
         self.assertIsInstance(recommendations, list)
         self.assertGreater(len(recommendations), 0)
@@ -141,6 +144,7 @@ class AssetPopularityE2ETest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
             email="user@example.com",
@@ -299,8 +303,8 @@ class AssetHealthScoreE2ETest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("health_score", response.data)
-        self.assertIsNotNone(response.data["health_score"])
+        self.assertIn("health_score", (get_response_data(response) or {}))
+        self.assertIsNotNone((get_response_data(response) or {})["health_score"])
 
         # Step 3: Get health score with breakdown
         response = self.client.get(
@@ -309,8 +313,8 @@ class AssetHealthScoreE2ETest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("breakdown", response.data)
-        self.assertIn("components", response.data["breakdown"])
+        self.assertIn("breakdown", (get_response_data(response) or {}))
+        self.assertIn("components", (get_response_data(response) or {})["breakdown"])
 
         # Step 4: Recalculate health score
         response = self.client.get(
@@ -318,4 +322,4 @@ class AssetHealthScoreE2ETest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("health_score", response.data)
+        self.assertIn("health_score", (get_response_data(response) or {}))

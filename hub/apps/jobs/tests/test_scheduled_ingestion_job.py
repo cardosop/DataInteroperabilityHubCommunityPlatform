@@ -8,11 +8,12 @@ using real ScheduledIngestionProcessor (no mocks).
 All tests use real implementations (no mocks/stubs).
 """
 
+import os
 import uuid
 from datetime import timedelta
 
 import pytest
-from django.test import TestCase, TransactionTestCase
+from django.test import TransactionTestCase
 from django.utils import timezone
 
 from hub.apps.jobs.models import Job, JobStatus, JobType
@@ -44,42 +45,97 @@ def _is_workflow_unavailable_exception(e: Exception) -> bool:
     )
 
 
+def _get_s3_source_config_for_integration():
+    """Return source_config for S3 integration tests. Uses MinIO when env has AWS_S3_ENDPOINT_URL."""
+    endpoint = os.environ.get("AWS_S3_ENDPOINT_URL")
+    if endpoint:
+        return {
+            "bucket": "test-bucket",
+            "prefix": "data/",
+            "access_key_id": os.environ.get("AWS_ACCESS_KEY_ID", "minio"),
+            "secret_access_key": os.environ.get("AWS_SECRET_ACCESS_KEY", "minio123"),
+            "endpoint_url": endpoint,
+        }
+    return {
+        "bucket": "test-bucket",
+        "prefix": "data/",
+        "access_key_id": "test-key",
+        "secret_access_key": "test-secret",
+    }
+
+
+def _ensure_test_bucket_exists():
+    """Create test-bucket in MinIO if it doesn't exist. No-op when not using MinIO."""
+    endpoint = os.environ.get("AWS_S3_ENDPOINT_URL")
+    if not endpoint:
+        return
+    try:
+        import boto3
+        from botocore.config import Config
+        from botocore.exceptions import ClientError
+
+        config = Config(connect_timeout=5, read_timeout=10)
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "minio"),
+            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "minio123"),
+            region_name="us-east-1",
+            config=config,
+        )
+        try:
+            s3.head_bucket(Bucket="test-bucket")
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("404", "NoSuchBucket"):
+                try:
+                    s3.create_bucket(Bucket="test-bucket")
+                except ClientError as create_err:
+                    if create_err.response.get("Error", {}).get("Code") != "BucketAlreadyOwnedByYou":
+                        raise
+    except Exception:
+        pass  # Don't fail setUp if MinIO not reachable
+
+
 class ScheduledIngestionJobTest(TransactionTestCase):
     """Comprehensive tests for SCHEDULED_INGESTION job processing using real implementations.
 
     Tests that run the full workflow (execute_scheduled_ingestion_job) may skip when the
     workflow engine or source connector is not available (e.g. Prefect/S3 not configured).
     Skip reason is cached so the job is run at most once per class.
+
+    Uses unique tenant/slug and user email per run to avoid duplicate-key errors when
+    running with xdist/parallel or --reuse-db.
     """
 
     _workflow_unavailable_reason = None
 
     def setUp(self):
-        """Set up test fixtures"""
-        # Create tenant
+        """Set up test fixtures with unique names to avoid collisions in parallel runs."""
+        unique = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"ScheduledIngestionJob Test Tenant {unique}",
+            slug=f"scheduled-ingestion-job-test-tenant-{unique}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
-        # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"scheduled-ingestion-job-{unique}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
 
-        # Create scheduled ingestion
+        # Ensure test-bucket exists in MinIO when using MinIO (integration tests)
+        _ensure_test_bucket_exists()
+
+        # Create scheduled ingestion (use MinIO config when AWS_S3_ENDPOINT_URL is set)
         self.scheduled_ingestion = ScheduledIngestion.objects.create(
             tenant=self.tenant,
             name="Test Ingestion",
             source_type=SourceType.S3,
-            source_config={
-                "bucket": "test-bucket",
-                "prefix": "data/",
-                "access_key_id": "test-key",
-                "secret_access_key": "test-secret",
-            },
+            source_config=_get_s3_source_config_for_integration(),
             schedule_type=ScheduleType.DAILY,
             schedule_config={"time": "00:00"},
             file_pattern=".*\\.csv",
@@ -127,6 +183,7 @@ class ScheduledIngestionJobTest(TransactionTestCase):
         self.assertTrue(self.job.result_json.get("executed_by_prefect"))
         self.assertIn("Prefect", self.job.result_json.get("message", ""))
 
+    @pytest.mark.scheduled_ingestion_integration
     def test_execute_scheduled_ingestion_job_success(self):
         """
         Test successful scheduled ingestion job execution using real ScheduledIngestionProcessor.
@@ -166,6 +223,7 @@ class ScheduledIngestionJobTest(TransactionTestCase):
                 self.skipTest(reason)
             raise  # Re-raise unexpected errors
 
+    @pytest.mark.scheduled_ingestion_integration
     def test_execute_scheduled_ingestion_job_with_failures(self):
         """
         Test scheduled ingestion job execution with failures using real processor.
@@ -210,6 +268,7 @@ class ScheduledIngestionJobTest(TransactionTestCase):
                 self.assertEqual(run.status, ScheduledIngestionRunStatus.FAILED)
                 self.assertIsNotNone(run.error_message)
 
+    @pytest.mark.scheduled_ingestion_integration
     def test_execute_scheduled_ingestion_job_processor_exception(self):
         """
         Test scheduled ingestion job execution error handling using real processor.
@@ -256,6 +315,7 @@ class ScheduledIngestionJobTest(TransactionTestCase):
 
         self.assertIn("not found", str(cm.exception))
 
+    @pytest.mark.scheduled_ingestion_integration
     def test_execute_scheduled_ingestion_job_incremental_timestamp(self):
         """
         Test scheduled ingestion job persists last_incremental_value using real processor.
@@ -283,6 +343,7 @@ class ScheduledIngestionJobTest(TransactionTestCase):
                 self.skipTest(reason)
             raise
 
+    @pytest.mark.scheduled_ingestion_integration
     def test_execute_scheduled_ingestion_job_existing_run(self):
         """
         Test scheduled ingestion job with existing run using real processor.

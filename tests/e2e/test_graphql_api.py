@@ -232,9 +232,12 @@ class GraphQLAPIE2ETest(E2ETestBase):
         # Create asset in current tenant
         asset_id = self.create_asset(key='tenant-isolation-asset', name='Tenant Isolation Asset')
         
-        # Create other tenant
+        # Create other tenant (subscription needed for GraphQL POST requests)
         other_tenant = Tenant.objects.create(name='Other Tenant', slug='other-tenant')
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
         from hub.apps.users.models import User
+
+        ensure_tenant_has_active_subscription(other_tenant)
         other_user = User.objects.create_user(email='other@example.com', password='testpass123', tenant=other_tenant)
         
         # Switch to other user

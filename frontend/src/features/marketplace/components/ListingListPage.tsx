@@ -48,6 +48,10 @@ export function ListingListPage() {
     navigate('/marketplace/publish');
   };
 
+  const handleOrdersClick = () => {
+    navigate('/marketplace/orders');
+  };
+
   if (displayIsLoading) {
     return <LoadingSpinner message="Loading listings..." />;
   }
@@ -58,15 +62,23 @@ export function ListingListPage() {
 
   if (!displayData || displayData.results.length === 0) {
     return (
-      <EmptyState
-        title="No listings found"
-        message={search || domainFilter || pricingFilter || statusFilter
-          ? "Try adjusting your filters to see more results."
-          : "No marketplace listings available yet."}
-        action={!search && !domainFilter && !pricingFilter && !statusFilter
-          ? { label: 'Publish Listing', onClick: handlePublishClick }
-          : undefined}
-      />
+      <div className="listing-list-page">
+        <div className="listing-list-header">
+          <h1>Marketplace</h1>
+          <button className="btn-secondary" onClick={handleOrdersClick} type="button">
+            My Orders
+          </button>
+        </div>
+        <EmptyState
+          title="No listings found"
+          message={search || domainFilter || pricingFilter || statusFilter
+            ? "Try adjusting your filters to see more results."
+            : "No marketplace listings available yet."}
+          action={!search && !domainFilter && !pricingFilter && !statusFilter
+            ? { label: 'Publish Listing', onClick: handlePublishClick }
+            : undefined}
+        />
+      </div>
     );
   }
 
@@ -74,9 +86,14 @@ export function ListingListPage() {
     <div className="listing-list-page">
       <div className="listing-list-header">
         <h1>Marketplace</h1>
-        <button className="btn-primary" onClick={handlePublishClick} type="button">
-          Publish Listing
-        </button>
+        <div className="listing-list-header-actions">
+          <button className="btn-secondary" onClick={handleOrdersClick} type="button">
+            My Orders
+          </button>
+          <button className="btn-primary" onClick={handlePublishClick} type="button">
+            Publish Listing
+          </button>
+        </div>
       </div>
 
       <div className="listing-list-filters">
@@ -133,6 +150,7 @@ export function ListingListPage() {
           <div
             key={listing.id}
             className="listing-card"
+            data-listing-id={listing.id}
             onClick={() => handleListingClick(listing.id)}
             role="button"
             tabIndex={0}

@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from hub.apps.contracts.odps_errors import RecoveryStrategy
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from hub.apps.webhooks.models import (
     DeliveryStatus,
@@ -149,6 +150,7 @@ class ODPSWebhookPayloadValidationTest(TestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
     def test_validate_valid_odps_payload(self):
         """Test validation of valid ODPS payload"""
@@ -359,6 +361,7 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
             email="user@example.com",

@@ -3,6 +3,8 @@ JWT Token Generation and Validation Utilities
 
 Handles creation and validation of JWT access tokens.
 """
+import uuid
+
 import jwt
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
@@ -61,7 +63,7 @@ class JWTTokenGenerator:
             'exp': int(exp.timestamp()),
             'iat': int(now.timestamp()),
             'nbf': int(now.timestamp()),
-            'jti': str(user.id) + '_' + str(int(now.timestamp())),  # Simple jti generation
+            'jti': str(uuid.uuid4()),  # Unique per token for refresh rotation
         }
         
         # Custom claims
@@ -108,7 +110,7 @@ class JWTTokenGenerator:
                 token,
                 settings.JWT_SECRET_KEY,
                 algorithms=[settings.JWT_ALGORITHM],
-                audience='idh-api-v1'
+                audience="idh-api-v1",
             )
             return payload
         except jwt.ExpiredSignatureError:

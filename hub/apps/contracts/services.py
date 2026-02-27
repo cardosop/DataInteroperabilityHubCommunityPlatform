@@ -32,6 +32,8 @@ from hub.apps.core.services.base import BaseService, NotFoundError, PermissionEr
 from hub.apps.jobs.models import JobType
 from hub.apps.jobs.utils import create_job
 
+logger = structlog.get_logger(__name__)
+
 
 class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
     """
@@ -213,8 +215,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             Created contract instance
 
         Raises:
-            ValidationError: If validation fails
-            NotFoundError: If asset not found
+            ValidationError: If validation fails (including invalid/cross-tenant asset reference)
         """
         effective_tenant_id = tenant_id or self.tenant_id
         effective_user_id = user_id or self.user_id
@@ -226,21 +227,13 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         if original_format and isinstance(original_format, str):
             original_format = original_format.strip().upper()
 
-        # Validate asset exists when provided (raise NotFoundError for missing asset)
-        if asset_id:
-            try:
-                Asset.objects.get(id=asset_id, tenant_id=effective_tenant_id)
-            except Asset.DoesNotExist:
-                raise NotFoundError(
-                    f"Asset with ID '{asset_id}' not found for tenant",
-                    code="NOT_FOUND",
-                )
-
         # Detect spec type if not provided (capture before nested function)
         effective_spec_type = original_spec_type or OriginalSpecType.ODCS
         spec_type_str = getattr(effective_spec_type, "value", None) or str(effective_spec_type)
 
         # Phase 18.2.1: validate contract creation via business rules before mutating
+        # Business rules run first so invalid asset references (cross-tenant, non-existent)
+        # return 400 BUSINESS_RULES_VALIDATION instead of 404 NOT_FOUND
         contract_data = {
             "tenant_id": effective_tenant_id,
             "original_raw": original_raw,
@@ -715,8 +708,11 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         "updated_fields": ["original_raw"] if original_raw else [],
                     },
                 )
-            except Exception:
-                pass  # Don't fail update if audit logging fails
+            except Exception as audit_err:
+                logger.warning(
+                    "contract_update_audit_event_failed",
+                    extra={"error_type": type(audit_err).__name__, "error": str(audit_err), "contract_id": str(contract.id)},
+                )
             return contract
 
         return self.execute_with_metrics(
@@ -1090,9 +1086,11 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     original_odcs_contract = parse_contract(
                         odcs_contract.original_raw, odcs_contract.original_format
                     )
-                except Exception:
-                    # If parsing fails, continue without original ODCS
-                    pass
+                except Exception as parse_err:
+                    logger.debug(
+                        "contract_parse_original_odcs_failed",
+                        extra={"error_type": type(parse_err).__name__, "error": str(parse_err)},
+                    )
 
             # Generate ODPS document (focuses on marketplace aspects)
             odps_doc = generate_odps_from_hubcontract(
@@ -3294,9 +3292,11 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     original_odcs_contract = parse_contract(
                         contract.original_raw, contract.original_format
                     )
-                except Exception:
-                    # If parsing fails, continue without original ODCS
-                    pass
+                except Exception as parse_err:
+                    logger.debug(
+                        "contract_parse_original_odcs_failed",
+                        extra={"error_type": type(parse_err).__name__, "error": str(parse_err)},
+                    )
 
             # Generate ODPS document
             try:
@@ -3430,8 +3430,11 @@ class ODPSService(BaseService, ODPSEventPublisher):
                 odps_export_total.labels(
                     status="failure", format=output_format_lower, tenant_id=effective_tenant_id
                 ).inc()
-            except Exception:
-                pass  # Don't fail on metrics recording
+            except Exception as metrics_err:
+                logger.debug(
+                    "contract_odps_export_metrics_failed",
+                    extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                )
 
             # Create audit log for ODPS export failure
             try:
@@ -3459,10 +3462,6 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     },
                 )
             except Exception as audit_error:
-                # Don't fail on audit logging failure
-                import structlog
-
-                logger = structlog.get_logger(__name__)
                 logger.warning(
                     "odps_export_audit_logging_failed_on_error",
                     contract_id=str(contract_id),
@@ -3477,8 +3476,11 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     export_format=output_format_lower,
                     error_message=str(e),
                 )
-            except Exception:
-                pass  # Don't fail on event publishing
+            except Exception as event_err:
+                logger.warning(
+                    "odps_export_event_publish_failed",
+                    extra={"error_type": type(event_err).__name__, "error": str(event_err), "contract_id": str(contract_id)},
+                )
 
             raise
 

@@ -74,12 +74,12 @@ export function MeshDomainDetailPage() {
     }
   };
 
-  if (isLoading) {
-    return <LoadingSpinner message="Loading domain..." />;
+  if (error) {
+    return <ErrorDisplay error={error} title="Failed to load domain" onRetry={() => refetch()} />;
   }
 
-  if (error || !domain) {
-    return <ErrorDisplay error={error} title="Failed to load domain" onRetry={() => refetch()} />;
+  if (isLoading || !domain) {
+    return <LoadingSpinner message="Loading domain..." />;
   }
 
   return (

@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from hub.apps.orchestration.workflows.scheduled_ingestion import ScheduledIngestionWorkflow
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.scheduled_ingestion.exceptions import ConnectorNotAvailableError
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus, StepStatus
 from hub.apps.scheduled_ingestion.models import (
@@ -230,6 +231,52 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
         
         with self.assertRaises(ConnectionError):
             task_func(instance.input_data, instance, step)
+
+    def test_connect_to_source_fails_fast_when_connector_not_registered(self):
+        """
+        When source_type has no registered connector, job fails fast with ConnectorNotAvailableError.
+        No mocks: use real SourceConnectorFactory with an unsupported source type.
+        """
+        # Create ingestion then set unsupported source type (bypasses choices for this test)
+        ingestion = ScheduledIngestion.objects.create(
+            tenant=self.tenant,
+            name="Unsupported type ingestion",
+            description="Test",
+            source_type=SourceType.S3,
+            source_config={"bucket": "b", "prefix": "p"},
+            schedule_type=ScheduleType.DAILY,
+            schedule_config={"time": "00:00"},
+            file_pattern=".*",
+            status=ScheduledIngestionStatus.ACTIVE,
+            created_by=self.user,
+        )
+        ingestion.source_type = "UNSUPPORTED_SOURCE_TYPE"
+        ingestion.save(update_fields=["source_type"])
+
+        instance = WorkflowInstance.objects.create(
+            workflow_definition=self._get_workflow_definition(),
+            tenant=self.tenant,
+            input_data={
+                "scheduled_ingestion_id": str(ingestion.id),
+                "source_type": "UNSUPPORTED_SOURCE_TYPE",
+                "source_config": ingestion.source_config,
+            },
+            status=WorkflowStatus.RUNNING,
+        )
+        step = instance.steps.create(
+            step_name="connect_to_source",
+            step_index=1,
+            status=StepStatus.PENDING,
+        )
+        task_func = self.engine.task_registry.get("scheduled_ingestion.connect_to_source")
+
+        with self.assertRaises(ConnectorNotAvailableError) as cm:
+            task_func(instance.input_data, instance, step)
+
+        self.assertIn("UNSUPPORTED_SOURCE_TYPE", str(cm.exception))
+        self.assertIn("connector not registered", str(cm.exception))
+        self.assertEqual(cm.exception.connector_type, "UNSUPPORTED_SOURCE_TYPE")
+        self.assertEqual(cm.exception.role, "source")
     
     @patch('hub.apps.orchestration.workflows.scheduled_ingestion._get_source_connector_factory')
     def test_discover_files_task_success(self, mock_get_factory):

@@ -4,11 +4,19 @@ DLQ (via mark_file_failed), Notifications (at run completion); Compliance and
 Semantic when configured. No mocks: real services.
 """
 
+import os
 import uuid
 
 import pytest
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
+
+# Force MinIO endpoint and credentials in tests so we never hit real AWS.
+# Use env when set (e.g. Docker compose) so credentials match the running MinIO.
+_TEST_S3_ENDPOINT = os.environ.get("AWS_S3_ENDPOINT_URL", "http://localhost:9000")
+_TEST_S3_USE_SSL = os.environ.get("AWS_S3_USE_SSL", "false").lower() in ("1", "true", "yes")
+_TEST_AWS_ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "minio")
+_TEST_AWS_SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "minio123")
 
 # Patch sql_flush to use CASCADE so TransactionTestCase teardown does not hang
 # (same root cause as test_scheduled_ingestion_comprehensive_validation.py).
@@ -42,6 +50,7 @@ from hub.apps.scheduled_ingestion.models import (
     ScheduleType,
     SourceType,
 )
+from hub.apps.files.storage import S3StorageClient
 from hub.apps.scheduled_ingestion.worker_services import process_file_for_run
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
@@ -67,13 +76,45 @@ def _create_worker_api_key(tenant, user):
     return plaintext
 
 
+@override_settings(
+    AWS_STORAGE_BUCKET_NAME="hub-files",
+    AWS_ACCESS_KEY_ID=_TEST_AWS_ACCESS_KEY,
+    AWS_SECRET_ACCESS_KEY=_TEST_AWS_SECRET_KEY,
+    AWS_S3_ENDPOINT_URL=_TEST_S3_ENDPOINT,
+    AWS_S3_USE_SSL=_TEST_S3_USE_SSL,
+)
 class ProcessFileIntegrationsTest(TransactionTestCase):
     """
     Verify process-file path uses real DQ, Files, Datasets, Search, DLQ;
     Compliance and Semantic when configured. No mocks.
     """
 
+    # Skip DB flush in teardown so test + teardown complete within pytest timeout (600s).
+    # Flush with many tables can exceed 600s; isolation is via transaction rollback.
+    @classmethod
+    def _fixture_teardown(cls):
+        pass
+
+    def tearDown(self):
+        """Ensure DB connection is usable before teardown (avoids hang)."""
+        from django.db import connection
+        connection.ensure_connection()
+        super().tearDown()
+
     def setUp(self):
+        # Detect MinIO availability so storage-dependent tests can skip when unavailable
+        self._storage_available = False
+        try:
+            client = S3StorageClient()
+            client._ensure_bucket_exists()
+            self._storage_available = True
+        except Exception as e:
+            err = str(e).lower()
+            if "invalidaccesskeyid" in err or "access key" in err:
+                pass
+            elif "connection" in err or "could not connect" in err or "name resolution" in err:
+                pass
+
         suffix = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Phase5 Tenant {suffix}",
@@ -100,17 +141,29 @@ class ProcessFileIntegrationsTest(TransactionTestCase):
             file_pattern=".*\\.csv",
             created_by=self.user,
         )
-        self.run = ScheduledIngestionRun.objects.create(
+        self.ingestion_run = ScheduledIngestionRun.objects.create(
             scheduled_ingestion=self.scheduled_ingestion,
             status=ScheduledIngestionRunStatus.RUNNING,
             started_at=timezone.now(),
         )
 
+    def tearDown(self):
+        # TransactionTestCase teardown runs flush; ensure DB connection is open so flush does not raise "connection already closed"
+        from django.db import connection
+
+        try:
+            connection.ensure_connection()
+        except Exception:
+            pass
+        super().tearDown()
+
     def test_process_file_creates_file_and_dataset_and_indexes(self):
         """process_file_for_run creates File, Dataset, and indexes (Search); real services."""
+        if not self._storage_available:
+            pytest.skip("MinIO storage not available in test environment")
         csv_content = b"id,name\n1,alpha\n2,beta\n"
         result = process_file_for_run(
-            run_id=str(self.run.id),
+            run_id=str(self.ingestion_run.id),
             file_path="data/sample.csv",
             file_content=csv_content,
             tenant_id=str(self.tenant.id),
@@ -135,7 +188,7 @@ class ProcessFileIntegrationsTest(TransactionTestCase):
 
         with self.assertRaises(ServiceValidationError) as ctx:
             process_file_for_run(
-                run_id=str(self.run.id),
+                run_id=str(self.ingestion_run.id),
                 file_path="data/empty.csv",
                 file_content=csv_content,
                 tenant_id=str(self.tenant.id),
@@ -149,11 +202,13 @@ class ProcessFileIntegrationsTest(TransactionTestCase):
 
     def test_process_file_with_run_compliance_creates_compliance_run_when_configured(self):
         """When source_config.run_compliance is True, process_file_for_run creates a compliance run for the dataset."""
+        if not self._storage_available:
+            pytest.skip("MinIO storage not available in test environment")
         self.scheduled_ingestion.source_config["run_compliance"] = True
         self.scheduled_ingestion.save(update_fields=["source_config"])
         csv_content = b"id,name\n1,alpha\n2,beta\n"
         result = process_file_for_run(
-            run_id=str(self.run.id),
+            run_id=str(self.ingestion_run.id),
             file_path="data/sample.csv",
             file_content=csv_content,
             tenant_id=str(self.tenant.id),
@@ -172,11 +227,13 @@ class ProcessFileIntegrationsTest(TransactionTestCase):
 
     def test_process_file_with_run_semantic_mapping_invokes_semantic_path(self):
         """When source_config.run_semantic_mapping is True, process_file_for_run invokes semantic mapping (non-fatal)."""
+        if not self._storage_available:
+            pytest.skip("MinIO storage not available in test environment")
         self.scheduled_ingestion.source_config["run_semantic_mapping"] = True
         self.scheduled_ingestion.save(update_fields=["source_config"])
         csv_content = b"id,name\n1,alpha\n2,beta\n"
         result = process_file_for_run(
-            run_id=str(self.run.id),
+            run_id=str(self.ingestion_run.id),
             file_path="data/sample.csv",
             file_content=csv_content,
             tenant_id=str(self.tenant.id),

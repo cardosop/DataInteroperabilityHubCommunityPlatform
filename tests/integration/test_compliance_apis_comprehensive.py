@@ -32,6 +32,7 @@ from hub.apps.datasets.models import Dataset, DatasetKind
 from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import KYCStatus, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from tests.fixtures.test_data_factories import (
     AssetFactory,
@@ -62,6 +63,7 @@ class TestComplianceRunCreateAPI(TestCase):
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"complianceuser-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
@@ -290,7 +292,11 @@ class TestComplianceRunCreateAPI(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data or {})
+        # API returns 'detail' (DRF-style) or 'error'; accept both
+        self.assertTrue(
+            "error" in (response.data or {}) or "detail" in (response.data or {}),
+            f"Expected 'error' or 'detail' in response: {response.data}",
+        )
 
     def test_create_compliance_run_error_invalid_asset_id(self):
         """Test validation error for invalid asset_id"""
@@ -305,7 +311,11 @@ class TestComplianceRunCreateAPI(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertIn("error", response.data)
+        # API returns 'detail' (DRF-style) or 'error'; accept both
+        self.assertTrue(
+            "error" in (response.data or {}) or "detail" in (response.data or {}),
+            f"Expected 'error' or 'detail' in response: {response.data}",
+        )
 
     def test_create_compliance_run_error_invalid_dataset_id(self):
         """Test validation error for invalid dataset_id"""
@@ -320,7 +330,11 @@ class TestComplianceRunCreateAPI(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertIn("error", response.data)
+        # API returns 'detail' (DRF-style) or 'error'; accept both
+        self.assertTrue(
+            "error" in (response.data or {}) or "detail" in (response.data or {}),
+            f"Expected 'error' or 'detail' in response: {response.data}",
+        )
 
     def test_create_compliance_run_error_invalid_file_id(self):
         """Test validation error for invalid file_id"""
@@ -335,7 +349,11 @@ class TestComplianceRunCreateAPI(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertIn("error", response.data)
+        # API returns 'detail' (DRF-style) or 'error'; accept both
+        self.assertTrue(
+            "error" in (response.data or {}) or "detail" in (response.data or {}),
+            f"Expected 'error' or 'detail' in response: {response.data}",
+        )
 
     def test_create_compliance_run_error_invalid_scan_mode(self):
         """Test validation error for invalid scan_mode"""
@@ -769,6 +787,7 @@ class TestComplianceRunUpdateAPI(TestCase):
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"complianceuser-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
@@ -984,6 +1003,7 @@ class TestComplianceRunDeleteAPI(TestCase):
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"complianceuser-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
@@ -1637,6 +1657,7 @@ class TestComplianceAPIPerformance(TestCase):
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"complianceuser-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
@@ -1782,6 +1803,7 @@ class TestComplianceAPIIntegration(TestCase):
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"complianceuser-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,

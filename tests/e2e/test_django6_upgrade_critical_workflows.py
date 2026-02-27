@@ -8,12 +8,14 @@ and API compatibility.
 All tests use real services (no mocks/stubs) and follow TDD principles.
 """
 import pytest
-from django.test import TestCase, Client
+from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.core.management import call_command
+from rest_framework.test import APIClient as DRFAPIClient
 
 from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import Role, UserRole
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
 from hub.apps.assets.models import Asset
 from hub.apps.files.models import File, FileStatus
@@ -27,17 +29,25 @@ User = get_user_model()
 
 class Django6JSONFieldWorkflowTest(TestCase):
     """Test critical JSONField workflows with Django 6."""
-    
+
     def setUp(self):
-        """Set up test fixtures."""
-        self.client = Client()
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        """Set up test fixtures. Use DRF APIClient so /api/v1/ endpoints get auth (JWT/APIKey only, no session)."""
+        self.client = DRFAPIClient()
+        self.tenant = Tenant.objects.create(name="Test Tenant JSONField", slug="test-tenant-jsonfield")
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email="test-jsonfield@example.com",
             password="testpass123",
             tenant=self.tenant
         )
-        self.client.force_login(self.user)
+        tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=tenant_admin_role)
+        self.client.force_authenticate(user=self.user)
     
     def test_contract_creation_with_jsonfield(self):
         """Test contract creation with JSONField data."""
@@ -276,20 +286,20 @@ class Django6JSONFieldWorkflowTest(TestCase):
         
         # Test API filtering by tag
         response = self.client.get('/api/v1/contracts/', {'tag': 'tag1'})
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
+        self.assertEqual(response.status_code, 200, getattr(response, "data", response.content))
+        data = getattr(response, "data", None) or (response.json() if response.content else {})
         self.assertGreaterEqual(len(data.get('results', [])), 1)
         
         # Test API filtering by quality profile
         response = self.client.get('/api/v1/contracts/', {'quality_profile': 'great_expectations'})
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
+        self.assertEqual(response.status_code, 200, getattr(response, "data", response.content))
+        data = getattr(response, "data", None) or (response.json() if response.content else {})
         self.assertGreaterEqual(len(data.get('results', [])), 1)
         
         # Test API filtering by compliance regime
         response = self.client.get('/api/v1/contracts/', {'compliance_regime': 'GDPR'})
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
+        self.assertEqual(response.status_code, 200, getattr(response, "data", response.content))
+        data = getattr(response, "data", None) or (response.json() if response.content else {})
         self.assertGreaterEqual(len(data.get('results', [])), 1)
 
 
@@ -298,19 +308,25 @@ class Django6MiddlewareWorkflowTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        self.client = Client()
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.client = DRFAPIClient()
+        self.tenant = Tenant.objects.create(name="Test Tenant Middleware", slug="test-tenant-middleware")
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email="test-middleware@example.com",
             password="testpass123",
             tenant=self.tenant
         )
+        tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=tenant_admin_role)
+        self.client.force_authenticate(user=self.user)
     
     def test_tenant_scoping_middleware(self):
         """Test tenant scoping middleware works correctly."""
-        # Login and make request
-        self.client.force_login(self.user)
-        
         response = self.client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, 200)
         
@@ -319,8 +335,6 @@ class Django6MiddlewareWorkflowTest(TestCase):
     
     def test_request_id_middleware(self):
         """Test request ID middleware works correctly."""
-        self.client.force_login(self.user)
-        
         response = self.client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, 200)
         
@@ -333,14 +347,22 @@ class Django6APICompatibilityTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        self.client = Client()
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.client = DRFAPIClient()
+        self.tenant = Tenant.objects.create(name="Test Tenant API", slug="test-tenant-api")
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email="test-api@example.com",
             password="testpass123",
             tenant=self.tenant
         )
-        self.client.force_login(self.user)
+        tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=tenant_admin_role)
+        self.client.force_authenticate(user=self.user)
     
     def test_contract_list_api(self):
         """Test contract list API works correctly."""
@@ -358,21 +380,28 @@ class Django6APICompatibilityTest(TestCase):
             key="test-asset",
             name="Test Asset"
         )
-        
+        # Minimal valid ODCS so normalization succeeds (schema.fields required by normalizer)
+        minimal_odcs = (
+            '{"id": "test-contract", "info": {"name": "Test", "title": "Test"}, '
+            '"schema": {"fields": [{"name": "id", "type": "string"}]}}'
+        )
         response = self.client.post(
             '/api/v1/contracts/',
             {
                 'asset_id': str(asset.id),
                 'original_spec_type': 'ODCS',
-                'original_spec_version': '1.0.0',
                 'original_format': 'JSON',
-                'original_raw': '{"info": {"title": "Test"}}'
+                'original_raw': minimal_odcs,
             },
-            content_type='application/json'
+            format='json',
         )
-        
-        # Should create contract successfully
-        self.assertIn(response.status_code, [200, 201])
+        self.assertIn(
+            response.status_code,
+            (200, 201),
+            msg=f"Contract create failed: {response.status_code} {getattr(response, 'data', response.content)}",
+        )
+        data = getattr(response, "data", None) or (response.json() if response.content else {})
+        self.assertIn("id", data if isinstance(data, dict) else {})
     
     def test_contract_filter_api(self):
         """Test contract filter API works correctly."""
@@ -410,12 +439,20 @@ class Django6DatabaseOperationsTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.tenant = Tenant.objects.create(name="Test Tenant DB", slug="test-tenant-db")
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email="test-db@example.com",
             password="testpass123",
             tenant=self.tenant
         )
+        tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=tenant_admin_role)
     
     def test_transaction_rollback(self):
         """Test transaction rollback works correctly."""

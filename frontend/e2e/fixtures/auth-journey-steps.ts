@@ -8,7 +8,7 @@ import { Page } from '@playwright/test';
 import type { TestUser } from '../setup/create-test-user';
 import { clearAuthStorage, loginUser } from './auth';
 
-const API_BASE_URL = process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = process.env.E2E_API_BASE_URL || process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 const MAILHOG_BASE_URL = process.env.MAILHOG_URL || 'http://localhost:8025';
 
 export function uniqueEmail(prefix = 'e2e_visitor'): string {
@@ -167,6 +167,36 @@ export async function runJOURNEY_AUTH_004_Success(page: Page): Promise<void> {
     .waitFor({ state: 'visible', timeout: 5000 });
 }
 
+/**
+ * Wait for register page to be ready (capabilities loaded).
+ * RegistrationRoute shows LoadingSpinner for up to 30s; neither "Create account" nor
+ * ".unavailable-page h1" exist during loading. Race: terminal state OR loading hidden.
+ */
+export async function waitForRegisterPageReady(page: Page, timeoutMs = 35_000): Promise<void> {
+  const createHeading = page.getByRole('heading', { name: 'Create account' });
+  const unavailableHeading = page.locator('.unavailable-page h1');
+  const loadingSpinner = page.locator('.loading-spinner-container');
+
+  // Race: terminal state (register/unavailable) OR loading spinner disappears.
+  // When loading never appears (fast path), createHeading/unavailableHeading win.
+  // When loading is visible, it hides when capabilities resolve, then terminal state appears.
+  await Promise.race([
+    createHeading.waitFor({ state: 'visible', timeout: timeoutMs }),
+    unavailableHeading.waitFor({ state: 'visible', timeout: timeoutMs }),
+    loadingSpinner.waitFor({ state: 'hidden', timeout: timeoutMs }),
+  ]);
+
+  // If loading hid first, terminal state appears in same render
+  const hasCreate = await createHeading.isVisible().catch(() => false);
+  const hasUnavailable = await unavailableHeading.isVisible().catch(() => false);
+  if (!hasCreate && !hasUnavailable) {
+    await Promise.race([
+      createHeading.waitFor({ state: 'visible', timeout: 5_000 }),
+      unavailableHeading.waitFor({ state: 'visible', timeout: 5_000 }),
+    ]);
+  }
+}
+
 /** Run JOURNEY-AUTH-001 success: register via UI then login */
 export async function runJOURNEY_AUTH_001_Success(page: Page): Promise<void> {
   const email = uniqueEmail('e2e_register');
@@ -174,8 +204,19 @@ export async function runJOURNEY_AUTH_001_Success(page: Page): Promise<void> {
   const name = 'E2E Visitor Register';
   await clearAuthStorage(page);
   await page.goto('/register', { waitUntil: 'domcontentloaded' });
-  const createHeading = page.getByRole('heading', { name: 'Create account' });
-  await createHeading.waitFor({ state: 'visible', timeout: 10_000 });
+  if (page.url().includes('/login')) {
+    const createLink = page.getByRole('link', { name: /Create an account/i });
+    await createLink.waitFor({ state: 'visible', timeout: 35_000 });
+    await createLink.click();
+    await page.waitForURL((url) => url.pathname.includes('/register'), { timeout: 5000 });
+  }
+  await waitForRegisterPageReady(page);
+  if (page.url().includes('/unavailable')) {
+    throw new Error(
+      'Registration unavailable (capabilities/schema). JOURNEY-AUTH-001 requires registration to be enabled. ' +
+        'Enable registration in deployment capabilities or schema.'
+    );
+  }
   await page.fill('input#name', name);
   await page.fill('input#email', email);
   await page.fill('input#password', password);
@@ -213,7 +254,19 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   await clearAuthStorage(page);
   await page.goto('/password-reset', { waitUntil: 'domcontentloaded' });
   const resetHeading = page.getByRole('heading', { name: /Reset password/i });
-  await resetHeading.waitFor({ state: 'visible', timeout: 10_000 });
+  const unavailableHeading = page.locator('.unavailable-page h1');
+  await Promise.race([
+    resetHeading.waitFor({ state: 'visible', timeout: 35_000 }),
+    unavailableHeading.waitFor({ state: 'visible', timeout: 35_000 }),
+  ]).catch(() => null);
+  if (page.url().includes('/unavailable')) {
+    throw new Error(
+      'Password reset unavailable (capabilities/schema). JOURNEY-AUTH-003 requires password reset to be enabled. ' +
+        'Enable password reset in deployment capabilities or schema.'
+    );
+  }
+  // Capabilities load can take up to 30s; ensure reset form is visible
+  await resetHeading.waitFor({ state: 'visible', timeout: 35_000 });
   await page.fill('input#email', email);
   await page.click('button[type="submit"]');
   // Wait for either success or error (backend may return error if password reset not enabled)
@@ -222,7 +275,8 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   if (await page.locator('.error-message').isVisible()) {
     const errText = await page.locator('.error-message').textContent();
     throw new Error(
-      `E2E_SKIP_PASSWORD_RESET: Backend returned error for password reset. ${errText || 'Capability may be disabled.'}`
+      `Backend returned error for password reset. ${errText || 'Capability may be disabled.'} ` +
+        'JOURNEY-AUTH-003 requires password reset to be enabled. Enable in deployment capabilities or schema.'
     );
   }
   // UI submit already triggered password reset and enqueued send_password_reset_email (job_low)
@@ -231,12 +285,30 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   const token = url.searchParams.get('token') ?? '';
   const pathAndSearch = `/password-reset/confirm?token=${encodeURIComponent(token)}`;
   await page.goto(pathAndSearch, { waitUntil: 'domcontentloaded' });
+  await page.waitForLoadState('domcontentloaded');
   const setPwHeading = page.getByRole('heading', { name: /Set a new password/i });
-  await setPwHeading.waitFor({ state: 'visible', timeout: 15_000 });
+  // Wait for form or error (invalid/expired token); increase timeout for slow MailHog/backend
+  const formOrError = await Promise.race([
+    setPwHeading.waitFor({ state: 'visible', timeout: 25_000 }).then(() => 'form'),
+    page.locator('.error-message, .error-display').filter({ hasText: /invalid|expired/i }).first()
+      .waitFor({ state: 'visible', timeout: 25_000 }).then(() => 'error'),
+  ]).catch(() => 'timeout' as const);
+  if (formOrError === 'error') {
+    const errText = await page.locator('.error-message, .error-display').first().textContent().catch(() => '');
+    throw new Error(
+      `Token invalid or expired. ${errText}. Ensure MailHog is running and email was captured.`
+    );
+  }
+  if (formOrError === 'timeout') {
+    throw new Error(
+      'Set new password form not visible within 25s. Token may be invalid or page structure changed.'
+    );
+  }
   await page.fill('input#new_password', newPassword);
   await page.click('button[type="submit"]');
+  // 35s: must exceed apiClient timeout (30s) so we see success/error before test times out
   const confirmResult = page.locator('.success-message, .error-message').first();
-  await confirmResult.waitFor({ state: 'visible', timeout: 25_000 });
+  await confirmResult.waitFor({ state: 'visible', timeout: 35_000 });
   if (await page.locator('.error-message').isVisible()) {
     const errText = await page.locator('.error-message').textContent();
     throw new Error(

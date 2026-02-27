@@ -8,9 +8,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import type { ApiError } from '../../../shared/types/api';
 import { authService } from '../services/authService';
 import { useAuthStore } from '../store/authStore';
 import './AuthPage.css';
+
+function extractErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  const apiErr = err as ApiError | undefined;
+  if (apiErr?.error?.message) return apiErr.error.message;
+  return 'Password reset failed';
+}
 
 export function PasswordResetConfirmPage() {
   const navigate = useNavigate();
@@ -59,7 +67,7 @@ export function PasswordResetConfirmPage() {
       });
       setSuccess(resp.message || 'Password reset successfully.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Password reset failed');
+      setError(extractErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }

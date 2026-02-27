@@ -27,11 +27,16 @@ class HasRole(permissions.BasePermission):
             return True
         
         # Check if user has the required role
+        role_names = []
         if hasattr(request.user, 'user_roles'):
             role_names = [ur.role.name for ur in request.user.user_roles.all()]
-            return self.required_role in role_names
-        
-        return False
+        if not role_names and hasattr(request.user, 'id') and request.user.id:
+            from hub.apps.users.models import UserRole
+            role_names = list(
+                UserRole.objects.filter(user_id=request.user.id)
+                .values_list('role__name', flat=True)
+            )
+        return self.required_role in role_names
 
 
 class HasAnyRole(permissions.BasePermission):
@@ -55,11 +60,17 @@ class HasAnyRole(permissions.BasePermission):
             return True
         
         # Check if user has any of the required roles
+        role_names = []
         if hasattr(request.user, 'user_roles'):
             role_names = [ur.role.name for ur in request.user.user_roles.all()]
-            return any(role in role_names for role in self.required_roles)
-        
-        return False
+        # Fallback: direct query when relation is empty (TransactionTestCase, force_authenticate)
+        if not role_names and hasattr(request.user, 'id') and request.user.id:
+            from hub.apps.users.models import UserRole
+            role_names = list(
+                UserRole.objects.filter(user_id=request.user.id)
+                .values_list('role__name', flat=True)
+            )
+        return any(role in role_names for role in self.required_roles)
 
 
 class HasScope(permissions.BasePermission):

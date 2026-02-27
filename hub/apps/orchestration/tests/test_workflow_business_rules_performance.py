@@ -37,6 +37,8 @@ def _is_ci_or_batch_env() -> bool:
         or os.environ.get("GITHUB_ACTIONS") == "true"
         or os.environ.get("GITLAB_CI") == "true"
         or os.environ.get("BATCH_TEST") == "1"
+        or bool(os.environ.get("PYTEST_XDIST_WORKER"))  # pytest-xdist parallel workers
+        or os.path.exists("/.dockerenv")  # Docker (shared CPU/DB in batch runs)
     )
 
 import pytest
@@ -123,11 +125,21 @@ class WorkflowBusinessRulesPerformanceTestBase(TransactionTestCase):
         )
 
     def tearDown(self):
-        """Clean up test data"""
-        # Clear cache after each test
+        """Clean up test data and ensure DB connection is valid before flush.
+
+        TransactionTestCase teardown runs flush; if the connection was closed
+        (e.g. by PostgreSQL after idle timeout during concurrent tests, or by
+        a previous test's failure), flush would raise InterfaceError/OperationalError.
+        Reconnecting here fixes teardown and prevents cascading 'connection already closed'
+        in subsequent tests.
+        """
+        from django.db import connection
+
+        try:
+            connection.ensure_connection()
+        except Exception:
+            pass
         cache.clear()
-        # Note: TransactionTestCase handles database cleanup automatically
-        # but we clear cache explicitly
         super().tearDown()
 
     def create_valid_odps_document(self, product_id: Optional[str] = None) -> str:
@@ -1030,8 +1042,12 @@ class TestWorkflowLoadTesting(WorkflowBusinessRulesPerformanceTestBase):
             f"Average execution time ({avg_execution_time:.2f}s) should be <5s",
         )
 
+    @pytest.mark.timeout(600)
     def test_validation_under_load(self):
-        """Test validation performance under load (4.3.3.2)"""
+        """Test validation performance under load (4.3.3.2).
+
+        Uses TransactionTestCase; teardown flush can be slow in CI/batch, so allow 600s.
+        """
         self.create_simple_workflow_definition("test_workflow", num_steps=5)
 
         # Create a workflow instance
@@ -1127,8 +1143,12 @@ class TestWorkflowLoadTesting(WorkflowBusinessRulesPerformanceTestBase):
             f"should be <{max_p95_s*1000:.0f}ms under load",
         )
 
+    @pytest.mark.timeout(600)
     def test_no_performance_degradation(self):
-        """Test no performance degradation under load (4.3.3.3)"""
+        """Test no performance degradation under load (4.3.3.3).
+
+        Uses TransactionTestCase; teardown flush can be slow in CI/batch, so allow 600s.
+        """
         self.create_simple_workflow_definition("test_workflow", num_steps=3)
 
         # Measure baseline performance (single workflow)
@@ -1249,9 +1269,11 @@ class TestWorkflowLoadTesting(WorkflowBusinessRulesPerformanceTestBase):
         print(f"\nValidation throughput: {throughput:.0f} validations/sec")
         self.assertGreater(throughput, 50, "Validation throughput should be >50/sec")
 
+    @pytest.mark.timeout(600)
     def test_system_behavior_high_workflow_load(self):
         """Test system behavior under high workflow load (6.5.3).
 
+        Uses TransactionTestCase; teardown flush can be slow in CI/batch, so allow 600s.
         Asserts minimum throughput achievable in shared CI; local runs may see >1/sec.
         """
         self.create_simple_workflow_definition("test_workflow", num_steps=3)

@@ -11,6 +11,7 @@ from django.test import TestCase
 from hub.apps.audit.models import AuditEvent
 from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 from hub.apps.webhooks.models import Webhook, WebhookEventType, WebhookStatus
 from hub.apps.webhooks.webhook_service import WebhookService
@@ -26,6 +27,7 @@ class WebhookServiceTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
             email="user@example.com",

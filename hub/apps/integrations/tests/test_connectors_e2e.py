@@ -88,6 +88,20 @@ def get_snowflake_credentials() -> dict:
     return credentials
 
 
+def _dados_gov_br_connection_config(instance_config, credentials: dict) -> dict:
+    """
+    Build connection config for dados.gov.br so the factory creates DadosGovBrConnector.
+
+    Using instance_id ensures create_connector() uses instance config and picks
+    DadosGovBrConnector (swagger) instead of the registered CKANConnector.
+    api_key is mapped to jwt_token by the factory for swagger instances.
+    """
+    return {
+        "instance_id": "dados.gov.br",
+        "api_key": credentials["jwt_token"],
+    }
+
+
 def handle_auth_failure(e: Exception) -> None:
     """
     Handle authentication failures by skipping tests with clear message.
@@ -189,9 +203,12 @@ class TestDadosGovBrConnectorE2E(TestCase):
     def _verify_asset_creation(
         self, sync_job: MarketplaceSyncJob, expected_count: int = None, min_count: int = 1
     ) -> list:
-        """Verify assets were created from sync job"""
-        mappings = MarketplaceMapping.objects.filter(sync_job=sync_job)
-        assets = [mapping.asset for mapping in mappings if mapping.asset]
+        """Verify assets were created from sync job (MarketplaceMapping has connection, not sync_job)."""
+        mappings = MarketplaceMapping.objects.filter(
+            connection=sync_job.connection,
+            created_at__gte=sync_job.created_at,
+        )
+        assets = [m.hub_asset for m in mappings if m.hub_asset_id]
         if expected_count is not None:
             self.assertEqual(len(assets), expected_count)
         else:
@@ -262,11 +279,7 @@ class TestDadosGovBrConnectorE2E(TestCase):
 
             connection = self._create_connection(
                 marketplace_type=MarketplaceType.CKAN_INSTANCE,
-                config={
-                    "base_url": instance_config.base_url,
-                    "jwt_token": self.credentials["jwt_token"],
-                    "swagger_spec_url": getattr(instance_config, "swagger_spec_url", None),
-                },
+                config=_dados_gov_br_connection_config(instance_config, self.credentials),
                 name="dados.gov.br E2E Test",
             )
 
@@ -322,11 +335,7 @@ class TestDadosGovBrConnectorE2E(TestCase):
 
             connection = self._create_connection(
                 marketplace_type=MarketplaceType.CKAN_INSTANCE,
-                config={
-                    "base_url": instance_config.base_url,
-                    "jwt_token": self.credentials["jwt_token"],
-                    "swagger_spec_url": getattr(instance_config, "swagger_spec_url", None),
-                },
+                config=_dados_gov_br_connection_config(instance_config, self.credentials),
                 name="dados.gov.br E2E Test",
             )
 
@@ -394,11 +403,7 @@ class TestDadosGovBrConnectorE2E(TestCase):
 
             connection = self._create_connection(
                 marketplace_type=MarketplaceType.CKAN_INSTANCE,
-                config={
-                    "base_url": instance_config.base_url,
-                    "jwt_token": self.credentials["jwt_token"],
-                    "swagger_spec_url": getattr(instance_config, "swagger_spec_url", None),
-                },
+                config=_dados_gov_br_connection_config(instance_config, self.credentials),
                 name="dados.gov.br E2E Test",
             )
 
@@ -525,11 +530,14 @@ class TestDadosGovBrConnectorE2E(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.integration
+@pytest.mark.snowflake_e2e
 class TestSnowflakeConnectorE2E(TestCase):
     """
-    End-to-end tests for Snowflake connector.
+    E2E tests for Snowflake connector.
 
-    Tests complete workflows using real Snowflake instance - no mocks or stubs.
+    Requires SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_TOKEN in .env.test.
+    When unset, tests are skipped. To deselect in CI: pytest -m 'not snowflake_e2e'.
+    No mocks or stubs; uses real Snowflake instance.
     """
 
     @classmethod
@@ -605,9 +613,12 @@ class TestSnowflakeConnectorE2E(TestCase):
     def _verify_asset_creation(
         self, sync_job: MarketplaceSyncJob, expected_count: int = None, min_count: int = 1
     ) -> list:
-        """Verify assets were created from sync job"""
-        mappings = MarketplaceMapping.objects.filter(sync_job=sync_job)
-        assets = [mapping.asset for mapping in mappings if mapping.asset]
+        """Verify assets were created from sync job (MarketplaceMapping has connection, not sync_job)."""
+        mappings = MarketplaceMapping.objects.filter(
+            connection=sync_job.connection,
+            created_at__gte=sync_job.created_at,
+        )
+        assets = [m.hub_asset for m in mappings if m.hub_asset_id]
         if expected_count is not None:
             self.assertEqual(len(assets), expected_count)
         else:

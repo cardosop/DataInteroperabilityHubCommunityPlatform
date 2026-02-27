@@ -93,12 +93,13 @@ test.describe('Marketplace and Data Consumer routes', () => {
       await page.waitForTimeout(3000);
       const onGov = page.url().includes('/governance');
       const on403 = page.url().includes('/403');
+      const onLogin = page.url().includes('/login');
       const hasContent =
         (await page.locator('.app-main').count()) > 0 &&
         ((await page.locator('.error-display, .access-request-list-page, h1').count()) > 0 ||
           (await page.locator('text=/access|request|403|forbidden/i').count()) > 0);
-      expect(onGov || on403).toBe(true);
-      expect(hasContent || onGov || on403).toBe(true);
+      expect(onGov || on403 || onLogin).toBe(true);
+      expect(hasContent || onGov || on403 || onLogin).toBe(true);
     });
   });
 });

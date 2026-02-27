@@ -299,7 +299,10 @@ class FederatedAssetWorkflowTest(TestCase):
                     completed_at=timezone.now(),
                 )
 
-        # Register test connector temporarily
+        # Register test connector temporarily (save original to restore)
+        original_ckan = MarketplaceConnectorFactory._connectors.get(
+            MarketplaceType.CKAN_INSTANCE.value
+        )
         MarketplaceConnectorFactory.register_connector(
             MarketplaceType.CKAN_INSTANCE, TestDownloadConnector
         )
@@ -382,9 +385,13 @@ class FederatedAssetWorkflowTest(TestCase):
                 self.assertIn(asset.status, [AssetStatus.ACTIVE, AssetStatus.DRAFT])
 
         finally:
-            # Unregister test connector
+            # Restore original CKAN connector (other tests depend on it)
             try:
                 MarketplaceConnectorFactory.unregister_connector(MarketplaceType.CKAN_INSTANCE)
+                if original_ckan is not None:
+                    MarketplaceConnectorFactory.register_connector(
+                        MarketplaceType.CKAN_INSTANCE, original_ckan
+                    )
             except ValueError:
                 pass
             try:
@@ -716,7 +723,10 @@ class FederatedAssetWorkflowTest(TestCase):
                     completed_at=timezone.now(),
                 )
 
-        # Register test connector temporarily
+        # Register test connector temporarily (save original to restore)
+        original_ckan = MarketplaceConnectorFactory._connectors.get(
+            MarketplaceType.CKAN_INSTANCE.value
+        )
         MarketplaceConnectorFactory.register_connector(
             MarketplaceType.CKAN_INSTANCE, TestDownloadConnector2
         )
@@ -764,9 +774,13 @@ class FederatedAssetWorkflowTest(TestCase):
             self.assertGreater(workflow_instances.count(), 0)
 
         finally:
-            # Unregister test connector
+            # Restore original CKAN connector (other tests depend on it)
             try:
                 MarketplaceConnectorFactory.unregister_connector(MarketplaceType.CKAN_INSTANCE)
+                if original_ckan is not None:
+                    MarketplaceConnectorFactory.register_connector(
+                        MarketplaceType.CKAN_INSTANCE, original_ckan
+                    )
             except ValueError:
                 pass
             try:

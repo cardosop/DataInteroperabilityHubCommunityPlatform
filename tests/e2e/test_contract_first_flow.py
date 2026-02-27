@@ -13,6 +13,8 @@ from rest_framework.test import APIClient
 from rest_framework import status
 
 from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus
 from hub.apps.files.models import File, FileStatus
@@ -22,6 +24,7 @@ from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.testing.service_utils import check_service_health
 from django.test import override_settings
 
+from .conftest import get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e1]
 User = get_user_model()
@@ -89,16 +92,18 @@ class ContractFirstE2ETest(TestCase):
         self.client = APIClient()
 
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name="Contract First Test Tenant",
+            slug="contract-first-test",
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_e2e_tenant_ready(self.tenant)
 
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant
         )
+        ensure_user_has_data_provider_role(self.user)
 
         self.client.force_authenticate(user=self.user)
 
@@ -115,7 +120,12 @@ class ContractFirstE2ETest(TestCase):
             },
             format='json'
         )
-        asset_id = asset_response.data['id']
+        self.assertEqual(
+            asset_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Asset creation failed: {asset_response.status_code} - {get_response_data(asset_response)}",
+        )
+        asset_id = get_response_data(asset_response)['id']
 
         # Step 2: Create contract first
         contract_response = self.client.post(
@@ -128,8 +138,12 @@ class ContractFirstE2ETest(TestCase):
             },
             format='json'
         )
-        self.assertEqual(contract_response.status_code, status.HTTP_201_CREATED)
-        contract_id = contract_response.data['id']
+        self.assertEqual(
+            contract_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Contract creation failed: {contract_response.status_code} - {get_response_data(contract_response)}",
+        )
+        contract_id = get_response_data(contract_response)['id']
 
         # Step 3: Validate contract (REAL DataContract service)
         validate_response = self.client.post(
@@ -141,7 +155,8 @@ class ContractFirstE2ETest(TestCase):
         # Allow 200 OK (validation completed) or 202 Accepted (async validation)
         self.assertIn(validate_response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
         # Real service may return VALID or INVALID
-        self.assertIn(validate_response.data['validation_status'], ['VALID', 'INVALID'])
+        validate_data = get_response_data(validate_response) or {}
+        self.assertIn(validate_data.get('validation_status'), ['VALID', 'INVALID'])
 
         # If validation failed, set to VALID for testing
         contract = Contract.objects.get(id=contract_id)
@@ -165,7 +180,12 @@ class ContractFirstE2ETest(TestCase):
             },
             format='json'
         )
-        file_id = file_init_response.data['file_id']
+        self.assertEqual(
+            file_init_response.status_code,
+            status.HTTP_201_CREATED,
+            f"File init failed: {file_init_response.status_code} - {get_response_data(file_init_response)}",
+        )
+        file_id = get_response_data(file_init_response)['file_id']
 
         # Step 5: Complete file upload (using real MinIO)
         import boto3
@@ -203,7 +223,12 @@ class ContractFirstE2ETest(TestCase):
             },
             format='json'
         )
-        dataset_id = dataset_response.data['id']
+        self.assertEqual(
+            dataset_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Dataset creation failed: {dataset_response.status_code} - {get_response_data(dataset_response)}",
+        )
+        dataset_id = get_response_data(dataset_response)['id']
 
         # Step 7: Run compliance and DQ checks (REAL services)
         compliance_response = self.client.post(
@@ -216,8 +241,12 @@ class ContractFirstE2ETest(TestCase):
             },
             format='json'
         )
-        self.assertEqual(compliance_response.status_code, status.HTTP_201_CREATED)
-        compliance_run_id = compliance_response.data['id']
+        self.assertEqual(
+            compliance_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Compliance run failed: {compliance_response.status_code} - {get_response_data(compliance_response)}",
+        )
+        compliance_run_id = get_response_data(compliance_response)['id']
 
         dq_response = self.client.post(
             '/api/v1/dq/runs/',
@@ -228,8 +257,12 @@ class ContractFirstE2ETest(TestCase):
             },
             format='json'
         )
-        self.assertEqual(dq_response.status_code, status.HTTP_201_CREATED)
-        dq_run_id = dq_response.data['id']
+        self.assertEqual(
+            dq_response.status_code,
+            status.HTTP_201_CREATED,
+            f"DQ run failed: {dq_response.status_code} - {get_response_data(dq_response)}",
+        )
+        dq_run_id = get_response_data(dq_response)['id']
 
         # Wait for jobs to complete
         max_wait = 60

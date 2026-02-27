@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.010530471801757812
+  },
+  "journeys": [
+    {
+      "journey_id": "DEV-006-ed050037",
+      "journey_name": "Integrate Transformation Pipeline API",
+      "persona": "External Developer",
+      "status": "completed",
+      "start_time": 1772041569.5175116,
+      "end_time": 1772041569.528042,
+      "duration": 0.010530471801757812,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Call Pipeline Creation API",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772041569.5236862,
+          "end_time": 1772041569.523692,
+          "duration": 5.7220458984375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Call Pipeline Execution API",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772041569.528032,
+          "end_time": 1772041569.5280366,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Handle API Responses",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772041569.5280392,
+          "end_time": 1772041569.528041,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-25T17:46:09.528111"
+}

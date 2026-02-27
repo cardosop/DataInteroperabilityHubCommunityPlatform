@@ -11,7 +11,7 @@ All tests use real implementations (no mocks/stubs).
 MockTransport is used only for simulating failures (acceptable test utility).
 """
 
-from datetime import datetime, timedelta
+import uuid
 
 import httpx
 import redis
@@ -23,6 +23,7 @@ from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerError,
     CircuitBreakerState,
+    get_redis_client,
 )
 
 
@@ -44,6 +45,10 @@ class TestComplianceServiceClientCircuitBreaker(TestCase):
 
     Uses REDIS_URL from the environment (e.g. redis-cache-test in test stack)
     so that integration tests run against the real Redis service.
+
+    Uses a unique service_name per test to isolate Redis state when tests run
+    in parallel (xdist); otherwise workers share circuit_breaker:compliance-service
+    keys and interfere with each other.
     """
 
     def setUp(self):
@@ -53,7 +58,15 @@ class TestComplianceServiceClientCircuitBreaker(TestCase):
             self.skipTest("Redis not available for integration tests")
 
         self.service_client = ComplianceServiceClient()
-        self.service_name = "compliance-service"
+        # Unique service_name per test for parallel isolation (xdist)
+        self.service_name = f"compliance-service-test-{uuid.uuid4().hex[:12]}"
+        self.service_client._circuit_breaker = CircuitBreaker(
+            service_name=self.service_name,
+            failure_threshold=5,
+            timeout_seconds=60,
+            success_threshold=2,
+            redis_client=get_redis_client(),
+        )
 
         # Clean up any existing circuit breaker state and reset
         try:
@@ -61,18 +74,14 @@ class TestComplianceServiceClientCircuitBreaker(TestCase):
             keys = self.redis_client.keys(pattern)
             if keys:
                 self.redis_client.delete(*keys)
-            # Explicitly reset circuit breaker to ensure clean state
             self.service_client._circuit_breaker.reset()
         except Exception:
             pass
 
     def tearDown(self):
         """Clean up test fixtures."""
-        # Clean up circuit breaker state and reset
         try:
-            # Explicitly reset circuit breaker first
             self.service_client._circuit_breaker.reset()
-            # Then clean up Redis keys
             pattern = f"circuit_breaker:{self.service_name}:*"
             keys = self.redis_client.keys(pattern)
             if keys:
@@ -85,7 +94,10 @@ class TestComplianceServiceClientCircuitBreaker(TestCase):
         # Verify circuit breaker exists
         self.assertTrue(hasattr(self.service_client, "_circuit_breaker"))
         self.assertIsInstance(self.service_client._circuit_breaker, CircuitBreaker)
-        self.assertEqual(self.service_client._circuit_breaker.service_name, self.service_name)
+        self.assertEqual(
+            self.service_client._circuit_breaker.service_name,
+            self.service_name,
+        )
 
     def test_circuit_breaker_configuration(self):
         """Test circuit breaker has correct configuration."""

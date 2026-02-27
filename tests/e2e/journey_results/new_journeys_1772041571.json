@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.03171491622924805
+  },
+  "journeys": [
+    {
+      "journey_id": "AUD-006-b33a04e9",
+      "journey_name": "Review Social Feature Activity",
+      "persona": "Auditor",
+      "status": "completed",
+      "start_time": 1772041571.514066,
+      "end_time": 1772041571.545781,
+      "duration": 0.03171491622924805,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Ratings Activity",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772041571.5245547,
+          "end_time": 1772041571.5245612,
+          "duration": 6.4373016357421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "View Reviews Activity",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772041571.5331638,
+          "end_time": 1772041571.53317,
+          "duration": 6.198883056640625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "View Community Activity",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772041571.539575,
+          "end_time": 1772041571.539586,
+          "duration": 1.0967254638671875e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Activity Report",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772041571.5457714,
+          "end_time": 1772041571.545779,
+          "duration": 7.62939453125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-25T17:46:11.545862"
+}

@@ -2,33 +2,31 @@
 Security Tests for AWS Data Exchange Connector
 
 Tests authentication, authorization, credential encryption, and input validation.
-Tests verify AWS security best practices.
+Tests verify AWS security best practices. No mocks or stubs; uses real connector
+and real AWS when testing error mapping (skips when credentials not available).
 """
 
 import os
-from unittest.mock import Mock, patch
 
 import pytest
-from botocore.exceptions import ClientError
-from django.conf import settings
+from django.db import connection
 from django.test import TestCase
 
-from hub.apps.core.services.base import NotFoundError, PermissionError
+from hub.apps.core.services.base import ConnectionError, NotFoundError, PermissionError
 from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.connectors.aws_data_exchange_connector import AWSDataExchangeConnector
 from hub.apps.integrations.models import MarketplaceConnection
 from hub.apps.tenants.models import Tenant
 
-# ConnectionError is a built-in Python exception (available since Python 3.3)
-# It's a subclass of OSError and is available in the built-in namespace
-# We can reference it directly - no import needed
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class TestAWSDataExchangeConnectorSecurity(TestCase):
     """Security tests for AWS Data Exchange connector"""
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures. Ensure DB connection is open after prior tests (avoids connection already closed)."""
+        connection.ensure_connection()
         self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant-security")
 
     def test_iam_credentials_validation(self):
@@ -46,7 +44,7 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
         # Test invalid credentials format
         connector = AWSDataExchangeConnector()
         with self.assertRaises((ValueError, TypeError)):
-            connector.authenticate(None)
+            connector.authenticate(None)  # type: ignore[arg-type]
 
     def test_iam_role_assumption_validation(self):
         """Test IAM role assumption validation"""
@@ -89,64 +87,43 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
             self.assertIn("aws_secret_access_key", stored_config)
 
     def test_input_validation_dataset_id(self):
-        """Test dataset ID validation"""
+        """Test dataset ID validation (connector raises ValueError/TypeError before AWS)."""
         connector = AWSDataExchangeConnector(
             aws_access_key_id="test-key", aws_secret_access_key="test-secret"
         )
 
-        # Test empty dataset ID - connector will try to call AWS and get ConnectionError
-        # This is acceptable behavior - empty string validation could be added but isn't critical
-        with self.assertRaises((ValueError, TypeError, ConnectionError)):
+        with self.assertRaises(ValueError):
             connector.get_listing("")
 
-        # Test None dataset ID - boto3 will validate and raise ParameterValidationError
-        # which gets wrapped in ConnectionError
-        with self.assertRaises((ValueError, TypeError, ConnectionError)):
-            connector.get_listing(None)
+        with self.assertRaises(TypeError):
+            connector.get_listing(None)  # type: ignore[arg-type]
 
-        # Test invalid dataset ID format - mock AWS call to avoid real connection
-        with patch.object(connector, "_get_dataexchange_client") as mock_get_client:
-            mock_client = Mock()
-            mock_get_client.return_value = mock_client
-            error = ClientError(
-                {"Error": {"Code": "ResourceNotFoundException", "Message": "Dataset not found"}},
-                "GetDataSet",
-            )
-            mock_client.get_data_set.side_effect = error
-            connector._circuit_breaker.call = lambda func: func()
-
-            with self.assertRaises(NotFoundError):
-                connector.get_listing("invalid-format-123")
+        # Non-existent ID: real AWS returns NotFoundError when credentials allow API call.
+        # With invalid creds we never reach AWS; integration tests cover real NotFoundError.
+        # Here we only assert validation for empty/None.
 
     def test_input_validation_s3_bucket(self):
-        """Test S3 bucket validation in export job creation"""
+        """Test S3 bucket and parameter validation in export job creation (no AWS call)."""
         connector = AWSDataExchangeConnector(
             aws_access_key_id="test-key", aws_secret_access_key="test-secret"
         )
 
-        # Mock AWS client to avoid real calls
-        with patch.object(connector, "_get_dataexchange_client") as mock_get_client:
-            mock_client = Mock()
-            mock_get_client.return_value = mock_client
-            connector._circuit_breaker.call = lambda func: func()
+        with self.assertRaises(ValueError):
+            connector._create_export_job(
+                dataset_id="dataset-123",
+                revision_id="revision-123",
+                destination_bucket="",
+                destination_key_prefix="prefix",
+            )
 
-            # Test empty bucket name - may raise ValueError or ConnectionError depending on validation
-            with self.assertRaises((ValueError, ConnectionError)):
-                connector._create_export_job(
-                    dataset_id="dataset-123",
-                    revision_id="revision-123",
-                    destination_bucket="",
-                    destination_key_prefix="prefix",
-                )
-
-            # Test None bucket name - boto3 will validate parameter types
-            with self.assertRaises((ValueError, TypeError, ConnectionError)):
-                connector._create_export_job(
-                    dataset_id="dataset-123",
-                    revision_id="revision-123",
-                    destination_bucket=None,
-                    destination_key_prefix="prefix",
-                )
+        # None bucket: connector tries settings then raises ValueError if unset
+        with self.assertRaises(ValueError):
+            connector._create_export_job(
+                dataset_id="dataset-123",
+                revision_id="revision-123",
+                destination_bucket=None,
+                destination_key_prefix="prefix",
+            )
 
     def test_least_privilege_principle(self):
         """Test that connector follows least privilege principle"""
@@ -192,52 +169,42 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
         self.assertEqual(connector._aws_secret_access_key, "new-secret")
 
     def test_access_denied_exception_handling(self):
-        """Test AccessDeniedException handling"""
-        from unittest.mock import Mock, patch
-
-        from botocore.exceptions import ClientError
-
+        """Test that invalid credentials lead to PermissionError or ConnectionError (real AWS)."""
         connector = AWSDataExchangeConnector(
-            aws_access_key_id="test-key", aws_secret_access_key="test-secret"
+            aws_access_key_id="invalid-key",
+            aws_secret_access_key="invalid-secret",
+            region_name="us-east-1",
         )
-
-        # Mock AccessDeniedException
-        with patch.object(connector, "_get_dataexchange_client") as mock_get_client:
-            mock_client = Mock()
-            mock_get_client.return_value = mock_client
-            error = ClientError(
-                {"Error": {"Code": "AccessDeniedException", "Message": "Access denied"}},
-                "ListDataSets",
+        with self.assertRaises((PermissionError, ConnectionError)):
+            connector.authenticate(
+                {"aws_access_key_id": "invalid-key", "aws_secret_access_key": "invalid-secret"}
             )
-            mock_client.list_data_sets.side_effect = error
-            connector._circuit_breaker.call = lambda func: func()
-
-            with self.assertRaises(PermissionError):
-                connector.test_connection()
 
     def test_resource_not_found_exception_handling(self):
-        """Test ResourceNotFoundException handling"""
-        from unittest.mock import Mock, patch
-
-        from botocore.exceptions import ClientError
-
+        """Test that non-existent dataset ID leads to NotFoundError (real AWS when creds available)."""
+        access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        if not access_key or not secret_key:
+            self.skipTest("AWS credentials required to test real NotFoundError mapping")
         connector = AWSDataExchangeConnector(
-            aws_access_key_id="test-key", aws_secret_access_key="test-secret"
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            region_name=os.getenv("AWS_REGION", "us-east-1"),
         )
-
-        # Mock ResourceNotFoundException
-        with patch.object(connector, "_get_dataexchange_client") as mock_get_client:
-            mock_client = Mock()
-            mock_get_client.return_value = mock_client
-            error = ClientError(
-                {"Error": {"Code": "ResourceNotFoundException", "Message": "Resource not found"}},
-                "GetDataSet",
+        try:
+            connector.authenticate({
+                "aws_access_key_id": access_key,
+                "aws_secret_access_key": secret_key,
+                "region_name": os.getenv("AWS_REGION", "us-east-1"),
+            })
+        except (ConnectionError, PermissionError):
+            self.skipTest(
+                "AWS credentials invalid or expired - cannot test ResourceNotFoundException mapping"
             )
-            mock_client.get_data_set.side_effect = error
-            connector._circuit_breaker.call = lambda func: func()
-
-            with self.assertRaises(NotFoundError):
-                connector.get_listing("dataset-123")
+        # Use valid-format dataset ID (30+ alphanumeric) so AWS returns ResourceNotFoundException
+        fake_dataset_id = "0" * 32
+        with self.assertRaises(NotFoundError):
+            connector.get_listing(fake_dataset_id)
 
     def test_aws_security_best_practices(self):
         """Test AWS security best practices"""
@@ -274,29 +241,27 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
         self.assertNotIn("test-secret", connector_repr)
 
     def test_input_validation_empty_strings(self):
-        """Test input validation with empty strings"""
+        """Test input validation with empty strings (connector raises ValueError)."""
         connector = AWSDataExchangeConnector(
             aws_access_key_id="test-key", aws_secret_access_key="test-secret"
         )
 
-        # Test empty string inputs
-        with self.assertRaises((ValueError, TypeError, ConnectionError)):
+        with self.assertRaises(ValueError):
             connector.get_listing("")
 
-        with self.assertRaises((ValueError, TypeError, ConnectionError)):
+        with self.assertRaises(ValueError):
             connector.list_resources("")
 
     def test_input_validation_none_values(self):
-        """Test input validation with None values"""
+        """Test input validation with None values (connector raises TypeError)."""
         connector = AWSDataExchangeConnector(
             aws_access_key_id="test-key", aws_secret_access_key="test-secret"
         )
 
-        # Test None inputs
-        with self.assertRaises((ValueError, TypeError, ConnectionError)):
+        with self.assertRaises(TypeError):
             connector.get_listing(None)  # type: ignore[arg-type]
 
-        with self.assertRaises((ValueError, TypeError, ConnectionError)):
+        with self.assertRaises(TypeError):
             connector.list_resources(None)  # type: ignore[arg-type]
 
     def test_credential_validation_with_empty_strings(self):

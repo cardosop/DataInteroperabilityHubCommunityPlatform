@@ -45,6 +45,7 @@ select = [
     "F",   # pyflakes
     "I",   # isort
     "B",   # flake8-bugbear
+    "E722", # bare except (no bare except: in production)
     "C4",  # flake8-comprehensions
     "UP",  # pyupgrade
     "ARG", # flake8-unused-arguments

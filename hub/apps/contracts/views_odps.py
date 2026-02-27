@@ -263,9 +263,9 @@ class ContractODPSMixin:
                 user_id=str(request.user.id),
                 request_id=getattr(request, "request_id", None),
             )
-            links = service.list_contract_links(contract_id=str(contract.id))
+            links = service.get_contract_links(contract_id=str(contract.id))
 
-            return Response({"links": links}, status=status.HTTP_200_OK)
+            return Response(links, status=status.HTTP_200_OK)
         except NotFoundError as e:
             return Response(
                 {"error": e.message, "code": e.code, "details": e.details},

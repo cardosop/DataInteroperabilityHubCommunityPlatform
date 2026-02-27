@@ -18,6 +18,7 @@ from tests.utils.polling import wait_until
 from hub.apps.contracts.services import ContractService
 from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from hub.apps.webhooks.models import (
     DeliveryStatus,
@@ -46,6 +47,7 @@ class ODPSWebhookEventIntegrationTest(TestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
@@ -189,6 +191,7 @@ class ODPSWebhookEventIntegrationTest(TestCase):
                 status=TenantStatus.ACTIVE,
                 kyc_status=KYCStatus.VERIFIED,
             )
+            ensure_tenant_has_active_subscription(other_tenant)
 
             webhook2 = Webhook.objects.create(
                 tenant=other_tenant,

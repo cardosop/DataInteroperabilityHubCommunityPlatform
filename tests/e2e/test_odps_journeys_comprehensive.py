@@ -36,7 +36,16 @@ from hub.apps.orchestration.workflows.product_creation import ProductCreationWor
 from .conftest import E2ETestBase
 from .journey_tracker import JourneyStatus, JourneyTracker, StepStatus, get_journey_tracker
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
+pytestmark = [
+    pytest.mark.uc_journey_persona,
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.e2e,
+    pytest.mark.journey("JOURNEY-ODPS-001"),
+    pytest.mark.journey("JOURNEY-ODPS-002"),
+    pytest.mark.journey("JOURNEY-ODPS-003"),
+    pytest.mark.journey("JOURNEY-ODPS-004"),
+    pytest.mark.journey("JOURNEY-ODPS-005"),
+]
 
 
 class ODPSJourneyTestBase(E2ETestBase):
@@ -83,6 +92,19 @@ class ODPSJourneyTestBase(E2ETestBase):
         except Exception as e:
             step.fail(e, metadata={"args": str(args), "kwargs": str(kwargs)})
             raise
+
+    def _get_odps_contract_id_from_response(self, response) -> str:
+        """Extract odps_contract id from products API response; raise with clear error if missing."""
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+            f"ODPS create failed: {getattr(response, 'data', response.content)}",
+        )
+        data = response.data if hasattr(response, "data") else {}
+        odps_contract = data.get("odps_contract") or {}
+        odps_contract_id = odps_contract.get("id")
+        self.assertIsNotNone(odps_contract_id, f"Response missing odps_contract.id: {data}")
+        return odps_contract_id
 
     def create_valid_odps_document(
         self,
@@ -974,7 +996,7 @@ class JourneyODPS003ODPSExportDownloadTest(ODPSJourneyTestBase):
                 ),
             )
 
-            odps_contract_id = create_response.data["odps_contract"]["id"]
+            odps_contract_id = self._get_odps_contract_id_from_response(create_response)
 
             # Step 2: Export ODPS as JSON
             json_export = self.execute_journey_step(
@@ -1100,7 +1122,7 @@ class JourneyODPS003ODPSExportDownloadTest(ODPSJourneyTestBase):
                 format="json",
             )
 
-            odps_contract_id = create_response.data["odps_contract"]["id"]
+            odps_contract_id = self._get_odps_contract_id_from_response(create_response)
 
             # Export with specific version
             response = self.client.get(
@@ -1188,7 +1210,7 @@ class JourneyODPS003ODPSExportDownloadTest(ODPSJourneyTestBase):
             {"original_raw": odps_content, "original_format": "JSON", "asset_id": asset_id},
             format="json",
         )
-        valid_contract_id = create_response.data["odps_contract"]["id"]
+        valid_contract_id = self._get_odps_contract_id_from_response(create_response)
 
         for scenario in error_scenarios:
             try:
@@ -1280,7 +1302,7 @@ class JourneyODPS004ODPSMarketplaceConfigTest(ODPSJourneyTestBase):
                 ),
             )
 
-            odps_contract_id = create_response.data["odps_contract"]["id"]
+            odps_contract_id = self._get_odps_contract_id_from_response(create_response)
 
             # Step 4: Verify pricing plans
             self.execute_journey_step(
@@ -1381,6 +1403,7 @@ class JourneyODPS004ODPSMarketplaceConfigTest(ODPSJourneyTestBase):
                         "description": "Product with full marketplace configuration",
                     }
                 },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
                 "contract": {
                     "spec": {
                         "apiVersion": "odcs/v3",
@@ -1433,6 +1456,7 @@ class JourneyODPS004ODPSMarketplaceConfigTest(ODPSJourneyTestBase):
             "version": "4.1",
             "product": {
                 "details": {"en": {"productID": "invalid-pricing"}},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 "marketplace": {"pricingPlans": "invalid"},  # Should be array
             },
         }
@@ -1444,7 +1468,8 @@ class JourneyODPS004ODPSMarketplaceConfigTest(ODPSJourneyTestBase):
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
             "product": {
-                "details": {"en": {"productID": "missing-marketplace"}}
+                "details": {"en": {"productID": "missing-marketplace"}},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 # Missing marketplace section
             },
         }
@@ -1556,7 +1581,7 @@ class JourneyODPS005ODPSProductStrategyTest(ODPSJourneyTestBase):
                 ),
             )
 
-            odps_contract_id = create_response.data["odps_contract"]["id"]
+            odps_contract_id = self._get_odps_contract_id_from_response(create_response)
 
             # Step 4: Verify product details
             self.execute_journey_step(
@@ -1646,7 +1671,11 @@ class JourneyODPS005ODPSProductStrategyTest(ODPSJourneyTestBase):
         journey.complete(metadata={"error_scenarios_tested": len(error_scenarios)})
 
     def _create_odps_with_product_strategy(self, product_id: str) -> str:
-        """Create ODPS document with full product strategy"""
+        """Create ODPS document with full product strategy.
+
+        Includes product.dataSchema (required by business rules) and product.details,
+        product.contract, product.marketplace for strategy configuration.
+        """
         odps_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -1665,6 +1694,12 @@ class JourneyODPS005ODPSProductStrategyTest(ODPSJourneyTestBase):
                         "name": f"Producto de Estrategia {product_id}",
                         "description": "Producto con configuración completa de estrategia",
                     },
+                },
+                "dataSchema": {
+                    "fields": [
+                        {"name": "id", "type": "string", "description": "Unique identifier"},
+                        {"name": "name", "type": "string", "description": "Name field"},
+                    ]
                 },
                 "contract": {
                     "spec": {

@@ -21,32 +21,25 @@ except ImportError:
                 return f
     pytest = DummyPytest()
 
-from django.test import TransactionTestCase
+from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework import status
 from django.urls import reverse
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.users.models import User, Role, UserRole
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from django.db.models.signals import post_save
 from hub.apps.semantic.signals import contract_saved, asset_saved
 from hub.apps.tenants.signals import create_default_roles
 
+# Use default transaction=False so TenantSuspensionMiddleware sees subscription from setUp
 if HAS_PYTEST:
-    pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.integration]
+    pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
-class SimpleAssetCreationTest(TransactionTestCase):
+class SimpleAssetCreationTest(TestCase):
     """Simple test to verify basic infrastructure"""
-
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for integration tests."""
-        # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         super().setUp()
@@ -66,6 +59,7 @@ class SimpleAssetCreationTest(TransactionTestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create role
         self.role, _ = Role.objects.get_or_create(

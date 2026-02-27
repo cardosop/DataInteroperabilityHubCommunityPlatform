@@ -9,7 +9,8 @@
 
 import { expect, test } from '@playwright/test';
 import * as fs from 'fs';
-import { getTestUser, loginUser } from './fixtures/auth';
+import { getTestUser, loginAsPersona, loginUser } from './fixtures/auth';
+import { loginAndNavigateToRoute } from './fixtures/helpers';
 
 const getApiBaseUrl = () => process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
@@ -113,7 +114,7 @@ async function pollWorkflowStatus(
         if (!token) return { success: false, error: 'No token' };
         try {
           const response = await fetch(
-            `${base}/contracts/products/${workflowInstanceId}/status/?_t=${Date.now()}`,
+            `${base}/contracts/products/workflows/${workflowInstanceId}/status/?_t=${Date.now()}`,
             {
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -192,27 +193,16 @@ test.describe('Phase 5 ODPS Journey', () => {
       }
     });
 
-    // Login first
+    // Login first (force fresh to avoid auth redirect race)
+    await loginAsPersona(page, getTestUser);
     const testUser = await getTestUser();
-    await loginUser(page, testUser);
-    await page.waitForTimeout(2000);
 
     // Step 1: Navigate to ODPS upload page
     console.log('Step 1: Navigating to ODPS upload page...');
-    await page.goto('/odps/upload');
-    await page.waitForLoadState('domcontentloaded');
-
-    await page.waitForFunction(
-      () => {
-        const main = document.querySelector('.app-main');
-        if (!main) return false;
-        const loading = main.querySelector('.loading-spinner');
-        if (loading) return false;
-        const hasContent = main.querySelector('.odps-upload-page, .odps-upload-form, h1');
-        return !!hasContent;
-      },
-      { timeout: 15000 }
-    );
+    await loginAndNavigateToRoute(page, testUser, '/odps/upload', {
+      timeout: 60000,
+      contentSelector: '.odps-upload-page, .odps-upload-form, h1',
+    });
 
     await page.waitForTimeout(2000);
 
@@ -437,22 +427,12 @@ test.describe('Phase 5 ODPS Journey', () => {
       console.log(`✅ ODCS contract created: ${odcsContractId}`);
     }
 
-    // Step 5: Navigate to ODPS detail page (navigation may abort in-flight requests → benign ERR_SOCKET_NOT_CONNECTED)
+    // Step 5: Navigate to ODPS detail page (full login+nav to recover from auth expiry after long journey)
     console.log('Step 5: Navigating to ODPS detail page...');
-    await page.goto(`/odps/${odpsContractId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('domcontentloaded');
-
-    await page.waitForFunction(
-      () => {
-        const main = document.querySelector('.app-main');
-        if (!main) return false;
-        const loading = main.querySelector('.loading-spinner');
-        if (loading) return false;
-        const hasContent = main.querySelector('.odps-detail-page, .odps-detail-content, h1');
-        return !!hasContent;
-      },
-      { timeout: 20000 }
-    );
+    await loginAndNavigateToRoute(page, testUser, `/odps/${odpsContractId}`, {
+      timeout: 60000,
+      contentSelector: '.odps-detail-page, .odps-detail-content, .error-display, h1',
+    });
 
     await page.waitForTimeout(1500);
 
@@ -554,10 +534,11 @@ test.describe('Phase 5 ODPS Journey', () => {
     // Step 7: Export ODPS contract
     console.log('Step 7: Exporting ODPS contract...');
 
-    // Navigate back to ODPS detail page
-    await page.goto(`/odps/${odpsContractId}`);
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
+    // Re-login and navigate (auth may have expired after long journey; avoids "Redirected to login")
+    await loginAndNavigateToRoute(page, testUser, `/odps/${odpsContractId}`, {
+      timeout: 90000,
+      contentSelector: '.odps-detail-page, .odps-detail-content, .error-display, h1',
+    });
 
     // Find export section
     const exportSection = page.locator('.odps-export-section');

@@ -17,6 +17,7 @@ from hub.apps.notifications.models import EmailDelivery, EmailType, EmailDeliver
 from hub.apps.core.business_rules.registry import get_registry
 from hub.apps.users.models import User
 from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 
 class NotificationsBusinessRulesInitializationTest(TestCase):
@@ -28,6 +29,7 @@ class NotificationsBusinessRulesInitializationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -143,6 +145,7 @@ class NotificationsRuleExecutionContextTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -207,6 +210,7 @@ class NotificationsTemplateValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -336,6 +340,7 @@ class NotificationsTemplateIntegrationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -378,6 +383,7 @@ class NotificationDeliveryChannelValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -458,6 +464,7 @@ class NotificationRecipientValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -560,6 +567,7 @@ class NotificationRateLimitingValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -692,6 +700,7 @@ class NotificationDeliveryStatusValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -851,6 +860,7 @@ class NotificationDeliveryIntegrationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -936,6 +946,7 @@ class NotificationPreferenceStructureValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -1081,6 +1092,7 @@ class NotificationPreferenceUpdateValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -1233,6 +1245,7 @@ class NotificationPreferenceEnforcementValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -1386,6 +1399,7 @@ class NotificationPreferenceIntegrationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE

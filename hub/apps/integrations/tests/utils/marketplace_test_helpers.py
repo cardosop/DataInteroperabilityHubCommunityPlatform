@@ -12,6 +12,9 @@ import warnings
 from typing import Optional, Tuple, Union
 from pathlib import Path
 
+# Sentinel to distinguish "caller did not pass instance_name" from "caller passed None"
+_USE_DEFAULT_INSTANCE: object = object()
+
 import httpx
 from django.test import TestCase
 
@@ -57,7 +60,7 @@ _load_env_file()
 
 
 def get_test_marketplace_config(
-    instance_name: Optional[str] = None,
+    instance_name: Union[Optional[str], object] = _USE_DEFAULT_INSTANCE,
     prefer_production: bool = False
 ) -> Optional[MarketplaceInstanceConfig]:
     """
@@ -69,14 +72,14 @@ def get_test_marketplace_config(
 
     Args:
         instance_name: Optional specific instance name (e.g., "dados.gov.br" for Swagger API, "demo.ckan.org" for CKAN API).
-                      If None, uses default test instance or environment variable.
-        prefer_production: If True and instance_name is None, prefer production instance.
+                      If None or empty string, returns None (no instance). If omitted, uses default test instance.
+        prefer_production: If True and instance_name is omitted, prefer production instance.
                           Default: False (prefers test instances).
 
     Returns:
         MarketplaceInstanceConfig if available, None otherwise
 
-    Priority order (when instance_name is None):
+    Priority order (when instance_name is omitted):
     1. CKAN_TEST_URL environment variable (if matches registered instance)
     2. Default test instance (demo.ckan.org)
     3. Production instance (if prefer_production=True)
@@ -94,9 +97,16 @@ def get_test_marketplace_config(
         >>> print(config.connector_type)
         swagger
     """
-    # If specific instance requested, use it
+    # Explicit None or empty string means "no instance" (e.g. for error-path tests)
+    if instance_name is None or (isinstance(instance_name, str) and not instance_name.strip()):
+        return None
+    # Omitted argument: use default logic
+    if instance_name is _USE_DEFAULT_INSTANCE:
+        instance_name = None  # will trigger env + default path below
+
+    # If specific instance requested, use it (instance_name is str here)
     if instance_name:
-        config = get_marketplace_instance_config(instance_name)
+        config = get_marketplace_instance_config(str(instance_name))
         if config:
             logger.debug(f"Using requested marketplace instance: {instance_name} (connector_type={config.connector_type})")
             return config
@@ -148,7 +158,7 @@ def get_test_marketplace_config(
 
 
 def create_test_connector(
-    instance_name: Optional[str] = None,
+    instance_name: Union[Optional[str], object] = _USE_DEFAULT_INSTANCE,
     api_key: Optional[str] = None,
     prefer_production: bool = False,
     verify_connection: bool = True
@@ -242,6 +252,9 @@ def verify_marketplace_connection(connector: DataMarketplaceConnector) -> bool:
     Returns:
         True if connection successful, False otherwise
 
+    Raises:
+        ValueError: If connector is None (invalid input).
+
     Example:
         >>> connector = CKANConnector(base_url="https://demo.ckan.org")
         >>> if verify_marketplace_connection(connector):
@@ -251,22 +264,23 @@ def verify_marketplace_connection(connector: DataMarketplaceConnector) -> bool:
         >>> if verify_marketplace_connection(connector):
         ...     print("Connection verified")
     """
-    if not connector:
-        return False
+    if connector is None:
+        raise ValueError("connector must not be None")
 
     try:
         result = connector.test_connection()
+        base_url = getattr(connector, "base_url", "unknown")
         if result:
-            logger.debug(f"Connection verified for {connector.base_url}")
+            logger.debug(f"Connection verified for {base_url}")
         else:
-            logger.warning(f"Connection test returned False for {connector.base_url}")
+            logger.warning(f"Connection test returned False for {base_url}")
         return result
     except Exception as e:
-        logger.warning(f"Connection verification failed for {connector.base_url}: {e}")
+        logger.warning(f"Connection verification failed for {getattr(connector, 'base_url', 'unknown')}: {e}")
         return False
 
 
-def marketplace_available(instance_name: Optional[str] = None) -> bool:
+def marketplace_available(instance_name: Union[Optional[str], object] = _USE_DEFAULT_INSTANCE) -> bool:
     """
     Check if a marketplace connector instance is available for testing.
 
@@ -274,7 +288,8 @@ def marketplace_available(instance_name: Optional[str] = None) -> bool:
     CKAN-standard APIs and custom Swagger APIs.
 
     Args:
-        instance_name: Optional specific instance name. If None, checks default test instance.
+        instance_name: Optional specific instance name. If None or empty string, returns False.
+                      If omitted, checks default test instance.
 
     Returns:
         True if marketplace instance is available, False otherwise
@@ -391,7 +406,7 @@ def get_test_api_key() -> Optional[str]:
 
 # Deprecated function aliases for backward compatibility
 def get_test_ckan_config(
-    instance_name: Optional[str] = None,
+    instance_name: Union[Optional[str], object] = _USE_DEFAULT_INSTANCE,
     prefer_production: bool = False
 ) -> Optional[MarketplaceInstanceConfig]:
     """
@@ -427,7 +442,7 @@ def verify_ckan_connection(connector: DataMarketplaceConnector) -> bool:
         connector: DataMarketplaceConnector instance to verify
 
     Returns:
-        True if connection successful, False otherwise
+        True if connection successful, False otherwise. Returns False for None (backward compatible).
     """
     warnings.warn(
         "verify_ckan_connection() is deprecated, use verify_marketplace_connection() instead. "
@@ -435,10 +450,13 @@ def verify_ckan_connection(connector: DataMarketplaceConnector) -> bool:
         DeprecationWarning,
         stacklevel=2
     )
+    # Backward compatibility: deprecated API returns False for None instead of raising
+    if connector is None:
+        return False
     return verify_marketplace_connection(connector)
 
 
-def ckan_available(instance_name: Optional[str] = None) -> bool:
+def ckan_available(instance_name: Union[Optional[str], object] = _USE_DEFAULT_INSTANCE) -> bool:
     """
     Check if a marketplace connector instance is available for testing.
 

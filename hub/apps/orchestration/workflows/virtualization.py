@@ -514,15 +514,15 @@ class VirtualizationWorkflow:
                     timeout_seconds=timeout_seconds or 300
                 )
             else:
-                # For other query types, use standard execution
-                # This is a simplified execution - in production, this would call
-                # the full execute_query method with proper source handling
-                result_data = VirtualizationWorkflow._execute_standard_query(
+                # For standard query types (SQL, REST, GraphQL, etc.), use the same
+                # entrypoint as the REST path: VirtualizationService._execute_query_against_sources
+                # and _aggregate_results (feat1 2.1.1 – single execution path).
+                result_data = VirtualizationWorkflow._execute_via_service_sources(
                     service=service,
                     virtual_dataset=virtual_dataset,
                     query=query_to_execute,
                     parameters=parameters,
-                    timeout_seconds=timeout_seconds or 300
+                    timeout_seconds=timeout_seconds or 300,
                 )
 
             # Store execution results in state_data
@@ -649,58 +649,60 @@ class VirtualizationWorkflow:
             ) from e
 
     @staticmethod
-    def _execute_standard_query(
+    def _execute_via_service_sources(
         service: VirtualizationService,
         virtual_dataset: VirtualDataset,
         query: str,
         parameters: Dict[str, Any],
-        timeout_seconds: int
+        timeout_seconds: int,
     ) -> Dict[str, Any]:
         """
-        Execute standard query (SQL, REST, GraphQL) against sources.
+        Execute standard query (SQL, REST, GraphQL, etc.) using the same path as REST.
 
-        Args:
-            service: VirtualizationService instance
-            virtual_dataset: VirtualDataset instance
-            query: Query string
-            parameters: Query parameters
-            timeout_seconds: Query timeout in seconds
-
-        Returns:
-            Query result data dictionary
+        Delegates to VirtualizationService._execute_query_against_sources and
+        _aggregate_results so workflow and view share one implementation (feat1 2.1.1/2.1.2).
         """
-        # This is a simplified implementation
-        # In production, this would call the full execute_query method
-        # For now, we'll use the service's internal execution method
         try:
-            # Use the service's internal query execution
-            # Note: This is a simplified approach - full implementation would
-            # handle multiple sources, aggregation, etc.
-            result = service._execute_query_against_source(
+            sources = virtual_dataset.sources or []
+            if not sources:
+                raise ValidationError(
+                    "No sources configured for query execution",
+                    code="NO_SOURCES",
+                )
+            results = service._execute_query_against_sources(
                 query=query,
                 query_type=virtual_dataset.query_type,
-                source=virtual_dataset.sources[0] if virtual_dataset.sources else {},
+                sources=sources,
                 parameters=parameters,
                 timeout_seconds=timeout_seconds,
-                source_index=0
             )
-
+            aggregated = service._aggregate_results(
+                results,
+                virtual_dataset.query_type,
+            )
+            all_columns = set()
+            for r in results:
+                all_columns.update(r.get("columns", []))
+            columns = list(all_columns)
             return {
-                "data": result.get("data", []),
-                "columns": result.get("columns", []),
-                "row_count": result.get("row_count", 0),
-                "source_type": result.get("source_type", "unknown"),
-                "query_type": virtual_dataset.query_type
+                "data": aggregated,
+                "columns": columns,
+                "row_count": len(aggregated),
+                "source_type": results[0].get("source_type", "unknown") if results else "unknown",
+                "query_type": virtual_dataset.query_type,
             }
+        except ValidationError:
+            raise
         except Exception as e:
             logger.error(
-                f"Standard query execution failed: {e}",
+                "Standard query execution failed: %s",
+                e,
                 extra={"error": str(e)},
-                exc_info=True
+                exc_info=True,
             )
             raise ValidationError(
                 f"Query execution failed: {str(e)}",
-                code="QUERY_EXECUTION_FAILED"
+                code="QUERY_EXECUTION_FAILED",
             ) from e
 
     @staticmethod

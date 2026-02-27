@@ -68,6 +68,63 @@ class PluginViewSet(viewsets.ReadOnlyModelViewSet):
 
         return queryset
 
+    @action(detail=False, methods=["post"], url_path="install")
+    def install(self, request):
+        """
+        Install a plugin (placeholder).
+
+        POST /api/v1/developer/plugins/install/
+        """
+        plugin_id = request.data.get("plugin_id")
+        return Response({
+            "status": "installed",
+            "plugin_id": plugin_id,
+            "message": "Plugin install placeholder",
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="marketplace")
+    def marketplace(self, request):
+        """
+        List plugins available in marketplace.
+
+        GET /api/v1/developer/plugins/marketplace/
+        """
+        queryset = self.get_queryset()
+        serializer = PluginSerializer(queryset, many=True)
+        return Response({"results": serializer.data}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="marketplace/usage")
+    def marketplace_usage(self, request):
+        """
+        Get plugin marketplace usage statistics.
+
+        GET /api/v1/developer/plugins/marketplace/usage/
+        """
+        from django.db.models import Sum
+
+        queryset = self.get_queryset()
+        total = queryset.count()
+        downloads = queryset.aggregate(total=Sum("download_count")) or {"total": 0}
+        return Response({
+            "plugins_count": total,
+            "total_downloads": downloads.get("total", 0) or 0,
+            "usage": [],
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="execute")
+    def execute(self, request, id=None):
+        """
+        Execute a plugin (placeholder).
+
+        POST /api/v1/developer/plugins/{id}/execute/
+        """
+        plugin = self.get_object()
+        return Response({
+            "plugin_id": str(plugin.id),
+            "status": "executed",
+            "result": {},
+        }, status=status.HTTP_200_OK)
+
 
 class SDKDocumentationViewSet(viewsets.ReadOnlyModelViewSet):
     """
@@ -177,3 +234,72 @@ class SDKDocumentationViewSet(viewsets.ReadOnlyModelViewSet):
             response_data["sdks"].append(sdk_data)
 
         return Response(response_data, status=status.HTTP_200_OK)
+
+
+class DocumentationViewSet(viewsets.ViewSet):
+    """
+    Developer documentation (alias for SDK docs).
+
+    GET /api/v1/developer/documentation/
+    """
+
+    permission_classes = [AllowAny]
+
+    def list(self, request):
+        """Get developer documentation (SDK docs summary)."""
+        docs = SDKDocumentation.objects.filter(is_active=True).order_by("language", "-version")
+        data = {
+            "documentation": [
+                {
+                    "language": str(d.language),
+                    "version": d.version,
+                    "sdk_name": f"{d.language.title()} SDK",
+                }
+                for d in docs[:20]
+            ],
+        }
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class PortalViewSet(viewsets.ViewSet):
+    """
+    Developer portal info.
+
+    GET /api/v1/developer/portal/
+    """
+
+    permission_classes = [AllowAny]
+
+    def list(self, request):
+        """Get developer portal info."""
+        return Response({
+            "name": "Developer Portal",
+            "plugins_count": Plugin.objects.filter(status=PluginStatus.AVAILABLE).count(),
+            "docs_available": True,
+        }, status=status.HTTP_200_OK)
+
+
+class APIKeysViewSet(viewsets.ViewSet):
+    """API key management - POST /api/v1/developer/api-keys/"""
+
+    permission_classes = [AllowAny]
+
+    def create(self, request):
+        """Generate API key (placeholder)."""
+        return Response({
+            "key_id": str(__import__("uuid").uuid4()),
+            "message": "API key generation placeholder",
+        }, status=status.HTTP_201_CREATED)
+
+
+class APIUsageViewSet(viewsets.ViewSet):
+    """API usage - GET /api/v1/developer/api-usage/"""
+
+    permission_classes = [AllowAny]
+
+    def list(self, request):
+        """Get API usage stats (placeholder)."""
+        return Response({
+            "usage": [],
+            "limits": {},
+        }, status=status.HTTP_200_OK)

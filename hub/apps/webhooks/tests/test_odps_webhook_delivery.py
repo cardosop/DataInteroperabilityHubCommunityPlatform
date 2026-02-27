@@ -15,6 +15,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from hub.apps.webhooks.models import (
     DeliveryStatus,
@@ -24,6 +25,7 @@ from hub.apps.webhooks.models import (
     WebhookStatus,
 )
 from hub.apps.webhooks.odps_webhook_errors import ODPSWebhookValidationError
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.webhooks.service import WebhookDeliveryService
 from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
 from tests.utils.polling import wait_until
@@ -37,6 +39,7 @@ class ODPSWebhookDeliveryTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        reset_circuit_breaker_by_name("webhook-delivery")
         # Create tenant
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
@@ -44,6 +47,7 @@ class ODPSWebhookDeliveryTest(TestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
@@ -232,8 +236,9 @@ class ODPSWebhookDeliveryTest(TestCase):
             deliveries2 = WebhookDelivery.objects.filter(webhook=webhook2)
             self.assertEqual(deliveries2.count(), 1)
 
+            # Use received_count (non-consuming) for wait; get_received_requests consumes the queue
             def two_requests_received():
-                return len(server.get_received_requests(timeout=0.3)) >= 2
+                return server.received_count() >= 2
 
             wait_until(
                 two_requests_received, timeout=5.0, message="Server did not receive 2 requests"

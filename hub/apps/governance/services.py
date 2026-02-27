@@ -115,14 +115,16 @@ class GovernanceService(BaseService, AccessEventPublisher):
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import User
 
-        # Resolve optional resource references (same tenant enforced by workflow/rules)
+        # Resolve optional resource references.
+        # Assets can be from any tenant (cross-tenant access requests, e.g. consumer
+        # requesting provider's marketplace asset). Datasets/files stay tenant-scoped.
         asset = None
         if asset_id:
             try:
-                asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
+                asset = Asset.objects.get(id=asset_id)
             except Asset.DoesNotExist:
                 raise ValidationError(
-                    f"Asset {asset_id} not found or not in tenant",
+                    f"Asset {asset_id} not found",
                     code="BUSINESS_RULES_VALIDATION",
                     details={"asset_id": asset_id},
                 )
@@ -389,7 +391,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         from hub.apps.users.models import User
 
         try:
-            user = User.objects.get(id=user_id)
+            user = User.objects.prefetch_related("user_roles__role").get(id=user_id)
         except User.DoesNotExist:
             raise PermissionError(f"User {user_id} not found")
 

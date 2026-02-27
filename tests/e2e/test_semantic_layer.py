@@ -22,7 +22,7 @@ from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract, OriginalFormat
 from hub.apps.datasets.models import Dataset
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
@@ -65,6 +65,12 @@ class SemanticLayerE2ETest(E2ETestBase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
+        # Reset semantic circuit breaker so tests get fresh attempt (may have been opened by prior tests)
+        try:
+            from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+            reset_circuit_breaker_by_name("semantic-service")
+        except Exception:
+            pass
     
     def test_uri_resolution_for_asset(self):
         """Test URI resolution for asset"""
@@ -96,21 +102,20 @@ class SemanticLayerE2ETest(E2ETestBase):
         self.assertIn(
             activate_response.status_code,
             [status.HTTP_200_OK, status.HTTP_201_CREATED],
-            f"Asset activation failed with status {activate_response.status_code}: {activate_response.data}"
+            f"Asset activation failed with status {activate_response.status_code}: {get_response_data(activate_response)}"
         )
         
-        # Wait for semantic mapping to complete with optimized wait time
-        # Reduced max_wait for faster test execution while still allowing proper mapping
+        # Wait for semantic mapping to complete (semantic service must index before URI resolution)
         semantic_resource = self.wait_for_semantic_mapping(
             ResourceType.ASSET,
             asset_id,
-            max_wait=15,  # Reduced from 60 for faster tests, but still sufficient
-            verify_in_fuseki=False  # Skip Fuseki verification for speed (mapping creation is sufficient)
+            max_wait=30,  # Allow time for semantic service to index (async propagation)
+            verify_in_fuseki=False  # Skip Fuseki verification for speed
         )
         
-        # Resolve asset URI with optimized retry logic (faster for test execution)
-        max_retries = 5  # Reduced from 10 for faster tests
-        retry_delay = 1  # Reduced from 2 for faster tests
+        # Resolve asset URI with retry (semantic service may need time to index)
+        max_retries = 10  # Allow more retries for async indexing
+        retry_delay = 2  # Longer delay between retries for propagation
         response = None
         
         for attempt in range(max_retries):
@@ -127,8 +132,9 @@ class SemanticLayerE2ETest(E2ETestBase):
             # On last attempt, fail with clear error (don't skip - fix root cause)
             if attempt == max_retries - 1:
                 error_detail = f"Status: {response.status_code}"
-                if hasattr(response, 'data'):
-                    error_detail += f", Response: {response.data}"
+                resp_data = get_response_data(response)
+                if resp_data is not None:
+                    error_detail += f", Response: {resp_data}"
                 
                 # Check if semantic resource exists
                 if semantic_resource:
@@ -140,13 +146,14 @@ class SemanticLayerE2ETest(E2ETestBase):
         self.assertEqual(
             response.status_code,
             status.HTTP_200_OK,
-            f"Expected 200 OK, got {response.status_code}. Response: {response.data if hasattr(response, 'data') else 'No data'}"
+            f"Expected 200 OK, got {response.status_code}. Response: {get_response_data(response) or 'No data'}"
         )
-        self.assertIn('@context', response.data, "Response missing @context")
-        self.assertIn('@id', response.data, "Response missing @id")
-        self.assertIn('@type', response.data, "Response missing @type")
-        self.assertIn('uri', response.data, "Response missing uri")
-        self.assertIn('hub:DataAsset', response.data.get('@type', ''), f"Wrong @type: {response.data.get('@type')}")
+        data = get_response_data(response) or {}
+        self.assertIn('@context', data, "Response missing @context")
+        self.assertIn('@id', data, "Response missing @id")
+        self.assertIn('@type', data, "Response missing @type")
+        self.assertIn('uri', data, "Response missing uri")
+        self.assertIn('hub:DataAsset', data.get('@type', ''), f"Wrong @type: {data.get('@type')}")
     
     def test_uri_resolution_for_contract(self):
         """Test URI resolution for contract"""
@@ -209,11 +216,12 @@ class SemanticLayerE2ETest(E2ETestBase):
         self.assertEqual(
             response.status_code,
             status.HTTP_200_OK,
-            f"Contract URI resolution failed with status {response.status_code}: {response.data if hasattr(response, 'data') else 'No data'}"
+            f"Contract URI resolution failed with status {response.status_code}: {get_response_data(response) or 'No data'}"
         )
-        self.assertIn('@context', response.data, "Response missing @context")
-        self.assertIn('@id', response.data, "Response missing @id")
-        self.assertIn('hub:DataContract', response.data.get('@type', ''), f"Wrong @type: {response.data.get('@type')}")
+        data = get_response_data(response) or {}
+        self.assertIn('@context', data, "Response missing @context")
+        self.assertIn('@id', data, "Response missing @id")
+        self.assertIn('hub:DataContract', data.get('@type', ''), f"Wrong @type: {data.get('@type')}")
     
     def test_uri_resolution_for_dataset(self):
         """Test URI resolution for dataset"""
@@ -244,7 +252,7 @@ class SemanticLayerE2ETest(E2ETestBase):
         self.assertIn(
             activate_response.status_code,
             [status.HTTP_200_OK, status.HTTP_201_CREATED],
-            f"Asset activation failed with status {activate_response.status_code}: {activate_response.data}"
+            f"Asset activation failed with status {activate_response.status_code}: {get_response_data(activate_response)}"
         )
         
         # Wait for semantic mapping to complete (optimized wait time)
@@ -283,11 +291,12 @@ class SemanticLayerE2ETest(E2ETestBase):
         self.assertEqual(
             response.status_code,
             status.HTTP_200_OK,
-            f"Dataset URI resolution failed with status {response.status_code}: {response.data if hasattr(response, 'data') else 'No data'}"
+            f"Dataset URI resolution failed with status {response.status_code}: {get_response_data(response) or 'No data'}"
         )
-        self.assertIn('@context', response.data, "Response missing @context")
-        self.assertIn('@id', response.data, "Response missing @id")
-        self.assertIn('hub:DatasetVersion', response.data.get('@type', ''), f"Wrong @type: {response.data.get('@type')}")
+        data = get_response_data(response) or {}
+        self.assertIn('@context', data, "Response missing @context")
+        self.assertIn('@id', data, "Response missing @id")
+        self.assertIn('hub:DatasetVersion', data.get('@type', ''), f"Wrong @type: {data.get('@type')}")
     
     def test_uri_resolution_for_field(self):
         """Test URI resolution for field
@@ -380,15 +389,16 @@ class SemanticLayerE2ETest(E2ETestBase):
         self.assertEqual(
             response.status_code,
             status.HTTP_200_OK,
-            f"Field URI resolution failed with status {response.status_code}: {response.data if hasattr(response, 'data') else 'No data'}. "
+            f"Field URI resolution failed with status {response.status_code}: {get_response_data(response) or 'No data'}. "
             f"Contract has fields: {contract.hub_contract_json.get('schema', {}).get('fields', [])}"
         )
-        self.assertIn('@context', response.data, "Response missing @context")
-        self.assertIn('@id', response.data, "Response missing @id")
-        self.assertIn('hub:Field', response.data.get('@type', ''), f"Wrong @type: {response.data.get('@type')}")
-        self.assertIn('@context', response.data)
-        self.assertIn('@id', response.data)
-        self.assertIn('hub:Field', response.data.get('@type', ''))
+        data = get_response_data(response) or {}
+        self.assertIn('@context', data, "Response missing @context")
+        self.assertIn('@id', data, "Response missing @id")
+        self.assertIn('hub:Field', data.get('@type', ''), f"Wrong @type: {data.get('@type')}")
+        self.assertIn('@context', data)
+        self.assertIn('@id', data)
+        self.assertIn('hub:Field', data.get('@type', ''))
     
     def test_get_ontology(self):
         """Test retrieving ontology"""
@@ -427,8 +437,9 @@ class SemanticLayerE2ETest(E2ETestBase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response['Content-Type'], 'application/ld+json')
-        self.assertIn('@context', response.data)
-        context = response.data.get('@context', {})
+        data = get_response_data(response) or {}
+        self.assertIn('@context', data)
+        context = data.get('@context', {})
         # Check that context contains hub-related entries (values contain 'hub:')
         context_str = str(context)
         self.assertIn('hub:', context_str)
@@ -453,7 +464,7 @@ class SemanticLayerE2ETest(E2ETestBase):
         self.assertIn(
             activate_response.status_code,
             [status.HTTP_200_OK, status.HTTP_201_CREATED],
-            f"Asset activation failed: {activate_response.data}"
+            f"Asset activation failed: {get_response_data(activate_response)}"
         )
         
         # Wait for semantic mapping to complete
@@ -478,9 +489,10 @@ class SemanticLayerE2ETest(E2ETestBase):
         self.assertEqual(
             response.status_code,
             status.HTTP_200_OK,
-            f"SPARQL query failed with status {response.status_code}: {response.data if hasattr(response, 'data') else 'No data'}"
+            f"SPARQL query failed with status {response.status_code}: {get_response_data(response) or 'No data'}"
         )
-        self.assertIn('results', response.data, "SPARQL response missing 'results' field")
+        data = get_response_data(response) or {}
+        self.assertIn('results', data, "SPARQL response missing 'results' field")
     
     def test_semantic_resource_creation(self):
         """Test semantic resource creation"""
@@ -502,8 +514,20 @@ class SemanticLayerE2ETest(E2ETestBase):
         # Create asset in different tenant
         from hub.apps.tenants.models import Tenant, KYCStatus
         from hub.apps.users.models import User
+
         other_tenant = Tenant.objects.create(name='Other Tenant', slug='other-tenant', kyc_status=KYCStatus.VERIFIED)
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        from hub.apps.users.models import Role, UserRole
+
+        ensure_tenant_has_active_subscription(other_tenant)
         other_user = User.objects.create_user(email='other@example.com', password='testpass123', tenant=other_tenant)
+        # DATA_PROVIDER role required for asset creation
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=other_tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"}
+        )
+        UserRole.objects.create(user=other_user, role=provider_role)
         # Switch to other user to create asset in their tenant
         self.client.force_authenticate(user=other_user)
         other_asset_id = self.create_asset(key='other-asset', name='Other Asset')
@@ -544,12 +568,12 @@ class SemanticLayerE2ETest(E2ETestBase):
         self.assertIn(
             response.status_code,
             [status.HTTP_200_OK, status.HTTP_201_CREATED],
-            f"Asset activation failed with status {response.status_code}: {response.data}"
+            f"Asset activation failed with status {response.status_code}: {get_response_data(response)}"
         )
         
         # Handle other error statuses
         if response.status_code not in [status.HTTP_200_OK, status.HTTP_201_CREATED]:
-            pytest.skip(f"Asset activation returned {response.status_code}: {response.data if hasattr(response, 'data') else 'Unknown error'}")
+            pytest.skip(f"Asset activation returned {response.status_code}: {get_response_data(response) or 'Unknown error'}")
         
         if response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]:
             # Verify semantic resource created

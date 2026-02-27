@@ -1976,7 +1976,14 @@ class FilesBusinessRules(BusinessRules):
                     overall_status = scan_result.get('overall_status', 'UNKNOWN')
                     allowed_to_store = scan_result.get('allowed_to_store', None)
 
-                    if overall_status == 'FAIL' or allowed_to_store is False:
+                    # UNKNOWN = fallback when service unavailable; treat as warning, not error
+                    if overall_status == 'UNKNOWN':
+                        warnings.append(
+                            f"Malware scan could not be completed (service unavailable). "
+                            f"Risk level: {scan_result.get('risk_level', 'UNKNOWN')}"
+                        )
+                        details['content_valid'] = True
+                    elif overall_status == 'FAIL' or allowed_to_store is False:
                         errors.append(
                             f"File content validation failed. "
                             f"Overall status: {overall_status}, "

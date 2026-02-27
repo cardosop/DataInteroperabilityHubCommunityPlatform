@@ -134,8 +134,8 @@ class JobRetryConfigurationTest(TestCase):
             JobType.ODPS_EXPORT,
             JobType.ODPS_SEMANTIC_MAPPING,
             JobType.ODPS_LINKING,
-            JobType.TRANSFORMATION_PIPELINE_EXECUTION,
             JobType.VIRTUAL_QUERY_EXECUTION,
+            JobType.MARKETPLACE_SYNC,
         ]
 
         for job_type in all_job_types:

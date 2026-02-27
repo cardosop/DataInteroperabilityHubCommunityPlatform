@@ -271,11 +271,11 @@ class MarketplaceFrameworkTest(TransactionTestCase):
         )
 
         mapping = self.service.create_mapping(
+            connection_id=str(connection.id),
+            hub_asset_id=str(asset.id),
+            external_listing_id="marketplace-123",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            connection_id=str(connection.id),
-            asset_id=str(asset.id),
-            marketplace_listing_id="marketplace-123",
         )
 
         retrieved = self.service.get_mapping(

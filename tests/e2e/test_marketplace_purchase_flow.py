@@ -19,6 +19,7 @@ from hub.apps.marketplace.models import (
 )
 from hub.apps.marketplace.access_utils import check_entitlement
 
+from .conftest import get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 User = get_user_model()
@@ -29,13 +30,16 @@ class MarketplacePurchaseE2ETest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        # Provider tenant (seller)
+        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+
+        # Provider tenant (seller) - needs subscription for listing creation
         self.provider_tenant = Tenant.objects.create(
             name="Provider Tenant",
             slug="provider-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+        ensure_e2e_tenant_ready(self.provider_tenant)
+
         self.provider_user = User.objects.create_user(
             email="provider@example.com",
             password="testpass123",
@@ -45,13 +49,14 @@ class MarketplacePurchaseE2ETest(TestCase):
         self.provider_client = APIClient()
         self.provider_client.force_authenticate(user=self.provider_user)
         
-        # Consumer tenant (buyer)
+        # Consumer tenant (buyer) - needs subscription for order creation
         self.consumer_tenant = Tenant.objects.create(
             name="Consumer Tenant",
             slug="consumer-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+        ensure_e2e_tenant_ready(self.consumer_tenant)
+
         self.consumer_user = User.objects.create_user(
             email="consumer@example.com",
             password="testpass123",
@@ -85,7 +90,7 @@ class MarketplacePurchaseE2ETest(TestCase):
             format='json'
         )
         self.assertEqual(listing_response.status_code, status.HTTP_201_CREATED)
-        listing_id = listing_response.data['id']
+        listing_id = (get_response_data(listing_response) or {}).get('id')
         
         # Step 2: Provider publishes listing
         publish_response = self.provider_client.patch(
@@ -101,7 +106,8 @@ class MarketplacePurchaseE2ETest(TestCase):
             {'q': 'dataset'}
         )
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
-        self.assertGreater(len(search_response.data['results']), 0)
+        search_data = get_response_data(search_response) or {}
+        self.assertGreater(len(search_data.get('results', [])), 0)
         
         # Step 4: Consumer views listing details
         listing_detail_response = self.consumer_client.get(
@@ -118,8 +124,8 @@ class MarketplacePurchaseE2ETest(TestCase):
             format='json'
         )
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
-        # For auto-approved orders, response may have 'order' key
-        order_data = order_response.data.get('order', order_response.data)
+        order_resp_data = get_response_data(order_response) or {}
+        order_data = order_resp_data.get('order', order_resp_data)
         order_id = order_data['id']
         
         # Step 6: Order is auto-approved (FREE listing)

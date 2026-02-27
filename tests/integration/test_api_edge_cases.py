@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
 from hub.apps.users.models import UserStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from tests.factories import TenantFactory
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -43,6 +44,7 @@ class APIEdgeCaseTest(TransactionTestCase):
             name=f"Test Tenant {unique_id}",
             slug=f"test-tenant-{unique_id}",
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"test-{unique_id}@example.com",
             password="testpass123",

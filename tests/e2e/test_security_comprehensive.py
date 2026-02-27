@@ -24,7 +24,7 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 
@@ -120,7 +120,8 @@ class InputValidationE2ETest(E2ETestBase):
 
             # If created, verify it was sanitized (not executed as SQL)
             if response.status_code == status.HTTP_201_CREATED:
-                created_id = response.data.get("id")
+                data = get_response_data(response) or {}
+                created_id = data.get("id")
                 if created_id:
                     # Verify asset exists and key is the literal string (not SQL)
                     asset = Asset.objects.filter(id=created_id).first()
@@ -153,7 +154,7 @@ class InputValidationE2ETest(E2ETestBase):
                 self.assertEqual(response.get("Content-Type"), "application/json")
 
                 # Check that payload is properly encoded in JSON
-                data = response.data
+                data = get_response_data(response) or {}
                 if "name" in data:
                     name = data["name"]
                     # Name should be the literal string (JSON-encoded), not executed
@@ -177,7 +178,7 @@ class InputValidationE2ETest(E2ETestBase):
             self.assertEqual(response.get("Content-Type"), "application/json")
 
             # Parse JSON
-            data = response.data
+            data = get_response_data(response) or {}
             # Data should be a dict (parsed JSON), not raw HTML
             self.assertIsInstance(data, dict)
 
@@ -319,8 +320,9 @@ class DataAccessControlsE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Should not see current tenant's assets
-        if "results" in response.data:
-            results = response.data["results"]
+        data = get_response_data(response) or {}
+        if "results" in data:
+            results = data["results"]
             asset_ids = [r.get("id") for r in results if isinstance(r, dict)]
             # Should not contain any assets from other tenant
             for asset_id in asset_ids:
@@ -367,7 +369,7 @@ class DataAccessControlsE2ETest(E2ETestBase):
         response = self.client.get(f"/api/v1/assets/{asset_id}/")
 
         if response.status_code == status.HTTP_200_OK:
-            data = response.data
+            data = get_response_data(response) or {}
             # Should have access to basic fields
             self.assertIn("id", data)
             self.assertIn("key", data)
@@ -385,7 +387,7 @@ class DataAccessControlsE2ETest(E2ETestBase):
         response = self.client.get(f"/api/v1/assets/{asset_id}/")
 
         if response.status_code == status.HTTP_200_OK:
-            data = response.data
+            data = get_response_data(response) or {}
             # Should not expose internal IDs or sensitive fields
             # Verify response doesn't contain unexpected sensitive data
             # Convert data to string for checking (handle UUIDs and other non-serializable types)
@@ -420,9 +422,10 @@ class DataAccessControlsE2ETest(E2ETestBase):
         fake_id = uuid.uuid4()
         response = self.client.get(f"/api/v1/assets/{fake_id}/")
 
-        if "error" in response.data:
-            error = response.data["error"]
-            message = error.get("message", "")
+        data = get_response_data(response) or {}
+        if "error" in data:
+            error = data["error"]
+            message = error.get("message", "") if isinstance(error, dict) else str(error)
 
             # Error message should not contain PII
             # Should not contain email patterns

@@ -53,34 +53,36 @@ class DatasetVersioningEventPublishingE2ETest(DatasetsAPITestBase):
 
         response = self.client.post("/api/v1/datasets/", dataset_data, format="json")
 
-        # May return 201 or 400 depending on S3/file availability
+        # May return 201 or 400/500 depending on S3/file availability (403 = subscription gate, fixed in base)
         if response.status_code == status.HTTP_201_CREATED:
             dataset_id = response.data["id"]
 
             # Verify version.created event was published
             event_count_after = Event.objects.filter(event_type="version.created").count()
             self.assertGreaterEqual(event_count_after, event_count_before)
+
+            created_event = (
+                Event.objects.filter(event_type="version.created")
+                .order_by("-timestamp")
+                .first()
+            )
+            self.assertIsNotNone(created_event)
+            self.assertEqual(created_event.data["version_id"], dataset_id)
+            self.assertEqual(created_event.data["resource_type"], "DATASET")
+            self.assertEqual(created_event.data["resource_id"], dataset_id)
+            self.assertEqual(str(created_event.tenant_id), str(self.tenant.id))
+            self.assertEqual(str(created_event.user_id), str(self.user.id))
+            self.assertEqual(created_event.source_service, "versioning_service")
+            # Tags are stored in metadata
+            if created_event.metadata and "tags" in created_event.metadata:
+                self.assertIn("versioning", created_event.metadata["tags"])
+                self.assertIn("version", created_event.metadata["tags"])
         else:
-            # If S3 unavailable, test that error is handled gracefully
+            # If S3 unavailable, test that error is handled gracefully (no event assertions)
             self.assertIn(
                 response.status_code,
                 [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR],
             )
-
-        created_event = (
-            Event.objects.filter(event_type="version.created").order_by("-timestamp").first()
-        )
-        self.assertIsNotNone(created_event)
-        self.assertEqual(created_event.data["version_id"], dataset_id)
-        self.assertEqual(created_event.data["resource_type"], "DATASET")
-        self.assertEqual(created_event.data["resource_id"], dataset_id)
-        self.assertEqual(str(created_event.tenant_id), str(self.tenant.id))
-        self.assertEqual(str(created_event.user_id), str(self.user.id))
-        self.assertEqual(created_event.source_service, "versioning_service")
-        # Tags are stored in metadata
-        if created_event.metadata and "tags" in created_event.metadata:
-            self.assertIn("versioning", created_event.metadata["tags"])
-            self.assertIn("version", created_event.metadata["tags"])
 
     def test_e2e_create_version_via_api_publishes_version_created_event(self):
         """Test that creating a version via API publishes version.created event."""

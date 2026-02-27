@@ -3048,9 +3048,11 @@ def generate_odcs_from_hubcontract(
                 tenant_id=effective_tenant_id
             ).observe(duration)
             odcs_generation_success_rate.labels(tenant_id=effective_tenant_id).set(1.0)
-        except Exception:
-            # Metrics failure should not affect generation
-            pass
+        except Exception as metrics_err:
+            logger.debug(
+                "odcs_generation_metrics_failed",
+                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+            )
 
         # Log successful completion
         logger.info(
@@ -3086,9 +3088,11 @@ def generate_odcs_from_hubcontract(
                 tenant_id=effective_tenant_id
             ).observe(duration)
             odcs_generation_success_rate.labels(tenant_id=effective_tenant_id).set(0.0)
-        except Exception:
-            # Metrics failure should not affect error handling
-            pass
+        except Exception as metrics_err:
+            logger.debug(
+                "odcs_generation_metrics_failed",
+                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+            )
 
         # Log failure
         logger.error(
@@ -3128,9 +3132,11 @@ def generate_odcs_from_hubcontract(
                 tenant_id=effective_tenant_id
             ).observe(duration)
             odcs_generation_success_rate.labels(tenant_id=effective_tenant_id).set(0.0)
-        except Exception:
-            # Metrics failure should not affect error handling
-            pass
+        except Exception as metrics_err:
+            logger.debug(
+                "odcs_generation_metrics_failed",
+                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+            )
 
         # Wrap unexpected errors
         logger.error(

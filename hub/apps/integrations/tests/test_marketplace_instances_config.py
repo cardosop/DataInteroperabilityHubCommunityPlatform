@@ -346,17 +346,23 @@ class TestCKANInstanceConfigIntegration(TestCase):
         """Test that environment variable resolution works"""
         config = get_marketplace_instance_config("dados.gov.br")
 
-        # Test with env var set
+        # Test with env var set - patch DADOS_GOV_BR_API_KEY (primary) so our value wins
+        # regardless of .env.test or docker-compose (config checks primary first)
         test_key = "test-api-key-from-env-456"
-        with patch.dict(os.environ, {"CKAN_DADOS_GOV_BR_API_KEY": test_key}):
+        with patch.dict(os.environ, {"DADOS_GOV_BR_API_KEY": test_key}):
             api_key = config.get_api_key()
             self.assertEqual(api_key, test_key)
 
-        # Test without env var
-        with patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("CKAN_DADOS_GOV_BR_API_KEY", None)
+        # Test without env var - remove both vars so get_api_key returns None
+        orig = {}
+        for k in ("DADOS_GOV_BR_API_KEY", "CKAN_DADOS_GOV_BR_API_KEY"):
+            if k in os.environ:
+                orig[k] = os.environ.pop(k)
+        try:
             api_key = config.get_api_key()
             self.assertIsNone(api_key)
+        finally:
+            os.environ.update(orig)
 
     def test_get_marketplace_instance_config_with_none(self):
         """Test get_marketplace_instance_config() error handling with None"""

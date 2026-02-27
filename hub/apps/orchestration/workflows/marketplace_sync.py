@@ -25,7 +25,8 @@ from hub.apps.integrations.base import (
     MarketplaceType,
     SyncDirection,
     SyncStatus,
-    MarketplaceAssetMapping
+    MarketplaceAssetMapping,
+    MarketplaceListing,
 )
 from hub.apps.integrations.business_rules import MarketplaceIntegrationBusinessRules
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
@@ -689,6 +690,69 @@ class MarketplaceSyncWorkflow:
         }
 
     @staticmethod
+    def _listing_to_state_dict(listing: MarketplaceListing) -> Dict[str, Any]:
+        """Serialize MarketplaceListing to a JSON-serializable dict for workflow state."""
+        return {
+            "marketplace_id": listing.marketplace_id,
+            "marketplace_type": (
+                listing.marketplace_type.value
+                if hasattr(listing.marketplace_type, "value")
+                else str(listing.marketplace_type)
+            ),
+            "title": listing.title,
+            "description": listing.description,
+            "product_id": listing.product_id,
+            "category": listing.category,
+            "tags": list(listing.tags) if listing.tags else [],
+            "pricing_plans": list(listing.pricing_plans) if listing.pricing_plans else [],
+            "access_methods": dict(listing.access_methods) if listing.access_methods else {},
+            "payment_gateways": dict(listing.payment_gateways) if listing.payment_gateways else {},
+            "metadata": dict(listing.metadata) if listing.metadata else {},
+            "url": listing.url,
+            "created_at": (
+                listing.created_at.isoformat() if listing.created_at else None
+            ),
+            "updated_at": (
+                listing.updated_at.isoformat() if listing.updated_at else None
+            ),
+        }
+
+    @staticmethod
+    def _listing_from_state_dict(d: Dict[str, Any]) -> MarketplaceListing:
+        """Deserialize MarketplaceListing from workflow state dict."""
+        from datetime import datetime
+        mt = d.get("marketplace_type")
+        if isinstance(mt, MarketplaceType):
+            marketplace_type = mt
+        elif isinstance(mt, str):
+            marketplace_type = MarketplaceType(mt)
+        else:
+            marketplace_type = MarketplaceType.CUSTOM
+        created_at = d.get("created_at")
+        updated_at = d.get("updated_at")
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        if isinstance(updated_at, str):
+            updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        return MarketplaceListing(
+            marketplace_id=d["marketplace_id"],
+            marketplace_type=marketplace_type,
+            title=d.get("title", ""),
+            description=d.get("description"),
+            product_id=d.get("product_id"),
+            category=d.get("category"),
+            tags=list(d["tags"]) if d.get("tags") else [],
+            pricing_plans=list(d["pricing_plans"]) if d.get("pricing_plans") else [],
+            access_methods=dict(d["access_methods"]) if d.get("access_methods") else {},
+            payment_gateways=dict(d["payment_gateways"]) if d.get("payment_gateways") else {},
+            metadata=dict(d["metadata"]) if d.get("metadata") else {},
+            resources=[],
+            created_at=created_at,
+            updated_at=updated_at,
+            url=d.get("url"),
+        )
+
+    @staticmethod
     def _map_assets_to_marketplace_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
         """
         Map Hub assets to marketplace format.
@@ -794,11 +858,12 @@ class MarketplaceSyncWorkflow:
                 odcs_metadata=odcs_metadata
             )
 
+            # Serialize listing to dict so step output is JSON-serializable (engine validation)
             mapped_listings.append({
                 "asset_id": str(asset.id),
-                "listing": listing,
+                "listing": MarketplaceSyncWorkflow._listing_to_state_dict(listing),
                 "marketplace_id": listing.marketplace_id,
-                "marketplace_type": listing.marketplace_type.value
+                "marketplace_type": listing.marketplace_type.value,
             })
 
         logger.info(
@@ -856,7 +921,12 @@ class MarketplaceSyncWorkflow:
         # Publish each listing
         published_listings = []
         for mapped_item in mapped_listings:
-            listing = mapped_item["listing"]
+            raw_listing = mapped_item["listing"]
+            # Listing may be dict (from JSON-serialized state) or MarketplaceListing
+            if isinstance(raw_listing, dict):
+                listing = MarketplaceSyncWorkflow._listing_from_state_dict(raw_listing)
+            else:
+                listing = raw_listing
 
             # Publish via connector (create or update listing)
             # Check if listing already exists
@@ -864,8 +934,11 @@ class MarketplaceSyncWorkflow:
             if listing.marketplace_id:
                 try:
                     existing_listing = connector.get_listing(listing.marketplace_id)
-                except Exception:
-                    pass  # Listing doesn't exist yet
+                except Exception as e:
+                    logger.debug(
+                        "marketplace_sync_get_listing_failed",
+                        extra={"error_type": type(e).__name__, "error": str(e), "marketplace_id": listing.marketplace_id},
+                    )
 
             if existing_listing:
                 result = connector.update_listing(listing.marketplace_id, listing)
@@ -1462,7 +1535,12 @@ class MarketplaceSyncWorkflow:
         if published_listings:
             for published_item in published_listings:
                 asset_id = published_item["asset_id"]
-                marketplace_id = published_item["marketplace_id"]
+                marketplace_id = published_item.get("marketplace_id") or ""
+
+                # Skip mappings when connector did not produce a real external ID
+                # (e.g. IN_MEMORY_FAKE returns empty marketplace_id)
+                if not marketplace_id or not str(marketplace_id).strip():
+                    continue
 
                 mapping, created = MarketplaceMapping.objects.get_or_create(
                     tenant=tenant,

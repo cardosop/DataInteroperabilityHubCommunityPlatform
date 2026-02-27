@@ -8,8 +8,8 @@ import { useEffect, useRef } from 'react';
 /**
  * Hook to trap focus within a modal/dialog
  */
-export function useFocusTrap(isOpen: boolean): React.RefObject<HTMLDivElement> {
-  const containerRef = useRef<HTMLDivElement>(null);
+export function useFocusTrap(isOpen: boolean): React.RefObject<HTMLDivElement | null> {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {

@@ -475,7 +475,27 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
     Test backward compatibility with other CKAN instances.
 
     Ensures that other CKAN instances continue using standard CKANConnector.
+    Tests that call list_listings/get_listing/list_resources or constructor
+    use self.connector, self.instance_config, and self.jwt_token set in setUp.
     """
+
+    def setUp(self):
+        """Set up instance config, JWT token, and connector for dados.gov.br (used by later tests)."""
+        super().setUp()
+        self.instance_config = get_marketplace_instance_config("dados.gov.br")
+        self.jwt_token = (
+            os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY") or ""
+        )
+        self.connector = None
+        if self.instance_config and self.jwt_token:
+            try:
+                from hub.apps.integrations.factory import MarketplaceConnectorFactory
+
+                self.connector = MarketplaceConnectorFactory.create_ckan_connector_from_instance(
+                    "dados.gov.br", api_key=self.jwt_token
+                )
+            except Exception:
+                pass
 
     def test_demo_ckan_org_uses_ckan_connector(self):
         """Test that demo.ckan.org uses standard CKANConnector."""
@@ -535,6 +555,8 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
 
     def test_list_listings_with_zero_limit(self):
         """Test list_listings() edge case with zero limit"""
+        if self.connector is None:
+            pytest.skip("dados.gov.br connector not available (config or API key missing)")
         try:
             listings = self.connector.list_listings(limit=0)
             self.assertIsInstance(listings, list)
@@ -545,6 +567,8 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
 
     def test_list_listings_with_none_limit(self):
         """Test list_listings() error handling with None limit"""
+        if self.connector is None:
+            pytest.skip("dados.gov.br connector not available (config or API key missing)")
         try:
             listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]
             # Should handle None limit gracefully (may use default)
@@ -558,6 +582,8 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
 
     def test_get_listing_with_empty_id(self):
         """Test get_listing() error handling with empty ID"""
+        if self.connector is None:
+            pytest.skip("dados.gov.br connector not available (config or API key missing)")
         try:
             with self.assertRaises((ValueError, NotFoundError)):
                 self.connector.get_listing("")
@@ -567,6 +593,8 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
 
     def test_get_listing_with_none_id(self):
         """Test get_listing() error handling with None ID"""
+        if self.connector is None:
+            pytest.skip("dados.gov.br connector not available (config or API key missing)")
         try:
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
                 self.connector.get_listing(None)  # type: ignore[arg-type]
@@ -576,6 +604,8 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
 
     def test_list_resources_with_empty_package_id(self):
         """Test list_resources() error handling with empty package ID"""
+        if self.connector is None:
+            pytest.skip("dados.gov.br connector not available (config or API key missing)")
         try:
             with self.assertRaises((ValueError, NotFoundError)):
                 self.connector.list_resources("")
@@ -585,6 +615,8 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
 
     def test_list_resources_with_none_package_id(self):
         """Test list_resources() error handling with None package ID"""
+        if self.connector is None:
+            pytest.skip("dados.gov.br connector not available (config or API key missing)")
         try:
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
                 self.connector.list_resources(None)  # type: ignore[arg-type]
@@ -594,12 +626,15 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
 
     def test_connector_initialization_with_empty_base_url(self):
         """Test connector initialization error handling with empty base_url"""
+        # jwt_token is set in setUp (may be empty)
         with self.assertRaises((ValueError, TypeError)):
-            connector = DadosGovBrConnector(base_url="", jwt_token=self.jwt_token)
+            DadosGovBrConnector(base_url="", jwt_token=self.jwt_token)
 
     def test_connector_initialization_with_none_jwt_token(self):
         """Test connector initialization error handling with None jwt_token"""
+        if self.instance_config is None:
+            pytest.skip("dados.gov.br instance configuration not found")
         with self.assertRaises((ValueError, TypeError)):
-            connector = DadosGovBrConnector(
+            DadosGovBrConnector(
                 base_url=self.instance_config.base_url, jwt_token=None  # type: ignore[arg-type]
             )

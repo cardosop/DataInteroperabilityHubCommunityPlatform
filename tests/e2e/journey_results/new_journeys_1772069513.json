@@ -1,0 +1,137 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.5402789115905762
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-008-ec440845",
+      "journey_name": "Create Transformation Pipeline for Asset",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1772069511.8090246,
+      "end_time": 1772069513.3493035,
+      "duration": 1.5402789115905762,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069511.8090303,
+          "end_time": 1772069513.3262243,
+          "duration": 1.5171940326690674,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069513.326241,
+          "end_time": 1772069513.3311846,
+          "duration": 0.0049436092376708984,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Validate Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069513.331192,
+          "end_time": 1772069513.336378,
+          "duration": 0.0051860809326171875,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Preview Transformation Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069513.3363822,
+          "end_time": 1772069513.340957,
+          "duration": 0.004574775695800781,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Save Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069513.3409607,
+          "end_time": 1772069513.3409638,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Execute Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069513.3409653,
+          "end_time": 1772069513.3454413,
+          "duration": 0.004476070404052734,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Review Transformation Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069513.3454459,
+          "end_time": 1772069513.3492937,
+          "duration": 0.003847837448120117,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Sync Results with Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069513.3492975,
+          "end_time": 1772069513.3493016,
+          "duration": 4.0531158447265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "1468ef47-2ab6-440a-b7f9-aed1c3dbff6a",
+        "pipeline_id": "a9c5988f-0429-4c1f-948e-d286d488368e"
+      }
+    }
+  ],
+  "exported_at": "2026-02-26T01:31:53.349394"
+}

@@ -9,6 +9,7 @@ from rest_framework import status
 
 from hub.apps.users.models import User, UserStatus
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -37,6 +38,9 @@ class UserDeletionTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+
+        # Active subscription required so TenantSuspensionMiddleware allows DELETE
+        ensure_tenant_has_active_subscription(self.tenant)
     
     def test_hard_delete_user_no_resources(self):
         """Test hard delete when user has no resources"""
@@ -51,7 +55,7 @@ class UserDeletionTest(TestCase):
         )
         user_id = test_user.id
         
-        response = self.client.delete(f"/api/v1/users/users/{user_id}/")
+        response = self.client.delete(f"/api/v1/users/{user_id}/")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
         # Verify user was hard deleted
@@ -86,7 +90,7 @@ class UserDeletionTest(TestCase):
         """Test that a user cannot delete themselves"""
         self.client.force_authenticate(user=self.tenant_admin)
         
-        response = self.client.delete(f"/api/v1/users/users/{self.tenant_admin.id}/")
+        response = self.client.delete(f"/api/v1/users/{self.tenant_admin.id}/")
         # Should return 400 Bad Request with error message
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('error', response.data)
@@ -107,7 +111,7 @@ class UserDeletionTest(TestCase):
         )
         user_id = invited_user.id
         
-        response = self.client.delete(f"/api/v1/users/users/{user_id}/")
+        response = self.client.delete(f"/api/v1/users/{user_id}/")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
         # Verify user was hard deleted
@@ -125,7 +129,7 @@ class UserDeletionTest(TestCase):
         )
         user_id = disabled_user.id
         
-        response = self.client.delete(f"/api/v1/users/users/{user_id}/")
+        response = self.client.delete(f"/api/v1/users/{user_id}/")
         # Disabled user should be hard deletable if no resources
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         

@@ -107,9 +107,10 @@ class UserService(BaseService):
             for role in roles:
                 UserRole.objects.get_or_create(user=user, role=role)
 
-        # Create audit event
+        # Create audit event (USER_INVITED when inviting, USER_CREATED otherwise)
+        audit_action = "USER_INVITED" if status == UserStatus.INVITED else "USER_CREATED"
         log_user_operation(
-            action="USER_CREATED",
+            action=audit_action,
             user=user,
             actor_user=actor_user,
             details={"email": email, "status": status, "role_ids": role_ids},
@@ -177,24 +178,49 @@ class UserService(BaseService):
 
         return user
 
+    def _user_has_resources(self, user: User) -> bool:
+        """Check if user has associated resources (assets, datasets, etc.)."""
+        from hub.apps.assets.models import Asset
+        from hub.apps.contracts.models import Contract
+        from hub.apps.datasets.models import Dataset
+        from hub.apps.files.models import File
+
+        if Asset.objects.filter(created_by=user).exists():
+            return True
+        if Dataset.objects.filter(created_by=user).exists():
+            return True
+        if Contract.objects.filter(created_by=user).exists():
+            return True
+        if File.objects.filter(created_by=user).exists():
+            return True
+        return False
+
     @transaction.atomic
     def delete_user(
         self,
         user_id: str,
         tenant_id: str,
         actor_user_id: str,
-    ) -> None:
+    ) -> bool:
         """
         Delete a user with audit.
+
+        Performs soft delete (status=DISABLED) if user has resources,
+        hard delete otherwise.
 
         Args:
             user_id: User ID to delete
             tenant_id: Tenant ID
             actor_user_id: User ID performing the deletion
 
+        Returns:
+            True if soft delete was performed, False if hard delete.
+
         Raises:
             NotFoundError: If user not found
         """
+        from .models import UserStatus
+
         # Get user
         user = self.get_resource_or_raise(
             User,
@@ -208,13 +234,24 @@ class UserService(BaseService):
         except User.DoesNotExist:
             raise NotFoundError(f"Actor user {actor_user_id} not found")
 
-        # Create audit event before deletion
+        if self._user_has_resources(user):
+            # Soft delete: set status to DISABLED
+            user.status = UserStatus.DISABLED
+            user.save(update_fields=["status", "updated_at"])
+            log_user_operation(
+                action="USER_DISABLED",
+                user=user,
+                actor_user=actor_user,
+                details={"reason": "User has resources"},
+            )
+            return True
+
+        # Hard delete
         log_user_operation(
             action="USER_DELETED",
             user=user,
             actor_user=actor_user,
             details={"email": user.email},
         )
-
-        # Delete user
         user.delete()
+        return False

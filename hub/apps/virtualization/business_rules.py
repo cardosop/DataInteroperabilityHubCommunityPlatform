@@ -89,11 +89,11 @@ class VirtualizationBusinessRules(BusinessRules):
     # SPARQL required keywords (at least one must be present)
     SPARQL_REQUIRED_KEYWORDS = ['SELECT', 'CONSTRUCT', 'ASK', 'DESCRIBE', 'PREFIX']
 
-    # Supported source types
+    # Supported source types (odps_contract: ODPS product/contract as source; no external connector)
     SUPPORTED_SOURCE_TYPES = [
         'postgresql', 'mysql', 'sqlserver', 'mssql',
         'sparql', 'rest', 'graphql', 's3', 'minio',
-        'federated_asset', 'external_resource'
+        'federated_asset', 'external_resource', 'odps_contract'
     ]
 
     # Source type compatibility with query types

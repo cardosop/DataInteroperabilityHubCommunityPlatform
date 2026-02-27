@@ -12,6 +12,7 @@ This file is large (>2000 lines) and contains three major methods:
 
 import time
 
+import structlog
 from django.http import Http404, HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -36,6 +37,8 @@ from hub.apps.observability.otel_metrics import (
 from .models import Contract, OriginalSpecType
 from .normalization import parse_contract
 from .views_helpers import _categorize_export_size, _get_tenant_id_from_request
+
+logger = structlog.get_logger(__name__)
 
 
 class ContractExportMixin:
@@ -283,8 +286,11 @@ class ContractExportMixin:
                                 version=odcs_version or "unknown",
                                 tenant_id=tenant_id,
                             ).inc()
-                        except Exception:
-                            pass  # Don't fail on metrics recording
+                        except Exception as metrics_err:
+                            logger.debug(
+                                "odcs_export_metrics_failed",
+                                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                            )
                         return Response(
                             {"error": f"Invalid ODCS version: {str(e)}"},
                             status=status.HTTP_400_BAD_REQUEST,
@@ -358,8 +364,11 @@ class ContractExportMixin:
                                     version=odcs_version or "unknown",
                                     tenant_id=tenant_id,
                                 ).inc()
-                            except Exception:
-                                pass
+                            except Exception as metrics_err:
+                                logger.debug(
+                                    "odcs_export_metrics_failed",
+                                    extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                                )
                             return Response(
                                 {
                                     "error": "Contract has no original_raw or hub_contract_json. Cannot export as ODCS format."
@@ -389,8 +398,11 @@ class ContractExportMixin:
                                     version=odcs_version or "unknown",
                                     tenant_id=tenant_id,
                                 ).inc()
-                            except Exception:
-                                pass
+                            except Exception as metrics_err:
+                                logger.debug(
+                                    "odcs_export_metrics_failed",
+                                    extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                                )
                             return Response(
                                 {
                                     "error": f"Failed to generate ODCS document: {str(e)}",
@@ -407,8 +419,11 @@ class ContractExportMixin:
                                     version=odcs_version or "unknown",
                                     tenant_id=tenant_id,
                                 ).inc()
-                            except Exception:
-                                pass
+                            except Exception as metrics_err:
+                                logger.debug(
+                                    "odcs_export_metrics_failed",
+                                    extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                                )
                             logger.error(f"Failed to generate ODCS export: {str(e)}", exc_info=True)
                             return Response(
                                 {"error": f"Failed to generate ODCS export: {str(e)}"},
@@ -426,8 +441,11 @@ class ContractExportMixin:
                                 version=final_version or "unknown",
                                 tenant_id=tenant_id,
                             ).inc()
-                        except Exception:
-                            pass
+                        except Exception as metrics_err:
+                            logger.debug(
+                                "odcs_export_metrics_failed",
+                                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                            )
                         return Response(
                             {"error": "Failed to generate ODCS document: document is None"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -449,8 +467,11 @@ class ContractExportMixin:
                                 version=final_version or "unknown",
                                 tenant_id=tenant_id,
                             ).inc()
-                        except Exception:
-                            pass
+                        except Exception as metrics_err:
+                            logger.debug(
+                                "odcs_export_metrics_failed",
+                                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                            )
                         return Response(
                             {
                                 "error": f"Failed to format ODCS document: {str(e)}",
@@ -467,8 +488,11 @@ class ContractExportMixin:
                                 version=final_version or "unknown",
                                 tenant_id=tenant_id,
                             ).inc()
-                        except Exception:
-                            pass
+                        except Exception as metrics_err:
+                            logger.debug(
+                                "odcs_export_metrics_failed",
+                                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                            )
                         logger.error(f"Failed to format ODCS export: {str(e)}", exc_info=True)
                         return Response(
                             {"error": f"Failed to format ODCS export: {str(e)}"},
@@ -502,8 +526,11 @@ class ContractExportMixin:
                             version=final_version or "unknown",
                             tenant_id=tenant_id,
                         ).inc()
-                    except Exception:
-                        pass  # Don't fail on metrics recording
+                    except Exception as metrics_err:
+                        logger.debug(
+                            "odcs_export_metrics_failed",
+                            extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                        )
 
                     # Return response
                     if output_format == "yaml":
@@ -526,8 +553,11 @@ class ContractExportMixin:
                             version=odcs_version or "unknown",
                             tenant_id=tenant_id,
                         ).inc()
-                    except Exception:
-                        pass
+                    except Exception as metrics_err:
+                        logger.debug(
+                            "odcs_export_metrics_failed",
+                            extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                        )
                     logger.error(f"ODCS export endpoint error: {str(e)}", exc_info=True)
                     return Response(
                         {"error": f"ODCS export failed: {str(e)}"},
@@ -569,9 +599,11 @@ class ContractExportMixin:
                             original_odcs_contract = parse_contract(
                                 contract.original_raw, contract.original_format
                             )
-                        except Exception:
-                            # If parsing fails, continue without original ODCS
-                            pass
+                        except Exception as parse_err:
+                            logger.debug(
+                                "odcs_export_parse_original_failed",
+                                extra={"error_type": type(parse_err).__name__, "error": str(parse_err)},
+                            )
 
                     # Generate ODPS document
                     # ROOT CAUSE FIX: Ensure target_version is a string (not None)
@@ -626,8 +658,11 @@ class ContractExportMixin:
                             format=output_format if "output_format" in locals() else "unknown",
                             tenant_id=tenant_id,
                         ).inc()
-                    except Exception:
-                        pass  # Don't fail on metrics recording
+                    except Exception as metrics_err:
+                        logger.debug(
+                            "odcs_export_metrics_failed",
+                            extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                        )
 
                     return Response(
                         {"error": f"Failed to generate ODPS export: {str(e)}"},
@@ -1057,8 +1092,11 @@ class ContractExportMixin:
                             version=final_version or "unknown",
                             tenant_id=tenant_id,
                         ).inc()
-                    except Exception:
-                        pass  # Don't fail on metrics recording
+                    except Exception as metrics_err:
+                        logger.debug(
+                            "odcs_export_metrics_failed",
+                            extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                        )
 
                     # Return response with Content-Disposition header
                     response = HttpResponse(output, content_type=content_type)
@@ -1098,9 +1136,11 @@ class ContractExportMixin:
                         original_odcs_contract = parse_contract(
                             contract.original_raw, contract.original_format
                         )
-                    except Exception:
-                        # If parsing fails, continue without original ODCS
-                        pass
+                    except Exception as parse_err:
+                        logger.debug(
+                            "odcs_export_parse_original_failed",
+                            extra={"error_type": type(parse_err).__name__, "error": str(parse_err)},
+                        )
 
                 try:
                     # ROOT CAUSE FIX: Ensure target_version is a string (not None)

@@ -889,7 +889,7 @@ This section maps **frontend/API capability names** (e.g. feature flags or permi
 | Audit query, export | Audit | Auditor persona; audit use cases |
 | Notifications, Billing, Platform, Tenants, Users, Analytics, Events | Supporting capabilities | See [Supporting Capabilities](#supporting-capabilities); used across features |
 
-Deployments may restrict UI to authenticated users only; public capabilities (health, docs, optional landing) remain available to the Visitor persona. See [User Personas](USER_PERSONAS.md#access-control-summary) and [Use Cases – Authentication & Access](USE_CASES.md#authentication--access-use-cases).
+Deployments may restrict UI to authenticated users only; public capabilities (health, docs, optional landing) remain available to the Visitor persona. The landing page is frontend-only at `/` (auth-based switch: unauthenticated → landing, authenticated → dashboard). See [Landing Page](LANDING_PAGE.md), [User Personas](USER_PERSONAS.md#access-control-summary), and [Use Cases – Authentication & Access](USE_CASES.md#authentication--access-use-cases).
 
 ---
 

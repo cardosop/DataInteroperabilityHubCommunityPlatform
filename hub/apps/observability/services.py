@@ -7,7 +7,7 @@ Extracts observability logic from views.py and monitoring modules.
 from typing import Dict, Any, Optional
 import structlog
 
-from hub.apps.core.services.base import BaseService
+from hub.apps.core.services.base import BaseService, NotFoundError
 from hub.apps.core.events.service_publishers import ObservabilityEventPublisher
 from hub.apps.observability.freshness import FreshnessMonitor
 from hub.apps.observability.volume import VolumeMonitor
@@ -61,6 +61,12 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
         # Initialize event publisher
         ObservabilityEventPublisher.__init__(self, tenant_id=tenant_id, user_id=user_id)
 
+    def _validate_tenant_id(self, tenant_id: str) -> None:
+        """Ensure tenant exists; raise NotFoundError if not."""
+        from hub.apps.tenants.models import Tenant
+        if not Tenant.objects.filter(id=tenant_id).exists():
+            raise NotFoundError(f"Tenant with id {tenant_id} not found")
+
     def get_freshness_dashboard(
         self,
         tenant_id: str,
@@ -80,6 +86,7 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
         Returns:
             Freshness dashboard data dictionary
         """
+        self._validate_tenant_id(tenant_id)
         import time
         from opentelemetry import trace
 
@@ -99,8 +106,11 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                     # Convert 64-bit span_id to UUID format (pad to 32 hex chars)
                     span_id_hex = format(span_context.span_id, '016x')
                     span_id = _hex_to_uuid(span_id_hex, length=32)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(
+                    "observability_trace_context_failed",
+                    extra={"error_type": type(e).__name__, "error": str(e), "operation": "get_freshness_dashboard"},
+                )
 
         try:
             result = self.execute_with_metrics(
@@ -156,8 +166,11 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                         },
                         tenant_id=tenant_id
                     )
-                except Exception:
-                    pass
+                except Exception as pub_err:
+                    logger.warning(
+                        "observability_trace_event_publish_failed",
+                        extra={"error_type": type(pub_err).__name__, "error": str(pub_err), "operation": "get_freshness_dashboard"},
+                    )
             raise
 
     def get_volume_dashboard(
@@ -181,6 +194,7 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
         Returns:
             Volume dashboard data dictionary
         """
+        self._validate_tenant_id(tenant_id)
         import time
         from opentelemetry import trace
 
@@ -200,8 +214,11 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                     # Convert 64-bit span_id to UUID format (pad to 32 hex chars)
                     span_id_hex = format(span_context.span_id, '016x')
                     span_id = _hex_to_uuid(span_id_hex, length=32)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(
+                    "observability_trace_context_failed",
+                    extra={"error_type": type(e).__name__, "error": str(e), "operation": "get_volume_dashboard"},
+                )
 
         try:
             result = self.execute_with_metrics(
@@ -259,8 +276,11 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                         },
                         tenant_id=tenant_id
                     )
-                except Exception:
-                    pass
+                except Exception as pub_err:
+                    logger.warning(
+                        "observability_trace_event_publish_failed",
+                        extra={"error_type": type(pub_err).__name__, "error": str(pub_err), "operation": "get_volume_dashboard"},
+                    )
             raise
 
     def get_schema_drift_dashboard(
@@ -282,6 +302,7 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
         Returns:
             Schema drift dashboard data dictionary
         """
+        self._validate_tenant_id(tenant_id)
         import time
         from opentelemetry import trace
 
@@ -301,8 +322,11 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                     # Convert 64-bit span_id to UUID format (pad to 32 hex chars)
                     span_id_hex = format(span_context.span_id, '016x')
                     span_id = _hex_to_uuid(span_id_hex, length=32)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(
+                    "observability_trace_context_failed",
+                    extra={"error_type": type(e).__name__, "error": str(e), "operation": "get_schema_drift_dashboard"},
+                )
 
         try:
             result = self.execute_with_metrics(
@@ -358,8 +382,11 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                         },
                         tenant_id=tenant_id
                     )
-                except Exception:
-                    pass
+                except Exception as pub_err:
+                    logger.warning(
+                        "observability_trace_event_publish_failed",
+                        extra={"error_type": type(pub_err).__name__, "error": str(pub_err), "operation": "get_schema_drift_dashboard"},
+                    )
             raise
 
     def record_metric(

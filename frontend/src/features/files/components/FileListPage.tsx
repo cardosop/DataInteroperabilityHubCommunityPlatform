@@ -157,7 +157,7 @@ export function FileListPage() {
           </thead>
           <tbody>
             {results.map((file) => (
-              <tr key={file.id} className="file-list-row">
+              <tr key={file.id} className="file-list-row" data-file-name={file.name}>
                 <td>
                   <button
                     type="button"

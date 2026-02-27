@@ -145,9 +145,9 @@ class CustomActionsErrorHandlingE2ETest(E2ETestBase):
     
     def test_invite_user_invalid_email(self):
         """Test inviting user with invalid email."""
-        # The invite endpoint is at /api/v1/users/users/invite/ (note the double 'users')
+        # The invite endpoint is at /api/v1/users/invite/
         response = self.client.post(
-            '/api/v1/users/users/invite/',
+            '/api/v1/users/invite/',
             {'email': 'invalid-email', 'role': 'DATA_PROVIDER'},
             format='json'
         )
@@ -170,16 +170,37 @@ class CustomActionsErrorHandlingE2ETest(E2ETestBase):
     
     def test_suspend_nonexistent_tenant(self):
         """Test suspending a non-existent tenant."""
-        # Only platform admin can suspend tenants
-        # This test assumes the user is a platform admin
-        response = self.client.post('/api/v1/tenants/00000000-0000-0000-0000-000000000000/suspend/')
-        
+        # Suspend requires IsPlatformAdmin; use platform admin to reach get_object (404)
+        platform_admin = User.objects.filter(email="e2e_platform_admin_tenant@example.com").first()
+        if platform_admin is None:
+            platform_admin = User.objects.create_user(
+                email="e2e_platform_admin_tenant@example.com",
+                password="testpass123",
+                tenant=None,
+                is_platform_admin=True,
+            )
+        if not platform_admin.is_platform_admin:
+            platform_admin.is_platform_admin = True
+            platform_admin.save()
+        self.client.force_authenticate(user=platform_admin)
+        response = self.client.post("/api/v1/tenants/00000000-0000-0000-0000-000000000000/suspend/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-    
+
     def test_reactivate_nonexistent_tenant(self):
         """Test reactivating a non-existent tenant."""
-        # Only platform admin can reactivate tenants
-        response = self.client.post('/api/v1/tenants/00000000-0000-0000-0000-000000000000/reactivate/')
-        
+        # Reactivate requires IsPlatformAdmin; use platform admin to reach get_object (404)
+        platform_admin = User.objects.filter(email="e2e_platform_admin_tenant@example.com").first()
+        if platform_admin is None:
+            platform_admin = User.objects.create_user(
+                email="e2e_platform_admin_tenant@example.com",
+                password="testpass123",
+                tenant=None,
+                is_platform_admin=True,
+            )
+        if not platform_admin.is_platform_admin:
+            platform_admin.is_platform_admin = True
+            platform_admin.save()
+        self.client.force_authenticate(user=platform_admin)
+        response = self.client.post("/api/v1/tenants/00000000-0000-0000-0000-000000000000/reactivate/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 

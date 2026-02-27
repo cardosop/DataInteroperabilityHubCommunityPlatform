@@ -35,10 +35,24 @@ log_warning() {
 }
 
 # Detect compose file based on environment
+# Respects explicit COMPOSE_FILE from environment (e.g. COMPOSE_FILE=docker-compose.test.yml)
+# Supports ENVIRONMENT=test for E2E test stack (see docs/E2E_ENVIRONMENT_REQUIREMENTS.md)
 detect_compose_file() {
     local env="${ENVIRONMENT:-}"
-    
-    if [ -f "docker-compose.staging.yml" ] && [ "${env}" = "staging" ]; then
+
+    # Respect explicit COMPOSE_FILE when set to non-default (e.g. docker-compose.test.yml)
+    if [ -n "${COMPOSE_FILE}" ] && [ "${COMPOSE_FILE}" != "docker-compose.yml" ]; then
+        if [ -f "${COMPOSE_FILE}" ]; then
+            log_info "Using compose file: ${COMPOSE_FILE} (from environment)"
+            return 0
+        fi
+        log_error "Compose file not found: ${COMPOSE_FILE}"
+        return 1
+    fi
+
+    if [ -f "docker-compose.test.yml" ] && [ "${env}" = "test" ]; then
+        COMPOSE_FILE="docker-compose.test.yml"
+    elif [ -f "docker-compose.staging.yml" ] && [ "${env}" = "staging" ]; then
         COMPOSE_FILE="docker-compose.staging.yml"
     elif [ -f "docker-compose.dev.yml" ] && [ "${env}" = "development" ]; then
         COMPOSE_FILE="docker-compose.dev.yml"
@@ -48,7 +62,7 @@ detect_compose_file() {
         log_error "No docker-compose file found"
         return 1
     fi
-    
+
     log_info "Using compose file: ${COMPOSE_FILE}"
 }
 
@@ -72,26 +86,45 @@ get_container_name() {
         head -1 || echo ""
 }
 
-# Get service port mapping
+# Get service port mapping (host port for given internal container port)
 get_service_port() {
     local service_name="$1"
     local internal_port="$2"
     
-    # Try to get port from docker compose config
-    local port_mapping=$(docker compose -f "${COMPOSE_FILE}" config 2>/dev/null | \
-        grep -A 20 "^  ${service_name}:" | \
-        grep -E "^\s+-.*:${internal_port}" | \
-        head -1 | \
-        sed 's/.*"\([0-9]*\):.*/\1/' || echo "")
+    # Try docker compose port first (works when container is running)
+    local host_port
+    host_port=$(docker compose -f "${COMPOSE_FILE}" port "${service_name}" "${internal_port}" 2>/dev/null | cut -d':' -f2)
+    if [ -n "${host_port}" ]; then
+        echo "${host_port}"
+        return 0
+    fi
     
-    if [ -n "${port_mapping}" ]; then
-        echo "${port_mapping}"
-    else
-        # Fallback: try to get from running container
-        local container_name=$(get_container_name "${service_name}")
-        if [ -n "${container_name}" ]; then
-            docker port "${container_name}" "${internal_port}/tcp" 2>/dev/null | \
-                cut -d':' -f2 || echo ""
+    # Try to get from docker compose config (handles long-form: target: X, published: "Y")
+    local config_block
+    config_block=$(docker compose -f "${COMPOSE_FILE}" config 2>/dev/null | \
+        awk -v svc="${service_name}" '$0 ~ "  " svc ":" {found=1} found {print} found && /^  [a-z]/ && $0 !~ "  " svc ":" {exit}')
+    # Match "target: N" (port) then get sibling "published: \"Y\""
+    host_port=$(echo "${config_block}" | grep -A 3 "target: ${internal_port}$" | grep "published:" | head -1 | \
+        sed -n 's/.*published: *"\([0-9]*\)".*/\1/p')
+    if [ -n "${host_port}" ]; then
+        echo "${host_port}"
+        return 0
+    fi
+    
+    # Fallback: short-form "HOST:CONTAINER" in config
+    host_port=$(echo "${config_block}" | grep -oE "\"([0-9]+):${internal_port}\"" | sed 's/.*"\([0-9]*\):.*/\1/' | head -1)
+    if [ -n "${host_port}" ]; then
+        echo "${host_port}"
+        return 0
+    fi
+    
+    # Fallback: docker port from running container
+    local container_name
+    container_name=$(get_container_name "${service_name}")
+    if [ -n "${container_name}" ]; then
+        host_port=$(docker port "${container_name}" "${internal_port}/tcp" 2>/dev/null | cut -d':' -f2)
+        if [ -n "${host_port}" ]; then
+            echo "${host_port}"
         fi
     fi
 }
@@ -102,16 +135,35 @@ check_health_endpoint() {
     local endpoint="$2"
     local timeout="${3:-${HEALTH_CHECK_TIMEOUT}}"
     
-    # Try localhost first
-    local url="http://localhost:${endpoint}"
-    local response_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time "${timeout}" "${url}" 2>/dev/null || echo "000")
+    # Parse endpoint: "PORT/PATH" (e.g. 8000/health or 8000/health/)
+    local internal_port path
+    internal_port=$(echo "${endpoint}" | cut -d'/' -f1)
+    path="/$(echo "${endpoint}" | cut -d'/' -f2-)"
+    [[ "$path" == "/" ]] && path=""
     
+    # Try localhost first: use host-mapped port when available (e.g. 8001 for api-service-test)
+    local host_port
+    host_port=$(get_service_port "${service_name}" "${internal_port}")
+    if [ -n "${host_port}" ]; then
+        local url="http://localhost:${host_port}${path}"
+        local response_code
+        response_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time "${timeout}" "${url}" 2>/dev/null || echo "000")
+        if [ "${response_code}" = "200" ] || [ "${response_code}" = "204" ]; then
+            return 0
+        fi
+    fi
+    
+    # Fallback: try raw endpoint (for services that bind to same port on host)
+    local url="http://localhost:${endpoint}"
+    local response_code
+    response_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time "${timeout}" "${url}" 2>/dev/null || echo "000")
     if [ "${response_code}" = "200" ] || [ "${response_code}" = "204" ]; then
         return 0
     fi
     
-    # Try container name if localhost fails
-    local container_name=$(get_container_name "${service_name}")
+    # Try via docker exec (works when host port is not reachable, e.g. different network)
+    local container_name
+    container_name=$(get_container_name "${service_name}")
     if [ -n "${container_name}" ]; then
         # Extract port from endpoint
         local port=$(echo "${endpoint}" | cut -d'/' -f1 | cut -d':' -f2)

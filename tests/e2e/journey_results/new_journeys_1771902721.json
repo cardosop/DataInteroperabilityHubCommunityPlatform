@@ -1,0 +1,56 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.20415425300598145
+  },
+  "journeys": [
+    {
+      "journey_id": "DMO-005-402090ae",
+      "journey_name": "Monitor Domain Health",
+      "persona": "Data Mesh Domain Owner",
+      "status": "completed",
+      "start_time": 1771902721.7872863,
+      "end_time": 1771902721.9914405,
+      "duration": 0.20415425300598145,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Domain",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771902721.7872896,
+          "end_time": 1771902721.969152,
+          "duration": 0.18186235427856445,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "View Health Metrics",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771902721.969163,
+          "end_time": 1771902721.9914386,
+          "duration": 0.022275686264038086,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-24T03:12:01.991503"
+}

@@ -151,12 +151,14 @@ class ContractImpactMixin:
 
                     raise NotFound("Contract not found")
 
-        # Get parameters
+        # Get parameters (use "output" to avoid DRF content negotiation using "format" query param)
         depth = int(request.query_params.get("depth", 10))
         model_name = request.query_params.get("model_name")
         field_name = request.query_params.get("field_name")
         include_fields = request.query_params.get("include_fields", "true").lower() == "true"
-        format_type = request.query_params.get("format", "json").lower()
+        format_type = (
+            request.query_params.get("output") or request.query_params.get("format") or "json"
+        ).lower()
 
         # Initialize LineageService with tenant_id and user_id
         tenant_id = _get_tenant_id_from_request(request)

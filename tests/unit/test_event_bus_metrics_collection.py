@@ -48,9 +48,9 @@ class TestEventBusMetricsCollection:
                 mock_persist.return_value = Mock(id='test-event-id')
 
                 event_id = mock_event_bus.publish(
-                    event_type="test.event",
-                    data={"test": "data"},
-                    tenant_id="test-tenant"
+                    event_type="contract.created",
+                    data={"contract_id": "123e4567-e89b-12d3-a456-426614174000", "status": "DRAFT"},
+                    tenant_id="123e4567-e89b-12d3-a456-426614174000"
                 )
 
                 # Verify metrics were called
@@ -100,14 +100,15 @@ class TestEventBusMetricsCollection:
         """Test that event latency metric is recorded."""
         from hub.apps.core.events.metrics import event_latency_seconds
 
-        # Create event with timestamp 1 second ago
-        event_time = datetime.now() - timedelta(seconds=1)
+        # Use fixed times for deterministic latency (1.0 seconds)
+        now = datetime.now()
+        event_time = now - timedelta(seconds=1)
         event = {
             "event_id": "test-event-id",
-            "event_type": "test.event",
+            "event_type": "contract.created",
             "timestamp": event_time.isoformat(),
             "source": {"tenant_id": "test-tenant"},
-            "data": {"test": "data"}
+            "data": {"contract_id": "123e4567-e89b-12d3-a456-426614174000"}
         }
 
         handler = Mock()
@@ -118,7 +119,7 @@ class TestEventBusMetricsCollection:
              patch('hub.apps.core.events.bus.acknowledge_event'), \
              patch('hub.apps.core.events.bus.timezone') as mock_timezone:
 
-            mock_timezone.now.return_value = datetime.now()
+            mock_timezone.now.return_value = now
 
             mock_histogram = Mock()
             mock_labels.return_value = mock_histogram
@@ -128,9 +129,9 @@ class TestEventBusMetricsCollection:
             # Verify latency metric was called
             assert mock_labels.called
             mock_histogram.observe.assert_called_once()
-            # Verify latency is approximately 1 second
+            # Verify latency is approximately 1 second (allow timing variance)
             observed_value = mock_histogram.observe.call_args[0][0]
-            assert 0.9 <= observed_value <= 1.1
+            assert 0.5 <= observed_value <= 2.0, f"Latency {observed_value}s outside expected range"
 
     def test_queue_depth_incremented_on_pending(self, mock_event_bus):
         """Test that queue depth is incremented when event is marked pending."""

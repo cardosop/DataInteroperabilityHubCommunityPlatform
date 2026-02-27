@@ -1,0 +1,111 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.08383917808532715
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-002-f9b08065",
+      "journey_name": "ODPS Linking Journey",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1772147728.7561707,
+      "end_time": 1772147728.84001,
+      "duration": 0.08383917808532715,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147728.7561786,
+          "end_time": 1772147728.769244,
+          "duration": 0.013065338134765625,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODCS Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147728.7692564,
+          "end_time": 1772147728.7980797,
+          "duration": 0.028823375701904297,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Document",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147728.7980945,
+          "end_time": 1772147728.7981699,
+          "duration": 7.534027099609375e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Link ODPS to ODCS",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147728.798173,
+          "end_time": 1772147728.834801,
+          "duration": 0.036628007888793945,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Verify Bidirectional Linking",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147728.8348145,
+          "end_time": 1772147728.8373063,
+          "duration": 0.0024917125701904297,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Verify Success Criteria",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147728.8373103,
+          "end_time": 1772147728.8400073,
+          "duration": 0.002696990966796875,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "odps_contract_id": "591549ac-1fbe-457b-a99e-8a093acc1d67",
+        "odcs_contract_id": "b7c7baa8-a751-4561-8fd6-49fb01ffe342"
+      }
+    }
+  ],
+  "exported_at": "2026-02-26T23:15:28.840086"
+}

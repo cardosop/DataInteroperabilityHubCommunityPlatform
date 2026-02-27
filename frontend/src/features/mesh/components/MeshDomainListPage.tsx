@@ -37,6 +37,10 @@ export function MeshDomainListPage() {
     navigate('/mesh/create');
   };
 
+  const handleTopologyClick = () => {
+    navigate('/mesh/topology');
+  };
+
   if (isLoading) {
     return <LoadingSpinner message="Loading mesh domains..." />;
   }
@@ -47,15 +51,30 @@ export function MeshDomainListPage() {
 
   if (!data || data.results.length === 0) {
     return (
-      <EmptyState
-        title="No mesh domains found"
-        message={search || statusFilter
-          ? "Try adjusting your filters to see more results."
-          : "Get started by creating your first mesh domain."}
-        action={!search && !statusFilter
-          ? { label: 'Create Domain', onClick: handleCreateDomain }
-          : undefined}
-      />
+      <div className="mesh-domain-list-page">
+        <div className="mesh-domain-list-header">
+          <h1>Mesh Domains</h1>
+          <a
+            href="/mesh/topology"
+            onClick={(e) => {
+              e.preventDefault();
+              handleTopologyClick();
+            }}
+            className="btn-secondary"
+          >
+            Topology
+          </a>
+        </div>
+        <EmptyState
+          title="No mesh domains found"
+          message={search || statusFilter
+            ? "Try adjusting your filters to see more results."
+            : "Get started by creating your first mesh domain."}
+          action={!search && !statusFilter
+            ? { label: 'Create Domain', onClick: handleCreateDomain }
+            : undefined}
+        />
+      </div>
     );
   }
 
@@ -63,9 +82,21 @@ export function MeshDomainListPage() {
     <div className="mesh-domain-list-page">
       <div className="mesh-domain-list-header">
         <h1>Mesh Domains</h1>
-        <button className="btn-primary" onClick={handleCreateDomain} type="button">
-          Create Domain
-        </button>
+        <div className="mesh-domain-list-header-actions">
+          <a
+            href="/mesh/topology"
+            onClick={(e) => {
+              e.preventDefault();
+              handleTopologyClick();
+            }}
+            className="btn-secondary"
+          >
+            Topology
+          </a>
+          <button className="btn-primary" onClick={handleCreateDomain} type="button">
+            Create Domain
+          </button>
+        </div>
       </div>
 
       <div className="mesh-domain-list-filters">

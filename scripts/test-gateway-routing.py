@@ -71,28 +71,25 @@ class GatewayRoutingTest:
         try:
             content = routes_file.read_text(encoding='utf-8')
 
-            # Check compliance service route
-            assert 'compliance-service' in content, "Compliance service route should exist"
-            assert 'PathPrefix(`/api/v1/compliance`)' in content, (
-                "Compliance service should use /api/v1/compliance route"
-            )
-            assert '/api/v1/compliance/compliance-runs' not in content, (
-                "Should not use old compliance-runs pattern"
+            # Architecture: Traefik routes /api/v1 to api-gateway; API Gateway does internal routing.
+            # Verify api-gateway route exists with PathPrefix /api/v1
+            assert 'api-gateway' in content, "API gateway route should exist"
+            assert 'PathPrefix(`/api/v1`)' in content, (
+                "API gateway should use PathPrefix /api/v1 for all API requests"
             )
 
-            # Check DQ service route
-            assert 'dq-service' in content, "DQ service route should exist"
-            assert 'PathPrefix(`/api/v1/dq`)' in content, (
-                "DQ service should use /api/v1/dq route"
+            # Verify compliance and DQ are backend service definitions (used by API Gateway)
+            assert 'services:' in content, "Should have services section"
+            assert 'compliance-service:' in content, "Should have compliance service definition"
+            assert 'dq-service:' in content, "Should have DQ service definition"
+
+            # Should not use old patterns
+            assert '/api/v1/compliance/compliance-runs' not in content, (
+                "Should not use old compliance-runs pattern"
             )
             assert '/api/v1/dq/dq-runs' not in content, (
                 "Should not use old dq-runs pattern"
             )
-
-            # Verify service definitions exist
-            assert 'services:' in content, "Should have services section"
-            assert 'compliance-service:' in content, "Should have compliance service definition"
-            assert 'dq-service:' in content, "Should have DQ service definition"
 
             print("✅ PASSED: Traefik configuration valid")
             self.tests_passed += 1

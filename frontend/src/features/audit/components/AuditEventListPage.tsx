@@ -256,7 +256,16 @@ export function AuditEventListPage() {
                   <td>{new Date(event.timestamp).toLocaleString()}</td>
                   <td>{event.resource_type}</td>
                   <td>{event.action}</td>
-                  <td>{event.actor_user_email || event.actor_user || 'SYSTEM'}</td>
+                  <td>
+                    {event.actor_user_email ??
+                      (typeof event.actor_user === 'object' &&
+                      event.actor_user !== null &&
+                      'email' in event.actor_user
+                        ? (event.actor_user as { email: string }).email
+                        : typeof event.actor_user === 'string'
+                          ? event.actor_user
+                          : 'SYSTEM')}
+                  </td>
                   <td>
                     <span
                       className={`audit-result-badge ${event.result.toLowerCase()}`}

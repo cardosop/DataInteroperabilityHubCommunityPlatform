@@ -1,0 +1,77 @@
+/**
+ * E2E Test: JOURNEY-DEV-002 — Integrate via SDK
+ *
+ * Journey: Integrate via SDK
+ * Persona: External Developer
+ * Reference: docs/deprecated-doc/archive/USER_JOURNEY_MAPPING.md, FRONTEND_BACKEND_GAP_REMEDIATION_PLAN.md
+ *
+ * Routes: /developer, /baas (API keys). Backend has tests; frontend spec for alignment.
+ * Real backend only; no mocks.
+ */
+
+import { expect, test } from '@playwright/test';
+import { clearAuthStorage, getExternalDeveloperUser, loginAsPersona } from '../../fixtures/auth';
+import { hasLoginPrompt } from '../../fixtures/helpers';
+
+test.describe('JOURNEY-DEV-002: Integrate via SDK', () => {
+  test.setTimeout(120000);
+
+  test.describe('Success', () => {
+    test('developer page loads for SDK docs', async ({ page }) => {
+      await loginAsPersona(page, getExternalDeveloperUser);
+      await page.goto('/developer');
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(3000);
+      const onDeveloper = page.url().includes('/developer');
+      const onLogin = page.url().includes('/login');
+      const on403 = page.url().includes('/403');
+      const hasContent =
+        (await page.locator('.developer-portal-page, .app-main, .unavailable-page').count()) > 0;
+      expect(onLogin || on403 || (onDeveloper && hasContent)).toBe(true);
+    });
+
+    test('baas page loads for API keys', async ({ page }) => {
+      await loginAsPersona(page, getExternalDeveloperUser);
+      await page.goto('/baas');
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(3000);
+      const onBaas = page.url().includes('/baas');
+      const onLogin = page.url().includes('/login');
+      const on403 = page.url().includes('/403');
+      const hasContent =
+        (await page.locator('.baas-page, .app-main, .unavailable-page').count()) > 0;
+      expect(onLogin || on403 || (onBaas && hasContent)).toBe(true);
+    });
+  });
+
+  test.describe('Failure', () => {
+    test('unauthenticated access to developer route redirects to login or 403', async ({
+      page,
+    }) => {
+      await clearAuthStorage(page);
+      await page.goto('/developer', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|developer|403)/, { timeout: 20_000 });
+      const url = page.url();
+      expect(
+        url.includes('/login') || url.includes('/403') || url.includes('/developer')
+      ).toBe(true);
+      if (url.includes('/developer')) {
+        expect(await hasLoginPrompt(page)).toBe(true);
+      }
+    });
+  });
+
+  test.describe('Edge', () => {
+    test('developer and baas routes accessible', async ({ page }) => {
+      await loginAsPersona(page, getExternalDeveloperUser);
+      await page.goto('/developer');
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      expect(
+        page.url().includes('/developer') ||
+          page.url().includes('/403') ||
+          page.url().includes('/login')
+      ).toBe(true);
+    });
+  });
+});

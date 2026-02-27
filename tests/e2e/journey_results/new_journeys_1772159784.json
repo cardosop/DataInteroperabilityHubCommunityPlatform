@@ -1,0 +1,110 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.2968332767486572
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-009-833179f7",
+      "journey_name": "Manage Asset Ratings and Reviews",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1772159783.9346397,
+      "end_time": 1772159784.231473,
+      "duration": 0.2968332767486572,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772159783.9346454,
+          "end_time": 1772159784.2022192,
+          "duration": 0.26757383346557617,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Rating",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772159784.2022288,
+          "end_time": 1772159784.2135477,
+          "duration": 0.01131892204284668,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Create Review",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772159784.2135527,
+          "end_time": 1772159784.2212439,
+          "duration": 0.007691144943237305,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "View Asset Details",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772159784.2212474,
+          "end_time": 1772159784.231457,
+          "duration": 0.01020956039428711,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Verify Asset Has Social Data",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772159784.231462,
+          "end_time": 1772159784.231466,
+          "duration": 4.0531158447265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Verify Quality Metrics Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772159784.2314684,
+          "end_time": 1772159784.2314718,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "d79481a5-371e-4739-aca8-c8fcbe439e10"
+      }
+    }
+  ],
+  "exported_at": "2026-02-27T02:36:24.231540"
+}

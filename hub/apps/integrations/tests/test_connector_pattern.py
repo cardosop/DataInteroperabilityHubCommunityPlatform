@@ -17,6 +17,7 @@ Tests verify:
 No mocks/stubs - uses real connector implementations.
 """
 
+import os
 from unittest.mock import Mock, patch
 
 import pytest
@@ -47,6 +48,17 @@ from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJ
 from hub.apps.tenants.models import Tenant
 
 User = get_user_model()
+
+
+def _get_dados_gov_br_jwt_token():
+    """Return JWT token for DadosGovBr connector; skip test if not set."""
+    token = os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")
+    if not token:
+        pytest.skip(
+            "DADOS_GOV_BR_API_KEY or CKAN_DADOS_GOV_BR_API_KEY required for DadosGovBr "
+            "connector pattern tests"
+        )
+    return token
 
 
 # Use pytest.mark.django_db without transaction to avoid foreign key constraint issues
@@ -132,8 +144,10 @@ class TestSyncPullDoesNotCreateAssets(TestConnectorPatternBase):
 
     def test_dados_gov_br_sync_pull_does_not_create_assets(self):
         """Test DadosGovBr connector sync_pull() does not create assets"""
-        # Create DadosGovBr connector (requires base_url)
-        connector = DadosGovBrConnector(base_url="https://dados.gov.br")
+        token = _get_dados_gov_br_jwt_token()
+        connector = DadosGovBrConnector(
+            base_url="https://dados.gov.br", jwt_token=token
+        )
 
         # Get initial counts
         initial_counts = self.get_initial_counts()
@@ -272,7 +286,10 @@ class TestSyncPullReturnsMappingsOnly(TestConnectorPatternBase):
 
     def test_dados_gov_br_sync_pull_returns_mappings_only(self):
         """Test DadosGovBr connector sync_pull() returns mappings only"""
-        connector = DadosGovBrConnector(base_url="https://dados.gov.br")
+        token = _get_dados_gov_br_jwt_token()
+        connector = DadosGovBrConnector(
+            base_url="https://dados.gov.br", jwt_token=token
+        )
 
         # Create sample listing (DadosGovBr uses CKAN_INSTANCE type)
         sample_listing = MarketplaceListing(
@@ -387,7 +404,10 @@ class TestSyncPullDoesNotDownloadData(TestConnectorPatternBase):
 
     def test_dados_gov_br_sync_pull_does_not_download_data(self):
         """Test DadosGovBr connector sync_pull() does not download data"""
-        connector = DadosGovBrConnector(base_url="https://dados.gov.br")
+        token = _get_dados_gov_br_jwt_token()
+        connector = DadosGovBrConnector(
+            base_url="https://dados.gov.br", jwt_token=token
+        )
 
         # Track if download_resource is called
         download_called = {"called": False}
@@ -496,7 +516,10 @@ class TestMapToHubAssetReturnsMarketplaceAssetMapping(TestConnectorPatternBase):
 
     def test_dados_gov_br_map_to_hub_asset_returns_marketplace_asset_mapping(self):
         """Test DadosGovBr connector map_to_hub_asset() returns MarketplaceAssetMapping"""
-        connector = DadosGovBrConnector(base_url="https://dados.gov.br")
+        token = _get_dados_gov_br_jwt_token()
+        connector = DadosGovBrConnector(
+            base_url="https://dados.gov.br", jwt_token=token
+        )
 
         # Create sample listing (DadosGovBr uses CKAN_INSTANCE type)
         listing = MarketplaceListing(
@@ -593,7 +616,10 @@ class TestMapToHubAssetIncludesExternalResources(TestConnectorPatternBase):
 
     def test_dados_gov_br_map_to_hub_asset_includes_external_resources(self):
         """Test DadosGovBr connector map_to_hub_asset() includes external resources"""
-        connector = DadosGovBrConnector(base_url="https://dados.gov.br")
+        token = _get_dados_gov_br_jwt_token()
+        connector = DadosGovBrConnector(
+            base_url="https://dados.gov.br", jwt_token=token
+        )
 
         # Create sample listing with resources
         resource = MarketplaceResource(
@@ -718,7 +744,10 @@ class TestDownloadResourceHandlesOnDemandDownloads(TestConnectorPatternBase):
 
     def test_dados_gov_br_download_resource_handles_on_demand_downloads(self):
         """Test DadosGovBr connector download_resource() handles on-demand downloads"""
-        connector = DadosGovBrConnector(base_url="https://dados.gov.br")
+        token = _get_dados_gov_br_jwt_token()
+        connector = DadosGovBrConnector(
+            base_url="https://dados.gov.br", jwt_token=token
+        )
 
         # Mock the actual download to avoid external API calls
         import os
@@ -816,67 +845,134 @@ class TestConnectorWorkflowIntegration(TestConnectorPatternBase):
 
     def test_sync_from_marketplace_triggers_workflow(self):
         """Test that sync_from_marketplace() triggers workflow"""
+        from hub.apps.integrations.base import DataMarketplaceConnector
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
         from hub.apps.integrations.services import MarketplaceIntegrationService
         from hub.apps.orchestration.models import WorkflowInstance
 
-        # Create marketplace connection
-        connection = MarketplaceConnection.objects.create(
-            tenant=self.tenant,
-            name="Test Connection",
-            marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
-            config={"base_url": "https://data.gov"},
-            is_active=True,
+        # Use SNOWFLAKE_DATA_MARKETPLACE with test connector - CKAN_INSTANCE may be
+        # unregistered by other tests (e.g. test_federated_asset_workflow)
+        class _TestSnowflakeConnector(DataMarketplaceConnector):
+            @property
+            def marketplace_type(self):
+                return MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+
+            @property
+            def supported_sync_directions(self):
+                return [SyncDirection.PULL]
+
+            def authenticate(self, credentials):
+                return True
+
+            def test_connection(self):
+                return True
+
+            def list_listings(self, filters=None, limit=None, offset=None):
+                return []
+
+            def get_listing(self, listing_id):
+                return MarketplaceListing(
+                    marketplace_id=listing_id,
+                    marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+                    title="Test",
+                )
+
+            def list_resources(self, listing_id):
+                return []
+
+            def create_listing(self, listing):
+                return listing
+
+            def update_listing(self, listing_id, listing):
+                return listing
+
+            def publish_resource(self, listing_id, resource):
+                return resource
+
+            def download_resource(self, resource_id, destination_path):
+                return destination_path
+
+            def map_to_hub_asset(self, listing, sync_job_id=None):
+                return MarketplaceAssetMapping(
+                    asset_data={"name": listing.title},
+                    source_type=AssetSourceType.FEDERATED,
+                    source_metadata={},
+                    odps_metadata=None,
+                    odcs_metadata=None,
+                )
+
+            def map_from_hub_asset(self, asset_data, odps_metadata=None, odcs_metadata=None):
+                return MarketplaceListing(
+                    marketplace_id="test",
+                    marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+                    title=asset_data.get("name", "Unknown"),
+                )
+
+            def sync_push(self, asset_ids, options=None):
+                return SyncResult(status=SyncStatus.COMPLETED)
+
+            def sync_pull(self, listing_ids=None, filters=None, options=None):
+                return SyncResult(status=SyncStatus.COMPLETED, metadata={"mappings": []})
+
+        original = MarketplaceConnectorFactory._connectors.get(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
         )
-
-        # Create service instance
-        service = MarketplaceIntegrationService(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
-
-        # Get initial workflow instance count
-        initial_workflow_count = WorkflowInstance.objects.filter(
-            tenant=self.tenant, workflow_name__startswith="marketplace_sync"
-        ).count()
-
-        # Execute sync_from_marketplace - uses real WorkflowEngine
         try:
-            sync_job = service.sync_from_marketplace(
-                connection_id=str(connection.id),
-                tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id),
-                options={"dry_run": True},
+            MarketplaceConnectorFactory.register_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, _TestSnowflakeConnector
+            )
+            connection = MarketplaceConnection.objects.create(
+                tenant=self.tenant,
+                name="Test Connection",
+                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+                config={"endpoint": "https://api.example.com"},
+                is_active=True,
             )
 
-            # Verify sync job was created
-            self.assertIsNotNone(sync_job)
-            self.assertIsInstance(sync_job, MarketplaceSyncJob)
-            self.assertEqual(sync_job.direction, SyncDirection.PULL.value)
+            service = MarketplaceIntegrationService(
+                tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+            )
 
-            # Verify workflow instance was created (if workflow engine is available)
-            final_workflow_count = WorkflowInstance.objects.filter(
+            initial_workflow_count = WorkflowInstance.objects.filter(
                 tenant=self.tenant, workflow_name__startswith="marketplace_sync"
             ).count()
 
-            # Workflow may or may not be created depending on workflow engine availability
-            # But sync job should always be created
-            self.assertGreaterEqual(final_workflow_count, initial_workflow_count)
+            try:
+                sync_job = service.sync_from_marketplace(
+                    connection_id=str(connection.id),
+                    tenant_id=str(self.tenant.id),
+                    user_id=str(self.user.id),
+                    options={"dry_run": True},
+                )
 
-        except Exception as e:
-            # Workflow execution may fail in test environment, but job creation should succeed
-            # Verify sync job was created before workflow execution
-            sync_jobs = MarketplaceSyncJob.objects.filter(
-                connection=connection, direction=SyncDirection.PULL.value
-            )
-            self.assertGreater(
-                sync_jobs.count(), 0, f"Sync job should be created even if workflow fails: {e}"
-            )
+                self.assertIsNotNone(sync_job)
+                self.assertIsInstance(sync_job, MarketplaceSyncJob)
+                self.assertEqual(sync_job.direction, SyncDirection.PULL.value)
 
-            # Verify workflow instance may have been attempted
-            final_workflow_count = WorkflowInstance.objects.filter(
-                tenant=self.tenant, workflow_name__startswith="marketplace_sync"
-            ).count()
-            # Workflow creation may have failed, but we don't require it to succeed
-            # The important thing is that sync job was created
+                final_workflow_count = WorkflowInstance.objects.filter(
+                    tenant=self.tenant, workflow_name__startswith="marketplace_sync"
+                ).count()
+                self.assertGreaterEqual(final_workflow_count, initial_workflow_count)
+
+            except Exception as e:
+                sync_jobs = MarketplaceSyncJob.objects.filter(
+                    connection=connection, direction=SyncDirection.PULL.value
+                )
+                self.assertGreater(
+                    sync_jobs.count(), 0,
+                    f"Sync job should be created even if workflow fails: {e}",
+                )
+        finally:
+            try:
+                MarketplaceConnectorFactory.unregister_connector(
+                    MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+                )
+                if original is not None:
+                    MarketplaceConnectorFactory.register_connector(
+                        MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, original
+                    )
+            except ValueError:
+                pass
 
     def test_workflow_calls_create_federated_asset_with_contracts(self):
         """Test that workflow calls create_federated_asset_with_contracts() for asset creation"""

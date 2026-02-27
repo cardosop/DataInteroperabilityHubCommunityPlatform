@@ -1,0 +1,58 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.7388811111450195
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-014-ddd859a9",
+      "journey_name": "Monitor Asset Reliability Score",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1772041549.2755523,
+      "end_time": 1772041551.0144334,
+      "duration": 1.7388811111450195,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772041549.275559,
+          "end_time": 1772041550.9970617,
+          "duration": 1.7215027809143066,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "View Reliability Score Dashboard",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772041550.9970703,
+          "end_time": 1772041551.0041344,
+          "duration": 0.007064104080200195,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "1ca322cd-3514-41d4-a30f-68af6f0f7779"
+      }
+    }
+  ],
+  "exported_at": "2026-02-25T17:45:51.014621"
+}

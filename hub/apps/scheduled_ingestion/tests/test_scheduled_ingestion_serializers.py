@@ -34,14 +34,15 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def _tenant_user():
+    uid = uuid.uuid4().hex[:8]
     tenant = Tenant.objects.create(
-        name="Serializer Test Tenant",
-        slug="serializer-test-tenant",
+        name=f"Serializer Test Tenant {uid}",
+        slug=f"serializer-test-tenant-{uid}",
         status="ACTIVE",
         kyc_status="VERIFIED",
     )
     user = User.objects.create_user(
-        email="serializer@example.com",
+        email=f"serializer-{uid}@example.com",
         password="testpass123",
         tenant=tenant,
         status=UserStatus.ACTIVE,

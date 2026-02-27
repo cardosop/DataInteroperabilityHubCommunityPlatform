@@ -25,7 +25,7 @@ from hub.apps.datasets.time_travel import TimeTravelQuery
 from hub.apps.datasets.version_comparison import VersionComparisonService
 from hub.apps.datasets.schema_evolution import CompatibilityLevel
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
@@ -102,7 +102,8 @@ class VersionCreationUseCasesTest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         
         # Verify new version created
-        new_version_id = response.data['id']
+        data = get_response_data(response) or {}
+        new_version_id = data['id']
         new_version = Dataset.objects.get(id=new_version_id)
         
         self.assertEqual(new_version.version, 2)
@@ -176,8 +177,8 @@ class VersionCreationUseCasesTest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        
-        new_version_id = response.data['id']
+        data = get_response_data(response) or {}
+        new_version_id = data['id']
         new_version = Dataset.objects.get(id=new_version_id)
         
         self.assertEqual(new_version.version_tags, ['production', 'stable', 'release'])
@@ -220,9 +221,8 @@ class VersionCreationUseCasesTest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
-        # Verify both versions are returned
-        versions_data = response.data
+        data = get_response_data(response) or {}
+        versions_data = data if isinstance(data, list) else data.get('results', [])
         if isinstance(versions_data, list):
             version_ids = [v.get('id') for v in versions_data if isinstance(v, dict)]
             self.assertIn(str(self.dataset_v1.id), version_ids)
@@ -333,23 +333,20 @@ class VersionComparisonUseCasesTest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = get_response_data(response) or {}
+        self.assertIn('version1', data)
+        self.assertIn('version2', data)
+        self.assertIn('compatibility_level', data)
+        self.assertIn('summary', data)
+        self.assertIn('changes', data)
         
-        # Verify comparison data
-        self.assertIn('version1', response.data)
-        self.assertIn('version2', response.data)
-        self.assertIn('compatibility_level', response.data)
-        self.assertIn('summary', response.data)
-        self.assertIn('changes', response.data)
-        
-        # Verify compatibility level (new field = backward compatible)
-        compatibility = response.data['compatibility_level']
+        compatibility = data['compatibility_level']
         self.assertIn(compatibility, [
             CompatibilityLevel.BACKWARD_COMPATIBLE.value,
             CompatibilityLevel.FULLY_COMPATIBLE.value
         ])
         
-        # Verify changes detected
-        changes = response.data.get('changes', [])
+        changes = data.get('changes', [])
         self.assertGreater(len(changes), 0)
         
         # Verify new field is in changes
@@ -373,8 +370,9 @@ class VersionComparisonUseCasesTest(E2ETestBase):
         ])
         
         if response.status_code == status.HTTP_200_OK:
-            self.assertIn('compatibility_level', response.data)
-            self.assertIn('changes', response.data)
+            data = get_response_data(response) or {}
+            self.assertIn('compatibility_level', data)
+            self.assertIn('changes', data)
     
     def test_view_schema_diff_success(self):
         """Test viewing schema diff between versions"""

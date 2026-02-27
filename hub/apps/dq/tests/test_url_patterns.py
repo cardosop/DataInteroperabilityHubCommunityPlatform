@@ -16,6 +16,7 @@ from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
 from hub.apps.jobs.models import Job, JobType
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -215,6 +216,7 @@ class DQIntegrationTest(TestCase):
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(

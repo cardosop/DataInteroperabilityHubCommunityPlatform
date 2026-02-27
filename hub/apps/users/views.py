@@ -119,8 +119,11 @@ class UserViewSet(viewsets.ModelViewSet):
                 return handle_service_exception(e)
             raise
 
-        # Send invitation email if requested
+        # Set invitation token and send email if requested
         if serializer.validated_data.get("send_invitation", True):
+            user.invitation_token = uuid.uuid4()
+            user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
+            user.save(update_fields=["invitation_token", "invitation_token_expires_at"])
             self._send_invitation_email(user)
 
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
@@ -216,6 +219,13 @@ class UserViewSet(viewsets.ModelViewSet):
         """Delete user via service layer"""
         user = self.get_object()
 
+        # Prevent self-deletion
+        if user.id == request.user.id:
+            return Response(
+                {"error": "Users cannot delete themselves"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Use service layer for deletion (Phase 24.7.2)
         from hub.apps.core.responses import handle_service_exception
         from hub.apps.core.services.base import NotFoundError
@@ -230,7 +240,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
         service = UserService(tenant_id=tenant_id, user_id=str(request.user.id))
         try:
-            service.delete_user(
+            soft_deleted = service.delete_user(
                 user_id=str(user.id),
                 tenant_id=tenant_id,
                 actor_user_id=str(request.user.id),
@@ -238,6 +248,11 @@ class UserViewSet(viewsets.ModelViewSet):
         except NotFoundError as e:
             return handle_service_exception(e)
 
+        if soft_deleted:
+            return Response(
+                {"message": "User disabled (has resources)"},
+                status=status.HTTP_200_OK,
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @transaction.atomic

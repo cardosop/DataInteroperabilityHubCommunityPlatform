@@ -28,6 +28,18 @@ class VersionImpactE2ETest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant Impact",
+            slug="test-tenant-impact",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED"
+        )
+        self.user = User.objects.create_user(
+            email="user-impact@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE
+        )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
         
@@ -186,7 +198,9 @@ class VersionRollbackE2ETest(TestCase):
         # Step 3: Create failed DQ run
         job = Job.objects.create(
             tenant=self.tenant,
-            job_type=JobType.DQ_CHECK,
+            type=JobType.DQ_RUN,
+            resource_type="DQ_RUN",
+            resource_id=child.id,
             status=JobStatus.COMPLETED,
             created_by=self.user
         )

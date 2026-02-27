@@ -34,12 +34,14 @@ class UserSerializer(serializers.ModelSerializer):
     """Serializer for User model"""
     status = serializers.ChoiceField(choices=UserStatus.choices, read_only=True)
     roles = serializers.SerializerMethodField()
-    
+    tenant_name = serializers.CharField(source="tenant.name", read_only=True, allow_null=True)
+
     class Meta:
         model = User
         fields = [
             "id",
             "tenant",
+            "tenant_name",
             "email",
             "display_name",
             "status",
@@ -57,9 +59,9 @@ class UserSerializer(serializers.ModelSerializer):
         ]
     
     def get_roles(self, obj):
-        """Get user's roles"""
+        """Get user's role names (strings) for display in admin/list views."""
         user_roles = UserRole.objects.filter(user=obj).select_related("role")
-        return [RoleSerializer(role.role).data for role in user_roles]
+        return [role.role.name for role in user_roles]
 
 
 class UserCreateSerializer(serializers.ModelSerializer):

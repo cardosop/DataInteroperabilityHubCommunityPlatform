@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.018823623657226562
+  },
+  "journeys": [
+    {
+      "journey_id": "MPA-005-f4d2578f",
+      "journey_name": "Manage Connector Marketplace",
+      "persona": "Platform Admin",
+      "status": "completed",
+      "start_time": 1772021253.9149938,
+      "end_time": 1772021253.9338174,
+      "duration": 0.018823623657226562,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Connector Marketplace Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021253.9221184,
+          "end_time": 1772021253.9221237,
+          "duration": 5.245208740234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Connector Approval Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021253.9264812,
+          "end_time": 1772021253.9264848,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Connector Categories Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021253.9302115,
+          "end_time": 1772021253.930215,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Connector Usage Monitoring Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021253.933813,
+          "end_time": 1772021253.933816,
+          "duration": 2.86102294921875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-25T12:07:33.933884"
+}

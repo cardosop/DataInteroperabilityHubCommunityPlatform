@@ -55,6 +55,14 @@ This directory contains operational runbooks for the Interoperable Data Hub MVP.
   - Unauthorized access
   - Data exfiltration
 
+### Chaos Test Execution
+
+- **RB-CHAOS-001**: Chaos Test Execution (Manual Only)
+  - When to run (pre-release, incident investigation)
+  - How to run (`pytest tests/chaos/`)
+  - Required environment (docker-compose, services)
+  - Manual only; not in CI or nightly
+
 ### Scheduled Ingestion
 
 - **RB-SCHEDULED-INGESTION-001**: Scheduled Ingestion Operations (Prefect Worker)
@@ -140,4 +148,3 @@ kubectl scale deployment/api-service --replicas=3 -n production
 - **Database Team**: [Contact Info]
 - **Security Team**: [Contact Info]
 - **Management Escalation**: [Contact Info]
-

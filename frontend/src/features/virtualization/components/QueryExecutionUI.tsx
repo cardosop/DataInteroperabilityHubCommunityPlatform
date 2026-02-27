@@ -245,6 +245,15 @@ export function QueryExecutionUI({ datasetId }: QueryExecutionUIProps) {
         </div>
       )}
 
+      {executeMutation.isError && (
+        <div className="error-section">
+          <h3>Execution Failed</h3>
+          <p>
+            {(executeMutation.error as Error)?.message || 'Failed to start execution'}
+          </p>
+        </div>
+      )}
+
       {currentExecution?.status === 'FAILED' && (
         <div className="error-section">
           <h3>Execution Failed</h3>

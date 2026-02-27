@@ -25,6 +25,7 @@ from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -44,13 +45,14 @@ class AssetActivationIntegrationTest(TestCase):
         # Active subscription required so TenantSuspensionMiddleware allows writes.
         ensure_tenant_has_active_subscription(self.tenant)
 
-        # Create user
+        # Create user with DATA_PROVIDER role (required for asset create/update)
         self.user = User.objects.create_user(
             email="user@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        ensure_user_has_data_provider_role(self.user)
 
         self.client.force_authenticate(user=self.user)
 
@@ -207,6 +209,133 @@ class AssetActivationIntegrationTest(TestCase):
 
         asset.refresh_from_db()
         self.assertEqual(asset.status, AssetStatus.ACTIVE)
+
+    def test_activation_blocked_when_allowed_to_store_false(self):
+        """5.4.3: When related compliance run has allowed_to_store=False, activation returns 403 with code compliance_not_allowed_to_store; real DB and flow."""
+        create_response = self.client.post(
+            "/api/v1/assets/",
+            {"key": "blocked-asset", "name": "Blocked Asset", "description": "Test"},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        asset_id = create_response.data["id"]
+        asset = Asset.objects.get(id=asset_id)
+
+        Contract.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            status=ContractStatus.ACTIVE,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id": "test", "schema": {"fields": []}}',
+            validation_status=ValidationStatus.VALID,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            created_by=self.user,
+        )
+        file_obj = File.objects.create(
+            tenant=self.tenant,
+            name="test.csv",
+            content_type="text/csv",
+            size=1024,
+            storage_path="test/path/file.csv",
+            status=FileStatus.ACTIVE,
+            created_by=self.user,
+        )
+        Dataset.objects.create(
+            tenant=self.tenant, asset=asset, file=file_obj, format="CSV", created_by=self.user
+        )
+        asset.dq_status = DQStatus.PASS
+        asset.compliance_status = ComplianceStatus.PASS
+        asset.save()
+
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="ASSET",
+            resource_id=asset.id,
+            details_json={"scan_mode": "internal"},
+            created_by=self.user,
+        )
+        ComplianceRun.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            job=job,
+            status=ComplianceRunStatus.SUCCEEDED,
+            allowed_to_store=False,
+            overall_status="FAIL",
+        )
+
+        activate_response = self.client.post(
+            f"/api/v1/assets/{asset_id}/activate/", {"version": asset.version}, format="json"
+        )
+        self.assertEqual(activate_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(activate_response.data.get("code"), "compliance_not_allowed_to_store")
+        self.assertIn("compliance", activate_response.data.get("error", "").lower())
+
+    def test_activation_succeeds_when_allowed_to_store_true(self):
+        """5.4.3: When related compliance run has allowed_to_store=True, activation succeeds; real DB and flow."""
+        create_response = self.client.post(
+            "/api/v1/assets/",
+            {"key": "allowed-asset", "name": "Allowed Asset", "description": "Test"},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        asset_id = create_response.data["id"]
+        asset = Asset.objects.get(id=asset_id)
+
+        Contract.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            status=ContractStatus.ACTIVE,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id": "test", "schema": {"fields": []}}',
+            validation_status=ValidationStatus.VALID,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            created_by=self.user,
+        )
+        file_obj = File.objects.create(
+            tenant=self.tenant,
+            name="test.csv",
+            content_type="text/csv",
+            size=1024,
+            storage_path="test/path/file.csv",
+            status=FileStatus.ACTIVE,
+            created_by=self.user,
+        )
+        Dataset.objects.create(
+            tenant=self.tenant, asset=asset, file=file_obj, format="CSV", created_by=self.user
+        )
+        asset.dq_status = DQStatus.PASS
+        asset.compliance_status = ComplianceStatus.PASS
+        asset.save()
+
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="ASSET",
+            resource_id=asset.id,
+            details_json={"scan_mode": "internal"},
+            created_by=self.user,
+        )
+        ComplianceRun.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            job=job,
+            status=ComplianceRunStatus.SUCCEEDED,
+            allowed_to_store=True,
+            overall_status="PASS",
+        )
+
+        activate_response = self.client.post(
+            f"/api/v1/assets/{asset_id}/activate/", {"version": asset.version}, format="json"
+        )
+        self.assertEqual(activate_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(activate_response.data.get("status"), AssetStatus.ACTIVE)
 
     def test_activation_flow_contract_only(self):
         """Test activation flow for contract-only asset (no dataset)"""

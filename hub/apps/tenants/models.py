@@ -34,6 +34,7 @@ class KYCStatus(models.TextChoices):
     """KYC status enumeration"""
 
     UNVERIFIED = "UNVERIFIED", "Unverified"
+    PENDING_REVIEW = "PENDING_REVIEW", "Pending review"
     VERIFIED = "VERIFIED", "Verified"
 
 
@@ -134,7 +135,7 @@ class Tenant(models.Model):
         max_length=20,
         choices=KYCStatus.choices,
         default=KYCStatus.UNVERIFIED,
-        help_text="KYC verification status: UNVERIFIED or VERIFIED",
+        help_text="KYC verification status: UNVERIFIED, PENDING_REVIEW (submission with provider), or VERIFIED",
     )
     region = models.CharField(
         max_length=100, null=True, blank=True, help_text="Cloud region (e.g., us-east-1, eu-west-1)"

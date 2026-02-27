@@ -26,7 +26,7 @@ from hub.apps.contracts.models import Contract, OriginalFormat, OriginalSpecType
 from hub.apps.orchestration.models import WorkflowStatus
 from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
 from hub.apps.users.models import Role, UserRole, UserStatus
-from tests.e2e.conftest import E2ETestBase
+from tests.e2e.conftest import E2ETestBase, get_response_data
 from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
 from tests.factories import TenantFactory, UserFactory
 
@@ -72,7 +72,7 @@ class TestWorkflowSecurityTenantIsolationE2E(E2ETestBase):
         # self.user is in self.tenant; asset_other is in other_tenant
         response = self.client.post("/api/v1/contracts/", data=payload, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, get_response_data(response))
         self.assertEqual(Contract.objects.count(), count_before)
         data = response.json()
         self.assertIn("error", data)
@@ -108,13 +108,14 @@ class TestWorkflowSecurityTenantIsolationE2E(E2ETestBase):
 
         response = self.client.get("/api/v1/contracts/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = get_response_data(response) or {}
         ids = [
             c["id"]
-            for c in response.data.get("results", response.data)
-            if isinstance(response.data.get("results"), list)
+            for c in data.get("results", data)
+            if isinstance(data.get("results"), list)
         ]
-        if not ids and "results" not in response.data:
-            ids = [c["id"] for c in response.data] if isinstance(response.data, list) else []
+        if not ids and "results" not in data:
+            ids = [c["id"] for c in data] if isinstance(data, list) else []
         self.assertNotIn(
             str(other_contract.id), ids, "Contract from other tenant must not appear in list"
         )
@@ -170,8 +171,10 @@ class TestWorkflowSecurityTenantIsolationWorkflowEngineE2E(WorkflowE2ETestBase):
             created_by_id=str(self.user.id),
         )
         instance.refresh_from_db()
-        self.assertEqual(
-            instance.status, WorkflowStatus.FAILED, instance.error_message or "expected failed"
+        self.assertIn(
+            instance.status,
+            (WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK),
+            instance.error_message or "expected failed or rolled back",
         )
         # Cross-tenant asset causes failure (Asset.DoesNotExist or business rule rejection)
         err = (instance.error_message or "").lower()
@@ -251,8 +254,9 @@ class TestWorkflowSecurityInputValidationE2E(E2ETestBase):
         self.assertIn(response.status_code, (status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST))
         if response.status_code == status.HTTP_201_CREATED:
             # Must not be executable: stored as literal
-            self.assertIsNotNone(response.data.get("id"))
-            self.assertIn("script", (response.data.get("name") or "").lower() or "")
+            data = get_response_data(response) or {}
+            self.assertIsNotNone(data.get("id"))
+            self.assertIn("script", (data.get("name") or "").lower() or "")
 
     def test_contract_create_with_sql_injection_like_in_raw_rejected_or_stored_safely(self):
         """SQL injection-like string in original_raw: expect 400 or stored as literal (ORM prevents execution)."""
@@ -266,7 +270,8 @@ class TestWorkflowSecurityInputValidationE2E(E2ETestBase):
         # Invalid JSON/structure → 400; or if accepted, stored as string only (no execution)
         self.assertIn(response.status_code, (status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST))
         if response.status_code == status.HTTP_201_CREATED:
-            c = Contract.objects.get(id=response.data["id"])
+            data = get_response_data(response) or {}
+            c = Contract.objects.get(id=data["id"])
             self.assertIn("DROP", c.original_raw or "")
 
     def test_path_traversal_like_in_asset_name_rejected_or_stored_safely(self):
@@ -278,7 +283,8 @@ class TestWorkflowSecurityInputValidationE2E(E2ETestBase):
         response = self.client.post("/api/v1/assets/", data=payload, format="json")
         self.assertIn(response.status_code, (status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST))
         if response.status_code == status.HTTP_201_CREATED:
-            self.assertIsNotNone(response.data.get("id"))
+            data = get_response_data(response) or {}
+            self.assertIsNotNone(data.get("id"))
 
 
 # --- 6.6.2 Business rules validation ---
@@ -329,8 +335,9 @@ class TestWorkflowSecurityBusinessRulesValidationE2E(E2ETestBase):
             "tenant_id": str(uuid.uuid4()),  # forged tenant_id in body
         }
         response = self.client.post("/api/v1/contracts/", data=payload, format="json")
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-        contract = Contract.objects.get(id=response.data["id"])
+        data = get_response_data(response) or {}
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, data)
+        contract = Contract.objects.get(id=data["id"])
         self.assertEqual(
             contract.tenant_id, self.tenant.id, "Contract must belong to request user tenant"
         )

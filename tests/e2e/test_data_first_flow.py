@@ -13,6 +13,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 
 from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.users.models import Role, UserRole
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus
 from hub.apps.files.models import File, FileStatus
@@ -22,6 +23,7 @@ from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.testing.service_utils import check_service_health
 from django.test import override_settings
 
+from .conftest import get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 User = get_user_model()
@@ -41,7 +43,7 @@ class DataFirstE2ETest(TestCase):
             get_compliance_service_url,
             get_dq_service_url,
             get_s3_endpoint_url,
-            check_service_health
+            check_service_health,
         )
 
         datacontract_url = get_datacontract_service_url()
@@ -94,11 +96,21 @@ class DataFirstE2ETest(TestCase):
             kyc_status=KYCStatus.VERIFIED
         )
 
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.tenant)
+
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant
         )
+
+        tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=tenant_admin_role)
 
         self.client.force_authenticate(user=self.user)
 
@@ -118,7 +130,8 @@ class DataFirstE2ETest(TestCase):
             format='json'
         )
         self.assertEqual(asset_response.status_code, status.HTTP_201_CREATED)
-        asset_id = asset_response.data['id']
+        asset_id = (get_response_data(asset_response) or {}).get('id')
+        self.assertIsNotNone(asset_id)
 
         # Step 2: Initialize file upload
         # Create test content first to get accurate size
@@ -135,7 +148,8 @@ class DataFirstE2ETest(TestCase):
             format='json'
         )
         self.assertEqual(file_init_response.status_code, status.HTTP_201_CREATED)
-        file_id = file_init_response.data['file_id']
+        file_id = (get_response_data(file_init_response) or {}).get('file_id')
+        self.assertIsNotNone(file_id)
 
         # Step 3: Complete file upload (using real MinIO)
         # Upload test file to MinIO
@@ -175,7 +189,7 @@ class DataFirstE2ETest(TestCase):
             format='json'
         )
         self.assertEqual(file_complete_response.status_code, status.HTTP_200_OK,
-                        f"File complete failed: {file_complete_response.data}")
+                        f"File complete failed: {get_response_data(file_complete_response)}")
 
         # Step 4: Create dataset (triggers schema inference, uses real S3)
         dataset_response = self.client.post(
@@ -187,7 +201,8 @@ class DataFirstE2ETest(TestCase):
             format='json'
         )
         self.assertEqual(dataset_response.status_code, status.HTTP_201_CREATED)
-        dataset_id = dataset_response.data['id']
+        dataset_id = (get_response_data(dataset_response) or {}).get('id')
+        self.assertIsNotNone(dataset_id)
 
         # Verify schema was inferred
         dataset = Dataset.objects.get(id=dataset_id)
@@ -205,7 +220,8 @@ class DataFirstE2ETest(TestCase):
             format='json'
         )
         self.assertEqual(compliance_response.status_code, status.HTTP_201_CREATED)
-        compliance_run_id = compliance_response.data['id']
+        compliance_run_id = (get_response_data(compliance_response) or {}).get('id')
+        self.assertIsNotNone(compliance_run_id)
 
         # Wait for compliance check to complete
         max_wait = 60
@@ -234,7 +250,8 @@ class DataFirstE2ETest(TestCase):
             format='json'
         )
         self.assertEqual(dq_response.status_code, status.HTTP_201_CREATED)
-        dq_run_id = dq_response.data['id']
+        dq_run_id = (get_response_data(dq_response) or {}).get('id')
+        self.assertIsNotNone(dq_run_id)
 
         # Wait for DQ check to complete
         wait_time = 0
@@ -261,7 +278,8 @@ class DataFirstE2ETest(TestCase):
             format='json'
         )
         self.assertEqual(contract_response.status_code, status.HTTP_201_CREATED)
-        contract_id = contract_response.data['id']
+        contract_id = (get_response_data(contract_response) or {}).get('id')
+        self.assertIsNotNone(contract_id)
 
         # Step 8: Validate contract (REAL DataContract service)
         validate_response = self.client.post(
@@ -273,7 +291,8 @@ class DataFirstE2ETest(TestCase):
         # Allow 200 OK (validation completed) or 202 Accepted (async validation)
         self.assertIn(validate_response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
         # Real service may return VALID or INVALID
-        self.assertIn(validate_response.data['validation_status'], ['VALID', 'INVALID'])
+        validate_data = get_response_data(validate_response) or {}
+        self.assertIn(validate_data.get('validation_status'), ['VALID', 'INVALID'])
 
         # If contract validation failed, set it to VALID for testing purposes
         contract = Contract.objects.get(id=contract_id)

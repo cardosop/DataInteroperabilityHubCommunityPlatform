@@ -98,7 +98,7 @@ export function DatasetDetailPage() {
           </div>
         ) : (
           <>
-            <h1>{dataset.name}</h1>
+            <h1>{dataset.name || 'Dataset'}</h1>
             {dataset.description && <p className="dataset-description">{dataset.description}</p>}
 
             <div className="dataset-detail-metadata">
@@ -108,7 +108,7 @@ export function DatasetDetailPage() {
               </div>
               <div className="metadata-item">
                 <label>Size</label>
-                <span>{(dataset.size_bytes / 1024).toFixed(2)} KB</span>
+                <span>{((dataset.size_bytes ?? 0) / 1024).toFixed(2)} KB</span>
               </div>
               {dataset.row_count && (
                 <div className="metadata-item">

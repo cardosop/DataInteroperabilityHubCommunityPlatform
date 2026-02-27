@@ -1,0 +1,56 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.02583169937133789
+  },
+  "journeys": [
+    {
+      "journey_id": "DMO-003-0f58e61c",
+      "journey_name": "Manage Domain Topology",
+      "persona": "Data Mesh Domain Owner",
+      "status": "completed",
+      "start_time": 1771293368.565883,
+      "end_time": 1771293368.5917146,
+      "duration": 0.02583169937133789,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Topology",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771293368.5658894,
+          "end_time": 1771293368.5864205,
+          "duration": 0.020531177520751953,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Update Relationships",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771293368.586428,
+          "end_time": 1771293368.5917127,
+          "duration": 0.005284786224365234,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-17T01:56:08.591770"
+}

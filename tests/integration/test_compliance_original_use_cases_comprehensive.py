@@ -39,6 +39,7 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset, DatasetKind
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole
 from hub.apps.semantic.signals import contract_saved, asset_saved
 from hub.apps.contracts.models import Contract
@@ -94,6 +95,7 @@ class ComplianceOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseIsolat
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create roles
         self.data_provider_role, _ = Role.objects.get_or_create(

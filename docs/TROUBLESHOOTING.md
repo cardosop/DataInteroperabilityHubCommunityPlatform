@@ -422,13 +422,9 @@ curl http://localhost:8000/api/v1/compliance/runs/{id}/results/
 curl http://localhost:8000/api/v1/dq/runs/
 curl http://localhost:8000/api/v1/dq/runs/{id}/
 curl http://localhost:8000/api/v1/dq/runs/{id}/results/
-
-# Old patterns should return 404
-curl http://localhost:8000/api/v1/compliance/compliance-runs/  # Should return 404
-curl http://localhost:8000/api/v1/dq/dq-runs/  # Should return 404
 ```
 
-**Note**: Old endpoint patterns (`/compliance-runs/` and `/dq-runs/`) are deprecated and return `404 Not Found`. Always use the standardized patterns (`/runs/`).
+**Note**: Old endpoint patterns (e.g. paths containing `compliance-runs` or `dq-runs`) are deprecated and return `404 Not Found`. Always use the standardized patterns (`/runs/`).
 
 ---
 

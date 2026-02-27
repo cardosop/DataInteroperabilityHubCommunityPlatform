@@ -125,7 +125,7 @@ class TenantConfigViewSetTest(TestCase):
         """Test success: TENANT_ADMIN accessing own tenant config"""
         self.client.force_authenticate(user=self.tenant1_admin)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("tenant_id", response.data)
@@ -135,20 +135,20 @@ class TenantConfigViewSetTest(TestCase):
         """Test success: Platform Admin accessing any tenant config"""
         self.client.force_authenticate(user=self.platform_admin)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(str(self.tenant1.id), response.data["tenant_id"])
         
         # Can also access tenant2
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant2.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant2.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
     
     def test_get_returns_platform_defaults_when_config_doesnt_exist(self):
         """Test success: Returns platform defaults when config doesn't exist"""
         self.client.force_authenticate(user=self.tenant1_admin)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["default_dq_profile"], self.platform_defaults["default_dq_profile"])
@@ -163,7 +163,7 @@ class TenantConfigViewSetTest(TestCase):
         )
         
         self.client.force_authenticate(user=self.tenant1_admin)
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["default_dq_profile"], "intake_basic_soda")
@@ -173,7 +173,7 @@ class TenantConfigViewSetTest(TestCase):
         """Test success: Response format matches API spec (§13.1)"""
         self.client.force_authenticate(user=self.tenant1_admin)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -200,7 +200,7 @@ class TenantConfigViewSetTest(TestCase):
         config = TenantConfig.objects.create(tenant=self.tenant1)
         
         self.client.force_authenticate(user=self.tenant1_admin)
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -215,7 +215,7 @@ class TenantConfigViewSetTest(TestCase):
         fake_tenant_id = uuid.uuid4()
         
         self.client.force_authenticate(user=self.tenant1_admin)
-        response = self.client.get(f"/api/v1/tenants/tenants/{fake_tenant_id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{fake_tenant_id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
     
@@ -223,7 +223,7 @@ class TenantConfigViewSetTest(TestCase):
         """Test failure: 403 when user lacks TENANT_ADMIN role (own tenant)"""
         self.client.force_authenticate(user=self.provider_user)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
     
@@ -232,13 +232,13 @@ class TenantConfigViewSetTest(TestCase):
         self.client.force_authenticate(user=self.tenant1_admin)
         
         # Try to access tenant2 (different tenant)
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant2.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant2.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
     
     def test_get_401_when_unauthenticated(self):
         """Test failure: 401 when unauthenticated"""
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
     
@@ -246,7 +246,7 @@ class TenantConfigViewSetTest(TestCase):
         """Test failure: Error response format matches API spec (error code, message, details)"""
         self.client.force_authenticate(user=self.provider_user)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         # Check error response format
@@ -261,7 +261,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"default_dq_profile": "intake_basic_soda"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -283,7 +283,7 @@ class TenantConfigViewSetTest(TestCase):
             "max_job_concurrency": 10
         }
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -305,7 +305,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"default_dq_profile": "intake_basic_soda"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -329,7 +329,7 @@ class TenantConfigViewSetTest(TestCase):
             }
         }
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -343,7 +343,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"default_dq_profile": "intake_basic_soda"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -359,7 +359,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"default_dq_profile": "invalid_profile"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -374,7 +374,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"allowed_compliance_regimes": ["INVALID_REGIME"]}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -388,7 +388,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"data_retention_days": 50}  # Below minimum of 90
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -402,7 +402,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"data_retention_days": 4000}  # Above maximum of 3650
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -422,7 +422,7 @@ class TenantConfigViewSetTest(TestCase):
             }
         }
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -439,7 +439,7 @@ class TenantConfigViewSetTest(TestCase):
             "default_compliance_regimes": ["GDPR", "CCPA"]  # CCPA not in allowed
         }
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -453,7 +453,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"default_dq_profile": "intake_basic_soda"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant2.id}/config/",
+            f"/api/v1/tenants/{self.tenant2.id}/config/",
             data,
             format="json"
         )
@@ -466,7 +466,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"default_dq_profile": "intake_basic_soda"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -481,7 +481,7 @@ class TenantConfigViewSetTest(TestCase):
         self.client.force_authenticate(user=self.tenant1_admin)
         data = {"default_dq_profile": "intake_basic_soda"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{fake_tenant_id}/config/",
+            f"/api/v1/tenants/{fake_tenant_id}/config/",
             data,
             format="json"
         )
@@ -493,50 +493,50 @@ class TenantConfigViewSetTest(TestCase):
         """Test TENANT_ADMIN can access own tenant config"""
         self.client.force_authenticate(user=self.tenant1_admin)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
     
     def test_tenant_admin_cannot_access_other_tenant_config(self):
         """Test TENANT_ADMIN cannot access other tenant config"""
         self.client.force_authenticate(user=self.tenant1_admin)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant2.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant2.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
     
     def test_platform_admin_can_access_any_tenant_config(self):
         """Test Platform Admin can access any tenant config"""
         self.client.force_authenticate(user=self.platform_admin)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant2.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant2.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
     
     def test_data_provider_cannot_access_config(self):
         """Test DATA_PROVIDER cannot access config (even own tenant)"""
         self.client.force_authenticate(user=self.provider_user)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
     
     def test_data_consumer_cannot_access_config(self):
         """Test DATA_CONSUMER cannot access config (even own tenant)"""
         self.client.force_authenticate(user=self.consumer_user)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
     
     def test_auditor_cannot_access_config(self):
         """Test AUDITOR cannot access config (even own tenant)"""
         self.client.force_authenticate(user=self.auditor_user)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
     
     def test_unauthenticated_user_cannot_access_config(self):
         """Test unauthenticated user cannot access config"""
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
     
     # GAP-0.2.4.4: Edge case tests
@@ -544,7 +544,7 @@ class TenantConfigViewSetTest(TestCase):
         """Test GET with tenant that has no config (returns platform defaults)"""
         self.client.force_authenticate(user=self.tenant1_admin)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant1.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant1.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should return platform defaults
@@ -556,7 +556,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"default_dq_profile": "intake_basic_soda"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -577,7 +577,7 @@ class TenantConfigViewSetTest(TestCase):
         
         self.client.force_authenticate(user=self.tenant1_admin)
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             {},
             format="json"
         )
@@ -596,7 +596,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"default_dq_profile": "intake_basic_soda"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -630,7 +630,7 @@ class TenantConfigViewSetTest(TestCase):
             }
         }
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -658,7 +658,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"rate_limits": {}}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -685,7 +685,7 @@ class TenantConfigViewSetTest(TestCase):
             "data_retention_days": None
         }
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -716,7 +716,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"default_dq_profile": "intake_basic_soda"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -742,7 +742,7 @@ class TenantConfigViewSetTest(TestCase):
             "data_retention_days": 1825
         }
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
@@ -761,7 +761,7 @@ class TenantConfigViewSetTest(TestCase):
         
         data = {"default_dq_profile": "intake_basic_soda"}
         self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant1.id}/config/",
+            f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )

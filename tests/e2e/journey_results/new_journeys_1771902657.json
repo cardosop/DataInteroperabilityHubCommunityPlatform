@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.8663077354431152
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-010-0d07d222",
+      "journey_name": "Publish Asset with Usage-Based Pricing",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1771902655.9403946,
+      "end_time": 1771902657.8067024,
+      "duration": 1.8663077354431152,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771902655.9403977,
+          "end_time": 1771902657.7860122,
+          "duration": 1.8456144332885742,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Usage-Based Pricing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771902657.792883,
+          "end_time": 1771902657.8004603,
+          "duration": 0.007577419281005859,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Create Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771902657.8004649,
+          "end_time": 1771902657.8067002,
+          "duration": 0.006235361099243164,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "38fc179a-fb94-4734-9dd1-3356ba636d03"
+      }
+    }
+  ],
+  "exported_at": "2026-02-24T03:10:57.806763"
+}

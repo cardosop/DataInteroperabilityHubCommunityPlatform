@@ -9,6 +9,7 @@ Comprehensive tests for scheduled ingestion business rules validation following 
 """
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.db import connection
 
 from hub.apps.scheduled_ingestion.business_rules import (
     ScheduledIngestionBusinessRules,
@@ -31,11 +32,30 @@ from hub.apps.scheduled_ingestion.services import IngestionService
 User = get_user_model()
 
 
+def _ensure_db_connection():
+    """Ensure default DB connection is open before setUp (avoids 'connection already closed' in batched runs).
+
+    Do not call connections.close_all(): it would close the connection pytest-django uses
+    for the test transaction and cause 'connection already closed' in setUp.
+    """
+    try:
+        connection.ensure_connection()
+    except Exception:
+        try:
+            from django.db import connections
+
+            connections.close_all()
+            connection.ensure_connection()
+        except Exception:
+            pass
+
+
 class ScheduledIngestionBusinessRulesInitializationTest(TestCase):
     """Test ScheduledIngestionBusinessRules initialization"""
 
     def setUp(self):
         """Set up test fixtures"""
+        _ensure_db_connection()
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             slug="test-tenant",
@@ -120,6 +140,7 @@ class ScheduledIngestionRuleExecutionContextTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        _ensure_db_connection()
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             slug="test-tenant",
@@ -206,6 +227,7 @@ class ScheduledIngestionScheduleFormatValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        _ensure_db_connection()
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             slug="test-tenant",
@@ -380,6 +402,7 @@ class ScheduledIngestionScheduleConflictDetectionTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        _ensure_db_connection()
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             slug="test-tenant",
@@ -478,6 +501,7 @@ class ScheduledIngestionScheduleTimezoneValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        _ensure_db_connection()
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             slug="test-tenant",
@@ -549,6 +573,7 @@ class ScheduledIngestionScheduleResourceValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        _ensure_db_connection()
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             slug="test-tenant",
@@ -652,6 +677,7 @@ class ScheduledIngestionBusinessRulesIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        _ensure_db_connection()
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             slug="test-tenant",
@@ -737,6 +763,7 @@ class ScheduledIngestionSourceValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        _ensure_db_connection()
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             slug="test-tenant",
@@ -995,6 +1022,7 @@ class IngestionRunValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        _ensure_db_connection()
         from django.utils import timezone
         from datetime import timedelta
         self.timezone = timezone

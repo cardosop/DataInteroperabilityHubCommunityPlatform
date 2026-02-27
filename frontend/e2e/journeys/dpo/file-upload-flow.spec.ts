@@ -1,49 +1,45 @@
 /**
  * E2E Test: File Upload Flow
- * Independent test for file upload (extracted from complete journey)
+ * Independent test for file upload (extracted from complete journey).
+ * Files are uploaded from Dataset Create page (FileUpload component); /files is read-only list.
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
-import { waitForLoadingComplete } from '../../fixtures/helpers';
+import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
+import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('File Upload Flow', () => {
-  test.setTimeout(120000); // 2 minutes
+  test.setTimeout(300000); // 5 min: login + upload + 429 retries (5×10s) under visible/slowMo
+
+  test.describe('Failure', () => {
+    test('unauthenticated access to datasets create redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/datasets/create', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|datasets|register)/, { timeout: 20_000 });
+      const url = page.url();
+      const onLogin = url.includes('/login');
+      const onDatasetsWithLoginPrompt =
+        url.includes('/datasets') &&
+        (await hasLoginPrompt(page));
+      expect(onLogin || onDatasetsWithLoginPrompt).toBe(true);
+    });
+  });
 
   test('should upload file successfully', async ({ page }) => {
     const testUser = await getTestUser();
-    await loginUser(page, testUser);
-
-    // Navigate to files page
-    await page.goto('/files');
+    await loginAndNavigateToRoute(page, testUser, '/datasets/create', {
+      timeout: 60000,
+      contentSelector:
+        '.dataset-create-page, .file-upload-dropzone, input.file-upload-input, .loading-spinner-container, form',
+    });
     await waitForLoadingComplete(page);
 
-    // Wait for upload dropzone to be visible
+    // Dataset Create page has FileUpload with dropzone; file input may be hidden
     const dropzone = page.locator('.file-upload-dropzone');
-    const dropzoneCount = await dropzone.count();
+    await expect(dropzone.first()).toBeVisible({ timeout: 15000 });
 
-    if (dropzoneCount === 0) {
-      // Files page might not have upload dropzone - check if there's an upload button or link
-      const uploadButton = page.locator('button:has-text("Upload"), a:has-text("Upload")');
-      if ((await uploadButton.count()) > 0) {
-        await expect(uploadButton.first()).toBeVisible({ timeout: 10000 });
-        await uploadButton.first().click();
-        await waitForLoadingComplete(page);
-        // After clicking upload, dropzone should appear
-        await expect(page.locator('.file-upload-dropzone').first()).toBeVisible({ timeout: 10000 });
-      } else {
-        test.skip(
-          true,
-          'Upload UI not available (no upload button or dropzone); cannot test file upload'
-        );
-        return;
-      }
-    } else {
-      await expect(dropzone.first()).toBeVisible({ timeout: 15000 });
-    }
-
-    // Find file input
-    const fileInput = page.locator('input[type="file"]').first();
+    // Find file input (inside dropzone or form)
+    const fileInput = page.locator('.file-upload-dropzone input[type="file"], input.file-upload-input').first();
     await expect(fileInput).toBeAttached({ timeout: 10000 });
 
     // Upload file with retry on rate limit (429) - parse retry-after from error message
@@ -90,12 +86,9 @@ test.describe('File Upload Flow', () => {
           continue;
         }
 
-        // Wait for upload to start and complete
-        // Check for success indicator or file appearing in list
+        // Wait for upload to complete (Dataset Create shows .file-upload-success or .upload-success)
         await expect(
-          page.locator(
-            '.file-upload-success, .file-upload-success-text, .file-list-page table tbody tr'
-          )
+          page.locator('.file-upload-success, .file-upload-success-text, .upload-success')
         ).toBeVisible({ timeout: 60000 });
         uploadSuccess = true;
       } catch (error) {
@@ -120,9 +113,12 @@ test.describe('File Upload Flow', () => {
           }
         }
 
-        if (retries < maxRetries - 1) {
+        if (
+          retries < maxRetries - 1 &&
+          !String(error).includes('Target page, context or browser has been closed')
+        ) {
           console.log(`File upload attempt ${retries + 1} failed, retrying...`);
-          await page.waitForTimeout(5000);
+          await page.waitForTimeout(3000);
           retries++;
         } else {
           throw error;

@@ -1,9 +1,8 @@
 /**
  * Health Service
- * API client for health check endpoints
+ * Fetches health status from Django /health/ endpoint
  */
 
-import { apiClient } from '../api/client';
 import type { HealthStatus } from '../types/health';
 
 export const healthService = {
@@ -29,25 +28,18 @@ export const healthService = {
   },
 
   /**
-   * Get aggregate health status from API Gateway or Django health endpoint
-   * Tries /api/v1/health first (API Gateway aggregate), falls back to /health/ (Django)
+   * Get aggregate health status from Django health endpoint
+   * Uses /health/ (Django root) which exists; /api/v1/health is not implemented
    */
   async getAggregateHealth(): Promise<HealthStatus> {
     try {
-      // Try API Gateway aggregate health endpoint first
-      const response = await apiClient.getClient().get<HealthStatus>('health');
-      return response.data;
+      return await this.getHealth();
     } catch (error) {
-      // Fallback to Django health endpoint if API Gateway endpoint fails
-      try {
-        return await this.getHealth();
-      } catch (fallbackError) {
-        // If both fail, return a degraded status (graceful degradation)
-        return {
-          status: 'degraded',
-          service: 'unknown',
-        };
-      }
+      // Graceful degradation when health check fails
+      return {
+        status: 'degraded',
+        service: 'unknown',
+      };
     }
   },
 };

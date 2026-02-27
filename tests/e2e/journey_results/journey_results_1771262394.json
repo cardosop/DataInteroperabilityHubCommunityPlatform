@@ -1,0 +1,85 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.0695047378540039
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-004-52b7cbba",
+      "journey_name": "Explore Asset Lineage",
+      "persona": "Data Consumer / Buyer",
+      "status": "completed",
+      "start_time": 1771262394.4472106,
+      "end_time": 1771262394.5167153,
+      "duration": 0.0695047378540039,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset with Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771262394.4472156,
+          "end_time": 1771262394.5110455,
+          "duration": 0.06382989883422852,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "tuple"
+          }
+        },
+        {
+          "step_name": "Get Lineage Data",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771262394.5110545,
+          "end_time": 1771262394.5167017,
+          "duration": 0.005647182464599609,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Visualize Lineage",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771262394.5167065,
+          "end_time": 1771262394.5167108,
+          "duration": 4.291534423828125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Explore Relationships",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771262394.5167122,
+          "end_time": 1771262394.516714,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "754ec2a7-95ca-4ee7-b37e-677692fda320",
+        "contract_id": "4088cafd-a5d8-42d0-918c-1c93649d53b6"
+      }
+    }
+  ],
+  "exported_at": "2026-02-16T17:19:54.516780"
+}

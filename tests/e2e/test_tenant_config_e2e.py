@@ -25,7 +25,7 @@ from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.files.models import File
 from hub.apps.testing.service_utils import check_service_health
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -137,13 +137,13 @@ class TenantConfigE2ETest(E2ETestBase):
         """TENANT_ADMIN can retrieve own tenant config"""
         self.client.force_authenticate(user=self.tenant1_admin)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("tenant_id", response.data)
-        self.assertEqual(str(self.tenant.id), response.data["tenant_id"])
+        self.assertIn("tenant_id", (get_response_data(response) or {}))
+        self.assertEqual(str(self.tenant.id), (get_response_data(response) or {})["tenant_id"])
         # Should return platform defaults if config doesn't exist
-        self.assertEqual(response.data["default_dq_profile"], self.platform_defaults["default_dq_profile"])
+        self.assertEqual((get_response_data(response) or {})["default_dq_profile"], self.platform_defaults["default_dq_profile"])
     
     def test_tenant_admin_get_own_config_with_existing_config(self):
         """TENANT_ADMIN can retrieve own tenant config when config exists"""
@@ -154,11 +154,11 @@ class TenantConfigE2ETest(E2ETestBase):
         )
         
         self.client.force_authenticate(user=self.tenant1_admin)
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["default_dq_profile"], "intake_basic_soda")
-        self.assertEqual(response.data["data_retention_days"], 1825)
+        self.assertEqual((get_response_data(response) or {})["default_dq_profile"], "intake_basic_soda")
+        self.assertEqual((get_response_data(response) or {})["data_retention_days"], 1825)
     
     def test_tenant_admin_update_own_config(self):
         """TENANT_ADMIN can update own tenant config"""
@@ -169,14 +169,14 @@ class TenantConfigE2ETest(E2ETestBase):
         }
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["default_dq_profile"], "intake_basic_soda")
-        self.assertEqual(response.data["data_retention_days"], 1825)
+        self.assertEqual((get_response_data(response) or {})["default_dq_profile"], "intake_basic_soda")
+        self.assertEqual((get_response_data(response) or {})["data_retention_days"], 1825)
         
         # Verify persisted
         config = TenantConfig.objects.get(tenant=self.tenant)
@@ -184,15 +184,15 @@ class TenantConfigE2ETest(E2ETestBase):
         self.assertEqual(config.data_retention_days, 1825)
         
         # Verify subsequent GET returns updated values
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
-        self.assertEqual(response.data["default_dq_profile"], "intake_basic_soda")
-        self.assertEqual(response.data["data_retention_days"], 1825)
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
+        self.assertEqual((get_response_data(response) or {})["default_dq_profile"], "intake_basic_soda")
+        self.assertEqual((get_response_data(response) or {})["data_retention_days"], 1825)
     
     def test_tenant_admin_cannot_access_other_tenant_config_get(self):
         """TENANT_ADMIN cannot GET other tenant config (403)"""
         self.client.force_authenticate(user=self.tenant1_admin)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant2.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant2.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
     
@@ -202,7 +202,7 @@ class TenantConfigE2ETest(E2ETestBase):
         data = {"default_dq_profile": "intake_basic_soda"}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant2.id}/config/",
+            f"/api/v1/tenants/{self.tenant2.id}/config/",
             data,
             format="json"
         )
@@ -215,11 +215,11 @@ class TenantConfigE2ETest(E2ETestBase):
         self.client.force_authenticate(user=self.platform_admin)
         
         # Can access tenant1 config
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Can access tenant2 config
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant2.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant2.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
     
     def test_platform_admin_update_any_tenant_config(self):
@@ -229,7 +229,7 @@ class TenantConfigE2ETest(E2ETestBase):
         
         # Can update tenant1 config
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -237,7 +237,7 @@ class TenantConfigE2ETest(E2ETestBase):
         
         # Can update tenant2 config
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant2.id}/config/",
+            f"/api/v1/tenants/{self.tenant2.id}/config/",
             data,
             format="json"
         )
@@ -248,7 +248,7 @@ class TenantConfigE2ETest(E2ETestBase):
         """DATA_PROVIDER cannot GET tenant config (403)"""
         self.client.force_authenticate(user=self.provider_user)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
     
@@ -258,7 +258,7 @@ class TenantConfigE2ETest(E2ETestBase):
         data = {"default_dq_profile": "intake_basic_soda"}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -270,11 +270,11 @@ class TenantConfigE2ETest(E2ETestBase):
         """DATA_CONSUMER cannot access tenant config (403)"""
         self.client.force_authenticate(user=self.consumer_user)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             {"default_dq_profile": "intake_basic_soda"},
             format="json"
         )
@@ -285,7 +285,7 @@ class TenantConfigE2ETest(E2ETestBase):
         """AUDITOR cannot access tenant config (403)"""
         self.client.force_authenticate(user=self.auditor_user)
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
     
     # Configuration Usage Journey Tests
@@ -385,7 +385,7 @@ class TenantConfigE2ETest(E2ETestBase):
         }
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -393,14 +393,14 @@ class TenantConfigE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify all fields are returned in GET response
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
-        self.assertEqual(response.data["default_dq_profile"], "intake_basic_soda")
-        self.assertEqual(response.data["allowed_compliance_regimes"], ["GDPR", "LGPD", "CCPA"])
-        self.assertEqual(response.data["default_compliance_regimes"], ["GDPR", "LGPD"])
-        self.assertEqual(response.data["data_retention_days"], 1825)
-        self.assertEqual(response.data["max_file_size_bytes"], 10737418240)
-        self.assertEqual(response.data["max_job_concurrency"], 5)
-        self.assertEqual(response.data["max_queued_jobs"], 50)
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
+        self.assertEqual((get_response_data(response) or {})["default_dq_profile"], "intake_basic_soda")
+        self.assertEqual((get_response_data(response) or {})["allowed_compliance_regimes"], ["GDPR", "LGPD", "CCPA"])
+        self.assertEqual((get_response_data(response) or {})["default_compliance_regimes"], ["GDPR", "LGPD"])
+        self.assertEqual((get_response_data(response) or {})["data_retention_days"], 1825)
+        self.assertEqual((get_response_data(response) or {})["max_file_size_bytes"], 10737418240)
+        self.assertEqual((get_response_data(response) or {})["max_job_concurrency"], 5)
+        self.assertEqual((get_response_data(response) or {})["max_queued_jobs"], 50)
     
     def test_config_partial_update(self):
         """Partial update - update only one field"""
@@ -416,7 +416,7 @@ class TenantConfigE2ETest(E2ETestBase):
         # Update only default_dq_profile
         data = {"default_dq_profile": "intake_basic_soda"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -450,7 +450,7 @@ class TenantConfigE2ETest(E2ETestBase):
             }
         }
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -470,13 +470,13 @@ class TenantConfigE2ETest(E2ETestBase):
         data = {"data_retention_days": 90}  # Minimum
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["data_retention_days"], 90)
+        self.assertEqual((get_response_data(response) or {})["data_retention_days"], 90)
     
     def test_config_validation_edge_cases_maximum(self):
         """Test validation edge cases - maximum data_retention_days"""
@@ -484,13 +484,13 @@ class TenantConfigE2ETest(E2ETestBase):
         data = {"data_retention_days": 3650}  # Maximum
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["data_retention_days"], 3650)
+        self.assertEqual((get_response_data(response) or {})["data_retention_days"], 3650)
     
     def test_config_validation_edge_cases_below_minimum(self):
         """Test validation edge cases - below minimum data_retention_days"""
@@ -498,7 +498,7 @@ class TenantConfigE2ETest(E2ETestBase):
         data = {"data_retention_days": 89}  # Below minimum
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -511,7 +511,7 @@ class TenantConfigE2ETest(E2ETestBase):
         data = {"data_retention_days": 3651}  # Above maximum
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -527,7 +527,7 @@ class TenantConfigE2ETest(E2ETestBase):
         }
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -549,13 +549,13 @@ class TenantConfigE2ETest(E2ETestBase):
         }
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["default_compliance_regimes"], ["GDPR", "LGPD"])
+        self.assertEqual((get_response_data(response) or {})["default_compliance_regimes"], ["GDPR", "LGPD"])
     
     def test_config_deletion_cascade(self):
         """Test config deletion cascade when tenant is deleted"""

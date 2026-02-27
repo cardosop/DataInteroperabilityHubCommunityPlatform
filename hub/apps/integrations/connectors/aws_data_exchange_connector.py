@@ -38,7 +38,7 @@ from hub.apps.integrations.base import (
     MarketplaceAssetMapping,
 )
 from hub.apps.assets.models import AssetSourceType
-from hub.apps.core.services.base import NotFoundError, PermissionError
+from hub.apps.core.services.base import ConnectionError, NotFoundError, PermissionError
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
     get_redis_client,
@@ -200,8 +200,11 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 context['trace_id'] = trace_id
             if span_id:
                 context['span_id'] = span_id
-        except Exception:
-            pass
+        except Exception as e:
+            structlogger.debug(
+                "aws_data_exchange_trace_context_failed",
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         # Try to get trace headers from request context
         try:
@@ -211,8 +214,11 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 context['trace_id'] = request.trace_id
             if request and hasattr(request, 'span_id'):
                 context['span_id'] = request.span_id
-        except Exception:
-            pass
+        except Exception as e:
+            structlogger.debug(
+                "aws_data_exchange_request_trace_failed",
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
         return context
 
@@ -582,6 +588,9 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 self._authenticated = False
                 logger.warning("AWS Data Exchange authentication failed: Connection test returned False")
                 raise ConnectionError("Connection test failed")
+        except (PermissionError, ConnectionError):
+            self._authenticated = False
+            raise
         except Exception as e:
             self._authenticated = False
             logger.error(f"AWS Data Exchange authentication failed: {e}")
@@ -1110,9 +1119,16 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             MarketplaceListing object with complete metadata including ODPS and ODCS metadata
 
         Raises:
+            ValueError: If listing_id is empty
+            TypeError: If listing_id is None
             NotFoundError: If dataset not found (ResourceNotFoundException)
             ConnectionError: If unable to connect to AWS Data Exchange
         """
+        if listing_id is None:
+            raise TypeError("listing_id must not be None")
+        if not isinstance(listing_id, str) or not listing_id.strip():
+            raise ValueError("listing_id must be a non-empty string")
+
         def execute_get_listing() -> MarketplaceListing:
             """Execute GetDataSet API call and build MarketplaceListing."""
             try:
@@ -1194,9 +1210,16 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             - "REDSHIFT_TABLE" for Redshift data share assets
 
         Raises:
+            ValueError: If listing_id is empty
+            TypeError: If listing_id is None
             NotFoundError: If dataset not found
             ConnectionError: If unable to connect to AWS Data Exchange
         """
+        if listing_id is None:
+            raise TypeError("listing_id must not be None")
+        if not isinstance(listing_id, str) or not listing_id.strip():
+            raise ValueError("listing_id must be a non-empty string")
+
         def execute_list_resources() -> List[MarketplaceResource]:
             """Execute ListRevisionAssets API call and build MarketplaceResource objects."""
             # Get dataset details to find latest revision
@@ -1471,8 +1494,13 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             PermissionError: If user lacks permission to create export job
             ConnectionError: If unable to connect to AWS Data Exchange
         """
+        if not dataset_id or not isinstance(dataset_id, str) or not dataset_id.strip():
+            raise ValueError("dataset_id must be a non-empty string")
+        if not revision_id or not isinstance(revision_id, str) or not revision_id.strip():
+            raise ValueError("revision_id must be a non-empty string")
+
         # Get destination bucket from options or settings
-        if not destination_bucket:
+        if not destination_bucket or (isinstance(destination_bucket, str) and not destination_bucket.strip()):
             # Try to get from Django settings
             destination_bucket = getattr(settings, 'AWS_DATA_EXCHANGE_EXPORT_BUCKET', None)
             if not destination_bucket:

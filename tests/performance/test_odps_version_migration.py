@@ -68,6 +68,7 @@ def create_odps_4_0_document(product_id: str = None) -> dict:
                     "schema": {"fields": [{"name": "id", "type": "string", "required": True}]},
                 }
             },
+            "dataSchema": {"fields": [{"name": "id", "type": "string", "required": True}]},
         },
     }
 
@@ -104,6 +105,12 @@ def create_odps_4_1_document(product_id: str = None) -> dict:
             "marketplace": {
                 "pricingPlans": [
                     {"planID": "basic", "name": "Basic Plan", "price": 9.99, "currency": "USD"}
+                ]
+            },
+            "dataSchema": {
+                "fields": [
+                    {"name": "id", "type": "string", "required": True},
+                    {"name": "name", "type": "string", "required": True},
                 ]
             },
         },

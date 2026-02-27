@@ -213,14 +213,17 @@ class DistributedTracingIntegrationTest(TestCase):
         self.assertTrue(True)
     
     def test_jaeger_exporter_configuration(self):
-        """Test that Jaeger exporter is configured"""
+        """Test that Jaeger exporter is configured from environment.
+
+        docker-compose.test.yml uses JAEGER_AGENT_HOST=jaeger-test;
+        docker-compose.dev.yml uses JAEGER_AGENT_HOST=jaeger (default).
+        """
         import os
-        
+
         jaeger_host = os.getenv('JAEGER_AGENT_HOST', 'jaeger')
         jaeger_port = int(os.getenv('JAEGER_AGENT_PORT', '6831'))
-        
-        # Should have default values
-        self.assertEqual(jaeger_host, 'jaeger')
+
+        self.assertIn(jaeger_host, ('jaeger', 'jaeger-test'), f"Unexpected JAEGER_AGENT_HOST: {jaeger_host}")
         self.assertEqual(jaeger_port, 6831)
 
 

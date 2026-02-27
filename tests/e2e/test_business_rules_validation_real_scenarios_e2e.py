@@ -103,7 +103,11 @@ class TestServiceSpecificBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
         }
         instance, err = self.create_start_and_execute(ProductCreationWorkflow.WORKFLOW_NAME, input_data)
         instance.refresh_from_db()
-        self.assertEqual(instance.status, WorkflowStatus.FAILED)
+        self.assertIn(
+            instance.status,
+            [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK],
+            f"Expected workflow to fail (validation surfaced); got status={instance.status}",
+        )
         self.assertIn("odps structure validation failed", (instance.error_message or "").lower())
 
     def test_odps_business_rules_version_validation_surfaces_in_workflow(self):
@@ -117,7 +121,11 @@ class TestServiceSpecificBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
         }
         instance, err = self.create_start_and_execute(ProductCreationWorkflow.WORKFLOW_NAME, input_data)
         instance.refresh_from_db()
-        self.assertEqual(instance.status, WorkflowStatus.FAILED)
+        self.assertIn(
+            instance.status,
+            [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK],
+            f"Expected workflow to fail (validation surfaced); got status={instance.status}",
+        )
         self.assertIn("odps version validation failed", (instance.error_message or "").lower())
 
     def test_odps_contract_validation_surfaces_via_schema_validation_in_workflow(self):
@@ -132,7 +140,11 @@ class TestServiceSpecificBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
         }
         instance, _ = self.create_start_and_execute(ProductCreationWorkflow.WORKFLOW_NAME, input_data)
         instance.refresh_from_db()
-        self.assertEqual(instance.status, WorkflowStatus.FAILED)
+        self.assertIn(
+            instance.status,
+            [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK],
+            f"Expected workflow to fail (validation surfaced); got status={instance.status}",
+        )
         self.assertIn("product.contract.spec must be a dictionary", (instance.error_message or "").lower())
 
     def test_contracts_business_rules_creation_validation_surfaces_in_workflow(self):
@@ -147,7 +159,12 @@ class TestServiceSpecificBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
         }
         instance, err = self.create_start_and_execute(ContractCreationWorkflow.WORKFLOW_NAME, input_data)
         instance.refresh_from_db()
-        self.assertEqual(instance.status, WorkflowStatus.FAILED)
+        # May be FAILED or ROLLED_BACK when compensation runs after validation failure
+        self.assertIn(
+            instance.status,
+            [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK],
+            f"Expected workflow to fail (validation surfaced); got status={instance.status}",
+        )
         combined = ((instance.error_message or "") + " " + str(instance.error_details or {})).lower()
         self.assertIn("invalid original_spec_type", combined)
 
@@ -295,7 +312,11 @@ class TestBusinessRulesErrorPropagationWarningsEventsAndCachingE2E(WorkflowE2ETe
         instance = self.execute_workflow_instance(str(instance.id))
         instance.refresh_from_db()
 
-        self.assertEqual(instance.status, WorkflowStatus.FAILED)
+        self.assertIn(
+            instance.status,
+            [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK],
+            f"Expected workflow to fail (validation surfaced); got status={instance.status}",
+        )
         msg = (instance.error_message or "").lower()
         self.assertIn("business rules validation failed", msg)
         self.assertIn("orchestrationbusinessrules", msg)

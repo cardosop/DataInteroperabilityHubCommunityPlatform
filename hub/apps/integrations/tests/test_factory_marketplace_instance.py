@@ -90,20 +90,29 @@ class TestCreateCKANConnectorFromInstance(TestCase):
         self.assertEqual(connector.base_url, 'https://data.gov')
 
     def test_create_with_api_key_from_environment(self):
-        """Test that API key/JWT token is resolved from environment variable."""
-        original_key = os.environ.get('CKAN_DADOS_GOV_BR_API_KEY')
+        """Test that API key/JWT token is resolved from environment variable.
+
+        Instance config uses DADOS_GOV_BR_API_KEY (primary); CKAN_DADOS_GOV_BR_API_KEY
+        is deprecated fallback. Set primary so test is isolated from host env.
+        """
+        original_primary = os.environ.pop('DADOS_GOV_BR_API_KEY', None)
+        original_deprecated = os.environ.pop('CKAN_DADOS_GOV_BR_API_KEY', None)
         test_key = 'test-api-key-from-env-12345'
 
         try:
-            os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = test_key
+            os.environ['DADOS_GOV_BR_API_KEY'] = test_key
             connector = MarketplaceConnectorFactory.create_ckan_connector_from_instance(
                 instance_id='dados.gov.br'
             )
             # DadosGovBrConnector uses jwt_token, not api_key
             self.assertEqual(connector.jwt_token, test_key)
         finally:
-            if original_key is not None:
-                os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = original_key
+            if original_primary is not None:
+                os.environ['DADOS_GOV_BR_API_KEY'] = original_primary
+            elif 'DADOS_GOV_BR_API_KEY' in os.environ:
+                del os.environ['DADOS_GOV_BR_API_KEY']
+            if original_deprecated is not None:
+                os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = original_deprecated
             elif 'CKAN_DADOS_GOV_BR_API_KEY' in os.environ:
                 del os.environ['CKAN_DADOS_GOV_BR_API_KEY']
 
@@ -129,13 +138,15 @@ class TestCreateCKANConnectorFromInstance(TestCase):
                 del os.environ['CKAN_DADOS_GOV_BR_API_KEY']
 
     def test_create_without_api_key_when_not_set(self):
-        """Test that connector is created without API key/JWT token when not set."""
-        original_key = os.environ.get('CKAN_DADOS_GOV_BR_API_KEY')
+        """Test that connector is created without API key/JWT token when not set.
+
+        Instance config checks DADOS_GOV_BR_API_KEY first, then CKAN_DADOS_GOV_BR_API_KEY.
+        Unset both so no key is resolved and test is isolated from host env.
+        """
+        original_primary = os.environ.pop('DADOS_GOV_BR_API_KEY', None)
+        original_deprecated = os.environ.pop('CKAN_DADOS_GOV_BR_API_KEY', None)
 
         try:
-            if 'CKAN_DADOS_GOV_BR_API_KEY' in os.environ:
-                del os.environ['CKAN_DADOS_GOV_BR_API_KEY']
-
             connector = MarketplaceConnectorFactory.create_ckan_connector_from_instance(
                 instance_id='dados.gov.br'
             )
@@ -143,8 +154,10 @@ class TestCreateCKANConnectorFromInstance(TestCase):
             # DadosGovBrConnector uses jwt_token, not api_key
             self.assertEqual(connector.jwt_token, '')
         finally:
-            if original_key is not None:
-                os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = original_key
+            if original_primary is not None:
+                os.environ['DADOS_GOV_BR_API_KEY'] = original_primary
+            if original_deprecated is not None:
+                os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = original_deprecated
 
     def test_create_with_none_api_key_override(self):
         """Test that None API key/JWT token override clears environment API key."""
@@ -295,12 +308,15 @@ class TestFactoryUsesInstanceConfiguration(TestCase):
         self.assertEqual(connector.base_url, 'https://dados.gov.br')
 
     def test_create_connector_with_instance_config_and_env_api_key(self):
-        """Test create_connector() with instance_id uses env API key/JWT token."""
-        original_key = os.environ.get('CKAN_DADOS_GOV_BR_API_KEY')
+        """Test create_connector() with instance_id uses env API key/JWT token.
+
+        Instance config uses DADOS_GOV_BR_API_KEY (primary). Set it so test is isolated."""
+        original_primary = os.environ.pop('DADOS_GOV_BR_API_KEY', None)
+        original_deprecated = os.environ.pop('CKAN_DADOS_GOV_BR_API_KEY', None)
         test_key = 'test-env-key-from-config-12345'
 
         try:
-            os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = test_key
+            os.environ['DADOS_GOV_BR_API_KEY'] = test_key
             connector = MarketplaceConnectorFactory.create_connector(
                 marketplace_type=MarketplaceType.CKAN_INSTANCE,
                 config={'instance_id': 'dados.gov.br'}
@@ -308,8 +324,12 @@ class TestFactoryUsesInstanceConfiguration(TestCase):
             # DadosGovBrConnector uses jwt_token, not api_key
             self.assertEqual(connector.jwt_token, test_key)
         finally:
-            if original_key is not None:
-                os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = original_key
+            if original_primary is not None:
+                os.environ['DADOS_GOV_BR_API_KEY'] = original_primary
+            elif 'DADOS_GOV_BR_API_KEY' in os.environ:
+                del os.environ['DADOS_GOV_BR_API_KEY']
+            if original_deprecated is not None:
+                os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = original_deprecated
             elif 'CKAN_DADOS_GOV_BR_API_KEY' in os.environ:
                 del os.environ['CKAN_DADOS_GOV_BR_API_KEY']
 

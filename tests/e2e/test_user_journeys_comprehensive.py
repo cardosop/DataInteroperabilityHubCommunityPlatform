@@ -23,7 +23,58 @@ from .journey_tracker import (
 )
 
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.e2e,
+    pytest.mark.uc_journey_persona,
+    pytest.mark.persona("Data Product Owner"),
+    pytest.mark.persona("Data Engineer"),
+    pytest.mark.persona("Compliance Officer"),
+    pytest.mark.persona("Data Consumer"),
+    pytest.mark.persona("Tenant Admin"),
+    pytest.mark.persona("Platform Admin"),
+    pytest.mark.persona("Marketplace Platform Admin"),
+    pytest.mark.persona("External Developer"),
+    pytest.mark.persona("Auditor"),
+    pytest.mark.journey("JOURNEY-DPO-001"),
+    pytest.mark.journey("JOURNEY-DPO-002"),
+    pytest.mark.journey("JOURNEY-DPO-003"),
+    pytest.mark.journey("JOURNEY-DPO-004"),
+    pytest.mark.journey("JOURNEY-DPO-005"),
+    pytest.mark.journey("JOURNEY-DPO-006"),
+    pytest.mark.journey("JOURNEY-DE-001"),
+    pytest.mark.journey("JOURNEY-DE-002"),
+    pytest.mark.journey("JOURNEY-DE-003"),
+    pytest.mark.journey("JOURNEY-DE-004"),
+    pytest.mark.journey("JOURNEY-DE-005"),
+    pytest.mark.journey("JOURNEY-DE-006"),
+    pytest.mark.journey("JOURNEY-CPO-001"),
+    pytest.mark.journey("JOURNEY-CPO-002"),
+    pytest.mark.journey("JOURNEY-CPO-003"),
+    pytest.mark.journey("JOURNEY-CPO-004"),
+    pytest.mark.journey("JOURNEY-CPO-005"),
+    pytest.mark.journey("JOURNEY-DC-001"),
+    pytest.mark.journey("JOURNEY-DC-002"),
+    pytest.mark.journey("JOURNEY-DC-003"),
+    pytest.mark.journey("JOURNEY-DC-004"),
+    pytest.mark.journey("JOURNEY-DC-005"),
+    pytest.mark.journey("JOURNEY-TA-001"),
+    pytest.mark.journey("JOURNEY-TA-002"),
+    pytest.mark.journey("JOURNEY-TA-003"),
+    pytest.mark.journey("JOURNEY-TA-004"),
+    pytest.mark.journey("JOURNEY-PA-001"),
+    pytest.mark.journey("JOURNEY-MPA-001"),
+    pytest.mark.journey("JOURNEY-MPA-002"),
+    pytest.mark.journey("JOURNEY-MPA-003"),
+    pytest.mark.journey("JOURNEY-MPA-004"),
+    pytest.mark.journey("JOURNEY-DEV-001"),
+    pytest.mark.journey("JOURNEY-DEV-002"),
+    pytest.mark.journey("JOURNEY-DEV-003"),
+    pytest.mark.journey("JOURNEY-DEV-004"),
+    pytest.mark.journey("JOURNEY-AUD-001"),
+    pytest.mark.journey("JOURNEY-AUD-002"),
+    pytest.mark.journey("JOURNEY-AUD-003"),
+]
 
 
 class UserJourneyTestBase(E2ETestBase):
@@ -1145,14 +1196,22 @@ class Persona2DataEngineerJourneys(UserJourneyTestBase):
         return contract.normalization_status
     
     def _activate_asset_safe(self, asset_id):
-        """Activate asset safely."""
+        """Activate asset safely. Reuses existing contract if present to avoid unique_contract_version_per_asset."""
         from hub.apps.assets.models import Asset, AssetStatus
+        from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus, NormalizationStatus
+
         asset = Asset.objects.get(id=asset_id)
         if asset.status != AssetStatus.ACTIVE:
-            # Ensure asset has valid contract
-            from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus, NormalizationStatus
-            if not asset.contracts.filter(status=ContractStatus.ACTIVE).exists():
-                contract = Contract.objects.create(
+            # Use existing contract if any (from API or prior step); else create with next version
+            existing = asset.contracts.order_by("-version").first()
+            if existing:
+                if existing.status != ContractStatus.ACTIVE:
+                    existing.status = ContractStatus.ACTIVE
+                    existing.validation_status = ValidationStatus.VALID
+                    existing.normalization_status = NormalizationStatus.NORMALIZED_OK
+                    existing.save()
+            else:
+                Contract.objects.create(
                     tenant=self.tenant,
                     asset_id=asset_id,
                     version=1,
@@ -1165,7 +1224,7 @@ class Persona2DataEngineerJourneys(UserJourneyTestBase):
                     normalization_status=NormalizationStatus.NORMALIZED_OK,
                     hub_contract_version="1.0.0",
                     hub_contract_json={"hub_contract_version": "1.0.0", "info": {"title": "Test"}, "schema": {"fields": [{"name": "id", "type": "string"}]}},
-                    created_by=self.user
+                    created_by=self.user,
                 )
             asset.status = AssetStatus.ACTIVE
             asset.save()
@@ -1750,18 +1809,31 @@ class Persona4DataConsumerJourneys(UserJourneyTestBase):
         # Create provider tenant for marketplace
         from hub.apps.tenants.models import Tenant, KYCStatus
         from hub.apps.users.models import User, UserStatus
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
         self.provider_tenant = Tenant.objects.create(
             name="Provider Tenant",
             slug="provider-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.provider_tenant)
         self.provider_user = User.objects.create_user(
             email="provider@example.com",
             password="testpass123",
             tenant=self.provider_tenant,
             status=UserStatus.ACTIVE
         )
-    
+        # DATA_PROVIDER role required for asset creation (POST /api/v1/assets/)
+        from hub.apps.users.models import Role, UserRole
+
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.provider_tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        UserRole.objects.get_or_create(user=self.provider_user, role=provider_role)
+        self.provider_user.refresh_from_db()
+
     def test_journey_dc_001_discover_and_purchase(self):
         """JOURNEY-DC-001: Discover and Purchase Marketplace Asset"""
         journey_id = f"DC-001-{uuid.uuid4().hex[:8]}"
@@ -1776,13 +1848,13 @@ class Persona4DataConsumerJourneys(UserJourneyTestBase):
             self.client.force_authenticate(user=self.provider_user)
             asset_id = self.execute_journey_step(
                 "Provider Creates Asset",
-                self._create_activated_asset
+                self._create_activated_asset_provider
             )
-            
+
             # Create listing
             listing_id = self.execute_journey_step(
                 "Provider Creates Listing",
-                self._create_marketplace_listing,
+                self._create_marketplace_listing_provider,
                 asset_id
             )
             
@@ -1855,7 +1927,7 @@ class Persona4DataConsumerJourneys(UserJourneyTestBase):
             self.client.force_authenticate(user=self.provider_user)
             asset_id = self.execute_journey_step(
                 "Provider Creates Asset",
-                self._create_activated_asset
+                self._create_activated_asset_provider
             )
             
             # Step 2: Switch to consumer context
@@ -3252,10 +3324,10 @@ class Persona7ExternalDeveloperJourneys(UserJourneyTestBase):
         return {}
     
     def _test_api_calls(self):
-        """Test API calls."""
-        # Test a simple API call
-        response = self.client.get('/api/v1/assets/')
-        assert response.status_code in [200, 401]  # May require auth
+        """Test API calls (client is authenticated via E2ETestBase)."""
+        response = self.client.get("/api/v1/assets/")
+        # Assets endpoint requires IsAuthenticated; we are authenticated, expect 200.
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         return {"test_passed": True}
     
     def _implement_integration(self, endpoints):

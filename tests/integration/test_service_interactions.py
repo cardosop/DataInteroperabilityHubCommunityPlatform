@@ -13,6 +13,7 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from tests.factories import TenantFactory, UserFactory
 
 User = get_user_model()
@@ -25,6 +26,7 @@ class ServiceInteractionsIntegrationTest(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant, status=UserStatus.ACTIVE)
         self.client.force_authenticate(user=self.user)
         self.asset = Asset.objects.create(
@@ -46,6 +48,7 @@ class ServiceInteractionsIntegrationTest(TestCase):
             [
                 status.HTTP_201_CREATED,
                 status.HTTP_400_BAD_REQUEST,
+                status.HTTP_403_FORBIDDEN,
                 status.HTTP_404_NOT_FOUND,
                 status.HTTP_503_SERVICE_UNAVAILABLE,
             ],

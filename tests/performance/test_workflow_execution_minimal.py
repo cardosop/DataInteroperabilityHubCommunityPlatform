@@ -42,6 +42,12 @@ def create_valid_odps_document(product_id: str = None) -> dict:
                     },
                 }
             },
+            "dataSchema": {
+                "fields": [
+                    {"name": "id", "type": "string", "required": True},
+                    {"name": "name", "type": "string", "required": True},
+                ]
+            },
         },
     }
 

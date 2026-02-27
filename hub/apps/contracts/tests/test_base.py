@@ -11,6 +11,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.contracts.services import ContractService, ODPSService
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
 User = get_user_model()
@@ -80,6 +81,8 @@ class ContractsAPITestBase(ContractsTestBase):
     def setUp(self):
         """Set up API test fixtures."""
         super().setUp()
+        # Active subscription required so TenantSuspensionMiddleware allows writes (POST/PATCH/DELETE).
+        ensure_tenant_has_active_subscription(self.tenant)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
@@ -90,5 +93,7 @@ class ContractsAPITransactionTestBase(ContractsTransactionTestBase):
     def setUp(self):
         """Set up API test fixtures."""
         super().setUp()
+        # Active subscription required so TenantSuspensionMiddleware allows writes (POST/PATCH/DELETE).
+        ensure_tenant_has_active_subscription(self.tenant)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)

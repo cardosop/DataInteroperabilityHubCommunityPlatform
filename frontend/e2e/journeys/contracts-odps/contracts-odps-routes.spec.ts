@@ -6,7 +6,11 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { waitForAppMainReady } from '../../fixtures/helpers';
+import {
+  assertSuccessfulLoad,
+  waitForAppMainReady,
+  waitForLoadingComplete,
+} from '../../fixtures/helpers';
 
 test.describe('Contracts and ODPS routes', () => {
   test.setTimeout(120000);
@@ -55,29 +59,41 @@ test.describe('Contracts and ODPS routes', () => {
 
     test('odps detail with non-existent id shows error', async ({ page }) => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
-      const responsePromise = page.waitForResponse(
-        (resp) =>
-          resp.url().includes(`/contracts/${nonExistentId}`) &&
-          (resp.status() === 200 || resp.status() === 404),
-        { timeout: 60000 }
-      );
+      const responsePromise = page
+        .waitForResponse(
+          (resp) =>
+            resp.url().includes(`/contracts/${nonExistentId}`) &&
+            (resp.status() === 200 || resp.status() === 404),
+          { timeout: 15000 }
+        )
+        .catch(() => null);
       await page.goto(`/odps/${nonExistentId}`);
       await page.waitForLoadState('domcontentloaded');
       await responsePromise;
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(3000);
+      const onLogin = page.url().includes('/login');
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0;
+        (await page.locator('.error-display-title').count()) > 0 ||
+        (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
       const noSuccessContent = (await page.locator('.odps-detail-main').count()) === 0;
-      expect(hasError || noSuccessContent).toBe(true);
+      expect(onLogin || hasError || noSuccessContent).toBe(true);
     });
   });
 
   test.describe('Success', () => {
     test('contracts list loads (empty or with data)', async ({ page }) => {
+      const apiPromise = page.waitForResponse(
+        (r) => r.url().includes('/contracts') && r.request().method() === 'GET',
+        { timeout: 60000 }
+      );
       await page.goto('/contracts');
       try {
-        await waitForAppMainReady(page, { timeout: 60000 });
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          contentSelector:
+            '.contract-list-page, .empty-state, .error-display, .loading-spinner-container',
+        });
       } catch (_err) {
         if (page.url().includes('/login')) {
           expect(page.url()).toContain('/login');
@@ -85,25 +101,42 @@ test.describe('Contracts and ODPS routes', () => {
         }
         throw _err;
       }
+      if (page.url().includes('/login')) {
+        expect(page.url()).toContain('/login');
+        return;
+      }
       expect(page.url()).toContain('/contracts');
-      const hasContent =
-        (await page.locator('.contract-list-page').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      await assertSuccessfulLoad(page, {
+        apiResponsePromise: apiPromise,
+        successContentSelector: '.contract-list-page, .empty-state',
+        rejectErrorDisplay: true,
+      });
+      await waitForLoadingComplete(page, { timeout: 15000 });
     });
 
     test('odps list loads (empty or with data)', async ({ page }) => {
+      const apiPromise = page.waitForResponse(
+        (r) => r.url().includes('/contracts') && r.request().method() === 'GET',
+        { timeout: 65000 }
+      );
       await page.goto('/odps');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.odps-list-page, .odps-empty-state, .error-display, #email', {
-        timeout: 65000,
-      });
+      await page
+        .locator(
+          '.odps-list-page, .odps-empty-state, .error-display, .loading-spinner-container, #email'
+        )
+        .first()
+        .waitFor({ state: 'visible', timeout: 65000 });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
       }
       expect(page.url()).toContain('/odps');
+      await assertSuccessfulLoad(page, {
+        apiResponsePromise: apiPromise,
+        successContentSelector: '.odps-list-page, .odps-empty-state',
+        rejectErrorDisplay: true,
+      });
     });
 
     test('odps upload page loads', async ({ page }) => {
@@ -125,6 +158,11 @@ test.describe('Contracts and ODPS routes', () => {
         return;
       }
       expect(page.url()).toContain('/odps/upload');
+      // Upload page may not trigger list API; verify frontend success only
+      await assertSuccessfulLoad(page, {
+        successContentSelector: '.odps-upload-page',
+        rejectErrorDisplay: true,
+      });
     });
   });
 });

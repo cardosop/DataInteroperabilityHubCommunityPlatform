@@ -32,6 +32,7 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -94,6 +95,7 @@ class ODPSAuthenticationAuthorizationValidationTest(ContractsAPITestBase):
         self.other_tenant = Tenant.objects.create(
             name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.other_tenant)
 
         self.other_tenant_user = User.objects.create_user(
             email="other-tenant@example.com", tenant=self.other_tenant, status=UserStatus.ACTIVE

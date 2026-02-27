@@ -654,9 +654,8 @@ class DataIncident(models.Model):
         help_text="Tenant this incident belongs to"
     )
     # Incident identification
-    title = models.CharField(
-        max_length=255,
-        help_text="Incident title"
+    title = models.TextField(
+        help_text="Incident title (supports long descriptions)"
     )
     description = models.TextField(
         help_text="Incident description"

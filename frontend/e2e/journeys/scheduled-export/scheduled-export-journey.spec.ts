@@ -1,5 +1,11 @@
 /**
  * E2E: Scheduled Export Journey (Phase 22)
+ *
+ * Use Cases: UC-EXPORT-001 (Schedule Recurring Export), UC-EXPORT-002 (Configure Export Destination),
+ * UC-EXPORT-003 (Trigger Manual Export), UC-EXPORT-004 (Monitor Export Runs)
+ * Journeys: JOURNEY-EXPORT-001, JOURNEY-EXPORT-002
+ * Reference: docs/USE_CASES.md, docs/USER_JOURNEYS.md
+ *
  * Create scheduled export → trigger → wait for run completion (poll run status) → assert.
  * Real backend and real Prefect (or real backend with Prefect flow in test env).
  * No stubbing of API or Prefect; flakiness addressed by explicit wait for run status.
@@ -7,12 +13,15 @@
 
 import { expect, test } from '@playwright/test';
 import { cleanupOldScheduledExports, createAssetViaApi } from '../../fixtures/api-assets';
-import { getTestUser, loginUser } from '../../fixtures/auth';
+import { clearAuthStorage, getTenantAdminUser, loginUser } from '../../fixtures/auth';
+import { hasLoginPrompt, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-const API_BASE = process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const API_BASE = process.env.E2E_API_BASE_URL || process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const PREFECT_INTEGRATION_URL =
+  process.env.PREFECT_INTEGRATION_SERVICE_URL || 'http://localhost:8084';
 const POLL_INTERVAL_MS = 5000;
 // Increased timeout to handle Docker daemon performance issues (Prefect flow runs may take longer)
-const RUN_COMPLETION_TIMEOUT_MS = 180000; // 3 minutes (was 2 minutes)
+const RUN_COMPLETION_TIMEOUT_MS = 240000; // 4 minutes (Docker/CI can be slow)
 
 type RunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 
@@ -84,9 +93,12 @@ async function pollRunUntilTerminal(
 
   // Trigger status sync immediately after trigger to catch quick failures
   try {
-    await page.evaluate(async () => {
-      await fetch('http://localhost:8084/status/sync', { method: 'POST' }).catch(() => {});
-    });
+    await page.evaluate(
+      async (url: string) => {
+        await fetch(`${url}/status/sync`, { method: 'POST' }).catch(() => {});
+      },
+      PREFECT_INTEGRATION_URL.replace(/\/$/, '')
+    );
   } catch (e) {
     // Ignore status sync errors - continue polling
   }
@@ -100,14 +112,17 @@ async function pollRunUntilTerminal(
     if (Date.now() - lastStatusSync >= STATUS_SYNC_INTERVAL_MS) {
       try {
         // Trigger status sync and wait for it to complete
-        await page.evaluate(async () => {
-          const response = await fetch('http://localhost:8084/status/sync', {
-            method: 'POST',
-          }).catch(() => null);
-          // Wait a bit for the sync to process and update the database
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          return response;
-        });
+        await page.evaluate(
+          async (url: string) => {
+            const response = await fetch(`${url}/status/sync`, {
+              method: 'POST',
+            }).catch(() => null);
+            // Wait a bit for the sync to process and update the database
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            return response;
+          },
+          PREFECT_INTEGRATION_URL.replace(/\/$/, '')
+        );
         lastStatusSync = Date.now();
       } catch (e) {
         // Ignore status sync errors - continue polling
@@ -144,14 +159,17 @@ async function pollRunUntilTerminal(
 
   // Final check - trigger one more status sync before final check and wait longer
   try {
-    await page.evaluate(async () => {
-      const response = await fetch('http://localhost:8084/status/sync', { method: 'POST' }).catch(
-        () => null
-      );
-      // Wait longer for sync to process and database to update
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      return response;
-    });
+    await page.evaluate(
+      async (url: string) => {
+        const response = await fetch(`${url}/status/sync`, { method: 'POST' }).catch(
+          () => null
+        );
+        // Wait longer for sync to process and database to update
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        return response;
+      },
+      PREFECT_INTEGRATION_URL.replace(/\/$/, '')
+    );
   } catch (e) {
     // Ignore status sync errors
   }
@@ -198,42 +216,59 @@ async function pollRunUntilTerminal(
 }
 
 test.describe('Scheduled Export Journey', () => {
-  // Increased timeout to handle Docker daemon performance issues (Prefect flow runs may take longer)
-  test.setTimeout(240000); // 4 minutes (was 3 minutes)
+  // 12 min: visible/slowMo; login + create asset + cleanup + create export + trigger + poll (~240s) under parallel E2E load
+  test.setTimeout(480000); // 8 min: create + trigger + poll (4 min); aligned with RUN_COMPLETION_TIMEOUT_MS
+
+  test.describe('Failure', () => {
+    test('unauthenticated access to scheduled-exports redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/scheduled-exports', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|scheduled-exports|403)/, { timeout: 20_000 });
+      const url = page.url();
+      const onLogin = url.includes('/login');
+      const onRouteWithLoginPrompt =
+        url.includes('/scheduled-exports') &&
+        (await hasLoginPrompt(page));
+      expect(onLogin || onRouteWithLoginPrompt).toBe(true);
+    });
+  });
 
   test.describe('JOURNEY-EXPORT-001: Create and Run Scheduled Export', () => {
     test('create scheduled export → trigger → poll run status → assert run outcome', async ({
       page,
     }) => {
-      const useStoredAuth = test.info().project.name === 'chromium-routes';
-
-      // Ensure authentication before navigating
-      if (useStoredAuth) {
-        // Verify stored auth is loaded and valid
-        await page.goto('/', { waitUntil: 'domcontentloaded' });
-        // Wait a bit for storage state to load
-        await page.waitForTimeout(1000);
-        const hasToken = await page.evaluate(() => {
-          return !!(localStorage.getItem('access_token') && localStorage.getItem('user'));
+      // Pre-check: skip early if Prefect integration service is not reachable
+      try {
+        const healthRes = await fetch(`${PREFECT_INTEGRATION_URL.replace(/\/$/, '')}/health`, {
+          signal: AbortSignal.timeout(10000),
         });
-        if (!hasToken || page.url().includes('/login')) {
-          // Stored auth not available or invalid, login manually
-          // Clear any invalid state first
-          await page.evaluate(() => {
-            localStorage.clear();
-            sessionStorage.clear();
-          });
-          await page.goto('/login', { waitUntil: 'domcontentloaded' });
-          await loginUser(page, await getTestUser());
+        if (!healthRes.ok) {
+          throw new Error(
+            `Prefect integration service unhealthy (${healthRes.status}). Scheduled export requires Prefect. ` +
+              `Start: docker compose -f docker-compose.test.yml up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test`
+          );
         }
-      } else {
-        await loginUser(page, await getTestUser());
+      } catch (e) {
+        throw new Error(
+          `Prefect integration service not reachable at ${PREFECT_INTEGRATION_URL}. Scheduled export requires Prefect. ` +
+            `Start: docker compose -f docker-compose.test.yml up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test`
+        );
       }
 
-      await page.goto('/scheduled-exports', { waitUntil: 'networkidle' });
-
+      const testUser = await getTenantAdminUser();
+      await loginUser(page, testUser);
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2500);
+      await loginAndNavigateToRoute(page, testUser, '/scheduled-exports', {
+        timeout: 90000,
+        contentSelector:
+          '.scheduled-export-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+      });
       if (page.url().includes('/login')) {
-        throw new Error('Unexpected redirect to login; auth may have failed or expired.');
+        throw new Error(
+          'Scheduled exports redirected to login. Precondition failure: E2E user roles not set up. ' +
+            'Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles'
+        );
       }
 
       // Wait for list content: Create Export button (header or empty state; use .first() when both visible)
@@ -243,14 +278,15 @@ test.describe('Scheduled Export Journey', () => {
       await page.waitForURL(/\/scheduled-exports\/create/, { timeout: 10000 });
 
       // Create a test asset via API (required for source_scope)
-      const testUser = await getTestUser();
       const assetId = await createAssetViaApi(testUser);
 
       // Clean up old E2E scheduled exports to avoid plan limit issues
       await cleanupOldScheduledExports(testUser);
 
-      // Navigate back to scheduled export create page
-      await page.goto('/scheduled-exports/create', { waitUntil: 'networkidle' });
+      // Navigate back to scheduled export create page (domcontentloaded faster than networkidle under load)
+      await page.goto('/scheduled-exports/create', { waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(1500); // Allow form to render
 
       const name = `e2e-se-${Date.now()}`;
       await page.getByLabel(/name/i).fill(name);
@@ -260,50 +296,114 @@ test.describe('Scheduled Export Journey', () => {
       await page.getByLabel(/asset ids/i).fill(assetId);
       await page.getByRole('button', { name: /^Create$/i }).click();
 
-      await page.waitForURL(
-        (url) => url.pathname.includes('/scheduled-exports/') && !url.pathname.endsWith('/create'),
-        {
-          timeout: 15000,
-        }
-      );
+      try {
+        await page.waitForURL(
+          (url) => url.pathname.includes('/scheduled-exports/') && !url.pathname.endsWith('/create'),
+          {
+            timeout: 30000,
+            waitUntil: 'domcontentloaded',
+          }
+        );
+      } catch (err) {
+        const hasError = (await page.locator('.error-display').count()) > 0;
+        const errText = hasError
+          ? (await page.locator('.error-display').first().textContent().catch(() => '')) || ''
+          : '';
+        throw new Error(
+          `Scheduled export create did not navigate to detail within 30s. ${errText ? `Error: ${errText.slice(0, 150)}` : 'Check backend and Prefect availability.'}`
+        );
+      }
+      // Detail page may show loading, then content; or error/empty if create failed
+      // Use .first() to avoid strict mode violation when both detail page and runs-section empty-state exist
+      await page
+        .locator('[data-testid="scheduled-export-detail-page"], .error-display, .empty-state')
+        .first()
+        .waitFor({ state: 'visible', timeout: 20000 });
+      // Only skip on page-level error or "not found" empty - not the runs section "No runs" empty state
+      const hasPageError = (await page.locator('.error-display').count()) > 0;
+      const hasNotFoundEmpty =
+        (await page.locator('.empty-state:has-text("not found"), .empty-state:has-text("could not be found")').count()) >
+        0;
+      if (hasPageError || (hasNotFoundEmpty && (await page.locator('[data-testid="scheduled-export-detail-page"]').count()) === 0)) {
+        throw new Error(
+          'Scheduled export create or load failed (error/empty). Check backend logs and Prefect availability.'
+        );
+      }
       await expect(page.locator('[data-testid="scheduled-export-detail-page"]')).toBeVisible({
-        timeout: 10000,
+        timeout: 5000,
       });
 
       // Wait for export to load (name visible)
       await expect(page.getByText(name, { exact: false })).toBeVisible({ timeout: 10000 });
+
+      // Allow deployment sync to complete (on_commit creates Prefect deployment asynchronously)
+      await page.waitForTimeout(10000);
 
       // Trigger button: match "Trigger Now", "Triggering...", or aria-label
       const triggerBtn = page.getByRole('button', { name: /trigger/i });
       await triggerBtn.scrollIntoViewIfNeeded().catch(() => {});
       await triggerBtn.waitFor({ state: 'visible', timeout: 15000 });
 
-      const triggerResponsePromise = page.waitForResponse(
-        (resp) =>
-          resp.url().includes('/trigger/') &&
-          resp.request().method() === 'POST' &&
-          (resp.status() === 200 ||
-            resp.status() === 503 ||
-            resp.status() === 404 ||
-            resp.status() >= 400),
-        { timeout: 60000 }
-      );
+      const maxTriggerAttempts = 3;
+      let triggerResponse!: Awaited<ReturnType<typeof page.waitForResponse>>;
 
-      page.once('dialog', (d) => d.accept());
-      await triggerBtn.click();
+      for (let attempt = 1; attempt <= maxTriggerAttempts; attempt++) {
+        try {
+          const triggerResponsePromise = page.waitForResponse(
+            (resp) =>
+              resp.url().includes('/trigger/') &&
+              resp.request().method() === 'POST' &&
+              (resp.status() === 200 ||
+                resp.status() === 503 ||
+                resp.status() === 404 ||
+                resp.status() >= 400),
+            { timeout: 90000 }
+          );
 
-      const triggerResponse = await triggerResponsePromise;
-      if (triggerResponse.status() === 503) {
-        const body = await triggerResponse.json().catch(() => ({}));
-        test.skip(true, `Prefect not available (503): ${JSON.stringify(body)}`);
-      }
-      if (triggerResponse.status() === 404) {
-        const body = await triggerResponse.json().catch(() => ({}));
-        test.skip(true, `Prefect deployment not found (404): ${JSON.stringify(body)}`);
-      }
-      if (triggerResponse.status() >= 400) {
-        const body = await triggerResponse.json().catch(() => ({}));
-        throw new Error(`Trigger failed: ${triggerResponse.status()} ${JSON.stringify(body)}`);
+          page.once('dialog', (d) => d.accept());
+          await triggerBtn.click();
+
+          triggerResponse = await triggerResponsePromise;
+        } catch (triggerErr) {
+          const msg = triggerErr instanceof Error ? triggerErr.message : String(triggerErr);
+          const isTimeout = /timeout|exceeded/i.test(msg);
+          const isNetwork = /network|empty.?response|connection/i.test(msg);
+          if ((isTimeout || isNetwork) && attempt < maxTriggerAttempts) {
+            await page.waitForTimeout(5000);
+            continue;
+          }
+          if (isTimeout || isNetwork) {
+            throw new Error(
+              `Trigger did not respond within 90s (${msg.slice(0, 80)}). ` +
+                'Ensure Prefect integration service and backend are running. ' +
+                'Start: docker compose -f docker-compose.test.yml up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test'
+            );
+          }
+          throw triggerErr;
+        }
+        if (triggerResponse.status() === 200) break;
+        if (triggerResponse.status() === 503) {
+          const body = await triggerResponse.json().catch(() => ({}));
+          throw new Error(
+            `Prefect not available (503). Scheduled export requires Prefect. ` +
+              `Start: docker compose -f docker-compose.test.yml up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test. Body: ${JSON.stringify(body)}`
+          );
+        }
+        if (triggerResponse.status() === 404 && attempt < maxTriggerAttempts) {
+          await page.waitForTimeout(5000);
+          continue;
+        }
+        if (triggerResponse.status() === 404) {
+          const body = await triggerResponse.json().catch(() => ({}));
+          throw new Error(
+            `Prefect deployment not found (404) after ${maxTriggerAttempts} attempts. Scheduled export requires Prefect. ` +
+              `Ensure prefect-integration-service-test is running and sync completes. Body: ${JSON.stringify(body)}`
+          );
+        }
+        if (triggerResponse.status() >= 400) {
+          const body = await triggerResponse.json().catch(() => ({}));
+          throw new Error(`Trigger failed: ${triggerResponse.status()} ${JSON.stringify(body)}`);
+        }
       }
 
       const triggerBody = await triggerResponse.json();
@@ -318,7 +418,23 @@ test.describe('Scheduled Export Journey', () => {
         throw new Error('Could not extract export ID from URL');
       }
 
-      const run = await pollRunUntilTerminal(page, exportId, flowRunId);
+      let run: Awaited<ReturnType<typeof pollRunUntilTerminal>>;
+      try {
+        run = await pollRunUntilTerminal(page, exportId, flowRunId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (
+          msg.includes('not found within') ||
+          msg.includes('did not reach terminal state') ||
+          msg.includes('Ensure Prefect worker')
+        ) {
+          throw new Error(
+            `Prefect run polling failed: ${msg}. Scheduled export requires Prefect. ` +
+              `Ensure Prefect stack is running: docker compose -f docker-compose.test.yml up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test`
+          );
+        }
+        throw err;
+      }
 
       expect(['COMPLETED', 'FAILED', 'CANCELLED']).toContain(run.status);
       if (run.status === 'COMPLETED') {
@@ -338,71 +454,90 @@ test.describe('Scheduled Export Journey', () => {
     test('view export runs list → view run details → verify run status and metrics', async ({
       page,
     }) => {
-      const useStoredAuth = test.info().project.name === 'chromium-routes';
-
-      // Ensure authentication before navigating
-      if (useStoredAuth) {
-        // Verify stored auth is loaded and valid
-        await page.goto('/', { waitUntil: 'domcontentloaded' });
-        // Wait a bit for storage state to load
-        await page.waitForTimeout(1000);
-        const hasToken = await page.evaluate(() => {
-          return !!(localStorage.getItem('access_token') && localStorage.getItem('user'));
-        });
-        if (!hasToken || page.url().includes('/login')) {
-          // Stored auth not available or invalid, login manually
-          // Clear any invalid state first
-          await page.evaluate(() => {
-            localStorage.clear();
-            sessionStorage.clear();
-          });
-          await page.goto('/login', { waitUntil: 'domcontentloaded' });
-          await loginUser(page, await getTestUser());
-        }
-      } else {
-        await loginUser(page, await getTestUser());
-      }
-
-      await page.goto('/scheduled-exports', { waitUntil: 'networkidle' });
-
+      const testUser = await getTenantAdminUser();
+      await loginUser(page, testUser);
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2500);
+      await loginAndNavigateToRoute(page, testUser, '/scheduled-exports', {
+        timeout: 90000,
+        contentSelector:
+          '.scheduled-export-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+      });
       if (page.url().includes('/login')) {
-        throw new Error('Unexpected redirect to login; auth may have failed or expired.');
+        throw new Error(
+          'Scheduled exports redirected to login. Precondition failure: E2E user roles not set up. ' +
+            'Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles'
+        );
       }
 
       // Wait for list content
       const createBtn = page.getByRole('button', { name: /Create Export/i }).first();
       await createBtn.waitFor({ state: 'visible', timeout: 30000 });
 
-      // Check if there are any exports (if none, create one first)
-      const exportRows = page.locator(
-        '[data-testid="scheduled-export-row"], .scheduled-export-item'
+      // Wait for list content to load (table or empty state)
+      await page.waitForSelector(
+        '.scheduled-export-table tbody tr, .empty-state, [data-testid="scheduled-export-list-page"]',
+        { timeout: 15000 }
       );
-      const exportCount = await exportRows.count();
+      await page.waitForTimeout(2000);
+
+      // Check if there are any exports; if none, create one via UI (self-contained test)
+      const exportRows = page.locator(
+        '[data-testid="scheduled-export-row"], .scheduled-export-table tbody tr.row-link'
+      );
+      let exportCount = await exportRows.count();
 
       if (exportCount === 0) {
-        // No exports exist, skip this test or create one
-        test.skip(true, 'No scheduled exports found; create one first to test run monitoring');
-        return;
+        const assetId = await createAssetViaApi(testUser);
+        await cleanupOldScheduledExports(testUser);
+        await createBtn.click();
+        await page.waitForURL(/\/scheduled-exports\/create/, { timeout: 10000 });
+        await page.waitForTimeout(1500);
+        const name = `e2e-se-monitor-${Date.now()}`;
+        await page.getByLabel(/name/i).fill(name);
+        await page.getByLabel(/cron/i).fill('0 2 * * *');
+        await page.getByLabel(/asset ids/i).fill(assetId);
+        await page.getByRole('button', { name: /^Create$/i }).click();
+        await page.waitForURL(
+          (url) => url.pathname.includes('/scheduled-exports/') && !url.pathname.endsWith('/create'),
+          { timeout: 15000 }
+        );
+        await page.goto('/scheduled-exports', { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector(
+          '.scheduled-export-table tbody tr, .empty-state',
+          { timeout: 20000 }
+        );
+        await page.waitForTimeout(3000);
+        exportCount = await exportRows.count();
+      }
+
+      if (exportCount === 0) {
+        throw new Error(
+          'No scheduled exports found after create attempt. Precondition failure. ' +
+            'Check backend logs, Prefect availability, and ensure source_scope (asset_ids) validation passes.'
+        );
       }
 
       // Click on first export to view details
       await exportRows.first().click();
       await page.waitForURL(/\/scheduled-exports\/[^/]+$/, { timeout: 10000 });
 
-      // Wait for export detail page
+      // Wait for export detail page (data-testid present in loading/content/error states)
       await expect(page.locator('[data-testid="scheduled-export-detail-page"]')).toBeVisible({
-        timeout: 10000,
+        timeout: 25000,
       });
 
       // Look for runs section or runs list
       const runsSection = page.locator(
-        '[data-testid="export-runs-section"], .export-runs-list, h2:has-text("Runs")'
+        '[data-testid="export-runs-section"], .scheduled-export-detail-section:has(h2:has-text("Runs")), h2:has-text("Runs")'
       );
       const runsSectionCount = await runsSection.count();
 
       if (runsSectionCount > 0) {
-        // Check if there are any runs
-        const runItems = page.locator('[data-testid="export-run-item"], .export-run-row');
+        // Check if there are any runs (table rows or run items)
+        const runItems = page.locator(
+          '[data-testid="export-run-item"], .scheduled-export-runs-table tbody tr'
+        );
         const runCount = await runItems.count();
 
         if (runCount > 0) {

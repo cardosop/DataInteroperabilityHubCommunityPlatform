@@ -2,16 +2,19 @@
 Integration tests for mesh webhook delivery.
 
 Tests webhook delivery for mesh events. Uses real HTTP server (TestWebhookServer); no mocks.
+Uses wait_until for delivery state (no fixed time.sleep) per FIX_PLAN_FLAKY_TESTS_5_6_2.
 """
 
-import time
 import uuid
 
 import pytest
 from django.test import TestCase
 from django.utils import timezone
 
+from tests.utils.polling import wait_until
+
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User
 from hub.apps.webhooks.models import DeliveryStatus, Webhook, WebhookDelivery, WebhookStatus
 from hub.apps.webhooks.service import WebhookDeliveryService
@@ -28,6 +31,7 @@ class MeshWebhookDeliveryTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant
         )
@@ -68,7 +72,14 @@ class MeshWebhookDeliveryTest(TestCase):
                 resource_id=domain_id,
                 event_data=event_data,
             )
-            time.sleep(0.5)
+            wait_until(
+                lambda: WebhookDelivery.objects.filter(
+                    webhook=webhook, event_type="mesh.domain.created"
+                ).count()
+                >= 1,
+                timeout=5.0,
+                message="mesh.domain.created delivery not recorded",
+            )
             deliveries = WebhookDelivery.objects.filter(
                 webhook=webhook, event_type="mesh.domain.created"
             )
@@ -107,7 +118,14 @@ class MeshWebhookDeliveryTest(TestCase):
                 resource_id=domain_id,
                 event_data=event_data,
             )
-            time.sleep(0.5)
+            wait_until(
+                lambda: WebhookDelivery.objects.filter(
+                    webhook=webhook, event_type="mesh.domain.updated"
+                ).count()
+                >= 1,
+                timeout=5.0,
+                message="mesh.domain.updated delivery not recorded",
+            )
             deliveries = WebhookDelivery.objects.filter(
                 webhook=webhook, event_type="mesh.domain.updated"
             )
@@ -144,7 +162,14 @@ class MeshWebhookDeliveryTest(TestCase):
                 resource_id=policy_application_id,
                 event_data=event_data,
             )
-            time.sleep(0.5)
+            wait_until(
+                lambda: WebhookDelivery.objects.filter(
+                    webhook=webhook, event_type="mesh.policy.applied"
+                ).count()
+                >= 1,
+                timeout=5.0,
+                message="mesh.policy.applied delivery not recorded",
+            )
             deliveries = WebhookDelivery.objects.filter(
                 webhook=webhook, event_type="mesh.policy.applied"
             )
@@ -182,7 +207,14 @@ class MeshWebhookDeliveryTest(TestCase):
                 resource_id=domain_id,
                 event_data=event_data,
             )
-            time.sleep(0.5)
+            wait_until(
+                lambda: WebhookDelivery.objects.filter(
+                    webhook=webhook, event_type="mesh.compliance.checked"
+                ).count()
+                >= 1,
+                timeout=5.0,
+                message="mesh.compliance.checked delivery not recorded",
+            )
             deliveries = WebhookDelivery.objects.filter(
                 webhook=webhook, event_type="mesh.compliance.checked"
             )
@@ -217,7 +249,14 @@ class MeshWebhookDeliveryTest(TestCase):
                 resource_id=str(self.tenant.id),
                 event_data=event_data,
             )
-            time.sleep(0.5)
+            wait_until(
+                lambda: WebhookDelivery.objects.filter(
+                    webhook=webhook, event_type="mesh.topology.updated"
+                ).count()
+                >= 1,
+                timeout=5.0,
+                message="mesh.topology.updated delivery not recorded",
+            )
             deliveries = WebhookDelivery.objects.filter(
                 webhook=webhook, event_type="mesh.topology.updated"
             )
@@ -254,7 +293,14 @@ class MeshWebhookDeliveryTest(TestCase):
                 resource_id=domain_id,
                 event_data=event_data,
             )
-            time.sleep(0.5)
+            wait_until(
+                lambda: WebhookDelivery.objects.filter(
+                    webhook=webhook, event_type="mesh.health.status_changed"
+                ).count()
+                >= 1,
+                timeout=5.0,
+                message="mesh.health.status_changed delivery not recorded",
+            )
             deliveries = WebhookDelivery.objects.filter(
                 webhook=webhook, event_type="mesh.health.status_changed"
             )
@@ -298,7 +344,11 @@ class MeshWebhookDeliveryTest(TestCase):
                 resource_id=str(uuid.uuid4()),
                 event_data={"policy_application_id": str(uuid.uuid4()), "domain_id": domain_id},
             )
-            time.sleep(0.5)
+            wait_until(
+                lambda: WebhookDelivery.objects.filter(webhook=specific_webhook).count() >= 1,
+                timeout=5.0,
+                message="mesh filter delivery not recorded",
+            )
             deliveries = WebhookDelivery.objects.filter(webhook=specific_webhook)
             self.assertEqual(deliveries.count(), 1)
             self.assertEqual(deliveries.first().event_type, "mesh.domain.created")

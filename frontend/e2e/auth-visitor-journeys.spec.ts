@@ -36,23 +36,13 @@ test.describe('Auth UI closure — Visitor persona (no mocks)', () => {
     } catch {
       // ignore
     }
+    // Skip at test level when MailHog unavailable (optional service for password reset flow).
+    // See E2E_ENVIRONMENT_REQUIREMENTS.md and E2E_TEST_SEMANTICS.md.
     test.skip(
       !mailhogReachable,
-      `MailHog not reachable at ${MAILHOG_BASE_URL}. For full E2E: docker compose up -d mailhog, SMTP_HOST=mailhog SMTP_PORT=1025`
+      `MailHog not reachable at ${MAILHOG_BASE_URL}. Password reset requires MailHog for email delivery. ` +
+        `Start: docker compose up -d mailhog, SMTP_HOST=mailhog SMTP_PORT=1025`
     );
-    try {
-      await runJOURNEY_AUTH_003_Success(page);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // Report skip when MailHog unavailable or password-reset email not received (no mocks)
-      if (
-        msg.includes('E2E_SKIP_PASSWORD_RESET') ||
-        msg.includes('MailHog not reachable') ||
-        msg.includes('not reachable at')
-      ) {
-        test.skip(true, msg);
-      }
-      throw err;
-    }
+    await runJOURNEY_AUTH_003_Success(page);
   });
 });

@@ -507,12 +507,13 @@ class MarketplaceIntegrationServiceTest(TestCase):
             config={"base_url": "https://ckan.example.com", "api_key": "test-key"},
         )
 
-        # Create real assets for sync
+        # Create real assets for sync (unique keys required per tenant)
         from hub.apps.assets.models import Asset, AssetSourceType, AssetStatus
 
         asset1 = Asset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
+            key="sync-asset-1",
             name="Asset 1",
             source_type=AssetSourceType.HUB_NATIVE,
             status=AssetStatus.ACTIVE,
@@ -520,6 +521,7 @@ class MarketplaceIntegrationServiceTest(TestCase):
         asset2 = Asset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
+            key="sync-asset-2",
             name="Asset 2",
             source_type=AssetSourceType.HUB_NATIVE,
             status=AssetStatus.ACTIVE,

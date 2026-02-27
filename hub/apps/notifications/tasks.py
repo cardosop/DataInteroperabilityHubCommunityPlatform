@@ -567,6 +567,10 @@ def send_odps_creation_completion_email(contract_id: str):
             success=result.get('success', False)
         )
 
+        # Propagate failure to caller so synchronous callers (e.g. tests, CLI) get an exception
+        if not result.get('success'):
+            raise EmailServiceError(result.get('error', 'Email send failed'))
+
         return result
 
     except Contract.DoesNotExist:
@@ -801,6 +805,8 @@ def send_marketplace_sync_completion_email(sync_job_id: str):
     Args:
         sync_job_id: Marketplace sync job UUID
     """
+    if sync_job_id is None:
+        raise ValueError("sync_job_id is required")
     try:
         from hub.apps.integrations.models import MarketplaceSyncJob
 
@@ -899,6 +905,8 @@ def send_marketplace_sync_failure_email(sync_job_id: str):
     Args:
         sync_job_id: Marketplace sync job UUID
     """
+    if sync_job_id is None:
+        raise ValueError("sync_job_id is required")
     try:
         from hub.apps.integrations.models import MarketplaceSyncJob
 
@@ -1004,6 +1012,10 @@ def send_marketplace_connection_test_failure_email(
         user_id: Optional user ID (if not provided, will try to get from connection)
         tenant_id: Optional tenant ID (if not provided, will try to get from connection)
     """
+    if connection_id is None:
+        raise ValueError("connection_id is required")
+    if error_message is None:
+        raise ValueError("error_message is required")
     try:
         from hub.apps.integrations.models import MarketplaceConnection
         from django.contrib.auth import get_user_model

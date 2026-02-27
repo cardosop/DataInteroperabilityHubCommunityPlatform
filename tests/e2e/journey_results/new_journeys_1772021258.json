@@ -1,0 +1,58 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.24702835083007812
+  },
+  "journeys": [
+    {
+      "journey_id": "DA-002-e709aa4b",
+      "journey_name": "Wrangle Data Interactively",
+      "persona": "Data Analyst",
+      "status": "completed",
+      "start_time": 1772021258.6976693,
+      "end_time": 1772021258.9446976,
+      "duration": 0.24702835083007812,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Data",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021258.6976752,
+          "end_time": 1772021258.9405591,
+          "duration": 0.24288392066955566,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Note: Data Wrangling Sessions Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021258.9446902,
+          "end_time": 1772021258.9446957,
+          "duration": 5.4836273193359375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "7c339962-d659-41f4-b47a-613f6393a881"
+      }
+    }
+  ],
+  "exported_at": "2026-02-25T12:07:38.944755"
+}

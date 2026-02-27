@@ -27,7 +27,7 @@ from hub.apps.contracts.models import Contract
 from hub.apps.dq.models import DQRun, DQRunStatus
 from hub.apps.jobs.models import Job, JobStatus, JobType
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e2]
 
@@ -284,18 +284,18 @@ class JobOrchestrationE2ETest(E2ETestBase):
         # List all jobs
         response = self.client.get("/api/v1/jobs/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data["results"]), 2)
+        self.assertGreaterEqual(len((get_response_data(response) or {})["results"]), 2)
 
         # Filter by type
         response = self.client.get(f"/api/v1/jobs/?type={JobType.DQ_RUN}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        job_types = {j["type"] for j in response.data["results"]}
+        job_types = {j["type"] for j in (get_response_data(response) or {})["results"]}
         self.assertEqual(job_types, {JobType.DQ_RUN})
 
         # Filter by status
         response = self.client.get(f"/api/v1/jobs/?status={JobStatus.PENDING}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        job_statuses = {j["status"] for j in response.data["results"]}
+        job_statuses = {j["status"] for j in (get_response_data(response) or {})["results"]}
         self.assertEqual(job_statuses, {JobStatus.PENDING})
 
     def test_get_job_details(self):
@@ -314,11 +314,11 @@ class JobOrchestrationE2ETest(E2ETestBase):
         response = self.client.get(f"/api/v1/jobs/{job.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["id"], str(job.id))
-        self.assertEqual(response.data["type"], JobType.DQ_RUN)
-        self.assertEqual(response.data["status"], JobStatus.PENDING)
-        self.assertEqual(response.data["resource_type"], "ASSET")
-        self.assertEqual(response.data["resource_id"], str(asset_id))
+        self.assertEqual((get_response_data(response) or {})["id"], str(job.id))
+        self.assertEqual((get_response_data(response) or {})["type"], JobType.DQ_RUN)
+        self.assertEqual((get_response_data(response) or {})["status"], JobStatus.PENDING)
+        self.assertEqual((get_response_data(response) or {})["resource_type"], "ASSET")
+        self.assertEqual((get_response_data(response) or {})["resource_id"], str(asset_id))
 
     def test_job_timeout_handling(self):
         """Test job timeout handling"""

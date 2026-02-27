@@ -41,9 +41,16 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
 from hub.apps.tenants.models import KYCStatus, Tenant
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
+pytestmark = [
+    pytest.mark.uc_journey_persona,
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.e2e,
+    pytest.mark.journey("JOURNEY-DPO-001"),
+    pytest.mark.journey("JOURNEY-DPO-002"),
+    pytest.mark.journey("JOURNEY-DE-001"),
+]
 
 
 class EnhancedJourneyTestBase(E2ETestBase):
@@ -1071,9 +1078,10 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
             self.fail(f"Failed to create listing: {response.status_code} - {error_data}")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        listing_id = response.data.get("id")
+        data = get_response_data(response) or {}
+        listing_id = data.get("id")
         if not listing_id:
-            self.fail(f"Listing response missing 'id' field. Response: {response.data}")
+            self.fail(f"Listing response missing 'id' field. Response: {data}")
 
         # Step 5: Publish listing
         publish_response = self.client.patch(
@@ -1150,7 +1158,9 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        listing_id = response.data["id"]
+        data = get_response_data(response) or {}
+        listing_id = data.get("id")
+        self.assertIsNotNone(listing_id)
 
         # Step 4: Publish listing
         publish_response = self.client.patch(
@@ -1271,9 +1281,10 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
                 else str(listing_response)
             )
             self.fail(f"Failed to create listing: {listing_response.status_code} - {error_data}")
-        listing_id = listing_response.data.get("id")
+        listing_data = get_response_data(listing_response) or {}
+        listing_id = listing_data.get("id")
         if not listing_id:
-            self.fail(f"Listing response missing 'id' field. Response: {listing_response.data}")
+            self.fail(f"Listing response missing 'id' field. Response: {listing_data}")
         self.client.patch(
             f"/api/v1/marketplace/listings/{listing_id}/",
             {"status": ListingStatus.PUBLISHED},
@@ -1341,9 +1352,10 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
                 else str(listing_response)
             )
             self.fail(f"Failed to create listing: {listing_response.status_code} - {error_data}")
-        listing_id = listing_response.data.get("id")
+        listing_data = get_response_data(listing_response) or {}
+        listing_id = listing_data.get("id")
         if not listing_id:
-            self.fail(f"Listing response missing 'id' field. Response: {listing_response.data}")
+            self.fail(f"Listing response missing 'id' field. Response: {listing_data}")
         self.client.patch(
             f"/api/v1/marketplace/listings/{listing_id}/",
             {"status": ListingStatus.PUBLISHED},

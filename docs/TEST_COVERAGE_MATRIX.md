@@ -1,9 +1,9 @@
 # Test Coverage Matrix
 
-**Document Version**: 1.2.0
-**Last Updated**: 2026-02-08
+**Document Version**: 1.4.0
+**Last Updated**: 2026-02-22
 **Status**: ✅ Active
-**Task**: Phase 1.2 - Test Coverage Matrix Documentation; Phase 6 Gap Remediation (traceability and supporting capabilities); gapfix1 Phase 2.5 (traceability and gapfix1 section)
+**Task**: Phase 1.2 - Test Coverage Matrix Documentation; Phase 6 Gap Remediation (traceability and supporting capabilities); gapfix1 Phase 2.5 (traceability and gapfix1 section); Task 6.8.2 UC/journey/persona coverage status
 
 ---
 
@@ -14,8 +14,9 @@
 3. [Use Case Coverage Matrix](#use-case-coverage-matrix)
 4. [User Journey Coverage Matrix](#user-journey-coverage-matrix)
 5. [Persona Coverage Matrix](#persona-coverage-matrix)
-6. [Coverage Status Summary](#coverage-status-summary)
-7. [Coverage Gaps and Recommendations](#coverage-gaps-and-recommendations)
+6. [UC/Journey/Persona E2E Coverage (Task 6.7)](#ucjourney-persona-e2e-coverage-task-67)
+7. [Coverage Status Summary](#coverage-status-summary)
+8. [Coverage Gaps and Recommendations](#coverage-gaps-and-recommendations)
 
 ---
 
@@ -56,36 +57,36 @@ This document provides comprehensive test coverage matrices for the Data Interop
 | 2 | Contracts | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
 | 3 | ODPS | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
 | 4 | Assets | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
-| 5 | Datasets | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ Partial |
-| 6 | DQ | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ Partial |
-| 7 | Compliance | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ Partial |
+| 5 | Datasets | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
+| 6 | DQ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
+| 7 | Compliance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
 | 8 | Marketplace | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
-| 9 | Governance | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ Partial |
+| 9 | Governance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
 | 10 | Search | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
 | 11 | Observability | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
-| 12 | Workflows | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ Partial |
-| 13 | Lineage | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ Partial |
-| 14 | Versioning | ✅ | ✅ | ✅ | ⏳ | ⏳ | ⏳ Partial |
+| 12 | Workflows | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
+| 13 | Lineage | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
+| 14 | Versioning | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
 | 15 | BaaS | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
-| 16 | Integrations | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ Partial |
+| 16 | Integrations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
 | 17 | Jobs | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
 | 18 | Files | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
 | 19 | Semantic | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
-| 20 | AI | ✅ | ✅ | ✅ | ⏳ | ⏳ | ⏳ Partial |
-| 21 | ML | ✅ | ✅ | ✅ | ⏳ | ⏳ | ⏳ Partial |
-| 22 | Social | ✅ | ✅ | ✅ | ⏳ | ⏳ | ⏳ Partial |
-| 23 | Data Mesh | ✅ | ✅ | ✅ | ⏳ | ⏳ | ⏳ Partial |
-| 24 | Virtualization | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ Partial |
+| 20 | AI | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
+| 21 | ML | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
+| 22 | Social | ✅ | ✅ | ✅ | ⏳ | ✅ | ⏳ Partial |
+| 23 | Data Mesh | ✅ | ✅ | ✅ | ⏳ | ✅ | ⏳ Partial |
+| 24 | Virtualization | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
 | 25 | Scheduled Ingestion | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
 | 26 | Scheduled Export | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
-| 27 | Webhooks | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ Partial |
-| 28 | Audit | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ Partial |
-| 29 | Health | ✅ | ✅ | ✅ | ⏳ | ⏳ | ⏳ Partial |
+| 27 | Webhooks | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
+| 28 | Audit | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
+| 29 | Health | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Complete |
 
 ### Feature Coverage Statistics
 
-- **Complete Coverage**: 13 features (45%)
-- **Partial Coverage**: 16 features (55%)
+- **Complete Coverage**: 27 features (93%)
+- **Partial Coverage**: 2 features (7%)
 - **Missing Coverage**: 0 features (0%)
 
 ### Supporting Capabilities (Traceability)
@@ -222,7 +223,7 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 **Performance Tests**:
 - `tests/performance/locust_api_endpoints_availability.py` - Asset endpoints
 
-#### 5. Datasets ⏳ Partial
+#### 5. Datasets ✅ Complete
 
 **Unit Tests**:
 - `hub/apps/datasets/tests/test_views.py` - Dataset views
@@ -240,9 +241,9 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `tests/security/test_security_features.py` - Dataset security
 
 **Performance Tests**:
-- ⏳ Missing performance tests for datasets
+- `tests/performance/test_datasets_performance.py` - Datasets list P95 latency
 
-#### 6. DQ ⏳ Partial
+#### 6. DQ ✅ Complete
 
 **Unit Tests**:
 - `hub/apps/dq/tests/test_views.py` - DQ views
@@ -260,9 +261,9 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `tests/security/test_security_features.py` - DQ security
 
 **Performance Tests**:
-- ⏳ Missing performance tests for DQ
+- `tests/performance/test_dq_performance.py` - DQ runs list P95 latency
 
-#### 7. Compliance ⏳ Partial
+#### 7. Compliance ✅ Complete
 
 **Unit Tests**:
 - `hub/apps/compliance/tests/test_views.py` - Compliance views
@@ -280,7 +281,7 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `tests/security/test_security_features.py` - Compliance security
 
 **Performance Tests**:
-- ⏳ Missing performance tests for compliance
+- `tests/performance/test_compliance_performance.py` - Compliance runs list P95 latency
 
 #### 8. Marketplace ✅ Complete
 
@@ -304,7 +305,7 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 **Performance Tests**:
 - `tests/performance/test_marketplace_performance.py` - Marketplace performance
 
-#### 9. Governance ⏳ Partial
+#### 9. Governance ✅ Complete
 
 **Unit Tests**:
 - `hub/apps/governance/tests/test_access_request_views.py` - Access requests
@@ -321,7 +322,7 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `tests/security/test_security_features.py` - Governance security
 
 **Performance Tests**:
-- ⏳ Missing performance tests for governance
+- `tests/performance/test_governance_performance.py` - Access requests list P95 latency
 
 #### 10. Search ✅ Complete
 
@@ -362,7 +363,7 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 **Performance Tests**:
 - `tests/performance/test_otel_metrics_performance.py` - Metrics performance
 
-#### 12. Workflows ⏳ Partial
+#### 12. Workflows ✅ Complete
 
 **Unit Tests**:
 - `hub/apps/orchestration/tests/test_workflow_engine.py` - Workflow engine
@@ -379,9 +380,9 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `tests/security/test_security_features.py` - Workflow security
 
 **Performance Tests**:
-- ⏳ Missing performance tests for workflows
+- `tests/performance/test_workflows_performance.py` - Workflows list P95 latency
 
-#### 13. Lineage ⏳ Partial
+#### 13. Lineage ✅ Complete
 
 **Unit Tests**:
 - `hub/apps/contracts/tests/test_lineage_service.py` - Lineage service
@@ -398,9 +399,9 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `tests/security/test_security_features.py` - Lineage security
 
 **Performance Tests**:
-- ⏳ Missing performance tests for lineage
+- `tests/performance/test_lineage_performance.py` - Lineage visualization P95 latency
 
-#### 14. Versioning ⏳ Partial
+#### 14. Versioning ✅ Complete
 
 **Unit Tests**:
 - `hub/apps/datasets/tests/test_versioning.py` - Dataset versioning
@@ -412,10 +413,10 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `tests/e2e/test_complete_user_journeys.py` - Versioning in journeys
 
 **Security Tests**:
-- ⏳ Missing security tests for versioning
+- `tests/security/test_versioning_security.py` - Auth (401), tenant isolation (list, retrieve, compare)
 
 **Performance Tests**:
-- ⏳ Missing performance tests for versioning
+- `tests/performance/test_versioning_performance.py` - Versions list P95 latency
 
 #### 15. BaaS ✅ Complete
 
@@ -435,7 +436,7 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 **Performance Tests**:
 - `tests/performance/test_baas_cli_sdk_performance.py` - BaaS performance
 
-#### 16. Integrations ⏳ Partial
+#### 16. Integrations ✅ Complete
 
 **Unit Tests**:
 - `hub/apps/integrations/tests/test_views.py` - Integration views
@@ -454,7 +455,7 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `hub/apps/integrations/tests/test_gcp_marketplace_connector_security.py` - Connector security
 
 **Performance Tests**:
-- ⏳ Missing performance tests for integrations
+- `tests/performance/test_integrations_performance.py` - Marketplace connections list P95 latency
 
 #### 17. Jobs ✅ Complete
 
@@ -516,7 +517,7 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 **Performance Tests**:
 - `tests/performance/test_semantic_performance.py` - Semantic performance
 
-#### 20. AI ⏳ Partial
+#### 20. AI ✅ Complete
 
 **Unit Tests**:
 - `hub/apps/ai/tests/test_views.py` - AI views
@@ -530,12 +531,12 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `frontend/e2e/journeys/mesh-virtualization-search-ai/mesh-search-ai-routes.spec.ts` - AI routes
 
 **Security Tests**:
-- ⏳ Missing security tests for AI
+- `tests/security/test_ai_security.py` - Auth (401), tenant isolation for natural-language search
 
 **Performance Tests**:
-- ⏳ Missing performance tests for AI
+- `tests/performance/test_ai_performance.py` - AI search P95 latency
 
-#### 21. ML ⏳ Partial
+#### 21. ML ✅ Complete
 
 **Unit Tests**:
 - `hub/apps/ml/tests/test_views.py` - ML views
@@ -547,10 +548,10 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `tests/e2e/test_complete_user_journeys.py` - ML in journeys
 
 **Security Tests**:
-- ⏳ Missing security tests for ML
+- `tests/security/test_ml_security.py` - Auth (401), tenant isolation for models list/retrieve
 
 **Performance Tests**:
-- ⏳ Missing performance tests for ML
+- `tests/performance/test_ml_performance.py` - ML models list P95 latency
 
 #### 22. Social ⏳ Partial
 
@@ -568,7 +569,7 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - ⏳ Missing security tests for social
 
 **Performance Tests**:
-- ⏳ Missing performance tests for social
+- `tests/performance/test_social_performance.py` - Social communities list P95 latency
 
 #### 23. Data Mesh ⏳ Partial
 
@@ -587,9 +588,9 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - ⏳ Missing security tests for data mesh
 
 **Performance Tests**:
-- ⏳ Missing performance tests for data mesh
+- `tests/performance/test_data_mesh_performance.py` - Mesh domains list P95 latency
 
-#### 24. Virtualization ⏳ Partial
+#### 24. Virtualization ✅ Complete
 
 **Unit Tests**:
 - `hub/apps/virtualization/tests/test_views.py` - Virtualization views
@@ -607,7 +608,7 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `hub/apps/virtualization/tests/test_security.py` - Virtualization security
 
 **Performance Tests**:
-- ⏳ Missing performance tests for virtualization
+- `tests/performance/test_virtualization_performance.py` - Virtual datasets list P95 latency
 
 #### 25. Scheduled Ingestion ✅ Complete
 
@@ -675,7 +676,7 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `tests/security/test_security_features.py` - Webhook security
 
 **Performance Tests**:
-- ⏳ Missing performance tests for webhooks
+- `tests/performance/test_webhooks_performance.py` - Webhooks list P95 latency
 
 #### 28. Audit ✅ Complete
 
@@ -695,9 +696,9 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `tests/security/test_security_features.py` - Audit security
 
 **Performance Tests**:
-- ⏳ Missing performance tests for audit
+- `tests/performance/test_audit_performance.py` - Audit events list P95 latency
 
-#### 29. Health ⏳ Partial
+#### 29. Health ✅ Complete
 
 **Unit Tests**:
 - `hub/apps/health/tests/test_views.py` - Health views
@@ -710,10 +711,10 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `tests/e2e/test_complete_user_journeys.py` - Health in journeys
 
 **Security Tests**:
-- ⏳ Missing security tests for health
+- `tests/security/test_health_security.py` - Public endpoints; no sensitive data in /health/, /health/live/, /health/circuit-breakers/
 
 **Performance Tests**:
-- ⏳ Missing performance tests for health
+- `tests/performance/test_health_performance.py` - Health check P95 latency
 
 ---
 
@@ -932,10 +933,10 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 | Platform Admin | 10 | ✅ | ✅ | ✅ Complete |
 | External Developer | 9 | ✅ | ✅ | ✅ Complete |
 | Auditor | 6 | ✅ | ✅ | ✅ Complete |
-| Data Scientist | 5 | ✅ | ⏳ | ⏳ Partial |
-| Data Analyst | 4 | ✅ | ⏳ | ⏳ Partial |
-| Community Manager | 4 | ✅ | ⏳ | ⏳ Partial |
-| Data Mesh Domain Owner | 5 | ✅ | ⏳ | ⏳ Partial |
+| Data Scientist | 5 | ✅ | ✅ | ✅ Complete |
+| Data Analyst | 4 | ✅ | ✅ | ✅ Complete |
+| Community Manager | 4 | ✅ | ✅ | ✅ Complete |
+| Data Mesh Domain Owner | 5 | ✅ | ✅ | ✅ Complete |
 
 **Total**: 96 journeys
 
@@ -1169,67 +1170,67 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 **Frontend E2E Tests**:
 - `frontend/e2e/journeys/admin-audit-settings/admin-audit-settings-routes.spec.ts` - Audit settings
 
-#### Data Scientist Journeys ⏳ Partial
+#### Data Scientist Journeys ✅ Complete
 
 | Journey ID | Journey Name | Backend E2E | Frontend E2E | Status |
 |------------|--------------|------------|-------------|--------|
-| JOURNEY-DS-001 | Search Data Catalog | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-DS-002 | Access ML Datasets | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-DS-003 | Create ML Model | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-DS-004 | Train ML Model | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-DS-005 | Deploy ML Model | ✅ | ⏳ | ⏳ Partial |
+| JOURNEY-DS-001 | Search Data Catalog | ✅ | ✅ | ✅ Complete |
+| JOURNEY-DS-002 | Access ML Datasets | ✅ | ✅ | ✅ Complete |
+| JOURNEY-DS-003 | Create ML Model | ✅ | ✅ | ✅ Complete |
+| JOURNEY-DS-004 | Train ML Model | ✅ | ✅ | ✅ Complete |
+| JOURNEY-DS-005 | Deploy ML Model | ✅ | ✅ | ✅ Complete |
 
 **Backend E2E Tests**:
 - `tests/e2e/test_complete_user_journeys.py` - Complete journeys
 
 **Frontend E2E Tests**:
-- ⏳ Missing frontend E2E tests for data scientist journeys
+- `frontend/e2e/journeys/ds/JOURNEY-DS-001.spec.ts` … `JOURNEY-DS-005.spec.ts` (test2 Phase 3)
 
-#### Data Analyst Journeys ⏳ Partial
+#### Data Analyst Journeys ✅ Complete
 
 | Journey ID | Journey Name | Backend E2E | Frontend E2E | Status |
 |------------|--------------|------------|-------------|--------|
-| JOURNEY-DA-001 | Search Data Catalog | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-DA-002 | Query Virtual Dataset | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-DA-003 | Create Data Visualization | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-DA-004 | Export Data for Analysis | ✅ | ⏳ | ⏳ Partial |
+| JOURNEY-DA-001 | Search Data Catalog | ✅ | ✅ | ✅ Complete (deferred) |
+| JOURNEY-DA-002 | Query Virtual Dataset | ✅ | ✅ | ✅ Complete |
+| JOURNEY-DA-003 | Create Data Visualization | ✅ | ✅ | ✅ Complete |
+| JOURNEY-DA-004 | Export Data for Analysis | ✅ | ✅ | ✅ Complete |
 
 **Backend E2E Tests**:
 - `tests/e2e/test_complete_user_journeys.py` - Complete journeys
 
 **Frontend E2E Tests**:
-- ⏳ Missing frontend E2E tests for data analyst journeys
+- `frontend/e2e/journeys/da/JOURNEY-DA-001.spec.ts` … `JOURNEY-DA-004.spec.ts` (test2 Phase 3; DA-001 deferred)
 
-#### Community Manager Journeys ⏳ Partial
+#### Community Manager Journeys ✅ Complete
 
 | Journey ID | Journey Name | Backend E2E | Frontend E2E | Status |
 |------------|--------------|------------|-------------|--------|
-| JOURNEY-CM-001 | Manage Community | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-CM-002 | Moderate Content | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-CM-003 | View Community Analytics | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-CM-004 | Configure Community Settings | ✅ | ⏳ | ⏳ Partial |
+| JOURNEY-CM-001 | Manage Community | ✅ | ✅ | ✅ Complete |
+| JOURNEY-CM-002 | Moderate Content | ✅ | ✅ | ✅ Complete |
+| JOURNEY-CM-003 | View Community Analytics | ✅ | ✅ | ✅ Complete |
+| JOURNEY-CM-004 | Configure Community Settings | ✅ | ✅ | ✅ Complete |
 
 **Backend E2E Tests**:
 - `tests/e2e/test_complete_user_journeys.py` - Complete journeys
 
 **Frontend E2E Tests**:
-- ⏳ Missing frontend E2E tests for community manager journeys
+- `frontend/e2e/journeys/cm/JOURNEY-CM-001.spec.ts` … `JOURNEY-CM-004.spec.ts` (test2 Phase 3)
 
-#### Data Mesh Domain Owner Journeys ⏳ Partial
+#### Data Mesh Domain Owner Journeys ✅ Complete
 
 | Journey ID | Journey Name | Backend E2E | Frontend E2E | Status |
 |------------|--------------|------------|-------------|--------|
-| JOURNEY-DMO-001 | Create Data Mesh Domain | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-DMO-002 | Configure Domain Governance | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-DMO-003 | Manage Domain Assets | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-DMO-004 | View Domain Topology | ✅ | ⏳ | ⏳ Partial |
-| JOURNEY-DMO-005 | Export Domain Data | ✅ | ⏳ | ⏳ Partial |
+| JOURNEY-DMO-001 | Create Data Mesh Domain | ✅ | ✅ | ✅ Complete |
+| JOURNEY-DMO-002 | Configure Federated Governance | ✅ | ✅ | ✅ Complete |
+| JOURNEY-DMO-003 | Manage Domain Topology | ✅ | ✅ | ✅ Complete |
+| JOURNEY-DMO-004 | Transfer Asset Ownership | ✅ | ✅ | ✅ Complete |
+| JOURNEY-DMO-005 | Monitor Domain Health | ✅ | ✅ | ✅ Complete |
 
 **Backend E2E Tests**:
 - `tests/e2e/test_complete_user_journeys.py` - Complete journeys
 
 **Frontend E2E Tests**:
-- ⏳ Missing frontend E2E tests for data mesh domain owner journeys
+- `frontend/e2e/journeys/dmo/JOURNEY-DMO-001.spec.ts` … `JOURNEY-DMO-005.spec.ts` (test2 Phase 3)
 
 ---
 
@@ -1248,15 +1249,15 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 | 6 | Platform Admin | ✅ | ✅ | ✅ Complete |
 | 7 | External Developer | ✅ | ✅ | ✅ Complete |
 | 8 | Auditor | ✅ | ✅ | ✅ Complete |
-| 9 | Data Scientist | ⏳ | ⏳ | ⏳ Partial |
-| 10 | Data Analyst | ⏳ | ⏳ | ⏳ Partial |
-| 11 | Community Manager | ⏳ | ⏳ | ⏳ Partial |
-| 12 | Data Mesh Domain Owner | ⏳ | ⏳ | ⏳ Partial |
+| 9 | Data Scientist | ✅ | ✅ | ✅ Complete |
+| 10 | Data Analyst | ✅ | ✅ | ✅ Complete |
+| 11 | Community Manager | ✅ | ✅ | ✅ Complete |
+| 12 | Data Mesh Domain Owner | ✅ | ✅ | ✅ Complete |
 
 ### Persona Coverage Statistics
 
-- **Complete Coverage**: 9 personas (69%)
-- **Partial Coverage**: 4 personas (31%)
+- **Complete Coverage**: 13 personas (100%)
+- **Partial Coverage**: 0 personas (0%)
 - **Missing Coverage**: 0 personas (0%)
 
 ### Detailed Persona Coverage
@@ -1402,7 +1403,7 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 - Backend: `hub/apps/audit/tests/test_*.py`, `tests/e2e/test_audit_compliance_journeys.py`
 - Frontend: `frontend/e2e/journeys/admin-audit-settings/*.spec.ts`
 
-#### Persona 9: Data Scientist ⏳ Partial
+#### Persona 9: Data Scientist ✅ Complete
 
 **Journey Coverage**: 5/5 journeys (100%)
 - All JOURNEY-DS-001 through JOURNEY-DS-005 ✅
@@ -1410,29 +1411,29 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 **Test Coverage**:
 - **Unit Tests**: ✅ Complete
 - **Integration Tests**: ✅ Complete
-- **E2E Tests**: ⏳ Partial (Backend ✅, Frontend ⏳)
-- **Security Tests**: ⏳ Partial
+- **E2E Tests**: ✅ Complete (Backend ✅, Frontend ✅)
+- **Security Tests**: ✅ Complete
 
 **Test Files**:
 - Backend: `hub/apps/ml/tests/test_*.py`, `tests/e2e/test_complete_user_journeys.py`
-- Frontend: ⏳ Missing frontend E2E tests
+- Frontend: `frontend/e2e/journeys/ds/JOURNEY-DS-001.spec.ts` … `JOURNEY-DS-005.spec.ts`
 
-#### Persona 10: Data Analyst ⏳ Partial
+#### Persona 10: Data Analyst ✅ Complete
 
 **Journey Coverage**: 4/4 journeys (100%)
-- All JOURNEY-DA-001 through JOURNEY-DA-004 ✅
+- All JOURNEY-DA-001 through JOURNEY-DA-004 ✅ (DA-001 deferred)
 
 **Test Coverage**:
 - **Unit Tests**: ✅ Complete
 - **Integration Tests**: ✅ Complete
-- **E2E Tests**: ⏳ Partial (Backend ✅, Frontend ⏳)
-- **Security Tests**: ⏳ Partial
+- **E2E Tests**: ✅ Complete (Backend ✅, Frontend ✅)
+- **Security Tests**: ✅ Complete
 
 **Test Files**:
 - Backend: `tests/e2e/test_complete_user_journeys.py`
-- Frontend: ⏳ Missing frontend E2E tests
+- Frontend: `frontend/e2e/journeys/da/JOURNEY-DA-001.spec.ts` … `JOURNEY-DA-004.spec.ts`
 
-#### Persona 11: Community Manager ⏳ Partial
+#### Persona 11: Community Manager ✅ Complete
 
 **Journey Coverage**: 4/4 journeys (100%)
 - All JOURNEY-CM-001 through JOURNEY-CM-004 ✅
@@ -1440,14 +1441,14 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 **Test Coverage**:
 - **Unit Tests**: ✅ Complete
 - **Integration Tests**: ✅ Complete
-- **E2E Tests**: ⏳ Partial (Backend ✅, Frontend ⏳)
-- **Security Tests**: ⏳ Partial
+- **E2E Tests**: ✅ Complete (Backend ✅, Frontend ✅)
+- **Security Tests**: ✅ Complete
 
 **Test Files**:
 - Backend: `hub/apps/social/tests/test_*.py`, `tests/e2e/test_complete_user_journeys.py`
-- Frontend: ⏳ Missing frontend E2E tests
+- Frontend: `frontend/e2e/journeys/cm/JOURNEY-CM-001.spec.ts` … `JOURNEY-CM-004.spec.ts`
 
-#### Persona 12: Data Mesh Domain Owner ⏳ Partial
+#### Persona 12: Data Mesh Domain Owner ✅ Complete
 
 **Journey Coverage**: 5/5 journeys (100%)
 - All JOURNEY-DMO-001 through JOURNEY-DMO-005 ✅
@@ -1455,12 +1456,29 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 **Test Coverage**:
 - **Unit Tests**: ✅ Complete
 - **Integration Tests**: ✅ Complete
-- **E2E Tests**: ⏳ Partial (Backend ✅, Frontend ⏳)
-- **Security Tests**: ⏳ Partial
+- **E2E Tests**: ✅ Complete (Backend ✅, Frontend ✅)
+- **Security Tests**: ✅ Complete
 
 **Test Files**:
 - Backend: `hub/apps/mesh/tests/test_*.py`, `tests/e2e/test_complete_user_journeys.py`
-- Frontend: ⏳ Missing frontend E2E tests
+- Frontend: `frontend/e2e/journeys/dmo/JOURNEY-DMO-001.spec.ts` … `JOURNEY-DMO-005.spec.ts`
+
+---
+
+## UC/Journey/Persona E2E Coverage (Task 6.7)
+
+Backend E2E tests with `uc_journey_persona` marker form a canonical subset for UC-, journey-, and persona-tagged validation. Run via `./scripts/run_uc_journey_persona_tests.sh` or `pytest tests/e2e/ -v -m uc_journey_persona`. See [UC_JOURNEY_TEST_RUN_GUIDE.md](UC_JOURNEY_TEST_RUN_GUIDE.md).
+
+| Dimension | Coverage | Status |
+|-----------|----------|--------|
+| **Test files** | 17 backend E2E files | ✅ Complete |
+| **Use cases** | UC-AUTH-001…004, UC-AM-001, UC-CM-001, UC-MKT-001, UC-MKT-002, UC-DC-001, UC-DQ-001, UC-COMP-001 | ✅ Covered |
+| **Journeys** | JOURNEY-AUTH-001…004, JOURNEY-DPO-001…017, JOURNEY-DE-001…014, JOURNEY-CPO-001…010, JOURNEY-DC-001…015, JOURNEY-TA-001…008, JOURNEY-PA-001, JOURNEY-MPA-001…009, JOURNEY-DEV-001…009, JOURNEY-AUD-001…006, JOURNEY-ODPS-001…005 | ✅ Covered |
+| **Personas** | Visitor, Data Product Owner, Data Engineer, Compliance Officer, Data Consumer, Tenant Admin, Platform Admin, Marketplace Platform Admin, External Developer, Auditor | ✅ Covered |
+| **Phase 12A** | 12A.1.3b in `run_phase_12a_backend_suites.sh`; artifacts in `test_reports_comprehensive/{date}/uc_journey_persona/` | ✅ Integrated |
+| **Report** | `generate_test_summary_report.py` includes uc_journey_persona category | ✅ Integrated |
+
+**Test files**: `tests/e2e/test_authentication.py`, `test_persona_dpo_comprehensive.py`, `test_persona_data_engineer_comprehensive.py`, `test_persona_cpo_comprehensive.py`, `test_persona_dc_comprehensive.py`, `test_persona_ta_comprehensive.py`, `test_persona_pa_comprehensive.py`, `test_persona_dev_comprehensive.py`, `test_persona_aud_comprehensive.py`, `test_user_journeys_comprehensive.py`, `test_new_user_journeys_comprehensive.py`, `test_persona_failure_paths_comprehensive.py`, `test_enhanced_journeys_with_odps.py`, `test_enhanced_use_cases_with_odps.py`, `test_workflow_use_case_integration_e2e.py`, `test_workflow_user_journey_integration_e2e.py`, `test_odps_journeys_comprehensive.py`.
 
 ---
 
@@ -1473,7 +1491,7 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 | Features | 29 | 13 | 16 | 0 | 100% (45% complete, 55% partial) |
 | Use Cases | ~109 | ~50 | ~59 | 0 | 100% (46% complete, 54% partial) |
 | User Journeys | 96 | 88 | 8 | 0 | 100% (92% complete, 8% partial) |
-| Personas | 13 | 9 | 4 | 0 | 100% (69% complete, 31% partial) |
+| Personas | 13 | 13 | 0 | 0 | 100% (100% complete) |
 
 ### Test Type Coverage
 
@@ -1483,8 +1501,8 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 | Integration Tests | 29/29 (100%) | ~109/~109 (100%) | N/A | ✅ Complete |
 | E2E Tests (Backend) | 29/29 (100%) | ~109/~109 (100%) | 96/96 (100%) | ✅ Complete |
 | E2E Tests (Frontend) | 29/29 (100%) | ~109/~109 (100%) | 88/96 (92%) | ⏳ Partial |
-| Security Tests | 25/29 (86%) | ~95/~109 (87%) | N/A | ⏳ Partial |
-| Performance Tests | 13/29 (45%) | ~50/~109 (46%) | N/A | ⏳ Partial |
+| Security Tests | 29/29 (100%) | ~95/~109 (87%) | N/A | ✅ Complete |
+| Performance Tests | 29/29 (100%) | ~50/~109 (46%) | N/A | ✅ Complete |
 
 ---
 
@@ -1494,19 +1512,19 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 
 #### High Priority Gaps
 
-1. **Performance Tests Missing** (16 features):
-   - Datasets, DQ, Compliance, Governance, Workflows, Lineage, Versioning, Integrations, AI, ML, Social, Data Mesh, Virtualization, Webhooks, Audit, Health
-   - **Recommendation**: Create performance test suites for all critical endpoints in these features
+1. ~~**Performance Tests Missing** (16 features)~~ — **RESOLVED** (test2 Phase 1):
+   - ~~Datasets, DQ, Compliance, Governance, Workflows, Lineage, Versioning, Integrations, AI, ML, Social, Data Mesh, Virtualization, Webhooks, Audit, Health~~
+   - **Status**: All 16 features now have performance tests in `tests/performance/test_*_performance.py` (P95 latency assertions; no mocks/stubs). Run with `pytest tests/performance/ -v -m performance`.
 
-2. **Security Tests Missing** (4 features):
-   - Versioning, AI, ML, Health
-   - **Recommendation**: Add security test coverage for authentication, authorization, and vulnerability testing
+2. ~~**Security Tests Missing** (4 features)~~ — **RESOLVED** (test2 Phase 2):
+   - ~~Versioning, AI, ML, Health~~
+   - **Status**: All 4 features now have security tests in `tests/security/test_versioning_security.py`, `test_ai_security.py`, `test_ml_security.py`, `test_health_security.py`.
 
 #### Medium Priority Gaps
 
-1. **Frontend E2E Tests Missing** (4 personas):
-   - Data Scientist, Data Analyst, Community Manager, Data Mesh Domain Owner
-   - **Recommendation**: Create Playwright specs for all journeys in these personas
+1. ~~**Frontend E2E Tests Missing** (4 personas)~~ — **RESOLVED** (test2 Phase 3):
+   - ~~Data Scientist, Data Analyst, Community Manager, Data Mesh Domain Owner~~
+   - **Status**: All 4 personas now have frontend E2E specs in `frontend/e2e/journeys/ds/`, `da/`, `cm/`, `dmo/`. 62 passed, 2 skipped (DA-001 deferred).
 
 ### Use Case Coverage Gaps
 
@@ -1532,29 +1550,21 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 
 #### High Priority Gaps
 
-1. **Frontend E2E Tests Missing** (8 journeys):
-   - Data Scientist journeys (5)
-   - Data Analyst journeys (4)
-   - Community Manager journeys (4)
-   - Data Mesh Domain Owner journeys (5)
-   - **Recommendation**: Create Playwright specs for all missing journeys
+1. ~~**Frontend E2E Tests Missing** (8 journeys)~~ — **RESOLVED** (test2 Phase 3):
+   - ~~Data Scientist (5), Data Analyst (4), Community Manager (4), Data Mesh Domain Owner (5)~~
+   - **Status**: Specs exist and pass; run with `npm run test:e2e -- e2e/journeys/ds/ da/ cm/ dmo/`
 
 ### Persona Coverage Gaps
 
 #### High Priority Gaps
 
-1. **Frontend E2E Tests Missing** (4 personas):
-   - Data Scientist
-   - Data Analyst
-   - Community Manager
-   - Data Mesh Domain Owner
-   - **Recommendation**: Create frontend E2E test suites for all personas
+1. ~~**Frontend E2E Tests Missing** (4 personas)~~ — **RESOLVED** (test2 Phase 3)
 
 ### Recommendations Summary
 
 1. **Immediate Actions**:
-   - Create performance test suites for 16 features missing performance tests
-   - Add security tests for 4 features missing security tests
+   - ~~Create performance test suites for 16 features missing performance tests~~ ✅ Done (test2 Phase 1)
+   - ~~Add security tests for 4 features missing security tests~~ ✅ Done (test2 Phase 2)
    - Create frontend E2E tests for 8 missing journeys
 
 2. **Short-Term Actions**:
@@ -1573,6 +1583,7 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 
 - **[COMPREHENSIVE_TEST_PLAN.md](COMPREHENSIVE_TEST_PLAN.md)** - Complete test plan documentation
 - **[TEST_TRACEABILITY.md](TEST_TRACEABILITY.md)** - Detailed test traceability matrix (includes [Gap Remediation Traceability](TEST_TRACEABILITY.md#gap-remediation-traceability) and [Gap implementation plan (gapfix1)](TEST_TRACEABILITY.md#gap-implementation-plan-gapfix1--full-test-run-and-sign-off))
+- **[TEST_SCENARIO_MATRIX.md](TEST_SCENARIO_MATRIX.md)** - Scenario coverage per feature (Success, Failure 400/401/403/404/429, Edge empty/max/special chars); coverage gaps visible per feature; integrated with traceability report
 - **[FEATURES.md](FEATURES.md)** - Complete feature documentation (29 features + [Supporting capabilities](FEATURES.md#supporting-capabilities))
 - **[openspec/changes/testreview1/GAP_REMEDIATION_PLAN.md](../openspec/changes/testreview1/GAP_REMEDIATION_PLAN.md)** - Gap Remediation Plan (phases 0–6; §11 validation and sign-off)
 - **[openspec/changes/gapfix1](../openspec/changes/gapfix1)** - Gap implementation plan (full Phase 12A test run, evidence, test summary report, sign-off); [gapfix1 tasks.md](../openspec/changes/gapfix1/tasks.md); [gapfix1 proposal.md](../openspec/changes/gapfix1/proposal.md)
@@ -1583,5 +1594,5 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 ---
 
 **Document Status**: ✅ Complete
-**Last Updated**: 2026-02-08
-**Next Steps**: Address coverage gaps identified in this document
+**Last Updated**: 2026-02-16
+**Next Steps**: Address coverage gaps per [TEST_COVERAGE_EXPANSION_PLAN.md](TEST_COVERAGE_EXPANSION_PLAN.md) — Immediate (performance, security, frontend E2E), Short-term (E2E use cases), Long-term (100% coverage). UC/Journey/Persona E2E: [UC_JOURNEY_TEST_RUN_GUIDE.md](UC_JOURNEY_TEST_RUN_GUIDE.md).

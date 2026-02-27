@@ -79,7 +79,7 @@ class ODHIntegrationCLISDKPerformanceTestBase(TransactionTestCase):
 
         if SDK_AVAILABLE:
             config = DataHubClientConfig(
-                api_base_url="http://localhost:8000/api/v1", api_key="test-key"
+                base_url="http://localhost:8000/api/v1", api_token="test-key"
             )
             self.client = DataHubClient(config)
 

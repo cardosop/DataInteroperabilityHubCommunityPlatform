@@ -936,48 +936,6 @@ class ObservabilityViewSet(viewsets.ViewSet):
         },
         tags=["Observability", "Incident Management"],
     )
-    @action(detail=False, methods=["get"], url_path="incidents")
-    def get_incidents_dashboard(self, request: Request) -> Response:
-        """
-        Get data incidents dashboard.
-
-        GET /api/v1/observability/incidents?status=IN_PROGRESS&limit=100
-        """
-        # Get tenant from user
-        tenant = (
-            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
-        )
-        if not tenant:
-            return Response(
-                {"error": "User must belong to a tenant to view observability data"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Get parameters
-        status_filter = request.query_params.get("status")
-        incident_type = request.query_params.get("incident_type")
-        severity = request.query_params.get("severity")
-        assigned_to_id = request.query_params.get("assigned_to_id")
-        resource_type = request.query_params.get("resource_type")
-        resource_id = request.query_params.get("resource_id")
-        limit = int(request.query_params.get("limit", 100))
-
-        # Get dashboard data
-        from .incident_management import IncidentManager
-
-        dashboard_data = IncidentManager.get_incidents_dashboard(
-            tenant_id=str(tenant.id),
-            status=status_filter,
-            incident_type=incident_type,
-            severity=severity,
-            assigned_to_id=assigned_to_id,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            limit=limit,
-        )
-
-        return Response(dashboard_data)
-
     @extend_schema(
         summary="Create data incident",
         description="""
@@ -998,35 +956,56 @@ class ObservabilityViewSet(viewsets.ViewSet):
         },
         tags=["Observability", "Incident Management"],
     )
-    @action(detail=False, methods=["post"], url_path="incidents")
-    def create_incident(self, request: Request) -> Response:
+    @action(detail=False, methods=["get", "post"], url_path="incidents")
+    def incidents(self, request: Request) -> Response:
         """
-        Create a new data incident.
+        Get data incidents dashboard (GET) or create a new incident (POST).
 
+        GET /api/v1/observability/incidents?status=IN_PROGRESS&limit=100
         POST /api/v1/observability/incidents
         """
-        # Get tenant from user
         tenant = (
             request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
         )
         if not tenant:
-            return Response(
-                {"error": "User must belong to a tenant to create incidents"},
-                status=status.HTTP_400_BAD_REQUEST,
+            error_msg = (
+                "User must belong to a tenant to view observability data"
+                if request.method == "GET"
+                else "User must belong to a tenant to create incidents"
             )
+            return Response({"error": error_msg}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Validate required fields
+        if request.method == "GET":
+            status_filter = request.query_params.get("status")
+            incident_type = request.query_params.get("incident_type")
+            severity = request.query_params.get("severity")
+            assigned_to_id = request.query_params.get("assigned_to_id")
+            resource_type = request.query_params.get("resource_type")
+            resource_id = request.query_params.get("resource_id")
+            limit = int(request.query_params.get("limit", 100))
+            from .incident_management import IncidentManager
+
+            dashboard_data = IncidentManager.get_incidents_dashboard(
+                tenant_id=str(tenant.id),
+                status=status_filter,
+                incident_type=incident_type,
+                severity=severity,
+                assigned_to_id=assigned_to_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                limit=limit,
+            )
+            return Response(dashboard_data)
+
+        # POST: create incident
         title = request.data.get("title")
         description = request.data.get("description")
         incident_type = request.data.get("incident_type")
-
         if not title or not description or not incident_type:
             return Response(
                 {"error": "title, description, and incident_type are required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        # Create incident
         from .incident_management import IncidentManager
 
         incident = IncidentManager.create_incident(
@@ -1040,7 +1019,6 @@ class ObservabilityViewSet(viewsets.ViewSet):
             detected_by_id=str(request.user.id) if request.user.is_authenticated else None,
             metadata_json=request.data.get("metadata_json"),
         )
-
         return Response(
             {
                 "id": str(incident.id),

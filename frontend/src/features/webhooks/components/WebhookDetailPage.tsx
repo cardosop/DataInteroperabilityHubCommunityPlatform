@@ -38,15 +38,18 @@ export function WebhookDetailPage() {
     }
   };
 
-  if (isLoading) return <LoadingSpinner message="Loading webhook..." />;
-  if (error || !webhook) {
+  if (error) {
     return (
       <ErrorDisplay
-        error={error ?? new Error('Webhook not found')}
+        error={error}
         title="Failed to load webhook"
         onRetry={() => refetch()}
       />
     );
+  }
+
+  if (isLoading || !webhook) {
+    return <LoadingSpinner message="Loading webhook..." />;
   }
 
   return (

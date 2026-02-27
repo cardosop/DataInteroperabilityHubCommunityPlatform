@@ -80,6 +80,7 @@ from hub.apps.scheduled_ingestion.models import (
 )
 from hub.apps.scheduled_ingestion.services import IngestionService
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
 User = get_user_model()
@@ -203,6 +204,7 @@ class ScheduledIngestionCRUDTest(TransactionTestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(
             email=f"test-{self.unique_id}@example.com",
             tenant=self.tenant,
@@ -659,6 +661,7 @@ class ScheduledIngestionExecutionTest(TransactionTestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(
             email=f"test-{self.unique_id}@example.com",
             tenant=self.tenant,
@@ -880,6 +883,7 @@ class ScheduledIngestionRunHistoryTest(TransactionTestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(
             email=f"test-{self.unique_id}@example.com",
             tenant=self.tenant,
@@ -1125,6 +1129,7 @@ class ScheduledIngestionODPSIntegrationTest(TransactionTestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(
             email=f"test-{self.unique_id}@example.com",
             tenant=self.tenant,

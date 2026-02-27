@@ -1,0 +1,54 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 0,
+    "in_progress": 1,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-013-907fb024",
+      "journey_name": "Configure Data Mesh Domain",
+      "persona": "Data Product Owner",
+      "status": "in_progress",
+      "start_time": 1771260746.0932353,
+      "end_time": null,
+      "duration": null,
+      "completion_rate": 50.0,
+      "success_rate": 50.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create/Select Domain",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771260746.0932484,
+          "end_time": 1771260747.004387,
+          "duration": 0.9111385345458984,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Define Domain Boundaries",
+          "status": "StepStatus.IN_PROGRESS",
+          "start_time": 1771260747.0043988,
+          "end_time": null,
+          "duration": null,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T16:52:27.009585"
+}

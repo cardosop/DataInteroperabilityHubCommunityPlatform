@@ -28,6 +28,31 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
+def _ensure_tenant_has_active_subscription(tenant):
+    """Ensure tenant has active subscription so SubscriptionStatusMiddleware allows DELETE."""
+    from hub.apps.billing.models import Subscription, SubscriptionStatus
+    from hub.apps.tenants.models import PlanTier, TenantPlan
+
+    if Subscription.objects.filter(tenant=tenant, status=SubscriptionStatus.ACTIVE).exists():
+        return
+    plan, _ = TenantPlan.objects.get_or_create(
+        slug="integrations-test-plan",
+        defaults={
+            "name": "Integrations Test Plan",
+            "tier": PlanTier.FREE,
+            "limits_json": {"max_assets": 100},
+            "is_active": True,
+        },
+    )
+    Subscription.objects.create(
+        tenant=tenant,
+        plan=plan,
+        status=SubscriptionStatus.ACTIVE,
+        current_period_start=timezone.now(),
+        current_period_end=timezone.now() + timedelta(days=365),
+    )
+
+
 class MarketplaceMappingViewSetTest(TestCase):
     """Test suite for MarketplaceMappingViewSet - Unit and Integration Tests"""
 
@@ -51,6 +76,7 @@ class MarketplaceMappingViewSetTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        _ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user with DATA_PROVIDER role
         self.user = User.objects.create_user(
@@ -60,17 +86,22 @@ class MarketplaceMappingViewSetTest(TestCase):
             status=UserStatus.ACTIVE,
         )
 
-        # Create DATA_PROVIDER role and assign to user - use filter().first() to handle duplicates
-        data_provider_role = Role.objects.filter(name="DATA_PROVIDER").first()
+        # Create DATA_PROVIDER role (tenant-scoped) and assign to user
+        data_provider_role = Role.objects.filter(
+            tenant=self.tenant, name="DATA_PROVIDER"
+        ).first()
         if not data_provider_role:
             data_provider_role = Role.objects.create(
-                name="DATA_PROVIDER", description="Data Provider Role"
+                tenant=self.tenant,
+                name="DATA_PROVIDER",
+                description="Data Provider Role",
             )
         self.user.user_roles.create(role=data_provider_role)
 
-        # Create API key with integrations:write scope
+        # Create API key with integrations:write scope (store plaintext for auth in delete tests)
         plaintext_key = APIKey.generate_key()
         key_hash = APIKey.hash_key(plaintext_key)
+        self.plaintext_api_key = plaintext_key
         self.api_key = APIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
@@ -276,20 +307,35 @@ class MarketplaceMappingViewSetTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_delete_mapping_success(self):
-        """Test successful mapping deletion"""
-        response = self.client.delete(
-            f"/api/v1/integrations/marketplace/mappings/{self.mapping.id}/"
+        """Test successful mapping deletion (API key auth so HasScope('integrations:write') passes)"""
+        # Use a dedicated mapping so we don't remove self.mapping for later tests
+        asset_del = Asset.objects.create(
+            tenant=self.tenant, key="asset-delete-test", name="Asset for delete test"
+        )
+        mapping_to_delete = MarketplaceMapping.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            hub_asset=asset_del,
+            external_listing_id="ext-listing-delete-test",
+        )
+        # Use a fresh client with only API key so DRF runs API key auth (force_authenticate would override)
+        api_client = APIClient()
+        api_client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_api_key}")
+        response = api_client.delete(
+            f"/api/v1/integrations/marketplace/mappings/{mapping_to_delete.id}/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
         # Verify mapping is deleted
-        self.assertFalse(MarketplaceMapping.objects.filter(id=self.mapping.id).exists())
+        self.assertFalse(MarketplaceMapping.objects.filter(id=mapping_to_delete.id).exists())
 
     def test_delete_mapping_not_found(self):
-        """Test deleting non-existent mapping"""
+        """Test deleting non-existent mapping (API key auth so permission passes, then 404)"""
+        api_client = APIClient()
+        api_client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_api_key}")
         non_existent_id = uuid.uuid4()
-        response = self.client.delete(
+        response = api_client.delete(
             f"/api/v1/integrations/marketplace/mappings/{non_existent_id}/"
         )
 
@@ -304,10 +350,14 @@ class MarketplaceMappingViewSetTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
-        data_provider_role = Role.objects.filter(name="DATA_PROVIDER").first()
+        data_provider_role = Role.objects.filter(
+            tenant=self.tenant, name="DATA_PROVIDER"
+        ).first()
         if not data_provider_role:
             data_provider_role = Role.objects.create(
-                name="DATA_PROVIDER", description="Data Provider Role"
+                tenant=self.tenant,
+                name="DATA_PROVIDER",
+                description="Data Provider Role",
             )
         user_no_write.user_roles.create(role=data_provider_role)
 
@@ -388,19 +438,21 @@ class MarketplaceMappingViewSetTest(TestCase):
             self.assertIn(field, response.data, f"Field {field} missing from response")
 
     def test_mapping_list_only_get_and_delete_methods(self):
-        """Test that only GET and DELETE methods are allowed"""
+        """Test that only GET and DELETE methods are allowed (API key auth for consistency)"""
+        api_client = APIClient()
+        api_client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_api_key}")
         # POST should not be allowed
-        response = self.client.post("/api/v1/integrations/marketplace/mappings/", {}, format="json")
+        response = api_client.post("/api/v1/integrations/marketplace/mappings/", {}, format="json")
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
         # PUT should not be allowed
-        response = self.client.put(
+        response = api_client.put(
             f"/api/v1/integrations/marketplace/mappings/{self.mapping.id}/", {}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
         # PATCH should not be allowed
-        response = self.client.patch(
+        response = api_client.patch(
             f"/api/v1/integrations/marketplace/mappings/{self.mapping.id}/", {}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -443,11 +495,13 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
         self.tenant1 = Tenant.objects.create(
             name="Tenant 1", slug="tenant-1", kyc_status=KYCStatus.VERIFIED
         )
+        _ensure_tenant_has_active_subscription(self.tenant1)
 
         # Create tenant 2
         self.tenant2 = Tenant.objects.create(
             name="Tenant 2", slug="tenant-2", kyc_status=KYCStatus.VERIFIED
         )
+        _ensure_tenant_has_active_subscription(self.tenant2)
 
         # Create user for tenant 1
         self.user1 = User.objects.create_user(
@@ -465,18 +519,21 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
             status=UserStatus.ACTIVE,
         )
 
-        # Create DATA_PROVIDER role - use filter().first() to handle duplicates
-        data_provider_role = Role.objects.filter(name="DATA_PROVIDER").first()
-        if not data_provider_role:
-            data_provider_role = Role.objects.create(
-                name="DATA_PROVIDER", description="Data Provider Role"
-            )
-        self.user1.user_roles.create(role=data_provider_role)
-        self.user2.user_roles.create(role=data_provider_role)
+        # Create DATA_PROVIDER role per tenant (roles are tenant-scoped)
+        for tenant, user in ((self.tenant1, self.user1), (self.tenant2, self.user2)):
+            role = Role.objects.filter(tenant=tenant, name="DATA_PROVIDER").first()
+            if not role:
+                role = Role.objects.create(
+                    tenant=tenant,
+                    name="DATA_PROVIDER",
+                    description="Data Provider Role",
+                )
+            user.user_roles.create(role=role)
 
-        # Create API keys with unique key hashes
+        # Create API keys with unique key hashes (store plaintext for auth in tests)
         plaintext_key1 = APIKey.generate_key()
         key_hash1 = APIKey.hash_key(plaintext_key1)
+        self.plaintext_api_key1 = plaintext_key1
         self.api_key1 = APIKey.objects.create(
             tenant=self.tenant1,
             user=self.user1,
@@ -487,6 +544,7 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
 
         plaintext_key2 = APIKey.generate_key()
         key_hash2 = APIKey.hash_key(plaintext_key2)
+        self.plaintext_api_key2 = plaintext_key2
         self.api_key2 = APIKey.objects.create(
             tenant=self.tenant2,
             user=self.user2,
@@ -644,11 +702,15 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
 
     def test_delete_with_tenant_admin_role(self):
         """Test that TENANT_ADMIN role can delete mappings"""
-        # Create user with TENANT_ADMIN role - use filter().first() to handle duplicates
-        tenant_admin_role = Role.objects.filter(name="TENANT_ADMIN").first()
+        # Create TENANT_ADMIN role for tenant1 (roles are tenant-scoped)
+        tenant_admin_role = Role.objects.filter(
+            tenant=self.tenant1, name="TENANT_ADMIN"
+        ).first()
         if not tenant_admin_role:
             tenant_admin_role = Role.objects.create(
-                name="TENANT_ADMIN", description="Tenant Admin Role"
+                tenant=self.tenant1,
+                name="TENANT_ADMIN",
+                description="Tenant Admin Role",
             )
 
         user_admin = User.objects.create_user(
@@ -669,10 +731,11 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
             scopes=["integrations:write", "integrations:read"],
         )
 
-        # Authenticate with admin user
-        self.client.force_authenticate(user=user_admin)
+        # Use fresh client with API key so HasScope('integrations:write') passes
+        api_client = APIClient()
+        api_client.credentials(HTTP_AUTHORIZATION=f"ApiKey {plaintext_key}")
 
-        response = self.client.delete(
+        response = api_client.delete(
             f"/api/v1/integrations/marketplace/mappings/{self.mapping1.id}/"
         )
 
@@ -692,12 +755,12 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
         self.assertEqual(response.data["count"], 0)
 
     def test_mapping_deletion_audit_log(self):
-        """Test that mapping deletion is properly logged"""
-        # Authenticate as user1
-        self.client.force_authenticate(user=self.user1)
+        """Test that mapping deletion is properly logged (API key auth for write)"""
+        api_client = APIClient()
+        api_client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_api_key1}")
 
         # Delete mapping
-        response = self.client.delete(
+        response = api_client.delete(
             f"/api/v1/integrations/marketplace/mappings/{self.mapping1.id}/"
         )
 
@@ -710,6 +773,7 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
 
     def test_list_mappings_validation_error_response_format(self):
         """Test that validation errors return proper error response format"""
+        self.client.force_authenticate(user=self.user1)
         # Try to list with invalid connection_id filter
         response = self.client.get(
             "/api/v1/integrations/marketplace/mappings/", {"connection_id": "not-a-uuid"}
@@ -722,6 +786,7 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
 
     def test_retrieve_mapping_error_handling(self):
         """Test that retrieve errors are handled gracefully"""
+        self.client.force_authenticate(user=self.user1)
         # Retrieve nonexistent mapping
         fake_id = uuid.uuid4()
         response = self.client.get(f"/api/v1/integrations/marketplace/mappings/{fake_id}/")
@@ -729,26 +794,32 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_delete_mapping_error_handling(self):
-        """Test that delete errors are handled gracefully"""
+        """Test that delete errors are handled gracefully (use tenant1; API key auth for write)"""
+        asset_err = Asset.objects.create(
+            tenant=self.tenant1, key="asset-error-handling", name="Asset for error test"
+        )
         mapping = MarketplaceMapping.objects.create(
-            tenant=self.tenant,
-            connection=self.connection,
-            hub_asset=self.asset,
+            tenant=self.tenant1,
+            connection=self.connection1,
+            hub_asset=asset_err,
             external_listing_id="ext-listing-error",
         )
+        api_client = APIClient()
+        api_client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_api_key1}")
 
         # Delete should succeed
-        response = self.client.delete(f"/api/v1/integrations/marketplace/mappings/{mapping.id}/")
+        response = api_client.delete(f"/api/v1/integrations/marketplace/mappings/{mapping.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
         # Try to delete again - should return 404
-        response = self.client.delete(f"/api/v1/integrations/marketplace/mappings/{mapping.id}/")
+        response = api_client.delete(f"/api/v1/integrations/marketplace/mappings/{mapping.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_list_mappings_error_handling(self):
         """Test that list errors are handled gracefully"""
+        self.client.force_authenticate(user=self.user1)
         # List should always succeed (may return empty list)
         response = self.client.get("/api/v1/integrations/marketplace/mappings/")
 
@@ -758,6 +829,7 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
 
     def test_list_mappings_with_malformed_filters(self):
         """Test that malformed filters are handled gracefully"""
+        self.client.force_authenticate(user=self.user1)
         # Try with invalid filter values
         response = self.client.get(
             "/api/v1/integrations/marketplace/mappings/",
@@ -771,7 +843,8 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
 
     def test_retrieve_mapping_response_has_all_required_fields(self):
         """Test that retrieved mapping response has all required fields"""
-        response = self.client.get(f"/api/v1/integrations/marketplace/mappings/{self.mapping.id}/")
+        self.client.force_authenticate(user=self.user1)
+        response = self.client.get(f"/api/v1/integrations/marketplace/mappings/{self.mapping1.id}/")
 
         if response.status_code == status.HTTP_200_OK:
             # Verify all required fields are present
@@ -790,6 +863,7 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
 
     def test_list_mappings_response_structure(self):
         """Test that list response has correct structure"""
+        self.client.force_authenticate(user=self.user1)
         response = self.client.get("/api/v1/integrations/marketplace/mappings/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -801,6 +875,7 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
 
     def test_list_mappings_field_types(self):
         """Test that list response fields have correct types"""
+        self.client.force_authenticate(user=self.user1)
         response = self.client.get("/api/v1/integrations/marketplace/mappings/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -813,7 +888,8 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
 
     def test_retrieve_mapping_field_types(self):
         """Test that retrieve response fields have correct types"""
-        response = self.client.get(f"/api/v1/integrations/marketplace/mappings/{self.mapping.id}/")
+        self.client.force_authenticate(user=self.user1)
+        response = self.client.get(f"/api/v1/integrations/marketplace/mappings/{self.mapping1.id}/")
 
         if response.status_code == status.HTTP_200_OK:
             data = response.data
@@ -826,6 +902,7 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
 
     def test_list_mappings_timestamp_format(self):
         """Test that timestamps are properly formatted"""
+        self.client.force_authenticate(user=self.user1)
         response = self.client.get("/api/v1/integrations/marketplace/mappings/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)

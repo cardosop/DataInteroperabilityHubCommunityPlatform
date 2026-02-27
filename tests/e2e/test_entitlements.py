@@ -30,7 +30,7 @@ from hub.apps.marketplace.models import (
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 
@@ -45,12 +45,14 @@ class EntitlementsE2ETest(E2ETestBase):
         self.tenant.kyc_status = KYCStatus.VERIFIED
         self.tenant.save(update_fields=["kyc_status"])
 
-        # Create consumer tenant
+        # Create consumer tenant (must have active subscription for order creation)
         self.consumer_tenant = Tenant.objects.create(
             name="Consumer Tenant", slug="consumer-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
         from hub.apps.users.models import User
 
+        ensure_e2e_tenant_ready(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
             email="consumer@example.com", password="testpass123", tenant=self.consumer_tenant
         )
@@ -81,7 +83,7 @@ class EntitlementsE2ETest(E2ETestBase):
             format="json",
         )
         # Response may have 'id' or listing may be in different format
-        if "id" not in listing_response.data:
+        if "id" not in (get_response_data(listing_response) or {}):
             # Try to get listing from database
             listing = Listing.objects.filter(asset_id=asset_id, tenant=self.tenant).first()
             if listing:
@@ -89,7 +91,7 @@ class EntitlementsE2ETest(E2ETestBase):
             else:
                 self.fail("Listing not created")
         else:
-            listing_id = listing_response.data["id"]
+            listing_id = (get_response_data(listing_response) or {})["id"]
 
         # Try to publish listing (endpoint may not exist)
         publish_response = self.client.post(f"/api/v1/marketplace/listings/{listing_id}/publish/")
@@ -111,7 +113,7 @@ class EntitlementsE2ETest(E2ETestBase):
             # Skip test if order creation fails
             pytest.skip(f"Order creation failed: {order_response.status_code}")
 
-        order_id = order_response.data.get("id")
+        order_id = (get_response_data(order_response) or {}).get("id")
         if not order_id:
             pytest.skip("Order created but no ID in response")
 
@@ -216,7 +218,7 @@ class EntitlementsE2ETest(E2ETestBase):
             return
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["status"], EntitlementStatus.REVOKED)
+        self.assertEqual((get_response_data(response) or {})["status"], EntitlementStatus.REVOKED)
 
         # Verify entitlement revoked
         entitlement.refresh_from_db()
@@ -269,7 +271,7 @@ class EntitlementsE2ETest(E2ETestBase):
         response = self.client.get("/api/v1/marketplace/entitlements/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Results may be filtered by tenant, so check if we have at least the entitlements we created
-        results = response.data.get("results", [])
+        results = (get_response_data(response) or {}).get("results", [])
         # If no results, entitlements might be tenant-scoped and not visible
         if len(results) == 0:
             # Verify entitlements exist in database
@@ -283,7 +285,7 @@ class EntitlementsE2ETest(E2ETestBase):
             f"/api/v1/marketplace/entitlements/?status={EntitlementStatus.ACTIVE}"
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        entitlement_statuses = {e["status"] for e in response.data.get("results", [])}
+        entitlement_statuses = {e["status"] for e in (get_response_data(response) or {}).get("results", [])}
         # Filter may not be strictly enforced, so just check that ACTIVE is in results if any exist
         if len(entitlement_statuses) > 0:
             # If filter is working, all should be ACTIVE, but if not, at least ACTIVE should be present
@@ -333,9 +335,9 @@ class EntitlementsE2ETest(E2ETestBase):
             pytest.skip("Entitlement detail endpoint not available")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["id"], str(entitlement.id))
-        self.assertEqual(response.data["status"], EntitlementStatus.ACTIVE)
-        self.assertIn("asset", response.data)
+        self.assertEqual((get_response_data(response) or {})["id"], str(entitlement.id))
+        self.assertEqual((get_response_data(response) or {})["status"], EntitlementStatus.ACTIVE)
+        self.assertIn("asset", (get_response_data(response) or {}))
 
     def test_entitlement_access_check(self):
         """Test entitlement access check"""
@@ -375,8 +377,8 @@ class EntitlementsE2ETest(E2ETestBase):
             pytest.skip("Entitlement access check endpoint not available")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(response.data.get("has_access"))
-        self.assertEqual(response.data.get("asset_id"), str(asset_id))
+        self.assertTrue((get_response_data(response) or {}).get("has_access"))
+        self.assertEqual((get_response_data(response) or {}).get("asset_id"), str(asset_id))
 
     def test_entitlement_cross_tenant_isolation(self):
         """Test entitlement respects tenant isolation"""

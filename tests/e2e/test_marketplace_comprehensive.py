@@ -21,7 +21,7 @@ from hub.apps.marketplace.models import (
 )
 from hub.apps.marketplace.access_utils import check_entitlement
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 class MarketplacePublishTests(E2ETestBase):
@@ -31,13 +31,15 @@ class MarketplacePublishTests(E2ETestBase):
         """Set up test fixtures with provider tenant"""
         super().setUp()
         
-        # Create provider tenant
+        # Create provider tenant (must have active subscription for listing creation)
         self.provider_tenant = Tenant.objects.create(
             name="Provider Tenant",
             slug="provider-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        ensure_e2e_tenant_ready(self.provider_tenant)
+
         self.provider_user = self.user.__class__.objects.create_user(
             email="provider@example.com",
             password="testpass123",
@@ -71,8 +73,9 @@ class MarketplacePublishTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(listing_response.status_code, status.HTTP_201_CREATED)
-        listing_id = listing_response.data['id']
-        
+        listing_id = (get_response_data(listing_response) or {}).get('id')
+        self.assertIsNotNone(listing_id, "Listing response missing id")
+
         # Publish listing
         publish_response = self.provider_client.patch(
             f'/api/v1/marketplace/listings/{listing_id}/',
@@ -87,13 +90,15 @@ class MarketplacePublishTests(E2ETestBase):
     
     def test_publish_listing_with_unverified_tenant_fails(self):
         """Test that unverified tenants cannot publish listings"""
-        # Create unverified tenant
+        # Create unverified tenant (subscription needed for POST; KYC intentionally UNVERIFIED)
         unverified_tenant = Tenant.objects.create(
             name="Unverified Tenant",
             slug="unverified-tenant",
             kyc_status=KYCStatus.UNVERIFIED
         )
-        
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(unverified_tenant)
+
         unverified_user = self.user.__class__.objects.create_user(
             email="unverified@example.com",
             password="testpass123",
@@ -126,7 +131,7 @@ class MarketplacePublishTests(E2ETestBase):
         
         # Should fail with appropriate error
         if listing_response.status_code != status.HTTP_201_CREATED:
-            self.assertIn('kyc', str(listing_response.data).lower() or 'verified')
+            self.assertIn('kyc', str(get_response_data(listing_response) or {}).lower() or 'verified')
     
     def test_publish_inactive_asset_fails(self):
         """Test that inactive assets cannot be published"""
@@ -154,7 +159,7 @@ class MarketplacePublishTests(E2ETestBase):
         
         # Should fail with appropriate error
         if listing_response.status_code != status.HTTP_201_CREATED:
-            self.assertIn('active', str(listing_response.data).lower())
+            self.assertIn('active', str(get_response_data(listing_response) or {}).lower())
 
 
 class MarketplaceBrowseTests(E2ETestBase):
@@ -163,14 +168,16 @@ class MarketplaceBrowseTests(E2ETestBase):
     def setUp(self):
         """Set up test fixtures with provider and consumer"""
         super().setUp()
-        
-        # Provider setup
+        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+
+        # Provider setup (subscription required for writes)
         self.provider_tenant = Tenant.objects.create(
             name="Provider Tenant",
             slug="provider-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+        ensure_e2e_tenant_ready(self.provider_tenant)
+
         self.provider_user = self.user.__class__.objects.create_user(
             email="provider@example.com",
             password="testpass123",
@@ -180,13 +187,14 @@ class MarketplaceBrowseTests(E2ETestBase):
         self.provider_client = self.client.__class__()
         self.provider_client.force_authenticate(user=self.provider_user)
         
-        # Consumer setup
+        # Consumer setup (subscription for any writes)
         self.consumer_tenant = Tenant.objects.create(
             name="Consumer Tenant",
             slug="consumer-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+        ensure_e2e_tenant_ready(self.consumer_tenant)
+
         self.consumer_user = self.user.__class__.objects.create_user(
             email="consumer@example.com",
             password="testpass123",
@@ -225,7 +233,8 @@ class MarketplaceBrowseTests(E2ETestBase):
             {'q': 'asset'}
         )
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
-        self.assertGreater(len(search_response.data.get('results', [])), 0)
+        search_data = get_response_data(search_response) or {}
+        self.assertGreater(len(search_data.get('results', [])), 0)
     
     def test_view_listing_details_success(self):
         """Test viewing listing details"""
@@ -233,7 +242,8 @@ class MarketplaceBrowseTests(E2ETestBase):
             f'/api/v1/marketplace/listings/{self.listing.id}/'
         )
         self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(detail_response.data['id'], str(self.listing.id))
+        detail_data = get_response_data(detail_response) or {}
+        self.assertEqual(detail_data.get('id'), str(self.listing.id))
     
     def test_browse_with_filters(self):
         """Test browsing with filters"""
@@ -254,14 +264,16 @@ class MarketplacePurchaseTests(E2ETestBase):
     def setUp(self):
         """Set up test fixtures with provider and consumer"""
         super().setUp()
-        
-        # Provider setup
+        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+
+        # Provider setup (subscription required for writes)
         self.provider_tenant = Tenant.objects.create(
             name="Provider Tenant",
             slug="provider-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+        ensure_e2e_tenant_ready(self.provider_tenant)
+
         self.provider_user = self.user.__class__.objects.create_user(
             email="provider@example.com",
             password="testpass123",
@@ -271,13 +283,14 @@ class MarketplacePurchaseTests(E2ETestBase):
         self.provider_client = self.client.__class__()
         self.provider_client.force_authenticate(user=self.provider_user)
         
-        # Consumer setup
+        # Consumer setup (subscription required for order creation)
         self.consumer_tenant = Tenant.objects.create(
             name="Consumer Tenant",
             slug="consumer-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+        ensure_e2e_tenant_ready(self.consumer_tenant)
+
         self.consumer_user = self.user.__class__.objects.create_user(
             email="consumer@example.com",
             password="testpass123",
@@ -317,11 +330,13 @@ class MarketplacePurchaseTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
-        
+
         # Get order ID
-        order_data = order_response.data.get('order', order_response.data)
-        order_id = order_data['id']
-        
+        resp_data = get_response_data(order_response) or {}
+        order_data = resp_data.get('order', resp_data)
+        order_id = order_data.get('id')
+        self.assertIsNotNone(order_id, "Order response missing id")
+
         # Verify order created
         order = Order.objects.get(id=order_id)
         self.assertIsNotNone(order)
@@ -345,7 +360,7 @@ class MarketplacePurchaseTests(E2ETestBase):
         
         # Should fail with appropriate error
         if order_response.status_code != status.HTTP_201_CREATED:
-            self.assertIn('own', str(order_response.data).lower() or 'provider')
+            self.assertIn('own', str(get_response_data(order_response) or {}).lower() or 'provider')
     
     def test_purchase_unpublished_listing_fails(self):
         """Test that unpublished listings cannot be purchased"""
@@ -380,7 +395,7 @@ class MarketplacePurchaseTests(E2ETestBase):
         
         # Should fail with appropriate error
         if order_response.status_code != status.HTTP_201_CREATED:
-            self.assertIn('published', str(order_response.data).lower() or 'available')
+            self.assertIn('published', str(get_response_data(order_response) or {}).lower() or 'available')
     
     def test_access_asset_with_entitlement_success(self):
         """Test accessing asset with valid entitlement"""
@@ -392,8 +407,9 @@ class MarketplacePurchaseTests(E2ETestBase):
         )
         
         if order_response.status_code == status.HTTP_201_CREATED:
-            order_data = order_response.data.get('order', order_response.data)
-            order_id = order_data['id']
+            resp_data = get_response_data(order_response) or {}
+            order_data = resp_data.get('order', resp_data)
+            order_id = order_data.get('id')
             order = Order.objects.get(id=order_id)
             
             # If order is fulfilled, create entitlement manually for test
@@ -443,12 +459,15 @@ class MarketplaceEdgeCasesTests(E2ETestBase):
     
     def test_listing_price_validation(self):
         """Test listing price validation"""
+        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+
         provider_tenant = Tenant.objects.create(
             name="Provider",
             slug="provider",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+        ensure_e2e_tenant_ready(provider_tenant)
+
         provider_user = self.user.__class__.objects.create_user(
             email="provider@example.com",
             password="testpass123",
@@ -481,5 +500,5 @@ class MarketplaceEdgeCasesTests(E2ETestBase):
         
         # Should fail with validation error
         if listing_response.status_code != status.HTTP_201_CREATED:
-            self.assertIn('price', str(listing_response.data).lower())
+            self.assertIn('price', str(get_response_data(listing_response) or {}).lower())
 

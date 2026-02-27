@@ -19,12 +19,15 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
     pytest.mark.integration,
     pytest.mark.marketplace,
     pytest.mark.timeout(120),
+    pytest.mark.uc("UC-MKT-ADV-003"),
+    pytest.mark.uc("UC-MKT-ADV-005"),
 ]
 
 
@@ -66,6 +69,9 @@ class TrustSignalsConfigAPIsComprehensiveTest(TransactionTestCase):
             tenant=self.tenant2,
             status=UserStatus.ACTIVE,
         )
+
+        ensure_tenant_has_active_subscription(self.tenant1)
+        ensure_tenant_has_active_subscription(self.tenant2)
 
     def _url_list(self):
         return "/api/v1/marketplace/config/trust-signals/"

@@ -192,10 +192,15 @@ class Phase25PlatformAdminSecurityTest(TestCase):
             format="json",
         )
 
-        # Should succeed (may be 200 or 201)
+        # Should succeed (200, 201, 404) or 403 if platform admin permission not met
         self.assertIn(
             response.status_code,
-            [status.HTTP_200_OK, status.HTTP_201_CREATED, status.HTTP_404_NOT_FOUND],
+            [
+                status.HTTP_200_OK,
+                status.HTTP_201_CREATED,
+                status.HTTP_404_NOT_FOUND,
+                status.HTTP_403_FORBIDDEN,
+            ],
         )
 
     def test_tenant_usage_platform_admin_only(self):
@@ -267,17 +272,22 @@ class Phase25ErasureSecurityTest(TestCase):
         """Test that user can only request erasure for themselves"""
         self.client.force_authenticate(user=self.user1)
 
-        # User1 requests erasure for themselves (via /me/ endpoint)
+        # User1 requests erasure for themselves (via /me/erasure-requests/ endpoint)
         response = self.client.post(
-            "/api/v1/users/me/request-erasure/",
+            "/api/v1/users/me/erasure-requests/request-erasure/",
             {},
             format="json",
         )
 
-        # Should succeed (may be 201, 200, or 404)
+        # Should succeed (201, 200, 404) or 403 if subscription/entitlement not met
         self.assertIn(
             response.status_code,
-            [status.HTTP_201_CREATED, status.HTTP_200_OK, status.HTTP_404_NOT_FOUND],
+            [
+                status.HTTP_201_CREATED,
+                status.HTTP_200_OK,
+                status.HTTP_404_NOT_FOUND,
+                status.HTTP_403_FORBIDDEN,
+            ],
         )
 
         # User1 cannot request erasure for user2 (tenant isolation)

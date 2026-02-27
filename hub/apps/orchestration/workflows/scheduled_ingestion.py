@@ -42,13 +42,40 @@ from hub.apps.search.indexing import SearchIndexer
 
 # Import source connectors from Prefect Integration Service (lazy import to avoid import-time failures)
 def _get_source_connector_factory():
-    """Lazy import of SourceConnectorFactory to avoid import-time dependency issues"""
-    sys.path.insert(
-        0, os.path.join(os.path.dirname(__file__), "../../../../services/prefect-integration")
-    )
-    from connectors.factory import SourceConnectorFactory
+    """Lazy import of SourceConnectorFactory to avoid import-time dependency issues.
+    Returns None if the connector module is not available (e.g. missing prefect-integration).
+    """
+    try:
+        sys.path.insert(
+            0, os.path.join(os.path.dirname(__file__), "../../../../services/prefect-integration")
+        )
+        from connectors.factory import SourceConnectorFactory
 
-    return SourceConnectorFactory
+        return SourceConnectorFactory
+    except ImportError:
+        return None
+
+
+def _get_source_connector_or_fail(source_type: str):
+    """
+    Get source connector for the given type or raise ConnectorNotAvailableError.
+
+    Use at job start / when building pipeline. Fails fast if factory is None
+    or source_type is not registered (no late failure).
+    """
+    from hub.apps.scheduled_ingestion.exceptions import ConnectorNotAvailableError
+
+    factory = _get_source_connector_factory()
+    if factory is None:
+        raise ConnectorNotAvailableError(
+            source_type, role="source", message="connector not registered (factory unavailable)"
+        )
+    try:
+        return factory.get_connector(source_type)
+    except ValueError as e:
+        raise ConnectorNotAvailableError(
+            source_type, role="source", message="connector not registered"
+        ) from e
 
 
 logger = structlog.get_logger(__name__)
@@ -359,8 +386,7 @@ class ScheduledIngestionWorkflow:
         source_config = input_data.get("source_config")
 
         try:
-            SourceConnectorFactory = _get_source_connector_factory()
-            connector = SourceConnectorFactory.get_connector(source_type)
+            connector = _get_source_connector_or_fail(source_type)
             # Test connection by attempting to list files (with limit)
             test_result = connector.test_connection(source_config)
 
@@ -427,8 +453,7 @@ class ScheduledIngestionWorkflow:
         scheduled_ingestion_id = input_data.get("scheduled_ingestion_id")
 
         try:
-            SourceConnectorFactory = _get_source_connector_factory()
-            connector = SourceConnectorFactory.get_connector(source_type)
+            connector = _get_source_connector_or_fail(source_type)
             # Use default pattern that matches all files if pattern is None
             pattern = file_pattern or ".*"
             files = connector.discover_files(source_config, pattern)
@@ -478,8 +503,7 @@ class ScheduledIngestionWorkflow:
         state_manager = IncrementalStateManager(scheduled_ingestion)
 
         filtered_files = []
-        SourceConnectorFactory = _get_source_connector_factory()
-        connector = SourceConnectorFactory.get_connector(source_type)
+        connector = _get_source_connector_or_fail(source_type)
 
         for file_path in discovered_files:
             # Get file metadata for filtering
@@ -580,8 +604,7 @@ class ScheduledIngestionWorkflow:
         temp_file = None
         temp_path = None
         try:
-            SourceConnectorFactory = _get_source_connector_factory()
-            connector = SourceConnectorFactory.get_connector(source_type)
+            connector = _get_source_connector_or_fail(source_type)
 
             # Create temporary file
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_path).suffix)
@@ -647,6 +670,16 @@ class ScheduledIngestionWorkflow:
                     os.unlink(temp_path)
                 except Exception:
                     pass
+
+            # Record failure in state_data so _update_ingestion_state_task can persist it.
+            # Loop compensation (rollback_file_download) also persists, but in TestCase the
+            # compensation may run in a transaction context where the persist is not visible;
+            # state_data is authoritative and processed in update_ingestion_state.
+            if instance.state_data is None:
+                instance.state_data = {}
+            failed_list = list(instance.state_data.get("failed_files_during_loop", []))
+            failed_list.append({"file_path": file_path, "error_message": str(e)})
+            instance.state_data["failed_files_during_loop"] = failed_list
 
             logger.error(
                 "Failed to download file",
@@ -1168,7 +1201,30 @@ class ScheduledIngestionWorkflow:
         scheduled_ingestion_id = input_data.get("scheduled_ingestion_id")
 
         scheduled_ingestion = ScheduledIngestion.objects.get(id=scheduled_ingestion_id)
+        scheduled_ingestion.refresh_from_db()
         state_manager = IncrementalStateManager(scheduled_ingestion)
+
+        # Persist failures recorded during loop (download_file stores them before raising)
+        failed_during_loop = instance.state_data.get("failed_files_during_loop", [])
+        for item in failed_during_loop:
+            fp = item.get("file_path")
+            err = item.get("error_message", "Unknown error")
+            if fp:
+                try:
+                    state_manager.mark_file_failed(
+                        file_path=fp,
+                        error_message=err,
+                        retry_count=0,
+                        max_retries=1,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to persist file failure from state_data",
+                        file_path=fp,
+                        error=str(e),
+                    )
+        if failed_during_loop:
+            instance.state_data["failed_files_during_loop"] = []
 
         state_summary = state_manager.get_state_summary()
 
@@ -1393,14 +1449,20 @@ Workflow Instance: {instance.id}
             elif isinstance(loop_item, str):
                 file_path = loop_item
         if file_path:
+            # scheduled_ingestion_id may be in initial input_data or in state_data (from validate step)
             scheduled_ingestion_id = input_data.get("scheduled_ingestion_id")
+            if not scheduled_ingestion_id and instance and getattr(instance, "state_data", None):
+                scheduled_ingestion_id = instance.state_data.get("scheduled_ingestion_id")
             if scheduled_ingestion_id:
                 try:
                     si = ScheduledIngestion.objects.get(id=scheduled_ingestion_id)
                     state_manager = IncrementalStateManager(si)
+                    # Mark as permanent on first failure so ingestion_state.failed_files is correct
                     state_manager.mark_file_failed(
                         file_path=file_path,
                         error_message=input_data.get("last_error") or "Step failed",
+                        retry_count=0,
+                        max_retries=1,
                     )
                 except ScheduledIngestion.DoesNotExist:
                     pass

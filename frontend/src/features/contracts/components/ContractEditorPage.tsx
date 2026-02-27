@@ -60,9 +60,12 @@ export function ContractEditorPage() {
     }
   };
 
-  if (isLoading) return <LoadingSpinner message="Loading contract..." />;
-  if (error || !contract) {
-    return <ErrorDisplay error={error || new Error('Contract not found')} title="Failed to load contract" onRetry={() => refetch()} />;
+  if (error) {
+    return <ErrorDisplay error={error} title="Failed to load contract" onRetry={() => refetch()} />;
+  }
+
+  if (isLoading || !contract) {
+    return <LoadingSpinner message="Loading contract..." />;
   }
 
   return (

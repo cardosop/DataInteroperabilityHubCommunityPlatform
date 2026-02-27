@@ -8,7 +8,8 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getConsumerTestUser, getTestUser, loginUser } from './fixtures/auth';
+import { clearAuthStorage, getConsumerTestUser, getTestUser, loginAsPersona } from './fixtures/auth';
+import { loginAndNavigateToRoute, navigateToRouteFromApp, waitForAppMainReady } from './fixtures/helpers';
 
 const getApiBaseUrl = () => process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
@@ -383,35 +384,22 @@ test.describe('Phase 4 Marketplace Journey', () => {
       }
     });
 
-    // Login first
+    // Login first (force fresh to avoid auth redirect race)
+    await loginAsPersona(page, getTestUser);
     const testUser = await getTestUser();
-    await loginUser(page, testUser);
-    await page.waitForTimeout(2000);
     stepTiming('login', t0);
     const t1 = Date.now();
 
-    // Note: KYC verification is required for listing creation, but updating tenant KYC requires platform admin permissions.
-    // For E2E tests, KYC should be set up in test setup/fixtures or via platform admin.
-    // We'll continue and let the test fail with a clear error if KYC is not verified.
-    console.log('Note: Assuming test tenant has KYC VERIFIED (set up in test fixtures)');
+    // KYC VERIFIED is ensured by ensureE2ESubscriptionForUser (ensure-e2e-subscription API),
+    // which runs after login and sets tenant kyc_status=VERIFIED for marketplace publish.
     await page.waitForTimeout(500);
 
     // Step 1: Create an asset first (prerequisite for listing)
     console.log('Step 1: Creating asset...');
-    await page.goto('/assets');
-    await page.waitForLoadState('domcontentloaded');
-
-    await page.waitForFunction(
-      () => {
-        const main = document.querySelector('.app-main');
-        if (!main) return false;
-        const loading = main.querySelector('.loading-spinner');
-        if (loading) return false;
-        const hasContent = main.querySelector('.asset-list-page, .empty-state, .error-display, h1');
-        return !!hasContent;
-      },
-      { timeout: 15000 }
-    );
+    await loginAndNavigateToRoute(page, testUser, '/assets', {
+      timeout: 60000,
+      contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+    });
 
     await page.waitForTimeout(2000);
 
@@ -436,7 +424,7 @@ test.describe('Phase 4 Marketplace Journey', () => {
     // Click submit and wait for navigation
     await submitButton.click();
 
-    // Wait for navigation away from create page - wait for URL pattern that indicates asset detail page
+    // Wait for navigation away from create page (visible project has slowMo; backend can be slow)
     try {
       await page.waitForURL(
         (url) => {
@@ -447,57 +435,32 @@ test.describe('Phase 4 Marketplace Journey', () => {
             path.match(/\/assets\/[^/]+/) !== null
           );
         },
-        { timeout: 20000 }
+        { timeout: 60000, waitUntil: 'domcontentloaded' }
       );
-    } catch (error) {
-      // If navigation didn't happen, wait a bit and check URL again
+    } catch {
       await page.waitForTimeout(3000);
     }
 
-    // Wait for page to fully load
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
-    // Extract asset ID from URL - ensure we're not on create page
     let assetUrl = page.url();
-    let attempts = 0;
-    const maxAttempts = 30;
-    while (
-      (assetUrl.includes('/assets/create') ||
-        assetUrl.endsWith('/create') ||
-        !assetUrl.match(/\/assets\/[^/]+/)) &&
-      attempts < maxAttempts
-    ) {
-      await page.waitForTimeout(500);
-      assetUrl = page.url();
-      attempts++;
-      if (attempts % 5 === 0) {
-        // Every 5 attempts, try to reload the page
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(1000);
-        assetUrl = page.url();
-      }
-    }
-
-    // Extract asset ID from URL (handle both /assets/{id} and /assets/{id}/)
-    let assetId: string;
     const urlMatch = assetUrl.match(/\/assets\/([^/]+)/);
     if (!urlMatch || urlMatch[1] === 'create') {
-      // Final attempt - wait longer and check again
-      await page.waitForTimeout(5000);
+      // Still on create - fail fast with backend error if present
+      await page.waitForTimeout(2000);
       assetUrl = page.url();
       const finalMatch = assetUrl.match(/\/assets\/([^/]+)/);
       if (!finalMatch || finalMatch[1] === 'create') {
+        const errEl = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errHint = errEl ? ` Backend error: ${errEl.slice(0, 200)}` : '';
         throw new Error(
-          `Failed to extract asset ID from URL after ${maxAttempts} attempts. Current URL: ${assetUrl}`
+          `Asset creation failed (URL still on create). Current URL: ${assetUrl}.${errHint}`
         );
       }
-      assetId = finalMatch[1];
-      console.log('Created asset:', assetId);
-    } else {
-      assetId = urlMatch[1];
-      console.log('Created asset:', assetId);
     }
+
+    const assetId = assetUrl.match(/\/assets\/([^/]+)/)?.[1] ?? '';
 
     // Verify asset was created - wait for asset detail page
     await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 10000 });
@@ -649,27 +612,14 @@ test.describe('Phase 4 Marketplace Journey', () => {
     const t5 = Date.now();
 
     // Step 5: Browse marketplace and find the listing
+    // Use loginAndNavigateToRoute (full login) when session may have expired during long journey
     console.log('Step 5: Browsing marketplace...');
     console.log(`📝 Looking for listing ID: ${listingId}`);
-    await page.goto('/marketplace');
+    await loginAndNavigateToRoute(page, testUser, '/marketplace', {
+      timeout: 90000,
+      contentSelector: '.listing-list-page, .listing-list-grid, .empty-state, h1',
+    });
     console.log('📍 Navigated to /marketplace');
-    await page.waitForLoadState('domcontentloaded');
-    console.log('✅ Page loaded');
-
-    console.log('⏳ Waiting for marketplace content to load...');
-    await page.waitForFunction(
-      () => {
-        const main = document.querySelector('.app-main');
-        if (!main) return false;
-        const loading = main.querySelector('.loading-spinner');
-        if (loading) return false;
-        const hasContent = main.querySelector(
-          '.listing-list-page, .listing-list-grid, .empty-state, h1'
-        );
-        return !!hasContent;
-      },
-      { timeout: 15000 }
-    );
     console.log('✅ Marketplace content loaded');
 
     await page.waitForTimeout(2000);
@@ -693,7 +643,14 @@ test.describe('Phase 4 Marketplace Journey', () => {
     }
 
     console.log('⏳ Waiting for listing detail page to load...');
-    await page.waitForSelector('.listing-detail-page', { timeout: 10000 });
+    await page.waitForSelector('.listing-detail-page, .error-display', { timeout: 30000 });
+    if (page.url().includes('/login')) {
+      throw new Error('Provider auth redirect: listing page redirected to login.');
+    }
+    if ((await page.locator('.error-display').count()) > 0) {
+      const errText = await page.locator('.error-display').first().textContent();
+      throw new Error(`Listing detail failed: ${errText}`);
+    }
     console.log('✅ Listing detail page loaded');
     await page.waitForTimeout(2000);
     stepTiming('Step 5: browse marketplace', t5);
@@ -704,25 +661,47 @@ test.describe('Phase 4 Marketplace Journey', () => {
     console.log('Step 5.5: Switching to consumer user for purchase...');
     const consumerUser = await getConsumerTestUser();
 
-    // Logout current user
+    // Fully clear provider auth (cookies + storage) to avoid token/session conflicts
     console.log('🚪 Logging out provider user...');
-    await page.evaluate(() => {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-    });
-    await page.waitForTimeout(1000);
+    await clearAuthStorage(page);
+    await page.waitForTimeout(1500);
 
-    // Login as consumer user
-    console.log('🔑 Logging in as consumer user...');
-    await loginUser(page, consumerUser);
-    console.log('✅ Consumer user logged in');
-    await page.waitForTimeout(2000);
-
-    // Navigate back to the listing (consumer can view published listings)
-    console.log(`📍 Navigating back to listing: ${listingId}`);
-    await page.goto(`/marketplace/listings/${listingId}`);
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector('.listing-detail-page', { timeout: 10000 });
+    // Login as consumer and navigate to listing; retry up to 2x on redirect-to-login (auth race on user switch)
+    console.log('🔑 Logging in as consumer and navigating to listing...');
+    const listingUrl = `/marketplace/listings/${listingId}`;
+    let consumerOnListing = false;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 2 && !consumerOnListing; attempt++) {
+      if (attempt > 0) {
+        console.log(`⚠️ Consumer redirected to login, retry ${attempt + 1}/2...`);
+        await clearAuthStorage(page);
+        await page.waitForTimeout(2000);
+      }
+      try {
+        await loginAndNavigateToRoute(page, consumerUser, listingUrl, {
+          timeout: 60000,
+          contentSelector: '.listing-detail-page, .error-display',
+        });
+        consumerOnListing = !page.url().includes('/login');
+      } catch (err) {
+        lastErr = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes('Redirected to login') && !msg.includes('Still on login')) {
+          throw err;
+        }
+      }
+    }
+    if (!consumerOnListing) {
+      throw new Error(
+        'Consumer auth redirect: listing page redirected to login after retries. ' +
+          'Ensure consumer user exists and has marketplace access (ensure_e2e_user_roles, ensure_e2e_subscription).',
+        { cause: lastErr }
+      );
+    }
+    if ((await page.locator('.error-display').count()) > 0) {
+      const errText = await page.locator('.error-display').first().textContent();
+      throw new Error(`Listing detail failed for consumer: ${errText}`);
+    }
     console.log('✅ Listing page loaded for consumer');
     await page.waitForTimeout(2000);
     stepTiming('Step 5.5: switch to consumer', t6);
@@ -815,23 +794,10 @@ test.describe('Phase 4 Marketplace Journey', () => {
     console.log('Step 7: Verifying entitlement...');
     console.log('📍 Navigating to /marketplace/entitlements...');
     await page.goto('/marketplace/entitlements');
-    await page.waitForLoadState('domcontentloaded');
-    console.log('✅ Page loaded');
-
-    console.log('⏳ Waiting for entitlements page content to load...');
-    await page.waitForFunction(
-      () => {
-        const main = document.querySelector('.app-main');
-        if (!main) return false;
-        const loading = main.querySelector('.loading-spinner');
-        if (loading) return false;
-        const hasContent = main.querySelector(
-          '.entitlement-list-page, .entitlement-list-table, .empty-state, h1'
-        );
-        return !!hasContent;
-      },
-      { timeout: 15000 }
-    );
+    await waitForAppMainReady(page, {
+      timeout: 60000,
+      contentSelector: '.entitlement-list-page, .entitlement-list-table, .empty-state, h1',
+    });
     console.log('✅ Entitlements page content loaded');
 
     await page.waitForTimeout(3000); // Wait for entitlements to load

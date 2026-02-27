@@ -5,6 +5,9 @@ These tests verify that all services are running and responding correctly.
 Defaults align with docker-compose.test.yml host ports (Gap #8, task 1.4).
 Override via env in CI: API_BASE_URL, DATACONTRACT_SERVICE_URL, DQ_SERVICE_URL,
 COMPLIANCE_SERVICE_URL, SEMANTIC_SERVICE_URL.
+
+Phase 7.2.5: Only skip on transient errors (ConnectionRefused, Timeout, ConnectTimeout).
+Other exceptions (wrong URL, malformed response, etc.) are re-raised and fail the test.
 """
 import os
 import pytest
@@ -36,48 +39,56 @@ class TestHealthEndpoints:
         assert data["status"] == "healthy"
     
     def test_semantic_service_health(self, api_client):
-        """Test semantic service health endpoint (direct microservice check)."""
+        """Test semantic service health endpoint (direct microservice check).
+        Skip only on transient errors: ConnectionRefused, Timeout, ConnectTimeout (Phase 7.2.5).
+        """
         semantic_url = os.getenv("SEMANTIC_SERVICE_URL", "http://localhost:8086")
         try:
             response = api_client.get(f"{semantic_url}/health", timeout=5)
             assert response.status_code == 200, f"Semantic service health returned {response.status_code}"
             data = response.json()
             assert "status" in data
-        except Exception:
-            pytest.skip("Semantic service not available")
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            pytest.skip("Semantic service not available (transient: connection refused or timeout)")
     
     def test_datacontract_service_health(self, api_client):
-        """Test DataContract service health endpoint (direct microservice check)."""
+        """Test DataContract service health endpoint (direct microservice check).
+        Skip only on transient errors: ConnectionRefused, Timeout, ConnectTimeout (Phase 7.2.5).
+        """
         datacontract_url = os.getenv("DATACONTRACT_SERVICE_URL", "http://localhost:8093")
         try:
             response = api_client.get(f"{datacontract_url}/health", timeout=5)
             assert response.status_code == 200, f"DataContract service health returned {response.status_code}"
             data = response.json()
             assert "status" in data
-        except Exception:
-            pytest.skip("DataContract service not available")
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            pytest.skip("DataContract service not available (transient: connection refused or timeout)")
     
     def test_compliance_service_health(self, api_client):
-        """Test compliance service health endpoint (direct microservice check)."""
+        """Test compliance service health endpoint (direct microservice check).
+        Skip only on transient errors: ConnectionRefused, Timeout, ConnectTimeout (Phase 7.2.5).
+        """
         compliance_url = os.getenv("COMPLIANCE_SERVICE_URL", "http://localhost:8085")
         try:
             response = api_client.get(f"{compliance_url}/health", timeout=5)
             assert response.status_code == 200, f"Compliance service health returned {response.status_code}"
             data = response.json()
             assert "status" in data
-        except Exception:
-            pytest.skip("Compliance service not available")
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            pytest.skip("Compliance service not available (transient: connection refused or timeout)")
     
     def test_dq_service_health(self, api_client):
-        """Test DQ service health endpoint (direct microservice check)."""
+        """Test DQ service health endpoint (direct microservice check).
+        Skip only on transient errors: ConnectionRefused, Timeout, ConnectTimeout (Phase 7.2.5).
+        """
         dq_url = os.getenv("DQ_SERVICE_URL", "http://localhost:8084")
         try:
             response = api_client.get(f"{dq_url}/health", timeout=5)
             assert response.status_code == 200, f"DQ service health returned {response.status_code}"
             data = response.json()
             assert "status" in data
-        except Exception:
-            pytest.skip("DQ service not available")
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            pytest.skip("DQ service not available (transient: connection refused or timeout)")
 
 
 class TestAPIEndpoints:

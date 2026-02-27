@@ -15,6 +15,7 @@ from hub.apps.dq.services import DQService
 from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
 User = get_user_model()
@@ -33,6 +34,7 @@ class DQTestBase(TestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
@@ -83,6 +85,7 @@ class DQTransactionTestBase(TransactionTestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(

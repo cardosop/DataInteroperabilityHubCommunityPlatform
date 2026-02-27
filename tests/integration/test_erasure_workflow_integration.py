@@ -24,6 +24,7 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.auth.models import APIKey
 from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
 from hub.apps.tenants.models import Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -42,6 +43,7 @@ class ErasureWorkflowIntegrationTest(TestCase):
             slug="erasure-test-tenant",
             status=TenantStatus.ACTIVE,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user to be erased
         self.user_to_erase = User.objects.create_user(
@@ -225,9 +227,9 @@ class ErasureWorkflowIntegrationTest(TestCase):
         self.user_to_erase.refresh_from_db()
 
         # Verify user is anonymized
-        # Email should be anonymized (e.g., "erased_user_<id>@erased.local")
+        # Email is anonymized as "deleted-{user_id}@deleted.local" per ErasureService
         self.assertNotEqual(self.user_to_erase.email, "eraseme@example.com")
-        self.assertIn("erased", self.user_to_erase.email.lower())
+        self.assertIn("deleted", self.user_to_erase.email.lower())
 
         # Display name should be anonymized
         self.assertNotEqual(self.user_to_erase.display_name, "User To Erase")
@@ -311,11 +313,11 @@ class ErasureWorkflowIntegrationTest(TestCase):
         except Exception:
             pytest.skip("ErasureService.execute_erasure not fully implemented")
 
-        # Verify audit event created
+        # Verify audit event created (ErasureService creates ERASURE_COMPLETED for ERASURE_REQUEST)
         audit_events = AuditEvent.objects.filter(
-            resource_type="USER",
-            resource_id=str(self.user_to_erase.id),
-            action="ERASURE_EXECUTED",
+            resource_type="ERASURE_REQUEST",
+            resource_id=str(erasure_request.id),
+            action="ERASURE_COMPLETED",
         )
 
         self.assertTrue(audit_events.exists())

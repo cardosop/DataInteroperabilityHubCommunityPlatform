@@ -12,8 +12,8 @@ from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine, DQAnomaly, DQTrend
 from hub.apps.dq.anomaly_detection import AnomalyDetector
 from hub.apps.dq.trend_analysis import TrendAnalyzer
 from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.users.models import User, UserStatus, Role, UserRole
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
@@ -27,6 +27,28 @@ class DQAnomalyDetectionE2ETest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
+
+        self.tenant = Tenant.objects.create(
+            name="DQ Anomaly Test Tenant",
+            slug="dq-anomaly-test-tenant",
+            kyc_status=KYCStatus.VERIFIED,
+        )
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.tenant)
+
+        self.user = User.objects.create_user(
+            email="dq-anomaly-test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+        )
+        self.user.status = UserStatus.ACTIVE
+        self.user.save()
+        tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=tenant_admin_role)
         
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -69,7 +91,9 @@ class DQAnomalyDetectionE2ETest(TestCase):
         for i in range(20):
             job = Job.objects.create(
                 tenant=self.tenant,
-                job_type=JobType.DQ_CHECK,
+                type=JobType.DQ_RUN,
+                resource_type="DQ_RUN",
+                resource_id=self.dataset.id,
                 status=JobStatus.COMPLETED,
                 created_by=self.user
             )
@@ -90,7 +114,9 @@ class DQAnomalyDetectionE2ETest(TestCase):
         # Step 2: Create anomalous DQ run
         job = Job.objects.create(
             tenant=self.tenant,
-            job_type=JobType.DQ_CHECK,
+            type=JobType.DQ_RUN,
+            resource_type="DQ_RUN",
+            resource_id=self.dataset.id,
             status=JobStatus.COMPLETED,
             created_by=self.user
         )
@@ -190,7 +216,9 @@ class DQTrendAnalysisE2ETest(TestCase):
         for i in range(30):
             job = Job.objects.create(
                 tenant=self.tenant,
-                job_type=JobType.DQ_CHECK,
+                type=JobType.DQ_RUN,
+                resource_type="DQ_RUN",
+                resource_id=self.dataset.id,
                 status=JobStatus.COMPLETED,
                 created_by=self.user
             )

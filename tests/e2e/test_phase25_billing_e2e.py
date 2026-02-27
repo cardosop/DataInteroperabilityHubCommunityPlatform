@@ -20,7 +20,9 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.billing.models import Invoice, Subscription, SubscriptionStatus
 from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import User, UserStatus, Role, UserRole
+
+from .conftest import get_response_data
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -73,6 +75,13 @@ class Phase25BillingE2ETest(TestCase):
             current_period_end=timezone.now() + timezone.timedelta(days=30),
         )
 
+        tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=tenant_admin_role)
+
         self.client.force_authenticate(user=self.user)
 
     def test_complete_billing_workflow(self):
@@ -81,7 +90,8 @@ class Phase25BillingE2ETest(TestCase):
         response = self.client.get("/api/v1/billing/subscription/current/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["status"], SubscriptionStatus.ACTIVE)
+        data = get_response_data(response) or {}
+        self.assertEqual(data["status"], SubscriptionStatus.ACTIVE)
 
         # Step 2: Create invoice
         invoice = Invoice.objects.create(
@@ -98,15 +108,17 @@ class Phase25BillingE2ETest(TestCase):
         response = self.client.get("/api/v1/billing/invoices/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("results", response.data)
-        invoice_ids = [inv["id"] for inv in response.data["results"]]
+        data = get_response_data(response) or {}
+        self.assertIn("results", data)
+        invoice_ids = [inv["id"] for inv in data["results"]]
         self.assertIn(str(invoice.id), invoice_ids)
 
         # Step 4: Get invoice detail
         response = self.client.get(f"/api/v1/billing/invoices/{invoice.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(float(response.data["amount_due"]), 100.00)
+        data = get_response_data(response) or {}
+        self.assertEqual(float(data["amount_due"]), 100.00)
 
         # Step 5: Create asset (should succeed with ACTIVE subscription)
         response = self.client.post(
@@ -141,13 +153,8 @@ class Phase25BillingE2ETest(TestCase):
 
         # Should return 403 with subscription_inactive
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        # Handle both Response and JsonResponse
-        if hasattr(response, "data"):
-            error_str = str(response.data.get("error", "")).lower()
-        else:
-            import json
-
-            error_str = json.loads(response.content).get("error", "").lower()
+        data = get_response_data(response) or {}
+        error_str = str(data.get("error", "")).lower()
         self.assertTrue(
             "subscription" in error_str or "inactive" in error_str or "past_due" in error_str
         )
@@ -175,13 +182,8 @@ class Phase25BillingE2ETest(TestCase):
 
         # Should return 403 with tenant_suspended
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        # Handle both Response and JsonResponse
-        if hasattr(response, "data"):
-            error_str = str(response.data.get("error", "")).lower()
-        else:
-            import json
-
-            error_str = json.loads(response.content).get("error", "").lower()
+        data = get_response_data(response) or {}
+        error_str = str(data.get("error", "")).lower()
         self.assertTrue("tenant" in error_str or "suspended" in error_str)
 
         # Read operations should still work (or be blocked depending on implementation)

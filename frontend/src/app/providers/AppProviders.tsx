@@ -10,11 +10,28 @@ import { useAuthStore } from '../../features/auth/store/authStore';
 import { performanceMetricsService } from '../../shared/services/performanceMetrics';
 import { websocketClient } from '../../shared/services/websocketClient';
 
+/** Extract HTTP status from query error (Axios, ApiError, or generic). */
+function getHttpStatusFromError(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const o = error as Record<string, unknown>;
+  if (o.response && typeof o.response === 'object' && 'status' in o.response) {
+    return (o.response as { status?: number }).status;
+  }
+  if (o.error && typeof o.error === 'object' && 'http_status' in o.error) {
+    return (o.error as { http_status?: number }).http_status;
+  }
+  return undefined;
+}
+
 // Optimized QueryClient with better caching strategy
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: (failureCount, error) => {
+        const status = getHttpStatusFromError(error);
+        if (status === 404) return false; // Don't retry "not found"
+        return failureCount < 1;
+      },
       refetchOnWindowFocus: false,
       staleTime: 5 * 60 * 1000, // 5 minutes - data considered fresh
       gcTime: 10 * 60 * 1000, // 10 minutes - cache garbage collection (formerly cacheTime)

@@ -122,7 +122,7 @@ class TestSDKErrorHandling(SDKTestBase):
             # Try to access admin-only endpoint (may return 403)
             try:
                 with pytest.raises(ForbiddenError) as exc_info:
-                    await client.get("tenants/tenants/")  # May require admin permissions
+                    await client.get("tenants/")  # May require admin permissions
                 error = exc_info.value
                 assert error.http_status == 403
             except NotFoundError:

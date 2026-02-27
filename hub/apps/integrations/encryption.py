@@ -4,16 +4,20 @@ Encryption utilities for marketplace connection configurations.
 Provides secure encryption/decryption of sensitive JSONField data using Fernet
 symmetric encryption. The encryption key is stored in Django settings.
 """
-import json
 import base64
 import binascii
 import hashlib
-from typing import Dict, Any, Optional
+import json
+from typing import Any, Dict, Optional
+
+import structlog
 from django.conf import settings
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
+
+logger = structlog.get_logger(__name__)
 
 
 class EncryptionError(Exception):
@@ -50,8 +54,11 @@ def _get_encryption_key() -> bytes:
             key_bytes = base64.urlsafe_b64decode(encryption_key_str.encode())
             if len(key_bytes) == 32:
                 return encryption_key_str.encode()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(
+            "encryption_key_not_fernet_base64",
+            extra={"error_type": type(e).__name__, "error": str(e)},
+        )
 
     # Derive key from string using PBKDF2
     # Use a salt derived from the key string itself for consistency

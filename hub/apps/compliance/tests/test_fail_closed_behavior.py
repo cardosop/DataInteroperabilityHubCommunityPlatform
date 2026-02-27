@@ -3,17 +3,19 @@ Comprehensive unit tests for fail-closed behavior.
 
 Tests cover:
 - Fail-closed when allowed_to_store=False
-- Fail-closed on service errors
+- Fail-closed on service errors / UNKNOWN / fallback
 - Fail-closed blocks asset activation
 - Edge cases
 - Error handling
 
-All tests use real implementations (no mocks/stubs).
-Storage and service clients handle unavailability gracefully.
+All tests use real implementations (no mocks/stubs) except where we force
+fallback/UNKNOWN to assert Hub sets allowed_to_store=False (MockTransport only
+for service unreachable to force fallback; assertions on Hub state).
 """
 
 import time
 import uuid
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -235,6 +237,43 @@ class FailClosedBehaviorTest(TestCase):
         # Check that compliance_status is mentioned in blockers
         blocker_text = " ".join(blockers).lower()
         self.assertIn("compliance_status", blocker_text)
+
+    # ========== FALLBACK / UNKNOWN (fail-closed) ==========
+
+    def test_fallback_response_has_allowed_to_store_false(self):
+        """Fallback response from client has allowed_to_store=False (fail-closed)."""
+        client = ComplianceServiceClient()
+        # Force fallback by making the service unreachable (RequestError)
+        with patch.object(client, "_request_with_retry", side_effect=Exception("Compliance service unreachable")):
+            result = client.scan_file(file_content=b"a,b\n1,2", file_format="csv")
+        self.assertFalse(result["allowed_to_store"], "Fallback must be fail-closed")
+        self.assertEqual(result["overall_status"], "UNKNOWN")
+
+    def test_when_client_returns_unknown_hub_sets_allowed_to_store_false(self):
+        """When client returns UNKNOWN or None allowed_to_store, Hub sets run to allowed_to_store=False and blocks."""
+        if not getattr(self, "storage_available", False):
+            self.skipTest("Storage not available - skipping test that requires storage")
+
+        fallback_like_response = {
+            "overall_status": "UNKNOWN",
+            "risk_level": "UNKNOWN",
+            "allowed_to_store": None,
+            "detected_categories": [],
+            "column_findings": [],
+            "regulation_mapping": {},
+            "applicable_regulations": [],
+            "issues": [],
+            "metadata": {"total_rows": 0, "total_columns": 0},
+        }
+        with patch.object(ComplianceServiceClient, "scan_file", return_value=fallback_like_response):
+            compliance_run = ComplianceRun.objects.create(
+                tenant=self.tenant, file=self.file, job=self.job, status=ComplianceRunStatus.PENDING
+            )
+            execute_compliance_run(str(compliance_run.id))
+
+        compliance_run.refresh_from_db()
+        self.assertEqual(compliance_run.status, ComplianceRunStatus.SUCCEEDED)
+        self.assertFalse(compliance_run.allowed_to_store, "UNKNOWN/None must yield allowed_to_store=False (fail-closed)")
 
     # ========== EDGE CASES ==========
 

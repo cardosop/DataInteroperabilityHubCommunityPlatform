@@ -76,6 +76,7 @@ class FreshnessMonitor:
         if sla_seconds is None:
             return False  # No SLA, never stale
         
+        # Stale only when age strictly exceeds SLA (age == SLA is still within SLA)
         return freshness_age_seconds > sla_seconds
     
     @classmethod
@@ -172,6 +173,12 @@ class FreshnessMonitor:
         Returns:
             Dashboard data dictionary
         """
+        from hub.apps.core.services.base import NotFoundError
+        from hub.apps.tenants.models import Tenant
+
+        if not Tenant.objects.filter(id=tenant_id).exists():
+            raise NotFoundError(f"Tenant with id {tenant_id} not found")
+
         queryset = DataObservabilityMetric.objects.filter(tenant_id=tenant_id)
         
         if dataset_id:

@@ -598,6 +598,17 @@ class ComplianceBusinessRules(BusinessRules):
             'CRITICAL': 10.0,
         }
 
+        # UNKNOWN: service unavailable or indeterminate; skip score alignment validation
+        if risk_level == 'UNKNOWN':
+            details['calculation_valid'] = True
+            details['score_level_alignment'] = None
+            return ValidationResult(
+                is_valid=True,
+                errors=[],
+                warnings=[],
+                details=details
+            )
+
         if risk_level not in RISK_THRESHOLDS:
             errors.append(
                 f"Invalid risk_level '{risk_level}' for risk calculation validation. "

@@ -30,7 +30,7 @@ class MonitoringInfrastructureTest(TestCase):
         self.prometheus_url = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
         self.grafana_url = os.getenv("GRAFANA_URL", "http://localhost:3000")
         self.jaeger_url = os.getenv("JAEGER_URL", "http://localhost:16686")
-        self.timeout = 5  # seconds
+        self.timeout = 15  # seconds (cross-container requests can be slow)
 
     def _check_service_available(self, url):
         """Check if a service is available"""

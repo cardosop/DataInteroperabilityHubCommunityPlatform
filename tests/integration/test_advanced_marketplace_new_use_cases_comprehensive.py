@@ -45,7 +45,15 @@ from tests.utils.test_data_management import TestDatabaseIsolationMixin
 
 User = get_user_model()
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.integration]
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.integration,
+    pytest.mark.uc("UC-MKT-ADV-001"),
+    pytest.mark.uc("UC-MKT-ADV-002"),
+    pytest.mark.uc("UC-MKT-ADV-003"),
+    pytest.mark.uc("UC-MKT-ADV-004"),
+    pytest.mark.uc("UC-MKT-ADV-005"),
+]
 
 
 class AdvancedMarketplaceNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):

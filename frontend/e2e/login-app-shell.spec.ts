@@ -11,10 +11,11 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from './fixtures/auth';
+import { clearAuthStorage, getTestUser, loginUser } from './fixtures/auth';
+import { waitForLoadingComplete } from './fixtures/helpers';
 
 test.describe('Login → Load App Shell (DoD-2.2)', () => {
-  test.setTimeout(90000); // 90 seconds to handle rate limiting and slow API responses
+  test.setTimeout(120000); // 2 min: visible/slowMo + rate limiting
 
   test('user can login and app shell loads correctly', async ({ page }) => {
     // Enable console logging for debugging
@@ -33,22 +34,20 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
     // Step 3: Wait for page to be fully loaded (after login)
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000); // Wait for React to render
+    await waitForLoadingComplete(page, { timeout: 15000 });
 
     // Step 5: Verify App Shell is loaded
-    // Wait a bit for app to fully render
-    await page.waitForTimeout(1000);
-
-    // Verify Header is visible
     const header = page.locator('.app-header');
-    await expect(header).toBeVisible({ timeout: 10000 });
+    await expect(header).toBeVisible({ timeout: 15000 });
     await expect(header.locator('.app-title')).toContainText('Data Interoperability Hub');
 
     // Verify global search is visible
     await expect(header.locator('.global-search')).toBeVisible();
 
-    // Verify user menu is visible (user is logged in)
-    await expect(header.locator('.user-menu')).toBeVisible({ timeout: 10000 });
-    // User name is in user-menu-trigger, check that it exists
+    // Verify user menu is visible (user is logged in; may be .user-menu or .user-menu-trigger)
+    const userMenu = header.locator('.user-menu, .user-menu-trigger');
+    await expect(userMenu.first()).toBeVisible({ timeout: 15000 });
+    // User name is in user-menu-trigger; use it for opening dropdown (trigger is inside .user-menu)
     const userMenuTrigger = header.locator('.user-menu-trigger');
     await expect(userMenuTrigger).toBeVisible({ timeout: 10000 });
 
@@ -138,11 +137,10 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
   test('unauthenticated user is redirected to login', async ({ page }) => {
     test.setTimeout(30000); // 30 seconds
 
-    // Try to access protected route without login
+    await clearAuthStorage(page);
     await page.goto('/assets', { waitUntil: 'domcontentloaded' });
 
-    // Should redirect to login
-    await page.waitForURL(/\/login/, { timeout: 10000 });
+    await page.waitForURL(/\/login/, { timeout: 15000 });
     await expect(page.locator('h1')).toContainText('Data Interoperability Hub', { timeout: 10000 });
   });
 });

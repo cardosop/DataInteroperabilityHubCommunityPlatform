@@ -262,10 +262,13 @@ class PersistenceRetryTest(TestCase):
     def test_persist_events_batch_async_retry(self):
         """Test batch event persistence with retry logic."""
         events_data = []
+        event_ids = []
         for i in range(5):
+            eid = str(uuid.uuid4())
+            event_ids.append(eid)
             events_data.append(
                 {
-                    "event_id": str(uuid.uuid4()),
+                    "event_id": eid,
                     "event_type": "contract.created",
                     "event_version": "1.0.0",
                     "timestamp": timezone.now().isoformat(),
@@ -284,7 +287,8 @@ class PersistenceRetryTest(TestCase):
         )
 
         self.assertEqual(persisted_count, 5)
-        self.assertEqual(Event.objects.count(), 5)
+        for eid in event_ids:
+            self.assertTrue(Event.objects.filter(event_id=eid).exists())
 
 
 class ConsistencyValidationTest(TestCase):
@@ -416,9 +420,17 @@ class DualWriteOptimizationTest(TestCase):
         for event_id in event_ids:
             self.assertTrue(Event.objects.filter(event_id=event_id).exists())
 
-    @override_settings(EVENT_BUS_WRITE_BEHIND_ENABLED=False, EVENT_BUS_ASYNC_PERSISTENCE=True)
+    @override_settings(
+        EVENT_BUS_WRITE_BEHIND_ENABLED=False,
+        EVENT_BUS_ASYNC_PERSISTENCE=False,
+        EVENT_BUS_ENABLE_PERSISTENCE=False,
+    )
     def test_async_persistence_fallback(self):
-        """Test async persistence fallback when write-behind is disabled."""
+        """Test async persistence fallback when write-behind is disabled.
+
+        Disable persistence during publish so we can test persist_event_async directly
+        without duplicate event_id from publish's own persistence path.
+        """
         event_id = self.event_bus.publish(
             event_type="contract.created",
             data={"contract_id": str(uuid.uuid4())},
@@ -451,8 +463,13 @@ class DualWriteOptimizationTest(TestCase):
         # Verify event was persisted
         self.assertTrue(Event.objects.filter(event_id=event_id).exists())
 
+    @override_settings(EVENT_BUS_ENABLE_PERSISTENCE=False)
     def test_dual_write_consistency(self):
-        """Test dual-write consistency (Redis + PostgreSQL)."""
+        """Test dual-write consistency (Redis + PostgreSQL).
+
+        Disable persistence during publish so we can test persist_event_async directly
+        without duplicate event_id from publish's own persistence path.
+        """
         event_id = self.event_bus.publish(
             event_type="contract.created",
             data={"contract_id": str(uuid.uuid4())},

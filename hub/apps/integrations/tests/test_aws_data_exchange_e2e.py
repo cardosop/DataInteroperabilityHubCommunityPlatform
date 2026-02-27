@@ -13,8 +13,9 @@ Requirements:
 import os
 
 import pytest
-from django.db import transaction
-from django.test import TestCase
+from django.db import connection, connections, transaction
+from django.db.utils import InterfaceError as DjangoInterfaceError, OperationalError
+from django.test import TransactionTestCase
 
 from hub.apps.assets.models import (
     Asset,
@@ -64,7 +65,8 @@ def get_aws_credentials() -> dict:
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.integration
-class TestAWSDataExchangeConnectorE2E(TestCase):
+@pytest.mark.aws_integration
+class TestAWSDataExchangeConnectorE2E(TransactionTestCase):
     """
     End-to-end tests for AWS Data Exchange connector workflows.
 
@@ -85,13 +87,38 @@ class TestAWSDataExchangeConnectorE2E(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant-e2e")
-        self.user = User.objects.create_user(
-            email="test-e2e@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
+        connection.ensure_connection()
+        self._set_up_fixtures()
+
+    def _set_up_fixtures(self):
+        """Create tenant, user, and service; reconnect on connection already closed."""
+        def create_tenant_and_user():
+            connection.ensure_connection()
+            tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant-e2e")
+            user = User.objects.create_user(
+                email="test-e2e@example.com",
+                password="testpass123",
+                tenant=tenant,
+                status=UserStatus.ACTIVE,
+            )
+            return tenant, user
+
+        last_error = None
+        for attempt in range(3):
+            try:
+                connection.ensure_connection()
+                self.tenant, self.user = create_tenant_and_user()
+                break
+            except (DjangoInterfaceError, OperationalError) as e:
+                last_error = e
+                err_lower = str(e).lower()
+                if "connection" not in err_lower or "closed" not in err_lower:
+                    raise
+                if attempt < 2:
+                    connections.close_all()
+                    connection.ensure_connection()
+                    continue
+                raise
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -110,7 +137,7 @@ class TestAWSDataExchangeConnectorE2E(TestCase):
                 "aws_secret_access_key": self.aws_credentials["aws_secret_access_key"],
                 "region_name": self.aws_credentials["region_name"],
             },
-            status="ACTIVE",
+            is_active=True,
         )
 
         # Step 2: Create connector from connection
@@ -286,7 +313,7 @@ class TestAWSDataExchangeConnectorE2E(TestCase):
                 marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE,
                 name="Invalid Config Connection",
                 config={"invalid": "config"},  # Invalid config
-                status="ACTIVE",
+                is_active=True,
             )
 
             # Test connection should fail
@@ -316,7 +343,7 @@ class TestAWSDataExchangeConnectorE2E(TestCase):
                 marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE,
                 name="Missing Credentials Connection",
                 config={},  # Empty config
-                status="ACTIVE",
+                is_active=True,
             )
 
             # Sync should fail due to missing credentials
@@ -343,7 +370,7 @@ class TestAWSDataExchangeConnectorE2E(TestCase):
                 "aws_secret_access_key": self.aws_credentials["aws_secret_access_key"],
                 "region_name": self.aws_credentials["region_name"],
             },
-            status="ACTIVE",
+            is_active=True,
         )
 
         # Try sync with invalid listing IDs
@@ -375,7 +402,7 @@ class TestAWSDataExchangeConnectorE2E(TestCase):
                 "aws_secret_access_key": self.aws_credentials["aws_secret_access_key"],
                 "region_name": self.aws_credentials["region_name"],
             },
-            status="ACTIVE",
+            is_active=True,
         )
 
         # Try sync with empty listing IDs

@@ -15,7 +15,7 @@ from rest_framework import status
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, Role, UserRole, UserStatus
 from hub.apps.rate_limiting.service import check_rate_limit
-from tests.e2e.conftest import E2ETestBase
+from tests.e2e.conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
 User = get_user_model()
@@ -49,17 +49,17 @@ class DataConsumerPersonaTest(E2ETestBase):
     
     def test_data_consumer_cannot_get_tenant_config(self):
         """Test DATA_CONSUMER cannot GET tenant configuration"""
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertIn("error", response.data)
+        self.assertIn("error", get_response_data(response) or {})
     
     def test_data_consumer_cannot_patch_tenant_config(self):
         """Test DATA_CONSUMER cannot PATCH tenant configuration"""
         data = {"default_dq_profile": "intake_basic_gx"}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -234,7 +234,7 @@ class DataConsumerPersonaTest(E2ETestBase):
         
         data = {"default_dq_profile": "intake_basic_gx"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -261,8 +261,9 @@ class DataConsumerPersonaTest(E2ETestBase):
                 break
         
         if response and response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
-            self.assertIn("error", response.data)
-            error = response.data["error"]
+            data = get_response_data(response) or {}
+            self.assertIn("error", data)
+            error = data["error"]
             self.assertIn("code", error)
             self.assertIn("message", error)
     

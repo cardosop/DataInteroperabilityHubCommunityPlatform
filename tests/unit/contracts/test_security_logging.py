@@ -70,7 +70,8 @@ class SecurityLoggerTest(TestCase):
         # Should have created one audit log entry
         self.assertEqual(SecurityAuditLog.objects.count(), initial_count + 1)
         log_entry = SecurityAuditLog.objects.latest('timestamp')
-        self.assertEqual(log_entry.event_type, SecurityEventType.SECURITY_VIOLATION.value)
+        # Implementation stores the specific event type (PATH_TRAVERSAL) for audit trail
+        self.assertEqual(log_entry.event_type, SecurityEventType.PATH_TRAVERSAL.value)
         self.assertEqual(log_entry.severity, SecuritySeverity.HIGH.value)
         self.assertEqual(log_entry.tenant_id, self.tenant.id)
         self.assertEqual(log_entry.user_id, self.user.id)

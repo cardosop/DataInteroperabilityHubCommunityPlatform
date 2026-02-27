@@ -14,7 +14,7 @@ import { PasswordResetPage } from '../../features/auth/components/PasswordResetP
 import { PublicResourcesPage } from '../../features/auth/components/PublicResourcesPage';
 import { RegisterPage } from '../../features/auth/components/RegisterPage';
 import { RegistrationRoute } from '../../features/auth/components/RegistrationRoute';
-import { AppShell } from '../../features/shell/components/AppShell';
+import { RootRoute } from './RootRoute';
 import { CapabilityRoute } from '../../shared/components/CapabilityRoute';
 import { LoadingSpinner } from '../../shared/components/LoadingSpinner';
 import { ProtectedRoute } from '../../shared/components/ProtectedRoute';
@@ -375,6 +375,11 @@ const MarketplaceMappingListPage = lazy(() =>
     default: m.MarketplaceMappingListPage,
   }))
 );
+const IntegrationsLayout = lazy(() =>
+  import('../../features/integrations/components/IntegrationsLayout').then((m) => ({
+    default: m.IntegrationsLayout,
+  }))
+);
 
 // Lazy load heavy pages for code splitting
 const AdminPage = lazy(() =>
@@ -393,9 +398,7 @@ const NotFoundPage = lazy(() =>
   })
 );
 const ForbiddenPage = lazy(() =>
-  Promise.resolve({
-    default: () => <div>403 - Forbidden</div>,
-  })
+  import('../pages/PlaceholderPages').then((m) => ({ default: m.ForbiddenPage }))
 );
 
 export const router = createBrowserRouter([
@@ -462,11 +465,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/',
-    element: (
-      <ProtectedRoute>
-        <AppShell />
-      </ProtectedRoute>
-    ),
+    element: <RootRoute />,
     children: [
       {
         index: true,
@@ -617,6 +616,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'integrations',
+        element: (
+          <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+            <IntegrationsLayout />
+          </Suspense>
+        ),
         children: [
           {
             path: 'connections',

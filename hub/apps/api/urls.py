@@ -7,6 +7,7 @@ from .views import (
     SwaggerUIView,
     api_info,
     api_not_found,
+    ensure_e2e_subscription,
 )
 
 urlpatterns = [
@@ -53,11 +54,13 @@ urlpatterns = [
     path("platform/", include("hub.apps.platform.urls")),
     path("versioning/", include("hub.apps.versioning.urls")),
     path("workflows/", include("hub.apps.orchestration.urls")),
+    path("transformation/", include("hub.apps.api.transformation_urls")),
+    path("test/ensure-e2e-subscription/", ensure_e2e_subscription, name="ensure-e2e-subscription"),
     # Catch-all for non-existent API endpoints (must be last)
     # This will only match if none of the above patterns matched
     # Use a more specific pattern that doesn't interfere with router actions
     re_path(
-        r"^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/).*$",
+        r"^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|test/).*$",
         api_not_found,
         name="api-not-found",
     ),

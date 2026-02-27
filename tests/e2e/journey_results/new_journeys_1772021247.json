@@ -1,0 +1,149 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.7197299003601074
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-007-8d9fd3f9",
+      "journey_name": "Create Transformation Pipeline",
+      "persona": "Data Engineer",
+      "status": "completed",
+      "start_time": 1772021247.1746821,
+      "end_time": 1772021247.894412,
+      "duration": 0.7197299003601074,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021247.1746893,
+          "end_time": 1772021247.8728442,
+          "duration": 0.6981549263000488,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Design Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021247.8728602,
+          "end_time": 1772021247.8775873,
+          "duration": 0.00472712516784668,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Configure Nodes",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021247.8775928,
+          "end_time": 1772021247.8775961,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Validate Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021247.8815808,
+          "end_time": 1772021247.8815842,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Test Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021247.885771,
+          "end_time": 1772021247.8857753,
+          "duration": 4.291534423828125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Save Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021247.885778,
+          "end_time": 1772021247.8857799,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Execute Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021247.8900406,
+          "end_time": 1772021247.8900456,
+          "duration": 5.0067901611328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Monitor Execution",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021247.8900492,
+          "end_time": 1772021247.894404,
+          "duration": 0.004354715347290039,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Review Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021247.8944073,
+          "end_time": 1772021247.8944106,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "9dc38e30-70d5-423b-accb-636b3cd4a1b7"
+      }
+    }
+  ],
+  "exported_at": "2026-02-25T12:07:27.894508"
+}

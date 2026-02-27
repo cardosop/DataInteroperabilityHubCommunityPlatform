@@ -208,6 +208,13 @@ semantic_uri_resolution_retry_delay_seconds = Histogram(
     buckets=(0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0)
 )
 
+# SPARQL query optimization metrics (Task 9.10.2.5.7.1.7 - ASK instead of SELECT)
+sparql_query_optimization_total = Counter(
+    'sparql_query_optimization_total',
+    'Total number of SPARQL query optimizations applied',
+    ['service', 'optimization_type', 'query_type']
+)
+
 
 def get_status_class(status_code: int) -> str:
     """

@@ -35,6 +35,7 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.social.models import Rating, Review, Comment, Community, CommunityMember, ReviewStatus
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,
@@ -82,6 +83,7 @@ class SocialFeaturesNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolati
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create roles
         self.data_provider_role, _ = Role.objects.get_or_create(
@@ -115,7 +117,7 @@ class SocialFeaturesNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolati
 
         self.admin_user = UserFactory.create_user(
             tenant=self.tenant,
-            email="admin@example.com",
+            email=f"admin-{unique_id}@example.com",
         )
         UserRole.objects.get_or_create(user=self.admin_user, role=self.tenant_admin_role)
 

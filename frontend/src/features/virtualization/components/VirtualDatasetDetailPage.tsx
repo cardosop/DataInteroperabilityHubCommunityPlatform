@@ -41,12 +41,12 @@ export function VirtualDatasetDetailPage() {
     }
   };
 
-  if (isLoading) {
-    return <LoadingSpinner message="Loading dataset..." />;
+  if (error) {
+    return <ErrorDisplay error={error} title="Failed to load dataset" onRetry={() => refetch()} />;
   }
 
-  if (error || !dataset) {
-    return <ErrorDisplay error={error} title="Failed to load dataset" onRetry={() => refetch()} />;
+  if (isLoading || !dataset) {
+    return <LoadingSpinner message="Loading dataset..." />;
   }
 
   return (

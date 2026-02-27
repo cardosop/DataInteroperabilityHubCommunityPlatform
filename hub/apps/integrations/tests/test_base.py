@@ -27,7 +27,7 @@ class TestMarketplaceType:
     """Test MarketplaceType enum"""
 
     def test_enum_values(self):
-        """Test that all 15 marketplace types are defined"""
+        """Test that all marketplace types are defined (including IN_MEMORY_FAKE for tests)"""
         expected_types = [
             "SNOWFLAKE_DATA_MARKETPLACE",
             "AWS_DATA_EXCHANGE",
@@ -44,10 +44,13 @@ class TestMarketplaceType:
             "EUROPEAN_DATA_PORTAL",
             "CKAN_INSTANCE",
             "CUSTOM",
+            "IN_MEMORY_FAKE",
         ]
 
         actual_types = [mt.value for mt in MarketplaceType]
-        assert len(actual_types) == 15, f"Expected 15 marketplace types, got {len(actual_types)}"
+        assert len(actual_types) == len(
+            expected_types
+        ), f"Expected {len(expected_types)} marketplace types, got {len(actual_types)}"
         assert set(actual_types) == set(
             expected_types
         ), "Marketplace types don't match expected values"
@@ -518,7 +521,7 @@ class TestDataMarketplaceConnector:
         """Test that MarketplaceResource handles special characters"""
         resource = MarketplaceResource(
             resource_id="resource-!@#$%^&*()",
-            listing_id="listing-123",
+            resource_type="FILE",
             name="Resource with special chars: !@#$",
         )
         assert "special chars" in resource.name
@@ -526,10 +529,13 @@ class TestDataMarketplaceConnector:
     def test_sync_result_with_large_counts(self):
         """Test that SyncResult handles large counts"""
         result = SyncResult(
-            status=SyncStatus.COMPLETED, successful_count=1000000, failed_count=500000
+            status=SyncStatus.COMPLETED,
+            total_items=1500000,
+            successful_items=1000000,
+            failed_items=500000,
         )
-        assert result.successful_count == 1000000
-        assert result.failed_count == 500000
+        assert result.successful_items == 1000000
+        assert result.failed_items == 500000
 
     def test_mapping_with_complex_metadata(self):
         """Test that MarketplaceAssetMapping handles complex metadata"""
@@ -537,42 +543,40 @@ class TestDataMarketplaceConnector:
             "nested": {"deep": {"value": "test", "list": [1, 2, 3], "dict": {"key": "value"}}}
         }
         mapping = MarketplaceAssetMapping(
-            hub_asset_id="asset-123",
-            external_listing_id="ext-123",
-            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
-            metadata=complex_metadata,
+            asset_data={"name": "Test Asset"},
+            source_type=AssetSourceType.FEDERATED,
+            source_metadata=complex_metadata,
         )
-        assert mapping.metadata["nested"]["deep"]["value"] == "test"
-        assert mapping.metadata["nested"]["deep"]["list"] == [1, 2, 3]
+        assert mapping.source_metadata["nested"]["deep"]["value"] == "test"
+        assert mapping.source_metadata["nested"]["deep"]["list"] == [1, 2, 3]
 
     # ========== ERROR HANDLING TESTS ==========
 
     def test_listing_with_none_values(self):
-        """Test that MarketplaceListing handles None values"""
+        """Test that MarketplaceListing handles None for optional description."""
         listing = MarketplaceListing(
             marketplace_id="test-123",
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
             title="Test",
             description=None,
-            tags=None,
         )
         assert listing.description is None
-        assert listing.tags is None
+        assert listing.tags == []
 
-    def test_sync_result_with_none_metadata(self):
-        """Test that SyncResult handles None metadata"""
-        result = SyncResult(status=SyncStatus.COMPLETED, metadata=None)
-        assert result.metadata is None
+    def test_sync_result_with_empty_metadata(self):
+        """Test that SyncResult accepts and stores empty metadata dict."""
+        result = SyncResult(status=SyncStatus.COMPLETED, metadata={})
+        assert result.metadata == {}
 
-    def test_mapping_with_none_external_resources(self):
-        """Test that MarketplaceAssetMapping handles None external_resources"""
+    def test_mapping_with_empty_resources(self):
+        """Test that MarketplaceAssetMapping accepts empty resources list."""
         mapping = MarketplaceAssetMapping(
-            hub_asset_id="asset-123",
-            external_listing_id="ext-123",
-            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
-            external_resources=None,
+            asset_data={"name": "Test"},
+            source_type=AssetSourceType.FEDERATED,
+            source_metadata={"marketplace_id": "ext-123"},
+            resources=[],
         )
-        assert mapping.external_resources is None
+        assert mapping.resources == []
 
     # ========== TDD COMPLIANCE TESTS ==========
 
@@ -595,12 +599,14 @@ class TestDataMarketplaceConnector:
     def test_resource_has_all_required_fields(self):
         """Test that MarketplaceResource has all required fields"""
         resource = MarketplaceResource(
-            resource_id="resource-123", listing_id="listing-123", name="Test Resource"
+            resource_id="resource-123",
+            resource_type="FILE",
+            name="Test Resource",
         )
 
         # Verify all required fields are present
         assert resource.resource_id == "resource-123"
-        assert resource.listing_id == "listing-123"
+        assert resource.resource_type == "FILE"
         assert resource.name == "Test Resource"
         # Optional fields should have defaults
         assert resource.url is None or isinstance(resource.url, str)
@@ -608,32 +614,41 @@ class TestDataMarketplaceConnector:
 
     def test_sync_result_has_all_required_fields(self):
         """Test that SyncResult has all required fields"""
-        result = SyncResult(status=SyncStatus.COMPLETED, successful_count=10, failed_count=2)
+        result = SyncResult(
+            status=SyncStatus.COMPLETED,
+            successful_items=10,
+            failed_items=2,
+        )
 
         # Verify all required fields are present
         assert result.status == SyncStatus.COMPLETED
-        assert result.successful_count == 10
-        assert result.failed_count == 2
+        assert result.successful_items == 10
+        assert result.failed_items == 2
         # Optional fields should have defaults
-        assert result.metadata is None or isinstance(result.metadata, dict)
+        assert isinstance(result.metadata, dict)
         assert result.started_at is None or isinstance(result.started_at, datetime)
         assert result.completed_at is None or isinstance(result.completed_at, datetime)
 
     def test_mapping_has_all_required_fields(self):
         """Test that MarketplaceAssetMapping has all required fields"""
         mapping = MarketplaceAssetMapping(
-            hub_asset_id="asset-123",
-            external_listing_id="ext-123",
-            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+            asset_data={"name": "Test Asset"},
+            source_type=AssetSourceType.FEDERATED,
+            source_metadata={
+                "marketplace_id": "ext-123",
+                "listing_id": "ext-123",
+                "marketplace_type": MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            },
         )
 
         # Verify all required fields are present
-        assert mapping.hub_asset_id == "asset-123"
-        assert mapping.external_listing_id == "ext-123"
-        assert mapping.marketplace_type == MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+        assert mapping.asset_data == {"name": "Test Asset"}
+        assert mapping.source_type == AssetSourceType.FEDERATED
+        assert mapping.source_metadata["marketplace_id"] == "ext-123"
         # Optional fields should have defaults
-        assert mapping.external_resources is None or isinstance(mapping.external_resources, list)
-        assert mapping.metadata is None or isinstance(mapping.metadata, dict)
+        assert isinstance(mapping.resources, list)
+        assert mapping.odps_metadata is None or isinstance(mapping.odps_metadata, dict)
+        assert mapping.odcs_metadata is None or isinstance(mapping.odcs_metadata, dict)
 
     def test_enum_values_are_immutable(self):
         """Test that enum values are immutable"""

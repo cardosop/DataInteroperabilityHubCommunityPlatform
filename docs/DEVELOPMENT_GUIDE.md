@@ -572,11 +572,11 @@ Every create/update/delete operation on a domain resource MUST emit exactly one 
 # ✅ CORRECT: Service emits audit event
 class RetentionService(BaseService):
     @transaction.atomic
-    def create_retention_policy(self, tenant_id: str, user_id: str, ...):
+    def create_retention_policy(self, tenant_id: str, user_id: str, *args, **kwargs):
         # ... validation and business rules ...
 
         # Create policy
-        policy = RetentionPolicy.objects.create(...)
+        policy = RetentionPolicy.objects.create(**kwargs)
 
         # Emit exactly one audit event (Phase 12.4.1)
         create_audit_event(
@@ -617,16 +617,17 @@ class RetentionPolicyViewSet(viewsets.ModelViewSet):
         create_audit_event(
             resource_type="RETENTION_POLICY",
             action="RETENTION_POLICY_CREATED",
-            ...
+            tenant_id=request.tenant_id,
+            resource_id=str(policy.id),
         )
 
         return Response(serializer.data)
 
 # Service also emits audit event (duplicate!)
 class RetentionService(BaseService):
-    def create_retention_policy(self, ...):
-        policy = RetentionPolicy.objects.create(...)
-        create_audit_event(...)  # ❌ DUPLICATE
+    def create_retention_policy(self, *args, **kwargs):
+        policy = RetentionPolicy.objects.create(**kwargs)
+        create_audit_event(resource_type="RETENTION_POLICY", action="CREATED", **kwargs)  # ❌ DUPLICATE
         return policy
 ```
 

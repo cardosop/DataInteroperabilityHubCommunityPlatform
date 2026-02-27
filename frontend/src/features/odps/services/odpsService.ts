@@ -36,11 +36,11 @@ export const odpsService = {
 
   /**
    * Get ODPS product creation workflow status
-   * GET /api/v1/contracts/products/{workflow_instance_id}/status/
+   * GET /api/v1/contracts/products/workflows/{workflow_instance_id}/status/
    */
   async getWorkflowStatus(workflowInstanceId: string): Promise<ODPSWorkflowStatus> {
     const response = await apiClient.getClient().get<ODPSWorkflowStatus>(
-      `${CONTRACTS_BASE_PATH}/products/${workflowInstanceId}/status/`
+      `${CONTRACTS_BASE_PATH}/products/workflows/${workflowInstanceId}/status/`
     );
     return response.data;
   },

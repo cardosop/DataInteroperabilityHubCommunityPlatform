@@ -9,9 +9,9 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
 
-from hub.apps.tenants.models import Tenant, TenantConfig
+from hub.apps.tenants.models import Tenant, TenantConfig, KYCStatus
 from hub.apps.users.models import User, Role, UserRole, UserStatus
-from tests.e2e.conftest import E2ETestBase
+from tests.e2e.conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
 User = get_user_model()
@@ -40,13 +40,15 @@ class TenantAdminPersonaTest(E2ETestBase):
         )
         UserRole.objects.create(user=self.tenant_admin, role=self.tenant_admin_role)
         
-        # Create another tenant for isolation tests
+        # Create another tenant for isolation tests (subscription so config PATCH is allowed)
         self.other_tenant = Tenant.objects.create(
             name="Other Tenant",
             slug="other-tenant",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status=KYCStatus.VERIFIED,
         )
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.other_tenant)
         
         # Create other tenant's admin
         other_admin_role, _ = Role.objects.get_or_create(
@@ -67,12 +69,12 @@ class TenantAdminPersonaTest(E2ETestBase):
     
     def test_tenant_admin_can_get_own_tenant_config(self):
         """Test TENANT_ADMIN can GET own tenant configuration"""
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
-        
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("default_dq_profile", response.data)
-        self.assertIn("allowed_compliance_regimes", response.data)
-        self.assertIn("rate_limits", response.data)
+        self.assertIn("default_dq_profile", resp_data)
+        self.assertIn("allowed_compliance_regimes", resp_data)
+        self.assertIn("rate_limits", resp_data)
     
     def test_tenant_admin_can_patch_own_tenant_config(self):
         """Test TENANT_ADMIN can PATCH own tenant configuration"""
@@ -82,28 +84,29 @@ class TenantAdminPersonaTest(E2ETestBase):
         }
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["default_dq_profile"], "intake_basic_gx")
-        self.assertEqual(response.data["allowed_compliance_regimes"], ["GDPR", "CCPA"])
+        self.assertEqual(resp_data["default_dq_profile"], "intake_basic_gx")
+        self.assertEqual(resp_data["allowed_compliance_regimes"], ["GDPR", "CCPA"])
     
     def test_tenant_admin_cannot_access_other_tenant_config(self):
         """Test TENANT_ADMIN cannot access other tenant configuration"""
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.other_tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.other_tenant.id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertIn("error", response.data)
+        self.assertIn("error", get_response_data(response) or {})
     
     def test_tenant_admin_cannot_patch_other_tenant_config(self):
         """Test TENANT_ADMIN cannot PATCH other tenant configuration"""
         data = {"default_dq_profile": "hacked_profile"}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.other_tenant.id}/config/",
+            f"/api/v1/tenants/{self.other_tenant.id}/config/",
             data,
             format="json"
         )
@@ -115,13 +118,14 @@ class TenantAdminPersonaTest(E2ETestBase):
         data = {"default_dq_profile": "intake_basic_gx"}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["default_dq_profile"], "intake_basic_gx")
+        self.assertEqual(resp_data["default_dq_profile"], "intake_basic_gx")
         
         # Verify it's persisted
         config = TenantConfig.objects.get(tenant=self.tenant)
@@ -132,14 +136,15 @@ class TenantAdminPersonaTest(E2ETestBase):
         data = {"allowed_compliance_regimes": ["GDPR", "LGPD", "HIPAA"]}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
-            set(response.data["allowed_compliance_regimes"]),
+            set(resp_data["allowed_compliance_regimes"]),
             {"GDPR", "LGPD", "HIPAA"}
         )
     
@@ -159,58 +164,62 @@ class TenantAdminPersonaTest(E2ETestBase):
         }
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("rate_limits", response.data)
-        self.assertIn("dq_runs", response.data["rate_limits"])
-        self.assertEqual(response.data["rate_limits"]["dq_runs"]["burst_per_10s"], 50)
+        self.assertIn("rate_limits", resp_data)
+        self.assertIn("dq_runs", resp_data["rate_limits"])
+        self.assertEqual(resp_data["rate_limits"]["dq_runs"]["burst_per_10s"], 50)
     
     def test_tenant_admin_can_configure_file_size_limits(self):
         """Test TENANT_ADMIN can configure tenant-specific file size limits"""
         data = {"max_file_size_bytes": 500 * 1024 * 1024}  # 500 MB in bytes
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["max_file_size_bytes"], 500 * 1024 * 1024)
+        self.assertEqual(resp_data["max_file_size_bytes"], 500 * 1024 * 1024)
     
     def test_tenant_admin_can_configure_job_concurrency(self):
         """Test TENANT_ADMIN can configure tenant-specific job concurrency"""
         data = {"max_job_concurrency": 10}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["max_job_concurrency"], 10)
+        self.assertEqual(resp_data["max_job_concurrency"], 10)
     
     def test_tenant_admin_can_view_tenant_usage_metrics(self):
         """Test TENANT_ADMIN can view tenant usage metrics"""
         # TENANT_ADMIN can view their own tenant config (which includes usage-related settings)
         # Note: Viewing tenant details requires Platform Admin, but config access is allowed
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Config includes tenant_id which confirms it's for the correct tenant
-        self.assertEqual(response.data["tenant_id"], str(self.tenant.id))
+        self.assertEqual(resp_data["tenant_id"], str(self.tenant.id))
     
     def test_tenant_admin_config_isolation(self):
         """Test tenant configuration is isolated between tenants"""
         # Configure tenant1
         data1 = {"default_dq_profile": "intake_basic_gx"}
         response1 = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data1,
             format="json"
         )
@@ -222,7 +231,7 @@ class TenantAdminPersonaTest(E2ETestBase):
         # Configure other tenant
         data2 = {"default_dq_profile": "intake_basic_soda"}
         response2 = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.other_tenant.id}/config/",
+            f"/api/v1/tenants/{self.other_tenant.id}/config/",
             data2,
             format="json"
         )
@@ -230,8 +239,9 @@ class TenantAdminPersonaTest(E2ETestBase):
         
         # Verify isolation - tenant1 config unchanged
         self.client.force_authenticate(user=self.tenant_admin)
-        response3 = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
-        self.assertEqual(response3.data["default_dq_profile"], "intake_basic_gx")
+        response3 = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
+        resp_data3 = get_response_data(response3) or {}
+        self.assertEqual(resp_data3["default_dq_profile"], "intake_basic_gx")
     
     def test_tenant_admin_partial_config_update(self):
         """Test TENANT_ADMIN can partially update configuration"""
@@ -241,7 +251,7 @@ class TenantAdminPersonaTest(E2ETestBase):
             "max_file_size_bytes": 100 * 1024 * 1024  # 100 MB in bytes
         }
         self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data1,
             format="json"
         )
@@ -249,36 +259,37 @@ class TenantAdminPersonaTest(E2ETestBase):
         # Then update only one field
         data2 = {"default_dq_profile": "intake_basic_soda"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data2,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["default_dq_profile"], "intake_basic_soda")
+        self.assertEqual(resp_data["default_dq_profile"], "intake_basic_soda")
         # Other field should remain (ModelSerializer preserves existing fields on partial update)
-        self.assertEqual(response.data["max_file_size_bytes"], 100 * 1024 * 1024)
+        self.assertEqual(resp_data["max_file_size_bytes"], 100 * 1024 * 1024)
     
     def test_tenant_admin_config_validation(self):
         """Test tenant configuration validation for TENANT_ADMIN"""
         # Invalid DQ profile
         data = {"default_dq_profile": "invalid_profile"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
         # Should fail validation
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data)
+        self.assertIn("error", get_response_data(response) or {})
     
     def test_tenant_admin_config_rate_limits_validation(self):
         """Test rate limits validation for TENANT_ADMIN"""
         # Invalid rate limit structure (missing required fields)
         data = {"rate_limits": {"dq_runs": {}}}  # Empty dict
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -292,16 +303,17 @@ class TenantAdminPersonaTest(E2ETestBase):
         data = {"rate_limits": {"dq_runs": {"burst_per_10s": 10000}}}  # Very high
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
         # Should either reject or cap at platform maximum
+        resp_data = get_response_data(response) or {}
         if response.status_code == status.HTTP_200_OK:
             # If accepted, should be capped
             self.assertLessEqual(
-                response.data["rate_limits"]["dq_runs"]["burst_per_10s"],
+                resp_data["rate_limits"]["dq_runs"]["burst_per_10s"],
                 10000  # Platform max should be less
             )
         else:
@@ -310,8 +322,8 @@ class TenantAdminPersonaTest(E2ETestBase):
     
     def test_tenant_admin_can_view_all_config_fields(self):
         """Test TENANT_ADMIN can view all configuration fields"""
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
-        
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify all expected fields are present
         expected_fields = [
@@ -322,7 +334,7 @@ class TenantAdminPersonaTest(E2ETestBase):
             "max_job_concurrency"
         ]
         for field in expected_fields:
-            self.assertIn(field, response.data)
+            self.assertIn(field, resp_data)
     
     def test_tenant_admin_config_merge_behavior(self):
         """Test configuration merge behavior for partial updates"""
@@ -332,7 +344,7 @@ class TenantAdminPersonaTest(E2ETestBase):
             "max_file_size_bytes": 200 * 1024 * 1024  # 200 MB in bytes
         }
         self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data1,
             format="json"
         )
@@ -343,17 +355,18 @@ class TenantAdminPersonaTest(E2ETestBase):
             "allowed_compliance_regimes": ["GDPR"]
         }
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data2,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # All fields should be present (serializer preserves existing fields on partial update)
-        self.assertEqual(response.data["default_dq_profile"], "intake_basic_gx")
-        self.assertEqual(response.data["max_file_size_bytes"], 200 * 1024 * 1024)
-        self.assertEqual(response.data["max_job_concurrency"], 5)
-        self.assertIn("GDPR", response.data["allowed_compliance_regimes"])
+        self.assertEqual(resp_data["default_dq_profile"], "intake_basic_gx")
+        self.assertEqual(resp_data["max_file_size_bytes"], 200 * 1024 * 1024)
+        self.assertEqual(resp_data["max_job_concurrency"], 5)
+        self.assertIn("GDPR", resp_data["allowed_compliance_regimes"])
     
     def test_tenant_admin_config_created_on_first_patch(self):
         """Test config is created on first PATCH if it doesn't exist"""
@@ -363,7 +376,7 @@ class TenantAdminPersonaTest(E2ETestBase):
         # PATCH should create config
         data = {"default_dq_profile": "intake_basic_gx"}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
@@ -375,7 +388,7 @@ class TenantAdminPersonaTest(E2ETestBase):
     def test_tenant_admin_cannot_delete_config(self):
         """Test TENANT_ADMIN cannot delete tenant config (no DELETE endpoint)"""
         # There should be no DELETE endpoint for config
-        response = self.client.delete(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.delete(f"/api/v1/tenants/{self.tenant.id}/config/")
         
         # Should return 405 Method Not Allowed or 404 Not Found
         self.assertIn(response.status_code, [
@@ -391,7 +404,7 @@ class TenantAdminPersonaTest(E2ETestBase):
             "allowed_compliance_regimes": ["GDPR", "CCPA"]
         }
         self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data1,
             format="json"
         )
@@ -399,7 +412,7 @@ class TenantAdminPersonaTest(E2ETestBase):
         # Try to set empty array
         data2 = {"allowed_compliance_regimes": []}
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data2,
             format="json"
         )
@@ -409,20 +422,22 @@ class TenantAdminPersonaTest(E2ETestBase):
     
     def test_tenant_admin_config_response_format(self):
         """Test configuration response format matches API spec"""
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify response structure
-        self.assertIsInstance(response.data, dict)
-        self.assertIn("default_dq_profile", response.data)
-        self.assertIn("allowed_compliance_regimes", response.data)
-        self.assertIsInstance(response.data["allowed_compliance_regimes"], list)
+        self.assertIsInstance(resp_data, dict)
+        self.assertIn("default_dq_profile", resp_data)
+        self.assertIn("allowed_compliance_regimes", resp_data)
+        self.assertIsInstance(resp_data["allowed_compliance_regimes"], list)
     
     def test_tenant_admin_config_timestamps(self):
         """Test configuration timestamps are updated on PATCH"""
         # Get initial config
-        response1 = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
-        initial_updated_at = response1.data.get("updated_at")
+        response1 = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
+        resp_data1 = get_response_data(response1) or {}
+        initial_updated_at = resp_data1.get("updated_at")
         
         # Wait a moment and update
         import time
@@ -430,22 +445,22 @@ class TenantAdminPersonaTest(E2ETestBase):
         
         data = {"default_dq_profile": "intake_basic_soda"}
         response2 = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
-        
+        resp_data2 = get_response_data(response2) or {}
         # Updated timestamp should be different (if included in response)
-        if "updated_at" in response2.data:
-            self.assertNotEqual(response2.data["updated_at"], initial_updated_at)
+        if "updated_at" in resp_data2:
+            self.assertNotEqual(resp_data2["updated_at"], initial_updated_at)
     
     def test_tenant_admin_config_error_handling(self):
         """Test error handling for invalid tenant ID"""
         invalid_tenant_id = "00000000-0000-0000-0000-000000000000"
-        response = self.client.get(f"/api/v1/tenants/tenants/{invalid_tenant_id}/config/")
+        response = self.client.get(f"/api/v1/tenants/{invalid_tenant_id}/config/")
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertIn("error", response.data)
+        self.assertIn("error", get_response_data(response) or {})
     
     def test_tenant_admin_config_concurrent_updates(self):
         """Test handling of concurrent configuration updates"""
@@ -454,12 +469,12 @@ class TenantAdminPersonaTest(E2ETestBase):
         data2 = {"default_dq_profile": "intake_basic_soda"}
         
         response1 = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data1,
             format="json"
         )
         response2 = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data2,
             format="json"
         )
@@ -469,21 +484,23 @@ class TenantAdminPersonaTest(E2ETestBase):
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
         
         # Final value should be from last update
-        final_response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
-        self.assertEqual(final_response.data["default_dq_profile"], "intake_basic_soda")
+        final_response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
+        final_data = get_response_data(final_response) or {}
+        self.assertEqual(final_data["default_dq_profile"], "intake_basic_soda")
     
     def test_tenant_admin_config_all_compliance_regimes(self):
         """Test TENANT_ADMIN can configure all compliance regimes"""
         data = {"allowed_compliance_regimes": ["GDPR", "LGPD", "CCPA", "HIPAA", "SOX"]}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data["allowed_compliance_regimes"]), 5)
+        self.assertEqual(len(resp_data["allowed_compliance_regimes"]), 5)
     
     def test_tenant_admin_config_rate_limits_all_categories(self):
         """Test TENANT_ADMIN can configure rate limits for all categories"""
@@ -509,28 +526,29 @@ class TenantAdminPersonaTest(E2ETestBase):
         }
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("dq_runs", response.data["rate_limits"])
-        self.assertIn("compliance_runs", response.data["rate_limits"])
-        self.assertIn("contract_validation", response.data["rate_limits"])
-        self.assertIn("sparql_queries", response.data["rate_limits"])
+        self.assertIn("dq_runs", resp_data["rate_limits"])
+        self.assertIn("compliance_runs", resp_data["rate_limits"])
+        self.assertIn("contract_validation", resp_data["rate_limits"])
+        self.assertIn("sparql_queries", resp_data["rate_limits"])
     
     def test_tenant_admin_config_platform_defaults_fallback(self):
         """Test platform defaults are used when config not set"""
         # Delete config to test defaults
         TenantConfig.objects.filter(tenant=self.tenant).delete()
         
-        response = self.client.get(f"/api/v1/tenants/tenants/{self.tenant.id}/config/")
-        
+        response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should return platform defaults
-        self.assertIn("default_dq_profile", response.data)
-        self.assertIn("allowed_compliance_regimes", response.data)
+        self.assertIn("default_dq_profile", resp_data)
+        self.assertIn("allowed_compliance_regimes", resp_data)
     
     def test_tenant_admin_config_nested_rate_limits(self):
         """Test nested rate limits structure"""
@@ -545,15 +563,16 @@ class TenantAdminPersonaTest(E2ETestBase):
         }
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
+        resp_data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("burst_per_10s", response.data["rate_limits"]["dq_runs"])
-        self.assertIn("sustained_per_min", response.data["rate_limits"]["dq_runs"])
-        self.assertIn("daily_cap", response.data["rate_limits"]["dq_runs"])
+        self.assertIn("burst_per_10s", resp_data["rate_limits"]["dq_runs"])
+        self.assertIn("sustained_per_min", resp_data["rate_limits"]["dq_runs"])
+        self.assertIn("daily_cap", resp_data["rate_limits"]["dq_runs"])
     
     def test_tenant_admin_config_read_only_fields(self):
         """Test read-only fields cannot be modified"""
@@ -561,15 +580,16 @@ class TenantAdminPersonaTest(E2ETestBase):
         data = {"tenant_id": str(self.other_tenant.id)}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )
         
         # Should either ignore or reject
+        resp_data = get_response_data(response) or {}
         if response.status_code == status.HTTP_200_OK:
             # If accepted, tenant_id should not change
-            self.assertNotEqual(response.data.get("tenant_id"), str(self.other_tenant.id))
+            self.assertNotEqual(resp_data.get("tenant_id"), str(self.other_tenant.id))
     
     def test_tenant_admin_config_unicode_values(self):
         """Test configuration handles unicode values in compliance regimes"""
@@ -577,7 +597,7 @@ class TenantAdminPersonaTest(E2ETestBase):
         data = {"allowed_compliance_regimes": ["GDPR", "测试"]}
         
         response = self.client.patch(
-            f"/api/v1/tenants/tenants/{self.tenant.id}/config/",
+            f"/api/v1/tenants/{self.tenant.id}/config/",
             data,
             format="json"
         )

@@ -169,12 +169,15 @@ class PlanLimitEnforcementComprehensiveTest(TransactionTestCase):
 
         for i in range(2):
             Dataset.objects.create(
-                tenant=self.tenant, name=f"Dataset {i}", file=file_obj, created_by=self.user
+                tenant=self.tenant,
+                file=file_obj,
+                format="CSV",
+                created_by=self.user,
             )
 
-        # Try to create one more - should fail
+        # Try to create one more - should fail (plan limit)
         response = self.client.post(
-            "/api/v1/datasets/", {"name": "Dataset 3", "file_id": str(file_obj.id)}, format="json"
+            "/api/v1/datasets/", {"file_id": str(file_obj.id)}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

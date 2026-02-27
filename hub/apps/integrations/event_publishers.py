@@ -57,20 +57,38 @@ class MarketplaceEventPublisher(EventPublisher):
         Publish marketplace.connection.created event.
 
         Args:
-            connection_id: Unique identifier for the connection
+            connection_id: Unique identifier for the connection (required, non-empty string)
             marketplace_type: Type of marketplace (e.g., SNOWFLAKE_DATA_MARKETPLACE)
             name: Connection name
             **kwargs: Additional event parameters (tenant_id, user_id, correlation_id, etc.)
 
         Returns:
             Event ID (existing event ID if duplicate, new event ID if not)
+
+        Raises:
+            ValueError: If connection_id is None or not a non-empty string.
         """
+        if (
+            connection_id is None
+            or not isinstance(connection_id, str)
+            or not connection_id.strip()
+        ):
+            raise ValueError(
+                "connection_id is required and must be a non-empty string "
+                "for marketplace.connection.created"
+            )
+        if marketplace_type is None:
+            raise ValueError(
+                "marketplace_type is required for marketplace.connection.created"
+            )
+        # name may be empty string per schema; allow None -> treat as ""
+        safe_name = name if name is not None else ""
         return self.publish(
             event_type="marketplace.connection.created",
             data={
-                "connection_id": connection_id,
+                "connection_id": connection_id.strip(),
                 "marketplace_type": marketplace_type,
-                "name": name,
+                "name": safe_name,
                 "created_at": timezone.now().isoformat(),
             },
             tags=["marketplace", "connection", "created"],

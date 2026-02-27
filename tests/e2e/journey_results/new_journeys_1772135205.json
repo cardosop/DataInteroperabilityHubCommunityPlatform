@@ -1,0 +1,95 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 3.0315654277801514
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-013-103f8186",
+      "journey_name": "Configure Data Mesh Domain",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1772135202.5897179,
+      "end_time": 1772135205.6212833,
+      "duration": 3.0315654277801514,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create/Select Domain",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135202.589729,
+          "end_time": 1772135202.7773757,
+          "duration": 0.18764662742614746,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Define Domain Boundaries",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135202.777388,
+          "end_time": 1772135202.8058524,
+          "duration": 0.028464317321777344,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Assign Domain Ownership",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135202.805862,
+          "end_time": 1772135202.8364165,
+          "duration": 0.030554533004760742,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Configure Domain-Scoped Assets",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135205.5984526,
+          "end_time": 1772135205.6157775,
+          "duration": 0.01732492446899414,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Set Up Domain Analytics",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135205.6157825,
+          "end_time": 1772135205.6212819,
+          "duration": 0.005499362945556641,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-26T19:46:45.621352"
+}

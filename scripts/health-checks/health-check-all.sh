@@ -33,7 +33,7 @@ main() {
     fi
     
     TOTAL=$((TOTAL + 1))
-    if check_infrastructure_service "redis" "redis-cli ping" "Redis"; then
+    if check_infrastructure_service "redis-cache" "redis-cli ping" "Redis"; then
         PASSED=$((PASSED + 1))
     else
         FAILED=$((FAILED + 1))
@@ -59,7 +59,7 @@ main() {
     log_info "--- Core Application Services ---"
     
     TOTAL=$((TOTAL + 1))
-    if check_service_health "api-service" "8000/health" "API Service"; then
+    if check_service_health "api-service" "8000/health/" "API Service"; then
         PASSED=$((PASSED + 1))
     else
         FAILED=$((FAILED + 1))
@@ -78,7 +78,9 @@ main() {
     log_info "--- Workflow Services ---"
     
     TOTAL=$((TOTAL + 1))
-    if check_service_health "workflow-engine-service" "8088/healthz" "Workflow Engine Service"; then
+    WF_HOST_PORT=$(get_service_port "workflow-engine-service" "8088")
+    WF_HOST_PORT=${WF_HOST_PORT:-8098}
+    if check_service_health "workflow-engine-service" "${WF_HOST_PORT}/healthz" "Workflow Engine Service"; then
         PASSED=$((PASSED + 1))
     else
         FAILED=$((FAILED + 1))
@@ -196,7 +198,7 @@ main() {
     fi
     
     TOTAL=$((TOTAL + 1))
-    if check_service_health "grafana" "3000/api/health" "Grafana"; then
+    if check_service_health "grafana" "3001/api/health" "Grafana"; then
         PASSED=$((PASSED + 1))
     else
         FAILED=$((FAILED + 1))

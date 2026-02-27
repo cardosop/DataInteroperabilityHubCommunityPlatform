@@ -58,7 +58,7 @@ async def poll_workflow_status(
 
     while time.time() - start_time < timeout:
         try:
-            status_response = await client.get(f"contracts/products/{workflow_instance_id}/status/")
+            status_response = await client.get(f"contracts/products/workflows/{workflow_instance_id}/status/")
 
             status = status_response.get("status", "").upper()
 

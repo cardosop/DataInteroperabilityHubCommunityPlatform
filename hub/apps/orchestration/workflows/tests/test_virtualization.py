@@ -20,6 +20,7 @@ from hub.apps.virtualization.models import (
     QueryExecutionMode,
     QueryType
 )
+from hub.apps.virtualization.services import VirtualizationService
 from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.users.models import User, UserStatus
 
@@ -533,4 +534,156 @@ class VirtualizationWorkflowUnitTest(TestCase):
         self.assertIn("virtualization.complete", engine.task_registry)
         self.assertIn("virtualization.rollback_execution", engine.task_registry)
         self.assertIn("virtualization.rollback_cache", engine.task_registry)
+
+    def test_validate_sources_task_multi_source(self):
+        """Test source compatibility validation with multiple sources (multi-source)."""
+        multi_source_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Multi-Source Dataset",
+            query="SELECT * FROM source1 UNION SELECT * FROM source2",
+            query_type=QueryType.FEDERATED,
+            sources=[
+                {"type": "postgresql", "host": "host1", "database": "db1"},
+                {"type": "postgresql", "host": "host2", "database": "db2"},
+            ],
+            status=VirtualDatasetStatus.ACTIVE
+        )
+        input_data = {
+            "virtual_dataset_id": str(multi_source_dataset.id),
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id)
+        }
+        instance = self.engine.create_instance(
+            workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id)
+        )
+        instance.state_data["virtual_dataset_id"] = str(multi_source_dataset.id)
+        instance.save()
+
+        from hub.apps.orchestration.models import WorkflowStep
+        step = WorkflowStep(
+            workflow_instance=instance,
+            step_index=1,
+            step_name="validate_sources",
+            step_type="task",
+            status=StepStatus.PENDING
+        )
+
+        result = VirtualizationWorkflow._validate_sources_task(input_data, instance, step)
+
+        self.assertIn("compatibility_status", result)
+        self.assertIn("compatibility_result", instance.state_data)
+        self.assertEqual(instance.state_data["progress_percentage"], 20)
+        # Multi-source: two sources were validated
+        self.assertEqual(len(multi_source_dataset.sources), 2)
+
+    def test_execute_federated_query_multi_source_aggregation_structure(self):
+        """Test that federated execution produces aggregation structure (source_count, row_count).
+
+        Workflow and view use the same execution path (VirtualizationService._execute_query_against_source).
+        This test asserts the result shape for multi-source without requiring live DBs.
+        """
+        from hub.apps.assets.models import Asset, AssetSourceType
+        from hub.apps.assets.models import DataStrategy
+        import uuid as uuid_mod
+
+        asset1 = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"fed-multi-1-{uuid_mod.uuid4()}",
+            name="Federated Asset 1",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY
+        )
+        asset2 = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"fed-multi-2-{uuid_mod.uuid4()}",
+            name="Federated Asset 2",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY
+        )
+        multi_source_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Federated Multi-Source",
+            query="SELECT * FROM combined",
+            query_type=QueryType.FEDERATED,
+            sources=[
+                {"type": "federated_asset", "asset_id": str(asset1.id)},
+                {"type": "federated_asset", "asset_id": str(asset2.id)},
+            ],
+            status=VirtualDatasetStatus.ACTIVE
+        )
+        service = VirtualizationService(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id)
+        )
+        result_data = VirtualizationWorkflow._execute_federated_query(
+            service=service,
+            virtual_dataset=multi_source_dataset,
+            query=multi_source_dataset.query,
+            parameters={},
+            timeout_seconds=300
+        )
+        self.assertIn("data", result_data)
+        self.assertIn("columns", result_data)
+        self.assertIn("row_count", result_data)
+        self.assertIn("source_count", result_data)
+        self.assertEqual(result_data["source_count"], 2)
+        self.assertEqual(result_data["query_type"], "FEDERATED")
+        self.assertGreaterEqual(result_data["row_count"], 0)
+
+    def test_workflow_execute_query_uses_service_execution_path(self):
+        """Test workflow-vs-view parity: execute_query task uses VirtualizationService.
+
+        The workflow's _execute_query_task delegates to VirtualizationService for
+        standard and federated queries (same entrypoint as REST view).
+        """
+        from hub.apps.assets.models import Asset, AssetSourceType, DataStrategy
+        import uuid as uuid_mod
+
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"fed-parity-{uuid_mod.uuid4()}",
+            name="Federated Parity Asset",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY
+        )
+        vd = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Parity Dataset",
+            query="SELECT * FROM single",
+            query_type=QueryType.SQL,
+            sources=[{"type": "federated_asset", "asset_id": str(asset.id)}],
+            status=VirtualDatasetStatus.ACTIVE
+        )
+        service = VirtualizationService(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id)
+        )
+        # View path: service._execute_query_against_sources
+        view_results = service._execute_query_against_sources(
+            query=vd.query,
+            query_type=vd.query_type,
+            sources=vd.sources,
+            parameters={},
+            timeout_seconds=300
+        )
+        self.assertEqual(len(view_results), 1)
+        view_result = view_results[0]
+        self.assertIn("data", view_result)
+        self.assertIn("row_count", view_result)
+        # Workflow path uses same service._execute_query_against_source per source
+        workflow_single = service._execute_query_against_source(
+            vd.query, vd.query_type, vd.sources[0], {}, 300, source_index=0
+        )
+        self.assertIn("data", workflow_single)
+        self.assertIn("row_count", workflow_single)
+        self.assertEqual(view_result["row_count"], workflow_single["row_count"])
 

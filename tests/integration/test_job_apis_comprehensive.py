@@ -26,6 +26,7 @@ from rest_framework.test import APIClient
 from hub.apps.audit.models import AuditEvent
 from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.tenants.models import KYCStatus, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from tests.fixtures.test_data_factories import TenantFactory, JobFactory
 
@@ -646,6 +647,7 @@ class TestJobCancelAPI(TestCase):
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"jobuser-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,

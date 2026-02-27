@@ -16,7 +16,7 @@ import json
 from django.test import TestCase
 from rest_framework import status
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
@@ -41,15 +41,15 @@ class ErrorHandlingE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         
         # Check error format
-        if 'error' in response.data:
-            error = response.data['error']
+        if 'error' in (get_response_data(response) or {}):
+            error = (get_response_data(response) or {})['error']
             # Should have code, message, http_status
             self.assertIn('code', error)
             self.assertIn('message', error)
             # May have request_id, timestamp, details
-        elif 'code' in response.data:
+        elif 'code' in (get_response_data(response) or {}):
             # Alternative format with code at top level
-            self.assertIn('code', response.data)
+            self.assertIn('code', (get_response_data(response) or {}))
     
     def test_authentication_error_format(self):
         """Test authentication error format"""
@@ -62,8 +62,8 @@ class ErrorHandlingE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         
         # Check error format
-        if 'error' in response.data:
-            error = response.data['error']
+        if 'error' in (get_response_data(response) or {}):
+            error = (get_response_data(response) or {})['error']
             self.assertIn('code', error)
             # Should be AUTH_UNAUTHORIZED or similar
             self.assertIn('AUTH', error.get('code', '').upper())
@@ -80,16 +80,15 @@ class ErrorHandlingE2ETest(E2ETestBase):
             format='json'
         )
         
-        # Should return 400
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR])
-        
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            # Check error format
-            if 'error' in response.data:
-                error = response.data['error']
-                self.assertIn('code', error)
-                # Should be VALIDATION_ERROR or similar
-                self.assertIn('VALIDATION', error.get('code', '').upper())
+        # Validation error must return 400; 500 indicates server bug. See docs/TEST_ASSERTION_CONVENTIONS.md.
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Check error format
+        if 'error' in (get_response_data(response) or {}):
+            error = (get_response_data(response) or {})['error']
+            self.assertIn('code', error)
+            # Should be VALIDATION_ERROR or similar
+            self.assertIn('VALIDATION', error.get('code', '').upper())
     
     def test_not_found_error_format(self):
         """Test not found error format"""
@@ -102,8 +101,8 @@ class ErrorHandlingE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         
         # Check error format
-        if 'error' in response.data:
-            error = response.data['error']
+        if 'error' in (get_response_data(response) or {}):
+            error = (get_response_data(response) or {})['error']
             self.assertIn('code', error)
             # Should be NOT_FOUND or RESOURCE_NOT_FOUND
             code = error.get('code', '').upper()
@@ -130,8 +129,8 @@ class ErrorHandlingE2ETest(E2ETestBase):
         self.assertIn(response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN])
         
         if response.status_code == status.HTTP_403_FORBIDDEN:
-            if 'error' in response.data:
-                error = response.data['error']
+            if 'error' in (get_response_data(response) or {}):
+                error = (get_response_data(response) or {})['error']
                 self.assertIn('code', error)
                 # Should be AUTH_FORBIDDEN or similar
                 code = error.get('code', '').upper()
@@ -145,8 +144,8 @@ class ErrorHandlingE2ETest(E2ETestBase):
         response = self.client.get(f'/api/v1/assets/{fake_id}/')
         
         # Check if request_id is present (may be in error object or headers)
-        if 'error' in response.data:
-            error = response.data['error']
+        if 'error' in (get_response_data(response) or {}):
+            error = (get_response_data(response) or {})['error']
             # Request ID may be optional
             if 'request_id' in error:
                 self.assertIsNotNone(error['request_id'])
@@ -159,8 +158,8 @@ class ErrorHandlingE2ETest(E2ETestBase):
         response = self.client.get(f'/api/v1/assets/{fake_id}/')
         
         # Check if timestamp is present
-        if 'error' in response.data:
-            error = response.data['error']
+        if 'error' in (get_response_data(response) or {}):
+            error = (get_response_data(response) or {})['error']
             # Timestamp may be optional
             if 'timestamp' in error:
                 self.assertIsNotNone(error['timestamp'])
@@ -184,8 +183,8 @@ class ErrorHandlingE2ETest(E2ETestBase):
             self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
             
             # Error format should be consistent
-            if 'error' in response.data:
-                error = response.data['error']
+            if 'error' in (get_response_data(response) or {}):
+                error = (get_response_data(response) or {})['error']
                 self.assertIn('code', error)
                 self.assertIn('message', error)
     
@@ -202,8 +201,8 @@ class ErrorHandlingE2ETest(E2ETestBase):
         )
         
         if response.status_code == status.HTTP_400_BAD_REQUEST:
-            if 'error' in response.data:
-                error = response.data['error']
+            if 'error' in (get_response_data(response) or {}):
+                error = (get_response_data(response) or {})['error']
                 # May have details with field_errors
                 if 'details' in error:
                     details = error['details']
@@ -229,8 +228,8 @@ class ErrorHandlingE2ETest(E2ETestBase):
                 response = self.client.post(endpoint, {}, format='json')
             
             if response.status_code == expected_status:
-                if 'error' in response.data:
-                    error = response.data['error']
+                if 'error' in (get_response_data(response) or {}):
+                    error = (get_response_data(response) or {})['error']
                     code = error.get('code', '').upper()
                     self.assertTrue(code.startswith(code_prefix))
     
@@ -241,8 +240,8 @@ class ErrorHandlingE2ETest(E2ETestBase):
         
         response = self.client.get(f'/api/v1/assets/{fake_id}/')
         
-        if 'error' in response.data:
-            error = response.data['error']
+        if 'error' in (get_response_data(response) or {}):
+            error = (get_response_data(response) or {})['error']
             message = error.get('message', '')
             
             # Should not contain stack traces

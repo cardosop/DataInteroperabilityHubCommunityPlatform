@@ -28,6 +28,7 @@ from hub.apps.datasets.models import Dataset
 from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
 from hub.apps.dq.tests.test_base import DQAPITestBase
 from hub.apps.files.models import File, FileStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import Tenant
 
@@ -90,6 +91,7 @@ class DQRunViewSetTest(DQAPITestBase):
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
+        ensure_tenant_has_active_subscription(self.other_tenant)
 
         self.other_user = User.objects.create_user(
             email="other@example.com",

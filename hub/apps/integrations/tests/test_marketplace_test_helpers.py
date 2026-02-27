@@ -12,7 +12,7 @@ All tests use real configuration - no mocks or stubs.
 """
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.test import TestCase
@@ -104,7 +104,14 @@ class TestCreateTestConnector(TestCase):
 
     def test_create_connector_with_env_api_key(self):
         """Test creating connector with API key/JWT token from environment"""
-        with patch.dict(os.environ, {"CKAN_DADOS_GOV_BR_API_KEY": "env-api-key-456"}):
+        # Patch both primary and deprecated env vars so test value is used (config prefers DADOS_GOV_BR_API_KEY)
+        with patch.dict(
+            os.environ,
+            {
+                "DADOS_GOV_BR_API_KEY": "env-api-key-456",
+                "CKAN_DADOS_GOV_BR_API_KEY": "env-api-key-456",
+            },
+        ):
             connector = create_test_connector(instance_name="dados.gov.br", verify_connection=False)
 
             self.assertIsNotNone(connector)

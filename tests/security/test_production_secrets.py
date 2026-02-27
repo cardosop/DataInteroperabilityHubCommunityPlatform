@@ -20,8 +20,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 HUB_SETTINGS = "hub.settings"
 
 
-def _run_django_with_env(env_overrides, timeout=15):
-    """Run Django settings load in a subprocess with given env. Returns (returncode, stderr)."""
+def _run_django_with_env(env_overrides, timeout=120):
+    """Run Django settings load in subprocess. Returns (returncode, stderr).
+    Timeout 120s: Django setup in test container can take 30-60s."""
     env = os.environ.copy()
     env["DJANGO_SETTINGS_MODULE"] = HUB_SETTINGS
     env["SKIP_DJANGO_SETUP"] = "1"

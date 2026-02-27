@@ -3,14 +3,20 @@
  * Based on backend user models and serializers
  */
 
+/** Role as returned by API (object) or legacy string */
+export type UserRole = string | { id: string; name: string };
+
+/** Tenant as returned by API (object) or legacy string ID */
+export type UserTenant = string | { id: string; name: string };
+
 export interface User {
   id: string;
   email: string;
   display_name?: string;
   status: 'ACTIVE' | 'INACTIVE' | 'PENDING' | 'SUSPENDED';
-  tenant?: string;
+  tenant?: UserTenant;
   tenant_name?: string;
-  roles?: string[];
+  roles?: UserRole[];
   created_at: string;
   updated_at: string;
 }

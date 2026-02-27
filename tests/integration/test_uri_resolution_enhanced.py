@@ -4,11 +4,13 @@ Integration Tests: Enhanced URI Resolution.
 Tests that URI resolution returns complete RDF with standard vocabularies.
 Uses real semantic service (no mocks - skips if service unavailable).
 """
+import time
 import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 
 from hub.apps.semantic.service_client import SemanticServiceClient
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.contracts.models import Contract, OriginalSpecType, OriginalFormat, NormalizationStatus
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
 from hub.apps.semantic.utils import map_contract_to_semantic, generate_uri
@@ -24,21 +26,20 @@ def check_semantic_service_available():
     """Check if semantic service is available"""
     try:
         client = SemanticServiceClient()
-        is_healthy, _ = client.health_check()
+        is_healthy, _ = client.health_check(use_cache=False)
         return is_healthy
     except Exception:
         return False
 
 
-@pytest.mark.skipif(
-    not check_semantic_service_available(),
-    reason="Semantic service not available"
-)
 class URIResolutionEnhancedTest(TestCase):
-    """Test enhanced URI resolution with standard vocabularies"""
-    
+    """Test enhanced URI resolution with standard vocabularies. Skips at runtime if semantic service unavailable."""
+
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures. Check semantic service at runtime so batch runs can pass when service is up."""
+        reset_circuit_breaker_by_name("semantic-service")
+        if not check_semantic_service_available():
+            pytest.skip("Semantic service not available")
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             slug="test-tenant",
@@ -111,11 +112,11 @@ class URIResolutionEnhancedTest(TestCase):
     
     def test_resolve_contract_uri_returns_jsonld(self):
         """Test that resolving contract URI returns JSON-LD"""
-        # Extract contract ID from URI
         contract_id = str(self.contract.id)
-        
+        reset_circuit_breaker_by_name("semantic-service")
         result = self.client.resolve_uri("contract", contract_id)
-        
+        if isinstance(result, dict) and result.get("error") and "circuit breaker" in str(result.get("error", "")).lower():
+            pytest.skip("Semantic service unavailable (circuit breaker open)")
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
     

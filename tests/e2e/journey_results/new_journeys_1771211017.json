@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-008-19e90aad",
+      "journey_name": "Rate and Review Asset",
+      "persona": "Data Consumer",
+      "status": "failed",
+      "start_time": 1771211017.2703085,
+      "end_time": 1771211017.2735782,
+      "duration": 0.003269672393798828,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 403 - {\"error\": \"No active subscription\", \"code\": \"subscription_inactive\", \"details\": {\"tenant_id\": \"79dd3261-976f-41b2-8b96-f52be678d636\"}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Navigate to Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1771211017.2703152,
+          "end_time": 1771211017.2735744,
+          "duration": 0.0032591819763183594,
+          "error_message": "Failed to create asset: 403 - {\"error\": \"No active subscription\", \"code\": \"subscription_inactive\", \"details\": {\"tenant_id\": \"79dd3261-976f-41b2-8b96-f52be678d636\"}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T03:03:37.273646"
+}

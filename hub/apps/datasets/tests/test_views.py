@@ -27,6 +27,7 @@ from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.tests.test_base import DatasetsAPITestBase
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -53,6 +54,9 @@ class DatasetViewSetTest(DatasetsAPITestBase):
             tenant=self.other_tenant,
             status="ACTIVE",
         )
+
+        # Ensure other_tenant has active subscription so tenant-isolation tests (PUT/DELETE as other_user) reach the view and get 404, not 403
+        ensure_tenant_has_active_subscription(self.other_tenant)
 
         # Create test dataset
         self.dataset = Dataset.objects.create(

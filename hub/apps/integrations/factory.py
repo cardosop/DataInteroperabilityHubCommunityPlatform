@@ -370,6 +370,16 @@ class MarketplaceConnectorFactory:
                     if 'cluster_id' in config:
                         kwargs['cluster_id'] = config['cluster_id']
                     return connector_class(**kwargs)
+                # Special handling for AzureMarketplaceConnector: base_url, api_key, api_version
+                elif marketplace_type == MarketplaceType.AZURE_MARKETPLACE:
+                    kwargs = {}
+                    if 'base_url' in config:
+                        kwargs['base_url'] = config['base_url']
+                    if 'api_key' in config:
+                        kwargs['api_key'] = config['api_key']
+                    if 'api_version' in config:
+                        kwargs['api_version'] = config['api_version']
+                    return connector_class(**kwargs)
                 elif len(params) > 1:  # Has parameters beyond self
                     # Try config as positional argument
                     try:
@@ -548,7 +558,9 @@ class MarketplaceConnectorFactory:
                 f"Available instances: {available_instances if available_instances else 'none'}"
             )
 
-        # Check connector type and import appropriate connector class
+        # Check connector type and import appropriate connector class.
+        # Use instance config to choose the class (not the single registry entry), so
+        # demo.ckan.org and data.gov get CKANConnector and dados.gov.br gets DadosGovBrConnector.
         connector_type = getattr(instance_config, 'connector_type', 'ckan')
 
         if connector_type == 'swagger':
@@ -562,13 +574,16 @@ class MarketplaceConnectorFactory:
                 )
             connector_class = DadosGovBrConnector
         else:
-            # Use standard CKAN connector
-            if not cls.is_supported(MarketplaceType.CKAN_INSTANCE):
+            # Use CKANConnector explicitly for CKAN instances (demo.ckan.org, data.gov).
+            # Do not use the registry here, as it may hold DadosGovBrConnector for CKAN_INSTANCE.
+            try:
+                from hub.apps.integrations.connectors.ckan_connector import CKANConnector
+            except ImportError:
                 raise ValueError(
-                    f"CKAN connector is not registered in factory. "
-                    f"Register it using MarketplaceConnectorFactory.register_connector()"
+                    "CKANConnector not available. "
+                    "Ensure ckan_connector.py is properly installed."
                 )
-            connector_class = cls._connectors[MarketplaceType.CKAN_INSTANCE.value]
+            connector_class = CKANConnector
 
         # Resolve API key/JWT token
         # Check if api_key was provided using sentinel

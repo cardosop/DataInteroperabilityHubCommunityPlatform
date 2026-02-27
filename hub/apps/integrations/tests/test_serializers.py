@@ -282,13 +282,25 @@ class MarketplaceConnectionUpdateSerializerTest(TestCase):
 
 
 class MarketplaceConnectionTestResponseSerializerTest(TestCase):
-    """Test suite for MarketplaceConnectionTestResponseSerializer"""
+    """Test suite for MarketplaceConnectionTestResponseSerializer and related serializers"""
 
     def setUp(self):
         """Set up test fixtures"""
         import uuid
 
         from django.utils import timezone
+
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+        )
+
+        self.connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Test Connection",
+            config={"api_key": "test_key", "api_secret": "test_secret"},
+            is_active=True,
+        )
 
         self.success_data = {
             "success": True,
@@ -392,11 +404,10 @@ class MarketplaceConnectionTestResponseSerializerTest(TestCase):
         connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Test Connection",
+            name="Deleted Tenant Test Connection",
             config={"key": "value"},
         )
 
-        tenant_id = self.tenant.id
         self.tenant.delete()
 
         # Try to serialize - should handle gracefully

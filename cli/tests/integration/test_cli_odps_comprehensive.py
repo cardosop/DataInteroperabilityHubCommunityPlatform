@@ -293,7 +293,7 @@ def created_odps_contract(sample_odps_json_file, setup_config):
             start_time = time.time()
             while time.time() - start_time < max_wait:
                 try:
-                    status_result = api_client.get(f'contracts/products/{workflow_instance_id}/status/')
+                    status_result = api_client.get(f'contracts/products/workflows/{workflow_instance_id}/status/')
                     if status_result.get('status') == 'COMPLETED':
                         odps_contract = status_result.get('odps_contract', {})
                         if odps_contract and 'id' in odps_contract:
@@ -326,7 +326,7 @@ def created_odps_contract(sample_odps_json_file, setup_config):
             start_time = time.time()
             while time.time() - start_time < max_wait:
                 try:
-                    status_result = api_client.get(f'contracts/products/{workflow_instance_id}/status/')
+                    status_result = api_client.get(f'contracts/products/workflows/{workflow_instance_id}/status/')
                     if status_result.get('status') == 'COMPLETED':
                         odps_contract = status_result.get('odps_contract', {})
                         if odps_contract and 'id' in odps_contract:

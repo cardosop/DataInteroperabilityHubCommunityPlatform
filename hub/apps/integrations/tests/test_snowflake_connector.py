@@ -18,7 +18,11 @@ import pytest
 from django.test import TestCase
 
 from hub.apps.assets.models import AssetSourceType
-from hub.apps.core.services.base import NotFoundError
+from hub.apps.core.resilience.circuit_breaker import (
+    CircuitBreakerError,
+    reset_circuit_breaker_by_name,
+)
+from hub.apps.core.services.base import ConnectionError, NotFoundError
 from hub.apps.integrations.base import (
     MarketplaceListing,
     MarketplaceResource,
@@ -309,6 +313,13 @@ class TestSnowflakeConnectorConnectionTest(TestCase):
 class TestSnowflakeConnectorSQLExecution(TestCase):
     """Test Snowflake connector SQL execution"""
 
+    def setUp(self):
+        """Reset circuit breaker so tests with invalid credentials see CLOSED state."""
+        try:
+            reset_circuit_breaker_by_name("snowflake-connector")
+        except Exception:
+            pass
+
     def test_execute_sql_invalid_query(self):
         """Test executing invalid SQL query raises ValueError"""
         connector = SnowflakeConnector(
@@ -318,8 +329,8 @@ class TestSnowflakeConnectorSQLExecution(TestCase):
         )
 
         try:
-            # This will fail at connection level, but we test the error handling
-            with self.assertRaises((ValueError, ConnectionError)):
+            # This will fail at connection level or circuit open; we test the error handling
+            with self.assertRaises((ValueError, ConnectionError, CircuitBreakerError)):
                 connector._execute_sql("INVALID SQL QUERY")
         finally:
             connector.close()
@@ -333,8 +344,8 @@ class TestSnowflakeConnectorSQLExecution(TestCase):
         )
 
         try:
-            # This will fail at connection level, but we test the error handling
-            with self.assertRaises((NotFoundError, ConnectionError)):
+            # This will fail at connection level or circuit open; we test the error handling
+            with self.assertRaises((NotFoundError, ConnectionError, CircuitBreakerError)):
                 connector._execute_sql(
                     "SELECT * FROM nonexistent_database.nonexistent_schema.nonexistent_table"
                 )
@@ -815,7 +826,11 @@ class TestSnowflakeConnectorPullOperations(TestCase):
     """Test Snowflake connector pull operations (validation tests without credentials)"""
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Reset circuit breaker and set up test fixtures."""
+        try:
+            reset_circuit_breaker_by_name("snowflake-connector")
+        except Exception:
+            pass
         self.connector = SnowflakeConnector(
             account="test_account",
             user="test_user",
@@ -908,8 +923,10 @@ class TestSnowflakeConnectorPullOperations(TestCase):
         # We can't actually create databases without credentials, but we can test the logic
         listing_id = "test-listing.123"
         # The method will generate DB_TEST_LISTING_123
-        # We can't test the actual creation without credentials, but we verify it raises ConnectionError
-        with self.assertRaises((ConnectionError, NotFoundError, PermissionError)):
+        # With fake credentials we get ConnectionError, CircuitBreakerError, or NotFoundError
+        with self.assertRaises((
+            ConnectionError, NotFoundError, PermissionError, CircuitBreakerError
+        )):
             self.connector._create_database_from_listing(listing_id)
 
     def test_extract_schema_metadata_invalid_input(self):
@@ -923,9 +940,12 @@ class TestSnowflakeConnectorPullOperations(TestCase):
             self.connector._extract_schema_metadata("'; DROP TABLE users; --")
 
     def test_download_resource_invalid_format(self):
-        """Test download_resource validates resource_id format"""
-        # Test invalid format (not database.schema.table)
-        with self.assertRaises(ValueError):
+        """Test download_resource validates resource_id format or fails at connection/listing"""
+        # Single-part resource_id is treated as listing ID; with fake credentials we get
+        # ConnectionError, NotFoundError (e.g. 404 login), or CircuitBreakerError
+        with self.assertRaises((
+            ValueError, ConnectionError, CircuitBreakerError, NotFoundError
+        )):
             self.connector.download_resource("invalid", "/tmp/test.csv")
 
         # Test SQL injection in resource_id

@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.auth.models import APIKey
 from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import Role, UserStatus
@@ -36,6 +37,8 @@ class MarketplaceSyncJobViewSetTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        # Active subscription required so TenantSuspensionMiddleware allows API writes
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user with DATA_PROVIDER role
         self.user = User.objects.create_user(
@@ -45,19 +48,26 @@ class MarketplaceSyncJobViewSetTest(TestCase):
             status=UserStatus.ACTIVE,
         )
 
-        # Create DATA_PROVIDER role and assign to user
+        # Create DATA_PROVIDER role and assign to user (Role is tenant-scoped)
         data_provider_role, _ = Role.objects.get_or_create(
-            name="DATA_PROVIDER", defaults={"description": "Data Provider Role"}
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
         )
         self.user.user_roles.create(role=data_provider_role)
 
-        # Create API key with integrations:write scope
+        # Create API key with integrations:write scope (store plaintext for auth)
+        # API key auth ensures request.api_key_scopes is set and user has prefetched roles
+        plaintext_key = APIKey.generate_key()
+        key_hash = APIKey.hash_key(plaintext_key)
         self.api_key = APIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
+            key_hash=key_hash,
             name="Test API Key",
             scopes=["integrations:write", "integrations:read"],
         )
+        self.plaintext_api_key = plaintext_key
 
         # Create connection
         self.connection = MarketplaceConnection.objects.create(
@@ -68,8 +78,11 @@ class MarketplaceSyncJobViewSetTest(TestCase):
             is_active=True,
         )
 
-        # Authenticate client
-        self.client.force_authenticate(user=self.user)
+        # Authenticate via API key (ensures HasScope and HasAnyRole see correct context)
+        self.client.force_authenticate(user=None)
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_api_key}"
+        )
 
         # Sample sync request data
         self.valid_push_sync_data = {
@@ -359,7 +372,8 @@ class MarketplaceSyncJobViewSetTest(TestCase):
 
     def test_unauthenticated_access(self):
         """Test unauthenticated users cannot access endpoints"""
-        self.client.logout()
+        self.client.force_authenticate(user=None)
+        self.client.credentials()
 
         response = self.client.get("/api/v1/integrations/marketplace/sync/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -411,6 +425,7 @@ class MarketplaceSyncJobViewSetTest(TestCase):
             status=UserStatus.ACTIVE,
         )
 
+        self.client.credentials()
         self.client.force_authenticate(user=regular_user)
 
         # Try to create sync job
@@ -438,6 +453,7 @@ class MarketplaceSyncJobViewSetTest(TestCase):
             status=SyncStatus.PENDING.value,
         )
 
+        self.client.credentials()
         self.client.force_authenticate(user=regular_user)
 
         # Should be able to read
@@ -480,8 +496,12 @@ class MarketplaceSyncJobViewSetTest(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        # Should have error details
-        self.assertIn("detail", response.data or {})
+        # Should have error details (API may use "detail" or "error" structure)
+        data = response.data or {}
+        self.assertTrue(
+            "detail" in data or "error" in data,
+            msg=f"Expected error details in response, got keys: {list(data.keys())}",
+        )
 
     def test_create_sync_job_malformed_json(self):
         """Test that malformed JSON returns proper error"""

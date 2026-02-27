@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.7966303825378418
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-010-3d42f225",
+      "journey_name": "Publish Asset with Usage-Based Pricing",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1771260741.5519063,
+      "end_time": 1771260742.3485367,
+      "duration": 0.7966303825378418,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771260741.5519118,
+          "end_time": 1771260742.322255,
+          "duration": 0.7703430652618408,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Usage-Based Pricing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771260742.329207,
+          "end_time": 1771260742.3422513,
+          "duration": 0.013044357299804688,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Create Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771260742.342259,
+          "end_time": 1771260742.3485339,
+          "duration": 0.0062749385833740234,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "c3b9f036-f45a-46c9-9114-c0b3d111cd31"
+      }
+    }
+  ],
+  "exported_at": "2026-02-16T16:52:22.348607"
+}

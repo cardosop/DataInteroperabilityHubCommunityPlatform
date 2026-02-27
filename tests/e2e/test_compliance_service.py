@@ -22,7 +22,7 @@ from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus, RiskL
 from hub.apps.assets.models import Asset, ComplianceStatus
 from hub.apps.jobs.models import Job, JobType, JobStatus
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e2]
@@ -192,7 +192,9 @@ class ComplianceServiceE2ETest(E2ETestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        compliance_run_id = response.data['id']
+        data = get_response_data(response) or {}
+        compliance_run_id = data.get('id')
+        self.assertIsNotNone(compliance_run_id)
 
         # Verify regulations stored
         compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
@@ -237,12 +239,14 @@ class ComplianceServiceE2ETest(E2ETestBase):
         # List all compliance runs
         response = self.client.get('/api/v1/compliance/runs/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data['results']), 2)
+        data = get_response_data(response) or {}
+        self.assertGreaterEqual(len(data.get('results', [])), 2)
 
         # Filter by asset
         response = self.client.get(f'/api/v1/compliance/runs/?asset_id={asset_id1}')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        compliance_run_ids = {c['id'] for c in response.data['results']}
+        data = get_response_data(response) or {}
+        compliance_run_ids = {c['id'] for c in data.get('results', [])}
         self.assertIn(str(compliance_run_id1), compliance_run_ids)
 
     def test_get_compliance_run_details(self):
@@ -258,8 +262,9 @@ class ComplianceServiceE2ETest(E2ETestBase):
         response = self.client.get(f'/api/v1/compliance/runs/{compliance_run_id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(compliance_run_id))
-        self.assertEqual(response.data['status'], ComplianceRunStatus.PENDING)
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('id'), str(compliance_run_id))
+        self.assertEqual(data.get('status'), ComplianceRunStatus.PENDING)
 
     def test_compliance_run_result_structure(self):
         """Test that compliance run result has correct structure"""

@@ -101,56 +101,80 @@ class DomainSerializerTest(TestCase):
 
     def test_validate_name_not_empty(self):
         """Test name validation - empty name"""
-        serializer = DomainSerializer(data={"name": ""})
+        serializer = DomainSerializer(
+            self.domain, data={"name": ""}, partial=True
+        )
         self.assertFalse(serializer.is_valid())
         self.assertIn("name", serializer.errors)
 
     def test_validate_name_whitespace_only(self):
         """Test name validation - whitespace only"""
-        serializer = DomainSerializer(data={"name": "   "})
+        serializer = DomainSerializer(
+            self.domain, data={"name": "   "}, partial=True
+        )
         self.assertFalse(serializer.is_valid())
         self.assertIn("name", serializer.errors)
 
     def test_validate_name_strips_whitespace(self):
         """Test name validation - strips whitespace"""
-        serializer = DomainSerializer(data={"name": "  Test Domain  "})
+        serializer = DomainSerializer(
+            self.domain, data={"name": "  Test Domain  "}, partial=True
+        )
         self.assertTrue(serializer.is_valid())
         self.assertEqual(serializer.validated_data["name"], "Test Domain")
 
     def test_validate_boundaries_dict(self):
         """Test boundaries validation - must be dict"""
-        serializer = DomainSerializer(data={"name": "Test Domain", "boundaries": "not-a-dict"})
+        serializer = DomainSerializer(
+            self.domain,
+            data={"name": "Test Domain", "boundaries": "not-a-dict"},
+            partial=True,
+        )
         self.assertFalse(serializer.is_valid())
         self.assertIn("boundaries", serializer.errors)
 
     def test_validate_boundaries_none_becomes_empty_dict(self):
         """Test boundaries validation - None becomes empty dict"""
-        serializer = DomainSerializer(data={"name": "Test Domain", "boundaries": None})
+        serializer = DomainSerializer(
+            self.domain, data={"name": "Test Domain", "boundaries": None}, partial=True
+        )
         self.assertTrue(serializer.is_valid())
         self.assertEqual(serializer.validated_data["boundaries"], {})
 
     def test_validate_capabilities_dict(self):
         """Test capabilities validation - must be dict"""
-        serializer = DomainSerializer(data={"name": "Test Domain", "capabilities": ["not-a-dict"]})
+        serializer = DomainSerializer(
+            self.domain,
+            data={"name": "Test Domain", "capabilities": ["not-a-dict"]},
+            partial=True,
+        )
         self.assertFalse(serializer.is_valid())
         self.assertIn("capabilities", serializer.errors)
 
     def test_validate_capabilities_none_becomes_empty_dict(self):
         """Test capabilities validation - None becomes empty dict"""
-        serializer = DomainSerializer(data={"name": "Test Domain", "capabilities": None})
+        serializer = DomainSerializer(
+            self.domain, data={"name": "Test Domain", "capabilities": None}, partial=True
+        )
         self.assertTrue(serializer.is_valid())
         self.assertEqual(serializer.validated_data["capabilities"], {})
 
     def test_validate_resource_quota_dict(self):
         """Test resource_quota validation - must be dict"""
-        serializer = DomainSerializer(data={"name": "Test Domain", "resource_quota": "not-a-dict"})
+        serializer = DomainSerializer(
+            self.domain,
+            data={"name": "Test Domain", "resource_quota": "not-a-dict"},
+            partial=True,
+        )
         self.assertFalse(serializer.is_valid())
         self.assertIn("resource_quota", serializer.errors)
 
     def test_validate_resource_quota_negative_value(self):
         """Test resource_quota validation - negative values"""
         serializer = DomainSerializer(
-            data={"name": "Test Domain", "resource_quota": {"storage_gb": -10}}
+            self.domain,
+            data={"name": "Test Domain", "resource_quota": {"storage_gb": -10}},
+            partial=True,
         )
         self.assertFalse(serializer.is_valid())
         self.assertIn("resource_quota", serializer.errors)
@@ -158,7 +182,12 @@ class DomainSerializerTest(TestCase):
     def test_validate_resource_quota_non_number(self):
         """Test resource_quota validation - non-number values"""
         serializer = DomainSerializer(
-            data={"name": "Test Domain", "resource_quota": {"storage_gb": "not-a-number"}}
+            self.domain,
+            data={
+                "name": "Test Domain",
+                "resource_quota": {"storage_gb": "not-a-number"},
+            },
+            partial=True,
         )
         self.assertFalse(serializer.is_valid())
         self.assertIn("resource_quota", serializer.errors)
@@ -166,10 +195,12 @@ class DomainSerializerTest(TestCase):
     def test_validate_resource_quota_valid(self):
         """Test resource_quota validation - valid values"""
         serializer = DomainSerializer(
+            self.domain,
             data={
                 "name": "Test Domain",
                 "resource_quota": {"storage_gb": 100, "compute_hours": 50.5},
-            }
+            },
+            partial=True,
         )
         self.assertTrue(serializer.is_valid())
         self.assertEqual(serializer.validated_data["resource_quota"]["storage_gb"], 100)
@@ -177,7 +208,11 @@ class DomainSerializerTest(TestCase):
 
     def test_validate_resource_quota_none_becomes_empty_dict(self):
         """Test resource_quota validation - None becomes empty dict"""
-        serializer = DomainSerializer(data={"name": "Test Domain", "resource_quota": None})
+        serializer = DomainSerializer(
+            self.domain,
+            data={"name": "Test Domain", "resource_quota": None},
+            partial=True,
+        )
         self.assertTrue(serializer.is_valid())
         self.assertEqual(serializer.validated_data["resource_quota"], {})
 
@@ -226,7 +261,9 @@ class DomainCreateSerializerTest(TestCase):
         self.assertTrue(serializer.is_valid())
         self.assertEqual(serializer.validated_data["name"], "New Domain")
         self.assertEqual(serializer.validated_data["description"], "New domain description")
-        self.assertEqual(serializer.validated_data["owner_id"], str(self.user.id))
+        self.assertEqual(
+            str(serializer.validated_data["owner_id"]), str(self.user.id)
+        )
 
     def test_serialize_minimal_data(self):
         """Test serialization with minimal required data"""
@@ -384,7 +421,9 @@ class TransferOwnershipSerializerTest(TestCase):
         """Test serialization with valid owner ID"""
         serializer = TransferOwnershipSerializer(data={"new_owner_id": str(self.user.id)})
         self.assertTrue(serializer.is_valid())
-        self.assertEqual(serializer.validated_data["new_owner_id"], str(self.user.id))
+        self.assertEqual(
+            str(serializer.validated_data["new_owner_id"]), str(self.user.id)
+        )
 
     def test_serialize_none_owner_id(self):
         """Test serialization with None owner ID (remove owner)"""
@@ -499,7 +538,9 @@ class ApplyPolicySerializerTest(TestCase):
             data={"policy_id": policy_id, "overrides": {"priority": 50}}
         )
         self.assertTrue(serializer.is_valid())
-        self.assertEqual(serializer.validated_data["policy_id"], policy_id)
+        self.assertEqual(
+            str(serializer.validated_data["policy_id"]), policy_id
+        )
         self.assertEqual(serializer.validated_data["overrides"], {"priority": 50})
 
     def test_serialize_without_overrides(self):
@@ -507,7 +548,9 @@ class ApplyPolicySerializerTest(TestCase):
         policy_id = str(uuid.uuid4())
         serializer = ApplyPolicySerializer(data={"policy_id": policy_id})
         self.assertTrue(serializer.is_valid())
-        self.assertEqual(serializer.validated_data["policy_id"], policy_id)
+        self.assertEqual(
+            str(serializer.validated_data["policy_id"]), policy_id
+        )
         self.assertEqual(serializer.validated_data.get("overrides"), {})
 
     def test_validate_overrides_dict(self):
@@ -621,9 +664,11 @@ class ComplianceReportSerializerTest(TestCase):
         self.assertEqual(serializer.data["violation_count"], 0)
 
     def test_violation_count_none(self):
-        """Test violation_count with None violations"""
+        """Test violation_count with empty violations (model uses default_empty_dict, not null)"""
         report = ComplianceReport.objects.create(
-            domain=self.domain, compliance_status=MeshComplianceStatus.COMPLIANT, violations=None
+            domain=self.domain,
+            compliance_status=MeshComplianceStatus.COMPLIANT,
+            violations={},
         )
         serializer = ComplianceReportSerializer(report)
         self.assertEqual(serializer.data["violation_count"], 0)
@@ -657,7 +702,9 @@ class CheckComplianceSerializerTest(TestCase):
         asset_id = str(uuid.uuid4())
         serializer = CheckComplianceSerializer(data={"asset_id": asset_id})
         self.assertTrue(serializer.is_valid())
-        self.assertEqual(serializer.validated_data["asset_id"], asset_id)
+        self.assertEqual(
+            str(serializer.validated_data["asset_id"]), asset_id
+        )
 
     def test_serialize_without_asset_id(self):
         """Test serialization without asset ID"""

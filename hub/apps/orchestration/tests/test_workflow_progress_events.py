@@ -21,7 +21,7 @@ import json
 import uuid
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from hub.apps.core.events.models import Event
 from hub.apps.orchestration.models import (
@@ -37,11 +37,20 @@ from hub.apps.users.models import UserStatus
 User = get_user_model()
 
 
+@override_settings(
+    EVENT_BUS_FORCE_SYNC_PERSISTENCE=True,
+    EVENT_BUS_ENABLE_PERSISTENCE=True,
+    EVENT_BUS_ASYNC_PERSISTENCE=False,
+)
 class WorkflowProgressEventsTest(TestCase):
     """Unit tests for progress_percentage in workflow step events (Task 0.3.3)"""
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures: sync event persistence so Event model sees step events."""
+        import hub.apps.core.events.bus as bus_module
+
+        bus_module._event_bus = None
+
         self.engine = WorkflowEngine()
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
@@ -378,11 +387,20 @@ class WorkflowProgressEventsTest(TestCase):
                 self.assertEqual(event.user_id, self.user.id)
 
 
+@override_settings(
+    EVENT_BUS_FORCE_SYNC_PERSISTENCE=True,
+    EVENT_BUS_ENABLE_PERSISTENCE=True,
+    EVENT_BUS_ASYNC_PERSISTENCE=False,
+)
 class WorkflowProgressWebSocketEventsTest(TestCase):
     """E2E tests for progress_percentage in WebSocket events (Task 0.3.3)"""
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures: sync event persistence so Event model sees step events."""
+        import hub.apps.core.events.bus as bus_module
+
+        bus_module._event_bus = None
+
         self.engine = WorkflowEngine()
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED

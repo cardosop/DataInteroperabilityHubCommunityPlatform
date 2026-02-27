@@ -1,10 +1,10 @@
 /**
  * Virtualized List Component
- * Wrapper around react-window for efficient rendering of large lists
+ * Wrapper around react-window List for efficient rendering of large lists
  */
 
 import React from 'react';
-import { FixedSizeList, ListChildComponentProps } from 'react-window';
+import { List } from 'react-window';
 
 export interface VirtualizedListProps<T> {
   items: T[];
@@ -16,6 +16,29 @@ export interface VirtualizedListProps<T> {
   'aria-labelledby'?: string;
 }
 
+interface RowProps<T> {
+  items: T[];
+  renderItem: (item: T, index: number) => React.ReactNode;
+}
+
+function RowComponent<T>({
+  index,
+  style,
+  items,
+  renderItem,
+}: {
+  index: number;
+  style: React.CSSProperties;
+  items: T[];
+  renderItem: (item: T, index: number) => React.ReactNode;
+}) {
+  return (
+    <div style={style} role="row">
+      {renderItem(items[index], index)}
+    </div>
+  );
+}
+
 export function VirtualizedList<T>({
   items,
   height,
@@ -25,23 +48,25 @@ export function VirtualizedList<T>({
   'aria-label': ariaLabel,
   'aria-labelledby': ariaLabelledBy,
 }: VirtualizedListProps<T>) {
-  const Row = ({ index, style }: ListChildComponentProps) => (
-    <div style={style} role="row">
-      {renderItem(items[index], index)}
-    </div>
-  );
+  const rowProps: RowProps<T> = { items, renderItem };
 
   return (
     <div className={className} role="list" aria-label={ariaLabel} aria-labelledby={ariaLabelledBy}>
-      <FixedSizeList
-        height={height}
-        itemCount={items.length}
-        itemSize={itemHeight}
-        width="100%"
-        overscanCount={5} // Render 5 extra items outside visible area for smoother scrolling
-      >
-        {Row}
-      </FixedSizeList>
+      <List<RowProps<T>>
+        rowCount={items.length}
+        rowHeight={itemHeight}
+        rowComponent={(props) => (
+          <RowComponent
+            index={props.index}
+            style={props.style}
+            items={rowProps.items}
+            renderItem={rowProps.renderItem}
+          />
+        )}
+        rowProps={rowProps}
+        style={{ height, width: '100%' }}
+        overscanCount={5}
+      />
     </div>
   );
 }

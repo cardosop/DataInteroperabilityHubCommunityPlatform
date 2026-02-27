@@ -23,7 +23,9 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.auth.models import APIKey
 from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
 from hub.apps.tenants.models import Tenant, TenantStatus
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import User, UserStatus, Role, UserRole
+
+from tests.e2e.conftest import get_response_data
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -39,12 +41,14 @@ class Phase25GDPRErasureE2ETest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
 
-        # Create tenant
+        # Create tenant (subscription required for POST to request-erasure)
         self.tenant = Tenant.objects.create(
             name="GDPR E2E Tenant",
             slug="gdpr-e2e-tenant",
             status=TenantStatus.ACTIVE,
         )
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user to be erased
         self.user_to_erase = User.objects.create_user(
@@ -67,6 +71,14 @@ class Phase25GDPRErasureE2ETest(TestCase):
         # Store plaintext key for later verification
         self.api_key_plaintext = test_key
 
+        # Role so user can call request-erasure (tenant-scoped permission)
+        tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.user_to_erase, role=tenant_admin_role)
+
     def test_complete_erasure_workflow(self):
         """Test complete erasure workflow"""
         # Step 1: User requests erasure
@@ -85,7 +97,7 @@ class Phase25GDPRErasureE2ETest(TestCase):
         )
 
         if response.status_code in [status.HTTP_201_CREATED, status.HTTP_200_OK]:
-            erasure_request_id = response.data.get("id")
+            erasure_request_id = (get_response_data(response) or {}).get("id")
 
             # Step 2: Verify erasure request created
             erasure_request = ErasureRequest.objects.get(id=erasure_request_id)
@@ -96,8 +108,9 @@ class Phase25GDPRErasureE2ETest(TestCase):
             response = self.client.get("/api/v1/users/me/erasure-requests/")
 
             if response.status_code == status.HTTP_200_OK:
-                self.assertIn("results", response.data)
-                request_ids = [req["id"] for req in response.data.get("results", [])]
+                data = get_response_data(response) or {}
+                self.assertIn("results", data)
+                request_ids = [req["id"] for req in data.get("results", [])]
                 self.assertIn(str(erasure_request.id), request_ids)
 
             # Step 4: Execute erasure (simulate workflow execution)
@@ -168,6 +181,7 @@ class Phase25GDPRErasureE2ETest(TestCase):
         response = self.client.get("/api/v1/users/me/erasure-requests/")
 
         if response.status_code == status.HTTP_200_OK:
-            request_ids = [req["id"] for req in response.data.get("results", [])]
+            data = get_response_data(response) or {}
+            request_ids = [req["id"] for req in data.get("results", [])]
             # Should not include user_to_erase's request
             self.assertNotIn(str(erasure_request.id), request_ids)

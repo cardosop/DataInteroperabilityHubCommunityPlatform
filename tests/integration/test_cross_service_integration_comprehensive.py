@@ -8,6 +8,8 @@ Tests all cross-service integrations:
 - External service integration
 - Service-to-service communication
 """
+import os
+
 import pytest
 import requests
 from django.test import TestCase
@@ -16,6 +18,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
@@ -25,6 +28,11 @@ from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from tests.factories import TenantFactory
 
 User = get_user_model()
+
+# Service URLs: use Docker hostnames when running in docker-compose.test (localhost fails from inside container)
+DQ_SERVICE_URL = os.getenv("DQ_SERVICE_URL", "http://dq-service-test:8083")
+COMPLIANCE_SERVICE_URL = os.getenv("COMPLIANCE_SERVICE_URL", "http://compliance-service-test:8082")
+SEMANTIC_SERVICE_URL = os.getenv("SEMANTIC_SERVICE_URL", "http://semantic-service-test:8081")
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -45,6 +53,7 @@ class DQServiceIntegrationTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
@@ -79,8 +88,9 @@ class DQServiceIntegrationTest(TestCase):
 
     def test_dq_service_health_check(self):
         """Test DQ service health check"""
-        if check_service_health("http://localhost:8083/health"):
-            response = requests.get("http://localhost:8083/health", timeout=5)
+        url = f"{DQ_SERVICE_URL.rstrip('/')}/health"
+        if check_service_health(url):
+            response = requests.get(url, timeout=5)
             self.assertIn(response.status_code, [200, 404])
         else:
             pytest.skip("DQ service not available")
@@ -120,6 +130,7 @@ class ComplianceServiceIntegrationTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
@@ -154,8 +165,9 @@ class ComplianceServiceIntegrationTest(TestCase):
 
     def test_compliance_service_health_check(self):
         """Test Compliance service health check"""
-        if check_service_health("http://localhost:8082/health"):
-            response = requests.get("http://localhost:8082/health", timeout=5)
+        url = f"{COMPLIANCE_SERVICE_URL.rstrip('/')}/health"
+        if check_service_health(url):
+            response = requests.get(url, timeout=5)
             self.assertIn(response.status_code, [200, 404])
         else:
             pytest.skip("Compliance service not available")
@@ -193,6 +205,7 @@ class SemanticServiceIntegrationTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
@@ -222,8 +235,9 @@ class SemanticServiceIntegrationTest(TestCase):
 
     def test_semantic_service_health_check(self):
         """Test Semantic service health check"""
-        if check_service_health("http://localhost:8081/health"):
-            response = requests.get("http://localhost:8081/health", timeout=5)
+        url = f"{SEMANTIC_SERVICE_URL.rstrip('/')}/health"
+        if check_service_health(url):
+            response = requests.get(url, timeout=5)
             self.assertIn(response.status_code, [200, 404])
         else:
             pytest.skip("Semantic service not available")
@@ -249,6 +263,7 @@ class ExternalServiceIntegrationTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",

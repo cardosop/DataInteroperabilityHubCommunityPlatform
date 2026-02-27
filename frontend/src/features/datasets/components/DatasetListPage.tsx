@@ -22,9 +22,15 @@ export function DatasetListPage() {
   if (isLoading) return <LoadingSpinner message="Loading datasets..." />;
   if (error)
     return <ErrorDisplay error={error} title="Failed to load datasets" onRetry={() => refetch()} />;
+  const handleCreateDataset = () => navigate('/datasets/create');
+
   if (!data || data.results.length === 0) {
     return (
-      <EmptyState title="No datasets found" message="Get started by creating your first dataset." />
+      <EmptyState
+        title="No datasets found"
+        message="Get started by creating your first dataset."
+        action={{ label: 'Create Dataset', onClick: handleCreateDataset }}
+      />
     );
   }
 
@@ -32,6 +38,9 @@ export function DatasetListPage() {
     <div className="dataset-list-page">
       <div className="dataset-list-header">
         <h1>Datasets</h1>
+        <button className="btn-primary" onClick={handleCreateDataset} type="button">
+          Create Dataset
+        </button>
       </div>
       <div className="dataset-list-table">
         <table role="table" aria-label="Datasets list">

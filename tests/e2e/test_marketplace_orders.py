@@ -22,7 +22,7 @@ from hub.apps.marketplace.models import Entitlement, EntitlementStatus
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import Tenant, KYCStatus
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
@@ -38,14 +38,17 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         self.tenant.kyc_status = KYCStatus.VERIFIED
         self.tenant.save(update_fields=['kyc_status'])
         
-        # Create provider tenant and consumer tenant
+        # Create provider tenant and consumer tenant (consumer needs subscription for order creation)
         self.provider_tenant = self.tenant
         self.consumer_tenant = Tenant.objects.create(
             name='Consumer Tenant',
             slug='consumer-tenant',
             kyc_status=KYCStatus.VERIFIED
         )
+        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
         from hub.apps.users.models import User
+
+        ensure_e2e_tenant_ready(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
             email='consumer@example.com',
             password='testpass123',
@@ -59,7 +62,7 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         asset_id = self.create_asset(key='order-test', name='Order Test')
         contract_id = self.create_contract(
             asset_id,
-            original_raw='{"id": "test", "name": "Test Contract", "schema": {"fields": []}}'
+            original_raw='{"id": "test", "info": {"name": "Test Contract"}, "schema": {"fields": [{"name": "id", "type": "string"}]}}'
         )
         self.prepare_contract_for_activation(contract_id)
         self.prepare_asset_for_activation(asset_id)
@@ -78,8 +81,9 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
             },
             format='json'
         )
-        listing_id = listing_response.data['id']
-        
+        listing_id = (get_response_data(listing_response) or {}).get('id')
+        if not listing_id:
+            raise Exception("Listing creation response missing id")
         # Publish listing (endpoint may not exist, use PATCH or manual status set)
         publish_response = self.client.post(f'/api/v1/marketplace/listings/{listing_id}/publish/')
         if publish_response.status_code == status.HTTP_404_NOT_FOUND:
@@ -115,10 +119,14 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['status'], OrderStatus.REQUESTED)
-        
+        data = get_response_data(response) or {}
+        order_data = data.get('order', data)
+        self.assertEqual(order_data.get('status'), OrderStatus.REQUESTED)
+
         # Verify order in database
-        order = Order.objects.get(id=response.data['id'])
+        order_id = order_data.get('id')
+        self.assertIsNotNone(order_id, "Order response missing id")
+        order = Order.objects.get(id=order_id)
         self.assertEqual(str(order.listing_id), str(listing_id))
         self.assertEqual(order.tenant, self.consumer_tenant)
         self.assertEqual(order.status, OrderStatus.REQUESTED)
@@ -140,9 +148,12 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        
+
         # Verify order auto-approved
-        order = Order.objects.get(id=response.data['id'])
+        data = get_response_data(response) or {}
+        order_id = (data.get('order') or data).get('id')
+        self.assertIsNotNone(order_id, "Order response missing id")
+        order = Order.objects.get(id=order_id)
         # May be APPROVED immediately or REQUESTED depending on implementation
         self.assertIn(order.status, [OrderStatus.APPROVED, OrderStatus.REQUESTED])
         
@@ -170,9 +181,12 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        
+
         # Verify order is REQUESTED (not auto-approved)
-        order = Order.objects.get(id=response.data['id'])
+        data = get_response_data(response) or {}
+        order_id = (data.get('order') or data).get('id')
+        self.assertIsNotNone(order_id, "Order response missing id")
+        order = Order.objects.get(id=order_id)
         self.assertEqual(order.status, OrderStatus.REQUESTED)
     
     def test_approve_order_success(self):
@@ -193,14 +207,16 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         
         # Order creation may fail if listing not published or other requirements not met
         if order_response.status_code != status.HTTP_201_CREATED:
-            # Try to get error details
-            error_msg = order_response.data.get('error', 'Unknown error') if hasattr(order_response, 'data') else 'Order creation failed'
+            error_data = get_response_data(order_response) or {}
+            error_msg = error_data.get('error', 'Unknown error')
             pytest.skip(f"Order creation failed: {order_response.status_code} - {error_msg}")
-        
-        order_id = order_response.data.get('id')
+
+        resp_data = get_response_data(order_response) or {}
+        order_data = resp_data.get('order', resp_data)
+        order_id = order_data.get('id')
         if not order_id:
             pytest.skip("Order created but no ID in response")
-        
+
         # Convert order_id to UUID if it's a string
         import uuid as uuid_lib
         if isinstance(order_id, str):
@@ -246,9 +262,10 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         if response.status_code != status.HTTP_404_NOT_FOUND:
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             # Response may not have 'status' field, check order in database instead
-            if 'status' in response.data:
+            data = get_response_data(response) or {}
+            if 'status' in data:
                 # Status may be APPROVED or FULFILLED depending on implementation
-                response_status = response.data['status']
+                response_status = data['status']
                 self.assertIn(response_status, [OrderStatus.APPROVED, OrderStatus.FULFILLED, 'APPROVED', 'FULFILLED'])
         
         # Verify order approved in database (may be APPROVED or FULFILLED)
@@ -280,14 +297,15 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         
         # Order creation may fail if listing not published or other requirements not met
         if order_response.status_code != status.HTTP_201_CREATED:
-            # Try to get error details
-            error_msg = order_response.data.get('error', 'Unknown error') if hasattr(order_response, 'data') else 'Order creation failed'
+            error_data = get_response_data(order_response) or {}
+            error_msg = error_data.get('error', 'Unknown error')
             pytest.skip(f"Order creation failed: {order_response.status_code} - {error_msg}")
-        
-        order_id = order_response.data.get('id')
+
+        resp_data = get_response_data(order_response) or {}
+        order_id = resp_data.get('order', resp_data).get('id') or resp_data.get('id')
         if not order_id:
             pytest.skip("Order created but no ID in response")
-        
+
         # Switch back to provider user
         self.client.force_authenticate(user=self.user)
         
@@ -301,8 +319,9 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['status'], OrderStatus.REJECTED)
-        
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('status'), OrderStatus.REJECTED)
+
         # Verify order rejected
         order = Order.objects.get(id=order_id)
         self.assertEqual(order.status, OrderStatus.REJECTED)
@@ -326,14 +345,15 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         
         # Order creation may fail if listing not published or other requirements not met
         if order_response.status_code != status.HTTP_201_CREATED:
-            # Try to get error details
-            error_msg = order_response.data.get('error', 'Unknown error') if hasattr(order_response, 'data') else 'Order creation failed'
+            error_data = get_response_data(order_response) or {}
+            error_msg = error_data.get('error', 'Unknown error')
             pytest.skip(f"Order creation failed: {order_response.status_code} - {error_msg}")
-        
-        order_id = order_response.data.get('id')
+
+        resp_data = get_response_data(order_response) or {}
+        order_id = resp_data.get('order', resp_data).get('id') or resp_data.get('id')
         if not order_id:
             pytest.skip("Order created but no ID in response")
-        
+
         # Cancel order
         response = self.client.post(
             f'/api/v1/marketplace/orders/{order_id}/cancel/',
@@ -341,8 +361,9 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['status'], OrderStatus.CANCELLED)
-        
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('status'), OrderStatus.CANCELLED)
+
         # Verify order cancelled
         order = Order.objects.get(id=order_id)
         self.assertEqual(order.status, OrderStatus.CANCELLED)
@@ -370,23 +391,25 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         response = self.client.get('/api/v1/marketplace/orders/')
         # Handle 500 errors gracefully
         if response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR:
-            pytest.skip(f"Orders list endpoint returned 500: {response.data if hasattr(response, 'data') else 'Unknown error'}")
+            pytest.skip(f"Orders list endpoint returned 500: {get_response_data(response) or 'Unknown error'}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Response may be paginated (dict with 'results') or a list
-        if isinstance(response.data, dict) and 'results' in response.data:
-            orders = response.data['results']
+        data = get_response_data(response) or {}
+        if isinstance(data, dict) and 'results' in data:
+            orders = data['results']
         else:
-            orders = response.data if isinstance(response.data, list) else []
+            orders = data if isinstance(data, list) else []
         self.assertGreaterEqual(len(orders), 2)
         
         # Filter by status
         response = self.client.get(f'/api/v1/marketplace/orders/?status={OrderStatus.REQUESTED}')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Response may be paginated (dict with 'results') or a list
-        if isinstance(response.data, dict) and 'results' in response.data:
-            filtered_orders = response.data['results']
+        data = get_response_data(response) or {}
+        if isinstance(data, dict) and 'results' in data:
+            filtered_orders = data['results']
         else:
-            filtered_orders = response.data if isinstance(response.data, list) else []
+            filtered_orders = data if isinstance(data, list) else []
         order_statuses = {o['status'] for o in filtered_orders}
         self.assertEqual(order_statuses, {OrderStatus.REQUESTED})
     
@@ -403,15 +426,18 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
             {'listing_id': listing_id},
             format='json'
         )
-        order_id = order_response.data['id']
-        
+        resp_data = get_response_data(order_response) or {}
+        order_id = (resp_data.get('order') or resp_data).get('id')
+        self.assertIsNotNone(order_id, "Order response missing id")
+
         # Get order details
         response = self.client.get(f'/api/v1/marketplace/orders/{order_id}/')
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(order_id))
-        self.assertEqual(response.data['status'], OrderStatus.REQUESTED)
-        self.assertIn('listing', response.data)
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('id'), str(order_id))
+        self.assertEqual(data.get('status'), OrderStatus.REQUESTED)
+        self.assertIn('listing', data)
     
     def test_order_fulfillment_creates_entitlement(self):
         """Test that order fulfillment creates entitlement"""
@@ -426,10 +452,11 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
             {'listing_id': listing_id},
             format='json'
         )
-        order_id = order_response.data.get('id')
+        resp_data = get_response_data(order_response) or {}
+        order_id = (resp_data.get('order') or resp_data).get('id')
         if not order_id:
             pytest.skip("Order created but no ID in response")
-        
+
         # Convert order_id to UUID if it's a string
         import uuid as uuid_lib
         if isinstance(order_id, str):
@@ -437,7 +464,7 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
                 order_id = uuid_lib.UUID(order_id)
             except ValueError:
                 pytest.skip(f"Invalid order ID format: {order_id}")
-        
+
         # Verify order exists in database - refresh from DB to ensure it's visible
         from django.db import transaction
         with transaction.atomic():

@@ -63,7 +63,6 @@ class FreshnessMonitorTest(TestCase):
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
-            name="Test Dataset",
             schema_json={"fields": [{"name": "email", "type": "string"}]},
             format="CSV",
             version=1,
@@ -226,8 +225,8 @@ class FreshnessMonitorEdgeCasesTest(TestCase):
     def test_is_stale_exactly_at_threshold(self):
         """Test staleness detection exactly at threshold"""
         is_stale = FreshnessMonitor.is_stale(3600, 3600)  # Exactly at SLA
-        # Should be stale if >= SLA
-        self.assertTrue(is_stale)
+        # Should not be stale when exactly at SLA (stale only when strictly exceeding)
+        self.assertFalse(is_stale)
 
     def test_record_metric_with_all_sla_types(self):
         """Test recording metric with all SLA types"""

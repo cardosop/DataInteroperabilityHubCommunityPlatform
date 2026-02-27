@@ -26,6 +26,7 @@ from rest_framework.test import APIClient
 from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel, Order, OrderStatus, Entitlement
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.users.models import UserStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.assets.models import AssetStatus
 from hub.apps.audit.models import AuditEvent
 from tests.fixtures.test_data_factories import TenantFactory, AssetFactoryEnhanced, ListingFactory
@@ -248,6 +249,7 @@ class TestMarketplaceCreateListingAPI(TestCase):
             status=UserStatus.ACTIVE.value,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Note: Each test should create its own asset to avoid unique constraint issues
         # (tenant + asset must be unique for listings)
@@ -448,9 +450,10 @@ class TestMarketplaceCreateListingAPI(TestCase):
 
         # API returns 404 for non-existent asset or 400 for validation error
         self.assertIn(response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST])
-        # Verify error message indicates asset not found
+        # Verify error message indicates asset not found (api_error_response uses "detail")
         if response.status_code == status.HTTP_404_NOT_FOUND:
-            self.assertIn("asset", str(response.data.get("error", "")).lower())
+            err_msg = str(response.data.get("detail", response.data.get("error", ""))).lower()
+            self.assertIn("asset", err_msg, f"Error message should mention asset: {err_msg}")
 
     def test_create_listing_error_inactive_asset(self):
         """Test creating listing with inactive asset"""
@@ -471,9 +474,9 @@ class TestMarketplaceCreateListingAPI(TestCase):
             format="json",
         )
 
-        # The API validates asset is active and returns 400
+        # The API validates asset is active and returns 400 (api_error_response uses "detail")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        error_msg = str(response.data.get("error", "")).upper()
+        error_msg = str(response.data.get("detail", response.data.get("error", ""))).upper()
         # Check for either "ACTIVE" or "active" in error message
         self.assertTrue(
             "ACTIVE" in error_msg or "active" in error_msg or "only" in error_msg.lower(),
@@ -481,7 +484,11 @@ class TestMarketplaceCreateListingAPI(TestCase):
         )
 
     def test_create_listing_error_unverified_kyc(self):
-        """Test creating listing with unverified KYC tenant"""
+        """Test publishing listing with unverified KYC tenant fails with 403.
+
+        KYC is enforced on publish, not on create. Create succeeds (draft);
+        publish must fail for unverified tenants.
+        """
         unverified_tenant = TenantFactory.create_tenant(
             name=f"Unverified Tenant {uuid.uuid4().hex[:8]}",
             slug=f"unverified-tenant-{uuid.uuid4().hex[:8]}",
@@ -494,9 +501,9 @@ class TestMarketplaceCreateListingAPI(TestCase):
             password="testpass123",
             status=UserStatus.ACTIVE.value,
         )
+        ensure_tenant_has_active_subscription(unverified_tenant)
         self.client.force_authenticate(user=unverified_user)
 
-        # Delete any existing listings to avoid unique constraint
         Listing.objects.filter(tenant=unverified_tenant).delete()
 
         asset = AssetFactoryEnhanced.create_asset(
@@ -505,7 +512,8 @@ class TestMarketplaceCreateListingAPI(TestCase):
             status=AssetStatus.ACTIVE.value,
         )
 
-        response = self.client.post(
+        # Create draft listing (KYC not required for create)
+        create_resp = self.client.post(
             "/api/v1/marketplace/listings/",
             {
                 "asset_id": str(asset.id),
@@ -514,13 +522,29 @@ class TestMarketplaceCreateListingAPI(TestCase):
             },
             format="json",
         )
+        self.assertEqual(create_resp.status_code, status.HTTP_201_CREATED)
+        listing_id = create_resp.data["id"]
 
-        # API returns 403 for unverified KYC
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        error_msg = str(response.data.get("error", "")).upper()
+        # Publish should fail with 400 (validation) or 403 for unverified KYC
+        publish_resp = self.client.patch(
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED.value},
+            format="json",
+        )
+        self.assertIn(
+            publish_resp.status_code,
+            [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN],
+            f"Publish must be rejected for unverified KYC, got {publish_resp.status_code}",
+        )
+        data = getattr(publish_resp, "data", None) or (
+            publish_resp.json() if publish_resp.content and hasattr(publish_resp, "json") else {}
+        )
+        if not isinstance(data, dict):
+            data = {}
+        err_msg = str(data.get("detail", data.get("error", ""))).upper()
         self.assertTrue(
-            "KYC" in error_msg or "VERIFIED" in error_msg or "VERIFICATION" in error_msg,
-            f"Error message should mention KYC verification: {error_msg}"
+            "KYC" in err_msg or "VERIFIED" in err_msg or "VERIFICATION" in err_msg,
+            f"Error message should mention KYC verification: {err_msg}",
         )
 
     def test_create_listing_error_request_approval_missing_price(self):
@@ -583,6 +607,7 @@ class TestMarketplaceCreateListingAPI(TestCase):
             status=AssetStatus.ACTIVE.value,
         )
 
+        # Marketplace service uses resource_type="LISTING"
         initial_count = AuditEvent.objects.filter(
             resource_type="LISTING",
             action="LISTING_CREATED",
@@ -601,7 +626,7 @@ class TestMarketplaceCreateListingAPI(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-        # Check audit event was created
+        # Check audit event was created (marketplace uses LISTING)
         new_count = AuditEvent.objects.filter(
             resource_type="LISTING",
             action="LISTING_CREATED",
@@ -818,6 +843,8 @@ class TestMarketplacePurchaseListingAPI(TestCase):
 
         # Authenticate as consumer
         self.client.force_authenticate(user=self.consumer_user)
+        ensure_tenant_has_active_subscription(self.provider_tenant)
+        ensure_tenant_has_active_subscription(self.consumer_tenant)
 
     def tearDown(self):
         """Clean up after each test"""

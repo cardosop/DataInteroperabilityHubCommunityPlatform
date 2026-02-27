@@ -2,7 +2,7 @@
 Comprehensive Verification Tests for Existing Functionality
 
 This test suite verifies that all existing functionality works correctly:
-- Tests all workflows (13 workflows)
+- Tests all workflows (registered workflow set)
 - Tests all services (all Django apps)
 - Tests all APIs (all endpoints)
 - Verifies no breaking changes
@@ -14,7 +14,6 @@ Follows engineering best practices:
 - Follows DRY, SOLID, and clean code principles
 """
 import json
-import uuid
 from django.test import TestCase, TransactionTestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -38,7 +37,6 @@ from hub.apps.orchestration.workflows import (
     VersionCreationWorkflow,
     MarketplacePublicationWorkflow,
     ProductCreationWorkflow,
-    TransformationPipelineWorkflow,
     DataMeshWorkflow,
     VirtualizationWorkflow,
 )
@@ -84,7 +82,6 @@ class FunctionalityVerificationTest(TransactionTestCase):
             VersionCreationWorkflow,
             MarketplacePublicationWorkflow,
             ProductCreationWorkflow,
-            TransformationPipelineWorkflow,
             DataMeshWorkflow,
             VirtualizationWorkflow,
         ]
@@ -304,29 +301,6 @@ class FunctionalityVerificationTest(TransactionTestCase):
                 input_data={
                     "name": "Test Product",
                     "description": "Test product description"
-                },
-                tenant_id=str(self.tenant.id),
-                created_by_id=str(self.user.id)
-            )
-            self.assertIsNotNone(instance)
-        except Exception as e:
-            self.assertTrue(True, f"Workflow execution attempted: {e}")
-
-    def test_transformation_pipeline_workflow(self):
-        """Test TransformationPipelineWorkflow"""
-        asset = Asset.objects.create(
-            key='transformation-pipeline-asset',
-            name='Transformation Pipeline Asset',
-            tenant=self.tenant,
-            created_by=self.user
-        )
-
-        try:
-            instance = self.workflow_engine.create_instance(
-                workflow_name="transformation_pipeline",
-                input_data={
-                    "asset_id": str(asset.id),
-                    "pipeline_id": str(uuid.uuid4())
                 },
                 tenant_id=str(self.tenant.id),
                 created_by_id=str(self.user.id)

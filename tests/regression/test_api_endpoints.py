@@ -143,19 +143,19 @@ class TenantAPIRegressionTest(APIRegressionTest):
     """Test all tenant API endpoints"""
 
     def test_tenant_list(self):
-        """Test GET /api/v1/tenants/tenants/"""
+        """Test GET /api/v1/tenants/"""
         # Tenant list requires platform admin
         self.user.is_platform_admin = True
         self.user.save()
         self.user.refresh_from_db()
         self.client.force_authenticate(user=self.user)
 
-        response = self.client.get('/api/v1/tenants/tenants/')
+        response = self.client.get('/api/v1/tenants/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsInstance(response.data, (list, dict))
 
     def test_tenant_create(self):
-        """Test POST /api/v1/tenants/tenants/"""
+        """Test POST /api/v1/tenants/"""
         # Only platform admins can create tenants
         self.user.is_platform_admin = True
         self.user.save()
@@ -165,7 +165,7 @@ class TenantAPIRegressionTest(APIRegressionTest):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.post(
-            '/api/v1/tenants/tenants/',
+            '/api/v1/tenants/',
             {'name': 'New Tenant', 'slug': 'new-tenant'},
             format='json'
         )
@@ -173,21 +173,21 @@ class TenantAPIRegressionTest(APIRegressionTest):
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_403_FORBIDDEN])
 
     def test_tenant_retrieve(self):
-        """Test GET /api/v1/tenants/tenants/{id}/"""
+        """Test GET /api/v1/tenants/{id}/"""
         # Make user platform admin to access tenant detail
         self.user.is_platform_admin = True
         self.user.save()
         self.user.refresh_from_db()
         self.client.force_authenticate(user=self.user)
 
-        response = self.client.get(f'/api/v1/tenants/tenants/{self.tenant.id}/')
+        response = self.client.get(f'/api/v1/tenants/{self.tenant.id}/')
         # Platform admin should be able to retrieve any tenant
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
         if response.status_code == status.HTTP_200_OK:
             self.assertEqual(response.data['id'], str(self.tenant.id))
 
     def test_tenant_update(self):
-        """Test PUT /api/v1/tenants/tenants/{id}/"""
+        """Test PUT /api/v1/tenants/{id}/"""
         # Make user platform admin to update tenant
         self.user.is_platform_admin = True
         self.user.save()
@@ -195,7 +195,7 @@ class TenantAPIRegressionTest(APIRegressionTest):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.put(
-            f'/api/v1/tenants/tenants/{self.tenant.id}/',
+            f'/api/v1/tenants/{self.tenant.id}/',
             {'name': 'Updated Tenant', 'slug': self.tenant.slug},
             format='json'
         )
@@ -203,7 +203,7 @@ class TenantAPIRegressionTest(APIRegressionTest):
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
 
     def test_tenant_partial_update(self):
-        """Test PATCH /api/v1/tenants/tenants/{id}/"""
+        """Test PATCH /api/v1/tenants/{id}/"""
         # Make user platform admin to update tenant
         self.user.is_platform_admin = True
         self.user.save()
@@ -211,25 +211,25 @@ class TenantAPIRegressionTest(APIRegressionTest):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{self.tenant.id}/',
+            f'/api/v1/tenants/{self.tenant.id}/',
             {'name': 'Partially Updated Tenant'},
             format='json'
         )
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
 
     def test_tenant_config_retrieve(self):
-        """Test GET /api/v1/tenants/tenants/{id}/config/"""
+        """Test GET /api/v1/tenants/{id}/config/"""
         # Make user platform admin or TENANT_ADMIN to access config
         self.user.is_platform_admin = True
         self.user.save()
         self.user.refresh_from_db()
         self.client.force_authenticate(user=self.user)
 
-        response = self.client.get(f'/api/v1/tenants/tenants/{self.tenant.id}/config/')
+        response = self.client.get(f'/api/v1/tenants/{self.tenant.id}/config/')
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
 
     def test_tenant_config_update(self):
-        """Test PATCH /api/v1/tenants/tenants/{id}/config/"""
+        """Test PATCH /api/v1/tenants/{id}/config/"""
         # Make user platform admin or TENANT_ADMIN to update config
         self.user.is_platform_admin = True
         self.user.save()
@@ -237,7 +237,7 @@ class TenantAPIRegressionTest(APIRegressionTest):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{self.tenant.id}/config/',
+            f'/api/v1/tenants/{self.tenant.id}/config/',
             {'default_dq_profile': 'intake_basic_gx'},
             format='json'
         )
@@ -721,14 +721,14 @@ class UserAPIRegressionTest(APIRegressionTest):
     """Test all user API endpoints"""
 
     def test_user_list(self):
-        """Test GET /api/v1/users/users/"""
-        response = self.client.get('/api/v1/users/users/')
+        """Test GET /api/v1/users/"""
+        response = self.client.get('/api/v1/users/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsInstance(response.data, (list, dict))
 
     def test_user_retrieve(self):
-        """Test GET /api/v1/users/users/{id}/"""
-        response = self.client.get(f'/api/v1/users/users/{self.user.id}/')
+        """Test GET /api/v1/users/{id}/"""
+        response = self.client.get(f'/api/v1/users/{self.user.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(self.user.id))
 

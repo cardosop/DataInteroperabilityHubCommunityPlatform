@@ -371,18 +371,21 @@ class SchemaDriftDetector:
         minor_count = queryset.filter(drift_severity="MINOR").count()
         within_tolerance_count = queryset.filter(is_within_tolerance=True).count()
         
-        # Format results
+        # Format results (include all fields expected by SchemaDriftSerializer)
         results = []
         for drift in drifts:
             results.append({
                 "id": str(drift.id),
-                "dataset_id": str(drift.dataset_id) if drift.dataset else None,
-                "asset_id": str(drift.asset_id) if drift.asset else None,
+                "dataset_id": str(drift.dataset_id) if drift.dataset_id else None,
+                "asset_id": str(drift.asset_id) if drift.asset_id else None,
+                "previous_schema_hash": drift.previous_schema_hash,
+                "current_schema_hash": drift.current_schema_hash,
                 "new_fields": drift.new_fields,
                 "removed_fields": drift.removed_fields,
                 "type_changes": drift.type_changes,
                 "nullable_changes": drift.nullable_changes,
                 "drift_severity": drift.drift_severity,
+                "tolerance_config": drift.tolerance_config,
                 "is_within_tolerance": drift.is_within_tolerance,
                 "detected_at": drift.detected_at.isoformat()
             })

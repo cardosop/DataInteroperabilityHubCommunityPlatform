@@ -82,12 +82,25 @@ class TenantScopingMiddleware:
         
         try:
             from hub.apps.auth.models import APIKey
-            # Hash the provided key
+
             key_hash = APIKey.hash_key(api_key)
-            # Look up API key (lightweight - no expiration check here)
-            # Full validation happens in REST Framework authentication
-            api_key_obj = APIKey.objects.select_related('tenant').only('tenant_id', 'tenant').get(key_hash=key_hash)
-            return str(api_key_obj.tenant.id)
+            api_key_obj = (
+                APIKey.objects.select_related('tenant', 'user')
+                .prefetch_related('user__user_roles__role')
+                .get(key_hash=key_hash)
+            )
+            if api_key_obj.is_expired() or api_key_obj.is_revoked():
+                return None
+            tenant_id_str = str(api_key_obj.tenant.id)
+            request.tenant_id = tenant_id_str
+            request.tenant = api_key_obj.tenant
+            request.api_key_scopes = api_key_obj.scopes
+            request.api_key_obj = api_key_obj
+            if api_key_obj.user_id and api_key_obj.user:
+                user = api_key_obj.user
+                if user.is_active():
+                    request.user = user
+            return tenant_id_str
         except APIKey.DoesNotExist:
             # Invalid API key - will be caught by REST Framework authentication
             return None

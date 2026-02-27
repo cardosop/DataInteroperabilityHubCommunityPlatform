@@ -18,9 +18,11 @@ class SlidingWindowAlgorithmTest(TestCase):
     """Tests for sliding window algorithm implementation"""
     
     @patch('hub.apps.rate_limiting.utils.cache')
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_sliding_window_allows_within_limit(self, mock_from_url, mock_cache):
+    def test_sliding_window_allows_within_limit(self, mock_from_url, mock_get_pool, mock_cache):
         """Test sliding window allows requests within limit"""
+        mock_get_pool.side_effect = Exception("Use fallback")  # Force redis.from_url path
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         mock_cache.get.return_value = None  # No cache hit
@@ -44,9 +46,11 @@ class SlidingWindowAlgorithmTest(TestCase):
         mock_client.expire.assert_called_once_with('test-key', 70)  # 60 + 10 buffer
     
     @patch('hub.apps.rate_limiting.utils.cache')
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_sliding_window_rejects_when_exceeded(self, mock_from_url, mock_cache):
+    def test_sliding_window_rejects_when_exceeded(self, mock_from_url, mock_get_pool, mock_cache):
         """Test sliding window rejects requests when limit exceeded"""
+        mock_get_pool.side_effect = Exception("Use fallback")
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         mock_cache.get.return_value = None
@@ -69,9 +73,11 @@ class SlidingWindowAlgorithmTest(TestCase):
         mock_client.zadd.assert_not_called()  # Should not add when exceeded
     
     @patch('hub.apps.rate_limiting.utils.cache')
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_sliding_window_removes_expired_entries(self, mock_from_url, mock_cache):
+    def test_sliding_window_removes_expired_entries(self, mock_from_url, mock_get_pool, mock_cache):
         """Test sliding window removes expired entries outside window"""
+        mock_get_pool.side_effect = Exception("Use fallback")
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         mock_cache.get.return_value = None
@@ -91,9 +97,11 @@ class SlidingWindowAlgorithmTest(TestCase):
         mock_client.zremrangebyscore.assert_called_with('test-key', 0, 140.0)
     
     @patch('hub.apps.rate_limiting.utils.cache')
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_sliding_window_ttl_expiration(self, mock_from_url, mock_cache):
+    def test_sliding_window_ttl_expiration(self, mock_from_url, mock_get_pool, mock_cache):
         """Test TTL expiration removes old entries"""
+        mock_get_pool.side_effect = Exception("Use fallback")
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         mock_cache.get.return_value = None
@@ -113,9 +121,11 @@ class SlidingWindowAlgorithmTest(TestCase):
         mock_client.expire.assert_called_once_with('test-key', 70)  # 60 + 10 buffer
     
     @patch('hub.apps.rate_limiting.utils.cache')
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_sliding_window_uses_atomic_operations(self, mock_from_url, mock_cache):
+    def test_sliding_window_uses_atomic_operations(self, mock_from_url, mock_get_pool, mock_cache):
         """Test sliding window uses Redis atomic operations"""
+        mock_get_pool.side_effect = Exception("Use fallback")
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         mock_cache.get.return_value = None
@@ -138,9 +148,11 @@ class SlidingWindowAlgorithmTest(TestCase):
         mock_client.expire.assert_called_once()  # Set TTL
     
     @patch('hub.apps.rate_limiting.utils.cache')
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_sliding_window_redis_unavailable_fails_open(self, mock_from_url, mock_cache):
+    def test_sliding_window_redis_unavailable_fails_open(self, mock_from_url, mock_get_pool, mock_cache):
         """Test sliding window fails open when Redis unavailable"""
+        mock_get_pool.side_effect = Exception("Redis pool unavailable")
         mock_from_url.side_effect = Exception("Redis unavailable")
         mock_cache.get.return_value = None
         
@@ -157,9 +169,11 @@ class SlidingWindowAlgorithmTest(TestCase):
         self.assertEqual(reset_time, 160)  # 100 + 60
     
     @patch('hub.apps.rate_limiting.utils.cache')
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_sliding_window_cache_hit_prevents_redis_call(self, mock_from_url, mock_cache):
+    def test_sliding_window_cache_hit_prevents_redis_call(self, mock_from_url, mock_get_pool, mock_cache):
         """Test that cache hit prevents unnecessary Redis calls"""
+        mock_get_pool.side_effect = Exception("Use fallback")
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         
@@ -180,9 +194,11 @@ class SlidingWindowAlgorithmTest(TestCase):
         mock_client.zadd.assert_not_called()
     
     @patch('hub.apps.rate_limiting.utils.cache')
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_sliding_window_cache_miss_calls_redis(self, mock_from_url, mock_cache):
+    def test_sliding_window_cache_miss_calls_redis(self, mock_from_url, mock_get_pool, mock_cache):
         """Test that cache miss calls Redis"""
+        mock_get_pool.side_effect = Exception("Use fallback")
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         mock_cache.get.return_value = None  # Cache miss
@@ -203,9 +219,11 @@ class SlidingWindowAlgorithmTest(TestCase):
         mock_client.zadd.assert_called_once()
     
     @patch('hub.apps.rate_limiting.utils.cache')
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_sliding_window_caches_result(self, mock_from_url, mock_cache):
+    def test_sliding_window_caches_result(self, mock_from_url, mock_get_pool, mock_cache):
         """Test that result is cached after Redis call"""
+        mock_get_pool.side_effect = Exception("Use fallback")
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         mock_cache.get.return_value = None
@@ -232,9 +250,11 @@ class MultipleTimeWindowsTest(TestCase):
     """Tests for multiple time windows (burst, sustained, daily)"""
     
     @patch('hub.apps.rate_limiting.utils.cache')
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_burst_window_10_seconds(self, mock_from_url, mock_cache):
+    def test_burst_window_10_seconds(self, mock_from_url, mock_get_pool, mock_cache):
         """Test burst window (10 seconds)"""
+        mock_get_pool.side_effect = Exception("Use fallback")
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         mock_cache.get.return_value = None
@@ -255,9 +275,11 @@ class MultipleTimeWindowsTest(TestCase):
         mock_client.zremrangebyscore.assert_called_with('test-key', 0, 95.0)
     
     @patch('hub.apps.rate_limiting.utils.cache')
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_sustained_window_60_seconds(self, mock_from_url, mock_cache):
+    def test_sustained_window_60_seconds(self, mock_from_url, mock_get_pool, mock_cache):
         """Test sustained window (60 seconds)"""
+        mock_get_pool.side_effect = Exception("Use fallback")
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         mock_cache.get.return_value = None
@@ -278,9 +300,11 @@ class MultipleTimeWindowsTest(TestCase):
         mock_client.zremrangebyscore.assert_called_with('test-key', 0, 90.0)
     
     @patch('hub.apps.rate_limiting.utils.cache')
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_daily_window_86400_seconds(self, mock_from_url, mock_cache):
+    def test_daily_window_86400_seconds(self, mock_from_url, mock_get_pool, mock_cache):
         """Test daily window (86400 seconds)"""
+        mock_get_pool.side_effect = Exception("Use fallback")
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         mock_cache.get.return_value = None
@@ -301,9 +325,11 @@ class MultipleTimeWindowsTest(TestCase):
         mock_client.zremrangebyscore.assert_called_with('test-key', 0, 13600.0)
     
     @patch('hub.apps.rate_limiting.utils.cache')
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_window_sliding_prevents_boundary_bursts(self, mock_from_url, mock_cache):
+    def test_window_sliding_prevents_boundary_bursts(self, mock_from_url, mock_get_pool, mock_cache):
         """Test that sliding window prevents bursts at window boundaries"""
+        mock_get_pool.side_effect = Exception("Use fallback")
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         mock_cache.get.return_value = None
@@ -340,9 +366,11 @@ class MultipleTimeWindowsTest(TestCase):
 class GetRateLimitInfoTest(TestCase):
     """Tests for getting rate limit info without incrementing"""
     
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_get_rate_limit_info(self, mock_from_url):
+    def test_get_rate_limit_info(self, mock_from_url, mock_get_pool):
         """Test getting rate limit info without incrementing"""
+        mock_get_pool.side_effect = Exception("Use fallback")
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         
@@ -360,9 +388,11 @@ class GetRateLimitInfoTest(TestCase):
         self.assertEqual(info['reset_time'], 160)  # 100 + 60
         mock_client.zadd.assert_not_called()  # Should not increment
     
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_get_rate_limit_info_removes_expired(self, mock_from_url):
+    def test_get_rate_limit_info_removes_expired(self, mock_from_url, mock_get_pool):
         """Test that get_rate_limit_info removes expired entries"""
+        mock_get_pool.side_effect = Exception("Use fallback")
         mock_client = MagicMock()
         mock_from_url.return_value = mock_client
         
@@ -379,9 +409,11 @@ class GetRateLimitInfoTest(TestCase):
         # Should remove expired entries
         mock_client.zremrangebyscore.assert_called_with('test-key', 0, 140.0)
     
+    @patch('hub.apps.core.redis_pools.get_redis_cache_pool')
     @patch('redis.from_url')
-    def test_get_rate_limit_info_redis_unavailable(self, mock_from_url):
+    def test_get_rate_limit_info_redis_unavailable(self, mock_from_url, mock_get_pool):
         """Test get_rate_limit_info when Redis unavailable"""
+        mock_get_pool.side_effect = Exception("Redis pool unavailable")
         mock_from_url.side_effect = Exception("Redis unavailable")
         
         info = get_rate_limit_info(

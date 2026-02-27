@@ -17,6 +17,7 @@ from hub.apps.contracts.models import Contract, NormalizationStatus, OriginalSpe
 from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.contracts.spec_detection import detect_spec_type
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 User = get_user_model()
 
@@ -44,6 +45,7 @@ class DCSRemovalIntegrationTest(TransactionTestCase):
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {unique_id}", slug=f"test-tenant-{unique_id}"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"test-{unique_id}@example.com", password="testpass123", tenant=self.tenant
         )
@@ -295,13 +297,13 @@ marketplace:
         self.assertEqual(hub_contract["quality"]["rules"][0]["rule_id"], "not_null_id")
 
     def test_original_spec_type_enum_only_odcs(self):
-        """Test that OriginalSpecType enum only contains ODCS"""
+        """Test that OriginalSpecType enum contains ODCS (and ODPS); DCS removed"""
         from hub.apps.contracts.models import OriginalSpecType
 
         # Get all choices
         choices = [choice[0] for choice in OriginalSpecType.choices]
 
-        # Should only contain ODCS
-        self.assertEqual(len(choices), 1)
-        self.assertEqual(choices[0], OriginalSpecType.ODCS)
+        # Must contain ODCS (DCS removal: DATACONTRACT_COM removed)
+        self.assertIn(OriginalSpecType.ODCS, choices)
         self.assertNotIn("DATACONTRACT_COM", choices)
+        self.assertNotIn("DCS", choices)

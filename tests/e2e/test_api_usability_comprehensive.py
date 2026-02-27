@@ -19,7 +19,7 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
@@ -36,7 +36,7 @@ class APIDiscoverabilityE2ETest(E2ETestBase):
         response = self.client.get("/api/v1/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.data
+        data = get_response_data(response) or {}
 
         # Verify structure
         self.assertIn("name", data)
@@ -212,7 +212,7 @@ class APIDiscoverabilityE2ETest(E2ETestBase):
     def test_endpoint_discoverability_via_api_info(self):
         """Test that all major endpoints are discoverable via API info endpoint"""
         response = self.client.get("/api/v1/")
-        endpoints = response.data["endpoints"]
+        endpoints = (get_response_data(response) or {})["endpoints"]
 
         # Verify major endpoints are listed
         required_endpoints = ["auth", "assets", "contracts", "datasets", "jobs"]
@@ -227,7 +227,7 @@ class APIDiscoverabilityE2ETest(E2ETestBase):
     def test_endpoint_urls_are_consistent(self):
         """Test that endpoint URLs follow consistent patterns"""
         response = self.client.get("/api/v1/")
-        endpoints = response.data["endpoints"]
+        endpoints = (get_response_data(response) or {})["endpoints"]
 
         # All endpoints should start with /api/v1/
         for endpoint_name, endpoint_url in endpoints.items():
@@ -255,9 +255,9 @@ class APIConsistencyE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Verify response structure (should be dict with resource fields)
-        self.assertIsInstance(response.data, dict)
-        self.assertIn("id", response.data)
-        self.assertIn("name", response.data)
+        self.assertIsInstance(get_response_data(response) or {}, dict)
+        self.assertIn("id", get_response_data(response) or {})
+        self.assertIn("name", get_response_data(response) or {})
 
     def test_list_response_format_consistency(self):
         """Test that list responses follow consistent format"""
@@ -271,16 +271,16 @@ class APIConsistencyE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Verify pagination structure
-        self.assertIn("results", response.data)
-        self.assertIsInstance(response.data["results"], list)
+        self.assertIn("results", get_response_data(response) or {})
+        self.assertIsInstance((get_response_data(response) or {})["results"], list)
 
         # Verify pagination metadata (if present)
-        if "count" in response.data:
-            self.assertIsInstance(response.data["count"], int)
-        if "next" in response.data:
+        if "count" in get_response_data(response) or {}:
+            self.assertIsInstance((get_response_data(response) or {})["count"], int)
+        if "next" in get_response_data(response) or {}:
             # next can be None or a URL string
             self.assertTrue(
-                response.data["next"] is None or isinstance(response.data["next"], str)
+                (get_response_data(response) or {})["next"] is None or isinstance((get_response_data(response) or {})["next"], str)
             )
 
     def test_error_response_format_consistency(self):
@@ -294,7 +294,7 @@ class APIConsistencyE2ETest(E2ETestBase):
 
         # Handle both DRF Response and HttpResponse
         if hasattr(response, 'data'):
-            response_data = response.data
+            response_data = get_response_data(response) or {}
         else:
             # Parse JSON from HttpResponse
             import json
@@ -326,13 +326,13 @@ class APIConsistencyE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Verify pagination structure
-        self.assertIn("results", response.data)
-        self.assertLessEqual(len(response.data["results"]), 2)
+        self.assertIn("results", get_response_data(response) or {})
+        self.assertLessEqual(len((get_response_data(response) or {})["results"]), 2)
 
         # Test contracts endpoint pagination (if available)
         response = self.client.get("/api/v1/contracts/?page_size=2")
         if response.status_code == status.HTTP_200_OK:
-            self.assertIn("results", response.data)
+            self.assertIn("results", get_response_data(response) or {})
 
     def test_filtering_consistency(self):
         """Test that filtering works consistently across endpoints"""
@@ -347,7 +347,7 @@ class APIConsistencyE2ETest(E2ETestBase):
 
         if response.status_code == status.HTTP_200_OK:
             # If filtering works, results should be filtered
-            results = response.data.get("results", [])
+            results = (get_response_data(response) or {}).get("results", [])
             if len(results) > 0:
                 # Verify filtered results match (if filtering is supported)
                 # Note: Filtering by name may not be implemented, so check if any result matches
@@ -376,7 +376,7 @@ class APIConsistencyE2ETest(E2ETestBase):
         response = self.client.get(f"{url}?ordering=name")
 
         if response.status_code == status.HTTP_200_OK:
-            results = response.data.get("results", [])
+            results = (get_response_data(response) or {}).get("results", [])
             if len(results) >= 2:
                 # Verify ordering (first should be alphabetically first)
                 names = [r.get("name", "") for r in results[:3]]
@@ -467,7 +467,7 @@ class APIErrorMessagesE2ETest(E2ETestBase):
 
         # Handle both DRF Response and HttpResponse
         if hasattr(response, 'data'):
-            response_data = response.data
+            response_data = get_response_data(response) or {}
         else:
             # Parse JSON from HttpResponse
             import json
@@ -503,7 +503,7 @@ class APIErrorMessagesE2ETest(E2ETestBase):
 
         # Handle both DRF Response and HttpResponse
         if hasattr(response, 'data'):
-            response_data = response.data
+            response_data = get_response_data(response) or {}
         else:
             # Parse JSON from HttpResponse
             import json
@@ -535,9 +535,9 @@ class APIErrorMessagesE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
         # Verify error message exists
-        if isinstance(response.data, dict):
-            if "error" in response.data:
-                error = response.data["error"]
+        if isinstance(get_response_data(response) or {}, dict):
+            if "error" in get_response_data(response) or {}:
+                error = (get_response_data(response) or {})["error"]
                 self.assertIn("message", error)
                 message = error["message"]
                 self.assertIsInstance(message, str)
@@ -553,9 +553,9 @@ class APIErrorMessagesE2ETest(E2ETestBase):
 
         # If we get 403, verify message
         if response.status_code == status.HTTP_403_FORBIDDEN:
-            if isinstance(response.data, dict):
-                if "error" in response.data:
-                    error = response.data["error"]
+            if isinstance(get_response_data(response) or {}, dict):
+                if "error" in get_response_data(response) or {}:
+                    error = (get_response_data(response) or {})["error"]
                     self.assertIn("message", error)
                     message = error["message"]
                     self.assertIsInstance(message, str)
@@ -569,9 +569,9 @@ class APIErrorMessagesE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
         # Verify error includes field details
-        if isinstance(response.data, dict):
-            if "error" in response.data:
-                error = response.data["error"]
+        if isinstance(get_response_data(response) or {}, dict):
+            if "error" in get_response_data(response) or {}:
+                error = (get_response_data(response) or {})["error"]
                 # Check for details or field_errors
                 if "details" in error:
                     details = error["details"]
@@ -588,9 +588,9 @@ class APIErrorMessagesE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
         # Verify error code exists
-        if isinstance(response.data, dict):
-            if "error" in response.data:
-                error = response.data["error"]
+        if isinstance(get_response_data(response) or {}, dict):
+            if "error" in get_response_data(response) or {}:
+                error = (get_response_data(response) or {})["error"]
                 if "code" in error:
                     code = error["code"]
                     self.assertIsInstance(code, str)
@@ -610,7 +610,7 @@ class APIErrorMessagesE2ETest(E2ETestBase):
 
         # Handle both DRF Response and HttpResponse
         if hasattr(response, 'data'):
-            response_data = response.data
+            response_data = get_response_data(response) or {}
         else:
             # Parse JSON from HttpResponse
             import json
@@ -637,9 +637,9 @@ class APIErrorMessagesE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
         # Verify timestamp exists
-        if isinstance(response.data, dict):
-            if "error" in response.data:
-                error = response.data["error"]
+        if isinstance(get_response_data(response) or {}, dict):
+            if "error" in get_response_data(response) or {}:
+                error = (get_response_data(response) or {})["error"]
                 if "timestamp" in error:
                     timestamp = error["timestamp"]
                     self.assertIsInstance(timestamp, str)
@@ -654,9 +654,9 @@ class APIErrorMessagesE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
         # Verify message is helpful (not just "Bad Request")
-        if isinstance(response.data, dict):
-            if "error" in response.data:
-                error = response.data["error"]
+        if isinstance(get_response_data(response) or {}, dict):
+            if "error" in get_response_data(response) or {}:
+                error = (get_response_data(response) or {})["error"]
                 if "message" in error:
                     message = error["message"].lower()
                     # Message should not just be "bad request" or "error"
@@ -868,7 +868,7 @@ class APIRateLimitsE2ETest(E2ETestBase):
                 # Verify error format
                 # Handle both DRF Response (has .data) and JsonResponse (needs JSON parsing)
                 if hasattr(response, 'data'):
-                    error_data = response.data
+                    error_data = get_response_data(response) or {}
                 else:
                     import json
                     try:

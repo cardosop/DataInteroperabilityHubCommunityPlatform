@@ -1,0 +1,13 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Data Interoperability Hub API",
+    "version": "1.0.0",
+    "description": "Baseline for API contract tests. Run scripts/contract_test_openapi.py --update-baseline to replace with current schema."
+  },
+  "paths": {},
+  "components": {
+    "schemas": {},
+    "securitySchemes": {}
+  }
+}

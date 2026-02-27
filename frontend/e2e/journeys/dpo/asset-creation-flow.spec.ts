@@ -4,18 +4,32 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
-import { waitForLoadingComplete } from '../../fixtures/helpers';
+import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
+import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('Asset Creation Flow', () => {
-  test.setTimeout(120000); // 2 minutes
+  test.setTimeout(300000); // 5 min: visible/slowMo; create + detail load
+
+  test.describe('Failure', () => {
+    test('unauthenticated access to assets create redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/assets/create', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|assets|register)/, { timeout: 20_000 });
+      const url = page.url();
+      const onLogin = url.includes('/login');
+      const onAssetsWithLoginPrompt =
+        url.includes('/assets') &&
+        (await hasLoginPrompt(page));
+      expect(onLogin || onAssetsWithLoginPrompt).toBe(true);
+    });
+  });
 
   test('should create asset successfully', async ({ page }) => {
     const testUser = await getTestUser();
-    await loginUser(page, testUser);
-
-    // Navigate to assets page
-    await page.goto('/assets');
+    await loginAndNavigateToRoute(page, testUser, '/assets', {
+      timeout: 60000,
+      contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+    });
     await waitForLoadingComplete(page);
 
     // Wait for create button to be visible
@@ -44,12 +58,26 @@ test.describe('Asset Creation Flow', () => {
 
     // Wait for redirect to detail page
     await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });
-    await waitForLoadingComplete(page);
+    // API can be slow under Docker/parallel load; wait for loading to finish then detail
+    await waitForLoadingComplete(page, { timeout: 35000 });
+    await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 25000 });
+    await page.waitForTimeout(2000); // Allow React to finish rendering and API to settle
 
     // Verify asset was created
-    const assetHeading = page.locator('.asset-detail-page h1, .asset-detail-content h1').first();
-    await expect(assetHeading).toBeVisible({ timeout: 10000 });
+    const hasError = (await page.locator('.error-display').count()) > 0;
+    if (hasError) {
+      const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+      throw new Error(
+        `Asset creation failed (required for create test). Backend error: ${errText.slice(0, 250)}`
+      );
+    }
+    const assetHeading = page
+      .locator('.asset-detail-page .asset-detail-content h1, .asset-detail-page h1')
+      .first();
+    await expect(assetHeading).toBeVisible({ timeout: 15000 });
     await expect(assetHeading).toContainText('Test Asset', { timeout: 10000 });
-    await expect(page.locator('.status-badge').first()).toContainText('DRAFT');
+    const statusBadge = page.locator('.asset-detail-page .status-badge').first();
+    await expect(statusBadge).toBeVisible({ timeout: 10000 });
+    await expect(statusBadge).toContainText('DRAFT');
   });
 });

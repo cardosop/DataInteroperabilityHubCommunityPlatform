@@ -1,11 +1,19 @@
 """
 Tenant Signals
 
-Handles post-creation tasks like default role creation.
+Handles post-creation tasks like default role creation and KYC status audit (feat1 2.3).
 """
-from django.db.models.signals import post_save
+import logging
+
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
+
 from .models import Tenant
+
+logger = logging.getLogger(__name__)
+
+# Store previous kyc_status per tenant pk for post_save audit (feat1 2.3.2)
+_tenant_kyc_before_save = {}
 
 
 @receiver(post_save, sender=Tenant)
@@ -86,4 +94,50 @@ def create_default_roles(sender, instance, created, **kwargs):
         # Role model doesn't exist yet, skip role creation
         # This will be handled when users app is implemented
         pass
+
+
+@receiver(pre_save, sender=Tenant)
+def _store_kyc_status_before_save(sender, instance, **kwargs):
+    """Store previous kyc_status for post_save audit (feat1 2.3.2)."""
+    if instance.pk:
+        try:
+            old = Tenant.objects.filter(pk=instance.pk).values_list("kyc_status", flat=True).first()
+            _tenant_kyc_before_save[instance.pk] = old
+        except Exception:
+            pass
+
+
+@receiver(post_save, sender=Tenant)
+def audit_kyc_status_change(sender, instance, created, **kwargs):
+    """
+    Emit KYC_STATUS_CHANGED audit event when Tenant.kyc_status changes (feat1 2.3.2).
+    Catches all code paths (API, admin, service).
+    """
+    if created:
+        return
+    old_kyc = _tenant_kyc_before_save.pop(instance.pk, None)
+    if old_kyc is None or old_kyc == instance.kyc_status:
+        return
+    try:
+        from hub.apps.audit.utils import create_audit_event
+
+        create_audit_event(
+            resource_type="TENANT",
+            action="KYC_STATUS_CHANGED",
+            tenant=instance,
+            actor_user=None,
+            resource_id=str(instance.id),
+            details={
+                "previous_kyc_status": old_kyc,
+                "new_kyc_status": instance.kyc_status,
+                "tenant_id": str(instance.id),
+            },
+        )
+    except Exception as e:
+        logger.exception(
+            "Failed to create KYC_STATUS_CHANGED audit event for tenant %s: %s",
+            instance.pk,
+            e,
+            extra={"tenant_id": str(instance.id), "old_kyc": old_kyc, "new_kyc": instance.kyc_status},
+        )
 

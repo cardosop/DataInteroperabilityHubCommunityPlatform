@@ -146,6 +146,46 @@ services:
       - REDIS_MAX_MEMORY=${REDIS_CHANNELS_MAX_MEMORY:-512mb}
       - REDIS_MAXMEMORY_POLICY=allkeys-lru
 
+  # BaaS dedicated Postgres (optional; set BAAS_DATABASE_URL to use)
+  postgres-baas:
+    image: postgres:16-alpine
+    container_name: hub-postgres-baas
+    environment:
+      POSTGRES_USER: ${BAAS_POSTGRES_USER:-hub_baas}
+      POSTGRES_PASSWORD: ${BAAS_POSTGRES_PASSWORD:-hub_baas}
+      POSTGRES_DB: ${BAAS_POSTGRES_DB:-baas}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "${BAAS_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres-baas-data:/var/lib/postgresql/data
+    command: postgres -c max_connections=100
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BAAS_POSTGRES_USER:-hub_baas}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - hub-net
+
+  # BaaS dedicated Redis (optional; set BAAS_REDIS_URL to use)
+  redis-baas:
+    image: redis:7-alpine
+    container_name: hub-redis-baas
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${BAAS_REDIS_PORT:-6383}:6379"
+    volumes:
+      - redis-baas-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hub-net
+
   # Redis Exporter for Cache Instance
   redis-exporter-cache:
     image: oliver006/redis_exporter:latest
@@ -348,6 +388,9 @@ services:
       - REDIS_CHANNELS_URL=redis://redis-channels:6379/0
       # Legacy REDIS_URL for backward compatibility
       - REDIS_URL=redis://redis-cache:6379/0
+      # BaaS dedicated instances (optional; leave unset to use main DB/Redis). See docs/runbooks/BAAS_INFRASTRUCTURE.md
+      - BAAS_DATABASE_URL=${BAAS_DATABASE_URL:-}
+      - BAAS_REDIS_URL=${BAAS_REDIS_URL:-}
       # Prefect Integration Service URL (for scheduled ingestion/export deployment sync and trigger)
       - PREFECT_INTEGRATION_SERVICE_URL=${PREFECT_INTEGRATION_SERVICE_URL:-http://prefect-integration-service:8084}
       # E2E: set RATE_LIMIT_E2E_RELAX=true when running Playwright E2E against this API
@@ -1427,10 +1470,12 @@ networks:
 
 volumes:
   pgdata:
+  postgres-baas-data:
   redis-cache-data:
   redis-queue-data:
   redis-events-data:
   redis-channels-data:
+  redis-baas-data:
   minio-data:
   fuseki-data:
   prometheus-data:

@@ -7,9 +7,13 @@ Tests all file storage operations:
 - File deletion
 - File storage integration (S3/MinIO)
 - File storage error handling
-"""
 
-import io
+Multi-status cases (see docs/TEST_ASSERTION_CONVENTIONS.md):
+- Init upload: 201=success, 400=validation, 503=S3 unavailable, 500=internal error
+- Download: 200=success, 404=not found, 503=S3 unavailable, 400=file not downloadable (e.g. deleted)
+- Delete: 204=success, 200=success (both valid), 404=not found
+- Unauthorized: 401 (single expected)
+"""
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -19,6 +23,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory
 
@@ -40,27 +45,27 @@ class FileUploadTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.client.force_authenticate(user=self.user)
 
     def test_file_upload_init(self):
-        """Test file upload initialization"""
+        """Test file upload initialization (POST /api/v1/files/init/)."""
         response = self.client.post(
-            "/api/v1/files/init-upload/",
+            "/api/v1/files/init/",
             {"name": "test.txt", "size": 1024, "content_type": "text/plain"},
             format="json",
         )
 
-        # Should return 200, 201 (created), 404 (endpoint not found), or 405 (Method Not Allowed)
-        self.assertIn(response.status_code, [200, 201, 404, 405])
+        # 201=success; 400=validation; 503=S3 unavailable; 500=internal (see module docstring)
+        self.assertIn(response.status_code, [201, 400, 500, 503])
 
-        if response.status_code in [200, 201]:
-            # Should have file_id
+        if response.status_code == 201:
             self.assertIn("file_id", response.data or {})
 
     def test_file_upload_with_ingestion_mode(self):
-        """Test file upload with ingestion mode"""
+        """Test file upload with ingestion_mode (extra field; init accepts it or ignores)."""
         response = self.client.post(
-            "/api/v1/files/init-upload/",
+            "/api/v1/files/init/",
             {
                 "name": "test.csv",
                 "size": 2048,
@@ -70,8 +75,8 @@ class FileUploadTest(TestCase):
             format="json",
         )
 
-        # Should return 200, 201 (created), 404 (endpoint not found), or 405 (Method Not Allowed)
-        self.assertIn(response.status_code, [200, 201, 404, 405])
+        # 201=success; 400=validation; 503=S3 unavailable; 500=internal
+        self.assertIn(response.status_code, [201, 400, 500, 503])
 
 
 class FileDownloadTest(TestCase):
@@ -100,17 +105,15 @@ class FileDownloadTest(TestCase):
         )
 
     def test_file_download(self):
-        """Test file download"""
+        """Test file download (file exists, ACTIVE status)."""
         response = self.client.get(f"/api/v1/files/{self.file_obj.id}/download/")
 
-        # Should return 200 (success), 404 (not found), or 503 (service unavailable)
-        self.assertIn(response.status_code, [200, 404, 503])
+        # 200=success; 404=not found (tenant isolation); 503=S3 unavailable; 500=internal
+        self.assertIn(response.status_code, [200, 404, 500, 503])
 
     def test_file_download_nonexistent(self):
-        """Test file download for nonexistent file"""
+        """Test file download for nonexistent file — single expected 404."""
         response = self.client.get("/api/v1/files/00000000-0000-0000-0000-000000000000/download/")
-
-        # Should return 404 (not found)
         self.assertEqual(response.status_code, 404)
 
 
@@ -127,6 +130,7 @@ class FileDeletionTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.client.force_authenticate(user=self.user)
 
         # Create test file
@@ -143,7 +147,7 @@ class FileDeletionTest(TestCase):
         """Test file deletion"""
         response = self.client.delete(f"/api/v1/files/{self.file_obj.id}/")
 
-        # Should return 204 (no content) or 200 (success) or 404 (not found)
+        # 204/200=success; 404=not found (see module docstring)
         self.assertIn(response.status_code, [200, 204, 404])
 
         if response.status_code in [200, 204]:
@@ -216,16 +220,16 @@ class FileStorageErrorHandlingTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.client.force_authenticate(user=self.user)
 
     def test_file_upload_invalid_data(self):
         """Test file upload with invalid data"""
         response = self.client.post(
-            "/api/v1/files/init-upload/", {"invalid_field": "invalid_value"}, format="json"
+            "/api/v1/files/init/", {"invalid_field": "invalid_value"}, format="json"
         )
 
-        # Should return 400 (bad request), 404 (endpoint not found), or 405 (Method Not Allowed)
-        self.assertIn(response.status_code, [400, 404, 405])
+        self.assertEqual(response.status_code, 400)
 
     def test_file_download_deleted_file(self):
         """Test file download for deleted file"""
@@ -241,16 +245,15 @@ class FileStorageErrorHandlingTest(TestCase):
 
         response = self.client.get(f"/api/v1/files/{file_obj.id}/download/")
 
-        # Should return 404 (not found) or 410 (gone) or 400 (bad request)
-        self.assertIn(response.status_code, [404, 410, 400])
+        self.assertEqual(response.status_code, 400)
 
     def test_file_upload_unauthorized(self):
         """Test file upload without authentication"""
         self.client.force_authenticate(user=None)
 
         response = self.client.post(
-            "/api/v1/files/init-upload/", {"name": "test.txt", "size": 1024}, format="json"
+            "/api/v1/files/init/",
+            {"name": "test.txt", "size": 1024, "content_type": "text/plain"},
+            format="json",
         )
-
-        # Should return 401 (unauthorized) or 403 (forbidden) or 404 (not found)
-        self.assertIn(response.status_code, [401, 403, 404])
+        self.assertEqual(response.status_code, 401)

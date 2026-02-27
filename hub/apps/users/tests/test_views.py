@@ -12,6 +12,7 @@ import uuid
 
 from hub.apps.users.models import User, Role, UserRole, UserStatus
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -55,6 +56,9 @@ class UserViewSetTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+
+        # Active subscription required so TenantSuspensionMiddleware allows writes
+        ensure_tenant_has_active_subscription(self.tenant)
     
     def test_create_user(self):
         """Test user creation"""
@@ -68,7 +72,7 @@ class UserViewSetTest(TestCase):
             "status": "ACTIVE"
         }
         
-        response = self.client.post("/api/v1/users/users/", data, format="json")
+        response = self.client.post("/api/v1/users/", data, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["email"], "newuser@example.com")
         self.assertEqual(response.data["status"], "ACTIVE")
@@ -82,7 +86,7 @@ class UserViewSetTest(TestCase):
         """Test user listing (tenant-scoped)"""
         self.client.force_authenticate(user=self.tenant_admin)
         
-        response = self.client.get("/api/v1/users/users/")
+        response = self.client.get("/api/v1/users/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Should only see users in the same tenant
@@ -95,7 +99,7 @@ class UserViewSetTest(TestCase):
         """Test user retrieval"""
         self.client.force_authenticate(user=self.tenant_admin)
         
-        response = self.client.get(f"/api/v1/users/users/{self.regular_user.id}/")
+        response = self.client.get(f"/api/v1/users/{self.regular_user.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["email"], "user@example.com")
     
@@ -108,7 +112,7 @@ class UserViewSetTest(TestCase):
         }
         
         response = self.client.patch(
-            f"/api/v1/users/users/{self.regular_user.id}/",
+            f"/api/v1/users/{self.regular_user.id}/",
             data,
             format="json"
         )
@@ -132,7 +136,7 @@ class UserViewSetTest(TestCase):
         )
         user_id = test_user.id
         
-        response = self.client.delete(f"/api/v1/users/users/{user_id}/")
+        response = self.client.delete(f"/api/v1/users/{user_id}/")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
         # Verify user was deleted
@@ -156,7 +160,7 @@ class UserViewSetTest(TestCase):
             "display_name": "Invited User"
         }
         
-        response = self.client.post("/api/v1/users/users/invite/", data, format="json")
+        response = self.client.post("/api/v1/users/invite/", data, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["email"], "invited@example.com")
         self.assertEqual(response.data["status"], "INVITED")
@@ -189,19 +193,19 @@ class UserViewSetTest(TestCase):
         )
         
         # Regular user should not see users from other tenant
-        response = self.client.get("/api/v1/users/users/")
+        response = self.client.get("/api/v1/users/")
         user_emails = [user["email"] for user in response.data["results"]]
         self.assertNotIn("other@example.com", user_emails)
         
         # Regular user should not be able to retrieve other tenant's user
-        response = self.client.get(f"/api/v1/users/users/{other_user.id}/")
+        response = self.client.get(f"/api/v1/users/{other_user.id}/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
     
     def test_platform_admin_sees_all_users(self):
         """Test that platform admins can see all users"""
         self.client.force_authenticate(user=self.platform_admin)
         
-        response = self.client.get("/api/v1/users/users/")
+        response = self.client.get("/api/v1/users/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         user_emails = [user["email"] for user in response.data["results"]]

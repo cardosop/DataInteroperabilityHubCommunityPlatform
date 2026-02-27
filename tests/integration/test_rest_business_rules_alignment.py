@@ -29,6 +29,7 @@ from hub.apps.scheduled_ingestion.models import (
 )
 from hub.apps.tenants.models import KYCStatus
 from hub.apps.users.models import Role, UserRole, UserStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from tests.factories import TenantFactory, UserFactory
 
 
@@ -79,6 +80,8 @@ class TestContractsRestBusinessRulesAlignment(TestCase):
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant()
         self.tenant_b = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant_a)
+        ensure_tenant_has_active_subscription(self.tenant_b)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         self.user_b = UserFactory.create_user(tenant=self.tenant_b, status=UserStatus.ACTIVE)
         self.asset_a = AssetFactory.create_asset(tenant=self.tenant_a)
@@ -240,6 +243,7 @@ class TestODPSCreateProductBusinessRulesAlignment(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         # Ensure user has tenant for create_product
         if not getattr(self.user_a, "tenant", None):
@@ -310,6 +314,7 @@ class TestODPSServiceCreateOdpsBusinessRulesAlignment(TestCase):
 
     def setUp(self):
         self.tenant_a = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
 
     def test_create_odps_rejects_invalid_structure_raises_validation_error(self):
@@ -385,6 +390,7 @@ class TestAssetsRestBusinessRulesAlignment(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant(kyc_status=KYCStatus.VERIFIED)
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         if not getattr(self.user_a, "tenant", None):
             self.user_a.tenant = self.tenant_a
@@ -548,6 +554,7 @@ class TestDatasetsRestBusinessRulesAlignment(TestCase):
 
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant(kyc_status=KYCStatus.VERIFIED)
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         if not getattr(self.user_a, "tenant", None):
             self.user_a.tenant = self.tenant_a
@@ -655,6 +662,7 @@ class TestMarketplaceRestBusinessRulesAlignment(TestCase):
 
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant(kyc_status=KYCStatus.VERIFIED)
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         if not getattr(self.user_a, "tenant", None):
             self.user_a.tenant = self.tenant_a
@@ -765,6 +773,7 @@ class TestFilesRestBusinessRulesAlignment(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         if not getattr(self.user_a, "tenant", None):
             self.user_a.tenant = self.tenant_a
@@ -874,6 +883,8 @@ class TestGovernanceRestBusinessRulesAlignment(TestCase):
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant()
         self.tenant_b = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant_a)
+        ensure_tenant_has_active_subscription(self.tenant_b)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         self.user_b = UserFactory.create_user(tenant=self.tenant_b, status=UserStatus.ACTIVE)
         if not getattr(self.user_a, "tenant", None):
@@ -1002,6 +1013,7 @@ class TestComplianceRestBusinessRulesAlignment(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         if not getattr(self.user_a, "tenant", None):
             self.user_a.tenant = self.tenant_a
@@ -1068,6 +1080,7 @@ class TestMeshRestBusinessRulesAlignment(TestCase):
 
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         if not getattr(self.user_a, "tenant", None):
             self.user_a.tenant = self.tenant_a
@@ -1137,6 +1150,7 @@ class TestDQRestBusinessRulesAlignment(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         if not getattr(self.user_a, "tenant", None):
             self.user_a.tenant = self.tenant_a
@@ -1200,6 +1214,7 @@ class TestVirtualizationRestBusinessRulesAlignment(TestCase):
 
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         if not getattr(self.user_a, "tenant", None):
             self.user_a.tenant = self.tenant_a
@@ -1274,6 +1289,7 @@ class TestScheduledIngestionRestBusinessRulesAlignment(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         if not getattr(self.user_a, "tenant", None):
             self.user_a.tenant = self.tenant_a
@@ -1351,6 +1367,7 @@ class TestIntegrationsRestBusinessRulesAlignment(TestCase):
 
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         if not getattr(self.user_a, "tenant", None):
             self.user_a.tenant = self.tenant_a
@@ -1429,6 +1446,7 @@ class TestSocialRestBusinessRulesAlignment(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.tenant_a = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = UserFactory.create_user(tenant=self.tenant_a, status=UserStatus.ACTIVE)
         if not getattr(self.user_a, "tenant", None):
             self.user_a.tenant = self.tenant_a

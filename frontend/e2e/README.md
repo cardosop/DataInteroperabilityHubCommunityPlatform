@@ -24,6 +24,7 @@ End-to-end tests for the frontend application using Playwright.
 3. **MailHog (for JOURNEY-AUTH-003)**: Password reset E2E uses real email; if MailHog is not reachable or email not received, the test is skipped.
    - With **docker-compose.dev.yml**: api-service and worker-service default to `SMTP_HOST=mailhog`, `SMTP_PORT=1025`, `SMTP_USE_TLS=false`. Start mailhog and ensure api-service and worker-service are up so password reset emails reach MailHog.
    - Start: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d mailhog api-service worker-service`
+   - With **docker-compose.test.yml**: `mailhog-test` is a dependency of `api-service-test`, so it starts automatically with `docker compose -f docker-compose.test.yml up -d`.
    - MailHog UI/API: `http://localhost:8025` (set `MAILHOG_URL` if different)
 
 4. **Frontend dev server**: Tests will start the dev server automatically (with `VITE_API_BASE_URL` set so the proxy targets the API), or reuse if already running. **If you start the frontend manually**, you must set the API URL so login and API calls hit the backend:
@@ -34,9 +35,24 @@ End-to-end tests for the frontend application using Playwright.
 
 ## Running Tests
 
+**Prerequisite**: Backend must be running. `npm run test:e2e` auto-detects the API port:
+- **Port 8000**: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`
+- **Port 8001**: `docker compose -f docker-compose.test.yml --env-file .env.test up -d` (use `--env-file .env.test` so Postgres uses `hub_test` credentials)
+
+**Verify test stack**: `./scripts/verify_test_stack.sh` (from repo root) or `curl -sf http://localhost:8001/health/` and `curl -sf http://localhost:8025/`.
+
+**Persona users (TA, PA, AUD, CPO, DEV, DMO)**: When API is on 8001, `npm run test:e2e` runs `ensure_e2e_user_roles` automatically. For manual runs: `docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`.
+
+**API container names** (used by `scripts/e2e-detect-api.sh` for rate-limit reset and setup):
+- Port 8000: `hub-api` (docker-compose.yml) or `hub-dev-api` (docker-compose.dev.yml)
+- Port 8001: `hub-test-api` (docker-compose.test.yml)
+
 ```bash
-# Run all E2E tests
+# Run all E2E tests (auto-detects 8000 or 8001)
 npm run test:e2e
+
+# Or: start dev backend + run E2E in one command
+npm run test:e2e:full
 
 # Phase 1 E2E (DoD-2.2, JOURNEY-AUTH-*) against Docker API on port 8000
 VITE_API_BASE_URL=http://localhost:8000/api/v1 npx playwright test e2e/login-app-shell.spec.ts e2e/auth-visitor-journeys.spec.ts
@@ -52,6 +68,9 @@ npm run test:e2e:ui
 
 # Debug a test
 npm run test:e2e:debug
+
+# View HTML report (serves at http://localhost:9323)
+npm run test:e2e:report
 
 # Run with visible browser and slow motion (for local follow-along)
 # Uses E2E_VISIBLE=1 and --project=visible (headed + slowMo + video + trace)
@@ -109,6 +128,25 @@ npm run test:e2e:visible
 ```
 
 **Note**: CI continues to use headless mode and parallel execution. Visible execution is for local development only.
+
+## Role Requirements (Phase 6.11.7)
+
+Role-gated journeys require `ensure_e2e_user_roles` to be run before E2E. The command creates these persona users:
+
+| Persona | Email | Roles | Used By |
+| ------- | ----- | ----- | ------- |
+| Data Product Owner (DPO) | e2e_test@example.com | DATA_PROVIDER | DPO, phase2, default |
+| Data Consumer (DC) | e2e_consumer@example.com | DATA_CONSUMER | DC journeys |
+| Tenant Admin (TA) | e2e_admin@example.com | TENANT_ADMIN, DATA_PROVIDER | TA journeys, JOURNEY-TA-* |
+| Platform Admin (PA) | e2e_platform@example.com | is_platform_admin=True | PA journeys, JOURNEY-PA-*, JOURNEY-MPA-* |
+| Auditor (AUD) | e2e_auditor@example.com | AUDITOR | AUD journeys, JOURNEY-AUD-* |
+| Compliance Officer (CPO) | e2e_cpo@example.com | TENANT_ADMIN, DATA_PROVIDER, COMPLIANCE_OFFICER | CPO journeys, JOURNEY-CPO-* |
+| External Developer (DEV) | e2e_developer@example.com | DATA_PROVIDER | DEV journeys, JOURNEY-DEV-* |
+| Data Mesh Domain Owner (DMO) | e2e_dmo@example.com | TENANT_ADMIN, DATA_PROVIDER | DMO journeys, JOURNEY-DMO-* |
+
+**Fixtures**: `getTenantAdminUser()`, `getPlatformAdminUser()`, `getAuditorUser()`, `getComplianceOfficerUser()`, `getExternalDeveloperUser()`, `getDataMeshDomainOwnerUser()` from `fixtures/auth.ts`. Each throws with a clear message if the user does not exist (run `ensure_e2e_user_roles`).
+
+**Validation**: `e2e/setup/persona-login-validation.spec.ts` validates all persona users can log in via API.
 
 ## Notes
 

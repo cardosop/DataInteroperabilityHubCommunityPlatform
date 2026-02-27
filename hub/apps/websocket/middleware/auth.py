@@ -47,284 +47,59 @@ def _get_user_from_token_sync(token: str) -> Optional[User]:
     async tests, the connection might be closed in the thread that
     database_sync_to_async uses, so we need to ensure it's opened.
     """
-    # #region agent log
-    import json
-    import threading
-    import time
-
-    try:
-        with open("/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a") as f:
-            f.write(
-                json.dumps(
-                    {
-                        "sessionId": "debug-session",
-                        "runId": "run1",
-                        "hypothesisId": "A",
-                        "location": "auth.py:_get_user_from_token_sync:entry",
-                        "message": "Function entry",
-                        "data": {
-                            "thread_id": threading.get_ident(),
-                            "thread_name": threading.current_thread().name,
-                            "token_length": len(token) if token else 0,
-                        },
-                        "timestamp": int(time.time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-    except Exception:
-        pass
-    # #endregion
     try:
         from django.db import connections
 
         from hub.apps.auth.jwt_utils import JWTTokenGenerator
 
-        # #region agent log
-        try:
-            conn = connections["default"]
-            conn_state = {
-                "has_connection": conn.connection is not None,
-                "connection_closed": (
-                    hasattr(conn.connection, "closed") and conn.connection.closed
-                    if conn.connection
-                    else None
-                ),
-                "thread_id": threading.get_ident(),
-            }
-            with open("/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "A",
-                            "location": "auth.py:_get_user_from_token_sync:before_decode",
-                            "message": "Connection state before decode",
-                            "data": conn_state,
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-
         payload = JWTTokenGenerator.decode_access_token(token)
         if not payload:
             return None
 
-        # Get user_id from payload
         user_id = payload.get("sub")
         if not user_id:
             return None
 
-        # #region agent log
-        try:
-            with open("/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "B",
-                            "location": "auth.py:_get_user_from_token_sync:before_query",
-                            "message": "Before query attempt",
-                            "data": {"user_id": user_id, "thread_id": threading.get_ident()},
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-
-        # Query user with retry on connection errors
-        # The root cause: In pytest-django async tests, the database connection
-        # created in setUp (sync context) may be closed when database_sync_to_async
-        # executes. However, database_sync_to_async properly handles test database
-        # transactions, so the user created in setUp should be visible.
-        # Solution: Use close_old_connections() before querying to ensure we get
-        # a fresh connection, and retry on connection errors.
+        # Query user with retry on connection errors (pytest-django async: connection may be stale)
         max_retries = 2
         for attempt in range(max_retries):
-            # #region agent log
             try:
-                with open("/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a") as f:
-                    f.write(
-                        json.dumps(
-                            {
-                                "sessionId": "debug-session",
-                                "runId": "run1",
-                                "hypothesisId": "C",
-                                "location": "auth.py:_get_user_from_token_sync:before_query_attempt",
-                                "message": "Before query attempt",
-                                "data": {
-                                    "attempt": attempt,
-                                    "thread_id": threading.get_ident(),
-                                },
-                                "timestamp": int(time.time() * 1000),
-                            }
-                        )
-                        + "\n"
-                    )
-            except Exception:
-                pass
-            # #endregion
-            try:
-                # Close old connections before querying to ensure we get a fresh connection
-                # This is critical for pytest-django async tests where connections may be stale
                 from django.db import close_old_connections
 
                 if attempt > 0:
                     close_old_connections()
 
-                # Ensure connection is open by accessing it directly
-                # database_sync_to_async ensures proper test database transaction handling,
-                # so the user created in setUp should be visible here
                 connection = connections["default"]
                 try:
-                    # Try to ensure connection is open
-                    # This may fail, but that's OK - Django will open it on query
                     connection.ensure_connection()
-                except Exception:
-                    # If ensure_connection fails, close old connections and try again
+                except Exception as conn_err:
                     close_old_connections()
                     try:
                         connection.ensure_connection()
-                    except Exception:
-                        # If it still fails, that's OK - Django will open it on query
-                        pass
+                    except Exception as retry_err:
+                        logger.debug(
+                            "websocket_auth_ensure_connection_failed",
+                            extra={
+                                "error_type": type(retry_err).__name__,
+                                "error": str(retry_err),
+                                "attempt": attempt,
+                            },
+                        )
+                    else:
+                        logger.debug(
+                            "websocket_auth_ensure_connection_retry_ok",
+                            extra={"error_type": type(conn_err).__name__, "error": str(conn_err)},
+                        )
+                    # Django will open connection on query if needed
 
-                # #region agent log
-                try:
-                    with open(
-                        "/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a"
-                    ) as f:
-                        f.write(
-                            json.dumps(
-                                {
-                                    "sessionId": "debug-session",
-                                    "runId": "run1",
-                                    "hypothesisId": "C",
-                                    "location": "auth.py:_get_user_from_token_sync:before_actual_query",
-                                    "message": "About to execute query",
-                                    "data": {
-                                        "user_id": user_id,
-                                        "attempt": attempt,
-                                        "thread_id": threading.get_ident(),
-                                    },
-                                    "timestamp": int(time.time() * 1000),
-                                }
-                            )
-                            + "\n"
-                        )
-                except Exception:
-                    pass
-                # #endregion
-                # Query user - Django will automatically open a connection if needed
-                # Even if ensure_connection() failed, Django's ORM will open a connection
-                # when we perform the query
                 user = User.objects.select_related("tenant").get(id=user_id)
-                # #region agent log
-                try:
-                    with open(
-                        "/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a"
-                    ) as f:
-                        f.write(
-                            json.dumps(
-                                {
-                                    "sessionId": "debug-session",
-                                    "runId": "run1",
-                                    "hypothesisId": "D",
-                                    "location": "auth.py:_get_user_from_token_sync:query_success",
-                                    "message": "Query succeeded",
-                                    "data": {
-                                        "user_id": str(user.id) if user else None,
-                                        "attempt": attempt,
-                                        "thread_id": threading.get_ident(),
-                                    },
-                                    "timestamp": int(time.time() * 1000),
-                                }
-                            )
-                            + "\n"
-                        )
-                except Exception:
-                    pass
-                # #endregion
-                # Validate token version
                 token_valid = JWTTokenGenerator.validate_token_version(payload, user)
-                # #region agent log
-                try:
-                    with open(
-                        "/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a"
-                    ) as f:
-                        f.write(
-                            json.dumps(
-                                {
-                                    "sessionId": "debug-session",
-                                    "runId": "run1",
-                                    "hypothesisId": "D",
-                                    "location": "auth.py:_get_user_from_token_sync:token_validation",
-                                    "message": "Token validation result",
-                                    "data": {
-                                        "token_valid": token_valid,
-                                        "user_id": str(user.id) if user else None,
-                                        "attempt": attempt,
-                                        "thread_id": threading.get_ident(),
-                                    },
-                                    "timestamp": int(time.time() * 1000),
-                                }
-                            )
-                            + "\n"
-                        )
-                except Exception:
-                    pass
-                # #endregion
                 if token_valid:
                     return user
-                # If token version validation fails, return None
                 return None
             except User.DoesNotExist:
-                return None  # User doesn't exist, no point retrying
+                return None
             except Exception as db_error:
-                # #region agent log
-                try:
-                    error_str = str(db_error).lower()
-                    is_connection_error = (
-                        "connection" in error_str
-                        or "closed" in error_str
-                        or "operationalerror" in error_str
-                    )
-                    with open(
-                        "/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a"
-                    ) as f:
-                        f.write(
-                            json.dumps(
-                                {
-                                    "sessionId": "debug-session",
-                                    "runId": "run1",
-                                    "hypothesisId": "E",
-                                    "location": "auth.py:_get_user_from_token_sync:query_error",
-                                    "message": "Query error",
-                                    "data": {
-                                        "error_type": type(db_error).__name__,
-                                        "error_message": str(db_error),
-                                        "is_connection_error": is_connection_error,
-                                        "attempt": attempt,
-                                        "thread_id": threading.get_ident(),
-                                        "max_retries": max_retries,
-                                    },
-                                    "timestamp": int(time.time() * 1000),
-                                }
-                            )
-                            + "\n"
-                        )
-                except Exception:
-                    pass
-                # #endregion
                 error_str = str(db_error).lower()
                 is_connection_error = (
                     "connection" in error_str
@@ -332,45 +107,17 @@ def _get_user_from_token_sync(token: str) -> Optional[User]:
                     or "operationalerror" in error_str
                 )
                 if is_connection_error and attempt < max_retries - 1:
-                    # Connection error, close old connections and retry
-                    # This gives Django a chance to open a fresh connection on retry
-                    from django.db import close_old_connections
-
                     close_old_connections()
                     continue
-                else:
-                    # Other error or last attempt, log and return None
-                    if is_connection_error:
-                        logger.warning("websocket_token_auth_db_error", error=str(db_error))
-                    return None
+                if is_connection_error:
+                    logger.warning("websocket_token_auth_db_error", error=str(db_error))
+                return None
     except Exception as e:
-        # #region agent log
-        try:
-            with open("/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "A",
-                            "location": "auth.py:_get_user_from_token_sync:outer_exception",
-                            "message": "Outer exception",
-                            "data": {
-                                "error_type": type(e).__name__,
-                                "error_message": str(e),
-                                "thread_id": threading.get_ident(),
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-        # Only log non-database errors here (database errors are logged above)
         if "connection" not in str(e).lower():
-            logger.warning("websocket_token_auth_failed", error=str(e))
+            logger.warning(
+                "websocket_token_auth_failed",
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
     return None
 
 

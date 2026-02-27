@@ -369,14 +369,14 @@ class EventBusReliabilityTest(TestCase):
 
         # Execute the persistence task directly to verify it works
         # (In production, RQ workers execute this)
-        # Get the event data from the queued job or recreate it
+        # Use a FRESH event_id: the published event may already be persisted by the
+        # async job, so reusing it would cause UniqueViolation. We verify persistence
+        # by calling it with new data.
         from hub.apps.core.events.persistence_tasks import persist_event_async
 
-        # Since we can't easily get event data from queued job,
-        # we'll verify async behavior by checking the job exists
-        # and then manually execute persistence to verify it works
+        fresh_event_id = str(uuid.uuid4())
         event_data = {
-            "event_id": event_id,
+            "event_id": fresh_event_id,
             "event_type": "contract.created",
             "event_version": "1.0.0",
             "timestamp": timezone.now().isoformat(),
@@ -389,12 +389,11 @@ class EventBusReliabilityTest(TestCase):
             "metadata": {},
         }
 
-        # Execute persistence directly to verify it works
         persist_event_async(event_data)
 
         # Check event was persisted
-        event = Event.objects.filter(event_id=event_id).first()
-        self.assertIsNotNone(event, f"Event {event_id} was not persisted.")
+        event = Event.objects.filter(event_id=fresh_event_id).first()
+        self.assertIsNotNone(event, f"Event {fresh_event_id} was not persisted.")
         self.assertEqual(event.event_type, "contract.created")
 
     def test_publish_with_deduplication(self):

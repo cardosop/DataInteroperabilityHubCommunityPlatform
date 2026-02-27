@@ -152,6 +152,7 @@ class TestDPOEnhancedWorkflowsWithODPS(E2ETestBase):
             "version": "4.1",
             "product": {
                 "details": product_details,
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}, {"name": "value", "type": "integer"}]},
                 "contract": {
                     "spec": odcs_contract
                 }
@@ -372,8 +373,8 @@ class TestDPOEnhancedWorkflowsWithODPS(E2ETestBase):
 
         # Step 5: Create and link ODPS contract
         odps_data = self._create_odps_product_first_data()
-        # Remove contract spec since we're linking to existing ODCS
-        odps_data['product'].pop('contract', None)
+        # product.contract is required for linking - use same ODCS spec we created
+        odps_data['product']['contract'] = {'spec': odcs_contract_data}
 
         # First validate the ODCS contract so it can be linked
         self.prepare_contract_for_activation(odcs_contract_id)
@@ -459,7 +460,8 @@ class TestDPOEnhancedWorkflowsWithODPS(E2ETestBase):
 
         # Step 5: Create and link ODPS contract
         odps_data = self._create_odps_product_first_data()
-        odps_data['product'].pop('contract', None)  # Remove embedded contract
+        # product.contract is required for linking - use same ODCS spec we created
+        odps_data['product']['contract'] = {'spec': odcs_contract_data}
 
         # Try linking via link endpoint
         link_response = self.client.post(
@@ -804,7 +806,7 @@ class TestDataEngineerEnhancedWorkflowsWithODPS(E2ETestBase):
         }
 
     def _create_odps_data(self) -> Dict[str, Any]:
-        """Helper to create ODPS data"""
+        """Helper to create ODPS data (dataSchema required by ODPS business rules)"""
         return {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -815,7 +817,8 @@ class TestDataEngineerEnhancedWorkflowsWithODPS(E2ETestBase):
                         "name": "Technical Product",
                         "description": "Product for technical workflow"
                     }
-                }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}, {"name": "value", "type": "integer"}]}
             }
         }
 
@@ -852,6 +855,7 @@ class TestDataEngineerEnhancedWorkflowsWithODPS(E2ETestBase):
             "version": "4.1",
             "product": {
                 "details": product_details,
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}, {"name": "value", "type": "integer"}]},
                 "contract": {
                     "spec": odcs_contract
                 }
@@ -929,6 +933,8 @@ class TestDataEngineerEnhancedWorkflowsWithODPS(E2ETestBase):
 
         # Step 5: Create and link ODPS contract
         odps_data = self._create_odps_data()
+        # product.contract is required for linking - use same ODCS spec we created
+        odps_data['product']['contract'] = {'spec': odcs_contract_data}
 
         # Try linking via link endpoint
         link_response = self.client.post(
@@ -956,10 +962,10 @@ class TestDataEngineerEnhancedWorkflowsWithODPS(E2ETestBase):
         asset = Asset.objects.get(id=asset_id)
         self.assertTrue(asset.contracts.filter(id=odcs_contract_id).exists())
 
-        # Step 6: Verify audit logs
+        # Step 6: Verify audit logs (ODPS_LINKED uses resource_type=ODPS per contract service)
         self.verify_audit_log(
             action='ODPS_LINKED',
-            resource_type='CONTRACT',
+            resource_type='ODPS',
             resource_id=odps_contract_id
         )
 
@@ -1183,25 +1189,36 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
         """Set up test fixtures"""
         super().setUp()
 
-        # Create provider tenant and user
+        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+
+        # Create provider tenant and user (subscription required for asset/listing creation)
         self.provider_tenant = Tenant.objects.create(
             name="Provider Tenant",
             slug="provider-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_e2e_tenant_ready(self.provider_tenant)
         self.provider_user = User.objects.create_user(
             email="provider@example.com",
             password="testpass123",
             tenant=self.provider_tenant,
             status=UserStatus.ACTIVE
         )
+        # DATA_PROVIDER role required for asset creation in provider tenant
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.provider_tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"}
+        )
+        UserRole.objects.create(user=self.provider_user, role=provider_role)
 
-        # Create consumer tenant and user
+        # Create consumer tenant and user (subscription required for order creation)
         self.consumer_tenant = Tenant.objects.create(
             name="Consumer Tenant",
             slug="consumer-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_e2e_tenant_ready(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
             email="consumer@example.com",
             password="testpass123",
@@ -1257,6 +1274,7 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
                         "description": "Product with access methods for consumers"
                     }
                 },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}, {"name": "value", "type": "number"}]},
                 "contract": {
                     "spec": odcs_contract
                 },
@@ -1318,7 +1336,7 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
             description='Product for marketplace discovery with ODPS'
         )
 
-        # Create ODPS contract with multilingual details
+        # Create ODPS contract with multilingual details (dataSchema required by ODPS business rules)
         odps_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -1335,6 +1353,7 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
                         "description": "Tuote markkinapaikan haulle"
                     }
                 },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}, {"name": "value", "type": "integer"}]},
                 "contract": {
                     "spec": self._create_odcs_contract_data()
                 }

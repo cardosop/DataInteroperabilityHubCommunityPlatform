@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.014468193054199219
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-004-ERRORS-6afc4bd3",
+      "journey_name": "ODPS Marketplace Config - Error Scenarios",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1772194920.5104115,
+      "end_time": 1772194920.5248797,
+      "duration": 0.014468193054199219,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [],
+      "metadata": {
+        "error_scenarios_tested": 2
+      }
+    }
+  ],
+  "exported_at": "2026-02-27T12:22:00.524922"
+}

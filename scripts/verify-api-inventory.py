@@ -43,7 +43,10 @@ def read_inventory(inventory_path: Path) -> Dict[str, List[Dict]]:
                 action = parts[4] if len(parts) > 4 else ''
                 endpoint_type = parts[5] if len(parts) > 5 else ''
 
-                if method and path and method != 'Method':
+                # Skip header/separator rows (Method, or path that is not a path)
+                if method == 'Method' or not path.startswith('/') or path.replace('-', '').replace(' ', '').strip() == '':
+                    continue
+                if method and path:
                     endpoints_by_app[current_app].append({
                         'method': method,
                         'path': path,

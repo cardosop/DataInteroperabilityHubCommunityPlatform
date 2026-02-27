@@ -9,6 +9,16 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage } from '../../fixtures/auth';
 
 test.describe('Unavailable and 403 pages', () => {
+  test.describe('Failure', () => {
+    test('unauthenticated access to protected route redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/admin', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|admin|403)/, { timeout: 20_000 });
+      const url = page.url();
+      expect(url.includes('/login') || url.includes('/403') || url.includes('/admin')).toBe(true);
+    });
+  });
+
   test.describe('Success', () => {
     test('/unavailable shows feature unavailable message', async ({ page }) => {
       await page.goto('/unavailable', { waitUntil: 'domcontentloaded' });

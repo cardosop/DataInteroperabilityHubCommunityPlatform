@@ -25,9 +25,10 @@ from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.models import WorkflowDefinition, WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.workflows.api_key_management import APIKeyManagementWorkflow
+from hub.apps.auth.models import APIKey as AuthAPIKey
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus, Role, UserRole
-from hub.apps.baas.models import APIKey, APITierModel
+from hub.apps.baas.models import APITierModel
 from hub.apps.baas.services import UsageTrackingService
 
 User = get_user_model()
@@ -304,22 +305,22 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
 
         self.assertIn("api_key_id", result["state"])
 
-        # Verify API key was created
-        api_key = APIKey.objects.get(id=result["state"]["api_key_id"])
+        # Verify auth API key was created (single identity D2)
+        api_key = AuthAPIKey.objects.get(id=result["state"]["api_key_id"])
         self.assertEqual(api_key.name, "Test API Key")
         self.assertEqual(api_key.key_hash, key_hash)
         self.assertEqual(api_key.tenant, self.tenant)
         self.assertEqual(api_key.user, self.user)
 
     def test_validate_revocation_task_success(self):
-        """Test validate_revocation task with valid API key"""
-        # Create API key first
-        api_key = APIKey.objects.create(
+        """Test validate_revocation task with valid API key (auth APIKey — D2)"""
+        # Create auth API key first
+        api_key = AuthAuthAPIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
             tier=self.tier,
             name="Test API Key",
-            key_hash=APIKey.hash_key(APIKey.generate_key())
+            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key())
         )
 
         input_data = {
@@ -355,14 +356,14 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
         self.assertEqual(result["state"]["api_key_id"], str(api_key.id))
 
     def test_revoke_key_task_success(self):
-        """Test revoke_key task revokes API key"""
-        # Create API key first
-        api_key = APIKey.objects.create(
+        """Test revoke_key task revokes API key (auth APIKey — D2)"""
+        # Create auth API key first
+        api_key = AuthAuthAPIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
             tier=self.tier,
             name="Test API Key",
-            key_hash=APIKey.hash_key(APIKey.generate_key())
+            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key())
         )
 
         # Register workflow first
@@ -441,12 +442,12 @@ class APIKeyManagementWorkflowCompensationTest(TestCase):
     def test_rollback_key_generation_deletes_key(self):
         """Test rollback_key_generation deletes created API key"""
         # Create API key
-        api_key = APIKey.objects.create(
+        api_key = AuthAPIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
             tier=self.tier,
             name="Test API Key",
-            key_hash=APIKey.hash_key(APIKey.generate_key())
+            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key())
         )
 
         # Register workflow first
@@ -480,12 +481,12 @@ class APIKeyManagementWorkflowCompensationTest(TestCase):
     def test_rollback_key_revocation_restores_key(self):
         """Test rollback_key_revocation restores revoked key"""
         # Create and revoke API key
-        api_key = APIKey.objects.create(
+        api_key = AuthAPIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
             tier=self.tier,
             name="Test API Key",
-            key_hash=APIKey.hash_key(APIKey.generate_key())
+            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key())
         )
         api_key.revoke()
 
@@ -593,7 +594,7 @@ class APIKeyManagementWorkflowIntegrationTest(TestCase):
         api_key_id = instance.state_data.get("api_key_id")
         self.assertIsNotNone(api_key_id)
 
-        api_key = APIKey.objects.get(id=api_key_id)
+        api_key = AuthAPIKey.objects.get(id=api_key_id)
         self.assertEqual(api_key.name, "Test API Key")
         self.assertEqual(api_key.tenant, self.tenant)
         self.assertEqual(api_key.user, self.user)
@@ -601,12 +602,12 @@ class APIKeyManagementWorkflowIntegrationTest(TestCase):
     def test_revoke_api_key_workflow_complete(self):
         """Test complete API key revocation workflow"""
         # Create API key first
-        api_key = APIKey.objects.create(
+        api_key = AuthAPIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
             tier=self.tier,
             name="Test API Key",
-            key_hash=APIKey.hash_key(APIKey.generate_key())
+            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key())
         )
 
         input_data = {
@@ -694,7 +695,7 @@ class APIKeyManagementWorkflowE2ETest(TestCase):
         self.assertIn("workflow_instance_id", result)
 
         # Verify API key was created
-        api_key = APIKey.objects.get(id=result["api_key_id"])
+        api_key = AuthAPIKey.objects.get(id=result["api_key_id"])
         self.assertEqual(api_key.name, "Test API Key")
         self.assertEqual(api_key.tenant, self.tenant)
         self.assertEqual(api_key.user, self.user)
@@ -702,12 +703,12 @@ class APIKeyManagementWorkflowE2ETest(TestCase):
     def test_service_revoke_api_key_with_workflow(self):
         """Test UsageTrackingService.revoke_api_key_with_workflow"""
         # Create API key first
-        api_key = APIKey.objects.create(
+        api_key = AuthAPIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
             tier=self.tier,
             name="Test API Key",
-            key_hash=APIKey.hash_key(APIKey.generate_key())
+            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key())
         )
 
         service = UsageTrackingService(

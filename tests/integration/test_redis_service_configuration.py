@@ -323,7 +323,11 @@ class TestKubernetesRedisManifests:
 
 @pytest.mark.docker_compose_runtime
 class TestMultiRedisDockerComposeSetup:
-    """Integration tests for multi-Redis setup in Docker Compose."""
+    """Integration tests for multi-Redis setup in Docker Compose.
+
+    Uses configured Redis clients (redis_pools) so tests work when running
+    inside api-service-test (redis-*-test:6379) or on host (localhost:6379/6380/...).
+    """
 
     @pytest.fixture(scope="class")
     def docker_compose_file(self):
@@ -332,9 +336,9 @@ class TestMultiRedisDockerComposeSetup:
 
     def test_redis_cache_accessible(self, docker_compose_file):
         """Test that redis-cache is accessible."""
-        # Try to connect to redis-cache on port 6379
         try:
-            r = redis.Redis(host="localhost", port=6379, decode_responses=True)
+            from hub.apps.core.redis_pools import get_redis_cache_client
+            r = get_redis_cache_client()
             result = r.ping()
             assert result is True, "redis-cache should respond to ping"
         except redis.ConnectionError:
@@ -342,9 +346,9 @@ class TestMultiRedisDockerComposeSetup:
 
     def test_redis_queue_accessible(self, docker_compose_file):
         """Test that redis-queue is accessible."""
-        # Try to connect to redis-queue on port 6380
         try:
-            r = redis.Redis(host="localhost", port=6380, decode_responses=True)
+            from hub.apps.core.redis_pools import get_redis_queue_client
+            r = get_redis_queue_client()
             result = r.ping()
             assert result is True, "redis-queue should respond to ping"
         except redis.ConnectionError:
@@ -352,9 +356,9 @@ class TestMultiRedisDockerComposeSetup:
 
     def test_redis_events_accessible(self, docker_compose_file):
         """Test that redis-events is accessible."""
-        # Try to connect to redis-events on port 6381
         try:
-            r = redis.Redis(host="localhost", port=6381, decode_responses=True)
+            from hub.apps.core.redis_pools import get_redis_events_client
+            r = get_redis_events_client()
             result = r.ping()
             assert result is True, "redis-events should respond to ping"
         except redis.ConnectionError:
@@ -362,9 +366,9 @@ class TestMultiRedisDockerComposeSetup:
 
     def test_redis_channels_accessible(self, docker_compose_file):
         """Test that redis-channels is accessible."""
-        # Try to connect to redis-channels on port 6382
         try:
-            r = redis.Redis(host="localhost", port=6382, decode_responses=True)
+            from hub.apps.core.redis_pools import get_redis_channels_client
+            r = get_redis_channels_client()
             result = r.ping()
             assert result is True, "redis-channels should respond to ping"
         except redis.ConnectionError:
@@ -373,11 +377,16 @@ class TestMultiRedisDockerComposeSetup:
     def test_redis_instances_isolated(self, docker_compose_file):
         """Test that Redis instances are isolated (data in one doesn't appear in another)."""
         try:
-            # Connect to all instances
-            cache_client = redis.Redis(host="localhost", port=6379, decode_responses=True, db=0)
-            queue_client = redis.Redis(host="localhost", port=6380, decode_responses=True, db=0)
-            events_client = redis.Redis(host="localhost", port=6381, decode_responses=True, db=0)
-            channels_client = redis.Redis(host="localhost", port=6382, decode_responses=True, db=0)
+            from hub.apps.core.redis_pools import (
+                get_redis_cache_client,
+                get_redis_queue_client,
+                get_redis_events_client,
+                get_redis_channels_client,
+            )
+            cache_client = get_redis_cache_client()
+            queue_client = get_redis_queue_client()
+            events_client = get_redis_events_client()
+            channels_client = get_redis_channels_client()
 
             # Set a test key in cache
             test_key = "test_isolation_key"

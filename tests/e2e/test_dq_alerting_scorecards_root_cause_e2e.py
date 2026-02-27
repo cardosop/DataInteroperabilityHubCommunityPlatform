@@ -103,7 +103,9 @@ class DQAlertingE2ETest(TestCase):
         # Step 2: Create DQ run that triggers alert
         job = Job.objects.create(
             tenant=self.tenant,
-            job_type=JobType.DQ_CHECK,
+            type=JobType.DQ_RUN,
+            resource_type="DQ_RUN",
+            resource_id=self.dataset.id,
             status=JobStatus.COMPLETED,
             created_by=self.user
         )
@@ -194,11 +196,13 @@ class DQScorecardsE2ETest(TestCase):
         for i in range(20):
             job = Job.objects.create(
                 tenant=self.tenant,
-                job_type=JobType.DQ_CHECK,
+                type=JobType.DQ_RUN,
+                resource_type="DQ_RUN",
+                resource_id=self.dataset.id,
                 status=JobStatus.COMPLETED,
                 created_by=self.user
             )
-            
+
             DQRun.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
@@ -320,7 +324,7 @@ class DQRootCauseE2ETest(TestCase):
         4. Analyze root cause
         5. Generate report
         """
-        # Step 1: Create historical runs
+        # Step 1: Create historical runs (each dataset must have unique version per asset)
         for i in range(10):
             historical_file = File.objects.create(
                 tenant=self.tenant,
@@ -332,25 +336,27 @@ class DQRootCauseE2ETest(TestCase):
                 content_sha256=f"hist{i}",
                 created_by=self.user
             )
-            
+            # Use version=2+i so (tenant, asset, version) is unique (version=1 used by self.dataset)
             historical_dataset = Dataset.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
                 file=historical_file,
                 schema_json={"fields": [{"name": "col1", "type": "string", "data_type": "string"}]},
                 format="CSV",
-                version=1,
+                version=2 + i,
                 row_count=1000,
                 created_by=self.user
             )
             
             job = Job.objects.create(
                 tenant=self.tenant,
-                job_type=JobType.DQ_CHECK,
+                type=JobType.DQ_RUN,
+                resource_type="DQ_RUN",
+                resource_id=historical_dataset.id,
                 status=JobStatus.COMPLETED,
                 created_by=self.user
             )
-            
+
             DQRun.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
@@ -381,7 +387,9 @@ class DQRootCauseE2ETest(TestCase):
         # Step 3: Create failed DQ run
         job = Job.objects.create(
             tenant=self.tenant,
-            job_type=JobType.DQ_CHECK,
+            type=JobType.DQ_RUN,
+            resource_type="DQ_RUN",
+            resource_id=self.dataset.id,
             status=JobStatus.COMPLETED,
             created_by=self.user
         )

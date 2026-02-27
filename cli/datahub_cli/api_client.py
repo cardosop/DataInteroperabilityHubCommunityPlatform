@@ -167,7 +167,8 @@ class APIClient:
             # Try to use ODPS error handling if available
             try:
                 from .odps_errors import handle_api_error
-                endpoint = response.url.split('/api/v1/')[-1] if '/api/v1/' in response.url else None
+                url = response.url if response.url is not None else ""
+                endpoint = url.split("/api/v1/")[-1] if "/api/v1/" in url else None
                 raise handle_api_error(response.text, response.status_code, endpoint)
             except ImportError:
                 # Fallback to basic error handling

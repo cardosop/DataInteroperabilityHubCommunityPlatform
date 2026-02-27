@@ -55,6 +55,7 @@ from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
 from hub.apps.gdpr.services import ErasureService
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 User = get_user_model()
 
@@ -70,6 +71,9 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
         """Set up test data"""
         # Create tenant
         self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant", status="ACTIVE")
+
+        # Ensure tenant has active subscription so POST request-erasure is not 403
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
@@ -103,6 +107,17 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
         # Create API client
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
+
+    def tearDown(self):
+        # TransactionTestCase teardown runs flush; ensure DB connection is valid
+        # so teardown does not raise when connection was closed or DB was briefly unavailable
+        from django.db import connection
+
+        try:
+            connection.ensure_connection()
+        except Exception:
+            pass
+        super().tearDown()
 
     def test_erasure_request_creation(self):
         """Test erasure request creation"""
@@ -258,12 +273,16 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
 
         # Check audit event details are anonymized
         audit_event = AuditEvent.objects.filter(actor_user=self.user).first()
-        if audit_event and audit_event.details:
-            if isinstance(audit_event.details, dict):
-                if "user_email" in audit_event.details:
-                    self.assertEqual(audit_event.details["user_email"], "deleted@deleted.local")
-                if "actor_email" in audit_event.details:
-                    self.assertEqual(audit_event.details["actor_email"], "deleted@deleted.local")
+        if audit_event and audit_event.details_json:
+            if isinstance(audit_event.details_json, dict):
+                if "user_email" in audit_event.details_json:
+                    self.assertEqual(
+                        audit_event.details_json["user_email"], "deleted@deleted.local"
+                    )
+                if "actor_email" in audit_event.details_json:
+                    self.assertEqual(
+                        audit_event.details_json["actor_email"], "deleted@deleted.local"
+                    )
 
     def test_erasure_records_retention_exceptions(self):
         """Test that erasure records retention exceptions"""
@@ -326,19 +345,29 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
             service.create_request(user_id=fake_user_id)
 
     def test_erasure_execution_handles_failure_gracefully(self):
-        """Test that erasure execution handles failures gracefully"""
+        """Test that erasure execution handles failures gracefully.
+
+        Uses IntegrityError: pre-create a user with the anonymized email so that
+        user.save() fails during anonymization. The request survives (no CASCADE)
+        and is marked FAILED by the service.
+        """
         service = ErasureService(user_id=str(self.user.id))
         request = service.create_request(user_id=str(self.user.id))
 
-        # Delete user before execution to cause error
-        user_id = self.user.id
-        self.user.delete()
+        # Pre-create user with anonymized email so user.save() fails (unique constraint)
+        anon_email = f"deleted-{self.user.id}@deleted.local"
+        User.objects.create_user(
+            email=anon_email,
+            password="unused",
+            tenant=self.tenant,
+            display_name="Collision User",
+        )
 
         # Should raise exception, but request should be marked as FAILED
         with self.assertRaises(Exception):
             service.execute_erasure(request_id=str(request.id))
 
-        # Request should be marked as failed
+        # Request should be marked as failed (request survives; no CASCADE)
         request.refresh_from_db()
         self.assertEqual(request.status, ErasureRequestStatus.FAILED)
         self.assertIsNotNone(request.error_message)

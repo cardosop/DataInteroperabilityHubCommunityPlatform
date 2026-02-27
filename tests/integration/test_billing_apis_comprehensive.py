@@ -20,7 +20,8 @@ from rest_framework.test import APIClient
 
 from hub.apps.billing.models import Invoice, Subscription, SubscriptionStatus
 from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus
-from hub.apps.users.models import User, UserStatus
+from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -96,6 +97,16 @@ class BillingAPIsComprehensiveTest(TransactionTestCase):
             tenant=self.tenant2,
             status=UserStatus.ACTIVE,
         )
+
+        # Assign DATA_PROVIDER so asset create (POST /api/v1/assets/) is allowed (view returns 403 otherwise)
+        role1, _ = Role.objects.get_or_create(
+            tenant=self.tenant1, name="DATA_PROVIDER", defaults={"description": "Can create assets"}
+        )
+        role2, _ = Role.objects.get_or_create(
+            tenant=self.tenant2, name="DATA_PROVIDER", defaults={"description": "Can create assets"}
+        )
+        UserRole.objects.get_or_create(user=self.user1, role=role1)
+        UserRole.objects.get_or_create(user=self.user2, role=role2)
 
         # Create plan (use unique slug to avoid conflicts)
         self.free_plan = TenantPlan.objects.create(
@@ -346,9 +357,11 @@ class BillingAPIsComprehensiveTest(TransactionTestCase):
 
     def test_subscription_active_allows_mutations(self):
         """Test that ACTIVE subscription allows mutations"""
-        # Ensure subscription is ACTIVE
+        # Ensure tenant has an active subscription (idempotent; handles test order and DB state)
+        ensure_tenant_has_active_subscription(self.tenant1)
+        self.subscription1.refresh_from_db()
         self.subscription1.status = SubscriptionStatus.ACTIVE
-        self.subscription1.save()
+        self.subscription1.save(update_fields=["status"])
 
         self.client.force_authenticate(user=self.user1)
 

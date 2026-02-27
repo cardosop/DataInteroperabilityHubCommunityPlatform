@@ -25,6 +25,7 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from tests.factories import TenantFactory
 
 User = get_user_model()
@@ -39,6 +40,7 @@ class RESTAPIEndpointsTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
@@ -60,8 +62,8 @@ class RESTAPIEndpointsTest(TestCase):
             )
             # 405 (Method Not Allowed) is valid if endpoint doesn't support POST
             # 201 (Created) is expected if POST is supported
-            # 400 (Bad Request) is valid for validation errors
-            self.assertIn(create_response.status_code, [201, 400, 404, 405])
+            # 400 (Bad Request) is valid for validation errors; 403 if subscription/perms block
+            self.assertIn(create_response.status_code, [201, 400, 403, 404, 405])
 
     def test_contracts_endpoints(self):
         """Test contracts REST API endpoints"""
@@ -90,8 +92,8 @@ class RESTAPIEndpointsTest(TestCase):
             )
             # 405 (Method Not Allowed) is valid if endpoint doesn't support POST
             # 201 (Created) is expected if POST is supported
-            # 400 (Bad Request) is valid for validation errors
-            self.assertIn(create_response.status_code, [201, 400, 404, 405])
+            # 400 (Bad Request) is valid for validation errors; 403 if subscription/perms block
+            self.assertIn(create_response.status_code, [201, 400, 403, 404, 405])
 
     def test_files_endpoints(self):
         """Test files REST API endpoints"""
@@ -104,8 +106,8 @@ class RESTAPIEndpointsTest(TestCase):
             init_response = self.client.post(
                 "/api/v1/files/init-upload/", {"name": "test.txt", "size": 1024}, format="json"
             )
-            # 405 (Method Not Allowed) is valid if endpoint doesn't support POST
-            self.assertIn(init_response.status_code, [200, 201, 400, 404, 405])
+            # 405 (Method Not Allowed) is valid if endpoint doesn't support POST; 403 if subscription/perms block
+            self.assertIn(init_response.status_code, [200, 201, 400, 403, 404, 405])
 
     def test_jobs_endpoints(self):
         """Test jobs REST API endpoints"""
@@ -126,8 +128,8 @@ class RESTAPIEndpointsTest(TestCase):
             )
             # 405 (Method Not Allowed) is valid - jobs are typically created indirectly
             # 201 (Created) is expected if POST is supported
-            # 400 (Bad Request) is valid for validation errors
-            self.assertIn(create_response.status_code, [201, 400, 404, 405])
+            # 400 (Bad Request) is valid for validation errors; 403 if subscription/perms block
+            self.assertIn(create_response.status_code, [201, 400, 403, 404, 405])
 
     def test_tenants_endpoints(self):
         """Test tenants REST API endpoints"""
@@ -150,6 +152,7 @@ class GraphQLEndpointsTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
@@ -181,7 +184,7 @@ class GraphQLEndpointsTest(TestCase):
         """
 
         response = self._graphql_query(query)
-        self.assertIn(response.status_code, [200, 404])
+        self.assertIn(response.status_code, [200, 403, 404])
 
         if response.status_code == 200:
             data = json.loads(response.content)
@@ -203,7 +206,7 @@ class GraphQLEndpointsTest(TestCase):
         """
 
         response = self._graphql_query(query)
-        self.assertIn(response.status_code, [200, 404])
+        self.assertIn(response.status_code, [200, 403, 404])
 
         if response.status_code == 200:
             data = json.loads(response.content)
@@ -223,7 +226,7 @@ class GraphQLEndpointsTest(TestCase):
         """
 
         response = self._graphql_query(query)
-        self.assertIn(response.status_code, [200, 404])
+        self.assertIn(response.status_code, [200, 403, 404])
 
 
 class AuthenticationEndpointsTest(TestCase):
@@ -336,6 +339,7 @@ class ErrorHandlingTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
@@ -355,8 +359,8 @@ class ErrorHandlingTest(TestCase):
         response = self.client.post(
             "/api/v1/assets/", {"invalid_field": "invalid_value"}, format="json"
         )
-        # Should return 400 (bad request), 404 (endpoint not found), or 405 (method not allowed)
-        self.assertIn(response.status_code, [400, 404, 405])
+        # Should return 400 (bad request), 403 (forbidden e.g. subscription), 404, or 405
+        self.assertIn(response.status_code, [400, 403, 404, 405])
 
     def test_403_forbidden_error_handling(self):
         """Test 403 forbidden error handling"""

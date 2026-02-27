@@ -251,11 +251,26 @@ class DataPortabilityServiceTest(TransactionTestCase):
 
     def test_collect_user_data_includes_contracts(self):
         """Test that _collect_user_data includes contracts"""
-        # Create contract
+        from hub.apps.contracts.models import OriginalFormat, OriginalSpecType
+
+        # Create asset for contract (optional but gives a meaningful label)
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset-contract",
+            name="Test Asset for Contract",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user,
+        )
+
+        # Create contract with required fields (no name field on Contract)
         contract = Contract.objects.create(
             tenant=self.tenant,
-            name="Test Contract",
+            asset=asset,
             status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"apiVersion":"odcs.io/v3.0.2","kind":"DataContract"}',
             created_by=self.user,
         )
 
@@ -584,12 +599,16 @@ class ErasureServiceTest(TransactionTestCase):
 
         # Check audit event details are anonymized
         audit_event = AuditEvent.objects.filter(actor_user=self.user).first()
-        if audit_event and audit_event.details:
-            if isinstance(audit_event.details, dict):
-                if "user_email" in audit_event.details:
-                    self.assertEqual(audit_event.details["user_email"], "deleted@deleted.local")
-                if "actor_email" in audit_event.details:
-                    self.assertEqual(audit_event.details["actor_email"], "deleted@deleted.local")
+        if audit_event and audit_event.details_json:
+            if isinstance(audit_event.details_json, dict):
+                if "user_email" in audit_event.details_json:
+                    self.assertEqual(
+                        audit_event.details_json["user_email"], "deleted@deleted.local"
+                    )
+                if "actor_email" in audit_event.details_json:
+                    self.assertEqual(
+                        audit_event.details_json["actor_email"], "deleted@deleted.local"
+                    )
 
     def test_execute_erasure_records_retention_exceptions(self):
         """Test that execute_erasure records retention exceptions"""
@@ -602,18 +621,28 @@ class ErasureServiceTest(TransactionTestCase):
     # ========== ERROR HANDLING TESTS ==========
 
     def test_execute_erasure_handles_failure_gracefully(self):
-        """Test that execute_erasure handles failures gracefully"""
+        """Test that execute_erasure handles failures gracefully.
+
+        Uses IntegrityError: pre-create a user with the anonymized email so that
+        user.save() fails during anonymization. The request survives (no CASCADE)
+        and is marked FAILED by the service.
+        """
         request = self.service.create_request(user_id=str(self.user.id))
 
-        # Delete user before execution to cause error
-        user_id = self.user.id
-        self.user.delete()
+        # Pre-create user with anonymized email so user.save() fails (unique constraint)
+        anon_email = f"deleted-{self.user.id}@deleted.local"
+        User.objects.create_user(
+            email=anon_email,
+            password="unused",
+            tenant=self.tenant,
+            display_name="Collision User",
+        )
 
         # Should raise exception, but request should be marked as FAILED
         with self.assertRaises(Exception):
             self.service.execute_erasure(request_id=str(request.id))
 
-        # Request should be marked as failed
+        # Request should be marked as failed (request survives; no CASCADE)
         request.refresh_from_db()
         self.assertEqual(request.status, ErasureRequestStatus.FAILED)
         self.assertIsNotNone(request.error_message)

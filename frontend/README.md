@@ -23,6 +23,9 @@ npm run format
 # Run tests
 npm test
 
+# Coverage (see docs/TEST_EXECUTION_PLAN.md for improvement plan)
+npm run test:coverage
+
 # E2E tests (Playwright, real backend)
 # See e2e/README.md for setup. For visible browser and slow motion:
 npm run test:e2e:visible   # uses E2E_VISIBLE=1 and --project=visible

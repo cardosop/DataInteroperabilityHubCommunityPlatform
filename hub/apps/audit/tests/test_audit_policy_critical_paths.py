@@ -14,7 +14,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
+from hub.apps.users.models import Role, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -70,6 +70,13 @@ class AuditPolicyCriticalPathsTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        # Asset/contract create requires DATA_PROVIDER or TENANT_ADMIN (assets/views.py, contracts/views_base.py)
+        data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        self.user.user_roles.create(role=data_provider_role)
         self.client.force_authenticate(user=self.user)
 
     def tearDown(self):

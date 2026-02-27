@@ -30,6 +30,7 @@ from hub.apps.scheduled_export.models import (
 )
 from hub.apps.scheduled_export.worker_run_lifecycle import apply_run_completion_side_effects
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = [
@@ -70,6 +71,9 @@ class RunCompletionSideEffectsIntegrationTest(TransactionTestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.UNVERIFIED,
         )
+        # Ensure tenant has active subscription before any request (TenantSuspensionMiddleware checks this)
+        ensure_tenant_has_active_subscription(self.tenant)
+
         self.user = User.objects.create_user(
             email=f"side-effects-test-{unique_id}@example.com",
             password="testpass123",

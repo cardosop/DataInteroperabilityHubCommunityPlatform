@@ -112,20 +112,28 @@ class APIKeyAuthentication(BaseAuthentication):
         except APIKey.DoesNotExist:
             raise AuthenticationFailed('Invalid API key')
         
-        # Check if expired
+        # Check if expired or revoked
         if api_key_obj.is_expired():
             raise AuthenticationFailed('API key has expired')
+        if api_key_obj.is_revoked():
+            raise AuthenticationFailed('API key has been revoked')
         
         # Update last used timestamp
         api_key_obj.update_last_used()
         
         # Get user (if user-scoped) or create a system user
-        if api_key_obj.user:
-            user = api_key_obj.user
+        if api_key_obj.user_id:
+            # Load user with user_roles prefetched so HasAnyRole sees roles (avoids 403 in tests)
+            user = (
+                User.objects.filter(pk=api_key_obj.user_id)
+                .prefetch_related("user_roles__role")
+                .first()
+            )
+            if not user:
+                raise AuthenticationFailed('User not found')
             if not user.is_active():
                 raise AuthenticationFailed('User is not active')
-            # Refresh user from DB to get fresh tenant_id (critical for thread safety with LiveServerTestCase)
-            # This ensures we have the latest tenant_id from the database, not from a cached object
+            # Refresh tenant_id for thread safety (LiveServerTestCase, TransactionTestCase)
             user.refresh_from_db(fields=['tenant_id', 'tenant'])
         else:
             # Tenant-scoped API key without user - create a system user representation

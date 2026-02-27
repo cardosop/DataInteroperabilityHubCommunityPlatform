@@ -1,0 +1,111 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.20915651321411133
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-003-89b08f79",
+      "journey_name": "Download Purchased Data",
+      "persona": "Data Consumer / Buyer",
+      "status": "completed",
+      "start_time": 1771736091.601089,
+      "end_time": 1771736091.8102455,
+      "duration": 0.20915651321411133,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Provider Creates Asset with File",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771736091.6010997,
+          "end_time": 1771736091.801781,
+          "duration": 0.20068120956420898,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "tuple"
+          }
+        },
+        {
+          "step_name": "Provider Creates Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771736091.801795,
+          "end_time": 1771736091.8047698,
+          "duration": 0.0029747486114501953,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Create Entitlement",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771736091.804776,
+          "end_time": 1771736091.8088045,
+          "duration": 0.0040285587310791016,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Verify Purchase",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771736091.808811,
+          "end_time": 1771736091.8097084,
+          "duration": 0.0008974075317382812,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Verify Access",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771736091.8097122,
+          "end_time": 1771736091.8102324,
+          "duration": 0.0005202293395996094,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Generate Download Link",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771736091.8102362,
+          "end_time": 1771736091.8102434,
+          "duration": 7.152557373046875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "2e7815a0-61c2-423e-834d-64f70ea4df00",
+        "file_id": "4bb74774-43c1-4c76-9ef3-3ea439465087"
+      }
+    }
+  ],
+  "exported_at": "2026-02-22T04:54:51.810371"
+}

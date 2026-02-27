@@ -66,8 +66,10 @@ class AuthService {
       // Call logout endpoint if available
       await apiClient.getClient().post('/auth/logout/');
     } catch (error) {
-      // Ignore errors on logout
-      console.warn('Logout endpoint error:', error);
+      // Ignore errors on logout; only log outside tests to avoid stderr noise
+      if (import.meta.env.MODE !== 'test') {
+        console.warn('Logout endpoint error:', error);
+      }
     } finally {
       this.clearAuth();
     }
@@ -92,7 +94,8 @@ class AuthService {
   }
 
   async fetchUser(): Promise<User> {
-    const response = await apiClient.getClient().get<User>('/auth/me/');
+    // 45s timeout: E2E/CI load can congest backend; auth store retries and fail-open handle transient failures
+    const response = await apiClient.getClient().get<User>('/auth/me/', { timeout: 45000 });
     return response.data;
   }
 

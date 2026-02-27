@@ -224,7 +224,10 @@ s3_bucket.save("my-export-bucket-block")
 
 ## Runbook Links
 
-**Operational Procedures**:
+**Real E2E (manual / env-gated):**
+- [REAL_SCHEDULED_INGESTION_EXPORT_E2E](../runbooks/REAL_SCHEDULED_INGESTION_EXPORT_E2E.md) — Run real scheduled ingestion and export with real credentials (S3, GCS, Azure Blob, HTTP/FTP/DATABASE); env vars, Prefect Blocks, steps; optional pytest marker `real_scheduled_e2e` (guard `REAL_SCHEDULED_E2E=1`). No credentials in repo.
+
+**Operational Procedures** (when available):
 - [RB-SCHEDULED-EXPORT-001](../runbooks/RB-SCHEDULED-EXPORT-001.md) - Scheduled Export Operations (Prefect Worker)
   - Verify Prefect worker and pool
   - Correlate Prefect flow_run_id with hub run_id

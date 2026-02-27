@@ -25,9 +25,12 @@ export function JobDetailPage() {
     }
   };
 
-  if (isLoading) return <LoadingSpinner message="Loading job..." />;
-  if (error || !job) {
-    return <ErrorDisplay error={error || new Error('Job not found')} title="Failed to load job" onRetry={() => refetch()} />;
+  if (error) {
+    return <ErrorDisplay error={error} title="Failed to load job" onRetry={() => refetch()} />;
+  }
+
+  if (isLoading || !job) {
+    return <LoadingSpinner message="Loading job..." />;
   }
 
   const isRunning = job.status === 'PENDING' || job.status === 'RUNNING';

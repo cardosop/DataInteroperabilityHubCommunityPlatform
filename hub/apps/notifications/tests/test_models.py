@@ -8,6 +8,7 @@ import uuid
 
 from hub.apps.notifications.models import EmailDelivery, EmailType, EmailDeliveryStatus
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User
 
 
@@ -20,6 +21,7 @@ class EmailDeliveryModelTest(TestCase):
             name='Test Tenant',
             slug='test-tenant'
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email='test@example.com',
             tenant=self.tenant,

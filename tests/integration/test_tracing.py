@@ -106,19 +106,18 @@ class TracingTest(TestCase):
             pytest.skip("OpenTelemetry not installed")
     
     def test_jaeger_exporter_configuration(self):
-        """Test that Jaeger exporter is configured correctly"""
+        """Test that Jaeger exporter is configured from environment.
+
+        docker-compose.test.yml uses JAEGER_AGENT_HOST=jaeger-test;
+        docker-compose.dev.yml uses JAEGER_AGENT_HOST=jaeger (default).
+        """
         import os
-        
-        # Verify environment variables are used
+
         jaeger_host = os.getenv('JAEGER_AGENT_HOST', 'jaeger')
         jaeger_port = int(os.getenv('JAEGER_AGENT_PORT', '6831'))
-        
-        # Should have default values
-        self.assertEqual(jaeger_host, 'jaeger')
+
+        self.assertIn(jaeger_host, ('jaeger', 'jaeger-test'), f"Unexpected JAEGER_AGENT_HOST: {jaeger_host}")
         self.assertEqual(jaeger_port, 6831)
-        
-        # Verify configuration can be overridden via environment
-        # (actual override testing would require environment manipulation)
     
     def test_tracing_instrumentation(self):
         """Test that Django and HTTP clients are instrumented"""

@@ -271,15 +271,10 @@ class TestAssetCreationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
         instance, err = self.create_start_and_execute(
             AssetCreationWorkflow.WORKFLOW_NAME, asset_input
         )
-        # May fail at start or first step; expect failed or no progress
+        # May fail at start or first step; expect failed or rolled back (compensation runs)
         instance.refresh_from_db()
-        self.assertTrue(
-            instance.status
-            in (WorkflowStatus.FAILED, WorkflowStatus.RUNNING, WorkflowStatus.DRAFT),
-            f"Expected FAILED/RUNNING/DRAFT, got {instance.status}",
-        )
-        if instance.status == WorkflowStatus.FAILED:
-            self.assert_workflow_error_details_contain_validation(instance)
+        self.assert_workflow_failed(instance)
+        self.assert_workflow_error_details_contain_validation(instance)
 
 
 # --- 6.2.4 MarketplacePublicationWorkflow with business rules ---
@@ -409,7 +404,7 @@ class TestScheduledIngestionWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
         instance.refresh_from_db()
         self.assertIn(
             instance.status,
-            (WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.RUNNING),
+            (WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK, WorkflowStatus.RUNNING),
         )
         if instance.status == WorkflowStatus.COMPLETED:
             self.assert_validation_results_in_state_data(instance)

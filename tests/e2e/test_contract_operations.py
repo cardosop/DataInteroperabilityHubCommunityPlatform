@@ -33,7 +33,7 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.jobs.models import JobStatus
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e1]
 
@@ -149,12 +149,14 @@ schema:
         # List all contracts
         response = self.client.get("/api/v1/contracts/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data["results"]), 2)
+        data = get_response_data(response) or {}
+        self.assertGreaterEqual(len(data.get("results", [])), 2)
 
         # Filter by asset
         response = self.client.get(f"/api/v1/contracts/?asset_id={asset_id}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        contract_ids = {c["id"] for c in response.data["results"]}
+        data = get_response_data(response) or {}
+        contract_ids = {c["id"] for c in data.get("results", [])}
         self.assertIn(str(contract1), contract_ids)
         self.assertIn(str(contract2), contract_ids)
 
@@ -168,9 +170,10 @@ schema:
         response = self.client.get(f"/api/v1/contracts/{contract_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["id"], str(contract_id))
-        self.assertEqual(response.data["status"], ContractStatus.DRAFT)
-        self.assertIn("original_raw", response.data)
+        data = get_response_data(response) or {}
+        self.assertEqual(data["id"], str(contract_id))
+        self.assertEqual(data["status"], ContractStatus.DRAFT)
+        self.assertIn("original_raw", data)
 
     def test_update_contract(self):
         """Test updating contract"""
@@ -255,8 +258,9 @@ schema:
 
         # Should return job ID for async validation
         if response.status_code == status.HTTP_202_ACCEPTED:
-            self.assertIn("job_id", response.data)
-            job_id = response.data["job_id"]
+            data = get_response_data(response) or {}
+            self.assertIn("job_id", data)
+            job_id = data["job_id"]
 
             # Wait for job completion
             self.verify_job_completion(job_id, JobStatus.COMPLETED, max_wait=300)
@@ -304,8 +308,9 @@ schema:
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("issues", response.data)
-        self.assertIn("cli_version", response.data)
+        data = get_response_data(response) or {}
+        self.assertIn("issues", data)
+        self.assertIn("cli_version", data)
 
         # Verify audit log created
         self.verify_audit_log(
@@ -342,9 +347,10 @@ schema:
             )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("converted_contract", response.data)
-        self.assertIn("target_format", response.data)
-        self.assertEqual(response.data["target_format"], "YAML")
+        data = get_response_data(response) or {}
+        self.assertIn("converted_contract", data)
+        self.assertIn("target_format", data)
+        self.assertEqual(data["target_format"], "YAML")
 
         # Verify audit log created
         self.verify_audit_log(
@@ -386,8 +392,9 @@ schema:
             )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("converted_contract", response.data)
-        self.assertEqual(response.data["target_format"], "JSON")
+        data = get_response_data(response) or {}
+        self.assertIn("converted_contract", data)
+        self.assertEqual(data["target_format"], "JSON")
 
     def test_contract_normalization_success(self):
         """Test contract normalization"""

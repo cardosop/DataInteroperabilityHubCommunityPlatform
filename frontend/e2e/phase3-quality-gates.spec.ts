@@ -8,50 +8,25 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from './fixtures/auth';
+import { getTestUser } from './fixtures/auth';
+import {
+  loginAndNavigateToRoute,
+  navigateToRouteFromApp,
+  waitForAppMainReady,
+} from './fixtures/helpers';
 
 test.describe('Phase 3 Quality Gates', () => {
   test('complete journey: run compliance + DQ → handle fail → rerun → pass', async ({ page }) => {
-    test.setTimeout(900000); // 15 minutes for complete journey (allows 429 retry delay)
+    test.setTimeout(480000); // 8 min: full journey (asset+dataset+compliance+DQ); navigateToRouteFromApp first avoids redundant login
 
-    // Login
+    // Login and navigate to assets
     const testUser = await getTestUser();
-    await loginUser(page, testUser);
-
-    // Wait a bit for auth to settle
-    await page.waitForTimeout(1000);
-
-    // Step 1: Create Asset
     console.log('Navigating to /assets');
-    await page.goto('/assets');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-
-    // Wait for page to be ready - check for any content (more flexible)
-    console.log('Waiting for asset list page to load...');
-    // First, wait for navigation away from login
-    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 10000 });
-    console.log('Navigated away from login, current URL:', page.url());
-
-    // Wait for loading to complete
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-
-    // Wait for any of the expected content to appear
-    try {
-      await page.waitForSelector(
-        '.asset-list-page, .empty-state, .error-display, .asset-list-header, h1:has-text("Assets")',
-        { timeout: 15000 }
-      );
-      console.log('Asset list page content found');
-    } catch (e) {
-      // If not found, check what's actually on the page
-      const bodyText = await page.textContent('body');
-      console.log('Page body text (first 500 chars):', bodyText?.substring(0, 500));
-      const currentUrl = page.url();
-      console.log('Current URL:', currentUrl);
-      throw e;
-    }
+    await loginAndNavigateToRoute(page, testUser, '/assets', {
+      timeout: 60000,
+      contentSelector: '.asset-list-page, .empty-state, .error-display, .asset-list-header, h1',
+    });
+    console.log('Asset list page content found');
 
     await page.waitForTimeout(1000);
 
@@ -106,23 +81,28 @@ test.describe('Phase 3 Quality Gates', () => {
           const path = url.pathname;
           return path.startsWith('/assets/') && path !== '/assets/create' && path !== '/assets';
         },
-        { timeout: timeoutMs }
+        { timeout: timeoutMs, waitUntil: 'domcontentloaded' }
       );
 
     await submitButton.click();
     console.log('Waiting for redirect to asset detail...');
     try {
-      await waitForAssetDetailRedirect(30000);
+      await waitForAssetDetailRedirect(60000);
     } catch (e) {
       // Transient ERR_CONNECTION_RESET can prevent redirect; retry submit once
       if (page.url().includes('/assets/create')) {
         console.log('Redirect timed out (possible connection reset), retrying submit...');
         await page.waitForTimeout(3000);
         await submitButton.click();
-        await waitForAssetDetailRedirect(25000);
+        await waitForAssetDetailRedirect(45000);
       } else {
         throw e;
       }
+    }
+    if (page.url().includes('/assets/create')) {
+      const errEl = await page.locator('.error-display').first().textContent().catch(() => '');
+      const errHint = errEl ? ` Backend error: ${errEl.slice(0, 200)}` : '';
+      throw new Error(`Asset creation redirect failed. Still on create page.${errHint}`);
     }
 
     const assetUrl = page.url();
@@ -148,8 +128,12 @@ test.describe('Phase 3 Quality Gates', () => {
     console.log('Asset heading verified');
 
     // Step 2: Upload File and Create Dataset
+    // Use client-side nav (like Phase 2) to avoid full-reload auth race; wait for lazy-loaded page
     console.log('Navigating to dataset create page...');
-    await page.goto('/datasets/create');
+    await navigateToRouteFromApp(page, '/datasets/create', {
+      timeout: 30000,
+      contentSelector: '.dataset-create-page',
+    });
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
@@ -246,13 +230,32 @@ test.describe('Phase 3 Quality Gates', () => {
     }
 
     // Step 3: Navigate back to asset detail page and attach dataset if needed
+    // Try navigateToRouteFromApp first (faster; we're on dataset detail, already logged in); fallback to loginAndNavigateToRoute on redirect
     console.log('Navigating back to asset detail page...');
-    await page.goto(`/assets/${assetId}`);
+    try {
+      await navigateToRouteFromApp(page, `/assets/${assetId}`, {
+        timeout: 60000,
+        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        user: testUser,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('Redirected to login') || msg.includes('Still on login')) {
+        await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
+          timeout: 60000,
+          contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        });
+      } else {
+        throw err;
+      }
+    }
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
     // Wait for asset detail page to load
-    await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 15000 });
+    await page.waitForSelector('.asset-detail-page, .asset-detail-content, .error-display', {
+      timeout: 20000,
+    });
     console.log('Asset detail page loaded');
 
     // If dataset was created but not linked, we need to attach it
@@ -293,10 +296,30 @@ test.describe('Phase 3 Quality Gates', () => {
 
             // Reload page to get fresh asset data with dataset_id
             console.log('Reloading page to get updated asset data...');
-            await page.reload();
-            await page.waitForSelector('.asset-detail-page, .asset-detail-content', {
-              timeout: 15000,
-            });
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            if (page.url().includes('/login')) {
+              await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
+                timeout: 45000,
+                contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+              });
+            } else {
+              try {
+                await waitForAppMainReady(page, {
+                  timeout: 45000,
+                  contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+                });
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                if (msg.includes('Redirected to login') || msg.includes('Still on login')) {
+                  await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
+                    timeout: 45000,
+                    contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+                  });
+                } else {
+                  throw err;
+                }
+              }
+            }
             await page.waitForTimeout(2000);
 
             // Verify dataset is now linked - check both the link and the asset data
@@ -344,7 +367,17 @@ test.describe('Phase 3 Quality Gates', () => {
 
     // Reload page to ensure asset data is fresh (dataset_id should be set after attachment)
     await page.reload();
-    await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 15000 });
+    if (page.url().includes('/login')) {
+      await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
+        timeout: 30000,
+        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+      });
+    } else {
+      await waitForAppMainReady(page, {
+        timeout: 20000,
+        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+      });
+    }
     await page.waitForTimeout(3000); // Wait for asset query to complete
 
     // Check if dataset is linked by looking for the dataset link or Run DQ button
@@ -362,7 +395,17 @@ test.describe('Phase 3 Quality Gates', () => {
       console.log('Button not found after first reload, waiting longer and reloading again...');
       await page.waitForTimeout(5000);
       await page.reload();
-      await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 15000 });
+      if (page.url().includes('/login')) {
+        await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
+          timeout: 30000,
+          contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        });
+      } else {
+        await waitForAppMainReady(page, {
+          timeout: 20000,
+          contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        });
+      }
       await page.waitForTimeout(3000);
     }
 
@@ -383,7 +426,17 @@ test.describe('Phase 3 Quality Gates', () => {
         // DQ run might not appear immediately, reload and check again
         console.log('DQ run not immediately visible, reloading page...');
         await page.reload();
-        await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 15000 });
+        if (page.url().includes('/login')) {
+          await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
+            timeout: 30000,
+            contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+          });
+        } else {
+          await waitForAppMainReady(page, {
+            timeout: 20000,
+            contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+          });
+        }
         await page.waitForSelector('.quality-gate-run-item', { timeout: 10000 });
       }
 
@@ -406,9 +459,17 @@ test.describe('Phase 3 Quality Gates', () => {
         if (i > 0 && i % 5 === 0) {
           console.log('Reloading page to check DQ run status...');
           await page.reload();
-          await page.waitForSelector('.asset-detail-page, .asset-detail-content', {
-            timeout: 15000,
-          });
+          if (page.url().includes('/login')) {
+            await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
+              timeout: 30000,
+              contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+            });
+          } else {
+            await waitForAppMainReady(page, {
+              timeout: 20000,
+              contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+            });
+          }
           await page.waitForTimeout(2000);
         }
       }

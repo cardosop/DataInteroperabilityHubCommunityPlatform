@@ -153,7 +153,7 @@ class VirtualDatasetManagementTest(TestCase):
 
     def test_virtual_dataset_update(self):
         """Test virtual dataset update"""
-        # Create dataset
+        # Create dataset (sources required for SQL)
         dataset = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -161,6 +161,9 @@ class VirtualDatasetManagementTest(TestCase):
             query="SELECT * FROM original",
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.DRAFT,
+            sources=[
+                {"id": "src1", "type": "postgresql", "host": "localhost", "database": "testdb", "port": 5432},
+            ],
         )
 
         # Update dataset
@@ -181,13 +184,16 @@ class VirtualDatasetManagementTest(TestCase):
 
     def test_virtual_dataset_delete(self):
         """Test virtual dataset deletion"""
-        # Create dataset
+        # Create dataset (sources required for SQL; avoid 'DELETE' in query - forbidden keyword substring check)
         dataset = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             name="To Delete",
-            query="SELECT * FROM delete_me",
+            query="SELECT * FROM target_table",
             query_type=QueryType.SQL,
+            sources=[
+                {"id": "src1", "type": "postgresql", "host": "localhost", "database": "testdb", "port": 5432},
+            ],
         )
         dataset_id = str(dataset.id)
 
@@ -271,6 +277,9 @@ class VirtualDatasetManagementTest(TestCase):
             query="SELECT user_id, CONCAT(first_name, ' ', last_name) as full_name, email_address as email FROM users",
             query_type=QueryType.SQL,
             schema=schema,
+            sources=[
+                {"id": "src1", "type": "postgresql", "host": "localhost", "database": "testdb", "port": 5432},
+            ],
         )
 
         self.assertIsNotNone(dataset.schema)
@@ -279,7 +288,7 @@ class VirtualDatasetManagementTest(TestCase):
 
     def test_caching_configuration(self):
         """Test caching configuration"""
-        # Create dataset with caching enabled
+        # Create dataset with caching enabled (sources required for SQL)
         dataset = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -287,6 +296,9 @@ class VirtualDatasetManagementTest(TestCase):
             query="SELECT * FROM cache_test",
             query_type=QueryType.SQL,
             schema={"cache": {"enabled": True, "ttl_seconds": 3600, "key_prefix": "vd_cache"}},
+            sources=[
+                {"id": "src1", "type": "postgresql", "host": "localhost", "database": "testdb", "port": 5432},
+            ],
         )
 
         self.assertIsNotNone(dataset.schema)
@@ -308,7 +320,8 @@ class VirtualDatasetManagementTest(TestCase):
                 query_type="INVALID_TYPE",  # Invalid
             )
 
-        # Test empty name
+        # Test empty name (sources required for SQL so we get name validation error)
+        _min_sources = [{"id": "s", "type": "postgresql", "host": "localhost", "database": "d", "port": 5432}]
         with self.assertRaises(ValidationError):
             self.service.create_virtual_dataset(
                 tenant_id=str(self.tenant.id),
@@ -316,6 +329,7 @@ class VirtualDatasetManagementTest(TestCase):
                 name="",  # Empty name
                 query="SELECT * FROM test",
                 query_type=QueryType.SQL,
+                sources=_min_sources,
             )
 
         # Test invalid version format
@@ -327,10 +341,14 @@ class VirtualDatasetManagementTest(TestCase):
                 query="SELECT * FROM test",
                 query_type=QueryType.SQL,
                 version="invalid",  # Invalid version format
+                sources=_min_sources,
             )
 
     def test_virtual_dataset_error_handling(self):
         """Test virtual dataset error handling"""
+        minimal_sources = [
+            {"id": "src1", "type": "postgresql", "host": "localhost", "database": "testdb", "port": 5432},
+        ]
         # Test duplicate name/version
         dataset1 = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
@@ -339,6 +357,7 @@ class VirtualDatasetManagementTest(TestCase):
             query="SELECT * FROM test1",
             query_type=QueryType.SQL,
             version="1.0.0",
+            sources=minimal_sources,
         )
 
         # Try to create duplicate
@@ -350,6 +369,7 @@ class VirtualDatasetManagementTest(TestCase):
                 query="SELECT * FROM test2",
                 query_type=QueryType.SQL,
                 version="1.0.0",  # Same name and version
+                sources=minimal_sources,
             )
 
         # Test non-existent dataset access
@@ -676,42 +696,30 @@ class FederatedQueryExecutionTest(TestCase):
             self.assertEqual(execution.status, QueryExecutionStatus.CANCELLED)
 
     def test_query_error_handling(self):
-        """Test query error handling"""
-        # Create dataset with invalid source configuration
-        invalid_dataset = self.service.create_virtual_dataset(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            name="Invalid Source Dataset",
-            query="SELECT * FROM invalid",
-            query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE,
-            sources=[{"id": "invalid_source", "type": "invalid_type"}],
-        )
-
-        # Try to execute query - should handle error gracefully
-        # ValidationError is expected due to invalid source type
-        with self.assertRaises(ValidationError):
-            execution = self.service.execute_query(
-                virtual_dataset_id=str(invalid_dataset.id),
+        """Test query error handling: invalid source type is rejected at create (ValidationError)."""
+        # Creating a dataset with invalid source type must raise ValidationError (business rule)
+        with self.assertRaises(ValidationError) as cm:
+            self.service.create_virtual_dataset(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=QueryExecutionMode.ASYNC,
+                name="Invalid Source Dataset",
+                query="SELECT * FROM invalid",
+                query_type=QueryType.SQL,
+                status=VirtualDatasetStatus.ACTIVE,
+                sources=[{"id": "invalid_source", "type": "invalid_type"}],
             )
-
-        # Verify that error handling works - check if execution was created despite error
-        # In async mode, execution might be created before validation fails
-        from hub.apps.virtualization.models import QueryExecution
-
-        executions = QueryExecution.objects.filter(virtual_dataset=invalid_dataset).order_by(
-            "-created_at"
+        self.assertTrue(
+            "invalid_type" in str(cm.exception).lower() or "not supported" in str(cm.exception).lower(),
+            f"Expected error about invalid source type, got: {cm.exception}",
         )
 
-        # If execution was created, it should be in FAILED status
-        if executions.exists():
-            execution = executions.first()
-            self.assertIn(
-                execution.status, [QueryExecutionStatus.FAILED, QueryExecutionStatus.PENDING]
-            )
+        # Verify no dataset was created with that name
+        from hub.apps.virtualization.models import VirtualDataset
+
+        exists = VirtualDataset.objects.filter(
+            tenant_id=self.tenant.id, name="Invalid Source Dataset"
+        ).exists()
+        self.assertFalse(exists, "Dataset with invalid source type should not have been created")
 
 
 @pytest.mark.django_db
@@ -810,6 +818,7 @@ class FederationTopologyTest(TestCase):
             ],
         )
 
+        # SQL query type only allows DB sources (postgresql, mysql, etc.); sparql is for SPARQL query type
         self.dataset2 = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -817,17 +826,21 @@ class FederationTopologyTest(TestCase):
             query="SELECT * FROM table2",
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.ACTIVE,
-            sources=[shared_source, {"id": "source2", "type": "sparql"}],
+            sources=[
+                shared_source,
+                {"id": "source2", "type": "mysql", "host": "localhost", "database": "db2", "port": 3306},
+            ],
         )
 
+        # SPARQL query type requires sparql or federated_asset sources (not rest); sparql source needs endpoint/url
         self.dataset3 = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             name="Topology Dataset 3",
-            query="SELECT * FROM table3",
+            query="SELECT * WHERE { ?s ?p ?o } LIMIT 10",
             query_type=QueryType.SPARQL,
             status=VirtualDatasetStatus.DRAFT,
-            sources=[{"id": "source3", "type": "rest"}],
+            sources=[{"id": "source3", "type": "sparql", "endpoint": "http://example.org/sparql"}],
         )
 
         # Create query executions for health metrics
@@ -939,7 +952,7 @@ class FederationTopologyTest(TestCase):
         )
         initial_count = topology1["metadata"]["dataset_count"]
 
-        # Create new dataset
+        # Create new dataset (SQL query type requires at least one source)
         new_dataset = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -947,6 +960,15 @@ class FederationTopologyTest(TestCase):
             query="SELECT * FROM new_table",
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.ACTIVE,
+            sources=[
+                {
+                    "id": "new_source",
+                    "type": "mysql",
+                    "host": "localhost",
+                    "database": "newdb",
+                    "port": 3306,
+                },
+            ],
         )
 
         # Get updated topology

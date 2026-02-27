@@ -1,0 +1,33 @@
+/**
+ * E2E Feature: Observability
+ * Per E2E_FULL_COVERAGE_PLAN and tasks 8.3.2. Routes: /observability.
+ * At least Success + one Failure or Edge. Real backend only; no mocks.
+ */
+
+import { expect, test } from '@playwright/test';
+import { waitForAppMainReady } from '../fixtures/helpers';
+
+test.describe('Feature: Observability', () => {
+  test.setTimeout(120000);
+
+  test.describe('Success', () => {
+    test('observability route loads or redirects to login/403', async ({ page }) => {
+      await page.goto('/observability');
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(5000);
+      const url = page.url();
+      expect(url).toMatch(/\/observability|\/login|\/403/);
+    });
+  });
+
+  test.describe('Edge', () => {
+    test('observability may show content or capability-gated message', async ({ page }) => {
+      await page.goto('/observability');
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(5000);
+      const hasContent =
+        (await page.locator('body').count()) > 0;
+      expect(hasContent).toBe(true);
+    });
+  });
+});

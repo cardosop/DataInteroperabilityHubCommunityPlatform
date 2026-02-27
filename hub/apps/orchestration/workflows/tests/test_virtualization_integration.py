@@ -11,6 +11,7 @@ from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflows.virtualization import VirtualizationWorkflow
+from hub.apps.virtualization.services import VirtualizationService
 from hub.apps.virtualization.models import (
     VirtualDataset,
     VirtualDatasetStatus,
@@ -188,4 +189,116 @@ class VirtualizationWorkflowIntegrationTest(TestCase):
             if executions.exists():
                 execution = executions.first()
                 self.assertIn(execution.status, [QueryExecutionStatus.FAILED, QueryExecutionStatus.COMPLETED])
+
+    def test_workflow_execution_multi_source_federated_metadata(self):
+        """Test workflow execution with FEDERATED query and multiple federated_asset (metadata-only) sources."""
+        from hub.apps.assets.models import Asset, AssetSourceType
+        from hub.apps.assets.models import DataStrategy
+        import uuid as uuid_mod
+
+        asset1 = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"fed-int-1-{uuid_mod.uuid4()}",
+            name="Federated 1",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY
+        )
+        asset2 = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"fed-int-2-{uuid_mod.uuid4()}",
+            name="Federated 2",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY
+        )
+        multi_vd = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Federated Multi Integration",
+            query="SELECT * FROM combined",
+            query_type=QueryType.FEDERATED,
+            sources=[
+                {"type": "federated_asset", "asset_id": str(asset1.id)},
+                {"type": "federated_asset", "asset_id": str(asset2.id)},
+            ],
+            status=VirtualDatasetStatus.ACTIVE
+        )
+        result = VirtualizationWorkflow.execute(
+            virtual_dataset_id=str(multi_vd.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            parameters={},
+            execution_mode=QueryExecutionMode.ASYNC,
+            engine=self.engine,
+            registry=self.registry
+        )
+        self.assertIn("success", result)
+        self.assertTrue(result["success"])
+        self.assertIn("workflow_instance_id", result)
+        self.assertIn("execution_id", result)
+        instance = WorkflowInstance.objects.get(id=result["workflow_instance_id"])
+        self.assertEqual(instance.status, WorkflowStatus.COMPLETED)
+        self.assertIn("execution_results", instance.state_data)
+        exec_results = instance.state_data["execution_results"]
+        self.assertEqual(exec_results.get("source_count"), 2)
+        self.assertEqual(exec_results.get("query_type"), "FEDERATED")
+
+    def test_workflow_and_service_execution_parity(self):
+        """Test workflow-vs-view parity: same virtual dataset yields same result shape from service and workflow."""
+        from hub.apps.assets.models import Asset, AssetSourceType, DataStrategy
+        import uuid as uuid_mod
+
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"fed-parity-{uuid_mod.uuid4()}",
+            name="Parity Federated",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY
+        )
+        vd = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Parity VD",
+            query="SELECT * FROM t",
+            query_type=QueryType.SQL,
+            sources=[{"type": "federated_asset", "asset_id": str(asset.id)}],
+            status=VirtualDatasetStatus.ACTIVE
+        )
+        service = VirtualizationService(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id)
+        )
+        view_results = service._execute_query_against_sources(
+            query=vd.query,
+            query_type=vd.query_type,
+            sources=vd.sources,
+            parameters={},
+            timeout_seconds=300
+        )
+        self.assertEqual(len(view_results), 1)
+        view_row_count = view_results[0].get("row_count", 0)
+        result = VirtualizationWorkflow.execute(
+            virtual_dataset_id=str(vd.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            parameters={},
+            execution_mode=QueryExecutionMode.ASYNC,
+            engine=self.engine,
+            registry=self.registry
+        )
+        self.assertTrue(result.get("success"))
+        instance = WorkflowInstance.objects.get(id=result["workflow_instance_id"])
+        self.assertEqual(
+            instance.status,
+            WorkflowStatus.COMPLETED,
+            "Parity test requires workflow to complete successfully",
+        )
+        workflow_results = instance.state_data.get("execution_results", {})
+        self.assertEqual(
+            workflow_results.get("row_count"),
+            view_row_count,
+            "Workflow and service execution must yield same row_count (parity)",
+        )
 

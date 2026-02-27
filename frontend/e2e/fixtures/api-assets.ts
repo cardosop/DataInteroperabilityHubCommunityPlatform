@@ -6,34 +6,126 @@
 
 import type { TestUser } from '../setup/create-test-user';
 
-const API_BASE_URL = process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+// Node fetch needs absolute URL; VITE_API_BASE_URL is relative (/api/v1)
+let API_BASE_URL =
+  process.env.E2E_API_BASE_URL ||
+  (process.env.VITE_PROXY_TARGET ? `${process.env.VITE_PROXY_TARGET.replace(/\/$/, '')}/api/v1` : null) ||
+  'http://localhost:8000/api/v1';
+
+/** True when error is ECONNREFUSED (wrong port or backend not running). */
+function isConnectionRefused(err: unknown): boolean {
+  const cause = err && typeof err === 'object' && (err as { cause?: unknown }).cause;
+  return !!(
+    cause &&
+    typeof cause === 'object' &&
+    (cause as { code?: string }).code === 'ECONNREFUSED'
+  );
+}
+
+/** True when error is a transient connection failure (retryable): other side closed, ECONNRESET, etc. */
+function isTransientConnectionError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/fetch failed|terminated|network/i.test(msg)) return true;
+  const cause = err && typeof err === 'object' && (err as { cause?: unknown }).cause;
+  if (cause && typeof cause === 'object') {
+    const c = cause as { code?: string; message?: string };
+    if (c.code === 'ECONNRESET' || c.code === 'UND_ERR_SOCKET') return true;
+    if (typeof c.message === 'string' && /other side closed|socket hang up/i.test(c.message))
+      return true;
+  }
+  return false;
+}
+
+/** Alternate API port for localhost (8000 <-> 8001) when primary refuses connection. */
+function getAlternateApiBase(currentBase: string): string | null {
+  try {
+    const url = new URL(currentBase);
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+      const port = parseInt(url.port || '80', 10);
+      const altPort = port === 8001 ? 8000 : port === 8000 ? 8001 : null;
+      if (altPort) {
+        url.port = String(altPort);
+        return url.toString();
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+const RETRIES = 3;
+const RETRY_DELAYS_MS = [2000, 4000, 6000];
 
 /**
  * Log in via API and return access token.
+ * Retries on transient connection errors (other side closed, ECONNRESET).
+ * Tries alternate port (8000 <-> 8001) on ECONNREFUSED.
  */
 async function loginViaApi(user: TestUser): Promise<string> {
-  const response = await fetch(`${API_BASE_URL}/auth/login/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: user.email, password: user.password }),
-  });
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    throw new Error(`Login API failed: ${response.status} ${body}`);
+  const basesToTry = [API_BASE_URL];
+  const alt = getAlternateApiBase(API_BASE_URL);
+  if (alt) basesToTry.push(alt);
+
+  let lastErr: unknown;
+  for (const tryBase of basesToTry) {
+    for (let r = 0; r < RETRIES; r++) {
+      try {
+        const response = await fetch(`${tryBase}/auth/login/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user.email, password: user.password }),
+        });
+        if (!response.ok) {
+          const body = await response.text().catch(() => '');
+          throw new Error(`Login API failed: ${response.status} ${body}`);
+        }
+        const data = (await response.json()) as { access_token?: string };
+        if (!data.access_token) {
+          throw new Error('Login response missing access_token');
+        }
+        API_BASE_URL = tryBase; // Use working base for subsequent fetches
+        return data.access_token;
+      } catch (err) {
+        lastErr = err;
+        if (r < RETRIES - 1 && isTransientConnectionError(err)) {
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[r]));
+          continue;
+        }
+        if (isConnectionRefused(err)) {
+          break; // Try alternate port
+        }
+        throw err;
+      }
+    }
   }
-  const data = (await response.json()) as { access_token?: string };
-  if (!data.access_token) {
-    throw new Error('Login response missing access_token');
-  }
-  return data.access_token;
+  throw lastErr;
 }
 
 /**
  * Get or create one asset via API for the given user (same tenant). Returns the asset id.
  * Tries to use an existing asset first to avoid plan limit issues.
  * Use before tests that need at least one asset (e.g. marketplace publish, scheduled export).
+ * Retries on transient connection errors (other side closed, ECONNRESET).
  */
 export async function createAssetViaApi(user: TestUser): Promise<string> {
+  let lastErr: unknown;
+  for (let r = 0; r < RETRIES; r++) {
+    try {
+      return await createAssetViaApiOnce(user);
+    } catch (err) {
+      lastErr = err;
+      if (r < RETRIES - 1 && isTransientConnectionError(err)) {
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[r]));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
+async function createAssetViaApiOnce(user: TestUser): Promise<string> {
   const token = await loginViaApi(user);
 
   // First, try to get an existing asset to avoid plan limit issues
@@ -46,11 +138,10 @@ export async function createAssetViaApi(user: TestUser): Promise<string> {
   });
 
   if (listResponse.ok) {
-    const listData = (await listResponse.json()) as {
-      results?: Array<{ id?: string }>;
-      id?: string;
-    }[];
-    // Handle both paginated and non-paginated responses
+    const listData = (await listResponse.json()) as
+      | { results?: Array<{ id?: string }> }
+      | Array<{ id?: string }>;
+    // Handle both paginated ({ results: [...] }) and non-paginated ([...]) responses
     const assets = Array.isArray(listData) ? listData : listData.results || [];
     if (assets.length > 0 && assets[0].id) {
       return assets[0].id;
@@ -74,6 +165,12 @@ export async function createAssetViaApi(user: TestUser): Promise<string> {
   });
   if (!response.ok) {
     const body = await response.text().catch(() => '');
+    if (response.status === 403 && /subscription_inactive|No active subscription/i.test(body)) {
+      throw new Error(
+        `Create asset API failed: 403 subscription_inactive. ` +
+          `Ensure E2E subscription: run 'docker exec hub-test-api python hub/manage.py ensure_e2e_subscription' or use npm run test:e2e (calls ensure endpoint automatically).`
+      );
+    }
     throw new Error(`Create asset API failed: ${response.status} ${body}`);
   }
   const data = (await response.json()) as { id?: string };

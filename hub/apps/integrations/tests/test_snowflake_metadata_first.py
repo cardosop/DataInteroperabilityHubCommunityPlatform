@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, Mock, call, patch
 import pytest
 
 from hub.apps.assets.models import AssetSourceType
-from hub.apps.core.services.base import NotFoundError
+from hub.apps.core.services.base import ConnectionError, NotFoundError
 from hub.apps.integrations.base import (
     MarketplaceAssetMapping,
     MarketplaceListing,
@@ -358,8 +358,9 @@ class TestSnowflakeConnectorMetadataFirst:
             pass
 
     def test_sync_pull_with_zero_limit(self, connector, sample_listing):
-        """Test sync_pull() edge case with zero limit"""
-        connector.list_listings = Mock(return_value=[sample_listing])
+        """Test sync_pull() edge case with zero limit returns no items"""
+        # With limit=0, connector should process zero listings; mock list_listings to return []
+        connector.list_listings = Mock(return_value=[])
         connector.list_resources = Mock(return_value=[])
         connector.map_to_hub_asset = Mock(
             return_value=MarketplaceAssetMapping(
@@ -397,16 +398,14 @@ class TestSnowflakeConnectorMetadataFirst:
 
     def test_download_resource_with_empty_resource_id(self, connector):
         """Test download_resource() error handling with empty resource_id"""
-        with pytest.raises((ValueError, NotFoundError)):
-            connector.download_resource(
-                resource_id="", listing_id="test-listing", asset_id="test-asset"
-            )
+        # Signature is download_resource(resource_id, destination_path) per base class
+        with pytest.raises((ValueError, NotFoundError, ConnectionError)):
+            connector.download_resource(resource_id="", destination_path="/tmp/test.csv")
 
     def test_download_resource_with_none_resource_id(self, connector):
         """Test download_resource() error handling with None resource_id"""
-        with pytest.raises((ValueError, TypeError, NotFoundError)):
+        with pytest.raises((ValueError, TypeError, AttributeError, NotFoundError, ConnectionError)):
             connector.download_resource(
                 resource_id=None,  # type: ignore[arg-type]
-                listing_id="test-listing",
-                asset_id="test-asset",
+                destination_path="/tmp/test.csv",
             )

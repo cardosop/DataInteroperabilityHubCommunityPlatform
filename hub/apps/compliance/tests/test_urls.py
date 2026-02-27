@@ -12,6 +12,7 @@ from rest_framework import status
 from hub.apps.compliance.views import ComplianceRunViewSet
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.jobs.models import Job, JobType, JobStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory, AssetFactory, JobFactory
 
 
@@ -211,6 +212,7 @@ class ComplianceURLIntegrationTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = UserFactory.create_user(tenant=self.tenant)
+        ensure_tenant_has_active_subscription(self.tenant)
         self.client.force_authenticate(user=self.user)
 
         self.asset = AssetFactory.create_asset(

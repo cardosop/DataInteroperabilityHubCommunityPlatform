@@ -26,6 +26,7 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 User = get_user_model()
 
@@ -43,6 +44,7 @@ class AssetPerformanceTest(TestCase):
             password="testpass123",
             tenant=self.tenant,
         )
+        ensure_user_has_data_provider_role(self.user)
         self.client.force_authenticate(user=self.user)
 
     def measure_endpoint_performance(self, method, url, data=None, iterations=50):

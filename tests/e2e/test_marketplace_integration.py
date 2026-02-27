@@ -202,15 +202,17 @@ class MarketplaceSyncPushE2ETest(E2ETestBase):
 
         workflow_instance = workflow_instances.first()
         self.assertIsNotNone(workflow_instance)
-        # Workflow instance status may be DRAFT, RUNNING, or FAILED depending on when it's checked
-        # FAILED is acceptable if workflow execution fails (e.g., marketplace unavailable)
-        # Note: WorkflowStatus doesn't have PENDING, so we check for valid statuses
+        # Workflow instance status may be DRAFT, RUNNING, FAILED, COMPLETED, or ROLLED_BACK depending on when it's checked.
+        # FAILED/ROLLED_BACK: CKAN is PULL-only; push workflow fails at map_assets_to_marketplace and rolls back.
+        # ROLLING_BACK: transient state during compensation (may be observed if checked mid-rollback).
         valid_statuses = [
             WorkflowStatus.DRAFT.value,
             WorkflowStatus.RUNNING.value,
             WorkflowStatus.FAILED.value,
             WorkflowStatus.COMPLETED.value,
-            WorkflowStatus.CANCELLED.value
+            WorkflowStatus.CANCELLED.value,
+            WorkflowStatus.ROLLED_BACK.value,
+            WorkflowStatus.ROLLING_BACK.value,
         ]
         self.assertIn(workflow_instance.status, valid_statuses,
                       f"Workflow status {workflow_instance.status} not in expected statuses: {valid_statuses}")

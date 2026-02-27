@@ -1,0 +1,58 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 3.1058034896850586
+  },
+  "journeys": [
+    {
+      "journey_id": "DA-001-897d11b4",
+      "journey_name": "Create Transformation Pipeline",
+      "persona": "Data Analyst",
+      "status": "completed",
+      "start_time": 1772135273.2125354,
+      "end_time": 1772135276.3183389,
+      "duration": 3.1058034896850586,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135273.2125416,
+          "end_time": 1772135276.3141432,
+          "duration": 3.1016016006469727,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135276.3183305,
+          "end_time": 1772135276.3183372,
+          "duration": 6.67572021484375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "ffa1cbe6-c742-45b0-854d-54d78ba6d791"
+      }
+    }
+  ],
+  "exported_at": "2026-02-26T19:47:56.318400"
+}

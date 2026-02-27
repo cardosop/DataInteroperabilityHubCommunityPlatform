@@ -14,15 +14,46 @@ import type {
 
 const FILES_BASE_PATH = 'files';
 
+/** Parse retry-after from 429 response (header or message); default 5s */
+function getRetryAfterMs(error: unknown): number {
+  const err = error as { response?: { headers?: { 'retry-after'?: string }; data?: { message?: string } } };
+  const header = err.response?.headers?.['retry-after'];
+  if (header) {
+    const sec = parseInt(header, 10);
+    if (!Number.isNaN(sec)) return Math.min(sec * 1000, 30000);
+  }
+  const msg = err.response?.data?.message ?? '';
+  const match = msg.match(/retry after (\d+) seconds?/i);
+  if (match) return (parseInt(match[1], 10) + 1) * 1000;
+  return 5000;
+}
+
 export const fileService = {
   /**
    * Initialize file upload (get presigned URL)
+   * Retries on 429 (rate limit) with delay from Retry-After header or error message
    */
   async initUpload(data: FileInitRequest): Promise<FileInitResponse> {
-    const response = await apiClient
-      .getClient()
-      .post<FileInitResponse>(`${FILES_BASE_PATH}/init/`, data);
-    return response.data;
+    const maxRetries = 4;
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await apiClient
+          .getClient()
+          .post<FileInitResponse>(`${FILES_BASE_PATH}/init/`, data);
+        return response.data;
+      } catch (error) {
+        lastError = error;
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        if (status === 429 && attempt < maxRetries) {
+          const delayMs = getRetryAfterMs(error);
+          await new Promise((r) => setTimeout(r, delayMs));
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError;
   },
 
   /**
@@ -94,15 +125,32 @@ export const fileService = {
 
   /**
    * Complete file upload
+   * Retries on 429 (rate limit) with delay from Retry-After
    */
   async completeUpload(data: FileCompleteRequest): Promise<File> {
-    const response = await apiClient
-      .getClient()
-      .post<File>(`${FILES_BASE_PATH}/${data.file_id}/complete/`, {
-        content_sha256: data.content_sha256,
-        parts: data.parts,
-      });
-    return response.data;
+    const maxRetries = 4;
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await apiClient
+          .getClient()
+          .post<File>(`${FILES_BASE_PATH}/${data.file_id}/complete/`, {
+            content_sha256: data.content_sha256,
+            parts: data.parts,
+          });
+        return response.data;
+      } catch (error) {
+        lastError = error;
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        if (status === 429 && attempt < maxRetries) {
+          const delayMs = getRetryAfterMs(error);
+          await new Promise((r) => setTimeout(r, delayMs));
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError;
   },
 
   /**

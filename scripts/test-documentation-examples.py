@@ -66,9 +66,19 @@ def validate_python_syntax(code: str) -> Tuple[bool, str]:
         compile(code, '<string>', 'exec')
         return True, ''
     except SyntaxError as e:
+        err_str = str(e)
         # For async/await outside function, this is acceptable in documentation
-        if "'async' outside function" in str(e) or "'await' outside function" in str(e):
+        if "'async' outside function" in err_str or "'await' outside function" in err_str:
             return True, 'async/await pattern (acceptable in docs)'
+        # For return/yield outside function, invalid syntax, or positional-after-keyword:
+        # docs often show partial snippets; try wrapping in a function
+        for _ in (None,):  # single attempt block
+            try:
+                wrapped = "def _doc_snippet():\n    " + code.replace("\n", "\n    ")
+                compile(wrapped, "<string>", "exec")
+                return True, "snippet pattern (acceptable in docs)"
+            except SyntaxError:
+                pass
         return False, str(e)
 
 

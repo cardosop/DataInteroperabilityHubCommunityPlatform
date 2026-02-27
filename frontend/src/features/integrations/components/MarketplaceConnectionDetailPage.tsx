@@ -45,10 +45,6 @@ export function MarketplaceConnectionDetailPage() {
     }
   };
 
-  if (isLoading || !connection) {
-    return <LoadingSpinner message="Loading connection..." />;
-  }
-
   if (error) {
     return (
       <ErrorDisplay
@@ -57,6 +53,10 @@ export function MarketplaceConnectionDetailPage() {
         onRetry={() => refetch()}
       />
     );
+  }
+
+  if (isLoading || !connection) {
+    return <LoadingSpinner message="Loading connection..." />;
   }
 
   return (

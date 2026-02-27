@@ -61,9 +61,23 @@ export function AuditEventDetailPage() {
             <dt>Timestamp</dt>
             <dd>{new Date(event.timestamp).toLocaleString()}</dd>
             <dt>Tenant</dt>
-            <dd>{event.tenant_name || event.tenant || '—'}</dd>
+            <dd>
+              {event.tenant_name ??
+                (typeof event.tenant === 'object' && event.tenant !== null && 'name' in event.tenant
+                  ? (event.tenant as { name: string }).name
+                  : typeof event.tenant === 'string'
+                    ? event.tenant
+                    : '—')}
+            </dd>
             <dt>Actor</dt>
-            <dd>{event.actor_user_email || event.actor_user || 'SYSTEM'}</dd>
+            <dd>
+              {event.actor_user_email ??
+                (typeof event.actor_user === 'object' && event.actor_user !== null && 'email' in event.actor_user
+                  ? (event.actor_user as { email: string }).email
+                  : typeof event.actor_user === 'string'
+                    ? event.actor_user
+                    : 'SYSTEM')}
+            </dd>
           </dl>
         </div>
 

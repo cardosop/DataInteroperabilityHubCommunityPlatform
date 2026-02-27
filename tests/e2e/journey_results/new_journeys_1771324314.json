@@ -1,0 +1,108 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.015108108520507812
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-013-85d5e14f",
+      "journey_name": "Use Asset Recommendations",
+      "persona": "Data Consumer",
+      "status": "completed",
+      "start_time": 1771324314.9481857,
+      "end_time": 1771324314.9632938,
+      "duration": 0.015108108520507812,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Recommendations",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324314.94819,
+          "end_time": 1771324314.9547243,
+          "duration": 0.0065343379974365234,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "View Recommended for You",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324314.9547293,
+          "end_time": 1771324314.954733,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "View Similar Assets",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324314.9547348,
+          "end_time": 1771324314.9547365,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "View Also Used",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324314.9547377,
+          "end_time": 1771324314.9547389,
+          "duration": 1.1920928955078125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Explore Recommended Assets",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324314.9547405,
+          "end_time": 1771324314.959604,
+          "duration": 0.0048635005950927734,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Note: Feedback Endpoint Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324314.963288,
+          "end_time": 1771324314.9632924,
+          "duration": 4.291534423828125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-17T10:31:54.963364"
+}

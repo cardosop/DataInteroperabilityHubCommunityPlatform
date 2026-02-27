@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-005-f7c0d63c",
+      "journey_name": "Review Asset Quality",
+      "persona": "Data Consumer / Buyer",
+      "status": "failed",
+      "start_time": 1771211184.9687915,
+      "end_time": 1771211184.973212,
+      "duration": 0.00442051887512207,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 403 - {\"error\": \"No active subscription\", \"code\": \"subscription_inactive\", \"details\": {\"tenant_id\": \"127e01f0-c89a-4fed-8d00-8c80464fef53\"}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Create Asset with DQ Metrics",
+          "status": "StepStatus.FAILED",
+          "start_time": 1771211184.9687989,
+          "end_time": 1771211184.9732063,
+          "duration": 0.004407405853271484,
+          "error_message": "Failed to create asset: 403 - {\"error\": \"No active subscription\", \"code\": \"subscription_inactive\", \"details\": {\"tenant_id\": \"127e01f0-c89a-4fed-8d00-8c80464fef53\"}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T03:06:24.973309"
+}

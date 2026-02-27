@@ -17,6 +17,7 @@ from tests.utils.polling import wait_until
 from hub.apps.core.events.models import Event
 from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User
 from hub.apps.webhooks.mesh_event_subscriber import get_mesh_event_subscriber
 from hub.apps.webhooks.models import (
@@ -39,6 +40,7 @@ class MeshWebhookE2ETest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant
         )

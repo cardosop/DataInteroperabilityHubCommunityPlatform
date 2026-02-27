@@ -616,6 +616,8 @@ class MarketplaceConnectionModelTest(TestCase):
 
     def test_connection_field_types(self):
         """Test that connection fields have correct types"""
+        import uuid as uuid_module
+
         connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
@@ -623,8 +625,8 @@ class MarketplaceConnectionModelTest(TestCase):
             config=self.config,
         )
 
-        # Verify field types
-        self.assertIsInstance(connection.id, (str, int, type(None)))
+        # Verify field types (id is UUID)
+        self.assertIsInstance(connection.id, (str, int, type(None), uuid_module.UUID))
         self.assertIsInstance(connection.marketplace_type, str)
         self.assertIsInstance(connection.name, str)
         self.assertIsInstance(connection.config, dict)
@@ -642,12 +644,13 @@ class MarketplaceConnectionModelTest(TestCase):
         )
         after_create = timezone.now()
 
-        # Verify timestamps are set
+        # Verify timestamps are set (allow microsecond variance from auto_now)
         self.assertIsNotNone(connection.created_at)
         self.assertIsNotNone(connection.updated_at)
         self.assertGreaterEqual(connection.created_at, before_create)
         self.assertLessEqual(connection.created_at, after_create)
-        self.assertEqual(connection.created_at, connection.updated_at)
+        delta = abs((connection.created_at - connection.updated_at).total_seconds())
+        self.assertLessEqual(delta, 1.0, "created_at and updated_at should be within 1 second")
 
     def test_connection_default_values(self):
         """Test that connection has correct default values"""

@@ -6,11 +6,11 @@ Service layer for data portability and erasure operations.
 
 import io
 import json
-import logging
 import zipfile
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
+import structlog
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -24,7 +24,7 @@ from hub.apps.gdpr.models import (
     ErasureRequestStatus,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class DataPortabilityService(BaseService):
@@ -187,7 +187,7 @@ class DataPortabilityService(BaseService):
         # Collect audit events
         from hub.apps.audit.models import AuditEvent
 
-        audit_events = AuditEvent.objects.filter(actor_user=user).order_by("-created_at")[
+        audit_events = AuditEvent.objects.filter(actor_user=user).order_by("-timestamp")[
             :1000
         ]  # Limit to recent 1000 events
 
@@ -198,8 +198,8 @@ class DataPortabilityService(BaseService):
                     "resource_type": event.resource_type,
                     "action": event.action,
                     "resource_id": event.resource_id,
-                    "details": event.details,
-                    "created_at": event.created_at.isoformat() if event.created_at else None,
+                    "details": event.details_json,
+                    "created_at": event.timestamp.isoformat() if event.timestamp else None,
                 }
             )
 
@@ -225,12 +225,19 @@ class DataPortabilityService(BaseService):
         datasets = Dataset.objects.filter(tenant=user.tenant, created_by=user)
 
         for dataset in datasets:
+            # Dataset has no name/description/status; derive label from asset/file
+            label = None
+            if dataset.asset:
+                label = dataset.asset.name
+            elif dataset.file:
+                label = dataset.file.name
+            if not label:
+                label = str(dataset.id)
             data["datasets"].append(
                 {
                     "id": str(dataset.id),
-                    "name": dataset.name,
-                    "description": dataset.description,
-                    "status": dataset.status,
+                    "name": label,
+                    "format": dataset.format,
                     "created_at": dataset.created_at.isoformat() if dataset.created_at else None,
                 }
             )
@@ -241,10 +248,12 @@ class DataPortabilityService(BaseService):
         contracts = Contract.objects.filter(tenant=user.tenant, created_by=user)
 
         for contract in contracts:
+            # Contract has no name; derive label from asset or id
+            label = contract.asset.name if contract.asset else f"Contract {contract.id}"
             data["contracts"].append(
                 {
                     "id": str(contract.id),
-                    "name": contract.name,
+                    "name": label,
                     "status": contract.status,
                     "created_at": contract.created_at.isoformat() if contract.created_at else None,
                 }
@@ -424,7 +433,6 @@ class ErasureService(BaseService):
             operation="create_request", tenant_id=self.tenant_id, func=_create
         )
 
-    @transaction.atomic
     def execute_erasure(self, request_id: str) -> ErasureRequest:
         """
         Execute erasure request: anonymize/delete PII.
@@ -446,89 +454,94 @@ class ErasureService(BaseService):
             request.save()
 
             try:
-                user = request.user
-                anonymized_fields = []
-                deleted_resources = []
-                retention_exceptions = []
+                with transaction.atomic():
+                    user = request.user
+                    anonymized_fields = []
+                    deleted_resources = []
+                    retention_exceptions = []
 
-                # Anonymize user profile
-                original_email = user.email
-                user.email = f"deleted-{user.id}@deleted.local"
-                user.display_name = "Deleted User"
-                user.save()
-                anonymized_fields.append("email")
-                anonymized_fields.append("display_name")
+                    # Anonymize user profile
+                    original_email = user.email
+                    user.email = f"deleted-{user.id}@deleted.local"
+                    user.display_name = "Deleted User"
+                    user.save()
+                    anonymized_fields.append("email")
+                    anonymized_fields.append("display_name")
 
-                # Revoke sessions
-                from django.contrib.sessions.models import Session
+                    # Revoke sessions
+                    from django.contrib.sessions.models import Session
 
-                Session.objects.filter(
-                    session_key__in=[
-                        s.session_key
-                        for s in Session.objects.all()
-                        if hasattr(s, "get_decoded") and str(user.id) in str(s.get_decoded())
-                    ]
-                ).delete()
-                deleted_resources.append("sessions")
+                    Session.objects.filter(
+                        session_key__in=[
+                            s.session_key
+                            for s in Session.objects.all()
+                            if hasattr(s, "get_decoded") and str(user.id) in str(s.get_decoded())
+                        ]
+                    ).delete()
+                    deleted_resources.append("sessions")
 
-                # Revoke API keys
-                from hub.apps.baas.models import APIKey
+                    # Revoke API keys
+                    from hub.apps.baas.models import APIKey
 
-                APIKey.objects.filter(user=user, revoked_at__isnull=True).update(
-                    revoked_at=timezone.now()
-                )
-                deleted_resources.append("api_keys")
+                    APIKey.objects.filter(user=user, revoked_at__isnull=True).update(
+                        revoked_at=timezone.now()
+                    )
+                    deleted_resources.append("api_keys")
 
-                # Anonymize audit events (per policy - some may be retained)
-                from hub.apps.audit.models import AuditEvent
+                    # Anonymize audit events (per policy - some may be retained)
+                    from hub.apps.audit.models import AuditEvent
 
-                # Keep audit events but anonymize actor reference
-                # In production, this would follow retention policy
-                audit_events = AuditEvent.objects.filter(actor_user=user)
-                for event in audit_events:
-                    # Anonymize actor reference in details if present
-                    if event.details and isinstance(event.details, dict):
-                        if "actor_email" in event.details:
-                            event.details["actor_email"] = "deleted@deleted.local"
-                        if "user_email" in event.details:
-                            event.details["user_email"] = "deleted@deleted.local"
-                        event.save(update_fields=["details"])
+                    # Keep audit events but anonymize PII in details_json (GDPR erasure).
+                    # Use QuerySet.update to persist; AuditEvent.save() forbids updates.
+                    audit_events = AuditEvent.objects.filter(actor_user=user)
+                    for event in audit_events:
+                        details = event.details_json
+                        if details and isinstance(details, dict):
+                            anonymized = dict(details)
+                            if "actor_email" in anonymized:
+                                anonymized["actor_email"] = "deleted@deleted.local"
+                            if "user_email" in anonymized:
+                                anonymized["user_email"] = "deleted@deleted.local"
+                            if anonymized != details:
+                                AuditEvent.objects.filter(pk=event.pk).update(
+                                    details_json=anonymized
+                                )
 
-                # Note: Some data may be retained for legal/compliance reasons
-                # This would be determined by retention policy
-                retention_exceptions.append("audit_events")  # Example
+                    # Note: Some data may be retained for legal/compliance reasons
+                    # This would be determined by retention policy
+                    retention_exceptions.append("audit_events")  # Example
 
-                request.status = ErasureRequestStatus.COMPLETED
-                request.completed_at = timezone.now()
-                request.anonymized_fields = anonymized_fields
-                request.deleted_resources = deleted_resources
-                request.retention_exceptions = retention_exceptions
-                request.save()
+                    request.status = ErasureRequestStatus.COMPLETED
+                    request.completed_at = timezone.now()
+                    request.anonymized_fields = anonymized_fields
+                    request.deleted_resources = deleted_resources
+                    request.retention_exceptions = retention_exceptions
+                    request.save()
 
-                # Log audit event
-                from hub.apps.audit.utils import create_audit_event
+                    # Log audit event
+                    from hub.apps.audit.utils import create_audit_event
 
-                create_audit_event(
-                    resource_type="ERASURE_REQUEST",
-                    action="ERASURE_COMPLETED",
-                    tenant=request.tenant,
-                    actor_user=None,  # System action
-                    resource_id=str(request.id),
-                    details={
-                        "user_id": str(user.id),
-                        "original_email": original_email,
-                        "anonymized_fields": anonymized_fields,
-                        "deleted_resources": deleted_resources,
-                        "retention_exceptions": retention_exceptions,
-                    },
-                )
+                    create_audit_event(
+                        resource_type="ERASURE_REQUEST",
+                        action="ERASURE_COMPLETED",
+                        tenant=request.tenant,
+                        actor_user=None,  # System action
+                        resource_id=str(request.id),
+                        details={
+                            "user_id": str(user.id),
+                            "original_email": original_email,
+                            "anonymized_fields": anonymized_fields,
+                            "deleted_resources": deleted_resources,
+                            "retention_exceptions": retention_exceptions,
+                        },
+                    )
 
-                logger.info(
-                    "erasure_request_completed",
-                    request_id=str(request.id),
-                    user_id=str(user.id),
-                    message=f"Erasure request {request.id} completed successfully",
-                )
+                    logger.info(
+                        "erasure_request_completed",
+                        request_id=str(request.id),
+                        user_id=str(user.id),
+                        message=f"Erasure request {request.id} completed successfully",
+                    )
 
             except Exception as e:
                 logger.error(
@@ -538,6 +551,8 @@ class ErasureService(BaseService):
                     exc_info=True,
                     message=f"Failed to execute erasure request: {e}",
                 )
+                # Update FAILED outside the inner atomic so it persists (inner atomic
+                # rolls back on exception; this save is in the outer transaction).
                 request.status = ErasureRequestStatus.FAILED
                 request.error_message = str(e)
                 request.save()

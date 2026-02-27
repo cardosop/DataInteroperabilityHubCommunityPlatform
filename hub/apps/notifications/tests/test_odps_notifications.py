@@ -24,6 +24,7 @@ from hub.apps.notifications.tasks import (
     send_odps_normalization_failure_email,
 )
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 User = get_user_model()
 
@@ -47,6 +48,7 @@ class ODPSNotificationIntegrationTest(TestCase):
             pass
 
         self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com", tenant=self.tenant, display_name="Test User"
         )
@@ -338,8 +340,8 @@ class ODPSNotificationIntegrationTest(TestCase):
         mock_service.send_email.side_effect = EmailServiceError("Service unavailable")
         mock_get_service.return_value = mock_service
 
-        # Send email - should handle error gracefully
-        with self.assertRaises(Exception):
+        # Send email - task records failure and propagates EmailServiceError to caller
+        with self.assertRaises(EmailServiceError):
             send_odps_creation_completion_email(str(self.odps_contract.id))
 
         # Verify delivery record was created with failure status

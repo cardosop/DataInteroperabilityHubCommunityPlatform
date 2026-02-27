@@ -21,6 +21,7 @@ from hub.apps.webhooks.models import (
     DeliveryStatus,
 )
 from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
 
@@ -34,6 +35,7 @@ class WebhooksBusinessRulesInitializationTest(TestCase):
             slug="test-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
@@ -119,6 +121,7 @@ class WebhookRuleExecutionContextTest(TestCase):
             slug="test-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
@@ -191,6 +194,7 @@ class WebhookSubscriptionValidationTest(TestCase):
             slug="test-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",

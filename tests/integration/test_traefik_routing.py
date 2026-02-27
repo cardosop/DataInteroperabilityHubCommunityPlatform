@@ -33,7 +33,7 @@ except Exception:
 project_root = Path(__file__).resolve().parent.parent.parent
 
 # Reuse Docker Compose manager implementation from test_docker_compose_deployment
-from tests.integration.test_docker_compose_deployment import DockerComposeManager
+from tests.integration.test_docker_compose_deployment import DockerComposeManager, _docker_available
 from tests.utils.polling import wait_until
 
 
@@ -79,6 +79,8 @@ def _traefik_services_already_running() -> bool:
 @pytest.fixture(scope="module")
 def docker_compose_manager_traefik(docker_compose_file):
     """Create Docker Compose manager for Traefik routing tests (used only when not TRAEFIK_BASE_URL)."""
+    if not _traefik_services_already_running() and not _docker_available():
+        pytest.skip("Docker CLI not available (run these tests on host with Docker)")
     manager = DockerComposeManager(docker_compose_file)
     yield manager
     if not _traefik_services_already_running():

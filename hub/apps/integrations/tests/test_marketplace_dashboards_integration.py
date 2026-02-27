@@ -8,17 +8,34 @@ Tests verify:
 4. Dashboards can query Prometheus metrics
 
 All tests use real services (no mocks/stubs).
+
+Service URLs: Try localhost first (host-mapped ports), then docker-compose.test.yml
+service names (grafana-test, prometheus-test, api-service-test). Hostnames 'grafana',
+'prometheus', 'api-service' are from main docker-compose.yml and do not resolve in
+the test container.
 """
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 import requests
-from django.conf import settings
 from django.test import TestCase
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+def _first_reachable(candidates, path_suffix, timeout=2):
+    """Return first reachable base URL from candidates. path_suffix e.g. '/api/health'."""
+    for base in candidates:
+        try:
+            r = requests.get(f"{base.rstrip('/')}{path_suffix}", timeout=timeout)
+            if r.status_code in (200, 401):
+                return base
+        except requests.exceptions.RequestException:
+            continue
+    return None
 
 
 class MarketplaceDashboardsIntegrationTest(TestCase):
@@ -29,10 +46,31 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
         self.project_root = Path(__file__).resolve().parent.parent.parent.parent.parent
         self.dashboards_dir = self.project_root / "monitoring" / "grafana" / "dashboards"
 
-        # Service URLs (from Docker Compose)
-        self.grafana_url = "http://grafana:3000"
-        self.prometheus_url = "http://prometheus:9090"
-        self.api_metrics_url = "http://api-service:8000/metrics/"
+        # Service URLs: try localhost (mapped ports) then docker-compose.test.yml names
+        # Tests run inside api-service-test; grafana/prometheus/api-service don't resolve
+        grafana_port = int(os.environ.get("GRAFANA_TEST_PORT", "3011"))
+        prometheus_port = int(os.environ.get("PROMETHEUS_TEST_PORT", "9091"))
+        api_port = int(os.environ.get("API_TEST_PORT", "8001"))
+        # Order: docker-compose.test.yml names first (tests run in api-service-test)
+        grafana_candidates = [
+            "http://grafana-test:3000",
+            f"http://localhost:{grafana_port}",
+            "http://grafana:3000",
+        ]
+        prometheus_candidates = [
+            "http://prometheus-test:9090",
+            f"http://localhost:{prometheus_port}",
+            "http://prometheus:9090",
+        ]
+        api_candidates = [
+            "http://api-service-test:8000",
+            f"http://localhost:{api_port}",
+            "http://api-service:8000",
+        ]
+        self.grafana_url = _first_reachable(grafana_candidates, "/api/health") or grafana_candidates[1]
+        self.prometheus_url = _first_reachable(prometheus_candidates, "/api/v1/status/config") or prometheus_candidates[1]
+        api_base = _first_reachable(api_candidates, "/metrics/") or api_candidates[1]
+        self.api_metrics_url = f"{api_base.rstrip('/')}/metrics/"
 
         # Grafana credentials (default from docker-compose)
         self.grafana_user = "admin"

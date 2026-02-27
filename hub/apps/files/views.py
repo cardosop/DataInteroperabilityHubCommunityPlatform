@@ -549,13 +549,21 @@ class FileViewSet(viewsets.ModelViewSet):
 
         # For browser uploads, we need to regenerate with localhost endpoint
         # This is a workaround - ideally generate_presigned_part_url should support for_browser
-        if for_browser and "minio:9000" in upload_url:
-            # Create temporary client with localhost for signing
+        # (browser runs on host; can't resolve Docker service names like minio/minio-test)
+        if for_browser and ("minio:9000" in upload_url or "minio-test:9000" in upload_url):
             import boto3
             from botocore.config import Config
             from django.conf import settings
 
-            browser_endpoint = storage_client.endpoint_url.replace("minio:9000", "localhost:9000")
+            if "minio-test:9000" in storage_client.endpoint_url:
+                port = os.environ.get("MINIO_TEST_API_PORT", "9010")
+                browser_endpoint = storage_client.endpoint_url.replace(
+                    "minio-test:9000", f"localhost:{port}"
+                )
+            else:
+                browser_endpoint = storage_client.endpoint_url.replace(
+                    "minio:9000", "localhost:9000"
+                )
             s3_config = Config(
                 signature_version="s3v4",
                 s3={"addressing_style": "path"},

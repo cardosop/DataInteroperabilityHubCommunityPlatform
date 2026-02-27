@@ -118,6 +118,7 @@ Each journey spec SHALL contain three test dimensions in the same file: `test.de
 
 Use helpers from `fixtures/helpers.ts`:
 
+- `assertSuccessfulLoad()` - **Dual verification (backend + frontend)** — prevents false positives. For success tests: start `page.waitForResponse()` before navigation, then call with `apiResponsePromise` and `successContentSelector`. Asserts API 2xx and no error UI. See `journeys/contracts-odps/contracts-odps-routes.spec.ts`.
 - `waitForApiResponse()` - Wait for API call with retry
 - `waitForElement()` - Wait for element with retry
 - `fillField()` - Fill form field with validation
@@ -125,7 +126,7 @@ Use helpers from `fixtures/helpers.ts`:
 - `waitForNavigation()` - Wait for URL change
 - `generateUniqueId()` - Generate unique test data
 - `verifyHappyPath()` - Verify happy path scenario
-- `verifyFailureScenario()` - Verify error handling
+- `verifyFailureScenario()` - Verify error handling; pass `expectedError.status` and `expectedError.urlPattern` to assert API HTTP status (see [TEST_ASSERTION_CONVENTIONS](../../docs/TEST_ASSERTION_CONVENTIONS.md))
 - `verifyEdgeCase()` - Verify boundary conditions
 
 ## Test Implementation Checklist
@@ -218,6 +219,8 @@ await verifyHappyPath(page, [
 
 ### 5. Add Failure Scenarios
 
+When the expected HTTP status is known, pass `expectedError.status` and `expectedError.urlPattern` so the helper intercepts the API call and asserts `response.status() === expectedError.status` (per [TEST_ASSERTION_CONVENTIONS](../../docs/TEST_ASSERTION_CONVENTIONS.md): assert status when known).
+
 ```typescript
 test('failure scenario: invalid asset key', async ({ page }) => {
   await verifyFailureScenario(
@@ -229,12 +232,22 @@ test('failure scenario: invalid asset key', async ({ page }) => {
     },
     {
       status: 400,
+      urlPattern: '/api/v1/assets/',  // API called by submit; intercept and assert status
       message: /invalid.*key/i,
       selector: '.error-message',
     }
   );
 });
 ```
+
+### Failure scenarios: asserting HTTP status
+
+When the expected API response status is known (400, 401, 403, 404, 429, etc.), pass both:
+
+- **`expectedError.status`** – the HTTP status code the API should return.
+- **`expectedError.urlPattern`** – string or RegExp matching the request URL to intercept (e.g. `'/api/v1/assets/'`, `/\/api\/v1\/contracts\//`).
+
+The helper will wait for a response matching `urlPattern` triggered by the action, then assert `response.status() === expectedError.status`. This follows [TEST_ASSERTION_CONVENTIONS](../../docs/TEST_ASSERTION_CONVENTIONS.md): use strict status assertion when the outcome is known. See `fixtures/helpers.ts` `verifyFailureScenario` JSDoc.
 
 ## Batch Test Generation
 

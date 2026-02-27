@@ -18,6 +18,7 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.files.models import File, FileStatus
 from hub.apps.governance.models import RetentionAction, RetentionPolicy, RetentionPolicyType
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -33,6 +34,7 @@ class RetentionPolicyAPIIntegrationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
             email="user@example.com",

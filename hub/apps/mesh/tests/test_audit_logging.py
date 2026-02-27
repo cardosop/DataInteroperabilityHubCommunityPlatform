@@ -2,14 +2,13 @@
 Unit tests for DataMeshService audit logging.
 
 Tests verify comprehensive audit logging for domain operations:
-- Domain creation (CREATED)
+- Domain creation (DOMAIN_CREATED)
 - Domain update (UPDATED) with change tracking
 - Domain deletion (DELETED)
 - Ownership transfer (OWNERSHIP_TRANSFERRED)
 
 All tests use real audit event creation (no mocks) to ensure integration.
 """
-import uuid
 from django.test import TestCase
 
 from hub.apps.mesh.services import DataMeshService
@@ -65,7 +64,7 @@ class DataMeshAuditLoggingTest(TestCase):
         )
 
     def test_create_domain_creates_audit_event(self):
-        """Test that creating a domain creates an audit event with CREATED action"""
+        """Test that creating a domain creates an audit event with DOMAIN_CREATED action"""
         domain = self.service.create_domain(
             tenant_id=self.tenant_id,
             name="Test Domain",
@@ -77,15 +76,15 @@ class DataMeshAuditLoggingTest(TestCase):
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
             resource_type="DATA_MESH_DOMAIN",
-            resource_id=domain.id,
-            action="CREATED"
+            resource_id=str(domain.id),
+            action="DOMAIN_CREATED"
         )
 
-        self.assertEqual(audit_events.count(), 1, "Should have exactly one CREATED audit event")
+        self.assertEqual(audit_events.count(), 1, "Should have exactly one DOMAIN_CREATED audit event")
 
         audit_event = audit_events.first()
         self.assertEqual(audit_event.resource_type, "DATA_MESH_DOMAIN")
-        self.assertEqual(audit_event.action, "CREATED")
+        self.assertEqual(audit_event.action, "DOMAIN_CREATED")
         self.assertEqual(audit_event.resource_id, domain.id)
         self.assertEqual(audit_event.actor_user, self.tenant_admin_user)
         self.assertEqual(audit_event.tenant, self.tenant)
@@ -120,7 +119,7 @@ class DataMeshAuditLoggingTest(TestCase):
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
             resource_type="DATA_MESH_DOMAIN",
-            resource_id=domain.id,
+            resource_id=str(domain.id),
             action="UPDATED"
         )
 
@@ -163,7 +162,7 @@ class DataMeshAuditLoggingTest(TestCase):
         # Verify OWNERSHIP_TRANSFERRED audit event was created
         ownership_events = AuditEvent.objects.filter(
             resource_type="DATA_MESH_DOMAIN",
-            resource_id=domain.id,
+            resource_id=str(domain.id),
             action="OWNERSHIP_TRANSFERRED"
         )
 
@@ -189,7 +188,7 @@ class DataMeshAuditLoggingTest(TestCase):
         # Verify UPDATED audit event was also created
         updated_events = AuditEvent.objects.filter(
             resource_type="DATA_MESH_DOMAIN",
-            resource_id=domain.id,
+            resource_id=str(domain.id),
             action="UPDATED"
         )
         self.assertEqual(updated_events.count(), 1, "Should also have UPDATED audit event")
@@ -214,7 +213,7 @@ class DataMeshAuditLoggingTest(TestCase):
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
             resource_type="DATA_MESH_DOMAIN",
-            resource_id=uuid.UUID(domain_id_str),
+            resource_id=domain_id_str,
             action="DELETED"
         )
 
@@ -223,7 +222,7 @@ class DataMeshAuditLoggingTest(TestCase):
         audit_event = audit_events.first()
         self.assertEqual(audit_event.resource_type, "DATA_MESH_DOMAIN")
         self.assertEqual(audit_event.action, "DELETED")
-        self.assertEqual(audit_event.resource_id, uuid.UUID(domain_id_str))
+        self.assertEqual(str(audit_event.resource_id), domain_id_str)
         self.assertEqual(audit_event.actor_user, self.tenant_admin_user)
         self.assertEqual(audit_event.tenant, self.tenant)
         self.assertEqual(audit_event.result, "SUCCESS")
@@ -244,11 +243,11 @@ class DataMeshAuditLoggingTest(TestCase):
             owner_id=str(self.tenant_admin_user.id)
         )
 
-        # Check CREATED event
+        # Check DOMAIN_CREATED event
         created_event = AuditEvent.objects.filter(
             resource_type="DATA_MESH_DOMAIN",
-            resource_id=domain.id,
-            action="CREATED"
+            resource_id=str(domain.id),
+            action="DOMAIN_CREATED"
         ).first()
 
         self.assertIsNotNone(created_event)
@@ -271,8 +270,8 @@ class DataMeshAuditLoggingTest(TestCase):
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
             resource_type="DATA_MESH_DOMAIN",
-            resource_id=domain.id,
-            action="CREATED"
+            resource_id=str(domain.id),
+            action="DOMAIN_CREATED"
         )
 
         self.assertEqual(audit_events.count(), 1)
@@ -305,7 +304,7 @@ class DataMeshAuditLoggingTest(TestCase):
         # Verify multiple audit events were created
         audit_events = AuditEvent.objects.filter(
             resource_type="DATA_MESH_DOMAIN",
-            resource_id=domain.id,
+            resource_id=str(domain.id),
             action="UPDATED"
         ).order_by("timestamp")
 
@@ -343,14 +342,14 @@ class DataMeshAuditLoggingTest(TestCase):
         # Verify complete audit trail
         audit_events = AuditEvent.objects.filter(
             resource_type="DATA_MESH_DOMAIN",
-            resource_id=domain.id
+            resource_id=str(domain.id)
         ).order_by("timestamp")
 
-        # Should have CREATED, UPDATED (x2), OWNERSHIP_TRANSFERRED, DELETED
+        # Should have DOMAIN_CREATED, UPDATED (x2), OWNERSHIP_TRANSFERRED, DELETED
         self.assertGreaterEqual(audit_events.count(), 5, "Should have at least 5 audit events")
 
         actions = [event.action for event in audit_events]
-        self.assertIn("CREATED", actions)
+        self.assertIn("DOMAIN_CREATED", actions)
         self.assertIn("UPDATED", actions)
         self.assertIn("OWNERSHIP_TRANSFERRED", actions)
         self.assertIn("DELETED", actions)
@@ -365,8 +364,8 @@ class DataMeshAuditLoggingTest(TestCase):
         # Verify actor_user is set correctly
         audit_event = AuditEvent.objects.filter(
             resource_type="DATA_MESH_DOMAIN",
-            resource_id=domain.id,
-            action="CREATED"
+            resource_id=str(domain.id),
+            action="DOMAIN_CREATED"
         ).first()
 
         self.assertIsNotNone(audit_event)
@@ -382,8 +381,8 @@ class DataMeshAuditLoggingTest(TestCase):
         # Verify tenant is set correctly
         audit_event = AuditEvent.objects.filter(
             resource_type="DATA_MESH_DOMAIN",
-            resource_id=domain.id,
-            action="CREATED"
+            resource_id=str(domain.id),
+            action="DOMAIN_CREATED"
         ).first()
 
         self.assertIsNotNone(audit_event)
@@ -439,13 +438,13 @@ class DataMeshAuditLoggingIntegrationTest(TestCase):
         # Verify audit event exists in database
         audit_event = AuditEvent.objects.get(
             resource_type="DATA_MESH_DOMAIN",
-            resource_id=domain.id,
-            action="CREATED"
+            resource_id=str(domain.id),
+            action="DOMAIN_CREATED"
         )
 
         self.assertIsNotNone(audit_event)
         self.assertEqual(audit_event.resource_type, "DATA_MESH_DOMAIN")
-        self.assertEqual(audit_event.action, "CREATED")
+        self.assertEqual(audit_event.action, "DOMAIN_CREATED")
         self.assertEqual(audit_event.result, "SUCCESS")
 
         # Verify details are properly stored
@@ -459,7 +458,7 @@ class DataMeshAuditLoggingIntegrationTest(TestCase):
         queried_events = AuditEvent.objects.filter(
             tenant=self.tenant,
             resource_type="DATA_MESH_DOMAIN",
-            action="CREATED"
+            action="DOMAIN_CREATED"
         )
         self.assertGreaterEqual(queried_events.count(), 1)
 
@@ -472,8 +471,8 @@ class DataMeshAuditLoggingIntegrationTest(TestCase):
 
         audit_event = AuditEvent.objects.get(
             resource_type="DATA_MESH_DOMAIN",
-            resource_id=domain.id,
-            action="CREATED"
+            resource_id=str(domain.id),
+            action="DOMAIN_CREATED"
         )
 
         # Try to update (should fail)

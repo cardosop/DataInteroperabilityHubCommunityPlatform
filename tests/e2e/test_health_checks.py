@@ -41,10 +41,17 @@ class HealthCheckE2ETest(E2ETestBase):
         self.assertIn('redis', data)
         
         # If healthy, verify all components
+        # redis is a dict of per-instance status (cache, queue, events, channels) per HealthService
         if response.status_code == status.HTTP_200_OK:
             self.assertEqual(data['status'], 'healthy')
             self.assertEqual(data['database'], 'connected')
-            self.assertEqual(data['redis'], 'connected')
+            self.assertIsInstance(data['redis'], dict)
+            for instance_name, instance_status in data['redis'].items():
+                self.assertEqual(
+                    instance_status,
+                    'connected',
+                    f"Redis instance {instance_name} expected 'connected' when status is healthy, got {instance_status!r}",
+                )
     
     def test_health_check_returns_json(self):
         """Test that health check returns JSON."""

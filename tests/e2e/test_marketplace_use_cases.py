@@ -24,7 +24,7 @@ from hub.apps.marketplace.models import (
 )
 from hub.apps.marketplace.access_utils import check_entitlement
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
@@ -37,14 +37,16 @@ class MarketplacePublicationUseCasesTest(E2ETestBase):
     def setUp(self):
         """Set up test fixtures with provider tenant"""
         super().setUp()
-        
-        # Create provider tenant with verified KYC
+        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+
+        # Create provider tenant with verified KYC and active subscription
         self.provider_tenant = Tenant.objects.create(
             name="Provider Tenant",
             slug="provider-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+        ensure_e2e_tenant_ready(self.provider_tenant)
+
         self.provider_user = User.objects.create_user(
             email="provider@example.com",
             password="testpass123",
@@ -78,7 +80,8 @@ class MarketplacePublicationUseCasesTest(E2ETestBase):
             format='json'
         )
         self.assertEqual(listing_response.status_code, status.HTTP_201_CREATED)
-        listing_id = listing_response.data['id']
+        listing_id = (get_response_data(listing_response) or {}).get('id')
+        self.assertIsNotNone(listing_id, "Listing response missing id")
         
         # Verify listing is in DRAFT status
         listing = Listing.objects.get(id=listing_id)
@@ -113,8 +116,9 @@ class MarketplacePublicationUseCasesTest(E2ETestBase):
             },
             format='json'
         )
-        listing_id = listing_response.data['id']
-        
+        listing_id = (get_response_data(listing_response) or {}).get('id')
+        self.assertIsNotNone(listing_id, "Listing response missing id")
+
         # Publish listing
         self.provider_client.patch(
             f'/api/v1/marketplace/listings/{listing_id}/',
@@ -153,8 +157,9 @@ class MarketplacePublicationUseCasesTest(E2ETestBase):
             },
             format='json'
         )
-        listing_id = listing_response.data['id']
-        
+        listing_id = (get_response_data(listing_response) or {}).get('id')
+        self.assertIsNotNone(listing_id, "Listing response missing id")
+
         # Step 2: Update listing
         update_response = self.provider_client.patch(
             f'/api/v1/marketplace/listings/{listing_id}/',
@@ -202,7 +207,7 @@ class MarketplacePublicationUseCasesTest(E2ETestBase):
         
         # Listing creation might fail immediately, or succeed but publishing should fail
         if listing_response.status_code == status.HTTP_201_CREATED:
-            listing_id = listing_response.data['id']
+            listing_id = (get_response_data(listing_response) or {}).get('id')
             publish_response = self.provider_client.patch(
                 f'/api/v1/marketplace/listings/{listing_id}/',
                 {'status': ListingStatus.PUBLISHED},
@@ -236,7 +241,7 @@ class MarketplacePublicationUseCasesTest(E2ETestBase):
         
         # Listing creation might fail if title is required, or succeed but publishing should fail
         if listing_response.status_code == status.HTTP_201_CREATED:
-            listing_id = listing_response.data['id']
+            listing_id = (get_response_data(listing_response) or {}).get('id')
             publish_response = self.provider_client.patch(
                 f'/api/v1/marketplace/listings/{listing_id}/',
                 {'status': ListingStatus.PUBLISHED},
@@ -261,14 +266,16 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
     def setUp(self):
         """Set up test fixtures with provider and consumer tenants"""
         super().setUp()
-        
-        # Provider tenant (seller)
+        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+
+        # Provider tenant (seller) - needs subscription for listing/order operations
         self.provider_tenant = Tenant.objects.create(
             name="Provider Tenant",
             slug="provider-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+        ensure_e2e_tenant_ready(self.provider_tenant)
+
         self.provider_user = User.objects.create_user(
             email="provider@example.com",
             password="testpass123",
@@ -278,13 +285,14 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
         self.provider_client = APIClient()
         self.provider_client.force_authenticate(user=self.provider_user)
         
-        # Consumer tenant (buyer)
+        # Consumer tenant (buyer) - needs subscription for order creation
         self.consumer_tenant = Tenant.objects.create(
             name="Consumer Tenant",
             slug="consumer-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+        ensure_e2e_tenant_ready(self.consumer_tenant)
+
         self.consumer_user = User.objects.create_user(
             email="consumer@example.com",
             password="testpass123",
@@ -325,10 +333,12 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
             format='json'
         )
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
-        
+
         # Get order ID from response
-        order_data = order_response.data.get('order', order_response.data)
-        order_id = order_data['id']
+        resp_data = get_response_data(order_response) or {}
+        order_data = resp_data.get('order', resp_data)
+        order_id = order_data.get('id')
+        self.assertIsNotNone(order_id, "Order response missing id")
         
         # Verify order created
         order = Order.objects.get(id=order_id)
@@ -345,12 +355,14 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
             {'listing_id': str(self.listing.id)},
             format='json'
         )
-        order_data = order_response.data.get('order', order_response.data)
-        order_id = order_data['id']
-        
+        resp_data = get_response_data(order_response) or {}
+        order_data = resp_data.get('order', resp_data)
+        order_id = order_data.get('id')
+        self.assertIsNotNone(order_id, "Order response missing id")
+
         order = Order.objects.get(id=order_id)
         self.assertEqual(order.status, OrderStatus.REQUESTED)
-        
+
         # Step 2: Provider approves order
         approve_response = self.provider_client.post(
             f'/api/v1/marketplace/orders/{order_id}/approve/',
@@ -381,12 +393,14 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
             {'listing_id': str(self.listing.id)},
             format='json'
         )
-        order_data = order_response.data.get('order', order_response.data)
-        order_id = order_data['id']
-        
+        resp_data = get_response_data(order_response) or {}
+        order_data = resp_data.get('order', resp_data)
+        order_id = order_data.get('id')
+        self.assertIsNotNone(order_id, "Order response missing id")
+
         order = Order.objects.get(id=order_id)
         self.assertEqual(order.status, OrderStatus.REQUESTED)
-        
+
         # Step 2: Provider rejects order
         reject_response = self.provider_client.post(
             f'/api/v1/marketplace/orders/{order_id}/reject/',
@@ -436,10 +450,12 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
             format='json'
         )
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
-        
-        order_data = order_response.data.get('order', order_response.data)
-        order_id = order_data['id']
-        
+
+        resp_data = get_response_data(order_response) or {}
+        order_data = resp_data.get('order', resp_data)
+        order_id = order_data.get('id')
+        self.assertIsNotNone(order_id, "Order response missing id")
+
         # For free listings, order should be auto-approved and fulfilled
         order = Order.objects.get(id=order_id)
         # Order should be FULFILLED after auto-approval
@@ -454,8 +470,9 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
         self.assertEqual(entitlement.listing, free_listing)
         
         # Verify response includes entitlement data
-        if 'entitlement' in order_response.data:
-            entitlement_data = order_response.data['entitlement']
+        order_resp_data = get_response_data(order_response) or {}
+        if 'entitlement' in order_resp_data:
+            entitlement_data = order_resp_data['entitlement']
             self.assertEqual(entitlement_data['status'], EntitlementStatus.ACTIVE)
     
     def test_purchase_own_listing_fails(self):
@@ -473,7 +490,7 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
             status.HTTP_403_FORBIDDEN
         ])
         if order_response.status_code != status.HTTP_201_CREATED:
-            error_message = str(order_response.data).lower()
+            error_message = str(get_response_data(order_response) or {}).lower()
             self.assertTrue(
                 'own' in error_message or
                 'provider' in error_message or
@@ -487,14 +504,16 @@ class MarketplaceEntitlementUseCasesTest(E2ETestBase):
     def setUp(self):
         """Set up test fixtures with provider and consumer tenants"""
         super().setUp()
-        
-        # Provider tenant (seller)
+        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+
+        # Provider tenant (seller) - needs subscription for order approval
         self.provider_tenant = Tenant.objects.create(
             name="Provider Tenant",
             slug="provider-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+        ensure_e2e_tenant_ready(self.provider_tenant)
+
         self.provider_user = User.objects.create_user(
             email="provider@example.com",
             password="testpass123",
@@ -504,13 +523,14 @@ class MarketplaceEntitlementUseCasesTest(E2ETestBase):
         self.provider_client = APIClient()
         self.provider_client.force_authenticate(user=self.provider_user)
         
-        # Consumer tenant (buyer)
+        # Consumer tenant (buyer) - needs subscription for order creation
         self.consumer_tenant = Tenant.objects.create(
             name="Consumer Tenant",
             slug="consumer-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+        ensure_e2e_tenant_ready(self.consumer_tenant)
+
         self.consumer_user = User.objects.create_user(
             email="consumer@example.com",
             password="testpass123",
@@ -619,9 +639,10 @@ class MarketplaceEntitlementUseCasesTest(E2ETestBase):
             '/api/v1/marketplace/entitlements/'
         )
         self.assertEqual(entitlements_response.status_code, status.HTTP_200_OK)
-        
+
         # Verify entitlement is in the list
-        results = entitlements_response.data.get('results', entitlements_response.data)
+        ent_data = get_response_data(entitlements_response) or {}
+        results = ent_data.get('results', ent_data)
         if isinstance(results, list):
             entitlement_ids = [e.get('id') for e in results if isinstance(e, dict)]
             self.assertIn(str(self.entitlement.id), entitlement_ids)
@@ -631,8 +652,9 @@ class MarketplaceEntitlementUseCasesTest(E2ETestBase):
             f'/api/v1/marketplace/entitlements/{self.entitlement.id}/'
         )
         self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(detail_response.data['id'], str(self.entitlement.id))
-        self.assertEqual(detail_response.data['status'], EntitlementStatus.ACTIVE)
+        detail_data = get_response_data(detail_response) or {}
+        self.assertEqual(detail_data.get('id'), str(self.entitlement.id))
+        self.assertEqual(detail_data.get('status'), EntitlementStatus.ACTIVE)
     
     def test_check_access_via_entitlement(self):
         """Test checking access to asset via entitlement"""
@@ -643,8 +665,9 @@ class MarketplaceEntitlementUseCasesTest(E2ETestBase):
             format='json'
         )
         self.assertEqual(check_response.status_code, status.HTTP_200_OK)
-        self.assertTrue(check_response.data['has_access'])
-        self.assertEqual(check_response.data['entitlement_id'], str(self.entitlement.id))
+        check_data = get_response_data(check_response) or {}
+        self.assertTrue(check_data.get('has_access'))
+        self.assertEqual(check_data.get('entitlement_id'), str(self.entitlement.id))
     
     def test_check_access_without_entitlement_fails(self):
         """Test that checking access without entitlement returns False"""
@@ -664,8 +687,9 @@ class MarketplaceEntitlementUseCasesTest(E2ETestBase):
             format='json'
         )
         self.assertEqual(check_response.status_code, status.HTTP_200_OK)
-        self.assertFalse(check_response.data['has_access'])
-        self.assertIsNone(check_response.data['entitlement_id'])
+        check_data = get_response_data(check_response) or {}
+        self.assertFalse(check_data.get('has_access'))
+        self.assertIsNone(check_data.get('entitlement_id'))
     
     def test_revoke_entitlement_by_non_provider_fails(self):
         """Test that only provider can revoke entitlements"""

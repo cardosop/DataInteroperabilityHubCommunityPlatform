@@ -86,59 +86,70 @@ def get_job_timeout(job_type: str) -> int:
     return JOB_TIMEOUTS.get(job_type, 600)  # Default 10 minutes
 
 
-def get_job_max_retries(job_type: str) -> int:
+def _normalize_job_type_key(job_type) -> str:
+    """Normalize job_type to string for dict lookups (handles TextChoices enum)."""
+    if hasattr(job_type, "value"):
+        return job_type.value
+    return str(job_type)
+
+
+def get_job_max_retries(job_type) -> int:
     """
     Get maximum retry attempts for a job type.
 
     Args:
-        job_type: Job type string
+        job_type: Job type (string or JobType enum)
 
     Returns:
         Maximum retry attempts
     """
-    return JOB_MAX_RETRIES.get(job_type, 2)  # Default 2 retries
+    key = _normalize_job_type_key(job_type)
+    return JOB_MAX_RETRIES.get(key, 2)
 
 
-def get_job_retry_initial_delay(job_type: str) -> int:
+def get_job_retry_initial_delay(job_type) -> int:
     """
     Get initial retry delay for a job type.
 
     Args:
-        job_type: Job type string
+        job_type: Job type (string or JobType enum)
 
     Returns:
         Initial delay in seconds
     """
+    key = _normalize_job_type_key(job_type)
     retry_initial_delay = getattr(settings, "JOB_RETRY_INITIAL_DELAY", {})
-    return retry_initial_delay.get(job_type, JOB_RETRY_BASE_DELAY)
+    return retry_initial_delay.get(key, JOB_RETRY_BASE_DELAY)
 
 
-def get_job_retry_max_delay(job_type: str) -> int:
+def get_job_retry_max_delay(job_type) -> int:
     """
     Get maximum retry delay cap for a job type.
 
     Args:
-        job_type: Job type string
+        job_type: Job type (string or JobType enum)
 
     Returns:
         Maximum delay in seconds
     """
+    key = _normalize_job_type_key(job_type)
     retry_max_delay = getattr(settings, "JOB_RETRY_MAX_DELAY", {})
-    return retry_max_delay.get(job_type, 3600)  # Default 1 hour
+    return retry_max_delay.get(key, 3600)
 
 
-def get_job_retry_backoff_factor(job_type: str) -> float:
+def get_job_retry_backoff_factor(job_type) -> float:
     """
     Get exponential backoff factor for a job type.
 
     Args:
-        job_type: Job type string
+        job_type: Job type (string or JobType enum)
 
     Returns:
         Backoff factor (default: 2.0)
     """
+    key = _normalize_job_type_key(job_type)
     retry_backoff_factor = getattr(settings, "JOB_RETRY_BACKOFF_FACTOR", {})
-    return retry_backoff_factor.get(job_type, 2.0)
+    return retry_backoff_factor.get(key, 2.0)
 
 
 def is_transient_failure(exception: Exception) -> bool:

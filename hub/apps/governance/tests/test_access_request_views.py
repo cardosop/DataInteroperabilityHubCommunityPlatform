@@ -31,6 +31,7 @@ from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.governance.models import AccessRequest, AccessRequestStatus
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -76,6 +77,8 @@ class AccessRequestViewSetTest(TestCase):
         self.other_tenant = Tenant.objects.create(
             name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
+        ensure_tenant_has_active_subscription(self.other_tenant)
 
         self.other_user = User.objects.create_user(
             email="other@example.com",

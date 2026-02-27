@@ -102,10 +102,14 @@ class WorkflowCompensation:
                 compensation_result = self._compensate_step(instance, step)
                 compensation_results.append(compensation_result)
 
-            # Mark workflow as rolled back
+            # Mark workflow as rolled back; include step error for callers (e.g. ConflictError)
             instance.status = WorkflowStatus.ROLLED_BACK
             instance.completed_at = timezone.now()
-            instance.error_message = f"Workflow rolled back due to step failure: {failed_step.step_name}"
+            step_err = (failed_step.error_message or "").strip()
+            instance.error_message = (
+                f"Workflow rolled back due to step failure: {failed_step.step_name}"
+                + (f": {step_err}" if step_err else "")
+            )
             instance.error_details = {
                 "failed_step_index": failed_step.step_index,
                 "failed_step_name": failed_step.step_name,

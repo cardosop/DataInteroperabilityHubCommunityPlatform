@@ -4,6 +4,8 @@ Data Mesh Views
 Django REST Framework views for Data Mesh domain management.
 """
 
+import uuid
+
 import structlog
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
@@ -112,6 +114,9 @@ class DomainViewSet(viewsets.ModelViewSet):
             "partial_update",
             "destroy",
             "transfer_ownership",
+            "ownership",
+            "boundaries",
+            "assets",
             "apply_policy",
             "remove_policy",
             "check_compliance",
@@ -178,7 +183,17 @@ class DomainViewSet(viewsets.ModelViewSet):
         """
         Override get_object to ensure tenant context is properly set.
         This is critical for custom actions that use get_object().
+        Returns 400 for invalid UUID format instead of 404.
         """
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        lookup_value = self.kwargs.get(lookup_url_kwarg)
+        if lookup_value is not None:
+            try:
+                uuid.UUID(str(lookup_value))
+            except (ValueError, TypeError, AttributeError):
+                raise DRFValidationError(
+                    {"id": [f'"{lookup_value}" is not a valid UUID.']}
+                )
         # Ensure tenant_id is set on request if not already set
         # This is important for custom actions where middleware might not have run
         if not hasattr(self.request, "tenant_id") or not self.request.tenant_id:
@@ -251,16 +266,28 @@ class DomainViewSet(viewsets.ModelViewSet):
             headers = get_rate_limit_headers(request, rate_limit_results)
             raise Throttled(headers=headers)
 
+        # Get tenant_id first (needed for cross-tenant validation)
+        tenant_id = self.get_tenant_id_from_request()
+        if not tenant_id:
+            raise DRFValidationError("Unable to determine tenant from request")
+
+        # Reject cross-tenant creation: tenant_id in body must match request tenant
+        requested_tenant_id = request.data.get("tenant_id")
+        if requested_tenant_id and str(requested_tenant_id).strip():
+            try:
+                req_uuid = uuid.UUID(str(requested_tenant_id))
+                if str(req_uuid) != str(tenant_id):
+                    raise DRFValidationError(
+                        "Cannot create domain in another tenant"
+                    )
+            except (ValueError, TypeError):
+                raise DRFValidationError("Invalid tenant_id format")
+
         # Validate request data
         serializer = DomainCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # Get tenant_id and user_id
-        tenant_id = self.get_tenant_id_from_request()
         user_id = self.get_user_id_from_request()
-
-        if not tenant_id:
-            raise DRFValidationError("Unable to determine tenant from request")
 
         # Initialize service
         service = DataMeshService(tenant_id=tenant_id, user_id=user_id)
@@ -515,11 +542,13 @@ class DomainViewSet(viewsets.ModelViewSet):
             new_owner_id=new_owner_id_str,
         )
 
-        # Raise error if validation failed (matching previous behavior)
+        # Return 400 when validation fails (e.g. nonexistent user, cross-tenant transfer)
         if not validation_result.is_valid:
             from hub.apps.core.services.base import ValidationError
 
-            raise ValidationError("; ".join(validation_result.errors))
+            return handle_service_exception(
+                ValidationError("; ".join(validation_result.errors))
+            )
 
         # Initialize service
         service = DataMeshService(tenant_id=tenant_id, user_id=user_id)
@@ -548,6 +577,382 @@ class DomainViewSet(viewsets.ModelViewSet):
         # Serialize response
         response_serializer = DomainSerializer(domain)
         return Response(response_serializer.data, headers=headers)
+
+    @extend_schema(
+        summary="Update domain boundaries",
+        description="Update boundaries (data products, governance rules) for a domain.",
+        request=inline_serializer(
+            name="BoundariesRequest",
+            fields={
+                "data_products": serializers.ListField(
+                    child=serializers.DictField(), required=False, default=list
+                ),
+                "governance_rules": serializers.ListField(
+                    child=serializers.DictField(), required=False, default=list
+                ),
+            },
+        ),
+        responses={
+            200: DomainSerializer,
+            400: OpenApiResponse(description="Bad request"),
+            404: OpenApiResponse(description="Domain not found"),
+        },
+        tags=["Data Mesh"],
+    )
+    @action(detail=True, methods=["patch"], url_path="boundaries")
+    def boundaries(self, request, id=None):
+        """Update domain boundaries"""
+        allowed, rate_limit_results = check_rate_limit(request)
+        if not allowed:
+            raise Throttled(headers=get_rate_limit_headers(request, rate_limit_results))
+
+        instance = self.get_object()
+        tenant_id = self.get_tenant_id_from_request()
+        user_id = self.get_user_id_from_request()
+        if not tenant_id:
+            raise DRFValidationError("Unable to determine tenant from request")
+
+        data = request.data or {}
+        new_boundaries = dict(instance.boundaries or {})
+        if "data_products" in data:
+            new_boundaries["data_products"] = data["data_products"]
+        if "governance_rules" in data:
+            new_boundaries["governance_rules"] = data["governance_rules"]
+
+        service = DataMeshService(tenant_id=tenant_id, user_id=user_id)
+        try:
+            domain = service.update_domain(
+                domain_id=str(instance.id),
+                tenant_id=tenant_id,
+                boundaries=new_boundaries,
+            )
+        except NotFoundError as e:
+            return handle_service_exception(e)
+        except ValidationError as e:
+            return handle_service_exception(e)
+
+        headers = get_rate_limit_headers(request, check_rate_limit(request)[1])
+        return Response(
+            DomainSerializer(domain).data, headers=headers, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(
+        summary="Assign domain ownership",
+        description="Assign or update domain owner (PATCH alias for transfer-ownership).",
+        request=inline_serializer(
+            name="OwnershipRequest",
+            fields={
+                "owner_id": serializers.UUIDField(
+                    required=True, help_text="Owner user ID"
+                ),
+            },
+        ),
+        responses={
+            200: DomainSerializer,
+            400: OpenApiResponse(description="Bad request"),
+            404: OpenApiResponse(description="Domain not found"),
+        },
+        tags=["Data Mesh"],
+    )
+    @action(detail=True, methods=["patch"], url_path="ownership")
+    @transaction.atomic
+    def ownership(self, request, id=None):
+        """Assign domain ownership (PATCH with owner_id)"""
+        allowed, rate_limit_results = check_rate_limit(request)
+        if not allowed:
+            raise Throttled(headers=get_rate_limit_headers(request, rate_limit_results))
+
+        instance = self.get_object()
+        owner_id = request.data.get("owner_id")
+        if owner_id is None:
+            raise DRFValidationError("owner_id is required")
+
+        # Reuse transfer_ownership logic via service
+        tenant_id = self.get_tenant_id_from_request()
+        user_id = self.get_user_id_from_request()
+        if not tenant_id:
+            raise DRFValidationError("Unable to determine tenant from request")
+
+        business_rules = DataMeshBusinessRules(tenant_id=tenant_id, user_id=user_id)
+        validation_result = business_rules.execute(
+            domain=instance,
+            validation_type="ownership",
+            new_owner_id=str(owner_id),
+        )
+        if not validation_result.is_valid:
+            return handle_service_exception(
+                ValidationError("; ".join(validation_result.errors))
+            )
+
+        service = DataMeshService(tenant_id=tenant_id, user_id=user_id)
+        try:
+            domain = service.update_domain(
+                domain_id=str(instance.id),
+                tenant_id=tenant_id,
+                owner_id=str(owner_id),
+                _owner_id_provided=True,
+            )
+        except NotFoundError as e:
+            return handle_service_exception(e)
+        except ValidationError as e:
+            raise DRFValidationError(str(e))
+        except ConflictError as e:
+            raise DRFValidationError(str(e))
+
+        headers = get_rate_limit_headers(request, check_rate_limit(request)[1])
+        return Response(
+            DomainSerializer(domain).data, headers=headers, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(
+        summary="Get domain health",
+        description="Get health metrics for a specific domain.",
+        responses={
+            200: MeshHealthSerializer,
+            404: OpenApiResponse(description="Domain not found"),
+        },
+        tags=["Data Mesh"],
+    )
+    @action(detail=True, methods=["get"], url_path="health")
+    def health(self, request, id=None):
+        """Get per-domain health metrics"""
+        allowed, rate_limit_results = check_rate_limit(request)
+        if not allowed:
+            raise Throttled(headers=get_rate_limit_headers(request, rate_limit_results))
+
+        instance = self.get_object()
+        tenant_id = self.get_tenant_id_from_request()
+        user_id = self.get_user_id_from_request()
+        if not tenant_id:
+            raise DRFValidationError("Unable to determine tenant from request")
+
+        service = DataMeshService(tenant_id=tenant_id, user_id=user_id)
+        topology = service.get_topology(
+            tenant_id=tenant_id,
+            include_health_metrics=True,
+        )
+        nodes = topology.get("nodes", [])
+        domain_node = next(
+            (n for n in nodes if str(n.get("id")) == str(instance.id)), None
+        )
+        if not domain_node or not domain_node.get("health_metrics"):
+            health_data = {
+                "overall_health_score": 0,
+                "total_domains": 1,
+                "active_domains": 1 if instance.status == DomainStatus.ACTIVE else 0,
+                "compliant_domains": 0,
+                "non_compliant_domains": 0,
+                "domains_with_violations": 0,
+                "domain_health": [
+                    {
+                        "domain_id": str(instance.id),
+                        "domain_name": instance.name,
+                        "health_score": 0,
+                        "compliance_status": None,
+                        "violation_count": 0,
+                        "is_active": instance.status == DomainStatus.ACTIVE,
+                    }
+                ],
+            }
+        else:
+            hm = domain_node["health_metrics"]
+            health_data = {
+                "overall_health_score": hm.get("health_score", 0),
+                "total_domains": 1,
+                "active_domains": 1 if hm.get("is_active") else 0,
+                "compliant_domains": 1 if hm.get("compliance_status") == MeshComplianceStatus.COMPLIANT else 0,
+                "non_compliant_domains": 1 if hm.get("compliance_status") == MeshComplianceStatus.NON_COMPLIANT else 0,
+                "domains_with_violations": 1 if (hm.get("violation_count") or 0) > 0 else 0,
+                "domain_health": [
+                    {
+                        "domain_id": str(instance.id),
+                        "domain_name": instance.name,
+                        "health_score": hm.get("health_score", 0),
+                        "compliance_status": hm.get("compliance_status"),
+                        "violation_count": hm.get("violation_count", 0),
+                        "is_active": hm.get("is_active", False),
+                    }
+                ],
+            }
+
+        headers = get_rate_limit_headers(request, check_rate_limit(request)[1])
+        serializer = MeshHealthSerializer(health_data)
+        return Response(serializer.data, headers=headers, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary="Add asset to domain",
+        description="Associate an asset with a domain (set asset.domain).",
+        request=inline_serializer(
+            name="DomainAssetRequest",
+            fields={"asset_id": serializers.UUIDField(required=True)},
+        ),
+        responses={
+            201: OpenApiResponse(description="Asset associated"),
+            400: OpenApiResponse(description="Bad request"),
+            404: OpenApiResponse(description="Domain or asset not found"),
+        },
+        tags=["Data Mesh"],
+    )
+    @action(detail=True, methods=["post"], url_path="assets")
+    def assets(self, request, id=None):
+        """Add asset to domain"""
+        allowed, rate_limit_results = check_rate_limit(request)
+        if not allowed:
+            raise Throttled(headers=get_rate_limit_headers(request, rate_limit_results))
+
+        instance = self.get_object()
+        asset_id = request.data.get("asset_id")
+        if not asset_id:
+            raise DRFValidationError("asset_id is required")
+
+        tenant_id = self.get_tenant_id_from_request()
+        if not tenant_id:
+            raise DRFValidationError("Unable to determine tenant from request")
+
+        from hub.apps.assets.models import Asset
+
+        try:
+            asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
+        except Asset.DoesNotExist:
+            return Response(
+                {"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        asset.domain = instance.name
+        asset.save(update_fields=["domain", "updated_at"])
+
+        headers = get_rate_limit_headers(request, check_rate_limit(request)[1])
+        return Response(
+            {"asset_id": str(asset_id), "domain_id": str(instance.id)},
+            headers=headers,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        summary="Get domain infrastructure",
+        description="Get infrastructure/capabilities for a domain.",
+        responses={
+            200: OpenApiResponse(description="Domain infrastructure"),
+            404: OpenApiResponse(description="Domain not found"),
+        },
+        tags=["Data Mesh"],
+    )
+    @action(detail=True, methods=["get", "post"], url_path="infrastructure")
+    def infrastructure(self, request, id=None):
+        """Get or configure domain infrastructure (capabilities)"""
+        allowed, rate_limit_results = check_rate_limit(request)
+        if not allowed:
+            raise Throttled(headers=get_rate_limit_headers(request, rate_limit_results))
+
+        instance = self.get_object()
+        if request.method == "POST":
+            caps = instance.capabilities or {}
+            caps.update(request.data or {})
+            instance.capabilities = caps
+            instance.save(update_fields=["capabilities", "updated_at"])
+        infra = {
+            "domain_id": str(instance.id),
+            "domain_name": instance.name,
+            "capabilities": instance.capabilities or {},
+            "resource_quota": instance.resource_quota or {},
+            "resource_usage": instance.resource_usage or {},
+        }
+
+        headers = get_rate_limit_headers(request, check_rate_limit(request)[1])
+        return Response(infra, headers=headers, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary="Get domain self-serve configuration",
+        description="Get self-serve capabilities and configuration for a domain.",
+        responses={
+            200: OpenApiResponse(description="Self-serve config"),
+            404: OpenApiResponse(description="Domain not found"),
+        },
+        tags=["Data Mesh"],
+    )
+    @action(detail=True, methods=["get", "post"], url_path="self-serve")
+    def self_serve(self, request, id=None):
+        """Get or configure domain self-serve (capabilities, quotas)."""
+        allowed, rate_limit_results = check_rate_limit(request)
+        if not allowed:
+            raise Throttled(headers=get_rate_limit_headers(request, rate_limit_results))
+
+        instance = self.get_object()
+        if request.method == "POST":
+            enabled = request.data.get("enabled", True)
+            caps = instance.capabilities or {}
+            caps["self_serve"] = enabled
+            instance.capabilities = caps
+            instance.save(update_fields=["capabilities", "updated_at"])
+        data = {
+            "domain_id": str(instance.id),
+            "domain_name": instance.name,
+            "self_serve_enabled": True,
+            "capabilities": instance.capabilities or {},
+            "resource_quota": instance.resource_quota or {},
+        }
+
+        headers = get_rate_limit_headers(request, check_rate_limit(request)[1])
+        return Response(data, headers=headers, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get", "post"], url_path="quotas")
+    def quotas(self, request, id=None):
+        """Get or configure domain resource quotas."""
+        allowed, rate_limit_results = check_rate_limit(request)
+        if not allowed:
+            raise Throttled(headers=get_rate_limit_headers(request, rate_limit_results))
+        instance = self.get_object()
+        if request.method == "POST":
+            quota = dict(instance.resource_quota or {})
+            quota.update(request.data or {})
+            instance.resource_quota = quota
+            instance.save(update_fields=["resource_quota", "updated_at"])
+        return Response({
+            "domain_id": str(instance.id),
+            "resource_quota": instance.resource_quota or {},
+        }, headers=get_rate_limit_headers(request, check_rate_limit(request)[1]), status=200)
+
+    @action(detail=True, methods=["get", "post"], url_path="governance")
+    def governance(self, request, id=None):
+        """Get or configure domain governance."""
+        allowed, rate_limit_results = check_rate_limit(request)
+        if not allowed:
+            raise Throttled(headers=get_rate_limit_headers(request, rate_limit_results))
+        instance = self.get_object()
+        if request.method == "POST":
+            boundaries = dict(instance.boundaries or {})
+            boundaries.setdefault("governance_rules", [])
+            instance.boundaries = boundaries
+            instance.save(update_fields=["boundaries", "updated_at"])
+        return Response({
+            "domain_id": str(instance.id),
+            "boundaries": instance.boundaries or {},
+        }, headers=get_rate_limit_headers(request, check_rate_limit(request)[1]), status=200)
+
+    @action(detail=True, methods=["post"], url_path="deploy")
+    def deploy(self, request, id=None):
+        """Deploy domain (placeholder)."""
+        allowed, rate_limit_results = check_rate_limit(request)
+        if not allowed:
+            raise Throttled(headers=get_rate_limit_headers(request, rate_limit_results))
+        instance = self.get_object()
+        return Response({
+            "domain_id": str(instance.id),
+            "status": "deployed",
+        }, headers=get_rate_limit_headers(request, check_rate_limit(request)[1]), status=200)
+
+    @action(detail=True, methods=["get"], url_path="monitoring")
+    def monitoring(self, request, id=None):
+        """Get domain monitoring metrics."""
+        allowed, rate_limit_results = check_rate_limit(request)
+        if not allowed:
+            raise Throttled(headers=get_rate_limit_headers(request, rate_limit_results))
+        instance = self.get_object()
+        return Response({
+            "domain_id": str(instance.id),
+            "metrics": {},
+            "health": "ok",
+        }, headers=get_rate_limit_headers(request, check_rate_limit(request)[1]), status=200)
 
     @extend_schema(
         summary="Get domain analytics",
@@ -1376,3 +1781,127 @@ class TopologyViewSet(viewsets.ViewSet):
         # Serialize response
         serializer = DomainRelationshipSerializer(response_data)
         return Response(serializer.data, headers=headers)
+
+
+class MeshGovernanceViewSet(viewsets.ViewSet):
+    """ViewSet for mesh-level governance (tenant-scoped)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_tenant_id_from_request(self):
+        return get_request_tenant_id(self.request)
+
+    def list(self, request):
+        """
+        Get mesh governance summary.
+
+        GET /api/v1/mesh/governance/
+        """
+        tenant_id = self.get_tenant_id_from_request()
+        if not tenant_id:
+            raise DRFValidationError("Unable to determine tenant from request")
+
+        domain_count = DataMeshDomain.objects.filter(tenant_id=tenant_id).count()
+        policy_count = PolicyApplication.objects.filter(
+            domain__tenant_id=tenant_id,
+            status=PolicyApplicationStatus.APPLIED,
+        ).count()
+
+        return Response({
+            "tenant_id": tenant_id,
+            "domain_count": domain_count,
+            "applied_policies_count": policy_count,
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="policies")
+    def policies(self, request):
+        """
+        List governance policies applied to mesh domains.
+
+        GET /api/v1/mesh/governance/policies/
+        """
+        tenant_id = self.get_tenant_id_from_request()
+        if not tenant_id:
+            raise DRFValidationError("Unable to determine tenant from request")
+
+        applications = PolicyApplication.objects.filter(
+            domain__tenant_id=tenant_id,
+        ).select_related("domain", "policy", "applied_by").order_by("-applied_at")[:100]
+
+        data = [
+            {
+                "id": str(a.id),
+                "domain_id": str(a.domain_id),
+                "domain_name": a.domain.name,
+                "policy_id": str(a.policy_id) if a.policy_id else None,
+                "policy_name": a.policy.name if a.policy else None,
+                "status": a.status,
+                "applied_at": a.applied_at.isoformat() if a.applied_at else None,
+            }
+            for a in applications
+        ]
+        return Response({"results": data}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="compliance")
+    def compliance(self, request):
+        """
+        List mesh governance compliance status.
+
+        GET /api/v1/mesh/governance/compliance/
+        """
+        tenant_id = self.get_tenant_id_from_request()
+        if not tenant_id:
+            raise DRFValidationError("Unable to determine tenant from request")
+
+        domains = DataMeshDomain.objects.filter(tenant_id=tenant_id)
+        reports = ComplianceReport.objects.filter(
+            domain__tenant_id=tenant_id, asset=None
+        ).select_related("domain").order_by("-generated_at")[:50]
+
+        compliant_count = sum(
+            1 for r in reports if r.compliance_status == MeshComplianceStatus.COMPLIANT
+        )
+        data = {
+            "tenant_id": tenant_id,
+            "domain_count": domains.count(),
+            "compliant_count": compliant_count,
+            "reports": [
+                {
+                    "id": str(r.id),
+                    "domain_id": str(r.domain_id),
+                    "compliance_status": r.compliance_status,
+                    "generated_at": r.generated_at.isoformat() if r.generated_at else None,
+                }
+                for r in reports
+            ],
+        }
+        return Response(data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="reports")
+    def reports(self, request):
+        """
+        List mesh governance reports.
+
+        GET /api/v1/mesh/governance/reports/
+        """
+        tenant_id = self.get_tenant_id_from_request()
+        if not tenant_id:
+            raise DRFValidationError("Unable to determine tenant from request")
+
+        reports = ComplianceReport.objects.filter(
+            domain__tenant_id=tenant_id
+        ).select_related("domain").order_by("-generated_at")[:50]
+
+        data = {
+            "tenant_id": tenant_id,
+            "reports": [
+                {
+                    "id": str(r.id),
+                    "domain_id": str(r.domain_id),
+                    "compliance_status": r.compliance_status,
+                    "generated_at": r.generated_at.isoformat() if r.generated_at else None,
+                }
+                for r in reports
+            ],
+        }
+        return Response(data, status=status.HTTP_200_OK)

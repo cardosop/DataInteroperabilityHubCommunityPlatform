@@ -2,6 +2,9 @@
 Django>=6.0,<7.0
 djangorestframework>=3.15.0
 django-cors-headers>=4.0.0
+# Pin docutils: Django's admindocs (pulled in by DRF schema discovery) uses docutils.parsers.rst;
+# docutils 0.21+ reorganized the package and no longer exposes parsers.rst, causing AttributeError.
+docutils>=0.17,<0.21
 
 # Database
 psycopg2-binary>=2.9.9
@@ -43,7 +46,8 @@ opentelemetry-exporter-prometheus>=0.60b0
 sentry-sdk>=2.0.0  # Optional: Error tracking with Sentry (set SENTRY_DSN to enable)
 
 # Typed models and validation
-pydantic>=2.6,<3.0
+# Pin <2.11.4: Pydantic 2.11.4+ breaks Prefect 2.x flow parameter schema (TypeError: 'type' object is not iterable)
+pydantic>=2.6,<2.11.4
 
 # Data Quality Engines
 great-expectations>=0.18.0
@@ -98,5 +102,7 @@ google-auth>=2.25.0
 psutil>=5.9.0
 
 # Prefect Integration (optional - required for scheduled ingestion Prefect deployment sync)
-# Note: Prefect services run separately, but api-service needs Prefect Python client for deployment sync
-prefect>=2.14.0
+# Pin to 2.16.x to match docker-compose.test.yml prefect-server-test/prefect-worker-test (2.16.9).
+prefect>=2.16.0,<2.17
+# Prefect 2.16 imports griffe.dataclasses; griffe 1.x removed it. Pin <1 so subprocess flow runs.
+griffe<1

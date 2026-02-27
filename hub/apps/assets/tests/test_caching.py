@@ -282,14 +282,16 @@ class TestAssetCachingIntegration(TestCase):
             kyc_status=KYCStatus.VERIFIED,
         )
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
         ensure_tenant_has_active_subscription(self.tenant)
 
-        # Create test user
+        # Create test user with DATA_PROVIDER role (required for asset create via API)
         User = get_user_model()
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant
         )
+        ensure_user_has_data_provider_role(self.user)
 
         # Create test assets (use DRAFT status to avoid validation requirements)
         self.asset1 = Asset.objects.create(

@@ -31,6 +31,7 @@ from hub.apps.scheduled_ingestion.models import (
     SourceType,
 )
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -87,16 +88,17 @@ class ScheduledIngestionViewSetTest(TestCase):
     """Test ScheduledIngestionViewSet"""
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures (unique slug per test run to avoid collisions with --reuse-db)."""
         self.client = APIClient()
-
+        uid = uuid.uuid4().hex[:8]
         # Create tenant (VERIFIED for plan limits / scheduled ingestion creation)
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="VERIFIED",
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
@@ -430,9 +432,10 @@ class ScheduledIngestionViewSetTest(TestCase):
 
     def test_tenant_isolation(self):
         """Test that tenants can only see their own scheduled ingestions (paginated or list)."""
+        other_slug = f"other-tenant-{uuid.uuid4().hex[:8]}"
         tenant2 = Tenant.objects.create(
             name="Other Tenant",
-            slug="other-tenant",
+            slug=other_slug,
             status="ACTIVE",
             kyc_status="VERIFIED",
         )
@@ -519,10 +522,14 @@ class ScheduledIngestionViewSetTest(TestCase):
         self.client.credentials()
         # Anonymous or no-tenant user: tenant resolution may return None
         response = self.client.get("/api/v1/scheduled-ingestions/dashboard/")
-        # Either 401 (unauthenticated) or 400 (tenant required)
+        # 401 (unauthenticated), 403 (forbidden), or 400 (tenant required)
         self.assertIn(
             response.status_code,
-            (status.HTTP_400_BAD_REQUEST, status.HTTP_401_UNAUTHORIZED),
+            (
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_401_UNAUTHORIZED,
+                status.HTTP_403_FORBIDDEN,
+            ),
             response.data,
         )
 

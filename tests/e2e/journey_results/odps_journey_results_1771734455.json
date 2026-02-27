@@ -1,0 +1,114 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.8098733425140381
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-003-4679bb15",
+      "journey_name": "ODPS Export/Download Journey",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1771734455.0463755,
+      "end_time": 1771734455.8562489,
+      "duration": 0.8098733425140381,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771734455.0463877,
+          "end_time": 1771734455.063479,
+          "duration": 0.01709127426147461,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771734455.064116,
+          "end_time": 1771734455.8173115,
+          "duration": 0.7531955242156982,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Export ODPS as JSON",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771734455.817536,
+          "end_time": 1771734455.8311248,
+          "duration": 0.013588666915893555,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Export ODPS as YAML",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771734455.8311572,
+          "end_time": 1771734455.844009,
+          "duration": 0.012851715087890625,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Download ODPS File (JSON)",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771734455.8440251,
+          "end_time": 1771734455.8562214,
+          "duration": 0.01219630241394043,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponse"
+          }
+        },
+        {
+          "step_name": "Verify Export Content",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771734455.8562343,
+          "end_time": 1771734455.8562465,
+          "duration": 1.2159347534179688e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "odps_contract_id": "0edd741f-8eea-4840-9592-29e3b46ccb23",
+        "export_formats": [
+          "json",
+          "yaml"
+        ]
+      }
+    }
+  ],
+  "exported_at": "2026-02-22T04:27:35.856380"
+}

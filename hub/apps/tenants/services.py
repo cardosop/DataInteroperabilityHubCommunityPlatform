@@ -69,9 +69,18 @@ def get_tenant_config(tenant: Tenant) -> Dict[str, Any]:
             if config.default_dq_profile
             else platform_defaults["default_dq_profile"]
         ),
-        # For JSONField lists, they're never None (have default=default_empty_list), so return the actual saved value
-        "allowed_compliance_regimes": config.allowed_compliance_regimes,
-        "default_compliance_regimes": config.default_compliance_regimes,
+        # For JSONField lists: empty list means "use platform default" (explicit empty = no regimes configured)
+        # Use explicit len() check since JSONField default_empty_list means we never get None, only []
+        "allowed_compliance_regimes": (
+            config.allowed_compliance_regimes
+            if (config.allowed_compliance_regimes and len(config.allowed_compliance_regimes) > 0)
+            else platform_defaults["allowed_compliance_regimes"]
+        ),
+        "default_compliance_regimes": (
+            config.default_compliance_regimes
+            if (config.default_compliance_regimes and len(config.default_compliance_regimes) > 0)
+            else platform_defaults["default_compliance_regimes"]
+        ),
         "data_retention_days": (
             config.data_retention_days
             if config.data_retention_days is not None

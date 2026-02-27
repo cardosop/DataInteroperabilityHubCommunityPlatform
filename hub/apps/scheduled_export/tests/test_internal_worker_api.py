@@ -27,6 +27,7 @@ from hub.apps.scheduled_export.models import (
     ScheduledExportStatus,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = [
@@ -82,6 +83,9 @@ class InternalWorkerAPITest(TransactionTestCase):
             status=UserStatus.ACTIVE,
         )
         self.plaintext_key = _create_worker_api_key(self.tenant, self.user)
+
+        # Ensure tenant has active subscription so TenantSuspensionMiddleware allows writes (POST/PATCH)
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create test assets, datasets, files for export scope
         self.asset = Asset.objects.create(
@@ -617,6 +621,9 @@ class InternalWorkerAPIIntegrationTest(TransactionTestCase):
             status=UserStatus.ACTIVE,
         )
         self.plaintext_key = _create_worker_api_key(self.tenant, self.user)
+
+        # Ensure tenant has active subscription so TenantSuspensionMiddleware allows writes
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create test data
         self.file = File.objects.create(

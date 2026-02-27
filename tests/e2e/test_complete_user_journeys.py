@@ -21,7 +21,11 @@ from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus
 from hub.apps.dq.models import DQRun, DQRunStatus
 from hub.apps.marketplace.models import Listing, ListingStatus, Order, OrderStatus, PricingModel
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.testing.service_utils import check_service_health
+
+from .conftest import get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 User = get_user_model()
@@ -91,10 +95,12 @@ class CompleteUserJourneysE2ETest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_e2e_tenant_ready(self.tenant)
 
         self.user = User.objects.create_user(
             email="test@example.com", password="testpass123", tenant=self.tenant
         )
+        ensure_user_has_data_provider_role(self.user)
 
         self.client.force_authenticate(user=self.user)
 
@@ -107,7 +113,12 @@ class CompleteUserJourneysE2ETest(TestCase):
             {"key": "sales-data", "name": "Sales Data", "visibility": "INTERNAL"},
             format="json",
         )
-        asset_id = asset_response.data["id"]
+        self.assertEqual(
+            asset_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Asset creation failed: {asset_response.status_code} - {get_response_data(asset_response)}",
+        )
+        asset_id = get_response_data(asset_response)["id"]
 
         # Prepare test content first to get accurate size
         test_content = b"col1,col2\nval1,val2"
@@ -119,7 +130,12 @@ class CompleteUserJourneysE2ETest(TestCase):
             {"name": "sales.csv", "content_type": "text/csv", "size": file_size},
             format="json",
         )
-        file_id = file_response.data["file_id"]
+        self.assertEqual(
+            file_response.status_code,
+            status.HTTP_201_CREATED,
+            f"File init failed: {file_response.status_code} - {get_response_data(file_response)}",
+        )
+        file_id = get_response_data(file_response)["file_id"]
 
         # Upload file to real MinIO
         import boto3
@@ -151,7 +167,12 @@ class CompleteUserJourneysE2ETest(TestCase):
         dataset_response = self.client.post(
             "/api/v1/datasets/", {"file_id": file_id, "asset_id": asset_id}, format="json"
         )
-        dataset_id = dataset_response.data["id"]
+        self.assertEqual(
+            dataset_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Dataset creation failed: {dataset_response.status_code} - {get_response_data(dataset_response)}",
+        )
+        dataset_id = get_response_data(dataset_response)["id"]
 
         # 2. Run compliance and DQ (REAL services)
         compliance_response = self.client.post(
@@ -164,16 +185,24 @@ class CompleteUserJourneysE2ETest(TestCase):
             },
             format="json",
         )
-        self.assertEqual(compliance_response.status_code, status.HTTP_201_CREATED)
-        compliance_run_id = compliance_response.data["id"]
+        self.assertEqual(
+            compliance_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Compliance run failed: {compliance_response.status_code} - {get_response_data(compliance_response)}",
+        )
+        compliance_run_id = get_response_data(compliance_response)["id"]
 
         dq_response = self.client.post(
             "/api/v1/dq/runs/",
             {"file_id": file_id, "dataset_id": dataset_id, "asset_id": asset_id},
             format="json",
         )
-        self.assertEqual(dq_response.status_code, status.HTTP_201_CREATED)
-        dq_run_id = dq_response.data["id"]
+        self.assertEqual(
+            dq_response.status_code,
+            status.HTTP_201_CREATED,
+            f"DQ run failed: {dq_response.status_code} - {get_response_data(dq_response)}",
+        )
+        dq_run_id = get_response_data(dq_response)["id"]
 
         # Wait for jobs to complete
         max_wait = 60
@@ -213,9 +242,9 @@ class CompleteUserJourneysE2ETest(TestCase):
         self.assertEqual(
             contract_response.status_code,
             status.HTTP_201_CREATED,
-            f"Contract creation failed: {contract_response.status_code} - {contract_response.data}",
+            f"Contract creation failed: {contract_response.status_code} - {get_response_data(contract_response)}",
         )
-        contract_id = contract_response.data["id"]
+        contract_id = get_response_data(contract_response)["id"]
 
         validate_response = self.client.post(
             f"/api/v1/contracts/{contract_id}/validate/", {"async": False}, format="json"
@@ -272,7 +301,12 @@ class CompleteUserJourneysE2ETest(TestCase):
             },
             format="json",
         )
-        listing_id = listing_response.data["id"]
+        self.assertEqual(
+            listing_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Listing creation failed: {listing_response.status_code} - {get_response_data(listing_response)}",
+        )
+        listing_id = get_response_data(listing_response)["id"]
 
         self.client.patch(
             f"/api/v1/marketplace/listings/{listing_id}/",
@@ -289,13 +323,15 @@ class CompleteUserJourneysE2ETest(TestCase):
 
     def test_data_consumer_journey(self):
         """Test complete data consumer journey: browse → purchase → access"""
-        # Create provider and listing
+        # Create provider tenant and user
         provider_tenant = Tenant.objects.create(
             name="Provider", slug="provider", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_e2e_tenant_ready(provider_tenant)
         provider_user = User.objects.create_user(
             email="provider@example.com", password="testpass123", tenant=provider_tenant
         )
+        ensure_user_has_data_provider_role(provider_user)
 
         asset = Asset.objects.create(
             tenant=provider_tenant,
@@ -319,7 +355,12 @@ class CompleteUserJourneysE2ETest(TestCase):
             },
             format="json",
         )
-        listing_id = listing_response.data["id"]
+        self.assertEqual(
+            listing_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Listing creation failed: {listing_response.status_code} - {get_response_data(listing_response)}",
+        )
+        listing_id = get_response_data(listing_response)["id"]
 
         provider_client.patch(
             f"/api/v1/marketplace/listings/{listing_id}/",
@@ -327,18 +368,37 @@ class CompleteUserJourneysE2ETest(TestCase):
             format="json",
         )
 
+        # Create consumer tenant and user
+        consumer_tenant = Tenant.objects.create(
+            name="Consumer", slug="consumer", kyc_status=KYCStatus.VERIFIED
+        )
+        ensure_e2e_tenant_ready(consumer_tenant)
+        consumer_user = User.objects.create_user(
+            email="consumer@example.com", password="testpass123", tenant=consumer_tenant
+        )
+        consumer_client = APIClient()
+        consumer_client.force_authenticate(user=consumer_user)
+
         # Consumer browses and purchases
-        search_response = self.client.get("/api/v1/marketplace/listings/search/", {"q": "public"})
+        search_response = consumer_client.get(
+            "/api/v1/marketplace/listings/search/", {"q": "public"}
+        )
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
-        order_response = self.client.post(
+        order_response = consumer_client.post(
             "/api/v1/marketplace/orders/", {"listing_id": listing_id}, format="json"
         )
-        self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            order_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Order creation failed: {order_response.status_code} - {get_response_data(order_response)}",
+        )
 
         # Verify order created
         # For auto-approved orders, response may have 'order' key
-        order_data = order_response.data.get("order", order_response.data)
-        order_id = order_data["id"]
+        order_data = get_response_data(order_response) or {}
+        order_obj = order_data.get("order", order_data)
+        order_id = order_obj.get("id")
+        self.assertIsNotNone(order_id, f"Order response missing id: {order_data}")
         order = Order.objects.get(id=order_id)
         self.assertIsNotNone(order)

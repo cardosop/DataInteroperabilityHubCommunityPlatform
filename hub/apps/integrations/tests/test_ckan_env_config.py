@@ -137,16 +137,16 @@ class TestCKANDadosGovBrIntegration(TestCase):
         self.assertIsNotNone(config)
         assert config is not None  # Type narrowing for linter
 
-        # Test with no API key set (should return None)
-        original_value = os.environ.get('CKAN_DADOS_GOV_BR_API_KEY')
-        if 'CKAN_DADOS_GOV_BR_API_KEY' in os.environ:
-            del os.environ['CKAN_DADOS_GOV_BR_API_KEY']
+        # get_api_key() checks DADOS_GOV_BR_API_KEY first, then CKAN_DADOS_GOV_BR_API_KEY
+        # Unset both to assert None when no API key is set
+        original_primary = os.environ.pop('DADOS_GOV_BR_API_KEY', None)
+        original_deprecated = os.environ.pop('CKAN_DADOS_GOV_BR_API_KEY', None)
 
         try:
             api_key = config.get_api_key()
             self.assertIsNone(api_key, "Should return None when API key not set")
 
-            # Test with API key set
+            # Test with API key set (deprecated var; primary takes precedence when set)
             test_key = "test-dados-api-key"
             os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = test_key
             api_key = config.get_api_key()
@@ -156,11 +156,11 @@ class TestCKANDadosGovBrIntegration(TestCase):
                 "Should return API key from environment"
             )
         finally:
-            # Restore original value
-            if original_value is not None:
-                os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = original_value
-            elif 'CKAN_DADOS_GOV_BR_API_KEY' in os.environ:
-                del os.environ['CKAN_DADOS_GOV_BR_API_KEY']
+            # Restore original values
+            if original_primary is not None:
+                os.environ['DADOS_GOV_BR_API_KEY'] = original_primary
+            if original_deprecated is not None:
+                os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = original_deprecated
 
     def test_dados_gov_br_in_fallback_list(self):
         """Test that dados.gov.br is in test helpers fallback list."""
@@ -265,11 +265,13 @@ class TestCKANEnvironmentConfigurationIntegration(TestCase):
 
     def test_full_configuration_flow(self):
         """Test the full configuration flow from environment to config system."""
-        original_key = os.environ.get('CKAN_DADOS_GOV_BR_API_KEY')
+        # get_api_key() prefers DADOS_GOV_BR_API_KEY; unset it so we test CKAN_DADOS_GOV_BR_API_KEY
+        original_primary = os.environ.pop('DADOS_GOV_BR_API_KEY', None)
+        original_deprecated = os.environ.get('CKAN_DADOS_GOV_BR_API_KEY')
         test_key = "test-integration-api-key-12345"
 
         try:
-            # 1. Set environment variable
+            # 1. Set deprecated env var (primary unset so resolution uses deprecated)
             os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = test_key
             env_key = os.getenv('CKAN_DADOS_GOV_BR_API_KEY')
             self.assertEqual(env_key, test_key, "Environment variable should be settable")
@@ -279,7 +281,7 @@ class TestCKANEnvironmentConfigurationIntegration(TestCase):
             self.assertIsNotNone(config, "Config should exist")
             assert config is not None  # Type narrowing for linter
 
-            # 3. API key resolution works
+            # 3. API key resolution works (from CKAN_DADOS_GOV_BR_API_KEY when primary unset)
             api_key = config.get_api_key()
             self.assertEqual(
                 api_key,
@@ -300,8 +302,10 @@ class TestCKANEnvironmentConfigurationIntegration(TestCase):
                 "Test config should have correct URL"
             )
         finally:
-            if original_key is not None:
-                os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = original_key
+            if original_primary is not None:
+                os.environ['DADOS_GOV_BR_API_KEY'] = original_primary
+            if original_deprecated is not None:
+                os.environ['CKAN_DADOS_GOV_BR_API_KEY'] = original_deprecated
             elif 'CKAN_DADOS_GOV_BR_API_KEY' in os.environ:
                 del os.environ['CKAN_DADOS_GOV_BR_API_KEY']
 

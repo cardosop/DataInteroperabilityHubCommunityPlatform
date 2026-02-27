@@ -185,13 +185,17 @@ class WorkflowE2ETestBase(E2ETestBase):
         )
 
     def assert_workflow_failed(self, instance, msg: Optional[str] = None):
-        """Assert workflow instance status is FAILED."""
+        """Assert workflow instance status is FAILED or ROLLED_BACK (both indicate failure)."""
         from hub.apps.orchestration.models import WorkflowStatus
         instance.refresh_from_db()
-        self.assertEqual(
-            instance.status,
-            WorkflowStatus.FAILED,
-            msg or f"Expected FAILED, got {instance.status}",
+        # Normalize to string for robust comparison (DB may return str, enum, or value)
+        status_str = str(instance.status) if instance.status else ""
+        valid_failures = (WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK)
+        valid_strs = [str(s) for s in valid_failures]
+        self.assertIn(
+            status_str,
+            valid_strs,
+            msg or f"Expected FAILED or ROLLED_BACK, got {instance.status}",
         )
 
     def assert_workflow_error_details_contain_validation(self, instance):

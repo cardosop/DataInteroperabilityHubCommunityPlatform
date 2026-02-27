@@ -54,29 +54,37 @@ export function ScheduledExportDetailPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading scheduled export..." />;
+    return (
+      <div data-testid="scheduled-export-detail-page" className="scheduled-export-detail-page">
+        <LoadingSpinner message="Loading scheduled export..." />
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <ErrorDisplay
-        error={error}
-        title="Failed to load scheduled export"
-        onRetry={() => refetch()}
-      />
+      <div data-testid="scheduled-export-detail-page" className="scheduled-export-detail-page">
+        <ErrorDisplay
+          error={error}
+          title="Failed to load scheduled export"
+          onRetry={() => refetch()}
+        />
+      </div>
     );
   }
 
   if (!export_) {
     return (
-      <EmptyState
-        title="Scheduled export not found"
-        message="The requested scheduled export could not be found."
-        action={{
-          label: 'Back to Scheduled Exports',
-          onClick: () => navigate('/scheduled-exports'),
-        }}
-      />
+      <div data-testid="scheduled-export-detail-page" className="scheduled-export-detail-page">
+        <EmptyState
+          title="Scheduled export not found"
+          message="The requested scheduled export could not be found."
+          action={{
+            label: 'Back to Scheduled Exports',
+            onClick: () => navigate('/scheduled-exports'),
+          }}
+        />
+      </div>
     );
   }
 
@@ -198,7 +206,10 @@ export function ScheduledExportDetailPage() {
           </dl>
         </div>
 
-        <div className="scheduled-export-detail-section">
+        <div
+          className="scheduled-export-detail-section"
+          data-testid="export-runs-section"
+        >
           <h2>Runs</h2>
           {runsLoading ? (
             <LoadingSpinner message="Loading runs..." />
@@ -219,7 +230,7 @@ export function ScheduledExportDetailPage() {
               </thead>
               <tbody>
                 {runs.map((run) => (
-                  <tr key={run.id}>
+                  <tr key={run.id} data-testid="export-run-item">
                     <td>
                       <span className={`run-status-badge ${run.status.toLowerCase()}`}>
                         {run.status}

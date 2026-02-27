@@ -12,8 +12,19 @@ export function useCapabilities() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // 30s: must exceed capabilitiesService fetch (25s + 1.5s retry) so we don't fail-open before fetch completes
+    const CAPABILITIES_LOAD_TIMEOUT_MS = 30_000;
+    const timeoutId = setTimeout(() => {
+      // Fail-open: if capabilities take too long (e.g. backend overloaded), stop blocking auth routes
+      capabilitiesService.useFallbackCapabilities();
+      setIsLoading(false);
+    }, CAPABILITIES_LOAD_TIMEOUT_MS);
     capabilitiesService.loadCapabilities().then(caps => {
+      clearTimeout(timeoutId);
       setCapabilities(caps);
+      setIsLoading(false);
+    }).catch(() => {
+      clearTimeout(timeoutId);
       setIsLoading(false);
     });
   }, []);

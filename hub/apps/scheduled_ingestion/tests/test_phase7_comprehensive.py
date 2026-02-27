@@ -34,6 +34,7 @@ from hub.apps.scheduled_ingestion.models import (
 )
 from hub.apps.scheduled_ingestion.worker_services import process_file_for_run
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
 # Add prefect-integration to path for imports
@@ -95,6 +96,7 @@ class TestAPIHandlersUnitTests(TransactionTestCase):
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"phase7-unit-{unique_id}@example.com",
             password="testpass123",
@@ -312,6 +314,7 @@ class TestFullPathIntegration(TransactionTestCase):
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"full-path-{unique_id}@example.com",
             password="testpass123",

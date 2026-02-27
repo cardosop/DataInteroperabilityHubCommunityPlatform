@@ -1,0 +1,135 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-007-a351ee90",
+      "journey_name": "Create Transformation Pipeline",
+      "persona": "Data Engineer",
+      "status": "failed",
+      "start_time": 1771324886.1334639,
+      "end_time": 1771324886.9083767,
+      "duration": 0.7749128341674805,
+      "completion_rate": 87.5,
+      "success_rate": 87.5,
+      "error_message": "'Persona2DataEngineerNewJourneys' object has no attribute '_wait_for_execution'",
+      "error_type": "AttributeError",
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324886.133472,
+          "end_time": 1771324886.8914602,
+          "duration": 0.7579882144927979,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Design Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324886.8914778,
+          "end_time": 1771324886.8965125,
+          "duration": 0.005034685134887695,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Configure Nodes",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324886.8965237,
+          "end_time": 1771324886.8965285,
+          "duration": 4.76837158203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Validate Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324886.900563,
+          "end_time": 1771324886.9005682,
+          "duration": 5.245208740234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Test Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324886.9043937,
+          "end_time": 1771324886.904399,
+          "duration": 5.245208740234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Save Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324886.904401,
+          "end_time": 1771324886.904403,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Execute Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324886.9083512,
+          "end_time": 1771324886.9083624,
+          "duration": 1.1205673217773438e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Monitor Execution",
+          "status": "StepStatus.FAILED",
+          "start_time": 1771324886.9083652,
+          "end_time": 1771324886.9083736,
+          "duration": 8.344650268554688e-06,
+          "error_message": "'Persona2DataEngineerNewJourneys' object has no attribute '_wait_for_execution'",
+          "error_type": "AttributeError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-17T10:41:26.908521"
+}

@@ -5,7 +5,11 @@ Tests event publishing integration with real services and database operations.
 Verifies that events are properly published during actual service operations.
 """
 
-from django.test import TestCase, override_settings
+import uuid
+
+from django.db import connection, connections
+from django.db.utils import InterfaceError as DjangoInterfaceError, OperationalError
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset
@@ -22,16 +26,50 @@ from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 
 
+def _is_connection_closed_error(exc: BaseException) -> bool:
+    """True if the exception indicates the DB connection was closed (any backend or wrapper)."""
+    msg = str(exc).lower()
+    return "connection" in msg and "closed" in msg
+
+
+def _ensure_db_connection():
+    """Ensure default DB connection is open so setUp never see 'connection already closed'."""
+    try:
+        connections.close_all()
+        connection.ensure_connection()
+    except Exception:
+        pass
+
+
+def _ensure_db_connection_for_teardown():
+    """Ensure connection for tearDown/flush without closing it first (avoid breaking active test connection)."""
+    try:
+        connection.ensure_connection()
+    except Exception:
+        try:
+            connections.close_all()
+            connection.ensure_connection()
+        except Exception:
+            pass
+
+
 @override_settings(
     EVENT_BUS_ENABLE_PERSISTENCE=True,
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Use sync persistence for tests
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,  # Disable write-behind for tests
 )
-class MarketplaceEventPublisherIntegrationTest(TestCase):
-    """Integration tests for MarketplaceEventPublisher with real services."""
+class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
+    """
+    Integration tests for MarketplaceEventPublisher with real services.
+
+    Uses TransactionTestCase so each test gets a real transaction and fresh DB connection.
+    tearDown ensures connection is open before super().tearDown() (flush) to avoid
+    'connection already closed' in batched runs.
+    """
 
     def setUp(self):
-        """Set up test fixtures."""
+        """Set up test fixtures; retry once on connection closed."""
+        _ensure_db_connection()
         # CRITICAL: Disconnect semantic service signals to prevent timeouts
         from django.db.models.signals import post_save
 
@@ -45,31 +83,86 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
         except (ImportError, AttributeError):
             pass
 
+        last_error = None
+        for _ in range(3):
+            try:
+                self._create_fixtures()
+                last_error = None
+                break
+            except (DjangoInterfaceError, OperationalError) as e:
+                last_error = e
+                if _is_connection_closed_error(e):
+                    _ensure_db_connection()
+                    continue
+                raise
+            except Exception as e:
+                # Backend (e.g. psycopg2) InterfaceError may propagate in some paths
+                if _is_connection_closed_error(e):
+                    last_error = e
+                    _ensure_db_connection()
+                    continue
+                raise
+        if last_error is not None:
+            raise last_error
+
+    def _create_fixtures(self):
+        """Create tenant, user, publisher, service, and config. Uses unique slug per run to avoid collisions."""
+        slug_suffix = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant",
+            slug=f"test-tenant-{slug_suffix}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{slug_suffix}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
-
-        # Create MarketplaceEventPublisher instance
         self.publisher = MarketplaceEventPublisher(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
-
-        # Create service instance
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id), request_id="test-request-123"
         )
-
         self.config = {
             "api_key": "test-api-key-123",
             "endpoint": "https://api.example.com",
             "timeout": 30,
         }
+
+    def tearDown(self):
+        """Re-establish connection, reconnect signals, then run TransactionTestCase teardown (flush)."""
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.connect(contract_saved, sender=Contract, weak=False)
+            post_save.connect(asset_saved, sender=Asset, weak=False)
+        except (ImportError, AttributeError):
+            pass
+        last_err = None
+        for _ in range(3):
+            try:
+                _ensure_db_connection_for_teardown()
+                super().tearDown()
+                last_err = None
+                break
+            except (DjangoInterfaceError, OperationalError) as e:
+                last_err = e
+                if _is_connection_closed_error(e):
+                    continue
+                raise
+            except Exception as e:
+                if _is_connection_closed_error(e):
+                    last_err = e
+                    continue
+                raise
+        if last_err is not None:
+            raise last_err
 
     def test_publish_connection_events_integration(self):
         """Test publishing connection events during actual connection operations."""
@@ -397,29 +490,31 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(event.event_type, "marketplace.sync.failed")
 
-    def test_publish_mapping_updated_with_invalid_mapping_id(self):
-        """Test error handling when publishing mapping.updated event with invalid mapping ID"""
+    def test_publish_mapping_updated_with_nonexistent_mapping_id(self):
+        """mapping.updated does not validate mapping existence; schema requires valid UUID."""
         connection = self.service.create_connection(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Invalid Mapping Test Connection",
+            name="Nonexistent Mapping Test Connection",
             config=self.config,
         )
 
-        # Should handle invalid mapping ID gracefully
+        # Use a valid UUID that does not exist as a mapping (event schema requires UUID format)
+        nonexistent_mapping_id = str(uuid.uuid4())
         event_id = self.publisher.publish_mapping_updated(
-            mapping_id="invalid-mapping-id",
+            mapping_id=nonexistent_mapping_id,
             connection_id=str(connection.id),
             changes={"field": {"old": "old_value", "new": "new_value"}},
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
         )
 
-        # Event should still be published (event publishing doesn't validate mapping existence)
+        # Event is published; we do not validate that the mapping exists in the DB
         self.assertIsNotNone(event_id)
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(event.event_type, "marketplace.mapping.updated")
+        self.assertEqual(event.data["mapping_id"], nonexistent_mapping_id)
 
     def test_event_publisher_handles_missing_tenant_id(self):
         """Test error handling when tenant_id is missing"""
@@ -497,17 +592,3 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(event.event_type, "marketplace.connection.updated")
         self.assertEqual(len(event.data["changes"]), 100)
-
-    def tearDown(self):
-        """Reconnect signals after test"""
-        from django.db.models.signals import post_save
-
-        try:
-            from hub.apps.assets.models import Asset
-            from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
-
-            post_save.connect(contract_saved, sender=Contract, weak=False)
-            post_save.connect(asset_saved, sender=Asset, weak=False)
-        except (ImportError, AttributeError):
-            pass

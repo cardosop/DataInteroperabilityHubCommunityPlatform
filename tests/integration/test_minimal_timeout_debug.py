@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 from django.urls import reverse
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, Role, UserRole
 from hub.apps.contracts.models import Contract, OriginalFormat
 from hub.apps.assets.models import Asset, AssetStatus
@@ -53,6 +54,7 @@ class MinimalTimeoutTest(TransactionTestCase):
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
         print(f"[{time.time()}] Tenant created in {time.time() - start:.3f}s")
 
         print(f"[{time.time()}] Creating role...")

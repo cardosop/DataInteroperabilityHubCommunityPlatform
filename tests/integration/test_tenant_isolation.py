@@ -627,6 +627,7 @@ class TenantIsolationTest(TestCase):
 
         model1 = MLModel.objects.create(
             tenant=self.tenant1,
+            odh_model_id="t1-model-id",
             odh_model_name="t1-model",
             odh_model_version="1.0",
             model_type="CLASSIFICATION",
@@ -634,6 +635,7 @@ class TenantIsolationTest(TestCase):
         )
         model2 = MLModel.objects.create(
             tenant=self.tenant2,
+            odh_model_id="t2-model-id",
             odh_model_name="t2-model",
             odh_model_version="1.0",
             model_type="CLASSIFICATION",

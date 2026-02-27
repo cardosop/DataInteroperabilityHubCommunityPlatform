@@ -13,6 +13,7 @@ All tests use real implementations - no mocks/stubs.
 """
 
 import os
+from unittest.mock import patch
 
 from django.conf import settings
 from django.test import TestCase, override_settings

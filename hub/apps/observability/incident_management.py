@@ -95,13 +95,20 @@ class IncidentManager:
             Updated DataIncident instance
         """
         from django.contrib.auth import get_user_model
-        
+        from django.core.exceptions import ValidationError
+
         User = get_user_model()
-        
+
+        valid_statuses = ("TRIAGED", "IN_PROGRESS", "RESOLVED")
+        if status not in valid_statuses:
+            raise ValidationError(
+                {"status": f"Invalid status '{status}'. Must be one of: {', '.join(valid_statuses)}"}
+            )
+
         incident = DataIncident.objects.get(id=incident_id)
-        
+
         update_fields = ['status', 'updated_at']
-        
+
         # Update status
         incident.status = status
         

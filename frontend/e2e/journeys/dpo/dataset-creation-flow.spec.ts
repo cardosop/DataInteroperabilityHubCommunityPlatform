@@ -4,18 +4,33 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
-import { waitForLoadingComplete } from '../../fixtures/helpers';
+import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
+import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('Dataset Creation Flow', () => {
-  test.setTimeout(120000); // 2 minutes
+  test.setTimeout(300000); // 5 min: visible/slowMo; file upload + create can be slow
+
+  test.describe('Failure', () => {
+    test('unauthenticated access to datasets create redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/datasets/create', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|datasets|register)/, { timeout: 20_000 });
+      const url = page.url();
+      const onLogin = url.includes('/login');
+      const onDatasetsWithLoginPrompt =
+        url.includes('/datasets') &&
+        (await hasLoginPrompt(page));
+      expect(onLogin || onDatasetsWithLoginPrompt).toBe(true);
+    });
+  });
 
   test('should create dataset with file upload', async ({ page }) => {
+    test.setTimeout(300000); // Override chromium-routes --timeout=120000; file upload + 429 retries need headroom
     const testUser = await getTestUser();
-    await loginUser(page, testUser);
-
-    // Navigate to datasets create page
-    await page.goto('/datasets/create');
+    await loginAndNavigateToRoute(page, testUser, '/datasets/create', {
+      timeout: 90000,
+      contentSelector: '.dataset-create-page, .error-display, .loading-spinner-container, .file-upload, h1',
+    });
     await waitForLoadingComplete(page);
 
     // Wait for create page to load - use first() to avoid strict mode violation
@@ -59,13 +74,16 @@ test.describe('Dataset Creation Flow', () => {
 
             if (response && response.status() === 429) {
               // Rate limited - parse retry-after from error message
-              let retryAfter = 5; // Default wait time
+              // Backend: "retry after 6 seconds"; burst window 10s; use at least 10s
+              let retryAfter = 10;
               try {
                 const responseBody = await response.json().catch(() => ({}));
-                const message = responseBody.message || '';
+                const message =
+                  (responseBody as { message?: string }).message ||
+                  (typeof responseBody === 'string' ? responseBody : '');
                 const retryMatch = message.match(/retry after (\d+) seconds?/i);
                 if (retryMatch) {
-                  retryAfter = parseInt(retryMatch[1], 10) + 1; // Add 1s buffer
+                  retryAfter = Math.max(10, parseInt(retryMatch[1], 10) + 1);
                 }
               } catch {
                 // Use default
@@ -79,7 +97,9 @@ test.describe('Dataset Creation Flow', () => {
             }
 
             // Wait for file to be processed (success indicator)
-            await expect(page.locator('.file-upload-success, .upload-success')).toBeVisible({
+            await expect(
+              page.locator('.file-upload-success, .upload-success').first()
+            ).toBeVisible({
               timeout: 30000,
             });
             uploadSuccess = true;
@@ -107,7 +127,7 @@ test.describe('Dataset Creation Flow', () => {
 
             if (retries < maxRetries - 1) {
               console.log(`File upload attempt ${retries + 1} failed, retrying...`);
-              await page.waitForTimeout(5000);
+              await page.waitForTimeout(2000);
               retries++;
             } else {
               throw error;
@@ -131,12 +151,19 @@ test.describe('Dataset Creation Flow', () => {
 
     // Wait for redirect to detail page
     await expect(page).toHaveURL(/\/datasets\/[^/]+$/, { timeout: 15000 });
-    await waitForLoadingComplete(page);
-
-    // Verify dataset was created - wait for dataset detail page content
-    // Check for dataset detail page (not just h1 which might be hidden during loading)
+    // API can be slow under Docker/parallel load; wait for loading to finish then detail
+    await waitForLoadingComplete(page, { timeout: 35000 });
+    await page.waitForSelector(
+      '.dataset-detail-page, .dataset-detail-content, .dataset-detail-metadata, .error-display, .empty-state',
+      { timeout: 25000 }
+    );
+    const hasError = (await page.locator('.error-display').count()) > 0;
+    if (hasError) {
+      const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+      throw new Error(`Dataset creation failed: ${errText.slice(0, 300)}`);
+    }
     await expect(
-      page.locator('.dataset-detail-page, .dataset-detail-content, .dataset-detail-metadata')
-    ).toBeVisible({ timeout: 15000 });
+      page.locator('.dataset-detail-page, .dataset-detail-content, .dataset-detail-metadata').first()
+    ).toBeVisible({ timeout: 5000 });
   });
 });

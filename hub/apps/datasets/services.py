@@ -10,6 +10,7 @@ DatasetsBusinessRules before performing mutations.
 from typing import Any, Dict, List, Optional
 
 import boto3
+import structlog
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from django.conf import settings
@@ -28,6 +29,8 @@ from hub.apps.datasets.schema_inference import (
 )
 from hub.apps.datasets.versioning_service import VersioningService
 from hub.apps.files.models import File, FileStatus
+
+logger = structlog.get_logger(__name__)
 
 
 def _generate_mock_file_content(file_obj: File, file_format: str) -> bytes:
@@ -309,8 +312,17 @@ class DatasetService(BaseService, DatasetEventPublisher):
                     "row_count": row_count,
                 },
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "dataset_audit_event_failed",
+                extra={
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                    "dataset_id": str(dataset.id),
+                    "operation": "create",
+                },
+                exc_info=True,
+            )
 
         # Publish event
         try:
@@ -323,8 +335,16 @@ class DatasetService(BaseService, DatasetEventPublisher):
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
-        except Exception:
-            pass  # Don't fail dataset creation if event publishing fails
+        except Exception as e:
+            logger.warning(
+                "dataset_event_publish_failed",
+                extra={
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                    "dataset_id": str(dataset.id),
+                },
+                exc_info=True,
+            )
 
         return dataset
 

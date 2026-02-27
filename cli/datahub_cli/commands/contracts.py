@@ -422,7 +422,7 @@ def create_odps(
                     raise ODPSExportError(
                         message="Workflow started but no workflow_instance_id returned",
                         error_code="MISSING_WORKFLOW_ID",
-                        context={'response': response.json()}
+                        context={'response': response_obj.json() if hasattr(response_obj, 'json') else str(response_obj)}
                     )
 
                 if output_format == 'table':
@@ -438,7 +438,7 @@ def create_odps(
 
                 while time.time() - start_time < max_poll_time:
                     try:
-                        status_result = api_client.get(f'contracts/products/{workflow_instance_id}/status/')
+                        status_result = api_client.get(f'contracts/products/workflows/{workflow_instance_id}/status/')
                         status = status_result.get('status')
 
                         if status == 'COMPLETED':
@@ -466,17 +466,17 @@ def create_odps(
                         message=f"Workflow did not complete within {max_poll_time} seconds",
                         error_code="WORKFLOW_TIMEOUT",
                         context={'workflow_instance_id': workflow_instance_id},
-                        suggestion=f"Check workflow status manually: contracts/products/{workflow_instance_id}/status/"
+                        suggestion=f"Check workflow status manually: contracts/products/workflows/{workflow_instance_id}/status/"
                     )
             else:
                 # Synchronous response (shouldn't happen with new async API, but handle for compatibility)
-                result = api_client._handle_response(response)
+                result = api_client._handle_response(response_obj)
 
             if output_format == 'json':
                 click.echo(json.dumps(result, indent=2))
             else:
-                odps_contract = result.get('odps_contract', {})
-                odcs_contract = result.get('odcs_contract', {})
+                odps_contract = result.get('odps_contract') or {}
+                odcs_contract = result.get('odcs_contract') or {}
                 workflow_id = result.get('workflow_instance_id')
 
                 click.echo("ODPS product created successfully (Product-First flow)!")

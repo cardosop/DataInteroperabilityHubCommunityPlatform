@@ -64,7 +64,7 @@ class TestTestEnvironmentDockerCompose:
         services = docker_compose_config.get("services", {})
         required_services = [
             "postgres-test",
-            "redis-test",
+            "redis-cache-test",  # docker-compose.test uses redis-cache-test, redis-queue-test, etc.
             "minio-test",
             "fuseki-test",
         ]
@@ -96,9 +96,21 @@ class TestTestEnvironmentDockerCompose:
     def test_services_have_healthchecks(self, docker_compose_config):
         """Test that all services have health checks configured."""
         services = docker_compose_config.get("services", {})
+        skip_healthcheck = {
+            "prefect-worker-test",
+            "ensure-test-db",
+            "redis-exporter-cache-test",
+            "redis-exporter-queue-test",
+            "redis-exporter-events-test",
+            "redis-exporter-channels-test",
+            "mock-server-test",
+            "mailhog-test",
+        }
         for service_name, service_config in services.items():
-            # Prefect worker might not have healthcheck
-            if service_name == "prefect-worker-test":
+            if service_name in skip_healthcheck:
+                continue
+            # Skip volume-only entries (docker-compose may list volumes under services in some configs)
+            if "build" not in service_config and "image" not in service_config:
                 continue
             assert (
                 "healthcheck" in service_config
@@ -109,7 +121,8 @@ class TestTestEnvironmentDockerCompose:
         services = docker_compose_config.get("services", {})
         port_mappings = {
             "postgres-test": "5434",
-            "redis-test": "6380",
+            "redis-cache-test": "6379",
+            "redis-queue-test": "6380",
             "minio-test": "9010",
             "fuseki-test": "3031",
             "api-service-test": "8001",
@@ -462,10 +475,11 @@ class TestTestEnvironmentScripts:
         env_file = project_root / ".env.test.example"
         if env_file.exists():
             content = env_file.read_text()
+            # docker-compose.test uses POSTGRES_TEST_* to avoid .env override
             required_vars = [
-                "POSTGRES_USER",
-                "POSTGRES_PASSWORD",
-                "POSTGRES_DB",
+                "POSTGRES_TEST_USER",
+                "POSTGRES_TEST_PASSWORD",
+                "POSTGRES_TEST_DB",
                 "API_TEST_PORT",
                 "DATACONTRACT_SERVICE_URL",
                 "DQ_SERVICE_URL",

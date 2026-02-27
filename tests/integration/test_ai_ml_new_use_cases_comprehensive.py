@@ -40,6 +40,7 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset, DatasetKind
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,
@@ -52,24 +53,47 @@ from tests.utils.test_data_management import TestDatabaseIsolationMixin
 
 User = get_user_model()
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.integration]
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.integration,
+    pytest.mark.uc("UC-AI-001"),
+    pytest.mark.uc("UC-AI-002"),
+    pytest.mark.uc("UC-AI-003"),
+    pytest.mark.uc("UC-AI-004"),
+    pytest.mark.uc("UC-AI-005"),
+    pytest.mark.uc("UC-AI-006"),
+    pytest.mark.uc("UC-AI-007"),
+    pytest.mark.uc("UC-AI-008"),
+    pytest.mark.uc("UC-AI-009"),
+    pytest.mark.uc("UC-AI-010"),
+]
 
 
 class AIMLNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):
     """Base test class for AI/ML new use cases"""
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    @classmethod
+    def _fixture_teardown(cls):
+        """Override to skip database flush for integration tests."""
+        pass
 
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
         self.client = APIClient()
 
-        # Create tenant
+        # Create tenant (use unique name/slug to avoid conflicts between tests)
+        unique_id = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {unique_id}",
+            slug=f"test-tenant-{unique_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create roles
         self.data_provider_role, _ = Role.objects.get_or_create(
@@ -88,22 +112,22 @@ class AIMLNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):
             defaults={"description": "Data Scientist"},
         )
 
-        # Create users
+        # Create users (use unique emails to avoid conflicts between tests)
         self.dc_user = UserFactory.create_user(
             tenant=self.tenant,
-            email="dc@example.com",
+            email=f"dc-{unique_id}@example.com",
         )
         UserRole.objects.get_or_create(user=self.dc_user, role=self.data_consumer_role)
 
         self.ds_user = UserFactory.create_user(
             tenant=self.tenant,
-            email="ds@example.com",
+            email=f"ds-{unique_id}@example.com",
         )
         UserRole.objects.get_or_create(user=self.ds_user, role=self.data_scientist_role)
 
         self.dpo_user = UserFactory.create_user(
             tenant=self.tenant,
-            email="dpo@example.com",
+            email=f"dpo-{unique_id}@example.com",
         )
         UserRole.objects.get_or_create(user=self.dpo_user, role=self.data_provider_role)
 

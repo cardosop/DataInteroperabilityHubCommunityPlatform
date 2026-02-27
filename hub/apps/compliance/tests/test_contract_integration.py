@@ -11,11 +11,73 @@ import pytest
 from django.test import TestCase
 from hub.apps.contracts.models import Contract, OriginalSpecType, OriginalFormat, ContractStatus
 from hub.apps.tenants.models import Tenant
-from hub.apps.compliance.contract_integration import ContractCompliancePolicyExtractor
+from hub.apps.compliance.contract_integration import (
+    ContractCompliancePolicyExtractor,
+    validate_contract_compliance_payload,
+    ContractComplianceSchemaError,
+)
 from hub.apps.compliance.service_client import ComplianceServiceClient
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+class ContractComplianceSchemaValidationTest(TestCase):
+    """Test contract compliance payload schema validation (5.4.2); real validation, no mocks."""
+
+    def test_valid_payload_passes(self):
+        """Valid privacy_compliance payload passes validation."""
+        hub_contract = {
+            "privacy_compliance": {
+                "contains_personal_data": True,
+                "personal_data_categories": ["EMAIL"],
+                "jurisdictions": ["GDPR"],
+                "legal_bases": ["CONSENT"],
+                "retention_policy": {"period": "P1Y"},
+            }
+        }
+        validate_contract_compliance_payload(hub_contract)
+
+    def test_valid_empty_section_passes(self):
+        """Empty or missing privacy_compliance passes."""
+        validate_contract_compliance_payload({})
+        validate_contract_compliance_payload({"privacy_compliance": {}})
+
+    def test_invalid_payload_not_dict_raises(self):
+        """Payload that is not a dict raises ContractComplianceSchemaError."""
+        with self.assertRaises(ContractComplianceSchemaError) as ctx:
+            validate_contract_compliance_payload([])
+        self.assertIn("JSON object", ctx.exception.message)
+
+    def test_invalid_privacy_compliance_not_dict_raises(self):
+        """privacy_compliance that is not a dict raises."""
+        with self.assertRaises(ContractComplianceSchemaError) as ctx:
+            validate_contract_compliance_payload({"privacy_compliance": "not-a-dict"})
+        self.assertIn("privacy_compliance", ctx.exception.message)
+
+    def test_invalid_contains_personal_data_not_bool_raises(self):
+        """contains_personal_data must be boolean."""
+        with self.assertRaises(ContractComplianceSchemaError) as ctx:
+            validate_contract_compliance_payload({
+                "privacy_compliance": {"contains_personal_data": "yes"},
+            })
+        self.assertIn("boolean", ctx.exception.message)
+
+    def test_invalid_personal_data_categories_not_list_raises(self):
+        """personal_data_categories must be a list."""
+        with self.assertRaises(ContractComplianceSchemaError) as ctx:
+            validate_contract_compliance_payload({
+                "privacy_compliance": {"personal_data_categories": "EMAIL"},
+            })
+        self.assertIn("list", ctx.exception.message)
+
+    def test_invalid_retention_policy_not_dict_raises(self):
+        """retention_policy must be dict or null."""
+        with self.assertRaises(ContractComplianceSchemaError) as ctx:
+            validate_contract_compliance_payload({
+                "privacy_compliance": {"retention_policy": "P1Y"},
+            })
+        self.assertIn("retention_policy", ctx.exception.message)
 
 
 class ContractCompliancePolicyExtractionTest(TestCase):
