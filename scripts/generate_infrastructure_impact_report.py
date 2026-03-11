@@ -378,7 +378,7 @@ class InfrastructureImpactReporter:
 
 ## Executive Summary
 
-This report provides a comprehensive analysis of all infrastructure components in the Data Interoperability Hub platform, including Docker Compose services, Kubernetes resources, monitoring configurations, API gateway rules, rate limiting configurations, and CI/CD workflows.
+This report provides a comprehensive analysis of all infrastructure components in the Meshant platform, including Docker Compose services, Kubernetes resources, monitoring configurations, API gateway rules, rate limiting configurations, and CI/CD workflows.
 
 ### Key Statistics
 

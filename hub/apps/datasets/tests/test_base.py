@@ -26,17 +26,18 @@ class DatasetsTestBase(TestCase):
     def setUp(self):
         """Set up common test fixtures."""
         super().setUp()
+        uid = str(uuid.uuid4())[:8]
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -65,17 +66,18 @@ class DatasetsTransactionTestBase(TransactionTestCase):
     def setUp(self):
         """Set up common test fixtures."""
         super().setUp()
+        uid = str(uuid.uuid4())[:8]
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

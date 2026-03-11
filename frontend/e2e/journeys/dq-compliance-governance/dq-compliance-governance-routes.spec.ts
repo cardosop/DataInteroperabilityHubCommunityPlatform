@@ -15,7 +15,10 @@ test.describe('DQ, Compliance, Governance routes', () => {
     test('dq list loads (runs list or empty)', async ({ page }) => {
       await page.goto('/dq');
       try {
-        await waitForAppMainReady(page, { timeout: 60000 });
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          contentSelector: '.dq-run-list-page, .empty-state, .error-display',
+        });
       } catch (_err) {
         if (page.url().includes('/login')) {
           expect(page.url()).toContain('/login');
@@ -24,12 +27,18 @@ test.describe('DQ, Compliance, Governance routes', () => {
         throw _err;
       }
       expect(page.url()).toContain('/dq');
+      await expect(
+        page.locator('.dq-run-list-page, .empty-state').first()
+      ).toBeVisible({ timeout: 10000 });
     });
 
     test('compliance list loads (runs list or empty)', async ({ page }) => {
       await page.goto('/compliance');
       try {
-        await waitForAppMainReady(page, { timeout: 60000 });
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          contentSelector: '.compliance-run-list-page, .empty-state, .error-display',
+        });
       } catch (_err) {
         if (page.url().includes('/login')) {
           expect(page.url()).toContain('/login');
@@ -38,22 +47,27 @@ test.describe('DQ, Compliance, Governance routes', () => {
         throw _err;
       }
       expect(page.url()).toContain('/compliance');
+      await expect(
+        page.locator('.compliance-run-list-page, .empty-state').first()
+      ).toBeVisible({ timeout: 10000 });
     });
 
     test('governance page loads (access requests or empty)', async ({ page }) => {
       await page.goto('/governance');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await page
+        .locator('.access-request-list-page, .empty-state, .error-display, .app-main, #email')
+        .first()
+        .waitFor({ state: 'visible', timeout: 20000 })
+        .catch(() => null);
       const url = page.url();
       const onGov = url.includes('/governance');
       const on403 = url.includes('/403');
       const onLogin = url.includes('/login');
       const hasContent =
-        (await page.locator('.app-main').count()) > 0 &&
-        ((await page.locator('.error-display, .access-request-list-page, h1').count()) > 0 ||
-          (await page.locator('text=/403|forbidden|Access|Request/i').count()) > 0);
+        (await page.locator('.access-request-list-page, .empty-state, .error-display, .app-main').count()) > 0;
       expect(onGov || on403 || onLogin).toBe(true);
-      expect(hasContent || onGov || on403 || onLogin).toBe(true);
+      expect(hasContent || on403 || onLogin).toBe(true);
     });
   });
 

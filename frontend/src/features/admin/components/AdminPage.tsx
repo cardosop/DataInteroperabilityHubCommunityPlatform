@@ -9,10 +9,16 @@ import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { useAuthStore } from '../../auth/store/authStore';
-import { useTenants, useUsers } from '../hooks/useAdmin';
+import {
+  usePlatformTenantUsage,
+  useResumeTenant,
+  useSuspendTenant,
+  useTenants,
+  useUsers,
+} from '../hooks/useAdmin';
 import './AdminPage.css';
 
-type AdminTab = 'overview' | 'tenants' | 'users';
+type AdminTab = 'overview' | 'tenants' | 'usage' | 'users';
 
 export function AdminPage() {
   const { user } = useAuthStore();
@@ -24,6 +30,9 @@ export function AdminPage() {
 
   // Only fetch tenants if platform admin
   const tenantsQuery = useTenants({ page_size: 20 }, { enabled: isPlatformAdmin });
+  const usageQuery = usePlatformTenantUsage({ enabled: isPlatformAdmin });
+  const suspendTenantMutation = useSuspendTenant();
+  const resumeTenantMutation = useResumeTenant();
   // Fetch users (tenant-scoped or all for platform admin)
   const usersQuery = useUsers({ page_size: 20 });
 
@@ -75,6 +84,15 @@ export function AdminPage() {
             Tenants
           </button>
         )}
+        {isPlatformAdmin && (
+          <button
+            type="button"
+            className={`admin-tab ${activeTab === 'usage' ? 'active' : ''}`}
+            onClick={() => setActiveTab('usage')}
+          >
+            Usage
+          </button>
+        )}
         <button
           type="button"
           className={`admin-tab ${activeTab === 'users' ? 'active' : ''}`}
@@ -105,6 +123,11 @@ export function AdminPage() {
                     <span className="admin-link-icon">🏢</span>
                     <span className="admin-link-label">Tenants</span>
                     <span className="admin-link-desc">Manage tenants</span>
+                  </div>
+                  <div className="admin-link-card" onClick={() => setActiveTab('usage')}>
+                    <span className="admin-link-icon">📊</span>
+                    <span className="admin-link-label">Usage</span>
+                    <span className="admin-link-desc">Usage across tenants</span>
                   </div>
                 </>
               )}
@@ -144,6 +167,16 @@ export function AdminPage() {
             {tenantsQuery.error && (
               <ErrorDisplay error={tenantsQuery.error} title="Failed to load tenants" />
             )}
+            {(suspendTenantMutation.error || resumeTenantMutation.error) && (
+              <ErrorDisplay
+                error={suspendTenantMutation.error ?? resumeTenantMutation.error}
+                title="Tenant action failed"
+                onRetry={() => {
+                  suspendTenantMutation.reset();
+                  resumeTenantMutation.reset();
+                }}
+              />
+            )}
             {tenantsQuery.data && (
               <>
                 {tenantsQuery.data.results.length === 0 ? (
@@ -159,6 +192,7 @@ export function AdminPage() {
                           <th>KYC Status</th>
                           <th>Region</th>
                           <th>Created</th>
+                          <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -182,6 +216,94 @@ export function AdminPage() {
                             </td>
                             <td>{tenant.region || '-'}</td>
                             <td>{formatDate(tenant.created_at)}</td>
+                            <td>
+                              {tenant.status === 'ACTIVE' && (
+                                <button
+                                  type="button"
+                                  className="admin-action-btn admin-action-suspend"
+                                  onClick={() =>
+                                    suspendTenantMutation.mutate({ id: tenant.id })
+                                  }
+                                  disabled={suspendTenantMutation.isPending}
+                                  data-testid={`suspend-tenant-${tenant.id}`}
+                                >
+                                  Suspend
+                                </button>
+                              )}
+                              {tenant.status === 'SUSPENDED' && (
+                                <button
+                                  type="button"
+                                  className="admin-action-btn admin-action-resume"
+                                  onClick={() =>
+                                    resumeTenantMutation.mutate({ id: tenant.id })
+                                  }
+                                  disabled={resumeTenantMutation.isPending}
+                                  data-testid={`resume-tenant-${tenant.id}`}
+                                >
+                                  Resume
+                                </button>
+                              )}
+                              {tenant.status === 'DELETED' && (
+                                <span className="admin-action-disabled">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
+
+        {activeTab === 'usage' && isPlatformAdmin && (
+          <section className="admin-section" data-testid="admin-usage-section">
+            <div className="section-header">
+              <h2>Tenant Usage</h2>
+              {usageQuery.data && (
+                <span className="usage-period">
+                  {new Date(usageQuery.data.period_start).toLocaleDateString('en-US', {
+                    month: 'short',
+                    year: 'numeric',
+                  })}
+                </span>
+              )}
+            </div>
+            {usageQuery.isLoading && <LoadingSpinner message="Loading usage..." />}
+            {usageQuery.error && (
+              <ErrorDisplay error={usageQuery.error} title="Failed to load usage" />
+            )}
+            {usageQuery.data && (
+              <>
+                {usageQuery.data.results.length === 0 ? (
+                  <EmptyState message="No tenant usage data." />
+                ) : (
+                  <div className="admin-table-container">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Tenant</th>
+                          <th>Plan</th>
+                          <th>Assets</th>
+                          <th>Datasets</th>
+                          <th>API Calls</th>
+                          <th>Storage (GB)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {usageQuery.data.results.map((row) => (
+                          <tr key={row.tenant_id}>
+                            <td>
+                              <span className="table-cell-name">{row.tenant_name}</span>
+                              <span className="table-cell-slug-muted">{row.tenant_slug}</span>
+                            </td>
+                            <td>{row.plan_slug ?? row.plan_tier ?? '-'}</td>
+                            <td>{row.usage.asset_count}</td>
+                            <td>{row.usage.dataset_count}</td>
+                            <td>{row.usage.api_calls_count}</td>
+                            <td>{(row.usage.storage_gb ?? 0).toFixed(2)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -217,6 +339,7 @@ export function AdminPage() {
                           <th>Roles</th>
                           <th>Tenant</th>
                           <th>Created</th>
+                          <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -261,6 +384,14 @@ export function AdminPage() {
                                     : '-')}
                             </td>
                             <td>{formatDate(user.created_at)}</td>
+                            <td>
+                              <Link
+                                to={`/admin/users/${user.id}/edit`}
+                                className="admin-user-edit-link"
+                              >
+                                Edit
+                              </Link>
+                            </td>
                           </tr>
                         ))}
                       </tbody>

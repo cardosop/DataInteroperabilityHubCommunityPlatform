@@ -6,6 +6,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { useEffect } from 'react';
+import { ToastProvider } from '../../shared/components/Toast';
 import { useAuthStore } from '../../features/auth/store/authStore';
 import { performanceMetricsService } from '../../shared/services/performanceMetrics';
 import { websocketClient } from '../../shared/services/websocketClient';
@@ -32,7 +33,7 @@ const queryClient = new QueryClient({
         if (status === 404) return false; // Don't retry "not found"
         return failureCount < 1;
       },
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true,
       staleTime: 5 * 60 * 1000, // 5 minutes - data considered fresh
       gcTime: 10 * 60 * 1000, // 10 minutes - cache garbage collection (formerly cacheTime)
     },
@@ -102,7 +103,9 @@ export function AppProviders({ children }: AppProvidersProps) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <ToastProvider>
+        {children}
+      </ToastProvider>
       {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   );

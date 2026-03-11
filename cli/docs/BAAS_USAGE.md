@@ -317,11 +317,11 @@ datahub baas docs show --format markdown
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Data Interoperability Hub API Documentation</title>
+    <title>Meshant API Documentation</title>
     ...
 </head>
 <body>
-    <h1>Data Interoperability Hub API Documentation</h1>
+    <h1>Meshant API Documentation</h1>
     <p><strong>Version:</strong> 1.0.0</p>
     ...
 </body>
@@ -331,9 +331,9 @@ datahub baas docs show --format markdown
 **Example Output (JSON)**:
 ```json
 {
-  "title": "Data Interoperability Hub API Documentation",
+  "title": "Meshant API Documentation",
   "version": "1.0.0",
-  "description": "REST API for the Data Interoperability Hub platform",
+  "description": "REST API for the Meshant platform",
   "base_url": "https://api.hub.example.com",
   "endpoints": {
     "openapi_schema": "https://api.hub.example.com/api/v1/baas/docs/openapi.json",
@@ -380,7 +380,7 @@ datahub baas docs openapi --format yaml
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Data Interoperability Hub API",
+    "title": "Meshant API",
     "version": "1.0.0"
   },
   "paths": {

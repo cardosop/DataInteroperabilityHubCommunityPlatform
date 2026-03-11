@@ -41,18 +41,23 @@ class DataExportJobViewSetTest(TestCase):
     """Comprehensive tests for DataExportJobViewSet"""
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures (unique names for --reuse-db compatibility)."""
         self.client = APIClient()
+        unique = str(uuid.uuid4())[:8]
 
         # Create tenant
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant", status="ACTIVE")
+        self.tenant = Tenant.objects.create(
+            name=f"GDPR Export Tenant {unique}",
+            slug=f"gdpr-export-tenant-{unique}",
+            status="ACTIVE",
+        )
 
         # Ensure tenant has active subscription so POST export-data is not 403
         ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"gdpr-export-{unique}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User",
@@ -60,11 +65,13 @@ class DataExportJobViewSetTest(TestCase):
 
         # Create another tenant and user for isolation tests
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE"
+            name=f"GDPR Export Other {unique}",
+            slug=f"gdpr-export-other-{unique}",
+            status="ACTIVE",
         )
 
         self.other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"gdpr-export-other-{unique}@example.com",
             password="testpass123",
             tenant=self.other_tenant,
             display_name="Other User",
@@ -316,18 +323,23 @@ class ErasureRequestViewSetTest(TestCase):
     """Comprehensive tests for ErasureRequestViewSet"""
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures (unique names for --reuse-db compatibility)."""
         self.client = APIClient()
+        unique = str(uuid.uuid4())[:8]
 
         # Create tenant
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant", status="ACTIVE")
+        self.tenant = Tenant.objects.create(
+            name=f"GDPR Erasure Tenant {unique}",
+            slug=f"gdpr-erasure-tenant-{unique}",
+            status="ACTIVE",
+        )
 
         # Ensure tenant has active subscription so POST request-erasure is not 403
         ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"gdpr-erasure-{unique}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User",
@@ -335,11 +347,13 @@ class ErasureRequestViewSetTest(TestCase):
 
         # Create another tenant and user for isolation tests
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE"
+            name=f"GDPR Erasure Other {unique}",
+            slug=f"gdpr-erasure-other-{unique}",
+            status="ACTIVE",
         )
 
         self.other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"gdpr-erasure-other-{unique}@example.com",
             password="testpass123",
             tenant=self.other_tenant,
             display_name="Other User",

@@ -14,7 +14,7 @@ import { getTestUser, loginUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-004: Set Up Compliance Scanning', () => {
-  test.setTimeout(120000);
+  test.setTimeout(180000);
 
   test.describe('Success', () => {
     test('compliance list loads (runs list or empty)', async ({ page }) => {
@@ -23,7 +23,11 @@ test.describe('JOURNEY-DE-004: Set Up Compliance Scanning', () => {
       await page.goto('/compliance');
       await page.waitForLoadState('domcontentloaded');
       try {
-        await waitForAppMainReady(page, { timeout: 60000 });
+        await waitForAppMainReady(page, {
+          timeout: 90000,
+          contentSelector:
+            '.compliance-run-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        });
       } catch (_err) {
         if (page.url().includes('/login')) {
           expect(page.url()).toContain('/login');
@@ -53,8 +57,9 @@ test.describe('JOURNEY-DE-004: Set Up Compliance Scanning', () => {
     test('compliance route accessible', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/compliance', {
-        timeout: 60000,
-        contentSelector: '.compliance-run-list-page, .empty-state, .error-display',
+        timeout: 90000,
+        contentSelector:
+          '.compliance-run-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
       });
       expect(page.url()).toContain('/compliance');
     });

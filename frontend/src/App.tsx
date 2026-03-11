@@ -8,10 +8,15 @@ import './App.css';
 import { AppProviders } from './app/providers/AppProviders';
 import { router } from './app/routes/routes';
 import { useAuthStore } from './features/auth/store/authStore';
+import { APP_NAME } from './shared/constants/brand';
 import { ErrorBoundary } from './shared/components/ErrorBoundary';
 
 function App() {
   const { initialize } = useAuthStore();
+
+  useEffect(() => {
+    document.title = APP_NAME;
+  }, []);
 
   useEffect(() => {
     // Initialize auth state from storage

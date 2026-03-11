@@ -13,7 +13,23 @@ import type {
 export function useMarketplaceConnections(filters: MarketplaceConnectionListFilters = {}) {
   return useQuery({
     queryKey: ['integrations', 'marketplace', 'connections', 'list', filters],
-    queryFn: () => marketplaceConnectionService.list(filters),
+    queryFn: async () => {
+      const data = await marketplaceConnectionService.list(filters);
+      // React Query requires non-undefined; API may return undefined on error/empty
+      return (
+        data ?? {
+          results: [],
+          count: 0,
+          page: 1,
+          page_size: 50,
+          total_pages: 0,
+          has_next: false,
+          has_previous: false,
+          next_page: null,
+          previous_page: null,
+        }
+      );
+    },
   });
 }
 

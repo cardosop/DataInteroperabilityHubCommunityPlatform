@@ -27,7 +27,7 @@ export const datasetService = {
     if (filters.ordering) params.append('ordering', filters.ordering);
     if (filters.search) params.append('search', filters.search);
     if (filters.asset_id) params.append('asset_id', filters.asset_id);
-    if (filters.format) params.append('format', filters.format);
+    if (filters.format) params.append('dataset_format', filters.format);
 
     const response = await apiClient.getClient().get<PaginatedResponse<Dataset>>(
       `${DATASETS_BASE_PATH}/${params.toString() ? `?${params.toString()}` : ''}`
@@ -52,10 +52,19 @@ export const datasetService = {
   },
 
   /**
-   * Update a dataset
+   * Update a dataset (partial update via PATCH).
+   * Backend expects "asset" (UUID or null). Maps asset_id -> asset when sending.
    */
   async update(id: string, data: DatasetUpdateRequest): Promise<Dataset> {
-    const response = await apiClient.getClient().put<Dataset>(`${DATASETS_BASE_PATH}/${id}/`, data);
+    const payload = { ...data } as Record<string, unknown>;
+    if ('asset_id' in payload) {
+      if (payload.asset === undefined) payload.asset = payload.asset_id;
+      delete payload.asset_id;
+    }
+    const response = await apiClient.getClient().patch<Dataset>(
+      `${DATASETS_BASE_PATH}/${id}/`,
+      payload
+    );
     return response.data;
   },
 

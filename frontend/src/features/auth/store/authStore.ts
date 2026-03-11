@@ -20,6 +20,8 @@ function getInitialIsLoading(): boolean {
 
 interface AuthState {
   user: User | null;
+  /** Active tenant for X-Tenant-Id header; when set, overrides user.tenant_id */
+  active_tenant_id: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -28,12 +30,26 @@ interface AuthState {
   login: (credentials: LoginRequest) => Promise<void>;
   logout: () => Promise<void>;
   initialize: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: (userOverride?: Partial<User>) => Promise<void>;
   clearError: () => void;
+  setActiveTenant: (tenant_id: string | null) => void;
+  clearActiveTenant: () => void;
+}
+
+/** Sync X-Tenant-Id getter: when feature enabled, active_tenant_id || user.tenant_id; else null (backend rejects X-Tenant-Id when disabled). */
+function syncTenantIdGetter(get: () => AuthState): void {
+  apiClient.setTenantIdGetter(() => {
+    const s = get();
+    if (s.user?.feature_tenant_switch_enabled === false) {
+      return null;
+    }
+    return s.active_tenant_id || s.user?.tenant_id || null;
+  });
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
+  active_tenant_id: null,
   isAuthenticated: false,
   isLoading: getInitialIsLoading(),
   error: null,
@@ -43,16 +59,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       await authService.login(credentials);
       const user = authService.getUser();
-      // Set tenant ID getter for API client
-      if (user?.tenant_id) {
-        apiClient.setTenantIdGetter(() => user.tenant_id);
-      }
       set({
         user,
         isAuthenticated: true,
         isLoading: false,
         error: null,
       });
+      syncTenantIdGetter(get);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Login failed';
       set({
@@ -74,24 +87,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } finally {
       set({
         user: null,
+        active_tenant_id: null,
         isAuthenticated: false,
         isLoading: false,
         error: null,
       });
+      apiClient.setTenantIdGetter(null);
     }
   },
 
   initialize: async () => {
+    const INIT_MAX_MS = 60_000; // Safety: never hang > 60s; backend down/proxy issues can block indefinitely
+    const safetyTimeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Auth initialization timeout')), INIT_MAX_MS)
+    );
+
     const fetchUserWithRetry = async (_retries = 1): Promise<void> => {
       const freshUser = await authService.fetchUser();
-      if (freshUser?.tenant_id) {
-        apiClient.setTenantIdGetter(() => freshUser.tenant_id);
-      }
       set({
         user: freshUser,
         isAuthenticated: true,
         isLoading: false,
       });
+      syncTenantIdGetter(get);
     };
 
     const clearAuthState = () => {
@@ -99,6 +117,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       apiClient.setTenantIdGetter(null);
       set({
         user: null,
+        active_tenant_id: null,
         isAuthenticated: false,
         isLoading: false,
       });
@@ -127,14 +146,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // E2E/CI load can congest backend; tokens may still be valid.
         const storedUser = authService.getUser();
         if (storedUser) {
-          if (storedUser.tenant_id) {
-            apiClient.setTenantIdGetter(() => storedUser.tenant_id);
-          }
           set({
             user: storedUser,
             isAuthenticated: true,
             isLoading: false,
           });
+          syncTenantIdGetter(get);
           return true;
         }
         clearAuthState();
@@ -142,17 +159,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     };
 
-    // If already authenticated from initial state, verify token is still valid
-    const currentState = get();
-    if (currentState.isAuthenticated && currentState.user) {
-      set({ isLoading: true });
-      await tryFetchUser(2);
-      return;
-    }
+    const runInit = async (): Promise<void> => {
+      const currentState = get();
+      if (currentState.isAuthenticated && currentState.user) {
+        set({ isLoading: true });
+        await tryFetchUser(2);
+        return;
+      }
 
-    // Not authenticated, try to initialize from storage
-    set({ isLoading: true });
-    try {
+      set({ isLoading: true });
       authService.initializeAuth();
 
       if (authService.isAuthenticated()) {
@@ -173,24 +188,44 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           isLoading: false,
         });
       }
+    };
+
+    try {
+      await Promise.race([runInit(), safetyTimeout]);
     } catch (error) {
-      set({
-        user: null,
-        isAuthenticated: false,
-        isLoading: false,
-        error: error instanceof Error ? error.message : 'Initialization failed',
-      });
+      if (error instanceof Error && error.message === 'Auth initialization timeout') {
+        clearAuthState();
+      } else {
+        set({
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+          error: error instanceof Error ? error.message : 'Initialization failed',
+        });
+      }
     }
   },
 
-  refreshUser: async () => {
+  refreshUser: async (userOverride?: Partial<User>) => {
     try {
-      const user = await authService.fetchAndStoreUser();
-      // Set tenant ID getter for API client
-      if (user?.tenant_id) {
-        apiClient.setTenantIdGetter(() => user.tenant_id);
+      let user: User;
+      if (userOverride) {
+        const current = get().user;
+        const merged = { ...current, ...userOverride } as Partial<User>;
+        user = {
+          ...merged,
+          is_active: merged.is_active ?? current?.is_active ?? true,
+        } as User;
+      } else {
+        user = await authService.fetchAndStoreUser();
       }
-      set({ user });
+      authService.setUser(user);
+      if (user.feature_tenant_switch_enabled === false) {
+        set({ user, active_tenant_id: null });
+      } else {
+        set({ user });
+      }
+      syncTenantIdGetter(get);
     } catch (err) {
       console.error('Failed to refresh user:', err);
       // If refresh fails, user might be logged out
@@ -204,6 +239,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       apiClient.setTenantIdGetter(null);
       set({
         user: null,
+        active_tenant_id: null,
         isAuthenticated: false,
       });
     }
@@ -211,5 +247,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   clearError: () => {
     set({ error: null });
+  },
+
+  setActiveTenant: (tenant_id) => {
+    set({ active_tenant_id: tenant_id });
+    syncTenantIdGetter(get);
+  },
+
+  clearActiveTenant: () => {
+    set({ active_tenant_id: null });
+    syncTenantIdGetter(get);
   },
 }));

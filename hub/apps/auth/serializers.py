@@ -3,14 +3,18 @@ Authentication Serializers
 
 Serializers for authentication-related requests and responses.
 """
-from rest_framework import serializers
+import json
+import uuid
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-from datetime import timedelta
-import uuid
+from rest_framework import serializers
+
+from hub.apps.users.models import UserStatus
 
 from .models import APIKey, RefreshToken
-from hub.apps.users.models import UserStatus
+
 import hashlib
 
 User = get_user_model()
@@ -264,4 +268,53 @@ class CurrentUserSerializer(serializers.Serializer):
     permissions = serializers.ListField(child=serializers.CharField())
     created_at = serializers.DateTimeField()
     last_login_at = serializers.DateTimeField(allow_null=True)
+    avatar = serializers.URLField(allow_null=True, required=False)
+    preferences = serializers.JSONField(required=False)
+    feature_tenant_switch_enabled = serializers.BooleanField(
+        required=False,
+        default=True,
+        help_text="When false, tenant switch UI and X-Tenant-Id are disabled.",
+    )
+
+
+class MePatchSerializer(serializers.Serializer):
+    """Serializer for PATCH /auth/me/ — partial profile update"""
+    display_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text="User display name"
+    )
+    avatar = serializers.URLField(
+        max_length=500,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text="URL to user avatar image"
+    )
+    preferences = serializers.JSONField(
+        required=False,
+        help_text="User preferences (theme, language, notifications, etc.)"
+    )
+
+    def validate_display_name(self, value):
+        if value is not None and len(value.strip()) == 0:
+            return None
+        return value.strip() if value else value
+
+    def validate_preferences(self, value):
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Preferences must be a JSON object")
+        try:
+            serialized = json.dumps(value)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError("Preferences must be JSON-serializable")
+        if len(serialized) > 10240:
+            raise serializers.ValidationError(
+                "Preferences must be at most 10KB when serialized"
+            )
+        return value
 

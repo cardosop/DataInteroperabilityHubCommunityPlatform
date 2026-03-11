@@ -66,10 +66,11 @@ class JWTAuthentication(BaseAuthentication):
         if not JWTTokenGenerator.validate_token_version(payload, user):
             raise AuthenticationFailed('Token has been invalidated')
         
-        # Store tenant_id in request for middleware
-        request.tenant_id = payload.get('tenant_id')
+        # Store tenant_id in request; do NOT overwrite if already set (e.g. X-Tenant-Id from middleware)
+        if not hasattr(request, "tenant_id") or not request.tenant_id:
+            request.tenant_id = payload.get("tenant_id")
         request.token_payload = payload
-        
+
         return (user, token)
     
     def authenticate_header(self, request):

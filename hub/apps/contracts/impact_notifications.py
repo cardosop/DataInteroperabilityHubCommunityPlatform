@@ -230,7 +230,7 @@ Generated at: {timezone.now()}
                             }
                         ],
                         "text": change_description or "High-impact change detected",
-                        "footer": "Data Interoperability Hub",
+                        "footer": getattr(settings, "APP_NAME", "Meshant"),
                         "ts": int(timezone.now().timestamp())
                     }
                 ]

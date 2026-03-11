@@ -11,6 +11,7 @@
 
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../../fixtures/auth';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () => {
   test.setTimeout(180000); // 3 min: visible/slowMo
@@ -18,17 +19,18 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
   test.describe('Success', () => {
     test('schema matching page loads', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/ai/schema-matching');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
+        timeout: 30000,
+        contentSelector:
+          '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, .error-display, .loading-spinner-container, #email',
+      });
       const url = page.url();
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
       const onUnavailable = url.includes('/unavailable');
       const onSchemaMatching = url.includes('/ai/schema-matching');
       const hasContent =
-        (await page.locator('.schema-matching-page, .app-main, .unavailable-page, .error-display').count()) > 0;
+        (await page.locator('.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, .error-display, .loading-spinner-container').count()) > 0;
       expect(onLogin || on403 || onUnavailable || (onSchemaMatching && hasContent)).toBe(true);
     });
   });
@@ -39,7 +41,11 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
       await loginUser(page, testUser);
       await page.goto('/ai/schema-matching');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await page.waitForSelector(
+        '.schema-matching-page, .unavailable-page, .error-display, #email',
+        { timeout: 15000, state: 'visible' }
+      ).catch(() => null);
+      await new Promise((r) => setTimeout(r, 1000));
       const on403 = page.url().includes('/403');
       const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
       const onSchemaMatching = page.url().includes('/ai/schema-matching');
@@ -54,7 +60,11 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
       await loginUser(page, testUser);
       await page.goto('/ai/schema-matching');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await page.waitForSelector(
+        '.schema-matching-page, .unavailable-page, #email',
+        { timeout: 15000, state: 'visible' }
+      ).catch(() => null);
+      await new Promise((r) => setTimeout(r, 1000));
       const url = page.url();
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');

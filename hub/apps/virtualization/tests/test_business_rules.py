@@ -606,6 +606,82 @@ class SourceCompatibilityValidationTest(TestCase):
         self.assertFalse(result.is_valid)
         self.assertTrue(any("type" in error.lower() for error in result.errors))
 
+    def test_validate_source_compatibility_odbc_connection_string(self):
+        """Test validate_source_compatibility with ODBC source using connection_string."""
+        sources = [
+            {
+                "type": "odbc",
+                "connection_string": "DRIVER={PostgreSQL Unicode};SERVER=localhost;DATABASE=testdb",
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test ODBC Dataset",
+            query="SELECT id, name FROM users",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE,
+        )
+
+        result = self.business_rules.validate_source_compatibility(
+            virtual_dataset, raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+
+    def test_validate_source_compatibility_odbc_host_database(self):
+        """Test validate_source_compatibility with ODBC source using host+database."""
+        sources = [
+            {
+                "type": "odbc",
+                "host": "localhost",
+                "database": "testdb",
+                "username": "user",
+                "password": "secret",
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test ODBC Dataset",
+            query="SELECT id, name FROM users",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE,
+        )
+
+        result = self.business_rules.validate_source_compatibility(
+            virtual_dataset, raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+
+    def test_validate_source_compatibility_odbc_missing_config(self):
+        """Test validate_source_compatibility with ODBC source missing connection_string and host+database."""
+        sources = [{"type": "odbc"}]  # Missing connection_string and host+database
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test ODBC Dataset",
+            query="SELECT id, name FROM users",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE,
+        )
+
+        result = self.business_rules.validate_source_compatibility(
+            virtual_dataset, raise_on_error=False
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any(
+                "connection_string" in e or "host" in e or "database" in e
+                for e in result.errors
+            )
+        )
+
     def test_validate_source_compatibility_missing_required_fields(self):
         """Test validate_source_compatibility with missing required fields."""
         sources = [
@@ -2532,6 +2608,7 @@ class QueryLanguageCompatibilityTest(TestCase):
         """Test _get_source_language mapping."""
         self.assertEqual(self.business_rules._get_source_language("postgresql"), "sql")
         self.assertEqual(self.business_rules._get_source_language("mysql"), "sql")
+        self.assertEqual(self.business_rules._get_source_language("odbc"), "sql")
         self.assertEqual(self.business_rules._get_source_language("sparql"), "sparql")
         self.assertEqual(self.business_rules._get_source_language("rest"), "rest")
         self.assertEqual(self.business_rules._get_source_language("graphql"), "graphql")
@@ -2650,6 +2727,9 @@ class SourceConnectionValidationTest(TestCase):
         )
         self.assertEqual(
             self.business_rules._map_source_type_to_connector_type("mysql"), "DATABASE"
+        )
+        self.assertEqual(
+            self.business_rules._map_source_type_to_connector_type("odbc"), "DATABASE"
         )
         self.assertEqual(self.business_rules._map_source_type_to_connector_type("rest"), "HTTP")
         self.assertEqual(self.business_rules._map_source_type_to_connector_type("s3"), "S3")

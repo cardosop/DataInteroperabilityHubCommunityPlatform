@@ -1,10 +1,18 @@
 /**
  * Scheduled Export Create Page
- * Form to create a new scheduled export
+ * Form to create a new scheduled export.
+ * Uses AssetMultiPicker, DatasetMultiPicker, FileMultiPicker for source scope;
+ * ContractPicker for contract_id (task 29.69.6.1).
  */
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  AssetMultiPicker,
+  ContractPicker,
+  DatasetMultiPicker,
+  FileMultiPicker,
+} from '../../../shared/components/pickers';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type { DestinationType } from '../../../shared/types/scheduledExport';
@@ -18,42 +26,24 @@ export function ScheduledExportCreatePage() {
   const [destinationType, setDestinationType] = useState<DestinationType>('S3');
   const [cronExpression, setCronExpression] = useState('0 2 * * *'); // Daily at 2 AM
   const [timezone, setTimezone] = useState('UTC');
-  const [assetIds, setAssetIds] = useState('');
-  const [datasetIds, setDatasetIds] = useState('');
-  const [fileIds, setFileIds] = useState('');
-  const [contractId, setContractId] = useState('');
+  const [assetIds, setAssetIds] = useState<string[]>([]);
+  const [datasetIds, setDatasetIds] = useState<string[]>([]);
+  const [fileIds, setFileIds] = useState<string[]>([]);
+  const [contractId, setContractId] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // Build source scope
       const sourceScope: {
         asset_ids?: string[];
         dataset_ids?: string[];
         file_ids?: string[];
         contract_id?: string;
       } = {};
-      if (assetIds.trim()) {
-        sourceScope.asset_ids = assetIds
-          .split(',')
-          .map((id) => id.trim())
-          .filter(Boolean);
-      }
-      if (datasetIds.trim()) {
-        sourceScope.dataset_ids = datasetIds
-          .split(',')
-          .map((id) => id.trim())
-          .filter(Boolean);
-      }
-      if (fileIds.trim()) {
-        sourceScope.file_ids = fileIds
-          .split(',')
-          .map((id) => id.trim())
-          .filter(Boolean);
-      }
-      if (contractId.trim()) {
-        sourceScope.contract_id = contractId.trim();
-      }
+      if (assetIds.length > 0) sourceScope.asset_ids = assetIds;
+      if (datasetIds.length > 0) sourceScope.dataset_ids = datasetIds;
+      if (fileIds.length > 0) sourceScope.file_ids = fileIds;
+      if (contractId) sourceScope.contract_id = contractId;
 
       // Build destination config (minimal valid config)
       let destinationConfig: Record<string, unknown> = {};
@@ -103,7 +93,7 @@ export function ScheduledExportCreatePage() {
         <ErrorDisplay
           error={createMutation.error}
           title="Failed to create scheduled export"
-          onRetry={() => {}}
+          onRetry={() => createMutation.reset()}
         />
       )}
 
@@ -166,46 +156,42 @@ export function ScheduledExportCreatePage() {
         </div>
 
         <div className="form-group">
-          <label htmlFor="asset_ids">Asset IDs (comma-separated)</label>
-          <input
-            id="asset_ids"
-            type="text"
+          <label htmlFor="asset_ids">Assets</label>
+          <AssetMultiPicker
             value={assetIds}
-            onChange={(e) => setAssetIds(e.target.value)}
-            placeholder="uuid1, uuid2, ..."
+            onChange={setAssetIds}
+            placeholder="Search and select assets..."
+            data-testid="scheduled-export-asset-picker"
           />
         </div>
 
         <div className="form-group">
-          <label htmlFor="dataset_ids">Dataset IDs (comma-separated)</label>
-          <input
-            id="dataset_ids"
-            type="text"
+          <label htmlFor="dataset_ids">Datasets</label>
+          <DatasetMultiPicker
             value={datasetIds}
-            onChange={(e) => setDatasetIds(e.target.value)}
-            placeholder="uuid1, uuid2, ..."
+            onChange={setDatasetIds}
+            placeholder="Search and select datasets..."
+            data-testid="scheduled-export-dataset-picker"
           />
         </div>
 
         <div className="form-group">
-          <label htmlFor="file_ids">File IDs (comma-separated)</label>
-          <input
-            id="file_ids"
-            type="text"
+          <label htmlFor="file_ids">Files</label>
+          <FileMultiPicker
             value={fileIds}
-            onChange={(e) => setFileIds(e.target.value)}
-            placeholder="uuid1, uuid2, ..."
+            onChange={setFileIds}
+            placeholder="Search and select files..."
+            data-testid="scheduled-export-file-picker"
           />
         </div>
 
         <div className="form-group">
-          <label htmlFor="contract_id">Contract ID</label>
-          <input
-            id="contract_id"
-            type="text"
+          <label htmlFor="contract_id">Contract</label>
+          <ContractPicker
             value={contractId}
-            onChange={(e) => setContractId(e.target.value)}
-            placeholder="uuid"
+            onChange={setContractId}
+            placeholder="Search and select a contract..."
+            data-testid="scheduled-export-contract-picker"
           />
         </div>
 

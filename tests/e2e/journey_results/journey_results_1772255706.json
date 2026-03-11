@@ -1,0 +1,98 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.032990217208862305
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-002-491b324b",
+      "journey_name": "Publish Asset to Marketplace",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1772255706.442045,
+      "end_time": 1772255706.4750352,
+      "duration": 0.032990217208862305,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create and Activate Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772255706.4420497,
+          "end_time": 1772255706.4613056,
+          "duration": 0.019255876541137695,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Check Marketplace Eligibility",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772255706.4613152,
+          "end_time": 1772255706.4617434,
+          "duration": 0.00042819976806640625,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Create Marketplace Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772255706.4617472,
+          "end_time": 1772255706.4674819,
+          "duration": 0.005734682083129883,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Configure Pricing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772255706.4674916,
+          "end_time": 1772255706.4713488,
+          "duration": 0.003857135772705078,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Publish Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772255706.4713624,
+          "end_time": 1772255706.4750278,
+          "duration": 0.003665447235107422,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "a6bf8b7b-9d7f-455e-8f9c-71606356e588",
+        "listing_id": "2cab5d7f-d5e2-4d7d-86bb-bcfb46c25293"
+      }
+    }
+  ],
+  "exported_at": "2026-02-28T05:15:06.475165"
+}

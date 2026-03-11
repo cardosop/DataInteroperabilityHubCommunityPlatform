@@ -426,6 +426,7 @@ class ExternalResourceReference(models.Model):
         help_text="Resource name"
     )
     url = models.URLField(
+        max_length=2048,
         help_text="External resource URL"
     )
     format = models.CharField(

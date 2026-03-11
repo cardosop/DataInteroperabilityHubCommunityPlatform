@@ -11,10 +11,10 @@
 
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { assertNonExistentIdShowsError } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-011: Set Up Reverse ETL', () => {
-  test.setTimeout(120000);
+  test.setTimeout(360000);
 
   test.describe('Success', () => {
     test('integrations connections list loads', async ({ page }) => {
@@ -22,14 +22,13 @@ test.describe('JOURNEY-DE-011: Set Up Reverse ETL', () => {
       await loginUser(page, testUser);
       await page.goto('/integrations/connections');
       await page.waitForLoadState('domcontentloaded');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
-          return;
-        }
-        throw _err;
+      await page.waitForSelector(
+        '.connection-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
+      if (page.url().includes('/login')) {
+        expect(page.url()).toContain('/login');
+        return;
       }
       expect(page.url()).toContain('/integrations/connections');
     });
@@ -39,7 +38,10 @@ test.describe('JOURNEY-DE-011: Set Up Reverse ETL', () => {
       await loginUser(page, testUser);
       await page.goto('/jobs');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await page.waitForSelector(
+        '.job-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
@@ -55,8 +57,8 @@ test.describe('JOURNEY-DE-011: Set Up Reverse ETL', () => {
       await page.goto('/jobs/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.job-detail-page .job-detail-content',
-        waitAfterLoad: 5000,
+        detailContentSelector: '.job-detail-page, .job-detail-content, .error-display',
+        waitAfterLoad: 12000,
       });
     });
   });
@@ -64,15 +66,20 @@ test.describe('JOURNEY-DE-011: Set Up Reverse ETL', () => {
   test.describe('Edge', () => {
     test('integrations and jobs routes accessible', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/integrations/connections', {
-        timeout: 60000,
-        contentSelector: '.connection-list-page, .empty-state, .error-display',
-      });
+      await loginUser(page, testUser);
+      await page.goto('/integrations/connections');
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForSelector(
+        '.connection-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
       expect(page.url()).toContain('/integrations/connections');
-      await loginAndNavigateToRoute(page, testUser, '/jobs', {
-        timeout: 60000,
-        contentSelector: '.job-list-page, .empty-state, .error-display',
-      });
+      await page.goto('/jobs');
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForSelector(
+        '.job-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
       expect(page.url()).toContain('/jobs');
     });
   });

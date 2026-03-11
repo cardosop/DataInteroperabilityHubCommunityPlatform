@@ -596,3 +596,66 @@ class AssetActivationTest(TestCase):
         # Should return error response, not exception
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data["code"], "ASSET_ACTIVATION_BLOCKED")
+
+    def test_ensure_e2e_activation_prerequisites_sets_dq_compliance_when_dataset_exists(self):
+        """
+        E2E helper sets dq_status and compliance_status to PASS when asset has dataset.
+        Activation requires PASS/WARN when dataset exists; defaults are UNKNOWN.
+        """
+        from django.test import override_settings
+
+        with override_settings(ENVIRONMENT="test"):
+            e2e_user = User.objects.create_user(
+                email="e2e_test@example.com",
+                password="testpass123",
+                tenant=self.tenant,
+                status=UserStatus.ACTIVE,
+            )
+            self.client.force_authenticate(user=e2e_user)
+
+            asset = Asset.objects.create(
+                tenant=self.tenant,
+                key="e2e-asset",
+                name="E2E Asset",
+                dq_status=DQStatus.UNKNOWN,
+                compliance_status=ComplianceStatus.UNKNOWN,
+                created_by=e2e_user,
+            )
+
+            file_obj = File.objects.create(
+                tenant=self.tenant,
+                name="test.csv",
+                content_type="text/csv",
+                size=1024,
+                storage_path="test/path/file.csv",
+                status=FileStatus.ACTIVE,
+                created_by=e2e_user,
+            )
+
+            Dataset.objects.create(
+                tenant=self.tenant,
+                asset=asset,
+                file=file_obj,
+                format="CSV",
+                created_by=e2e_user,
+            )
+
+            response = self.client.post(
+                f"/api/v1/assets/{asset.id}/ensure-e2e-activation-prerequisites/",
+                {},
+                format="json",
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+            asset.refresh_from_db()
+            self.assertEqual(asset.dq_status, DQStatus.PASS)
+            self.assertEqual(asset.compliance_status, ComplianceStatus.PASS)
+
+            # Activation should now succeed
+            act_response = self.client.post(
+                f"/api/v1/assets/{asset.id}/activate/",
+                {"version": asset.version},
+                format="json",
+            )
+            self.assertEqual(act_response.status_code, status.HTTP_200_OK)

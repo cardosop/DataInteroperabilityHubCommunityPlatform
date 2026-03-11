@@ -35,7 +35,11 @@ export interface Dataset {
   version: string;
   created_at: string;
   updated_at: string;
+  /** Asset UUID (API may return as "asset" or "asset_id") */
   asset_id?: string;
+  asset?: string;
+  /** Asset name when API returns it (e.g. nested serializer) */
+  asset_name?: string;
   tenant_id: string;
   file_id?: string;
 }
@@ -46,8 +50,10 @@ export interface DatasetCreateRequest {
 }
 
 export interface DatasetUpdateRequest {
-  name?: string;
-  description?: string;
+  /** Asset UUID to link; null or empty to unlink. Backend field is "asset". */
+  asset_id?: string | null;
+  /** @deprecated Use asset_id. Sent as "asset" to API for compatibility. */
+  asset?: string | null;
 }
 
 export interface DatasetListFilters {

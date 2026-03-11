@@ -1,6 +1,6 @@
 # Developer Onboarding Guide
 
-Complete guide for new developers to get started with the Data Interoperability Hub project.
+Complete guide for new developers to get started with the Data Interoperability Hub project (product brand: **Meshant** by default, configurable via `APP_NAME` / `VITE_APP_NAME`).
 
 ## Table of Contents
 

@@ -8,7 +8,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
@@ -42,6 +42,7 @@ from .serializers import (
     AttachContractSerializer,
     AttachDatasetSerializer,
     BatchDownloadSerializer,
+    DataFirstAssetCreateSerializer,
     ExternalResourceSerializer,
     ResourceDownloadResponseSerializer,
 )
@@ -214,6 +215,166 @@ class AssetViewSet(viewsets.ModelViewSet):
             logger.warning(f"Failed to create audit event for asset {asset.id}: {e}", exc_info=True)
 
         return Response(AssetSerializer(asset).data, status=status.HTTP_201_CREATED)
+
+    @transaction.atomic
+    @action(detail=False, methods=["post"], url_path="data-first")
+    def data_first(self, request):
+        """
+        Create asset, dataset, and contract from uploaded file (data-first flow).
+
+        POST /api/v1/assets/data-first/
+        Body: {
+            "file_id": "uuid",
+            "key": "my-asset",
+            "name": "My Asset",
+            "description": "Optional",
+            "domain": "Optional"
+        }
+        Returns: { "asset_id": "uuid", "dataset_id": "uuid", "contract_id": "uuid" }
+        """
+        user = request.user
+        has_write_role = (
+            user.has_role("DATA_PROVIDER", "TENANT_ADMIN") if hasattr(user, "has_role") else False
+        )
+        is_platform_admin = hasattr(user, "is_platform_admin") and user.is_platform_admin
+        if not (has_write_role or is_platform_admin):
+            return Response(
+                {
+                    "error": "Permission denied: DATA_PROVIDER or TENANT_ADMIN role required",
+                    "code": "PERMISSION_DENIED",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        tenant_id, tenant = get_request_tenant(request)
+        if not tenant:
+            return Response(
+                {"error": "User must belong to a tenant to create assets"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = DataFirstAssetCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        file_id = serializer.validated_data["file_id"]
+        key = serializer.validated_data["key"]
+        name = serializer.validated_data["name"]
+        description = serializer.validated_data.get("description")
+        domain = serializer.validated_data.get("domain")
+        visibility = serializer.validated_data.get("visibility", "INTERNAL")
+
+        from hub.apps.files.models import File, FileStatus
+
+        try:
+            file_obj = File.objects.get(id=file_id, tenant_id=tenant.id)
+        except File.DoesNotExist:
+            return Response(
+                {"error": "File not found", "code": "NOT_FOUND", "details": {"file_id": str(file_id)}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if file_obj.status != FileStatus.ACTIVE and file_obj.status != FileStatus.COMPLETED:
+            return Response(
+                {"error": "File must be active or completed to create asset", "code": "INVALID_STATE"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        file_format = "CSV"
+        if file_obj.content_type:
+            ct = file_obj.content_type.lower()
+            if "json" in ct:
+                file_format = "JSON"
+            elif "parquet" in ct or "octet-stream" in ct:
+                file_format = "PARQUET"
+        if file_obj.name:
+            ext = (file_obj.name.split(".")[-1] or "").lower()
+            if ext == "json":
+                file_format = "JSON"
+            elif ext == "parquet":
+                file_format = "PARQUET"
+
+        from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflow
+
+        try:
+            result = AssetCreationWorkflow.execute(
+                tenant_id=str(tenant.id),
+                key=key,
+                name=name,
+                description=description or "",
+                domain=domain,
+                visibility=visibility,
+                file_id=str(file_obj.id),
+                file_format=file_format,
+                contract_name=f"Contract for {name}",
+                contract_description=description or "",
+                auto_activate=False,
+                send_notifications=False,
+                created_by_id=str(request.user.id),
+            )
+        except ValueError as e:
+            return Response(
+                {"error": str(e), "code": "WORKFLOW_FAILED"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        output = result.get("output_data") or {}
+        asset_id = output.get("asset_id")
+        dataset_id = output.get("dataset_id")
+        contract_id = output.get("contract_id")
+
+        if not asset_id:
+            workflow_instance_id = result.get("workflow_instance_id")
+            if workflow_instance_id:
+                from hub.apps.orchestration.models import WorkflowInstance
+
+                try:
+                    wi = WorkflowInstance.objects.get(id=workflow_instance_id)
+                    asset_id = wi.state_data.get("asset_id")
+                    dataset_id = dataset_id or wi.state_data.get("dataset_id")
+                    contract_id = contract_id or wi.state_data.get("contract_id")
+                except WorkflowInstance.DoesNotExist:
+                    pass
+
+        if not asset_id:
+            return Response(
+                {"error": "Workflow completed but asset_id not found", "code": "WORKFLOW_INCOMPLETE"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        try:
+            invalidate_asset_list_cache(str(tenant.id))
+            invalidate_asset_detail_cache(str(asset_id))
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Failed to invalidate cache after data-first creation: %s", e, exc_info=True
+            )
+
+        create_audit_event(
+            resource_type="ASSET",
+            action="ASSET_CREATED",
+            actor_user=request.user,
+            tenant=tenant,
+            resource_id=str(asset_id),
+            details={
+                "key": key,
+                "name": name,
+                "flow": "data_first",
+                "dataset_id": str(dataset_id) if dataset_id else None,
+                "contract_id": str(contract_id) if contract_id else None,
+            },
+            request=request,
+        )
+
+        return Response(
+            {
+                "asset_id": str(asset_id),
+                "dataset_id": str(dataset_id) if dataset_id else None,
+                "contract_id": str(contract_id) if contract_id else None,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
     @transaction.atomic
     def update(self, request, *args, **kwargs):
@@ -576,6 +737,109 @@ class AssetViewSet(viewsets.ModelViewSet):
 
             logger = logging.getLogger(__name__)
             logger.warning(
+                f"Failed to invalidate cache after contract attach {asset.id}: {e}",
+                exc_info=True,
+            )
+        return Response(
+            {"contract_id": str(contract_id), "contract_version": contract.version},
+            status=status.HTTP_200_OK,
+        )
+
+    @transaction.atomic
+    @action(detail=True, methods=["post"], url_path="ensure-e2e-activation-prerequisites")
+    def ensure_e2e_activation_prerequisites(self, request, id=None):
+        """
+        E2E-only: Create and attach an ACTIVE contract with valid validation/normalization.
+
+        POST /assets/{id}/ensure-e2e-activation-prerequisites/
+        Only available when RATE_LIMIT_E2E_RELAX or ENVIRONMENT=test, for E2E users.
+        Creates a minimal ODCS contract, sets validation/normalization, attaches to asset.
+        No mocks; real DB writes for test setup.
+        """
+        from django.conf import settings
+
+        from hub.apps.api.views import E2E_EMAILS
+        from hub.apps.assets.models import ComplianceStatus, DQStatus
+        from hub.apps.contracts.models import (
+            Contract,
+            ContractStatus,
+            NormalizationStatus,
+            OriginalFormat,
+            OriginalSpecType,
+            ValidationStatus,
+        )
+
+        if not (
+            getattr(settings, "RATE_LIMIT_E2E_RELAX", False)
+            or getattr(settings, "ENVIRONMENT", "") == "test"
+        ):
+            raise NotFound("Resource not found")
+        if not request.user.is_authenticated or request.user.email not in E2E_EMAILS:
+            raise NotFound("Resource not found")
+
+        asset = self.get_object()
+        tenant = asset.tenant
+        if not tenant:
+            return Response(
+                {"error": "Asset has no tenant"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Create minimal ODCS contract with correct statuses
+        import json
+        import uuid
+
+        contract_id = str(uuid.uuid4())
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.0",
+                "kind": "DataContract",
+                "id": f"e2e-activate-{contract_id[:8]}",
+                "name": "E2E Activation Contract",
+                "version": "1.0.0",
+                "schema": {
+                    "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}],
+                },
+            }
+        )
+        latest = asset.contracts.order_by("-version").first()
+        version = (latest.version + 1) if latest else 1
+
+        contract = Contract.objects.create(
+            tenant=tenant,
+            asset=asset,
+            version=version,
+            status=ContractStatus.ACTIVE,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw=odcs_raw,
+            validation_status=ValidationStatus.VALID,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            hub_contract_version="1.0.0",
+            hub_contract_json={
+                "id": f"e2e-activate-{contract_id[:8]}",
+                "name": "E2E Activation Contract",
+                "schema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+            },
+            created_by=request.user,
+        )
+
+        # When asset has a dataset, activation requires dq_status and compliance_status
+        # to be PASS or WARN (business_rules.can_activate). Set them for E2E flows.
+        if asset.datasets.exists():
+            asset.dq_status = DQStatus.PASS
+            asset.compliance_status = ComplianceStatus.PASS
+            asset.save(update_fields=["dq_status", "compliance_status"])
+
+        try:
+            invalidate_asset_detail_cache(str(asset.id))
+            invalidate_asset_list_cache(str(tenant.id))
+        except Exception as e:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(
                 f"Failed to invalidate cache after contract attachment: {e}", exc_info=True
             )
 
@@ -814,11 +1078,32 @@ class AssetViewSet(viewsets.ModelViewSet):
         asset.increment_version()
         asset.save(update_fields=["status", "updated_at"])
 
+        # Invalidate cache so next fetch returns ACTIVE status
+        try:
+            tenant_id_str = str(asset.tenant_id) if asset.tenant_id else None
+            invalidate_asset_detail_cache(str(asset.id))
+            if tenant_id_str:
+                invalidate_asset_list_cache(tenant_id_str)
+        except Exception as e:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Failed to invalidate cache after activation {asset.id}: {e}", exc_info=True
+            )
+
         # Trigger semantic mapping (async via job queue in production)
-        # Skip in test environment to prevent timeouts
+        # Skip in test/E2E environment to prevent timeouts (semantic can take 60+ seconds)
         import sys
 
-        if "pytest" not in sys.modules and "unittest" not in sys.modules:
+        from django.conf import settings as django_settings
+
+        skip_semantic = (
+            "pytest" in sys.modules
+            or "unittest" in sys.modules
+            or getattr(django_settings, "RATE_LIMIT_E2E_RELAX", False)
+        )
+        if not skip_semantic:
             try:
                 from hub.apps.semantic.utils import map_asset_to_semantic
 
@@ -959,9 +1244,14 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         try:
             asset = self.get_object()
-        except NotFound:
-            raise  # Let DRF return 404 for non-existent asset
+        except (NotFound, PermissionDenied):
+            raise  # Let DRF return 404/403
         except Exception as e:
+            from django.core.exceptions import ObjectDoesNotExist
+            from django.http import Http404
+
+            if isinstance(e, (Http404, ObjectDoesNotExist)):
+                raise NotFound("Asset not found")
             logger.error(
                 "Failed to get asset in health_score endpoint", error=str(e), exc_info=True
             )

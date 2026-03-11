@@ -5,7 +5,7 @@
  * Persona: Auditor
  * Reference: docs/USER_JOURNEYS.md
  *
- * Success/Failure/Edge. Routes: /audit, /social.
+ * Success/Failure/Edge. Routes: /audit, /communities (Phase 27.2).
  * Fixture: getAuditorUser(). Real backend only; no mocks.
  */
 

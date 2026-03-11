@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DMO-004-9618ebb9",
+      "journey_name": "Transfer Asset Ownership",
+      "persona": "Data Mesh Domain Owner",
+      "status": "failed",
+      "start_time": 1772244539.9461687,
+      "end_time": 1772244540.2007337,
+      "duration": 0.2545650005340576,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "An error occurred in the current transaction. You can't execute queries until the end of the 'atomic' block.",
+      "error_type": "TransactionManagementError",
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1772244539.9461792,
+          "end_time": 1772244540.2007272,
+          "duration": 0.2545480728149414,
+          "error_message": "An error occurred in the current transaction. You can't execute queries until the end of the 'atomic' block.",
+          "error_type": "TransactionManagementError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-28T02:09:00.200843"
+}

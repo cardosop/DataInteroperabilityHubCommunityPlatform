@@ -27,6 +27,12 @@ class TransformationPipelineViewSet(viewsets.ViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    def retrieve(self, request, pk=None):
+        """Placeholder: pipelines are not persisted; return 404 for any id."""
+        from rest_framework.exceptions import NotFound
+
+        raise NotFound(detail="Pipeline not found")
+
     @action(detail=True, methods=["post"], url_path="validate")
     def validate(self, request, pk=None):
         return Response({"valid": True, "pipeline_id": pk}, status=status.HTTP_200_OK)

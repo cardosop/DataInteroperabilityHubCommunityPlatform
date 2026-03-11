@@ -7,6 +7,8 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import type { File } from '../../../shared/types/files';
 import { useComplianceRuns, useCreateComplianceRun } from '../../compliance/hooks/useCompliance';
 import { useCreateDataset } from '../../datasets/hooks/useDatasets';
@@ -21,6 +23,10 @@ import {
   useAttachDataset,
   useRecalculateHealthScore,
 } from '../hooks/useAssets';
+import { ContractPicker, DatasetPicker } from '../../../shared/components/pickers';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
+import { AssetSocialSection } from '../../social/components/AssetSocialSection';
 import './AssetDetailPage.css';
 
 export function AssetDetailPage() {
@@ -32,8 +38,8 @@ export function AssetDetailPage() {
   const attachDatasetMutation = useAttachDataset();
   const createDatasetMutation = useCreateDataset();
   const [showFileUpload, setShowFileUpload] = useState(false);
-  const [contractId, setContractId] = useState('');
-  const [datasetId, setDatasetId] = useState('');
+  const [contractId, setContractId] = useState<string | null>(null);
+  const [datasetId, setDatasetId] = useState<string | null>(null);
 
   // DQ and Compliance runs for this asset (only fetch if asset is loaded)
   const { data: dqRuns } = useDQRuns(
@@ -49,6 +55,7 @@ export function AssetDetailPage() {
   } = useAssetHealthScore(id || null, { breakdown: true });
   const recalculateHealthScoreMutation = useRecalculateHealthScore();
   const { data: recommendations } = useAssetRecommendations(id ? { asset_id: id, limit: 5 } : {});
+  const toast = useToast();
 
   const handleActivate = async () => {
     if (!id || !asset) return;
@@ -68,34 +75,37 @@ export function AssetDetailPage() {
         file_id: file.id,
         asset_id: id,
       });
-      // Attach dataset to asset
+      // Attach dataset to asset (useAttachDataset onSuccess updates asset cache via setQueryData)
       await attachDatasetMutation.mutateAsync({ id, data: { dataset_id: dataset.id } });
       setShowFileUpload(false);
-      refetch();
+      toast.success('Dataset created and linked successfully.');
     } catch (err) {
-      // Error handled by mutation
+      toast.error(normalizeError(err).error.message || 'Upload failed. See details below.');
+      // ErrorDisplay below shows createDatasetMutation or attachDatasetMutation error
     }
   };
 
   const handleAttachContract = async () => {
-    if (!id || !contractId.trim()) return;
+    if (!id || !contractId) return;
     try {
-      await attachContractMutation.mutateAsync({ id, data: { contract_id: contractId.trim() } });
-      setContractId('');
+      await attachContractMutation.mutateAsync({ id, data: { contract_id: contractId } });
+      setContractId(null);
       refetch();
+      toast.success('Contract attached successfully.');
     } catch (err) {
-      // Error handled by mutation
+      toast.error(normalizeError(err).error.message || 'Failed to attach contract');
     }
   };
 
   const handleAttachDataset = async () => {
-    if (!id || !datasetId.trim()) return;
+    if (!id || !datasetId) return;
     try {
-      await attachDatasetMutation.mutateAsync({ id, data: { dataset_id: datasetId.trim() } });
-      setDatasetId('');
+      await attachDatasetMutation.mutateAsync({ id, data: { dataset_id: datasetId } });
+      setDatasetId(null);
       refetch();
+      toast.success('Dataset attached successfully.');
     } catch (err) {
-      // Error handled by mutation
+      toast.error(normalizeError(err).error.message || 'Failed to attach dataset');
     }
   };
 
@@ -106,9 +116,9 @@ export function AssetDetailPage() {
         asset_id: id,
         dataset_id: asset?.dataset_id,
       });
-      // Refetch will happen automatically via query invalidation
+      toast.success('DQ run started.');
     } catch (err) {
-      // Error handled by mutation
+      toast.error(normalizeError(err).error.message || 'Failed to start DQ run');
     }
   };
 
@@ -120,9 +130,9 @@ export function AssetDetailPage() {
         dataset_id: asset?.dataset_id,
         scan_mode: 'internal',
       });
-      // Refetch will happen automatically via query invalidation
+      toast.success('Compliance run started.');
     } catch (err) {
-      // Error handled by mutation
+      toast.error(normalizeError(err).error.message || 'Failed to start compliance run');
     }
   };
 
@@ -163,11 +173,23 @@ export function AssetDetailPage() {
       </div>
 
       <div className="asset-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Assets', href: '/assets' },
+            { label: asset.name || 'Asset' },
+          ]}
+        />
         <div className="asset-detail-main">
           <h1>{asset.name}</h1>
           <p className="asset-key">
             Key: <code>{asset.key}</code>
           </p>
+          {id && (
+            <div className="asset-uuid" data-testid="asset-uuid">
+              <UuidWithCopy value={id} label="Asset ID" />
+            </div>
+          )}
           {asset.description && <p className="asset-description">{asset.description}</p>}
 
           <div className="asset-detail-metadata">
@@ -288,6 +310,9 @@ export function AssetDetailPage() {
               </ul>
             </div>
           )}
+
+          {/* Social section: Ratings, Reviews, Comments (capability-gated) */}
+          {id && <AssetSocialSection assetId={id} />}
         </div>
 
         <div className="asset-detail-linked">
@@ -301,16 +326,15 @@ export function AssetDetailPage() {
               <>
                 <p className="no-linked">No contract linked</p>
                 <div className="attach-controls">
-                  <input
-                    type="text"
+                  <ContractPicker
                     value={contractId}
-                    onChange={(e) => setContractId(e.target.value)}
-                    placeholder="Contract ID"
-                    className="attach-input"
+                    onChange={setContractId}
+                    placeholder="Search and select a contract..."
+                    data-testid="asset-attach-contract-picker"
                   />
                   <button
                     onClick={handleAttachContract}
-                    disabled={!contractId.trim() || attachContractMutation.isPending}
+                    disabled={!contractId || attachContractMutation.isPending}
                     className="btn-secondary btn-small"
                     type="button"
                   >
@@ -331,16 +355,15 @@ export function AssetDetailPage() {
               <>
                 <p className="no-linked">No dataset linked</p>
                 <div className="attach-controls">
-                  <input
-                    type="text"
+                  <DatasetPicker
                     value={datasetId}
-                    onChange={(e) => setDatasetId(e.target.value)}
-                    placeholder="Dataset ID"
-                    className="attach-input"
+                    onChange={setDatasetId}
+                    placeholder="Search and select a dataset..."
+                    data-testid="asset-attach-dataset-picker"
                   />
                   <button
                     onClick={handleAttachDataset}
-                    disabled={!datasetId.trim() || attachDatasetMutation.isPending}
+                    disabled={!datasetId || attachDatasetMutation.isPending}
                     className="btn-secondary btn-small"
                     type="button"
                   >
@@ -353,6 +376,16 @@ export function AssetDetailPage() {
 
           <div className="linked-section">
             <h2>Upload File</h2>
+            {(createDatasetMutation.isError || attachDatasetMutation.isError) && (
+              <ErrorDisplay
+                error={createDatasetMutation.error || attachDatasetMutation.error}
+                title="Upload failed"
+                onRetry={() => {
+                  createDatasetMutation.reset();
+                  attachDatasetMutation.reset();
+                }}
+              />
+            )}
             {!showFileUpload ? (
               <button
                 onClick={() => setShowFileUpload(true)}
@@ -390,7 +423,11 @@ export function AssetDetailPage() {
                 {asset.dataset_id && (
                   <button
                     onClick={handleRunDQ}
-                    disabled={createDQRunMutation.isPending}
+                    disabled={
+                      createDQRunMutation.isPending ||
+                      createDatasetMutation.isPending ||
+                      attachDatasetMutation.isPending
+                    }
                     className="btn-secondary btn-small"
                     type="button"
                   >
@@ -452,7 +489,11 @@ export function AssetDetailPage() {
                 {asset.dataset_id && (
                   <button
                     onClick={handleRunCompliance}
-                    disabled={createComplianceRunMutation.isPending}
+                    disabled={
+                      createComplianceRunMutation.isPending ||
+                      createDatasetMutation.isPending ||
+                      attachDatasetMutation.isPending
+                    }
                     className="btn-secondary btn-small"
                     type="button"
                   >

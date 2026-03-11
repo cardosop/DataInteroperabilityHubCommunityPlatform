@@ -5,9 +5,15 @@ Service layer for user operations.
 All create/update/delete paths apply validation and audit.
 """
 
-from typing import Any, Dict, Optional
+import uuid
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from django.contrib.auth import get_user_model
+
+if TYPE_CHECKING:
+    from hub.apps.tenants.models import Tenant
+
+    User = get_user_model()
 from django.db import transaction
 
 from hub.apps.audit.utils import log_user_operation
@@ -161,6 +167,18 @@ class UserService(BaseService):
             if User.objects.filter(email=new_email).exclude(id=user_id).exists():
                 raise ValidationError("Email address is already registered", code="EMAIL_EXISTS")
 
+        # Handle role_ids (replace user roles)
+        role_ids = update_data.pop("role_ids", None)
+        if role_ids is not None:
+            from .models import Role, UserRole
+
+            tenant = user.tenant
+            roles = list(Role.objects.filter(id__in=role_ids, tenant=tenant))
+            UserRole.objects.filter(user=user).delete()
+            for role in roles:
+                UserRole.objects.create(user=user, role=role)
+            user.increment_token_version()
+
         # Update fields
         for field, value in update_data.items():
             if hasattr(user, field) and field != "id":
@@ -168,15 +186,100 @@ class UserService(BaseService):
 
         user.save()
 
-        # Create audit event
+        # Create audit event (include role_ids if changed)
+        audit_details = dict(update_data)
+        if role_ids is not None:
+            audit_details["role_ids"] = [str(r) for r in role_ids]
         log_user_operation(
             action="USER_UPDATED",
             user=user,
             actor_user=actor_user,
-            details=update_data,
+            details=audit_details,
         )
 
         return user
+
+    @transaction.atomic
+    def invite_user_to_tenant(
+        self,
+        tenant_id: str,
+        actor_user_id: str,
+        email: str,
+        display_name: Optional[str] = None,
+        role_ids: Optional[list] = None,
+        send_invitation: bool = True,
+    ) -> tuple[User, bool]:
+        """
+        Invite a user to join a tenant.
+
+        When User exists (same email): add UserTenantMembership instead of failing.
+        When User does not exist: create User + membership.
+
+        Args:
+            tenant_id: Tenant to invite user to
+            actor_user_id: User ID performing the invitation
+            email: Invitee email
+            display_name: Optional display name (used only when creating new user)
+            role_ids: Optional list of role IDs to assign (from inviting tenant)
+            send_invitation: Whether to send invitation email (for new users only)
+
+        Returns:
+            Tuple of (User instance, created_new: bool)
+            created_new is True when a new user was created, False when existing user was added.
+        """
+        from hub.apps.tenants.models import Tenant
+        from hub.apps.users.models import Role, UserRole, UserStatus
+
+        try:
+            tenant = Tenant.objects.get(id=tenant_id)
+        except Tenant.DoesNotExist:
+            raise NotFoundError(f"Tenant {tenant_id} not found")
+
+        try:
+            actor_user = User.objects.get(id=actor_user_id)
+        except User.DoesNotExist:
+            raise NotFoundError(f"Actor user {actor_user_id} not found")
+
+        membership_service = UserTenantMembershipService()
+
+        existing_user = User.objects.filter(email__iexact=email).first()
+        if existing_user:
+            membership_service.add_membership(existing_user, tenant)
+
+            if role_ids:
+                roles = Role.objects.filter(id__in=role_ids, tenant=tenant)
+                for role in roles:
+                    UserRole.objects.get_or_create(user=existing_user, role=role)
+
+            # Audit in inviting tenant's context (action performed there)
+            from hub.apps.audit.utils import create_audit_event
+
+            create_audit_event(
+                resource_type="USER",
+                action="USER_TENANT_INVITED",
+                actor_user=actor_user,
+                tenant=tenant,
+                resource_id=str(existing_user.id),
+                result="SUCCESS",
+                details={
+                    "email": email,
+                    "tenant_id": tenant_id,
+                    "role_ids": role_ids,
+                },
+            )
+            return existing_user, False
+
+        user = self.create_user(
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            email=email,
+            display_name=display_name,
+            status=UserStatus.INVITED,
+            role_ids=role_ids or [],
+            send_invitation=send_invitation,
+        )
+        membership_service.add_membership(user, tenant)
+        return user, True
 
     def _user_has_resources(self, user: User) -> bool:
         """Check if user has associated resources (assets, datasets, etc.)."""
@@ -255,3 +358,74 @@ class UserService(BaseService):
         )
         user.delete()
         return False
+
+
+class UserTenantMembershipService:
+    """
+    Service for user–tenant membership operations (tenant switch).
+
+    Provides add_membership, list_tenants_for_user, validate_membership.
+    Per design D16 and specs/tenants/spec.md User Tenant Membership.
+    """
+
+    def add_membership(self, user, tenant) -> None:
+        """
+        Add user to tenant (idempotent). Creates UserTenantMembership if not exists.
+
+        Args:
+            user: User instance
+            tenant: Tenant instance
+        """
+        from .models import UserTenantMembership
+
+        UserTenantMembership.objects.get_or_create(
+            user=user,
+            tenant=tenant,
+            defaults={},
+        )
+
+    def list_tenants_for_user(self, user) -> list:
+        """
+        Return list of Tenant objects the user has membership in.
+
+        Args:
+            user: User instance
+
+        Returns:
+            List of Tenant instances, ordered by created_at
+        """
+        from .models import UserTenantMembership
+
+        memberships = (
+            UserTenantMembership.objects.filter(user=user)
+            .select_related("tenant")
+            .order_by("created_at")
+        )
+        return [m.tenant for m in memberships]
+
+    def validate_membership(self, user, tenant_id) -> bool:
+        """
+        Check if user has membership in the given tenant.
+
+        Args:
+            user: User instance
+            tenant_id: Tenant ID (str or UUID)
+
+        Returns:
+            True if membership exists, False otherwise.
+            Returns False for None or invalid tenant_id (defensive; avoids 500 on malformed input).
+        """
+        if tenant_id is None:
+            return False
+        if isinstance(tenant_id, str) and not tenant_id.strip():
+            return False
+        try:
+            uuid.UUID(str(tenant_id))
+        except (ValueError, TypeError, AttributeError):
+            return False
+
+        from .models import UserTenantMembership
+
+        return UserTenantMembership.objects.filter(
+            user=user, tenant_id=tenant_id
+        ).exists()

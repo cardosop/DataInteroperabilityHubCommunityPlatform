@@ -22,6 +22,7 @@ export const odpsService = {
    * POST /api/v1/contracts/products/
    */
   async createProduct(data: ODPSProductCreateRequest): Promise<ODPSProductCreateResponse> {
+    // ODPS workflow can take 60–120s in sync mode (parse, validate, index, semantic)
     const response = await apiClient.getClient().post<ODPSProductCreateResponse>(
       `${CONTRACTS_BASE_PATH}/products/`,
       {
@@ -29,7 +30,8 @@ export const odpsService = {
         original_format: data.original_format,
         resolve_external_refs: data.resolve_external_refs ?? true,
         asset_id: data.asset_id,
-      }
+      },
+      { timeout: 120000 }
     );
     return response.data;
   },

@@ -28,11 +28,11 @@ class TenantUrlsTest(TestCase):
         self.assertTrue(url.endswith("/") or "/tenants" in url)
 
     def test_tenant_detail_url_resolves_with_uuid(self):
-        """Success: tenant-detail name resolves with pk kwarg."""
+        """Success: tenant-detail name resolves with id kwarg (lookup_field=id)."""
         from hub.apps.tenants.models import Tenant
 
         tenant = Tenant.objects.create(name="Test", slug="test-tenant")
-        url = reverse("tenant-detail", kwargs={"pk": tenant.id})
+        url = reverse("tenant-detail", kwargs={"id": tenant.id})
         self.assertIn(str(tenant.id), url)
         self.assertIn("/tenants/", url)
 
@@ -50,6 +50,11 @@ class TenantUrlsTest(TestCase):
         """Success: tenant-usage name resolves."""
         url = reverse("tenant-usage")
         self.assertIn("usage", url)
+
+    def test_tenant_me_config_url_resolves(self):
+        """Success: tenant-me-config name resolves."""
+        url = reverse("tenant-me-config")
+        self.assertIn("me/config", url)
 
     def test_tenant_list_path_resolves(self):
         """Success: full list path resolves to a callable view."""

@@ -57,7 +57,7 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
             },
         }
 
-        response = self.client.post("/api/v1/tenants/config/onboarding/", data, format="json")
+        response = self.client.post("/api/v1/tenants/onboarding/", data, format="json")
 
         # Should succeed
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -101,7 +101,7 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
             },
         }
 
-        response = self.client.post("/api/v1/tenants/config/onboarding/", data, format="json")
+        response = self.client.post("/api/v1/tenants/onboarding/", data, format="json")
 
         # Should succeed (plan_slug optional, defaults to FREE)
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -136,7 +136,7 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
             },
         }
 
-        response = self.client.post("/api/v1/tenants/config/onboarding/", data, format="json")
+        response = self.client.post("/api/v1/tenants/onboarding/", data, format="json")
 
         # Should fail with 400
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -166,7 +166,7 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
             },
         }
 
-        response = self.client.post("/api/v1/tenants/config/onboarding/", data, format="json")
+        response = self.client.post("/api/v1/tenants/onboarding/", data, format="json")
 
         # Should fail with 400
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -183,7 +183,7 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
             },
         }
 
-        response = self.client.post("/api/v1/tenants/config/onboarding/", data, format="json")
+        response = self.client.post("/api/v1/tenants/onboarding/", data, format="json")
 
         # Should succeed
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -212,7 +212,7 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
             },
         }
 
-        response = self.client.post("/api/v1/tenants/config/onboarding/", data, format="json")
+        response = self.client.post("/api/v1/tenants/onboarding/", data, format="json")
 
         if response.status_code == status.HTTP_201_CREATED:
             tenant_id = response.data.get("tenant", {}).get("id")

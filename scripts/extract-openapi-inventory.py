@@ -149,7 +149,7 @@ class OpenAPIInventoryExtractor:
         self.schema = {
             'openapi': '3.0.0',
             'info': {
-                'title': 'Data Interoperability Hub API',
+                'title': 'Meshant API',
                 'version': '1.0.0',
                 'description': 'API schema extracted from codebase analysis'
             },

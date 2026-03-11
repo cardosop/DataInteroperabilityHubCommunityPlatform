@@ -2669,3 +2669,82 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
         self.assertTrue(result["stream_enabled"])
         self.assertIn("stream_url", result)
         self.assertIn(str(execution.id), result["stream_url"])
+
+
+class VirtualizationServiceODBCTest(TestCase):
+    """Unit tests for ODBC source execution."""
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="ODBC Test Tenant", slug="odbc-test-tenant", kyc_status=KYCStatus.VERIFIED
+        )
+        self.user = User.objects.create_user(
+            email="odbc@example.com", password="testpass123", tenant=self.tenant
+        )
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
+
+    def test_execute_odbc_query_invalid_config_raises(self):
+        """ODBC source with neither connection_string nor host+database raises ValidationError."""
+        invalid_source = {"type": "odbc"}
+        with self.assertRaises(ValidationError) as cm:
+            self.service._execute_odbc_query(
+                source=invalid_source,
+                query="SELECT 1",
+                parameters={},
+                timeout_seconds=10,
+            )
+        err = str(cm.exception).lower()
+        self.assertTrue(
+            "connection_string" in err or "host" in err or "database" in err or "pyodbc" in err,
+            f"Expected config or dependency error, got: {cm.exception}",
+        )
+
+    def test_execute_odbc_query_host_only_raises(self):
+        """ODBC source with host but no database raises ValidationError."""
+        invalid_source = {"type": "odbc", "host": "localhost", "port": 5432}
+        with self.assertRaises(ValidationError) as cm:
+            self.service._execute_odbc_query(
+                source=invalid_source,
+                query="SELECT 1",
+                parameters={},
+                timeout_seconds=10,
+            )
+        err = str(cm.exception).lower()
+        self.assertTrue(
+            "connection_string" in err or "host" in err or "database" in err,
+            f"Expected config error, got: {cm.exception}",
+        )
+
+    def test_execute_odbc_query_database_only_raises(self):
+        """ODBC source with database but no host raises ValidationError."""
+        invalid_source = {"type": "odbc", "database": "mydb", "port": 5432}
+        with self.assertRaises(ValidationError) as cm:
+            self.service._execute_odbc_query(
+                source=invalid_source,
+                query="SELECT 1",
+                parameters={},
+                timeout_seconds=10,
+            )
+        err = str(cm.exception).lower()
+        self.assertTrue(
+            "connection_string" in err or "host" in err or "database" in err,
+            f"Expected config error, got: {cm.exception}",
+        )
+
+    def test_execute_odbc_query_connection_string_empty_raises(self):
+        """ODBC source with empty connection_string and no host+database raises ValidationError."""
+        invalid_source = {"type": "odbc", "connection_string": ""}
+        with self.assertRaises(ValidationError) as cm:
+            self.service._execute_odbc_query(
+                source=invalid_source,
+                query="SELECT 1",
+                parameters={},
+                timeout_seconds=10,
+            )
+        err = str(cm.exception).lower()
+        self.assertTrue(
+            "connection_string" in err or "host" in err or "database" in err,
+            f"Expected config error, got: {cm.exception}",
+        )

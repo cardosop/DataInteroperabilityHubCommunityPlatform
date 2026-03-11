@@ -12,25 +12,32 @@ Discovers, browses, and purchases data assets from the marketplace. May browse c
 
 ---
 
+## Before You Start
+
+1. Complete [00-PREREQUISITES.md](../00-PREREQUISITES.md)
+2. **Marketplace dependency**: For purchase flows (JOURNEY-DC-001, DC-015), at least one asset must be published to the marketplace. Run [Data Product Owner](data-product-owner.md) JOURNEY-DPO-001 and DPO-002 first, or use existing published listings.
+
+---
+
 ## Journeys Covered
 
-| Journey | Title | Docs | E2E Spec | Est. |
-|---------|-------|------|----------|------|
-| JOURNEY-DC-001 | Discover and Purchase Marketplace Asset | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dc-001-discover-and-purchase-marketplace-asset) | `journeys/dc/JOURNEY-DC-001.spec.ts` | 15 min |
-| JOURNEY-DC-002 | Browse Catalog | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/dc/JOURNEY-DC-002.spec.ts` | 5 min |
-| JOURNEY-DC-003 | Search and Filter Assets | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/dc/JOURNEY-DC-003.spec.ts` | 5 min |
-| JOURNEY-DC-004 | Access Entitlement | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/dc/JOURNEY-DC-004.spec.ts` | 5 min |
-| JOURNEY-DC-005 | Download Data | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/dc/JOURNEY-DC-005.spec.ts` | 5 min |
-| JOURNEY-DC-006 | Use Natural Language Search | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dc-006-use-natural-language-search-new) | `journeys/dc/JOURNEY-DC-006.spec.ts` | 5 min |
+| Journey | Title | Step-by-Step Script | E2E Spec | Est. |
+|---------|-------|---------------------|----------|------|
+| JOURNEY-DC-001 | Discover and Purchase Marketplace Asset | [dc/JOURNEY-DC-001.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-001.md) | `journeys/dc/JOURNEY-DC-001.spec.ts` | 15 min |
+| JOURNEY-DC-002 | Browse Catalog | [dc/JOURNEY-DC-002.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-002.md) | `journeys/dc/JOURNEY-DC-002.spec.ts` | 5 min |
+| JOURNEY-DC-003 | Search and Filter Assets | [dc/JOURNEY-DC-003.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-003.md) | `journeys/dc/JOURNEY-DC-003.spec.ts` | 5 min |
+| JOURNEY-DC-004 | Access Entitlement | [dc/JOURNEY-DC-004.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-004.md) | `journeys/dc/JOURNEY-DC-004.spec.ts` | 5 min |
+| JOURNEY-DC-005 | Download Data | [dc/JOURNEY-DC-005.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-005.md) | `journeys/dc/JOURNEY-DC-005.spec.ts` | 5 min |
+| JOURNEY-DC-006 | Use Natural Language Search | [dc/JOURNEY-DC-006.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-006.md) | `journeys/dc/JOURNEY-DC-006.spec.ts` | 5 min |
 | JOURNEY-DC-007 | Create Transformation Pipeline | **Deferred** | — | — |
-| JOURNEY-DC-008 | Rate and Review Asset | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dc-008-rate-and-review-asset-new) | `journeys/dc/JOURNEY-DC-008.spec.ts` | 5 min |
-| JOURNEY-DC-009 | Join Data Community | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dc-009-join-data-community-new) | `journeys/dc/JOURNEY-DC-009.spec.ts` | 5 min |
-| JOURNEY-DC-010 | Query Virtual Dataset | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dc-010-query-virtual-dataset-new) | `journeys/dc/JOURNEY-DC-010.spec.ts` | 10 min |
-| JOURNEY-DC-011 | Purchase with Usage-Based Pricing | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dc-011-purchase-asset-with-usage-based-pricing-new) | `journeys/dc/JOURNEY-DC-011.spec.ts` | 10 min |
-| JOURNEY-DC-012 | Preview Data Before Purchase | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dc-012-preview-data-before-purchase-new) | `journeys/dc/JOURNEY-DC-012.spec.ts` | 5 min |
-| JOURNEY-DC-013 | Use Asset Recommendations | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dc-013-use-asset-recommendations-new) | `journeys/dc/JOURNEY-DC-013.spec.ts` | 5 min |
-| JOURNEY-DC-014 | Discover ODPS Products (Semantic Search) | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dc-014-discover-odps-products-semantic-search-new) | `journeys/dc/JOURNEY-DC-014.spec.ts` | 10 min |
-| JOURNEY-DC-015 | Purchase ODPS Product (Marketplace) | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dc-015-purchase-odps-product-marketplace-new) | `journeys/dc/JOURNEY-DC-015.spec.ts` | 15 min |
+| JOURNEY-DC-008 | Rate and Review Asset | [dc/JOURNEY-DC-008.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-008.md) | `journeys/dc/JOURNEY-DC-008.spec.ts` | 5 min |
+| JOURNEY-DC-009 | Join Data Community | [dc/JOURNEY-DC-009.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-009.md) | `journeys/dc/JOURNEY-DC-009.spec.ts` | 5 min |
+| JOURNEY-DC-010 | Query Virtual Dataset | [dc/JOURNEY-DC-010.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-010.md) | `journeys/dc/JOURNEY-DC-010.spec.ts` | 10 min |
+| JOURNEY-DC-011 | Purchase with Usage-Based Pricing | [dc/JOURNEY-DC-011.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-011.md) | `journeys/dc/JOURNEY-DC-011.spec.ts` | 10 min |
+| JOURNEY-DC-012 | Preview Data Before Purchase | [dc/JOURNEY-DC-012.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-012.md) | `journeys/dc/JOURNEY-DC-012.spec.ts` | 5 min |
+| JOURNEY-DC-013 | Use Asset Recommendations | [dc/JOURNEY-DC-013.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-013.md) | `journeys/dc/JOURNEY-DC-013.spec.ts` | 5 min |
+| JOURNEY-DC-014 | Discover ODPS Products (Semantic Search) | [dc/JOURNEY-DC-014.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-014.md) | `journeys/dc/JOURNEY-DC-014.spec.ts` | 10 min |
+| JOURNEY-DC-015 | Purchase ODPS Product (Marketplace) | [dc/JOURNEY-DC-015.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-015.md) | `journeys/dc/JOURNEY-DC-015.spec.ts` | 15 min |
 
 **Total Estimated Duration**: ~60 min (excluding deferred)
 

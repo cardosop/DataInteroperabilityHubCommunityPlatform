@@ -3,14 +3,20 @@
  * Shows connection details; edit/delete/test when backend supports
  */
 
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   useMarketplaceConnection,
   useDeleteMarketplaceConnection,
   useTestMarketplaceConnection,
 } from '../hooks/useMarketplaceConnections';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './MarketplaceConnectionDetailPage.css';
 
 export function MarketplaceConnectionDetailPage() {
@@ -19,15 +25,19 @@ export function MarketplaceConnectionDetailPage() {
   const { data: connection, isLoading, error, refetch } = useMarketplaceConnection(id ?? null);
   const deleteMutation = useDeleteMarketplaceConnection();
   const testMutation = useTestMarketplaceConnection();
+  const toast = useToast();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const handleDelete = async () => {
-    if (!id || !confirm('Are you sure you want to delete this connection? This action cannot be undone.'))
-      return;
+  const handleDeleteClick = () => setShowDeleteConfirm(true);
+  const handleDeleteConfirm = async () => {
+    if (!id) return;
+    setShowDeleteConfirm(false);
     try {
       await deleteMutation.mutateAsync(id);
+      toast.success('Connection deleted.');
       navigate('/integrations/connections');
-    } catch {
-      // Error handled by mutation
+    } catch (err) {
+      toast.error(normalizeError(err).error.message || 'Failed to delete connection');
     }
   };
 
@@ -88,7 +98,7 @@ export function MarketplaceConnectionDetailPage() {
             Edit
           </button>
           <button
-            onClick={handleDelete}
+            onClick={handleDeleteClick}
             className="btn-danger"
             type="button"
             disabled={deleteMutation.isPending}
@@ -100,6 +110,13 @@ export function MarketplaceConnectionDetailPage() {
       </div>
 
       <div className="marketplace-connection-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Connections', href: '/integrations/connections' },
+            { label: connection.name || 'Connection' },
+          ]}
+        />
         <div className="detail-section">
           <h1>{connection.name}</h1>
           <div className="detail-meta">
@@ -114,7 +131,9 @@ export function MarketplaceConnectionDetailPage() {
           <h2>Details</h2>
           <dl className="detail-list">
             <dt>ID</dt>
-            <dd><code>{connection.id}</code></dd>
+            <dd>
+              <UuidWithCopy value={connection.id} label="Connection ID" />
+            </dd>
             <dt>Tenant</dt>
             <dd><code>{connection.tenant}</code></dd>
             <dt>Created</dt>
@@ -149,6 +168,16 @@ export function MarketplaceConnectionDetailPage() {
           </pre>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete connection"
+        message="Are you sure you want to delete this connection? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

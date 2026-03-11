@@ -16,6 +16,7 @@ import type {
   MessageResponse,
   PasswordResetConfirmRequest,
   PasswordResetRequest,
+  ProfileUpdateRequest,
   RefreshTokenRequest,
   RefreshTokenResponse,
   RegisterRequest,
@@ -30,7 +31,9 @@ const USER_STORAGE_KEY = 'user';
 
 class AuthService {
   async login(credentials: LoginRequest): Promise<LoginResponse> {
-    const response = await apiClient.getClient().post<LoginResponse>('/auth/login/', credentials);
+    const response = await apiClient
+      .getClient()
+      .post<LoginResponse>('/auth/login/', credentials, { timeout: 45000 });
 
     // Store tokens
     this.setAccessToken(response.data.access_token);
@@ -43,7 +46,9 @@ class AuthService {
   }
 
   async register(payload: RegisterRequest): Promise<RegisterResponse> {
-    const response = await apiClient.getClient().post<RegisterResponse>('/auth/register/', payload);
+    const response = await apiClient
+      .getClient()
+      .post<RegisterResponse>('/auth/register/', payload, { timeout: 45000 });
     return response.data;
   }
 
@@ -97,6 +102,19 @@ class AuthService {
     // 45s timeout: E2E/CI load can congest backend; auth store retries and fail-open handle transient failures
     const response = await apiClient.getClient().get<User>('/auth/me/', { timeout: 45000 });
     return response.data;
+  }
+
+  /** PATCH /auth/me/ — update profile (display_name, avatar, preferences) */
+  async updateProfile(payload: ProfileUpdateRequest): Promise<User> {
+    const body: Record<string, unknown> = {};
+    if (payload.display_name !== undefined) body.display_name = payload.display_name;
+    if (payload.avatar !== undefined) body.avatar = payload.avatar;
+    if (payload.preferences !== undefined) body.preferences = payload.preferences;
+
+    const response = await apiClient.getClient().patch<User>('/auth/me/', body);
+    const user = response.data;
+    this.setUser(user);
+    return user;
   }
 
   async fetchAndStoreUser(): Promise<User> {
@@ -193,8 +211,7 @@ class AuthService {
 
   setUser(user: User): void {
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
-    // Update tenant ID getter when user changes
-    apiClient.setTenantIdGetter(() => user?.tenant_id);
+    // Tenant ID getter is managed by authStore (active_tenant_id || user.tenant_id)
   }
 
   // Clear all auth data
@@ -222,11 +239,7 @@ class AuthService {
       apiClient.setRefreshToken(refreshToken);
     }
 
-    // Set tenant ID getter for API client
-    apiClient.setTenantIdGetter(() => {
-      const user = this.getUser();
-      return user?.tenant_id;
-    });
+    // Tenant ID getter is set by authStore.initialize after user is loaded
   }
 }
 

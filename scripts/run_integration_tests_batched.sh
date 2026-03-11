@@ -41,8 +41,8 @@ BATCHES=(
   # Batch 2: Assets, Contracts, Datasets
   "Assets & Contracts|tests/integration/test_asset_apis_comprehensive.py|tests/integration/test_simple_asset_creation.py|tests/integration/test_contract_apis_comprehensive.py|tests/integration/test_dataset_apis_comprehensive.py|tests/integration/contracts/"
 
-  # Batch 3: Marketplace
-  "Marketplace|tests/integration/test_marketplace_apis_comprehensive.py|tests/integration/test_marketplace_integration.py|tests/integration/test_marketplace_original_use_cases_comprehensive.py|tests/integration/test_advanced_marketplace_new_use_cases_comprehensive.py|tests/integration/test_trust_signals_config_api_comprehensive.py"
+  # Batch 3: Marketplace (incl. Phase 23 demo.ckan.org fixture tests)
+  "Marketplace|tests/integration/test_marketplace_apis_comprehensive.py|tests/integration/test_marketplace_integration.py|tests/integration/test_marketplace_original_use_cases_comprehensive.py|tests/integration/test_advanced_marketplace_new_use_cases_comprehensive.py|tests/integration/test_trust_signals_config_api_comprehensive.py|tests/integration/test_phase23_marketplace_demo_ckan_fixture.py"
 
   # Batch 4: Jobs & Workers
   "Jobs & Workers|tests/integration/test_job_apis_comprehensive.py|tests/integration/test_worker_service.py|tests/integration/test_job_lifecycle_state_management_validation.py|tests/integration/test_job_monitoring_observability_validation.py|tests/integration/test_job_queue_dashboards.py|tests/integration/test_job_queue_operations_comprehensive.py|tests/integration/test_job_scheduling_queue_management_validation.py|tests/integration/jobs/"
@@ -65,8 +65,8 @@ BATCHES=(
   # Batch 10: Health, Search, Billing
   "Health Search Billing|tests/integration/test_health_integration.py|tests/integration/test_search_apis_comprehensive.py|tests/integration/test_billing_apis_comprehensive.py|tests/integration/test_rate_limiting_integration.py|tests/integration/test_rate_limiting_endpoints.py"
 
-  # Batch 11: ODPS, Semantic, Lineage, Virtualization
-  "ODPS Semantic Lineage|tests/integration/test_all_services_odps_integration_comprehensive.py|tests/integration/test_odps_cross_integration.py|tests/integration/test_odps_performance_validation.py|tests/integration/test_odps_semantic_layer_validation.py|tests/integration/test_lineage_service_comprehensive_validation.py|tests/integration/test_virtualization_service_comprehensive_validation.py|tests/integration/test_sparql_standard_vocabularies.py|tests/integration/test_jsonld_context.py|tests/integration/test_uri_resolution_enhanced.py|tests/integration/test_normalization_rdf_flow.py"
+  # Batch 11: ODPS, Semantic, Lineage, Virtualization (incl. Phase 20/21 real E2E)
+  "ODPS Semantic Lineage|tests/integration/test_all_services_odps_integration_comprehensive.py|tests/integration/test_odps_cross_integration.py|tests/integration/test_odps_performance_validation.py|tests/integration/test_odps_semantic_layer_validation.py|tests/integration/test_lineage_service_comprehensive_validation.py|tests/integration/test_virtualization_service_comprehensive_validation.py|tests/integration/test_phase20_real_postgresql.py|tests/integration/test_phase21_federated_e2e.py|tests/integration/test_sparql_standard_vocabularies.py|tests/integration/test_jsonld_context.py|tests/integration/test_uri_resolution_enhanced.py|tests/integration/test_normalization_rdf_flow.py"
 
   # Batch 12: Docker, Kubernetes, Infra
   "Docker & Kubernetes|tests/integration/test_docker_compose.py|tests/integration/test_docker_compose_test.py|tests/integration/test_docker_compose_dev.py|tests/integration/test_docker_compose_production.py|tests/integration/test_docker_compose_staging.py|tests/integration/test_docker_compose_deployment.py|tests/integration/test_docker_compose_standalone.py|tests/integration/test_kubernetes_config.py|tests/integration/test_kubernetes_deployment.py|tests/integration/test_kubernetes_scaling.py|tests/integration/test_kubernetes_service_discovery.py|tests/integration/test_traefik_routing.py|tests/integration/test_gateway_configurations.py"

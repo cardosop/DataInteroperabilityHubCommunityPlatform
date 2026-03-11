@@ -2,10 +2,16 @@
  * Dataset Detail Page
  */
 
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useDataset, useUpdateDataset, useDeleteDataset } from '../hooks/useDatasets';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { AssetPicker } from '../../../shared/components/pickers';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { useState } from 'react';
 import './DatasetDetailPage.css';
 
@@ -15,34 +21,51 @@ export function DatasetDetailPage() {
   const { data: dataset, isLoading, error, refetch } = useDataset(id || null);
   const updateMutation = useUpdateDataset();
   const deleteMutation = useDeleteDataset();
+  const toast = useToast();
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState({ name: '', description: '' });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [editData, setEditData] = useState<{ asset_id: string | null }>({ asset_id: null });
 
   const handleEdit = () => {
     if (dataset) {
-      setEditData({ name: dataset.name, description: dataset.description || '' });
+      const aid = dataset.asset_id || dataset.asset || null;
+      setEditData({
+        asset_id: aid ? String(aid) : null,
+      });
       setIsEditing(true);
     }
   };
 
   const handleSave = async () => {
     if (!id) return;
+    const assetValue = editData.asset_id?.trim() || null;
     try {
-      await updateMutation.mutateAsync({ id, data: editData });
+      await updateMutation.mutateAsync({
+        id,
+        data: {
+          asset_id: assetValue,
+        },
+      });
       setIsEditing(false);
       refetch();
+      toast.success('Dataset updated successfully.');
     } catch (err) {
-      // Error handled by mutation
+      toast.error(normalizeError(err).error.message || 'Failed to update dataset');
+      // ErrorDisplay also shown when updateMutation.isError
     }
   };
 
-  const handleDelete = async () => {
-    if (!id || !confirm('Are you sure you want to delete this dataset?')) return;
+  const handleDeleteClick = () => setShowDeleteConfirm(true);
+  const handleDeleteConfirm = async () => {
+    if (!id) return;
+    setShowDeleteConfirm(false);
     try {
       await deleteMutation.mutateAsync(id);
+      toast.success('Dataset deleted.');
       navigate('/datasets');
     } catch (err) {
-      // Error handled by mutation
+      toast.error(normalizeError(err).error.message || 'Failed to delete dataset');
+      // ErrorDisplay also shown when deleteMutation.isError
     }
   };
 
@@ -61,7 +84,17 @@ export function DatasetDetailPage() {
           {!isEditing ? (
             <>
               <button onClick={handleEdit} className="btn-secondary" type="button">Edit</button>
-              <button onClick={handleDelete} className="btn-danger" disabled={deleteMutation.isPending} type="button">
+              {!(dataset.asset_id || dataset.asset) && (
+                <button
+                  onClick={handleEdit}
+                  className="btn-primary"
+                  type="button"
+                  data-testid="btn-link-to-asset"
+                >
+                  Link to Asset
+                </button>
+              )}
+              <button onClick={handleDeleteClick} className="btn-danger" disabled={deleteMutation.isPending} type="button">
                 {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
               </button>
             </>
@@ -77,29 +110,51 @@ export function DatasetDetailPage() {
       </div>
 
       <div className="dataset-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Datasets', href: '/datasets' },
+            { label: dataset.name || 'Dataset' },
+          ]}
+        />
         {isEditing ? (
-          <div className="dataset-edit-form">
-            <div className="form-group">
+          <div className="dataset-edit-form" data-testid="dataset-edit-form">
+            <div className="form-group form-group-readonly">
               <label>Name</label>
-              <input
-                type="text"
-                value={editData.name}
-                onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-              />
+              <p className="form-readonly-value" aria-readonly="true">
+                {dataset.name || '—'} <span className="form-hint">(derived from file, read-only)</span>
+              </p>
             </div>
             <div className="form-group">
-              <label>Description</label>
-              <textarea
-                value={editData.description}
-                onChange={(e) => setEditData({ ...editData, description: e.target.value })}
-                rows={4}
+              <label>Asset (optional)</label>
+              <AssetPicker
+                value={editData.asset_id}
+                onChange={(assetId) => setEditData((prev) => ({ ...prev, asset_id: assetId }))}
+                placeholder="Search and select an asset to link (clear to unlink)"
+                data-testid="dataset-asset-picker"
               />
             </div>
           </div>
         ) : (
           <>
             <h1>{dataset.name || 'Dataset'}</h1>
+            {id && (
+              <div className="dataset-uuid" data-testid="dataset-uuid">
+                <UuidWithCopy value={id} label="Dataset ID" />
+              </div>
+            )}
             {dataset.description && <p className="dataset-description">{dataset.description}</p>}
+            {(dataset.asset_id || dataset.asset) && (
+              <p className="dataset-linked-asset" data-testid="dataset-linked-asset">
+                Linked asset:{' '}
+                <Link
+                  to={`/assets/${dataset.asset_id || dataset.asset}`}
+                  data-testid="dataset-asset-link"
+                >
+                  {dataset.asset_name || 'View asset'}
+                </Link>
+              </p>
+            )}
 
             <div className="dataset-detail-metadata">
               <div className="metadata-item">
@@ -163,6 +218,16 @@ export function DatasetDetailPage() {
       {deleteMutation.isError && (
         <ErrorDisplay error={deleteMutation.error} title="Failed to delete dataset" onRetry={() => deleteMutation.reset()} />
       )}
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete dataset"
+        message="Are you sure you want to delete this dataset? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

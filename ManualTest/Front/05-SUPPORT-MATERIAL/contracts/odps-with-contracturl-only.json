@@ -1,0 +1,29 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "manual-test-contracturl-only",
+        "name": "Manual Test ODPS (contractURL Only)",
+        "description": "ODPS with contractURL only for JOURNEY-DPO-016 (Link ODPS↔ODCS). Create ODCS first, then upload this ODPS and link via UI."
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contracts/manual-test-contracturl-only"
+    },
+    "dataQuality": {
+      "qualityScore": 95,
+      "completeness": 0.98
+    },
+    "marketplace": {
+      "pricingPlans": [
+        {"planID": "basic", "name": "Basic Plan", "price": 9.99, "currency": "USD"}
+      ],
+      "accessMethods": {
+        "api": {"endpoint": "https://api.example.com/v1/products/manual-test"},
+        "download": {"url": "https://download.example.com/manual-test.zip"}
+      }
+    }
+  }
+}

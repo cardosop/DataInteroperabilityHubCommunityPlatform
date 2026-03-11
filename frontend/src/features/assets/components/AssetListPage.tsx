@@ -46,12 +46,22 @@ export function AssetListPage() {
   }
 
   if (error) {
-    return <ErrorDisplay error={error} title="Failed to load assets" onRetry={() => refetch()} />;
+    return (
+      <div className="asset-list-error-wrapper">
+        <ErrorDisplay error={error} title="Failed to load assets" onRetry={() => refetch()} />
+        <div className="asset-list-error-actions">
+          <button className="btn-primary" onClick={handleCreateAsset} type="button">
+            Create Asset
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (!data || data.results.length === 0) {
     return (
       <EmptyState
+        data-testid="asset-list-empty-state"
         title="No assets found"
         message={
           search || domainFilter || statusFilter || visibilityFilter
@@ -68,15 +78,15 @@ export function AssetListPage() {
   }
 
   return (
-    <div className="asset-list-page">
-      <div className="asset-list-header">
+    <div className="asset-list-page" data-testid="asset-list-page">
+      <div className="asset-list-header" data-testid="asset-list-header">
         <h1>Assets</h1>
         <button className="btn-primary" onClick={handleCreateAsset} type="button">
           Create Asset
         </button>
       </div>
 
-      <div className="asset-list-filters" role="group" aria-label="Asset filters">
+      <div className="asset-list-filters" role="group" aria-label="Asset filters" data-testid="asset-list-filters">
         <label htmlFor="asset-search" className="sr-only">
           Search assets
         </label>
@@ -146,7 +156,7 @@ export function AssetListPage() {
         </select>
       </div>
 
-      <div className="asset-list-table">
+      <div className="asset-list-table" data-testid="asset-list-table">
         <table role="table" aria-label="Assets list">
           <thead>
             <tr>

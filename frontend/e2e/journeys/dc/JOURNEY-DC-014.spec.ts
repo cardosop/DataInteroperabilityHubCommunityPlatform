@@ -22,13 +22,16 @@ test.describe('JOURNEY-DC-014: Discover ODPS Products (Semantic Search)', () => 
       await loginUser(page, consumer);
       await page.goto('/semantic');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      const onLogin = page.url().includes('/login');
-      const on403 = page.url().includes('/403');
-      const onSemantic = page.url().includes('/semantic');
+      await page.waitForTimeout(5000);
+      const url = page.url();
+      const onLogin = url.includes('/login');
+      const on403 = url.includes('/403');
+      const onUnavailable = url.includes('/unavailable');
+      const onSemantic = url.includes('/semantic');
       const hasContent =
-        (await page.locator('.semantic-page, .app-main, .unavailable-page').count()) > 0;
-      expect(onLogin || on403 || (onSemantic && hasContent)).toBe(true);
+        (await page.locator('.semantic-page, .app-main, .unavailable-page, .loading-spinner-container').count()) >
+        0;
+      expect(onLogin || on403 || onUnavailable || (onSemantic && hasContent)).toBe(true);
     });
   });
 

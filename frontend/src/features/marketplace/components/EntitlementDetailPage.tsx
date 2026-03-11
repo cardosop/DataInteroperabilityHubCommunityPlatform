@@ -3,11 +3,17 @@
  * View detailed information about an entitlement
  */
 
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEntitlement, useRevokeEntitlement } from '../hooks/useEntitlements';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EntitlementStatus } from '../../../shared/types/marketplace';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './EntitlementDetailPage.css';
 
 export function EntitlementDetailPage() {
@@ -15,14 +21,18 @@ export function EntitlementDetailPage() {
   const navigate = useNavigate();
   const { data: entitlement, isLoading, error, refetch } = useEntitlement(id || null);
   const revokeMutation = useRevokeEntitlement();
+  const toast = useToast();
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
 
-  const handleRevoke = async () => {
+  const handleRevokeClick = () => setShowRevokeConfirm(true);
+  const handleRevokeConfirm = async () => {
     if (!id) return;
-    if (!window.confirm('Are you sure you want to revoke this entitlement?')) return;
+    setShowRevokeConfirm(false);
     try {
       await revokeMutation.mutateAsync(id);
-    } catch (error) {
-      // Error handled by mutation
+      toast.success('Entitlement revoked.');
+    } catch (err) {
+      toast.error(normalizeError(err).error.message || 'Failed to revoke entitlement');
     }
   };
 
@@ -52,9 +62,19 @@ export function EntitlementDetailPage() {
             {entitlement.status}
           </span>
         </div>
+        <div className="entitlement-uuid" data-testid="entitlement-uuid">
+          <UuidWithCopy value={entitlement.id} label="Entitlement ID" />
+        </div>
       </div>
 
       <div className="entitlement-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Entitlements', href: '/marketplace/entitlements' },
+            { label: `Entitlement ${entitlement.id.slice(0, 8)}` },
+          ]}
+        />
         <div className="entitlement-detail-main">
           <div className="entitlement-section">
             <h2>Asset Information</h2>
@@ -140,7 +160,7 @@ export function EntitlementDetailPage() {
             {canRevoke && (
               <button
                 className="btn-secondary btn-large"
-                onClick={handleRevoke}
+                onClick={handleRevokeClick}
                 disabled={revokeMutation.isPending}
                 type="button"
               >
@@ -162,6 +182,16 @@ export function EntitlementDetailPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showRevokeConfirm}
+        onClose={() => setShowRevokeConfirm(false)}
+        onConfirm={handleRevokeConfirm}
+        title="Revoke entitlement"
+        message="Are you sure you want to revoke this entitlement?"
+        confirmLabel="Revoke"
+        variant="danger"
+      />
     </div>
   );
 }

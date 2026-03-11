@@ -1,28 +1,31 @@
 # Design System
 
-**Last Updated**: 2025-01-15  
-**Version**: 1.0.0
+**Last Updated**: 2026-03-06  
+**Version**: 2.0.0 (Meshant)
 
 ---
 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Colors](#colors)
-3. [Typography](#typography)
-4. [Spacing](#spacing)
-5. [Icons](#icons)
-6. [Shadows and Elevation](#shadows-and-elevation)
-7. [Borders and Dividers](#borders-and-dividers)
-8. [Animation and Motion](#animation-and-motion)
-9. [Design Tokens](#design-tokens)
-10. [Theme Support](#theme-support)
+2. [Meshant Palette](#meschant-palette)
+3. [Token Mapping (CSS ↔ tokens.ts)](#token-mapping-css--tokensts)
+4. [Colors](#colors)
+5. [Typography](#typography)
+6. [Spacing](#spacing)
+7. [Icons](#icons)
+8. [Shadows and Elevation](#shadows-and-elevation)
+9. [Borders and Dividers](#borders-and-dividers)
+10. [Layout](#layout)
+11. [Animation and Motion](#animation-and-motion)
+12. [Design Tokens](#design-tokens)
+13. [Theme Support](#theme-support)
 
 ---
 
 ## Overview
 
-The Design System provides a comprehensive set of design tokens, components, and guidelines that ensure visual consistency across the Interoperable Data Hub platform. All UI components and interfaces should use these design tokens.
+The Design System provides a comprehensive set of design tokens, components, and guidelines that ensure visual consistency across the Meshant platform. All UI components and interfaces should use these design tokens.
 
 **Design System Principles**:
 - **Consistency**: Unified visual language across all interfaces
@@ -30,45 +33,158 @@ The Design System provides a comprehensive set of design tokens, components, and
 - **Accessibility**: All tokens meet WCAG 2.1 AA standards
 - **Maintainability**: Centralized tokens for easy updates
 
+**Reference**: [MESHANT_DESIGN_SYSTEM_PLAN.md](../../openspec/changes/useronboardfix/MESHANT_DESIGN_SYSTEM_PLAN.md)
+
+---
+
+## Meshant Palette
+
+The Meshant design system uses a navy, blue, and cyan palette:
+
+| Role | Base (#500) | Hex | Usage |
+|------|-------------|-----|-------|
+| **Primary** | Meshant Navy | `#0A1F44` | Headers, primary text on light, brand elements |
+| **Secondary** | Meshant Blue | `#2F6BFF` | Primary actions, links, CTAs |
+| **Accent** | Meshant Cyan | `#17C6E6` | Highlights, secondary accents, hover states |
+
+**Full scales** (50–900) are defined in `frontend/src/index.css` and `frontend/src/shared/design-system/tokens.ts`.
+
+---
+
+## Token Mapping (CSS ↔ tokens.ts)
+
+Single source of truth: `frontend/src/index.css` (CSS variables) and `frontend/src/shared/design-system/tokens.ts` (TypeScript). Both must stay in sync.
+
+### Colors
+
+| CSS Variable | tokens.ts | Value |
+|--------------|-----------|-------|
+| `--color-primary-500` | `colors.primary[500]` | #0A1F44 |
+| `--color-primary-800` | `colors.primary[800]` | #0A1F44 |
+| `--color-secondary-500` | `colors.secondary[500]` | #2F6BFF |
+| `--color-accent-500` | `colors.accent[500]` | #17C6E6 |
+| `--color-primary` | — | `var(--color-primary-500)` |
+| `--color-secondary` | — | `var(--color-secondary-500)` |
+| `--color-accent` | — | `var(--color-accent-500)` |
+
+### Typography
+
+| CSS Variable | tokens.ts | Value |
+|--------------|-----------|-------|
+| `--font-family-sans` | `typography.fontFamily.sans` | 'Inter', -apple-system, BlinkMacSystemFont, sans-serif |
+| `--font-family-mono` | `typography.fontFamily.mono` | Monaco, Menlo, Consolas, monospace |
+| `--font-size-base` | `typography.fontSize.base` | 16px |
+| `--font-size-xs` | `typography.fontSize.xs` | 12px |
+| `--font-size-sm` | `typography.fontSize.sm` | 14px |
+| `--font-size-lg` | `typography.fontSize.lg` | 18px |
+| `--font-size-xl` | `typography.fontSize.xl` | 20px |
+| `--font-size-2xl` | `typography.fontSize['2xl']` | 24px |
+| `--font-size-3xl` | `typography.fontSize['3xl']` | 30px |
+| `--font-size-4xl` | `typography.fontSize['4xl']` | 36px |
+
+### Spacing
+
+| CSS Variable | tokens.ts | Value |
+|--------------|-----------|-------|
+| `--spacing-xs` | `spacing.xs` | 4px |
+| `--spacing-sm` | `spacing.sm` | 8px |
+| `--spacing-md` | `spacing.md` | 16px |
+| `--spacing-lg` | `spacing.lg` | 24px |
+| `--spacing-xl` | `spacing.xl` | 32px |
+| `--spacing-2xl` | `spacing['2xl']` | 48px |
+| `--spacing-3xl` | `spacing['3xl']` | 64px |
+
+### Layout
+
+| CSS Variable | tokens.ts | Value |
+|--------------|-----------|-------|
+| `--layout-sidebar-width` | `layout.sidebarWidth` | 240px |
+| `--layout-content-max-width` | `layout.contentMaxWidth` | 1200px |
+
+### Breakpoints (tokens.ts only)
+
+| Token | Value |
+|-------|-------|
+| `breakpoints.sm` | 600px |
+| `breakpoints.md` | 900px |
+| `breakpoints.lg` | 1200px |
+| `breakpoints.xl` | 1536px |
+
+### Shadows
+
+| CSS Variable | tokens.ts | Value |
+|--------------|-----------|-------|
+| `--shadow-sm` | `shadows.sm` | 0 1px 2px 0 rgba(0,0,0,0.05) |
+| `--shadow-md` | `shadows.md` | 0 4px 6px -1px rgba(0,0,0,0.1) |
+| `--shadow-lg` | `shadows.lg` | 0 10px 15px -3px rgba(0,0,0,0.1) |
+| `--shadow-xl` | `shadows.xl` | 0 20px 25px -5px rgba(0,0,0,0.1) |
+
+### Border Radius
+
+| CSS Variable | tokens.ts | Value |
+|--------------|-----------|-------|
+| `--border-radius-sm` | `borderRadius.sm` | 4px |
+| `--border-radius-md` | `borderRadius.md` | 8px |
+| `--border-radius-lg` | `borderRadius.lg` | 12px |
+| `--border-radius-xl` | `borderRadius.xl` | 16px |
+| `--border-radius-full` | `borderRadius.full` | 9999px |
+
+### Token Usage in Code
+
+- **CSS**: Use `var(--color-primary)`, `var(--spacing-md)`, etc.
+- **TypeScript**: Import from `shared/design-system/tokens` for computed values (e.g. breakpoints in media queries).
+- **Extension**: Add new tokens in both `index.css` and `tokens.ts`; run `npm run test:run -- src/shared/design-system/` to verify.
+
 ---
 
 ## Colors
 
-### Color Palette
+### Color Palette (Meshant)
 
-The color palette is designed for accessibility, clarity, and brand consistency.
+#### Primary Colors (Meshant Navy)
 
-#### Primary Colors
+- `primary-50`: #E8ECF4 (Lightest)
+- `primary-100`: #CFD8E8
+- `primary-200`: #9BA8C4
+- `primary-300`: #6778A0
+- `primary-400`: #33497C
+- `primary-500`: #0A1F44 (Base)
+- `primary-600`: #081A3A
+- `primary-700`: #061530
+- `primary-800`: #0A1F44
+- `primary-900`: #030D22 (Darkest)
 
-**Primary Blue**
-- `primary-50`: #E3F2FD (Lightest)
-- `primary-100`: #BBDEFB
-- `primary-200`: #90CAF9
-- `primary-300`: #64B5F6
-- `primary-400`: #42A5F5
-- `primary-500`: #2196F3 (Base)
-- `primary-600`: #1E88E5
-- `primary-700`: #1976D2
-- `primary-800`: #1565C0
-- `primary-900`: #0D47A1 (Darkest)
+**Usage**: Headers, primary text on light backgrounds, brand elements, sidebar
 
-**Usage**: Primary actions, links, brand elements
+#### Secondary Colors (Meshant Blue)
 
-#### Secondary Colors
+- `secondary-50`: #EBF0FF
+- `secondary-100`: #D6E0FF
+- `secondary-200`: #ADBFFF
+- `secondary-300`: #849EFF
+- `secondary-400`: #5B7DFF
+- `secondary-500`: #2F6BFF (Base)
+- `secondary-600`: #2756E6
+- `secondary-700`: #1F41CC
+- `secondary-800`: #172DB3
+- `secondary-900`: #0F1999
 
-**Secondary Teal**
-- `secondary-50`: #E0F2F1
-- `secondary-100`: #B2DFDB
-- `secondary-200`: #80CBC4
-- `secondary-300`: #4DB6AC
-- `secondary-400`: #26A69A
-- `secondary-500`: #009688 (Base)
-- `secondary-600`: #00897B
-- `secondary-700`: #00796B
-- `secondary-800`: #00695C
-- `secondary-900`: #004D40
+**Usage**: Primary actions, links, CTAs, interactive elements
 
-**Usage**: Secondary actions, accents, highlights
+#### Accent Colors (Meshant Cyan)
+
+- `accent-50`: #E6FAFC
+- `accent-100`: #CCF5F9
+- `accent-200`: #99EBF3
+- `accent-300`: #66E0ED
+- `accent-400`: #33D6E7
+- `accent-500`: #17C6E6 (Base)
+- `accent-600`: #12A0C0
+- `accent-700`: #0E7A9A
+- `accent-800`: #095474
+- `accent-900`: #052E3D
+
+**Usage**: Highlights, secondary accents, hover states, badges
 
 #### Semantic Colors
 
@@ -99,55 +215,54 @@ The color palette is designed for accessibility, clarity, and brand consistency.
 
 **Usage**: Error messages, failure states, destructive actions
 
-**Info (Blue)**
-- `info-50`: #E3F2FD
-- `info-100`: #BBDEFB
-- `info-500`: #2196F3 (Base)
-- `info-700`: #1976D2
-- `info-900`: #0D47A1
+**Info (Blue)** — Maps to Meshant primary
+- `info-50`: `primary-50` (#E8ECF4)
+- `info-100`: `primary-100` (#CFD8E8)
+- `info-500`: `primary-500` (#0A1F44) (Base)
+- `info-700`: `primary-700` (#061530)
+- `info-900`: `primary-900` (#030D22)
 
 **Usage**: Informational messages, help text, neutral status
 
 #### Neutral Colors
 
-**Gray Scale**
-- `gray-50`: #FAFAFA (Lightest)
-- `gray-100`: #F5F5F5
-- `gray-200`: #EEEEEE
-- `gray-300`: #E0E0E0
-- `gray-400`: #BDBDBD
-- `gray-500`: #9E9E9E (Base)
-- `gray-600`: #757575
-- `gray-700`: #616161
-- `gray-800`: #424242
-- `gray-900`: #212121 (Darkest)
+**Gray Scale** (`neutral-*` in tokens.ts)
+- `neutral-50`: #FAFAFA (Lightest)
+- `neutral-100`: #F5F5F5
+- `neutral-200`: #EEEEEE
+- `neutral-300`: #E0E0E0
+- `neutral-400`: #BDBDBD
+- `neutral-500`: #9E9E9E (Base)
+- `neutral-600`: #757575
+- `neutral-700`: #616161
+- `neutral-800`: #424242
+- `neutral-900`: #212121 (Darkest)
 
 **Usage**: Text, backgrounds, borders, dividers
 
 #### Text Colors
 
-- `text-primary`: `gray-900` (#212121) - Primary text
-- `text-secondary`: `gray-700` (#616161) - Secondary text
-- `text-disabled`: `gray-400` (#BDBDBD) - Disabled text
+- `--color-text-primary`: `neutral-900` (#212121) - Primary text
+- `--color-text-secondary`: `neutral-700` (#616161) - Secondary text
+- `--color-text-tertiary`: `neutral-600` (#757575) - Tertiary text
 - `text-inverse`: `white` (#FFFFFF) - Text on dark backgrounds
-- `text-link`: `primary-600` (#1E88E5) - Links
+- `text-link`: `--color-secondary` (#2F6BFF) - Links
 - `text-error`: `error-700` (#D32F2F) - Error text
 
 #### Background Colors
 
-- `background-default`: `white` (#FFFFFF) - Default background
-- `background-paper`: `white` (#FFFFFF) - Card/paper background
-- `background-elevated`: `gray-50` (#FAFAFA) - Elevated surfaces
-- `background-hover`: `gray-100` (#F5F5F5) - Hover states
-- `background-selected`: `primary-50` (#E3F2FD) - Selected states
-- `background-disabled`: `gray-200` (#EEEEEE) - Disabled states
+- `--color-background-primary`: `white` (#FFFFFF) - Default background
+- `--color-background-secondary`: `neutral-50` (#FAFAFA) - Elevated surfaces
+- `--color-background-tertiary`: `neutral-100` (#F5F5F5) - Hover states
+- `background-selected`: `primary-100` (#CFD8E8) - Selected states
+- `background-disabled`: `neutral-200` (#EEEEEE) - Disabled states
 
 #### Border Colors
 
-- `border-default`: `gray-300` (#E0E0E0) - Default borders
-- `border-focus`: `primary-500` (#2196F3) - Focus borders
+- `--color-border`: `neutral-300` (#E0E0E0) - Default borders
+- `border-focus`: `primary-500` (#0A1F44) - Focus borders
 - `border-error`: `error-500` (#F44336) - Error borders
-- `border-divider`: `gray-200` (#EEEEEE) - Dividers
+- `--color-border-light`: `neutral-200` (#EEEEEE) - Dividers
 
 ### Color Usage Guidelines
 
@@ -169,23 +284,25 @@ The color palette is designed for accessibility, clarity, and brand consistency.
 
 ## Typography
 
-### Font Families
+### Font Families (Meshant)
 
-**Primary Font**: Inter (or system font stack)
+**Primary Font**: Inter (Google Fonts: 400, 500, 600, 700)
+- Loaded via `frontend/index.html` preconnect + stylesheet
 - Sans-serif, modern, highly readable
 - Supports multiple languages
 - Excellent screen rendering
 
 **Font Stack**:
 ```css
-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 
-  'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 
-  'Helvetica Neue', sans-serif;
+font-family: var(--font-family-sans);
+/* Resolves to: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif */
 ```
 
-**Monospace Font**: 'Fira Code' or 'JetBrains Mono'
+**Monospace Font**: Monaco, Menlo, Consolas
 - Used for code, technical content, data values
-- Font stack: `'Fira Code', 'Courier New', monospace`
+- Font stack: `var(--font-family-mono)` → `'Monaco', 'Menlo', 'Consolas', monospace`
+
+**Air-gapped deployments**: Inter loads from Google Fonts. In offline environments, the fallback stack (`-apple-system`, `BlinkMacSystemFont`, `sans-serif`) is used. For self-hosted font, bundle Inter woff2 files and use `@font-face` locally.
 
 ### Type Scale
 
@@ -227,21 +344,17 @@ The typography system uses a modular scale based on 1.25 (Major Third).
 
 ### Spacing Scale
 
-The spacing system uses an 8px base unit for consistency.
+The spacing system uses a 4px base unit. Align to 8px grid for consistency.
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `space-0` | 0px | No spacing |
-| `space-1` | 4px (0.25rem) | Tight spacing |
-| `space-2` | 8px (0.5rem) | Base unit |
-| `space-3` | 12px (0.75rem) | Small spacing |
-| `space-4` | 16px (1rem) | Default spacing |
-| `space-5` | 20px (1.25rem) | Medium spacing |
-| `space-6` | 24px (1.5rem) | Large spacing |
-| `space-8` | 32px (2rem) | Extra large spacing |
-| `space-10` | 40px (2.5rem) | Section spacing |
-| `space-12` | 48px (3rem) | Page spacing |
-| `space-16` | 64px (4rem) | Major section spacing |
+| `--spacing-xs` | 4px | Tight spacing |
+| `--spacing-sm` | 8px | Base unit |
+| `--spacing-md` | 16px | Default spacing |
+| `--spacing-lg` | 24px | Large spacing |
+| `--spacing-xl` | 32px | Extra large spacing |
+| `--spacing-2xl` | 48px | Section spacing |
+| `--spacing-3xl` | 64px | Major section spacing |
 
 ### Spacing Usage Guidelines
 
@@ -320,14 +433,16 @@ Material Design elevation system with 5 levels.
 
 ### Border Radius
 
+Aligns with `--border-radius-*` and `tokens.ts` `borderRadius`:
+
 | Token | Value | Usage |
 |-------|-------|-------|
-| `radius-none` | 0px | Sharp corners |
-| `radius-sm` | 2px | Small elements |
-| `radius-md` | 4px | Default radius |
-| `radius-lg` | 8px | Cards, buttons |
-| `radius-xl` | 12px | Large cards |
-| `radius-full` | 9999px | Pills, avatars |
+| `--border-radius-none` | 0 | Sharp corners |
+| `--border-radius-sm` | 4px | Small elements |
+| `--border-radius-md` | 8px | Default radius |
+| `--border-radius-lg` | 12px | Cards, buttons |
+| `--border-radius-xl` | 16px | Large cards |
+| `--border-radius-full` | 9999px | Pills, avatars |
 
 ### Border Width
 
@@ -340,9 +455,28 @@ Material Design elevation system with 5 levels.
 
 ### Dividers
 
-- **Horizontal**: 1px solid `border-divider`
-- **Vertical**: 1px solid `border-divider`
+- **Horizontal**: 1px solid `var(--color-border-light)`
+- **Vertical**: 1px solid `var(--color-border-light)`
 - **Spacing**: 16px margin on both sides
+
+---
+
+## Layout
+
+Meshant layout constants (Phase 28.7.4):
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--layout-sidebar-width` | 240px | App sidebar width |
+| `--layout-content-max-width` | 1200px | Main content max-width, centered |
+
+**Usage in CSS**:
+```css
+.app-sidebar { width: var(--layout-sidebar-width); }
+.app-main { max-width: var(--layout-content-max-width); margin: 0 auto; }
+```
+
+**Breakpoints** (tokens.ts): `sm` 600px, `md` 900px, `lg` 1200px, `xl` 1536px.
 
 ---
 
@@ -382,40 +516,27 @@ Material Design elevation system with 5 levels.
 
 ### Token Format
 
-Design tokens are stored in JSON format for use across platforms.
+Design tokens live in two places (must stay in sync):
 
-```json
-{
-  "color": {
-    "primary": {
-      "50": "#E3F2FD",
-      "500": "#2196F3",
-      "900": "#0D47A1"
-    }
-  },
-  "typography": {
-    "fontFamily": {
-      "primary": "Inter, sans-serif",
-      "monospace": "Fira Code, monospace"
-    },
-    "fontSize": {
-      "h1": "32px",
-      "body1": "16px"
-    }
-  },
-  "spacing": {
-    "1": "4px",
-    "2": "8px",
-    "4": "16px"
-  }
-}
+1. **CSS**: `frontend/src/index.css` — `:root` CSS custom properties
+2. **TypeScript**: `frontend/src/shared/design-system/tokens.ts` — exported constants
+
+**Meshant palette example** (tokens.ts):
+```typescript
+export const colors = {
+  primary: { 500: '#0A1F44', ... },
+  secondary: { 500: '#2F6BFF', ... },
+  accent: { 500: '#17C6E6', ... },
+  // ...
+};
 ```
 
 ### Token Usage
 
-- **CSS Variables**: Use CSS custom properties for runtime theming
-- **JavaScript**: Import tokens in JavaScript/TypeScript
-- **Documentation**: Keep tokens documented and versioned
+- **CSS**: Use `var(--color-primary)`, `var(--spacing-md)`, etc.
+- **TypeScript**: Import from `shared/design-system/tokens` for breakpoints, computed values
+- **Extension**: Add tokens in both `index.css` and `tokens.ts`; run `npm run test:run -- src/shared/design-system/` to verify
+- **Runbook**: See [Brand Name Change](../runbooks/BRAND_NAME_CHANGE.md) for changing brand/app name
 
 ---
 
@@ -442,6 +563,6 @@ Design tokens are stored in JSON format for use across platforms.
 
 ---
 
-**Last Updated**: 2025-01-15  
-**Version**: 1.0.0
+**Last Updated**: 2026-03-06  
+**Version**: 2.0.0 (Meshant)
 

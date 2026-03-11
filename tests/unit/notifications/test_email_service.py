@@ -86,16 +86,16 @@ class SendGridEmailServiceTest(EmailServiceBaseTest):
             if hasattr(settings, 'SENDGRID_FROM_NAME'):
                 delattr(settings, 'SENDGRID_FROM_NAME')
             service = SendGridEmailService()
-            # Default should be 'Data Interoperability Hub'
-            self.assertEqual(service.from_name, 'Data Interoperability Hub')
+            # Default should be 'Meshant' (from APP_NAME)
+            self.assertEqual(service.from_name, 'Meshant')
         except EmailServiceError:
             self.skipTest("SendGrid not available")
         except AttributeError:
             # Settings might not allow deletion - test with explicit None
-            with override_settings(SENDGRID_FROM_NAME='Data Interoperability Hub'):
+            with override_settings(SENDGRID_FROM_NAME='Custom Brand'):
                 try:
                     service = SendGridEmailService()
-                    self.assertEqual(service.from_name, 'Data Interoperability Hub')
+                    self.assertEqual(service.from_name, 'Custom Brand')
                 except EmailServiceError:
                     self.skipTest("SendGrid not available")
     
@@ -166,9 +166,9 @@ class SESEmailServiceTest(EmailServiceBaseTest):
     def test_ses_default_from_name(self):
         """Test default from_name when not configured"""
         try:
-            # Default should be 'Data Interoperability Hub' when AWS_SES_FROM_NAME not set
+            # Default should be 'Meshant' (from APP_NAME) when AWS_SES_FROM_NAME not set
             service = SESEmailService()
-            self.assertEqual(service.from_name, 'Data Interoperability Hub')
+            self.assertEqual(service.from_name, 'Meshant')
         except EmailServiceError:
             self.skipTest("AWS SES not available")
         except Exception:
@@ -239,7 +239,7 @@ class SMTPEmailServiceTest(EmailServiceBaseTest):
         self.assertIsNone(service.password)
         self.assertTrue(service.use_tls)  # Default
         self.assertFalse(service.use_ssl)  # Default
-        self.assertEqual(service.from_name, 'Data Interoperability Hub')  # Default
+        self.assertEqual(service.from_name, 'Meshant')  # Default from APP_NAME
     
     @override_settings(
         EMAIL_BACKEND='smtp',

@@ -1,7 +1,7 @@
 # Test Traceability Matrix
 
-**Last Updated**: 2026-02-16
-**Version**: 1.3.0
+**Last Updated**: 2026-03-08
+**Version**: 1.6.0
 
 ---
 
@@ -24,7 +24,7 @@ This document provides comprehensive traceability between:
 - Backend tests: `test_uc_{use_case_id}_{description}.py` or `test_journey_{journey_id}_{description}.py`
 - Frontend specs: `{JOURNEY-ID}.spec.ts` or `{feature}-{description}.spec.ts`
 
-**Related**: [TEST_SUITE_GAP_ANALYSIS.md](TEST_SUITE_GAP_ANALYSIS.md) — gap analysis and traceability audit.
+**Related**: [TEST_SUITE_GAP_ANALYSIS.md](TEST_SUITE_GAP_ANALYSIS.md) — gap analysis and traceability audit; [SECURITY_TEST_COVERAGE.md](SECURITY_TEST_COVERAGE.md) — service × vulnerability × test file matrix.
 
 ---
 
@@ -42,6 +42,7 @@ This document provides comprehensive traceability between:
 10. [Gap Remediation Traceability](#gap-remediation-traceability) — includes [Gap implementation plan (gapfix1)](#gap-implementation-plan-gapfix1--full-test-run-and-sign-off)
 11. [Test Coverage Summary](#test-coverage-summary)
 12. [Evidence Links](#evidence-links)
+13. [Validation and Documentation (29.7)](#validation-and-documentation-297)
 
 ---
 
@@ -64,10 +65,11 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 - `frontend/e2e/journeys/auth/JOURNEY-AUTH-002.spec.ts` - Login
 - `frontend/e2e/journeys/auth/JOURNEY-AUTH-003.spec.ts` - Password reset
 - `frontend/e2e/journeys/auth/JOURNEY-AUTH-004.spec.ts` - Public access
+- `frontend/e2e/use-cases/auth/tenant-switch.spec.ts` - Tenant switch
 - `frontend/e2e/auth-visitor-journeys.spec.ts` - Visitor journeys
 
-**Use Cases**: UC-AUTH-001, UC-AUTH-002, UC-AUTH-003, UC-AUTH-004
-**Journeys**: JOURNEY-AUTH-001, JOURNEY-AUTH-002, JOURNEY-AUTH-003, JOURNEY-AUTH-004
+**Use Cases**: UC-AUTH-001, UC-AUTH-002, UC-AUTH-003, UC-AUTH-004, UC-AUTH-005
+**Journeys**: JOURNEY-AUTH-001, JOURNEY-AUTH-002, JOURNEY-AUTH-003, JOURNEY-AUTH-004, JOURNEY-AUTH-005
 
 ---
 
@@ -85,6 +87,7 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 **Frontend Specs**:
 - `frontend/e2e/journeys/dpo/contract-creation-flow.spec.ts` - Contract creation
 - `frontend/e2e/journeys/contracts-odps/contracts-odps-routes.spec.ts` - ODPS contracts
+- `frontend/e2e/use-cases/contracts/UC-CM-001.spec.ts`, `UC-CM-002.spec.ts` - Phase 29.4.1 use case specs
 
 **Use Cases**: UC-CM-001 through UC-CM-007
 **Journeys**: JOURNEY-DPO-005, JOURNEY-DE-001
@@ -104,6 +107,7 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 **Frontend Specs**:
 - `frontend/e2e/journeys/contracts-odps/contracts-odps-routes.spec.ts` - ODPS routes
 - `frontend/e2e/phase5-odps-journey.spec.ts` - ODPS journey
+- `frontend/e2e/use-cases/odps/UC-ODPS-001.spec.ts` through `UC-ODPS-003.spec.ts` - Phase 29.4.2 use case specs
 
 **Use Cases**: UC-ODPS-001, UC-ODPS-002, UC-ODPS-003 (referenced in USE_CASES.md)
 **Journeys**: JOURNEY-DPO-015, JOURNEY-DPO-016, JOURNEY-DPO-017, JOURNEY-DE-014, JOURNEY-DC-014, JOURNEY-DC-015, JOURNEY-PA-010
@@ -116,8 +120,11 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 
 **Backend Tests**:
 - `hub/apps/assets/tests/test_asset_crud.py` - Asset CRUD operations
+- `hub/apps/assets/tests/test_data_first_asset_api.py` - Data-first API (POST /assets/data-first/)
 - `hub/apps/assets/tests/test_services.py` - Asset services
 - `hub/apps/assets/tests/test_health_score.py` - Health score calculation
+- `tests/integration/test_data_first_asset_flow.py` - Data-first flow integration
+- `tests/security/test_data_first_asset_idor.py` - Data-first IDOR (cross-tenant file_id)
 
 **Frontend Specs**:
 - `frontend/e2e/journeys/dpo/asset-creation-flow.spec.ts` - Asset creation
@@ -127,6 +134,36 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 
 **Use Cases**: UC-AM-001 through UC-AM-011
 **Journeys**: JOURNEY-DPO-001, JOURNEY-DPO-002, JOURNEY-DPO-003, JOURNEY-DPO-004
+
+---
+
+### Resource Pickers (UX)
+
+**Feature**: Searchable pickers (AssetPicker, ContractPicker, DatasetPicker, FilePicker) for selecting assets, contracts, datasets, files instead of manual UUID entry. Used in ODPS upload, asset attach, DQ/Compliance/Access Request, Scheduled Export, Retention, Dataset edit, ODPS Link flows.
+
+**Backend Tests**:
+- `hub/apps/assets/tests/test_views.py` - List API (search, filter, ordering)
+- `hub/apps/contracts/tests/test_views.py` - List API (search, spec_type filter)
+- `hub/apps/datasets/tests/test_views.py` - List API (asset_id, dataset_format filter)
+- `hub/apps/files/tests/test_views.py` - List API (search, ordering)
+- `hub/apps/datasets/tests/test_idor_datasets.py` - Tenant isolation (asset_id filter)
+
+**Frontend Specs**:
+- `frontend/src/shared/components/pickers/*.test.tsx` - Picker unit tests (39 tests)
+- `frontend/e2e/use-cases/ux/odps-asset-link.spec.ts` - ODPS upload AssetPicker
+- `frontend/e2e/use-cases/ux/asset-attach-contract-dataset.spec.ts` - Asset attach ContractPicker, DatasetPicker
+- `frontend/e2e/use-cases/ux/dq-compliance-access-request.spec.ts` - DQ, Compliance, Access Request pickers
+- `frontend/e2e/use-cases/ux/scheduled-export-retention-odps-link.spec.ts` - Scheduled Export, Retention, ODPS Link pickers
+- `frontend/e2e/use-cases/ux/dataset-edit.spec.ts` - Dataset edit AssetPicker
+- `frontend/e2e/use-cases/ux/picker-a11y.spec.ts` - Accessibility (axe-core)
+
+**Integration Tests**:
+- `frontend/src/integration/picker-form-api.integration.test.ts` - Picker → list API → form
+
+**Use Cases**: UC-DPO-014, UC-DQ-001, UC-COMP-001, UC-EXPORT-001, UC-CPO-009, UC-DS-EDIT
+**Journeys**: JOURNEY-DPO-015, JOURNEY-DPO-016, JOURNEY-DPO-018, JOURNEY-DE-003, JOURNEY-CPO-002, JOURNEY-CPO-004
+
+**Test Script**: `./scripts/run_resource_picker_tests.sh` — frontend unit (102), backend list API (51), integration, a11y
 
 ---
 
@@ -141,9 +178,11 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 
 **Frontend Specs**:
 - `frontend/e2e/journeys/dpo/dataset-creation-flow.spec.ts` - Dataset creation
+- `frontend/e2e/use-cases/ux/dataset-edit.spec.ts` - Dataset edit, link to asset (Phase 29.66.15)
+- `frontend/e2e/use-cases/ux/asset-dataset-flow.spec.ts` - Asset → dataset → DQ flow (Phase 29.66.15)
 
-**Use Cases**: UC-DS-001 through UC-DS-005 (referenced)
-**Journeys**: JOURNEY-DPO-001 (includes dataset creation)
+**Use Cases**: UC-DS-001 through UC-DS-005 (referenced), UC-DS-EDIT (dataset edit, asset linking)
+**Journeys**: JOURNEY-DPO-001 (includes dataset creation), JOURNEY-DPO-018 (edit dataset, link to asset)
 
 ---
 
@@ -157,6 +196,7 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 
 **Frontend Specs**:
 - `frontend/e2e/journeys/dq-compliance-governance/dq-compliance-governance-routes.spec.ts` - DQ routes
+- `frontend/e2e/use-cases/dq/UC-DQ-001.spec.ts` - Phase 29.4.1 use case spec
 
 **Use Cases**: UC-DQ-001 through UC-DQ-004
 **Journeys**: JOURNEY-DPO-004, JOURNEY-DE-003
@@ -173,6 +213,7 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 
 **Frontend Specs**:
 - `frontend/e2e/journeys/dq-compliance-governance/dq-compliance-governance-routes.spec.ts` - Compliance routes
+- `frontend/e2e/use-cases/compliance/UC-COMP-001.spec.ts` - Phase 29.4.1 use case spec
 
 **Use Cases**: UC-COMP-001 through UC-COMP-003
 **Journeys**: JOURNEY-CPO-001, JOURNEY-DE-004
@@ -194,6 +235,7 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 **Frontend Specs**:
 - `frontend/e2e/journeys/marketplace-dc/marketplace-dc-routes.spec.ts` - Marketplace routes
 - `frontend/e2e/phase4-marketplace-journey.spec.ts` - Marketplace journey
+- `frontend/e2e/use-cases/marketplace/UC-MKT-001.spec.ts` through `UC-MKT-004.spec.ts` - Phase 29.4.1 use case specs
 
 **Use Cases**: UC-MKT-001 through UC-MKT-005, UC-MKT-ADV-001 through UC-MKT-ADV-005
 **Journeys**: JOURNEY-DPO-002, JOURNEY-DPO-006, JOURNEY-DC-001, JOURNEY-DC-011, JOURNEY-DC-012, JOURNEY-DC-015
@@ -287,6 +329,7 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 
 **Frontend Specs**:
 - `frontend/e2e/journeys/integrations-jobs-webhooks/integrations-jobs-webhooks-routes.spec.ts` - Webhooks routes
+- `frontend/e2e/use-cases/webhooks/UC-WH-001.spec.ts` - Phase 29.4.2 use case spec
 
 **Use Cases**: UC-WEBHOOK-001 (referenced)
 **Journeys**: JOURNEY-DEV-001 (includes webhook integration)
@@ -436,6 +479,7 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 
 **Frontend Specs**:
 - `frontend/e2e/journeys/integrations-jobs-webhooks/integrations-jobs-webhooks-routes.spec.ts`
+- `frontend/e2e/use-cases/integrations/UC-INT-001.spec.ts`, `UC-INT-002.spec.ts` - Phase 29.4.2 use case specs
 
 **Use Cases**: UC-INT-001 through UC-INT-005, UC-DEV-007 (connector framework)
 **Journeys**: JOURNEY-DE-010, JOURNEY-DE-011, JOURNEY-TA-008
@@ -469,8 +513,10 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 
 **Frontend Specs**:
 - Covered by DPO asset-creation-flow and data-first flow specs
+- `frontend/e2e/use-cases/ux/files-upload.spec.ts` - Files upload (Phase 29.66.15)
 
-**Use Cases**: UC-AM-001 (data upload in data-first flow)
+**Use Cases**: UC-AM-001 (data upload in data-first flow), UC-FILE-UPLOAD (upload file)
+**Journeys**: JOURNEY-DE-015 (upload file via Files page)
 **Journeys**: JOURNEY-DPO-001
 
 ---
@@ -533,10 +579,16 @@ This section maps each feature from [FEATURES.md](FEATURES.md) to its correspond
 - Marketplace and asset tests covering ratings/reviews
 
 **Frontend Specs**:
+- `frontend/e2e/features/social.spec.ts` - Communities route, social on asset page (Phase 27.1), rate/review E2E (Phase 27.3.2)
+- `frontend/e2e/journeys/dc/JOURNEY-DC-008.spec.ts` - Rate and Review Asset; asset page Community section
+- `frontend/e2e/journeys/dpo/JOURNEY-DPO-009.spec.ts` - Manage Asset Ratings and Reviews; asset page Community section
+- `frontend/e2e/journeys/admin-audit-settings/admin-audit-settings-routes.spec.ts` - /communities route
 - Covered by marketplace-dc and DPO journey specs (ratings, reviews)
 
 **Use Cases**: UC-SOCIAL-001 through UC-SOCIAL-006
 **Journeys**: JOURNEY-DPO-009, JOURNEY-DC-008, JOURNEY-DC-009, JOURNEY-CM-001 through JOURNEY-CM-004
+
+**Phase 27.1–27.3**: Social (ratings, reviews, comments) embedded on asset detail page; /social redirects to /communities.
 
 ---
 
@@ -604,11 +656,16 @@ This section maps each use case from [USE_CASES.md](USE_CASES.md) to its corresp
 #### UC-AUTH-001: User Registers (Self-Service Sign-Up)
 
 **Backend Tests**:
+- `hub/apps/auth/tests/test_register_me.py` - Registration flow, personal tenant (useronboardfix)
 - `hub/apps/auth/tests/test_authentication.py` - Registration flow
+- `tests/e2e/test_authentication.py` - E2E: test_register_without_tenant_creates_personal_tenant_and_user_can_use_platform
+- `tests/integration/test_personal_tenant_registration.py` - Personal tenant registration flow
 - `tests/integration/test_tenant_isolation.py` - Tenant assignment
+- `tests/e2e/test_persona_data_provider.py` - test_personal_tenant_registered_user_can_create_assets
 
 **Frontend Specs**:
-- `frontend/e2e/journeys/auth/JOURNEY-AUTH-001.spec.ts` - Registration journey
+- `frontend/e2e/journeys/auth/JOURNEY-AUTH-001.spec.ts` - Registration journey, visitor_registers_and_has_personal_tenant, visitor_registers_and_can_create_asset
+- `frontend/e2e/auth-visitor-journeys.spec.ts` - Visitor registration wrapper
 
 **Journey**: JOURNEY-AUTH-001
 
@@ -651,17 +708,37 @@ This section maps each use case from [USE_CASES.md](USE_CASES.md) to its corresp
 
 ---
 
+#### UC-AUTH-005: User Switches Active Tenant
+
+**Backend Tests**:
+- `hub/apps/auth/tests/test_tenant_switch.py` - GET /auth/me/tenants/, POST /auth/switch-tenant/, X-Tenant-Id middleware, feature flag
+- `hub/apps/users/tests/test_user_tenant_membership.py` - UserTenantMembership model and service
+- `tests/integration/test_tenant_switch_integration.py` - Full switch flow, X-Tenant-Id scoping
+- `tests/security/test_tenant_switch_security.py` - No cross-tenant switch, membership validation
+
+**Frontend Specs**:
+- `frontend/e2e/use-cases/auth/tenant-switch.spec.ts` - Login → switch tenant → verify context
+
+**Journey**: JOURNEY-AUTH-005
+
+---
+
 ### Asset Management Use Cases
 
 #### UC-AM-001: Create Asset via Data-First Flow
 
 **Backend Tests**:
 - `hub/apps/assets/tests/test_asset_crud.py` - Asset creation
+- `hub/apps/assets/tests/test_data_first_asset_api.py` - Data-first API (POST /assets/data-first/)
 - `hub/apps/assets/tests/test_services.py` - Asset service
+- `tests/integration/test_data_first_asset_flow.py` - Data-first flow integration
+- `tests/security/test_data_first_asset_idor.py` - Data-first IDOR (cross-tenant file_id)
 
 **Frontend Specs**:
 - `frontend/e2e/journeys/dpo/JOURNEY-DPO-001.spec.ts` - Data-first flow journey
-- `frontend/e2e/journeys/dpo/asset-creation-flow.spec.ts` - Asset creation flow
+- `frontend/e2e/journeys/dpo/dataset-creation-flow.spec.ts` - Dataset Create (data-first create_new)
+- `frontend/e2e/journeys/dpo/asset-creation-flow.spec.ts` - Asset Create ("I have data" redirect)
+- `frontend/e2e/use-cases/assets/UC-AM-001.spec.ts` - Phase 29.4.1 use case spec
 
 **Journey**: JOURNEY-DPO-001
 
@@ -736,7 +813,7 @@ This section maps each use case from [USE_CASES.md](USE_CASES.md) to its corresp
 
 *Note: Additional use cases are mapped in the full document. This is a representative sample.*
 
-**Use Case Coverage Index** (all use cases have test coverage documented via Feature or Use Case sections above): UC-AUTH-001, UC-AUTH-002, UC-AUTH-003, UC-AUTH-004, UC-AM-001, UC-AM-002, UC-AI-001, UC-AI-002, UC-AI-003, UC-AI-004, UC-AI-005, UC-AI-006, UC-AI-007, UC-AI-008, UC-AI-009, UC-AI-010, UC-SOCIAL-001, UC-SOCIAL-002, UC-SOCIAL-003, UC-SOCIAL-004, UC-SOCIAL-005, UC-SOCIAL-006, UC-MESH-001, UC-MESH-002, UC-MESH-003, UC-MESH-004, UC-MESH-005, UC-VIRT-001, UC-VIRT-002, UC-VIRT-003, UC-VIRT-004, UC-MKT-ADV-001, UC-MKT-ADV-002, UC-MKT-ADV-003, UC-MKT-ADV-004, UC-MKT-ADV-005, UC-GOV-ADV-001, UC-GOV-ADV-002, UC-GOV-ADV-002A, UC-GOV-ADV-003, UC-GOV-ADV-004, UC-OBS-ADV-001, UC-OBS-ADV-002, UC-OBS-ADV-003, UC-OBS-ADV-004, UC-INT-001, UC-INT-002, UC-INT-003, UC-INT-004, UC-INT-005, UC-DEV-001, UC-DEV-002, UC-DEV-003, UC-DEV-004, UC-DEV-007, UC-DEV-008, UC-DEV-009, UC-CM-001, UC-CM-002, UC-CM-003, UC-CM-004, UC-COMP-001, UC-CPO-006, UC-CPO-007, UC-CPO-008, UC-CPO-009, UC-CPO-010, UC-DA-003, UC-DA-004, UC-DC-001, UC-DC-006, UC-DC-008, UC-DC-011, UC-DC-012, UC-DC-013, UC-DE-005, UC-DE-009, UC-DE-010, UC-DE-011, UC-DE-012, UC-DMO-001, UC-DMO-002, UC-DMO-003, UC-DMO-005, UC-DPO-002, UC-DPO-010, UC-DPO-014, UC-DQ-001, UC-EXPORT-001, UC-EXPORT-002, UC-EXPORT-003, UC-EXPORT-004, UC-TA-007, UC-TA-008.
+**Use Case Coverage Index** (all use cases have test coverage documented via Feature or Use Case sections above): UC-AUTH-001, UC-AUTH-002, UC-AUTH-003, UC-AUTH-004, UC-AUTH-005, UC-AM-001, UC-AM-002, UC-AI-001, UC-AI-002, UC-AI-003, UC-AI-004, UC-AI-005, UC-AI-006, UC-AI-007, UC-AI-008, UC-AI-009, UC-AI-010, UC-SOCIAL-001, UC-SOCIAL-002, UC-SOCIAL-003, UC-SOCIAL-004, UC-SOCIAL-005, UC-SOCIAL-006, UC-MESH-001, UC-MESH-002, UC-MESH-003, UC-MESH-004, UC-MESH-005, UC-VIRT-001, UC-VIRT-002, UC-VIRT-003, UC-VIRT-004, UC-MKT-ADV-001, UC-MKT-ADV-002, UC-MKT-ADV-003, UC-MKT-ADV-004, UC-MKT-ADV-005, UC-GOV-ADV-001, UC-GOV-ADV-002, UC-GOV-ADV-002A, UC-GOV-ADV-003, UC-GOV-ADV-004, UC-OBS-ADV-001, UC-OBS-ADV-002, UC-OBS-ADV-003, UC-OBS-ADV-004, UC-INT-001, UC-INT-002, UC-INT-003, UC-INT-004, UC-INT-005, UC-DEV-001, UC-DEV-002, UC-DEV-003, UC-DEV-004, UC-DEV-007, UC-DEV-008, UC-DEV-009, UC-CM-001, UC-CM-002, UC-CM-003, UC-CM-004, UC-COMP-001, UC-CPO-006, UC-CPO-007, UC-CPO-008, UC-CPO-009, UC-CPO-010, UC-DA-003, UC-DA-004, UC-DC-001, UC-DC-006, UC-DC-008, UC-DC-011, UC-DC-012, UC-DC-013, UC-DE-005, UC-DE-009, UC-DE-010, UC-DE-011, UC-DE-012, UC-DMO-001, UC-DMO-002, UC-DMO-003, UC-DMO-005, UC-DPO-002, UC-DPO-010, UC-DPO-014, UC-DQ-001, UC-EXPORT-001, UC-EXPORT-002, UC-EXPORT-003, UC-EXPORT-004, UC-TA-007, UC-TA-008.
 
 ---
 
@@ -749,11 +826,15 @@ This section maps each user journey from [USER_JOURNEYS.md](USER_JOURNEYS.md) to
 #### JOURNEY-AUTH-001: First-Time Visitor Registers
 
 **Backend E2E Tests**:
+- `tests/e2e/test_authentication.py` - test_register_without_tenant_creates_personal_tenant_and_user_can_use_platform
+- `tests/e2e/test_persona_data_provider.py` - test_personal_tenant_registered_user_can_create_assets
+- `tests/integration/test_personal_tenant_registration.py` - register → login → fetch me, create asset, marketplace
 - `tests/integration/test_tenant_isolation.py` - Tenant creation during registration
-- `hub/apps/auth/tests/test_authentication.py` - Registration API
+- `hub/apps/auth/tests/test_register_me.py` - Personal tenant unit tests
 
 **Playwright Specs**:
-- `frontend/e2e/journeys/auth/JOURNEY-AUTH-001.spec.ts` - Registration journey
+- `frontend/e2e/journeys/auth/JOURNEY-AUTH-001.spec.ts` - Registration journey, visitor_registers_and_has_personal_tenant, visitor_registers_and_can_create_asset
+- `frontend/e2e/auth-visitor-journeys.spec.ts` - Visitor registration wrapper
 
 **Use Case**: UC-AUTH-001
 
@@ -793,6 +874,20 @@ This section maps each user journey from [USER_JOURNEYS.md](USER_JOURNEYS.md) to
 - `frontend/e2e/journeys/auth/JOURNEY-AUTH-004.spec.ts` - Public access journey
 
 **Use Case**: UC-AUTH-004
+
+---
+
+#### JOURNEY-AUTH-005: User Switches Active Tenant
+
+**Backend E2E Tests**:
+- `hub/apps/auth/tests/test_tenant_switch.py` - Tenant switch API and middleware
+- `tests/integration/test_tenant_switch_integration.py` - Full switch flow
+- `tests/security/test_tenant_switch_security.py` - Security (no cross-tenant)
+
+**Playwright Specs**:
+- `frontend/e2e/use-cases/auth/tenant-switch.spec.ts` - Tenant switch journey
+
+**Use Case**: UC-AUTH-005
 
 ---
 
@@ -932,7 +1027,7 @@ This section maps each persona from [USER_PERSONAS.md](USER_PERSONAS.md) to thei
 
 | Persona | Test Coverage |
 |----------|---------------|
-| **Visitor / Prospect** | Auth tests: `hub/apps/auth/tests/test_authentication.py`, `test_sessions.py`; E2E: `tests/e2e/test_authentication.py`; Frontend: `frontend/e2e/journeys/auth/JOURNEY-AUTH-001.spec.ts` through `JOURNEY-AUTH-004.spec.ts`; Public endpoints: `tests/security/test_allowany_public_endpoints.py`. |
+| **Visitor / Prospect** | Auth tests: `hub/apps/auth/tests/test_authentication.py`, `test_sessions.py`, `test_tenant_switch.py`; E2E: `tests/e2e/test_authentication.py`; Frontend: `frontend/e2e/journeys/auth/JOURNEY-AUTH-001.spec.ts` through `JOURNEY-AUTH-004.spec.ts`, `frontend/e2e/use-cases/auth/tenant-switch.spec.ts`; Public endpoints: `tests/security/test_allowany_public_endpoints.py`. |
 | **Data Product Owner** | Persona E2E: `tests/e2e/test_persona_dpo_comprehensive.py`; Backend: assets, contracts, marketplace, DQ, compliance tests; Frontend: `frontend/e2e/journeys/dpo/*`, asset-creation-flow, contract-creation-flow, JOURNEY-DPO-001/002, scheduled-export. |
 | **Data Engineer / Contract Author** | Persona E2E: `tests/e2e/test_persona_data_engineer_comprehensive.py`; Backend: contracts, orchestration, scheduled ingestion/export, lineage tests; Frontend: contract/ODPS journeys, JOURNEY-DE-* specs. |
 | **Compliance & Privacy Officer** | Persona E2E: `tests/e2e/test_persona_cpo_comprehensive.py`; Backend: `hub/apps/compliance/tests/`, governance, GDPR tests; Frontend: dq-compliance-governance routes, JOURNEY-CPO-* specs. |
@@ -960,7 +1055,7 @@ Backend E2E tests tagged with `uc_journey_persona` (equivalent to `uc or journey
 
 | Test File | Use Cases | Journeys | Personas |
 |-----------|-----------|----------|----------|
-| `tests/e2e/test_authentication.py` | UC-AUTH-001 … UC-AUTH-004 | JOURNEY-AUTH-001 … JOURNEY-AUTH-004 | Visitor |
+| `tests/e2e/test_authentication.py` | UC-AUTH-001 … UC-AUTH-005 | JOURNEY-AUTH-001 … JOURNEY-AUTH-005 | Visitor |
 | `tests/e2e/test_persona_dpo_comprehensive.py` | — | JOURNEY-DPO-001 … JOURNEY-DPO-006 | Data Product Owner |
 | `tests/e2e/test_persona_data_engineer_comprehensive.py` | — | JOURNEY-DE-001 … JOURNEY-DE-006 | Data Engineer |
 | `tests/e2e/test_persona_cpo_comprehensive.py` | — | JOURNEY-CPO-001 … JOURNEY-CPO-005 | Compliance Officer |
@@ -990,6 +1085,8 @@ All **~109 use cases** from [USE_CASES.md](USE_CASES.md) mapped to feature secti
 |-------------|----------|--------------------------------------|
 | UC-AUTH-001 … UC-AUTH-004 | Auth & Access | [Auth](#auth), [UC-AUTH-001–004](#authentication--access-use-cases) |
 | UC-AM-001, UC-AM-002 | Asset Management | [Assets](#assets), [Marketplace](#marketplace) |
+| UC-DS-EDIT | Datasets | [Datasets](#datasets), `frontend/e2e/use-cases/ux/dataset-edit.spec.ts` |
+| UC-FILE-UPLOAD | Files | [Files](#files), `frontend/e2e/use-cases/ux/files-upload.spec.ts` |
 | UC-AI-001 … UC-AI-010 | AI/ML | [AI](#ai), [ML](#ml), [Search](#search) |
 | UC-SOCIAL-001 … UC-SOCIAL-006 | Social | [Social](#social) |
 | UC-MESH-001 … UC-MESH-005 | Data Mesh | [Data Mesh](#data-mesh) |
@@ -1017,13 +1114,13 @@ All **~109 use cases** from [USE_CASES.md](USE_CASES.md) mapped to feature secti
 
 ## Complete User Journey Index
 
-All **96 user journeys** from [USER_JOURNEYS.md](USER_JOURNEYS.md) and [MARKETPLACE_USER_JOURNEYS.md](MARKETPLACE_USER_JOURNEYS.md) mapped to Backend E2E and Frontend E2E/Playwright. Detailed mappings appear in [User Journey → Test Mapping](#user-journey--test-mapping).
+All **98 user journeys** from [USER_JOURNEYS.md](USER_JOURNEYS.md) and [MARKETPLACE_USER_JOURNEYS.md](MARKETPLACE_USER_JOURNEYS.md) mapped to Backend E2E and Frontend E2E/Playwright. Detailed mappings appear in [User Journey → Test Mapping](#user-journey--test-mapping).
 
 | Journey ID range | Persona | Test Reference |
 |------------------|---------|-----------------|
-| JOURNEY-AUTH-001 … JOURNEY-AUTH-004 | Visitor | [Auth journeys](#authentication-journeys), `frontend/e2e/journeys/auth/*.spec.ts` |
-| JOURNEY-DPO-001 … JOURNEY-DPO-017 | Data Product Owner | [DPO journeys](#data-product-owner-journeys), `frontend/e2e/journeys/dpo/*.spec.ts` |
-| JOURNEY-DE-001 … JOURNEY-DE-014 | Data Engineer | [DE journeys](#data-engineer-journeys), scheduled-ingestion, integrations-jobs-webhooks, contracts-odps |
+| JOURNEY-AUTH-001 … JOURNEY-AUTH-005 | Visitor | [Auth journeys](#authentication-journeys), `frontend/e2e/journeys/auth/*.spec.ts`, `frontend/e2e/use-cases/auth/tenant-switch.spec.ts` |
+| JOURNEY-DPO-001 … JOURNEY-DPO-018 | Data Product Owner | [DPO journeys](#data-product-owner-journeys), `frontend/e2e/journeys/dpo/*.spec.ts`, `frontend/e2e/use-cases/ux/dataset-edit.spec.ts`, `asset-dataset-flow.spec.ts` |
+| JOURNEY-DE-001 … JOURNEY-DE-015 | Data Engineer | [DE journeys](#data-engineer-journeys), scheduled-ingestion, integrations-jobs-webhooks, contracts-odps, `frontend/e2e/use-cases/ux/files-upload.spec.ts` |
 | JOURNEY-CPO-001 … JOURNEY-CPO-010 | Compliance Officer | [CPO journeys](#compliance--privacy-officer-journeys), dq-compliance-governance, governance-retention |
 | JOURNEY-DC-001 … JOURNEY-DC-015 | Data Consumer | [DC journeys](#data-consumer-journeys), marketplace-dc, mesh-virtualization-search-ai |
 | JOURNEY-TA-001 … JOURNEY-TA-008 | Tenant Admin | [TA journeys](#tenant-admin-journeys), admin-audit-settings, governance-retention |
@@ -1061,6 +1158,19 @@ All **96 user journeys** from [USER_JOURNEYS.md](USER_JOURNEYS.md) and [MARKETPL
 
 **Use Cases**: UC-BILLING-001 through UC-BILLING-005 (referenced in Phase 25)
 **Journeys**: JOURNEY-TA-007 (cost tracking)
+
+### Cost Tracking (UC-TA-007)
+
+**Feature**: Usage → cost conversion, cost breakdown by category/asset, recommendations, trends
+
+**Backend Tests**:
+- `hub/apps/api/tests/test_cost_tracking.py` - CostTrackingService, CostsViewSet (16 tests)
+
+**E2E Tests**:
+- `frontend/e2e/journeys/ta/JOURNEY-TA-007.spec.ts` - Cost page at /settings/cost
+
+**Use Cases**: UC-TA-007
+**Journeys**: JOURNEY-TA-007
 
 ---
 
@@ -1393,6 +1503,98 @@ This section maps **Gap Remediation Plan** phases (see [openspec/changes/testrev
 
 **Supporting capabilities** (Notifications, Billing, Platform, Tenants, Users, Analytics, Events) are covered in [Supporting Capabilities](#supporting-capabilities) above and in [FEATURES.md](FEATURES.md#supporting-capabilities). They are not standalone product features; coverage is via the features that use them.
 
+### useronboardfix Gap Coverage (Phases 7–17)
+
+This subsection maps **useronboardfix** gap coverage phases ([openspec/changes/useronboardfix](../openspec/changes/useronboardfix)) to tests, documentation, and manual test scripts.
+
+| Phase | Feature | API Endpoints | Backend Tests | E2E Specs | Manual Scripts | Docs |
+|-------|---------|---------------|---------------|----------|---------------|------|
+| **7** | User profile edit | `PATCH /api/v1/auth/me/` | `hub/apps/auth/tests/` | — | — | [API_REFERENCE.md](API_REFERENCE.md#user-profile) |
+| **8** | Tenant usage & config | `GET/PATCH /api/v1/tenants/me/usage/`, `GET/PATCH /api/v1/tenants/me/config/` | `hub/apps/tenants/tests/` | `JOURNEY-TA-TENANT-SETTINGS.spec.ts` | [JOURNEY-TA-TENANT-SETTINGS.md](../ManualTest/Front/03-USER-JOURNEYS/ta/JOURNEY-TA-TENANT-SETTINGS.md) | [API_REFERENCE.md](API_REFERENCE.md#tenants) |
+| **9** | Billing subscription | `GET /api/v1/billing/subscription/current/` | `hub/apps/billing/tests/` | — | — | [API_REFERENCE.md](API_REFERENCE.md#billing), [BILLING.md](BILLING.md) |
+| **17** | Change plan & invoices | `POST .../change-plan/`, `GET /api/v1/billing/plans/`, `GET /api/v1/billing/invoices/`, `GET .../invoices/{id}/download/` | `hub/apps/billing/tests/` | `JOURNEY-TA-SUBSCRIPTION.spec.ts` | [JOURNEY-TA-SUBSCRIPTION.md](../ManualTest/Front/03-USER-JOURNEYS/ta/JOURNEY-TA-SUBSCRIPTION.md) | [API_REFERENCE.md](API_REFERENCE.md#billing), [RUNBOOKS.md#subscription-plan-change-failures](RUNBOOKS.md#subscription-plan-change-failures) |
+| **10** | Admin user edit | `PUT /api/v1/users/{id}/` | `hub/apps/users/tests/test_views.py`, `test_admin_user_edit.py` | `JOURNEY-TA-002.spec.ts` (Manage Users; /admin), `admin-audit-settings-routes.spec.ts` (/admin; PA-009) | [JOURNEY-TA-002.md](../ManualTest/Front/03-USER-JOURNEYS/ta/JOURNEY-TA-002.md) | [API_REFERENCE.md](API_REFERENCE.md#users) |
+
+**Journeys**: JOURNEY-TA-SUBSCRIPTION (subscription page, change plan, invoice history), JOURNEY-TA-TENANT-SETTINGS (usage tab, config tab, trust signals/versioning/workflows toggles).
+
+**Phase 10–27 Consolidated Mapping** (Task 28.6.2):
+
+| Phase | Feature / Scope | Backend Tests | E2E Specs | Run Script |
+|-------|-----------------|---------------|-----------|------------|
+| 10 | Admin user edit | `hub/apps/users/tests/test_views.py`, `test_admin_user_edit.py` | JOURNEY-TA-002, admin-audit-settings-routes | `run_phase10_tests.sh` |
+| 11 | Trust signals config | `hub/apps/tenants/tests/`, `test_trust_signals_config_api_comprehensive` | JOURNEY-TA-TENANT-SETTINGS | `run_phase11_tests.sh` |
+| 12 | Versioning config | `hub/apps/tenants/tests/`, `hub/apps/datasets/tests/` | JOURNEY-TA-TENANT-SETTINGS | `run_phase12_tests.sh` |
+| 13 | GDPR export/erasure | `hub/apps/gdpr/tests/` | JOURNEY-AUTH-PRIVACY | `run_phase13_tests.sh` |
+| 14 | Workflows config | `hub/apps/tenants/tests/`, `hub/apps/orchestration/tests/` | JOURNEY-TA-TENANT-SETTINGS | `run_phase14_tests.sh` |
+| 15 | Platform admin | `hub/apps/platform/tests/`, `hub/apps/tenants/tests/` | JOURNEY-PA-015 | `run_phase15_tests.sh` |
+| 16–19 | Tenant onboarding, change plan, cost tracking | Per phase | Per phase | `run_phase16_tests.sh`, etc. |
+| 20–24 | Virtualization, Data Mesh, ODBC (Phase 20–21) | `hub/apps/virtualization/tests/test_real_source_integration.py`, `test_virtualization_real_federated_e2e.py` | phase6-mesh-virtualization | `run_phase25_odbc_tests.sh` |
+| 25–26 | ODBC (Phase 28.4) | `test_services.py` (ODBCTest), `test_real_source_integration.py` | phase6-mesh-virtualization.spec.ts | `run_phase25_odbc_tests.sh`, `e2e-detect-api.sh` |
+| 27 | Social embed (Phase 28.5) | `hub/apps/social/tests/` | features/social.spec.ts, JOURNEY-DC-008/009, DPO-009/011/012, CM-001/004 | `run_phase28_5_tests.sh` |
+
+**Phase 28.2 — Phases 11–15 (P1) Traceability** (Task 28.2.2):
+
+| Phase | Feature | Backend Tests | E2E Specs | Run Script |
+|-------|---------|---------------|-----------|------------|
+| **11** | Trust signals config | `hub/apps/tenants/tests/test_tenant_me_views.py` (trust_signals), `test_services.py`, `tests/integration/test_trust_signals_config_api_comprehensive.py` | `JOURNEY-TA-TENANT-SETTINGS.spec.ts` (Phase 11: trust signals toggle) | `run_phase11_tests.sh` |
+| **12** | Versioning config | `test_tenant_me_views.py` (versioning), `test_services.py`, `hub/apps/datasets/tests/test_views.py` (versioning_disabled) | `JOURNEY-TA-TENANT-SETTINGS.spec.ts` (Phase 12: versioning toggle) | `run_phase12_tests.sh` |
+| **13** | GDPR export/erasure | `hub/apps/gdpr/tests/test_gdpr_views.py`, `test_gdpr_services.py` | `JOURNEY-AUTH-PRIVACY.spec.ts` (privacy page, request export) | `run_phase13_tests.sh` |
+| **14** | Workflows config | `test_tenant_me_views.py` (workflows), `test_services.py`, `test_tenant_config_serializers.py`, `hub/apps/orchestration/tests/test_workflows_api_integration.py` | `JOURNEY-TA-TENANT-SETTINGS.spec.ts` (Phase 14: workflows toggle) | `run_phase14_tests.sh` |
+| **15** | Platform admin | `hub/apps/platform/tests/test_views.py`, `hub/apps/tenants/tests/test_views.py` (suspend/reactivate) | `JOURNEY-PA-015.spec.ts` (Usage tab, Suspend/Resume) | `run_phase15_tests.sh` |
+
+**Unified run**: `./scripts/run_phase28_2_tests.sh` (backend + E2E for Phases 11–15).
+
+**Phase 28.4 — ODBC Test Updates** (Phases 25–26):
+
+| Item | Backend Tests | E2E Specs | Run Script |
+|------|---------------|-----------|------------|
+| ODBC unit (config validation) | `hub/apps/virtualization/tests/test_services.py` (VirtualizationServiceODBCTest) | — | `run_phase25_odbc_tests.sh` |
+| ODBC integration (host+database, connection_string) | `hub/apps/virtualization/tests/test_real_source_integration.py` (test_odbc_execute_against_hub_postgresql, test_odbc_execute_connection_string_mode) | — | `run_phase25_odbc_tests.sh` |
+| ODBC E2E (API create + execute) | — | `phase6-mesh-virtualization.spec.ts` (Phase 26.8) | `e2e-detect-api.sh e2e/phase6-mesh-virtualization.spec.ts -g "ODBC"` |
+| ODBC E2E (UI form create + execute) | — | `phase6-mesh-virtualization.spec.ts` (Phase 28.4.2) | Same |
+
+**Phase 29.4 — E2E Use Cases and Dimensions** (useronboardfix):
+
+| Item | E2E Specs | Run |
+|------|------------|-----|
+| UC-AM-001 (Create Asset via Data-First) | `use-cases/assets/UC-AM-001.spec.ts` | `npm run test:e2e -- e2e/use-cases/assets/` |
+| UC-CM-001, UC-CM-002 (Create/Validate Contract) | `use-cases/contracts/UC-CM-001.spec.ts`, `UC-CM-002.spec.ts` | `npm run test:e2e -- e2e/use-cases/contracts/` |
+| UC-DQ-001 (Run DQ Check) | `use-cases/dq/UC-DQ-001.spec.ts` | `npm run test:e2e -- e2e/use-cases/dq/` |
+| UC-COMP-001 (Run Compliance Scan) | `use-cases/compliance/UC-COMP-001.spec.ts` | `npm run test:e2e -- e2e/use-cases/compliance/` |
+| UC-MKT-001–004 (Publish, Browse, Purchase, Entitlements) | `use-cases/marketplace/UC-MKT-001.spec.ts` through `UC-MKT-004.spec.ts` | `npm run test:e2e -- e2e/use-cases/marketplace/` |
+| UC-ODPS-001–003 (ODPS list, upload, detail) | `use-cases/odps/UC-ODPS-001.spec.ts` through `UC-ODPS-003.spec.ts` | `npm run test:e2e -- e2e/use-cases/odps/` |
+| UC-INT-001, UC-INT-002 (List Integrations, Create Connector) | `use-cases/integrations/UC-INT-001.spec.ts`, `UC-INT-002.spec.ts` | `npm run test:e2e -- e2e/use-cases/integrations/` |
+| UC-WH-001 (Create/Manage Webhook) | `use-cases/webhooks/UC-WH-001.spec.ts` | `npm run test:e2e -- e2e/use-cases/webhooks/` |
+| Failure scenarios (≥7) | `cross-cutting/failure-scenarios-tests.spec.ts` (session expiry, invalid JSON, 404, 403, API error, network error, 429); imported by `dimensions/failure-scenarios.spec.ts` | `npm run test:e2e -- e2e/cross-cutting/failure-scenarios-tests.spec.ts` |
+| Edge cases (≥5) | `cross-cutting/edge-cases-tests.spec.ts`; imported by `dimensions/edge-cases.spec.ts` | `npm run test:e2e -- e2e/cross-cutting/edge-cases-tests.spec.ts` |
+| Happy paths aggregator | `dimensions/happy-paths.spec.ts` (imports use-cases) | `npm run test:e2e -- e2e/dimensions/happy-paths.spec.ts` |
+
+**Full Phase 29.4 run**: `npm run test:e2e -- e2e/use-cases/ e2e/cross-cutting/failure-scenarios-tests.spec.ts e2e/cross-cutting/edge-cases-tests.spec.ts --project=chromium`
+
+**Phase 28.7 + 29.0 — Meshant Design System Test Coverage**:
+
+| Aspect | Unit Tests | E2E Specs | Run |
+|--------|------------|------------|-----|
+| Design tokens (primary, secondary, accent; typography; spacing; breakpoints) | `frontend/src/shared/design-system/__tests__/tokens.test.ts` | — | `npm run test:run -- src/shared/design-system/` |
+| Brand (APP_NAME) | `frontend/src/shared/constants/__tests__/brand.test.ts` | `e2e/design-system/meshant-brand.spec.ts` | `npm run test:run -- src/shared/constants/`; E2E: `e2e/design-system/` |
+| Layout (.app-main max-width 1200px, sidebar 240px, centered) | — | `e2e/design-system/meshant-layout.spec.ts` | `npm run test:e2e -- e2e/design-system/ --project=chromium` |
+| Typography (body Inter, headings) | — | `e2e/design-system/meshant-typography.spec.ts` | Same |
+| Full Meshant suite | design-system + constants | meshant-brand, meshant-layout, meshant-typography | `frontend/scripts/run_meshant_tests.sh` |
+
+**Phase 28.5 — Social Embed Test Updates** (Phase 27):
+
+| Item | E2E Specs | Run Script |
+|------|-----------|------------|
+| Communities, /social redirect, asset Community section | `features/social.spec.ts` | `run_phase28_5_tests.sh` |
+| Rate/review on asset page | `features/social.spec.ts` (Phase 27.3.2) | Same |
+| JOURNEY-DC-008, DC-009 | `journeys/dc/JOURNEY-DC-008.spec.ts`, `JOURNEY-DC-009.spec.ts` | Same |
+| JOURNEY-DPO-009, DPO-011, DPO-012 | `journeys/dpo/JOURNEY-DPO-009.spec.ts`, etc. | Same |
+| JOURNEY-CM-001, CM-004 | `journeys/cm/JOURNEY-CM-001.spec.ts`, `JOURNEY-CM-004.spec.ts` | Same |
+| admin-audit-settings-routes | `journeys/admin-audit-settings/admin-audit-settings-routes.spec.ts` | Same |
+| phase7-social-ai-developer-baas-ml | `phase7-social-ai-developer-baas-ml.spec.ts` | Same |
+
+**Detailed API docs**: [API_ENDPOINTS_REFERENCE.md](API_ENDPOINTS_REFERENCE.md) — Tenants, Billing, Users sections with request/response examples.
+
 ### Gap implementation plan (gapfix1) — Full test run and sign-off
 
 This subsection links the **gap implementation plan** ([openspec/changes/gapfix1](../openspec/changes/gapfix1)) to Phase 12A execution, evidence layout, test summary report generation, and sign-off (GAP_REMEDIATION_PLAN §11).
@@ -1454,6 +1656,22 @@ See [RUNBOOKS.md — Full suite sign-off record](RUNBOOKS.md#full-suite-sign-off
 
 ---
 
+## Validation and Documentation (29.7)
+
+**Task 29.7** defines validation and documentation requirements for E2E and security suites:
+
+| Item | Requirement | Reference |
+|------|-------------|-----------|
+| **29.7.1** | Full E2E suite: <30 min; no flaky tests | Backend: `pytest tests/e2e/`; Frontend: `npm run test:e2e`; CI `test` job |
+| **29.7.2** | Full security suite: <10 min | `pytest tests/security/` + ODPS ref resolver + penetration; CI `test-security`, `test-odps-ref-resolver-security` |
+| **29.7.3** | CI runs both suites; artifacts uploaded | [ci.yml](../.github/workflows/ci.yml): `test`, `test-security` jobs; artifacts: `test-results-*`, `security-test-results-*` |
+| **29.7.4** | SECURITY_TEST_COVERAGE.md | [SECURITY_TEST_COVERAGE.md](SECURITY_TEST_COVERAGE.md) — service × vulnerability × test file matrix |
+| **29.7.5** | Update TEST_TRACEABILITY, frontend/e2e/README, RUNBOOKS | This section; [frontend/e2e/README.md](../frontend/e2e/README.md); [RUNBOOKS.md](RUNBOOKS.md) |
+
+**Security test matrix**: See [SECURITY_TEST_COVERAGE.md](SECURITY_TEST_COVERAGE.md) for the complete service × vulnerability × test file mapping.
+
+---
+
 ## Cross-References
 
 ### In FEATURES.md
@@ -1491,5 +1709,5 @@ This document should be updated when:
 
 ---
 
-**Last Updated**: 2026-02-16
-**Version**: 1.3.0
+**Last Updated**: 2026-03-08
+**Version**: 1.6.0

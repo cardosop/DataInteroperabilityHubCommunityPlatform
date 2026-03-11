@@ -32,12 +32,15 @@ def render_email_template(
     Returns:
         Dict with 'html' and 'text' keys containing rendered content
     """
+    # Inject app_name for email templates (Phase 28.7.5 Meshant)
+    ctx = dict(context)
+    ctx.setdefault('app_name', getattr(settings, 'APP_NAME', 'Meshant'))
     # Render HTML template
-    html_content = render_to_string(template_name, context)
+    html_content = render_to_string(template_name, ctx)
 
     # Generate plain text from HTML if text template not provided
     if text_template_name:
-        text_content = render_to_string(text_template_name, context)
+        text_content = render_to_string(text_template_name, ctx)
     else:
         # Convert HTML to plain text
         if HTML2TEXT_AVAILABLE:

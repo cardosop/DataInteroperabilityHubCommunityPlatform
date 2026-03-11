@@ -23,6 +23,10 @@ COMPOSE_CMD="docker compose -f $COMPOSE_FILE $ENV_ARGS"
 echo "== Bringing up test stack (COMPOSE_FILE=$COMPOSE_FILE) =="
 echo ""
 
+# Step 0: Run ensure-test-db and migrate-test-db first (avoids "migrate-test-db is missing dependency ensure-test-db")
+echo "Step 0: Running ensure-test-db and migrate-test-db (one-offs)..."
+$COMPOSE_CMD up ensure-test-db migrate-test-db 2>&1 || true
+
 # Step 1: Initial up -d
 echo "Step 1: docker compose up -d --wait (wait for infra to be healthy)..."
 $COMPOSE_CMD up -d --wait 2>&1 || true

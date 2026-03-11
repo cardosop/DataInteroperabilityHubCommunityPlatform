@@ -1,0 +1,7 @@
+{
+  "apiVersion": "odcs.io/v3.0.2",
+  "kind": "DataContract",
+  "id": "invalid-missing-schema",
+  "name": "Invalid Contract - Missing Schema Fields",
+  "version": "1.0.0"
+}

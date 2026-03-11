@@ -8,7 +8,10 @@ import { useNavigate } from 'react-router-dom';
 import { useCreateODPSProduct, useODPSWorkflowStatus } from '../hooks/useODPS';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
+import { AssetPicker } from '../../../shared/components/pickers';
 import { ContractFormat } from '../../../shared/types/contracts';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import './ODPSUploadPage.css';
 
 export function ODPSUploadPage() {
@@ -16,7 +19,7 @@ export function ODPSUploadPage() {
   const [odpsContent, setOdpsContent] = useState('');
   const [format, setFormat] = useState<ContractFormat>(ContractFormat.JSON);
   const [resolveExternalRefs, setResolveExternalRefs] = useState(true);
-  const [assetId, setAssetId] = useState('');
+  const [assetId, setAssetId] = useState<string | null>(null);
   const [workflowInstanceId, setWorkflowInstanceId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const createMutation = useCreateODPSProduct();
@@ -72,18 +75,18 @@ export function ODPSUploadPage() {
         original_raw: odpsContent,
         original_format: format,
         resolve_external_refs: resolveExternalRefs,
-        asset_id: assetId || undefined,
+        asset_id: assetId ?? undefined,
       });
 
       setWorkflowInstanceId(response.workflow_instance_id);
-    } catch (error) {
-      // Error handled by mutation
-      console.error('Failed to create ODPS product:', error);
+    } catch {
+      // Error is surfaced via createMutation.error and displayed in the UI
     }
   };
 
   const handleReset = () => {
     setOdpsContent('');
+    setAssetId(null);
     setWorkflowInstanceId(null);
     createMutation.reset();
   };
@@ -94,6 +97,13 @@ export function ODPSUploadPage() {
 
   return (
     <div className="odps-upload-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'ODPS', href: '/odps' },
+          { label: 'Upload' },
+        ]}
+      />
       <div className="odps-upload-header">
         <button onClick={() => navigate('/odps')} className="btn-back" type="button">
           ← Back to ODPS
@@ -160,13 +170,12 @@ export function ODPSUploadPage() {
             </div>
 
             <div className="form-section">
-              <label htmlFor="asset-id">Asset ID (optional)</label>
-              <input
-                id="asset-id"
-                type="text"
+              <label htmlFor="asset-picker">Asset to link (optional)</label>
+              <AssetPicker
                 value={assetId}
-                onChange={(e) => setAssetId(e.target.value)}
-                placeholder="UUID of asset to link"
+                onChange={setAssetId}
+                placeholder="Search and select an asset to link..."
+                data-testid="odps-upload-asset-picker"
               />
             </div>
 
@@ -222,27 +231,27 @@ export function ODPSUploadPage() {
                 <h3>ODPS Product Created Successfully!</h3>
                 {workflowStatus.odps_contract && (
                   <div className="created-contracts">
-                    <p>
-                      <strong>ODPS Contract:</strong>{' '}
+                    <div className="created-contract-id">
+                      <UuidWithCopy value={workflowStatus.odps_contract.id} label="ODPS Contract" />
                       <button
                         onClick={() => navigate(`/odps/${workflowStatus.odps_contract!.id}`)}
                         className="btn-link"
                         type="button"
                       >
-                        {workflowStatus.odps_contract.id}
+                        View
                       </button>
-                    </p>
+                    </div>
                     {workflowStatus.odcs_contract && (
-                      <p>
-                        <strong>ODCS Contract:</strong>{' '}
+                      <div className="created-contract-id">
+                        <UuidWithCopy value={workflowStatus.odcs_contract.id} label="ODCS Contract" />
                         <button
                           onClick={() => navigate(`/contracts/${workflowStatus.odcs_contract!.id}`)}
                           className="btn-link"
                           type="button"
                         >
-                          {workflowStatus.odcs_contract.id}
+                          View
                         </button>
-                      </p>
+                      </div>
                     )}
                   </div>
                 )}

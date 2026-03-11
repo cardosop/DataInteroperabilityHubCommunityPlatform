@@ -3,6 +3,7 @@ Core Infrastructure - api|hub/apps/api/tests/
 Core Infrastructure - health|hub/apps/health/tests/
 Auth - auth 1|hub/apps/auth/tests/test_api_key_auth.py|hub/apps/auth/tests/test_authentication.py|hub/apps/auth/tests/test_authentication_flows.py|hub/apps/auth/tests/test_authorization.py|hub/apps/auth/tests/test_jwt_utils.py|hub/apps/auth/tests/test_middleware.py|hub/apps/auth/tests/test_models.py
 Auth - auth 2|hub/apps/auth/tests/test_register_me.py|hub/apps/auth/tests/test_sessions.py|hub/apps/auth/tests/test_sso.py|hub/apps/auth/tests/test_sso_integration.py
+Auth - tenant switch|hub/apps/users/tests/test_user_tenant_membership.py|hub/apps/auth/tests/test_tenant_switch.py|tests/integration/test_tenant_switch_integration.py|tests/security/test_tenant_switch_security.py
 Audit - audit 1|hub/apps/audit/tests/test_audit_event_creation.py|hub/apps/audit/tests/test_audit_event_querying.py|hub/apps/audit/tests/test_audit_policy_critical_paths.py|hub/apps/audit/tests/test_models.py|hub/apps/audit/tests/test_odps_audit_comprehensive_validation.py
 Audit - audit 2|hub/apps/audit/tests/test_utils.py|hub/apps/audit/tests/test_views.py
 Assets - assets 1|hub/apps/assets/tests/factories.py|hub/apps/assets/tests/test_activation_integration.py|hub/apps/assets/tests/test_asset_activation.py|hub/apps/assets/tests/test_asset_crud.py|hub/apps/assets/tests/test_asset_relationships.py|hub/apps/assets/tests/test_business_rules.py
@@ -64,4 +65,6 @@ Integrations & Mesh - mesh 1|hub/apps/mesh/tests/test_audit_logging.py|hub/apps/
 Integrations & Mesh - mesh 2|hub/apps/mesh/tests/test_data_mesh_service_comprehensive_validation.py|hub/apps/mesh/tests/test_governance_integration.py|hub/apps/mesh/tests/test_metrics.py|hub/apps/mesh/tests/test_migration.py|hub/apps/mesh/tests/test_models.py|hub/apps/mesh/tests/test_policy_compliance_models.py|hub/apps/mesh/tests/test_policy_topology_business_rules.py|hub/apps/mesh/tests/test_policy_topology_business_rules_refactoring.py
 Integrations & Mesh - mesh 3|hub/apps/mesh/tests/test_serializers.py|hub/apps/mesh/tests/test_services.py|hub/apps/mesh/tests/test_topology_endpoints.py
 Integrations & Mesh - mesh 4|hub/apps/mesh/tests/test_views.py
+Virtualization|hub/apps/virtualization/tests/
 Platform & Users|hub/apps/platform/tests/|hub/apps/users/tests/|hub/apps/social/tests/
+# Frontend UX E2E: run scripts/run_frontend_ux_tests.sh or npm run test:e2e:ux (tasks.md 29.66.15.4)

@@ -1,5 +1,5 @@
 {
-  "name": "Data Interoperability Hub",
+  "name": "Meshant",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},

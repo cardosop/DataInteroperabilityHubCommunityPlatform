@@ -1,15 +1,22 @@
 /**
  * ODPS Link Page
- * Link ODPS ↔ ODCS contracts
+ * Link ODPS ↔ ODCS contracts.
+ * Uses ContractPicker with specType=ODPS for "Link Existing ODPS" mode (task 29.69.6.3).
  */
 
 import { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useContract } from '../../contracts/hooks/useContracts';
+import { ContractPicker } from '../../../shared/components/pickers';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { useLinkODPS, useUnlinkODPS, useODPSLinks } from '../hooks/useODPS';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ContractFormat } from '../../../shared/types/contracts';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import './ODPSLinkPage.css';
 
 export function ODPSLinkPage() {
@@ -28,10 +35,12 @@ export function ODPSLinkPage() {
   const odcsContractId = isODPS && links?.odcs_link ? links.odcs_link.id : (isODCS ? id : null);
 
   const [linkMode, setLinkMode] = useState<'existing' | 'create'>('existing');
-  const [odpsContractId, setOdpsContractId] = useState('');
+  const [odpsContractId, setOdpsContractId] = useState<string | null>(null);
   const [odpsContent, setOdpsContent] = useState('');
   const [format, setFormat] = useState<ContractFormat>(ContractFormat.JSON);
   const [resolveExternalRefs, setResolveExternalRefs] = useState(true);
+  const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false);
+  const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (file: File) => {
@@ -63,8 +72,8 @@ export function ODPSLinkPage() {
 
     try {
       if (linkMode === 'existing') {
-        if (!odpsContractId.trim()) {
-          alert('Please provide ODPS contract ID');
+        if (!odpsContractId) {
+          toast.error('Please select an ODPS contract');
           return;
         }
         await linkMutation.mutateAsync({
@@ -73,7 +82,7 @@ export function ODPSLinkPage() {
         });
       } else {
         if (!odpsContent.trim()) {
-          alert('Please provide ODPS content');
+          toast.error('Please provide ODPS content');
           return;
         }
         await linkMutation.mutateAsync({
@@ -86,21 +95,22 @@ export function ODPSLinkPage() {
         });
       }
       refetchLinks();
-      alert('ODPS contract linked successfully!');
+      toast.success('ODPS contract linked successfully.');
     } catch (error) {
-      console.error('Failed to link ODPS:', error);
+      toast.error(normalizeError(error).error.message || 'Failed to link ODPS contract');
     }
   };
 
-  const handleUnlink = async () => {
-    if (!odcsContractId || !confirm('Are you sure you want to unlink the ODPS contract?')) return;
-
+  const handleUnlinkClick = () => setShowUnlinkConfirm(true);
+  const handleUnlinkConfirm = async () => {
+    if (!odcsContractId) return;
+    setShowUnlinkConfirm(false);
     try {
       await unlinkMutation.mutateAsync(odcsContractId);
       refetchLinks();
-      alert('ODPS contract unlinked successfully!');
-    } catch (error) {
-      console.error('Failed to unlink ODPS:', error);
+      toast.success('ODPS contract unlinked successfully.');
+    } catch (err) {
+      toast.error(normalizeError(err).error.message || 'Failed to unlink ODPS contract');
     }
   };
 
@@ -146,6 +156,14 @@ export function ODPSLinkPage() {
 
   return (
     <div className="odps-link-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: isODPS ? 'ODPS' : 'Contracts', href: isODPS ? '/odps' : '/contracts' },
+          { label: contract.name || 'Contract', href: id ? (isODPS ? `/odps/${id}` : `/contracts/${id}`) : undefined },
+          { label: 'Link ODPS' },
+        ]}
+      />
       <div className="odps-link-header">
         <button onClick={() => navigate(isODPS ? `/odps/${id}` : `/contracts/${id}`)} className="btn-back" type="button">
           ← Back to Contract
@@ -156,9 +174,9 @@ export function ODPSLinkPage() {
       <div className="odps-link-content">
         <div className="contract-info">
           <h2>{isODPS ? 'ODPS Contract' : 'ODCS Contract'}</h2>
-          <p>
-            <strong>ID:</strong> {contract.id}
-          </p>
+          <div className="contract-id-with-copy">
+            <UuidWithCopy value={contract.id} label={isODPS ? 'ODPS Contract ID' : 'ODCS Contract ID'} />
+          </div>
           <p>
             <strong>Name:</strong> {contract.name || 'Unnamed'}
           </p>
@@ -167,9 +185,7 @@ export function ODPSLinkPage() {
           </p>
           {isODPS && odcsContractId && (
             <div className="linked-odcs-info">
-              <p>
-                <strong>Linked ODCS Contract ID:</strong> {odcsContractId}
-              </p>
+              <UuidWithCopy value={odcsContractId} label="Linked ODCS Contract ID" />
             </div>
           )}
         </div>
@@ -178,16 +194,16 @@ export function ODPSLinkPage() {
           <div className="existing-link">
             <h2>Linked ODPS Contract</h2>
             <div className="linked-contract">
-              <p>
-                <strong>ID:</strong>{' '}
+              <div className="linked-contract-id">
+                <UuidWithCopy value={links!.odps_link!.id} label="ODPS Contract ID" />
                 <button
                   onClick={() => navigate(`/odps/${links!.odps_link!.id}`)}
                   className="btn-link"
                   type="button"
                 >
-                  {links!.odps_link!.id}
+                  View
                 </button>
-              </p>
+              </div>
               <p>
                 <strong>Name:</strong> {links!.odps_link!.name || 'Unnamed'}
               </p>
@@ -195,7 +211,7 @@ export function ODPSLinkPage() {
                 <strong>Status:</strong> {links!.odps_link!.normalization_status}
               </p>
             </div>
-            <button onClick={handleUnlink} disabled={unlinkMutation.isPending} className="btn-danger" type="button">
+            <button onClick={handleUnlinkClick} disabled={unlinkMutation.isPending} className="btn-danger" type="button">
               {unlinkMutation.isPending ? 'Unlinking...' : 'Unlink ODPS Contract'}
             </button>
           </div>
@@ -221,13 +237,13 @@ export function ODPSLinkPage() {
 
             {linkMode === 'existing' ? (
               <div className="form-section">
-                <label htmlFor="odps-contract-id">ODPS Contract ID</label>
-                <input
-                  id="odps-contract-id"
-                  type="text"
+                <label htmlFor="odps-contract-picker">ODPS Contract</label>
+                <ContractPicker
                   value={odpsContractId}
-                  onChange={(e) => setOdpsContractId(e.target.value)}
-                  placeholder="Enter ODPS contract UUID"
+                  onChange={setOdpsContractId}
+                  placeholder="Search and select an ODPS contract..."
+                  specType="ODPS"
+                  data-testid="odps-link-contract-picker"
                 />
               </div>
             ) : (
@@ -292,7 +308,7 @@ export function ODPSLinkPage() {
             <div className="form-actions">
               <button
                 onClick={handleLink}
-                disabled={linkMutation.isPending || (linkMode === 'existing' && !odpsContractId.trim()) || (linkMode === 'create' && !odpsContent.trim())}
+                disabled={linkMutation.isPending || (linkMode === 'existing' && !odpsContractId) || (linkMode === 'create' && !odpsContent.trim())}
                 className="btn-primary"
                 type="button"
               >
@@ -317,6 +333,16 @@ export function ODPSLinkPage() {
             )}
           </div>
         )}
+
+      <ConfirmDialog
+        isOpen={showUnlinkConfirm}
+        onClose={() => setShowUnlinkConfirm(false)}
+        onConfirm={handleUnlinkConfirm}
+        title="Unlink ODPS contract"
+        message="Are you sure you want to unlink the ODPS contract?"
+        confirmLabel="Unlink"
+        variant="warning"
+      />
       </div>
     </div>
   );

@@ -6,9 +6,14 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useMeshDomain, useDeleteMeshDomain, useDomainAnalytics, useDomainPolicies, useComplianceReports, useCheckCompliance } from '../hooks/useMesh';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { useAssets, useUpdateAsset } from '../../assets/hooks/useAssets';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './MeshDomainDetailPage.css';
 
 export function MeshDomainDetailPage() {
@@ -22,9 +27,11 @@ export function MeshDomainDetailPage() {
   const deleteMutation = useDeleteMeshDomain();
   const updateAssetMutation = useUpdateAsset();
   const checkComplianceMutation = useCheckCompliance();
+  const toast = useToast();
   
   const [selectedAssetId, setSelectedAssetId] = useState<string>('');
   const [showAssignAsset, setShowAssignAsset] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleAssignAsset = async () => {
     if (!id || !domain || !selectedAssetId) return;
@@ -64,13 +71,16 @@ export function MeshDomainDetailPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!id || !confirm('Are you sure you want to delete this domain? This action cannot be undone.')) return;
+  const handleDeleteClick = () => setShowDeleteConfirm(true);
+  const handleDeleteConfirm = async () => {
+    if (!id) return;
+    setShowDeleteConfirm(false);
     try {
       await deleteMutation.mutateAsync(id);
+      toast.success('Domain deleted.');
       navigate('/mesh');
     } catch (err) {
-      // Error handled by mutation
+      toast.error(normalizeError(err).error.message || 'Failed to delete domain');
     }
   };
 
@@ -92,15 +102,27 @@ export function MeshDomainDetailPage() {
           <button onClick={() => navigate(`/mesh/domains/${id}/edit`)} className="btn-secondary" type="button">
             Edit
           </button>
-          <button onClick={handleDelete} className="btn-danger" type="button" disabled={deleteMutation.isPending}>
+          <button onClick={handleDeleteClick} className="btn-danger" type="button" disabled={deleteMutation.isPending}>
             {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
           </button>
         </div>
       </div>
 
       <div className="mesh-domain-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Mesh', href: '/mesh' },
+            { label: domain.name || 'Domain' },
+          ]}
+        />
         <div className="domain-info-section">
           <h1>{domain.name}</h1>
+          {id && (
+            <div className="mesh-domain-uuid" data-testid="mesh-domain-uuid">
+              <UuidWithCopy value={id} label="Domain ID" />
+            </div>
+          )}
           {domain.description && <p className="domain-description">{domain.description}</p>}
           
           <div className="domain-metadata">
@@ -236,6 +258,16 @@ export function MeshDomainDetailPage() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete domain"
+        message="Are you sure you want to delete this domain? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

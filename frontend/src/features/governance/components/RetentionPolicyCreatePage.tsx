@@ -1,10 +1,16 @@
 /**
  * Retention Policy Create Page
- * Form for creating a new retention policy
+ * Form for creating a new retention policy.
+ * Uses AssetPicker, DatasetPicker, FilePicker for resource selection (task 29.69.6.2).
  */
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  AssetPicker,
+  DatasetPicker,
+  FilePicker,
+} from '../../../shared/components/pickers';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import type { ApiError } from '../../../shared/types/api';
 import type {
@@ -70,7 +76,7 @@ export function RetentionPolicyCreatePage() {
       setSubmitError({
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'At least one of Asset ID, Dataset ID, or File ID is required',
+          message: 'At least one of Asset, Dataset, or File is required',
           http_status: 400,
           request_id: 'unknown',
           timestamp: new Date().toISOString(),
@@ -171,25 +177,37 @@ export function RetentionPolicyCreatePage() {
 
         <div className="form-group">
           <label>Resource (at least one required)</label>
-          <div className="resource-inputs">
-            <input
-              type="text"
-              placeholder="Asset ID (optional)"
-              value={form.asset_id || ''}
-              onChange={(e) => setForm({ ...form, asset_id: e.target.value })}
-            />
-            <input
-              type="text"
-              placeholder="Dataset ID (optional)"
-              value={form.dataset_id || ''}
-              onChange={(e) => setForm({ ...form, dataset_id: e.target.value })}
-            />
-            <input
-              type="text"
-              placeholder="File ID (optional)"
-              value={form.file_id || ''}
-              onChange={(e) => setForm({ ...form, file_id: e.target.value })}
-            />
+          <div className="resource-inputs retention-picker-row">
+            <div className="retention-picker-field">
+              <label htmlFor="retention-asset-picker">Asset (optional)</label>
+              <AssetPicker
+                value={form.asset_id || null}
+                onChange={(id) => setForm({ ...form, asset_id: id ?? '' })}
+                placeholder="Search and select an asset..."
+                data-testid="retention-asset-picker"
+              />
+            </div>
+            <div className="retention-picker-field">
+              <label htmlFor="retention-dataset-picker">Dataset (optional)</label>
+              <DatasetPicker
+                value={form.dataset_id || null}
+                onChange={(id) => setForm({ ...form, dataset_id: id ?? '' })}
+                placeholder="Search and select a dataset..."
+                assetId={form.asset_id || undefined}
+                data-testid="retention-dataset-picker"
+              />
+            </div>
+            <div className="retention-picker-field">
+              <label htmlFor="retention-file-picker">File (optional)</label>
+              <FilePicker
+                value={form.file_id || null}
+                onChange={(id) => setForm({ ...form, file_id: id ?? '' })}
+                placeholder="Search and select a file..."
+                assetId={form.asset_id || undefined}
+                datasetId={form.dataset_id || undefined}
+                data-testid="retention-file-picker"
+              />
+            </div>
           </div>
         </div>
 

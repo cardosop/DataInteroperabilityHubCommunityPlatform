@@ -205,40 +205,40 @@ class GrafanaDashboardsE2ETest(TestCase):
         self.timeout = 5
     
     def _check_grafana_available(self):
-        """Check if Grafana is available"""
+        """Check if Grafana is available (single attempt)"""
         try:
-            # Try /api/health first
             response = requests.get(f"{self.grafana_url}/api/health", timeout=self.timeout)
             if response.status_code in [200, 401, 403]:
                 return True
         except (requests.exceptions.RequestException, requests.exceptions.Timeout):
             pass
-        
-        # Try root endpoint as fallback
         try:
             response = requests.get(f"{self.grafana_url}/", timeout=self.timeout)
             return response.status_code in [200, 302, 401, 403]
         except (requests.exceptions.RequestException, requests.exceptions.Timeout):
             return False
-    
+
+    def _check_grafana_with_retry(self, max_attempts=10, delay_seconds=5):
+        """Check Grafana availability with retries (handles slow startup in docker-compose)"""
+        for attempt in range(max_attempts):
+            if self._check_grafana_available():
+                return True
+            if attempt < max_attempts - 1:
+                time.sleep(delay_seconds)
+        return False
+
     def test_grafana_accessible(self):
         """Test that Grafana is accessible"""
-        if not self._check_grafana_available():
-            # Try alternative endpoints
-            try:
-                response = requests.get(f"{self.grafana_url}/", timeout=self.timeout)
-                if response.status_code in [200, 302, 401, 403]:
-                    # Grafana is accessible, just not via /api/health
-                    return
-            except requests.exceptions.RequestException:
-                pass
-            pytest.skip("Grafana not available")
-        
+        if not self._check_grafana_with_retry():
+            pytest.skip(
+                "Grafana not available (not reachable at %s after retries; "
+                "ensure grafana-test container is running)" % self.grafana_url
+            )
+
         try:
             response = requests.get(f"{self.grafana_url}/api/health", timeout=self.timeout)
             self.assertIn(response.status_code, [200, 401, 403])
         except requests.exceptions.RequestException:
-            # Try root endpoint as fallback
             try:
                 response = requests.get(f"{self.grafana_url}/", timeout=self.timeout)
                 self.assertIn(response.status_code, [200, 302, 401, 403])

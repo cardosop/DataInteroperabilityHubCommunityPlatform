@@ -8,6 +8,8 @@ import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { useAuditEvent } from '../hooks/useAudit';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './AuditEventDetailPage.css';
 
 export function AuditEventDetailPage() {
@@ -53,11 +55,20 @@ export function AuditEventDetailPage() {
       </div>
 
       <div className="audit-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Audit', href: '/audit' },
+            { label: 'Event' },
+          ]}
+        />
         <div className="audit-detail-section">
           <h2>Basic Information</h2>
           <dl className="audit-detail-list">
             <dt>ID</dt>
-            <dd>{event.id}</dd>
+            <dd>
+              <UuidWithCopy value={event.id} label="Event ID" />
+            </dd>
             <dt>Timestamp</dt>
             <dd>{new Date(event.timestamp).toLocaleString()}</dd>
             <dt>Tenant</dt>

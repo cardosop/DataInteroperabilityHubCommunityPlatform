@@ -29,6 +29,7 @@ export function ContractListPage() {
   if (!data || data.results.length === 0) {
     return (
       <EmptyState
+        data-testid="contract-list-empty-state"
         title="No contracts found"
         message="Get started by creating your first contract."
         action={{ label: 'Create Contract', onClick: handleCreateContract }}
@@ -37,14 +38,14 @@ export function ContractListPage() {
   }
 
   return (
-    <div className="contract-list-page">
-      <div className="contract-list-header">
+    <div className="contract-list-page" data-testid="contract-list-page">
+      <div className="contract-list-header" data-testid="contract-list-header">
         <h1>Contracts</h1>
         <button className="btn-primary" onClick={handleCreateContract} type="button">
           Create Contract
         </button>
       </div>
-      <div className="contract-list-table">
+      <div className="contract-list-table" data-testid="contract-list-table">
         <table role="table" aria-label="Contracts list">
           <thead>
             <tr>

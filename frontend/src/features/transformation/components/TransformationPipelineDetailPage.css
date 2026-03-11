@@ -1,0 +1,32 @@
+.transformation-detail-page {
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.transformation-detail-content h1 {
+  margin: 0 0 var(--spacing-md);
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.transformation-detail-metadata {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+}
+
+.transformation-detail-metadata .status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+}
+
+.transformation-detail-metadata .pipeline-id {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}

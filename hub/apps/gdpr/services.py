@@ -307,6 +307,7 @@ for privacy and storage reasons. Contact support if you need file contents.
             Storage path
         """
         storage_client = S3StorageClient()
+        storage_client._ensure_bucket_exists()
 
         # Generate storage path
         storage_path = f"data-exports/{job.user.tenant.id}/{job.id}/export.zip"
@@ -315,10 +316,24 @@ for privacy and storage reasons. Contact support if you need file contents.
         import boto3
         from botocore.config import Config
 
+        import os
+        import sys
+
+        _is_test = (
+            "pytest" in sys.modules
+            or "unittest" in sys.modules
+            or os.getenv("PYTEST_CURRENT_TEST")
+            or os.getenv("TESTING")
+            or getattr(settings, "TESTING", False)
+        )
+        _connect_timeout = 10 if _is_test else 60
+        _read_timeout = 30 if _is_test else 60
         s3_config = Config(
             signature_version="s3v4",
             s3={"addressing_style": "path"},
-            retries={"max_attempts": 3, "mode": "standard"},
+            retries={"max_attempts": 2 if _is_test else 3, "mode": "standard"},
+            connect_timeout=_connect_timeout,
+            read_timeout=_read_timeout,
         )
 
         s3_client = boto3.client(
@@ -386,7 +401,9 @@ class ErasureService(BaseService):
         Create an erasure request for a user.
 
         Args:
-            user_id: User ID requesting erasure
+            user_id: User ID whose data is to be erased (target user).
+                     When self.user_id is set and differs, the actor in audit
+                     is self.user_id (e.g. platform admin); else the target user.
 
         Returns:
             Created ErasureRequest instance
@@ -415,6 +432,20 @@ class ErasureService(BaseService):
                 user=user, tenant=user.tenant, status=ErasureRequestStatus.PENDING
             )
 
+            # Actor: use self.user_id (platform admin) when provided; else target user (self-requested)
+            # Lookup by id only (no tenant filter) so platform admins with tenant=None are found
+            actor_user = user
+            if self.user_id:
+                actor_user_obj = User.objects.filter(id=self.user_id).first()
+                if actor_user_obj:
+                    actor_user = actor_user_obj
+
+            # Build details: user_id, user_email; add initiated_by/source for platform-initiated
+            details = {"user_id": str(user_id), "user_email": user.email}
+            if str(actor_user.id) != str(user_id):
+                details["initiated_by"] = str(actor_user.id)
+                details["source"] = "platform_admin"
+
             # Log audit event
             from hub.apps.audit.utils import create_audit_event
 
@@ -422,9 +453,9 @@ class ErasureService(BaseService):
                 resource_type="ERASURE_REQUEST",
                 action="ERASURE_REQUESTED",
                 tenant=user.tenant,
-                actor_user=user,
+                actor_user=actor_user,
                 resource_id=str(request.id),
-                details={"user_id": str(user_id), "user_email": user.email},
+                details=details,
             )
 
             return request
@@ -468,16 +499,31 @@ class ErasureService(BaseService):
                     anonymized_fields.append("email")
                     anonymized_fields.append("display_name")
 
-                    # Revoke sessions
+                    # Revoke sessions: find sessions for this user by decoding session_data.
+                    # Use iterator + limit to avoid O(n) over huge session tables (e.g. shared
+                    # test DB).
                     from django.contrib.sessions.models import Session
 
-                    Session.objects.filter(
-                        session_key__in=[
-                            s.session_key
-                            for s in Session.objects.all()
-                            if hasattr(s, "get_decoded") and str(user.id) in str(s.get_decoded())
-                        ]
-                    ).delete()
+                    MAX_SESSIONS_TO_CHECK = 10000
+                    session_keys_to_delete = []
+                    checked = 0
+                    user_id_str = str(user.id)
+                    qs = Session.objects.only("session_key", "session_data")
+                    for s in qs.iterator(chunk_size=500):
+                        if checked >= MAX_SESSIONS_TO_CHECK:
+                            break
+                        checked += 1
+                        try:
+                            if hasattr(s, "get_decoded"):
+                                decoded = s.get_decoded()
+                                if decoded.get("_auth_user_id") == user_id_str:
+                                    session_keys_to_delete.append(s.session_key)
+                        except Exception:
+                            pass
+                    if session_keys_to_delete:
+                        Session.objects.filter(
+                            session_key__in=session_keys_to_delete
+                        ).delete()
                     deleted_resources.append("sessions")
 
                     # Revoke API keys

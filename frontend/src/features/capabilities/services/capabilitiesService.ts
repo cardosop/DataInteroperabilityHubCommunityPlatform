@@ -272,10 +272,14 @@ class CapabilitiesService {
       endpoint: '/api/v1/ml/inference/deployments/',
     };
 
-    // Transformation (should be Red - removed)
+    // Transformation pipelines (placeholder API exists at /api/v1/transformation/pipelines/)
+    const transformationAvailable =
+      '/api/v1/transformation/pipelines/' in paths ||
+      Object.keys(paths).some((p) => p.includes('transformation/pipelines'));
     capabilities['transformation'] = {
       name: 'Transformation',
-      available: false, // Explicitly false - feature removed
+      available: transformationAvailable,
+      endpoint: '/api/v1/transformation/pipelines/',
     };
 
     return capabilities;

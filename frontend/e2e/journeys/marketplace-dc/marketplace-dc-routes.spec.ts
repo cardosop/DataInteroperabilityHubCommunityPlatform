@@ -23,6 +23,9 @@ test.describe('Marketplace and Data Consumer routes', () => {
         return;
       }
       expect(page.url()).toContain('/marketplace');
+      await expect(
+        page.locator('.listing-list-page, .empty-state').first()
+      ).toBeVisible({ timeout: 10000 });
     });
 
     test('marketplace orders list loads', async ({ page }) => {
@@ -87,19 +90,19 @@ test.describe('Marketplace and Data Consumer routes', () => {
   });
 
   test.describe('Edge', () => {
-    test('governance access-requests loads or 403 when role missing', async ({ page }) => {
-      await page.goto('/governance');
+    test('marketplace listing detail with missing required params shows error or redirect', async ({
+      page,
+    }) => {
+      // Navigate to a listing URL with a well-formed but non-existent purchase flow path
+      await page.goto('/marketplace/listings/00000000-0000-0000-0000-000000000000/purchase');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
-      const onGov = page.url().includes('/governance');
-      const on403 = page.url().includes('/403');
-      const onLogin = page.url().includes('/login');
+      const url = page.url();
       const hasContent =
-        (await page.locator('.app-main').count()) > 0 &&
-        ((await page.locator('.error-display, .access-request-list-page, h1').count()) > 0 ||
-          (await page.locator('text=/access|request|403|forbidden/i').count()) > 0);
-      expect(onGov || on403 || onLogin).toBe(true);
-      expect(hasContent || onGov || on403 || onLogin).toBe(true);
+        (await page.locator('.error-display, .empty-state, .app-main').count()) > 0 ||
+        url.includes('/login') ||
+        url.includes('/marketplace');
+      expect(hasContent).toBe(true);
     });
   });
 });

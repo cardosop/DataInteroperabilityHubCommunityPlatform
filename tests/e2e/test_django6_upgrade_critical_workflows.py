@@ -457,59 +457,64 @@ class Django6DatabaseOperationsTest(TestCase):
     def test_transaction_rollback(self):
         """Test transaction rollback works correctly."""
         from django.db import transaction
-        
+
+        # Use unique key to isolate from other tests (shared DB)
+        unique_key = f"rollback-test-{self.tenant.id}"
         asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset"
+            key=unique_key,
+            name="Test Asset Rollback"
         )
-        
+
         try:
             with transaction.atomic():
                 Contract.objects.create(
                     tenant=self.tenant,
                     asset=asset,
-                    version=1,
+                    version=999,
                     status=ContractStatus.DRAFT,
                     original_spec_type=OriginalSpecType.ODCS,
                     original_spec_version="1.0.0",
                     original_format=OriginalFormat.JSON,
                     original_raw='{}',
                     hub_contract_version="1.0.0",
-                    hub_contract_json={"test": "data"},
+                    hub_contract_json={"test": "rollback"},
                     created_by=self.user
                 )
                 raise Exception("Test rollback")
         except Exception:
             pass
-        
-        # Contract should not exist after rollback
-        self.assertEqual(Contract.objects.count(), 0)
+
+        # Our contract should not exist after rollback (query by our asset)
+        self.assertEqual(Contract.objects.filter(asset=asset).count(), 0)
     
     def test_bulk_operations(self):
         """Test bulk operations work correctly."""
+        # Use unique key to isolate from other tests (shared DB)
+        unique_key = f"bulk-test-{self.tenant.id}"
         asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset"
+            key=unique_key,
+            name="Test Asset Bulk"
         )
-        
+
         contracts = []
         for i in range(10):
             contracts.append(Contract(
                 tenant=self.tenant,
                 asset=asset,
-                version=i+1,
+                version=1000 + i,
                 status=ContractStatus.DRAFT,
                 original_spec_type=OriginalSpecType.ODCS,
                 original_spec_version="1.0.0",
                 original_format=OriginalFormat.JSON,
                 original_raw='{}',
                 hub_contract_version="1.0.0",
-                hub_contract_json={"index": i},
+                hub_contract_json={"index": i, "test": "bulk"},
                 created_by=self.user
             ))
-        
+
         Contract.objects.bulk_create(contracts)
-        self.assertEqual(Contract.objects.count(), 10)
+        # Assert our asset's contracts (shared DB has data from other tests)
+        self.assertEqual(Contract.objects.filter(asset=asset).count(), 10)
 

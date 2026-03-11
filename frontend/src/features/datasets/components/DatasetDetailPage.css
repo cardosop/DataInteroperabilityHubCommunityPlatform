@@ -115,6 +115,31 @@
   font-family: inherit;
 }
 
+.dataset-edit-form .form-hint {
+  display: block;
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.dataset-edit-form .form-group-readonly .form-readonly-value {
+  margin: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-background-tertiary);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+}
+
+.dataset-edit-form .form-hint a {
+  color: var(--color-primary);
+}
+
+.dataset-linked-asset {
+  margin: var(--spacing-sm) 0;
+  font-size: var(--font-size-sm);
+}
+
 .btn-danger {
   padding: var(--spacing-sm) var(--spacing-lg);
   background: var(--color-error);

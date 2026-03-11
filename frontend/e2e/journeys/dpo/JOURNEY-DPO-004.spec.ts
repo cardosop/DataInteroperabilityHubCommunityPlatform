@@ -96,10 +96,11 @@ test.describe('JOURNEY-DPO-004: Monitor Asset Quality', () => {
       }
       expect(page.url()).toContain('/dq');
       // Wait for loading to complete and actual content to appear (not just loading spinner)
+      await waitForLoadingComplete(page, { timeout: 30000 });
       await page
         .locator('.dq-run-list-page, .empty-state, .error-display')
         .first()
-        .waitFor({ state: 'visible', timeout: 20000 });
+        .waitFor({ state: 'visible', timeout: 25000 });
       const hasPagination = (await page.locator('.dq-run-list-pagination').count()) > 0;
       const hasListOrEmpty =
         (await page.locator('.dq-run-list-page').count()) > 0 ||

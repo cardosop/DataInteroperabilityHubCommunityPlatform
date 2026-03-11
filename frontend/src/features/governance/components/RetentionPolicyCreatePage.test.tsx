@@ -35,6 +35,8 @@ vi.mock('axios', () => {
 
 import { apiClient } from '../../../shared/api/client';
 
+const VALID_ASSET_UUID = '550e8400-e29b-41d4-a716-446655440000';
+
 describe('RetentionPolicyCreatePage', () => {
   let queryClient: QueryClient;
   let mockAxiosInstance: AxiosInstance;
@@ -47,7 +49,15 @@ describe('RetentionPolicyCreatePage', () => {
     );
   }
 
+  const mockAssets = {
+    results: [
+      { id: VALID_ASSET_UUID, name: 'Test Asset', key: 'test-asset' },
+    ],
+    count: 1,
+  };
+
   beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
     vi.clearAllMocks();
     queryClient = new QueryClient({
       defaultOptions: {
@@ -59,6 +69,7 @@ describe('RetentionPolicyCreatePage', () => {
     const realClient = apiClient.getClient();
     mockAxiosInstance = realClient;
     vi.mocked(mockAxiosInstance.post).mockClear();
+    vi.mocked(mockAxiosInstance.get).mockResolvedValue({ data: mockAssets });
   });
 
   it('should render form fields', () => {
@@ -66,7 +77,9 @@ describe('RetentionPolicyCreatePage', () => {
 
     expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/asset id/i)).toBeInTheDocument();
+    expect(screen.getByTestId('retention-asset-picker')).toBeInTheDocument();
+    expect(screen.getByTestId('retention-dataset-picker')).toBeInTheDocument();
+    expect(screen.getByTestId('retention-file-picker')).toBeInTheDocument();
     expect(screen.getByLabelText(/policy type/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/retention period/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/action/i)).toBeInTheDocument();
@@ -78,8 +91,13 @@ describe('RetentionPolicyCreatePage', () => {
 
     render(<RetentionPolicyCreatePage />, { wrapper });
 
-    const assetIdInput = screen.getByPlaceholderText(/asset id/i);
-    await user.type(assetIdInput, 'asset-1');
+    const assetPickerInput = screen.getByTestId('retention-asset-picker').querySelector('input');
+    expect(assetPickerInput).toBeTruthy();
+    await user.click(assetPickerInput!);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Asset/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByText(/Test Asset/i));
 
     const retentionPeriodInput = screen.getByLabelText(/retention period/i);
     await user.type(retentionPeriodInput, '30');
@@ -114,7 +132,7 @@ describe('RetentionPolicyCreatePage', () => {
     await waitFor(
       () => {
         expect(
-          screen.getByText(/at least one of asset id, dataset id, or file id is required/i)
+          screen.getByText(/at least one of asset, dataset, or file is required/i)
         ).toBeInTheDocument();
       },
       { timeout: 3000 }
@@ -129,8 +147,13 @@ describe('RetentionPolicyCreatePage', () => {
     const nameInput = screen.getByLabelText(/name/i);
     await user.type(nameInput, 'Test Policy');
 
-    const assetIdInput = screen.getByPlaceholderText(/asset id/i);
-    await user.type(assetIdInput, 'asset-1');
+    const assetPickerInput = screen.getByTestId('retention-asset-picker').querySelector('input');
+    expect(assetPickerInput).toBeTruthy();
+    await user.click(assetPickerInput!);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Asset/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByText(/Test Asset/i));
 
     const policyTypeSelect = screen.getByLabelText(/policy type/i);
     expect(policyTypeSelect).toHaveValue(RetentionPolicyType.TIME_BASED);
@@ -160,7 +183,7 @@ describe('RetentionPolicyCreatePage', () => {
       name: 'Test Policy',
       tenant: 'tenant-1',
       description: 'Test description',
-      asset: 'asset-1',
+      asset: VALID_ASSET_UUID,
       dataset: null,
       file: null,
       policy_type: RetentionPolicyType.TIME_BASED,
@@ -189,8 +212,13 @@ describe('RetentionPolicyCreatePage', () => {
     const descriptionInput = screen.getByLabelText(/description/i);
     await user.type(descriptionInput, 'Test description');
 
-    const assetIdInput = screen.getByPlaceholderText(/asset id/i);
-    await user.type(assetIdInput, 'asset-1');
+    const assetPickerInput = screen.getByTestId('retention-asset-picker').querySelector('input');
+    expect(assetPickerInput).toBeTruthy();
+    await user.click(assetPickerInput!);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Asset/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByText(/Test Asset/i));
 
     const retentionPeriodInput = screen.getByLabelText(/retention period/i);
     await user.clear(retentionPeriodInput);
@@ -206,7 +234,7 @@ describe('RetentionPolicyCreatePage', () => {
           expect.objectContaining({
             name: 'Test Policy',
             description: 'Test description',
-            asset_id: 'asset-1',
+            asset_id: VALID_ASSET_UUID,
             policy_type: RetentionPolicyType.TIME_BASED,
             retention_period_days: 30,
             action: RetentionAction.SOFT_DELETE,
@@ -240,8 +268,13 @@ describe('RetentionPolicyCreatePage', () => {
     const nameInput = screen.getByLabelText(/name/i);
     await user.type(nameInput, 'Test Policy');
 
-    const assetIdInput = screen.getByPlaceholderText(/asset id/i);
-    await user.type(assetIdInput, 'asset-1');
+    const assetPickerInput = screen.getByTestId('retention-asset-picker').querySelector('input');
+    expect(assetPickerInput).toBeTruthy();
+    await user.click(assetPickerInput!);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Asset/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByText(/Test Asset/i));
 
     const retentionPeriodInput = screen.getByLabelText(/retention period/i);
     await user.clear(retentionPeriodInput);
@@ -272,8 +305,13 @@ describe('RetentionPolicyCreatePage', () => {
     const nameInput = screen.getByLabelText(/name/i);
     await user.type(nameInput, 'Test Policy');
 
-    const assetIdInput = screen.getByPlaceholderText(/asset id/i);
-    await user.type(assetIdInput, 'asset-1');
+    const assetPickerInput = screen.getByTestId('retention-asset-picker').querySelector('input');
+    expect(assetPickerInput).toBeTruthy();
+    await user.click(assetPickerInput!);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Asset/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByText(/Test Asset/i));
 
     const retentionPeriodInput = screen.getByLabelText(/retention period/i);
     await user.clear(retentionPeriodInput);
@@ -290,7 +328,7 @@ describe('RetentionPolicyCreatePage', () => {
         name: 'Test Policy',
         tenant: 'tenant-1',
         description: '',
-        asset: 'asset-1',
+        asset: VALID_ASSET_UUID,
         dataset: null,
         file: null,
         policy_type: RetentionPolicyType.TIME_BASED,

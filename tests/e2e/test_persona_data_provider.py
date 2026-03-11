@@ -5,8 +5,12 @@ Tests that DATA_PROVIDER:
 - Cannot access tenant configuration
 - Subject to rate limits
 - Can use CLI tool
+- User created via personal-tenant registration can create assets (useronboardfix 4.2.2)
 """
+import uuid
+
 import pytest
+from django.core.management import call_command
 from django.test import TestCase, RequestFactory
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -368,6 +372,46 @@ class DataProviderPersonaTest(E2ETestBase):
             self.assertIn("code", error)
             self.assertIn("message", error)
     
+    def test_personal_tenant_registered_user_can_create_assets(self):
+        """Useronboardfix 4.2.2: User created via personal-tenant registration can create assets."""
+        self.client.force_authenticate(user=None)
+        call_command("seed_default_plans")
+
+        email = f"personal-dp-{uuid.uuid4().hex[:8]}@example.com"
+        password = "SecurePass123"
+        name = "Personal Data Provider"
+
+        reg = self.client.post(
+            "/api/v1/auth/register/",
+            {"email": email, "password": password, "name": name},
+            format="json",
+        )
+        self.assertEqual(reg.status_code, status.HTTP_201_CREATED)
+        reg_data = get_response_data(reg) or {}
+        self.assertIn("tenant_id", reg_data)
+        self.assertIsNotNone(reg_data.get("tenant_id"))
+
+        login_resp = self.client.post(
+            "/api/v1/auth/login/",
+            {"email": email, "password": password},
+            format="json",
+        )
+        self.assertEqual(login_resp.status_code, status.HTTP_200_OK)
+        access_token = (get_response_data(login_resp) or {}).get("access_token")
+        self.assertIsNotNone(access_token)
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+
+        asset_resp = self.client.post(
+            "/api/v1/assets/",
+            {"key": "persona-personal-asset", "name": "Personal Asset", "domain": "test"},
+            format="json",
+        )
+        self.assertEqual(asset_resp.status_code, status.HTTP_201_CREATED)
+        asset_data = get_response_data(asset_resp) or {}
+        self.assertIn("id", asset_data)
+        self.assertEqual(asset_data["key"], "persona-personal-asset")
+
     def test_data_provider_rate_limit_per_user(self):
         """Test rate limits are enforced per user for DATA_PROVIDER"""
         # Create another provider user

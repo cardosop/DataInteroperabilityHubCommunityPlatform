@@ -4,6 +4,7 @@ Virtualization Serializers
 REST API serializers for virtual dataset management.
 """
 from rest_framework import serializers
+
 from .models import (
     VirtualDataset,
     QueryExecution,
@@ -12,10 +13,11 @@ from .models import (
     QueryExecutionStatus,
     QueryExecutionMode
 )
+from .source_config_utils import mask_sources_for_api
 
 
 class VirtualDatasetSerializer(serializers.ModelSerializer):
-    """Serializer for VirtualDataset model"""
+    """Serializer for VirtualDataset model."""
 
     class Meta:
         model = VirtualDataset
@@ -42,6 +44,13 @@ class VirtualDatasetSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at'
         ]
+
+    def to_representation(self, instance):
+        """Mask sensitive fields (password, connection_string, etc.) in sources."""
+        ret = super().to_representation(instance)
+        if ret.get("sources"):
+            ret["sources"] = mask_sources_for_api(ret["sources"])
+        return ret
 
 
 class VirtualDatasetCreateSerializer(serializers.Serializer):

@@ -459,3 +459,111 @@ class Phase25ScheduledExportWorkerAPISecurityTest(TestCase):
 
         # Worker should only be able to update runs for exports in their authorized tenant
         # This is verified by tenant isolation in worker API endpoints
+
+
+class Phase25ScheduledIngestionWorkerAPISecurityTest(TestCase):
+    """Security tests for scheduled ingestion Worker API (internal endpoints)."""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.client = APIClient()
+
+        # Create tenant
+        self.tenant = Tenant.objects.create(
+            name="Scheduled Ingestion Worker API Test Tenant",
+            slug="sched-ingest-worker-api-test-tenant",
+            status=TenantStatus.ACTIVE,
+        )
+
+        # Create user
+        self.user = User.objects.create_user(
+            email="schedingestworker@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+        # Create scheduled ingestion
+        from hub.apps.scheduled_ingestion.models import (
+            ScheduledIngestion,
+            ScheduledIngestionStatus,
+            ScheduleType,
+            SourceType,
+        )
+
+        self.scheduled_ingestion = ScheduledIngestion.objects.create(
+            tenant=self.tenant,
+            name="Worker Test Ingestion",
+            source_type=SourceType.HTTP,
+            source_config={"url": "https://example.com/data.csv"},
+            schedule_type=ScheduleType.DAILY,
+            schedule_config={"time": "00:00"},
+            status=ScheduledIngestionStatus.ACTIVE,
+        )
+
+    def test_scheduled_ingestion_worker_api_requires_worker_key(self):
+        """Test that scheduled ingestion Worker API requires worker API key (not regular user JWT)."""
+        self.client.force_authenticate(user=self.user)
+
+        # Regular user tries to access worker API - POST internal/runs/
+        response = self.client.post(
+            "/api/v1/scheduled-ingestions/internal/runs/",
+            {"scheduled_ingestion_id": str(self.scheduled_ingestion.id)},
+            format="json",
+            HTTP_X_TENANT_ID=str(self.tenant.id),
+        )
+
+        # Should return 403 (forbidden - not a worker key) or 401 (unauthorized)
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_403_FORBIDDEN, status.HTTP_401_UNAUTHORIZED],
+            f"Regular user must not access worker API: got {response.status_code}",
+        )
+
+    def test_scheduled_ingestion_worker_api_config_requires_worker_key(self):
+        """Test that internal config endpoint requires worker key."""
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(
+            f"/api/v1/scheduled-ingestions/internal/config/{self.scheduled_ingestion.id}/",
+        )
+
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_403_FORBIDDEN, status.HTTP_401_UNAUTHORIZED],
+            f"Regular user must not access worker config API: got {response.status_code}",
+        )
+
+    def test_scheduled_ingestion_worker_api_process_file_requires_worker_key(self):
+        """Test that internal process-file endpoint requires worker key."""
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(
+            "/api/v1/scheduled-ingestions/internal/process-file/",
+            {"scheduled_ingestion_id": str(self.scheduled_ingestion.id), "file_path": "test.csv"},
+            format="json",
+            HTTP_X_TENANT_ID=str(self.tenant.id),
+        )
+
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_403_FORBIDDEN, status.HTTP_401_UNAUTHORIZED],
+            f"Regular user must not access worker process-file API: got {response.status_code}",
+        )
+
+    def test_scheduled_ingestion_worker_api_unauthenticated_returns_401(self):
+        """Test that unauthenticated requests to worker API return 401 or 403."""
+        response = self.client.post(
+            "/api/v1/scheduled-ingestions/internal/runs/",
+            {"scheduled_ingestion_id": str(self.scheduled_ingestion.id)},
+            format="json",
+            HTTP_X_TENANT_ID=str(self.tenant.id),
+        )
+
+        # DRF may return 401 (Unauthorized) or 403 (Forbidden) for unauthenticated;
+        # both are valid security responses (access denied).
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+            f"Unauthenticated request must return 401 or 403: got {response.status_code}",
+        )

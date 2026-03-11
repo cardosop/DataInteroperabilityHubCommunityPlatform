@@ -1,0 +1,19 @@
+# Local developer environment files must not be included in Docker builds.
+# VITE_* variables are baked into the JS bundle at build time; .env.local
+# values would override build args and produce builds that call localhost
+# directly instead of using the nginx reverse proxy.
+.env.local
+.env.*.local
+
+# Dev/test artifacts
+node_modules
+dist
+coverage
+.nyc_output
+
+# Editor and OS artifacts
+.DS_Store
+*.swp
+*.swo
+.idea
+.vscode

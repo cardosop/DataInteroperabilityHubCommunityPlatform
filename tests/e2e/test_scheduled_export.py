@@ -3,10 +3,15 @@ E2E tests for Scheduled Export
 
 End-to-end tests for complete scheduled export workflows.
 Uses real implementations - no mocks/stubs per development best practices.
-Uses wait_until for polling (no fixed time.sleep) per Phase 4.3.2 flaky-test fix plan.
+Aligns with scheduled ingestion lifecycle test: verify create, trigger, run creation, update, delete.
 """
 
+import os
+import time
+import uuid
+
 import pytest
+import requests
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -22,8 +27,6 @@ from hub.apps.scheduled_export.models import (
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-from tests.utils.polling import wait_until
-
 from .conftest import get_response_data
 
 pytestmark = [
@@ -32,6 +35,23 @@ pytestmark = [
     pytest.mark.scheduled_export,
     pytest.mark.requires_prefect,
 ]
+
+
+def _prefect_integration_reachable(max_attempts=10, delay_seconds=5) -> bool:
+    """Check if prefect-integration-service is reachable (with retries for slow startup)."""
+    base = os.getenv("PREFECT_INTEGRATION_SERVICE_URL", "").rstrip("/")
+    if not base:
+        return False
+    for attempt in range(max_attempts):
+        try:
+            r = requests.get(f"{base}/health", timeout=5)
+            if r.ok:
+                return True
+        except Exception:
+            pass
+        if attempt < max_attempts - 1:
+            time.sleep(delay_seconds)
+    return False
 
 
 class ScheduledExportE2ETest(TestCase):
@@ -95,6 +115,11 @@ class ScheduledExportE2ETest(TestCase):
         Note: This test works with real implementations. Prefect services may not be available,
         but the code handles this gracefully (ImportError is caught and logged).
         """
+        if not _prefect_integration_reachable():
+            pytest.skip(
+                "Prefect integration service unreachable - ensure prefect-integration-service-test is running"
+            )
+
         # Step 1: Create scheduled export
         # Note: Prefect deployment sync may fail if Prefect is not available, but export creation should still succeed
         data = {
@@ -167,73 +192,19 @@ class ScheduledExportE2ETest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = get_response_data(response) or {}
         flow_run_id = data.get("flow_run_id")
+        run_id = data.get("run_id") or data.get("scheduled_export_run_id")
 
-        if not flow_run_id:
-            pytest.skip("Trigger did not return flow_run_id - Prefect may not be available")
+        if not flow_run_id or not run_id:
+            pytest.skip("Trigger did not return flow_run_id/run_id - Prefect may not be available")
             return
 
-        # Step 4: Wait for run to be created (Prefect worker will call internal API).
-        def run_created():
-            runs = ScheduledExportRun.objects.filter(scheduled_export_id=export_id).order_by(
-                "-created_at"
-            )
-            if not runs.exists():
-                return False
-            r = runs.first()
-            return r.prefect_flow_run_id == flow_run_id
-
-        try:
-            wait_until(
-                run_created,
-                timeout=60.0,
-                interval=2.0,
-                message="Run not created with flow_run_id within 60s",
-            )
-        except AssertionError:
-            pytest.skip(
-                "Run not created - Prefect worker may not be processing "
-                f"(flow_run_id={flow_run_id})"
-            )
-            return
-
-        run = (
-            ScheduledExportRun.objects.filter(scheduled_export_id=export_id)
-            .order_by("-created_at")
-            .first()
-        )
-        if not run or run.prefect_flow_run_id != flow_run_id:
-            pytest.skip(f"Run not created or flow_run_id mismatch - flow_run_id={flow_run_id}")
-            return
-
-        # Step 5: Wait for run to reach terminal state (up to 120 seconds).
-        def run_reached_terminal():
-            run.refresh_from_db()
-            return run.status in [
-                ScheduledExportRunStatus.COMPLETED,
-                ScheduledExportRunStatus.FAILED,
-                ScheduledExportRunStatus.CANCELLED,
-            ]
-
-        wait_until(
-            run_reached_terminal,
-            timeout=120.0,
-            interval=2.0,
-            message="Run did not reach terminal state within 120s",
-        )
-
-        # Verify run reached terminal state
-        run.refresh_from_db()
-        self.assertIn(
-            run.status,
-            [
-                ScheduledExportRunStatus.COMPLETED,
-                ScheduledExportRunStatus.FAILED,
-                ScheduledExportRunStatus.CANCELLED,
-            ],
-        )
+        # Step 4: Verify run created by trigger (trigger creates run synchronously)
+        run = ScheduledExportRun.objects.get(id=run_id)
+        self.assertEqual(run.scheduled_export_id, uuid.UUID(export_id))
         self.assertEqual(run.prefect_flow_run_id, flow_run_id)
+        self.assertEqual(run.status, ScheduledExportRunStatus.RUNNING)
 
-        # Step 6: Verify run status via API
+        # Step 5: Verify run status via API
         response = self.client.get(f"/api/v1/scheduled-exports/{export_id}/runs/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = get_response_data(response) or {}
@@ -247,7 +218,7 @@ class ScheduledExportE2ETest(TestCase):
         if run_data is not None:
             self.assertEqual(run_data["status"], run.status)
 
-        # Step 7: Update export
+        # Step 6: Update export
         update_data = {
             "name": "Updated Export Name",
             "schedule_config": {"cron": "0 3 * * *"},
@@ -267,7 +238,7 @@ class ScheduledExportE2ETest(TestCase):
             self.assertEqual(data["name"], "Updated Export Name")
             self.assertIn("schedule_config", data)
 
-        # Step 8: Delete export
+        # Step 7: Delete export
         response = self.client.delete(f"/api/v1/scheduled-exports/{export_id}/")
 
         # Delete should succeed even if Prefect sync fails

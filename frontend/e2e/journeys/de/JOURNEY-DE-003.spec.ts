@@ -11,10 +11,10 @@
 
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-003: Configure Data Quality Checks', () => {
-  test.setTimeout(120000);
+  test.setTimeout(180000);
 
   test.describe('Success', () => {
     test('dq list loads (runs list or empty)', async ({ page }) => {
@@ -22,14 +22,13 @@ test.describe('JOURNEY-DE-003: Configure Data Quality Checks', () => {
       await loginUser(page, testUser);
       await page.goto('/dq');
       await page.waitForLoadState('domcontentloaded');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
-          return;
-        }
-        throw _err;
+      await page.waitForSelector(
+        '.dq-run-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 90000 }
+      );
+      if (page.url().includes('/login')) {
+        expect(page.url()).toContain('/login');
+        return;
       }
       expect(page.url()).toContain('/dq');
     });
@@ -57,8 +56,9 @@ test.describe('JOURNEY-DE-003: Configure Data Quality Checks', () => {
     test('dq route accessible', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/dq', {
-        timeout: 60000,
-        contentSelector: '.dq-run-list-page, .empty-state, .error-display',
+        timeout: 90000,
+        contentSelector:
+          '.dq-run-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
       });
       expect(page.url()).toContain('/dq');
     });

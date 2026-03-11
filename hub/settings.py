@@ -527,8 +527,13 @@ if "test" in sys.argv or "pytest" in sys.modules:
         # Use production database for SDK tests (allows API service to see test data)
         test_db_name = postgres_db
     elif use_shared_test_db:
-        # Use shared test DB (hub_test_test_<suffix>) - ensure-test-db creates it; don't create/drop
-        test_db_name = f"{postgres_db}_test_{test_db_suffix}"
+        # Use shared test DB. When POSTGRES_DB is already the shared DB (e.g. hub_test_test_shared
+        # for api-service-test), use it directly so pytest and runserver share the same DB (events
+        # table, etc.). Otherwise use hub_test_test_<suffix> (ensure-test-db creates it).
+        if postgres_db.endswith(f"_test_{test_db_suffix}"):
+            test_db_name = postgres_db
+        else:
+            test_db_name = f"{postgres_db}_test_{test_db_suffix}"
     else:
         # Use a unique test database name to avoid conflicts
         import uuid
@@ -1130,18 +1135,21 @@ WEBHOOK_DELIVERY_TIMEOUT = env.int("WEBHOOK_DELIVERY_TIMEOUT", default=30)
 # EMAIL_BACKEND: 'sendgrid', 'ses', or 'smtp'
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="smtp")
 
+# Brand (Phase 28.7.5 Meshant)
+APP_NAME = env("APP_NAME", default="Meshant")
+
 # Base URL for email links
 EMAIL_BASE_URL = env("EMAIL_BASE_URL", default="http://localhost:8000")
 
 # SendGrid Configuration
 SENDGRID_API_KEY = env("SENDGRID_API_KEY", default=None)
 SENDGRID_FROM_EMAIL = env("SENDGRID_FROM_EMAIL", default=None)
-SENDGRID_FROM_NAME = env("SENDGRID_FROM_NAME", default="Data Interoperability Hub")
+SENDGRID_FROM_NAME = env("SENDGRID_FROM_NAME", default=APP_NAME)
 
 # AWS SES Configuration
 AWS_SES_REGION = env("AWS_SES_REGION", default=None)
 AWS_SES_FROM_EMAIL = env("AWS_SES_FROM_EMAIL", default=None)
-AWS_SES_FROM_NAME = env("AWS_SES_FROM_NAME", default="Data Interoperability Hub")
+AWS_SES_FROM_NAME = env("AWS_SES_FROM_NAME", default=APP_NAME)
 
 # SMTP Configuration
 SMTP_HOST = env("SMTP_HOST", default="localhost")
@@ -1151,7 +1159,7 @@ SMTP_PASSWORD = env("SMTP_PASSWORD", default=None)
 SMTP_USE_TLS = env.bool("SMTP_USE_TLS", default=True)
 SMTP_USE_SSL = env.bool("SMTP_USE_SSL", default=False)
 SMTP_FROM_EMAIL = env("SMTP_FROM_EMAIL", default=None)
-SMTP_FROM_NAME = env("SMTP_FROM_NAME", default="Data Interoperability Hub")
+SMTP_FROM_NAME = env("SMTP_FROM_NAME", default=APP_NAME)
 
 # Email Notification Settings
 EMAIL_JOB_NOTIFICATIONS_ENABLED = env.bool("EMAIL_JOB_NOTIFICATIONS_ENABLED", default=False)
@@ -1253,8 +1261,11 @@ SPECTACULAR_SETTINGS = {
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=[
-        "http://localhost:3000",
+        "http://localhost:3000",  # docker-compose frontend (default port)
+        "http://localhost:3010",  # docker-compose.test.yml frontend
+        "http://localhost:3011",  # grafana / alternate test frontend port
         "http://localhost:5173",  # Vite dev server
+        "http://localhost:5184",  # Vite dev server (alternate port)
         "http://localhost:8000",
     ],
 )
@@ -1296,6 +1307,16 @@ if ENVIRONMENT == "production":
 JWT_ACCESS_TOKEN_EXPIRY = env.int("JWT_ACCESS_TOKEN_EXPIRY", default=3600)  # 1 hour
 JWT_REFRESH_TOKEN_EXPIRY = env.int("JWT_REFRESH_TOKEN_EXPIRY", default=86400)  # 24 hours
 JWT_ISSUER = env("JWT_ISSUER", default="hub")
+
+# Personal tenant on registration (useronboardfix): when True (default), users who register
+# without tenant_id get a personal tenant with DATA_PROVIDER and DATA_CONSUMER roles.
+# Set to False to preserve legacy behavior (tenant=None).
+PERSONAL_TENANT_ON_REGISTRATION = env.bool("PERSONAL_TENANT_ON_REGISTRATION", default=True)
+
+# Tenant switch (Phase 29.65): when True (default), users can switch active tenant via
+# GET /auth/me/tenants/, POST /auth/switch-tenant/, and X-Tenant-Id header.
+# Set to False to disable tenant switching (e.g. during migration or rollback).
+FEATURE_TENANT_SWITCH_ENABLED = env.bool("FEATURE_TENANT_SWITCH_ENABLED", default=True)
 
 # Worker API (scheduled ingestion internal): optional env key for Prefect worker
 # When set, worker authenticates with Authorization: ApiKey <HUB_WORKER_API_KEY> and X-Tenant-ID header
@@ -1682,3 +1703,13 @@ ODPS_CACHE_WARMING_SCHEDULED_ENABLED = env.bool(
 ODPS_CACHE_WARMING_STARTUP_LIMIT = env.int("ODPS_CACHE_WARMING_STARTUP_LIMIT", default=100)
 ODPS_CACHE_WARMING_SCHEDULED_LIMIT = env.int("ODPS_CACHE_WARMING_SCHEDULED_LIMIT", default=1000)
 ODPS_CACHE_WARMING_BATCH_SIZE = env.int("ODPS_CACHE_WARMING_BATCH_SIZE", default=10)
+
+# Cost Tracking (UC-TA-007): rates for usage → cost conversion
+# Override COST_RATES in local_settings or env for custom rates
+# Defaults: storage $0.023/GB/month, API $0.001/1000 calls
+COST_RATES = {
+    "storage_per_gb_month": "0.023",
+    "api_per_1000": "0.001",
+    "asset_per_month": "0",
+    "dataset_per_month": "0",
+}

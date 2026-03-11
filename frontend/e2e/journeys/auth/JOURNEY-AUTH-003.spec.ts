@@ -15,6 +15,7 @@ import { clearAuthStorage } from '../../fixtures/auth';
 import { runJOURNEY_AUTH_003_Success } from '../../fixtures/auth-journey-steps';
 
 const MAILHOG_BASE_URL = process.env.MAILHOG_URL || 'http://localhost:8025';
+const WORKER_HEALTH_URL = process.env.WORKER_HEALTH_URL || 'http://localhost:8087/healthz';
 
 test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
   // Allow loginUser rate-limit retries (up to 4×65s) after password reset confirm when suite runs many auth tests
@@ -23,18 +24,30 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
   test.describe('Success', () => {
     test('visitor requests password reset and confirms via email link', async ({ page }) => {
       let mailhogReachable = false;
+      let workerReachable = false;
       try {
         const probe = await fetch(`${MAILHOG_BASE_URL}/api/v2/messages?limit=1`);
         if (probe.ok) mailhogReachable = true;
       } catch {
         // ignore
       }
-      // Skip when MailHog unavailable (optional service for password reset flow).
-      // See E2E_ENVIRONMENT_REQUIREMENTS.md and E2E_TEST_SEMANTICS.md.
+      try {
+        const workerProbe = await fetch(WORKER_HEALTH_URL);
+        if (workerProbe.ok) workerReachable = true;
+      } catch {
+        // ignore
+      }
+      // Skip when MailHog or worker unavailable (optional services for password reset flow).
+      // Worker processes send_password_reset_email jobs; MailHog captures the email.
       test.skip(
         !mailhogReachable,
         `MailHog not reachable at ${MAILHOG_BASE_URL}. Password reset requires MailHog for email delivery. ` +
-          `Start: docker compose up -d mailhog, SMTP_HOST=mailhog SMTP_PORT=1025`
+          `Start: docker compose -f docker-compose.test.yml up -d mailhog-test`
+      );
+      test.skip(
+        !workerReachable,
+        `Worker not reachable at ${WORKER_HEALTH_URL}. Password reset requires worker to process email jobs. ` +
+          `Start: docker compose -f docker-compose.test.yml up -d worker-service-test`
       );
       await runJOURNEY_AUTH_003_Success(page);
     });
@@ -61,11 +74,10 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
       }
       await page.fill('input#email', 'nonexistent@example.com');
       await page.click('button[type="submit"]');
+      // Backend returns generic success for unknown emails (security); API can be slow under load
       await expect(page.locator('.success-message')).toContainText(
         /If the email exists|success|sent/i,
-        {
-          timeout: 10_000,
-        }
+        { timeout: 20_000 }
       );
     });
 
@@ -86,7 +98,7 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
       }
       await page.fill('input#new_password', 'NewSecurePass123');
       await page.click('button[type="submit"]');
-      await page.locator('.error-message, .success-message').first().waitFor({ timeout: 15_000 });
+      await page.locator('.error-message, .success-message').first().waitFor({ timeout: 25_000 });
       const hasError = (await page.locator('.error-message').count()) > 0;
       expect(hasError).toBe(true);
     });

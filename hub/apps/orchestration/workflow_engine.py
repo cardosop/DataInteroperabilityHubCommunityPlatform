@@ -146,7 +146,9 @@ class WorkflowEngine(WorkflowEventPublisher):
         # Convert tenant_id to Tenant object if provided
         tenant_obj = None
         if tenant_id:
+            from hub.apps.core.services.base import ValidationError as ServiceValidationError
             from hub.apps.tenants.models import Tenant
+            from hub.apps.tenants.services import get_tenant_config_value
 
             try:
                 tenant_obj = Tenant.objects.get(id=tenant_id)
@@ -154,6 +156,17 @@ class WorkflowEngine(WorkflowEventPublisher):
                 logger.warning(
                     "Tenant not found, creating workflow without tenant", tenant_id=tenant_id
                 )
+            else:
+                # Phase 14: Enforce workflows_enabled when tenant has config
+                workflows_enabled = get_tenant_config_value(
+                    tenant_obj, "workflows_enabled", default=True
+                )
+                if not workflows_enabled:
+                    raise ServiceValidationError(
+                        "Workflows are disabled for this tenant.",
+                        code="WORKFLOWS_DISABLED",
+                        http_status=403,
+                    )
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=workflow_def,

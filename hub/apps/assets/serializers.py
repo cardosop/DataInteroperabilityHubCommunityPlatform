@@ -121,6 +121,19 @@ class AssetUpdateSerializer(serializers.Serializer):
         return instance
 
 
+class DataFirstAssetCreateSerializer(serializers.Serializer):
+    """Serializer for data-first asset creation (POST /api/v1/assets/data-first/)."""
+
+    file_id = serializers.UUIDField(help_text="ID of the uploaded file")
+    key = serializers.CharField(max_length=255, help_text="Asset key, unique per tenant")
+    name = serializers.CharField(max_length=255)
+    description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    domain = serializers.CharField(max_length=100, required=False, allow_blank=True, allow_null=True)
+    visibility = serializers.ChoiceField(
+        choices=AssetVisibility.choices, default=AssetVisibility.INTERNAL, required=False
+    )
+
+
 class AttachDatasetSerializer(serializers.Serializer):
     """Serializer for attaching dataset to asset"""
     dataset_id = serializers.UUIDField(help_text="ID of the dataset to attach")

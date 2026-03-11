@@ -23,6 +23,7 @@ import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -47,6 +48,7 @@ class TestAuthRegisterAPI(TestCase):
 
     def setUp(self):
         """Set up test fixtures - using setUp instead of setUpClass for better isolation"""
+        call_command("seed_default_plans")
         # Clear cache aggressively before each test
         cache.clear()
         # Clear any user-specific cache keys (Redis backends only; LocMem has no delete_pattern)
@@ -70,7 +72,7 @@ class TestAuthRegisterAPI(TestCase):
     # ========== SUCCESS SCENARIOS ==========
 
     def test_register_success_without_tenant(self):
-        """Test successful registration without tenant"""
+        """Test successful registration without tenant_id creates personal tenant (useronboardfix)."""
         response = self.client.post(
             "/api/v1/auth/register/",
             {"email": "newuser@example.com", "password": "SecurePass123", "name": "New User"},
@@ -81,12 +83,15 @@ class TestAuthRegisterAPI(TestCase):
         self.assertIn("id", response.data)
         self.assertEqual(response.data["email"], "newuser@example.com")
         self.assertEqual(response.data["name"], "New User")
-        self.assertIsNone(response.data.get("tenant_id"))
+        self.assertIn("tenant_id", response.data)
+        self.assertIsNotNone(response.data["tenant_id"])
 
-        # Verify user was created
+        # Verify user was created with personal tenant
         user = User.objects.get(email="newuser@example.com")
         self.assertEqual(user.display_name, "New User")
         self.assertEqual(user.status, UserStatus.ACTIVE.value)
+        self.assertIsNotNone(user.tenant_id)
+        self.assertEqual(str(user.tenant_id), str(response.data["tenant_id"]))
 
     def test_register_success_with_tenant(self):
         """Test successful registration with tenant"""
@@ -455,9 +460,9 @@ class TestAuthRegisterAPI(TestCase):
             except Exception as e:
                 errors.append((index, str(e)))
 
-        # Create multiple threads trying to register same email
+        # Create multiple threads trying to register same email (unique per run for --reuse-db)
         threads = []
-        email = "concurrent@example.com"
+        email = f"concurrent-{uuid.uuid4().hex[:8]}@example.com"
         for i in range(5):
             thread = threading.Thread(target=register_user, args=(email, i))
             threads.append(thread)

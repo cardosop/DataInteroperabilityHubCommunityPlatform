@@ -1,7 +1,7 @@
 # Use Cases
 
-**Last Updated**: 2026-02-07
-**Version**: 2.2.0
+**Last Updated**: 2026-03-06
+**Version**: 2.3.0
 
 ---
 
@@ -23,6 +23,7 @@ This document provides a comprehensive catalog of use cases for the Data Interop
 
 **Cross-References**:
 - **[Marketplace Use Cases](MARKETPLACE_USE_CASES.md)** - External marketplace integration use cases (publish to external marketplace, discover and import, sync, federated assets, semantic discovery).
+- **[Resource Pickers (Component Docs)](UI/RESOURCE_PICKERS.md)** - Searchable pickers (AssetPicker, ContractPicker, DatasetPicker, FilePicker) used in ODPS upload, asset attach, DQ/Compliance/Access Request, Scheduled Export, Retention, Dataset edit, ODPS Link flows.
 
 ---
 
@@ -121,7 +122,7 @@ A first-time visitor creates an account via the registration endpoint. Registrat
 2. User provides email, password, and optional display name
 3. System validates email format and password policy
 4. System checks email is not already registered
-5. System creates user in default tenant (or tenant selected if multiple)
+5. If no tenant_id provided: system creates personal tenant and assigns DATA_PROVIDER and DATA_CONSUMER; if tenant_id provided: user associated with that tenant
 6. System sets user status (e.g. ACTIVE or PENDING_VERIFICATION per configuration)
 7. User receives confirmation (e.g. email or success response)
 8. User can log in (UC-AUTH-002)
@@ -134,6 +135,7 @@ A first-time visitor creates an account via the registration endpoint. Registrat
 
 **Postconditions**:
 - User account created
+- User has tenant (personal or provided)
 - User can authenticate (UC-AUTH-002)
 
 **Related Use Cases**: UC-AUTH-002, JOURNEY-TA-001 (admin invite flow)
@@ -260,6 +262,48 @@ A user who is not logged in accesses resources that do not require authenticatio
 
 ---
 
+### UC-AUTH-005: User Switches Active Tenant
+
+**ID**: UC-AUTH-005
+**Title**: User Switches Active Tenant
+**Persona**: Any authenticated user with multiple tenants (e.g. personal + org via invitation)
+**Priority**: High
+**Status**: MVP
+
+**Description**:
+User with membership in multiple tenants can switch active tenant context without re-login. Subsequent requests are scoped to the switched tenant via X-Tenant-Id header.
+
+**Preconditions**:
+- User authenticated (JWT or session)
+- User has membership in at least two tenants (UserTenantMembership)
+- `FEATURE_TENANT_SWITCH_ENABLED` is true (default)
+
+**Main Flow**:
+1. User opens tenant switcher in header (or calls GET /auth/me/tenants/)
+2. System returns list of tenants user has membership in
+3. User selects target tenant
+4. User invokes switch (or POST /auth/switch-tenant/ with tenant_id)
+5. System validates membership
+6. System returns updated me summary with tenant_id overridden
+7. Client sends X-Tenant-Id on subsequent requests
+8. User sees assets/listings scoped to switched tenant
+
+**Alternate Flows**:
+- **A1**: Feature disabled → GET /auth/me/tenants/ and POST /auth/switch-tenant/ return 403; tenant switcher hidden in UI
+- **A2**: User has no membership in target tenant → 403 Forbidden
+- **A3**: Invalid tenant_id (not UUID) → 400 Bad Request
+
+**Postconditions**:
+- Active tenant context updated
+- TENANT_SWITCH audit event recorded
+- Subsequent API requests scoped to switched tenant
+
+**Related Use Cases**: UC-AUTH-002, UC-AM-001 (assets scoped to tenant)
+
+**Test Traceability**: [TEST_TRACEABILITY.md#uc-auth-005-user-switches-active-tenant](TEST_TRACEABILITY.md#uc-auth-005-user-switches-active-tenant)
+
+---
+
 ## Asset Management Use Cases
 
 ### UC-AM-001: Create Asset via Data-First Flow
@@ -309,7 +353,91 @@ User uploads a data file first, system infers schema and runs quality/compliance
 - **NEW**: AI schema matching results stored
 - **NEW**: Auto-classification results stored
 
+**API Endpoints**: `POST /api/v1/assets/data-first/` (file_id, key, name; optional description, domain, visibility). Creates asset, dataset, and contract in one call. Runbook: [DATA_FIRST_ASSET_CREATION.md](runbooks/DATA_FIRST_ASSET_CREATION.md).
+
+**UI Paths**: (1) Datasets → Create Dataset → Flow selector "Create new asset and link" → upload file, enter key/name. (2) Assets → Create Asset → "I have data to upload" → redirects to Dataset Create with create_new mode.
+
 **Related Use Cases**: UC-AM-002, UC-CM-001, UC-DQ-001, UC-COMP-001, **UC-AI-002**, **UC-AI-005**
+**Related Journeys**: JOURNEY-DPO-001
+
+---
+
+### UC-DS-EDIT: Edit Dataset and Link to Asset
+
+**ID**: UC-DS-EDIT
+**Title**: Edit Dataset and Link to Asset
+**Persona**: Data Product Owner, Data Engineer
+**Priority**: High
+**Status**: MVP
+
+**Description**:
+User edits a dataset (e.g. format) and links or unlinks it to/from an asset. Supports the data-first flow where a dataset may be created without an asset and later linked.
+
+**Preconditions**:
+- User authenticated with `DATA_PROVIDER` role
+- Dataset exists (created via Files → Create Dataset or asset upload)
+- Asset exists (when linking)
+
+**Main Flow**:
+1. User navigates to Datasets → selects a dataset
+2. User clicks "Edit" or "Link to Asset"
+3. User selects asset via **AssetPicker** (searchable dropdown; or clear to unlink)
+4. User optionally updates format
+5. User saves
+6. System validates asset UUID (same tenant)
+7. System updates dataset via `PATCH /api/v1/datasets/{id}/` with `asset` (UUID or null)
+8. Dataset detail shows linked asset (asset_id, asset_name)
+
+**Alternate Flows**:
+- **A1**: AssetPicker returns tenant-scoped IDs only; invalid UUID not applicable
+- **A2**: Asset not in tenant → 400
+- **A3**: Unlink → clear AssetPicker, send `asset: null`
+
+**Postconditions**:
+- Dataset linked to asset (or unlinked)
+- Audit event DATASET_UPDATED
+
+**API Endpoints**: `PATCH /api/v1/datasets/{id}/` (asset, format)
+
+**Related Use Cases**: UC-AM-001, UC-DQ-001
+**Related Journeys**: JOURNEY-DPO-001, JOURNEY-DPO-018
+
+---
+
+### UC-FILE-UPLOAD: Upload File
+
+**ID**: UC-FILE-UPLOAD
+**Title**: Upload File
+**Persona**: Data Product Owner, Data Engineer
+**Priority**: High
+**Status**: MVP
+
+**Description**:
+User uploads a data file (CSV, JSON, Parquet) via the Files page. File can later be used to create a dataset.
+
+**Preconditions**:
+- User authenticated
+- File format supported (CSV, JSON, Parquet)
+
+**Main Flow**:
+1. User navigates to Files
+2. User clicks "Upload File"
+3. User selects file or drops into dropzone
+4. System validates format and size
+5. System uploads file via Files API
+6. File appears in list; user can create dataset from it
+
+**Alternate Flows**:
+- **A1**: Invalid format → validation error
+- **A2**: File too large → error
+
+**Postconditions**:
+- File stored; available for dataset creation
+
+**API Endpoints**: `POST /api/v1/files/init/` (initiate), `POST /api/v1/files/{id}/complete/` (complete multipart upload)
+
+**Related Use Cases**: UC-AM-001, UC-DS-EDIT
+**Related Journeys**: JOURNEY-DPO-001, JOURNEY-DE-015
 
 ---
 
@@ -721,6 +849,8 @@ System improves recommendations based on user feedback.
 ---
 
 ## Social Feature Use Cases **NEW**
+
+**Route reference (Phase 27)**: Communities are accessed at `/communities`; legacy `/social` redirects to `/communities`. Asset ratings, reviews, and Community section are embedded on the asset detail page (`/assets/:id`). See [E2E_FULL_COVERAGE_PLAN.md](../frontend/e2e/E2E_FULL_COVERAGE_PLAN.md) and [TEST_TRACEABILITY.md](TEST_TRACEABILITY.md#social).
 
 ### UC-SOCIAL-001: Rate Asset
 
@@ -2327,7 +2457,7 @@ The following use cases have backend support (OpenAPI/runtime). Frontend and E2E
 
 **Preconditions**: User authenticated; social/communities feature enabled.
 
-**Main Flow**: 1. User navigates to communities (e.g. `/social/communities`). 2. User creates a new community or joins existing via API. 3. System creates/updates community and membership.
+**Main Flow**: 1. User navigates to communities (`/communities`; `/social` redirects to `/communities`). 2. User creates a new community or joins existing via API. 3. System creates/updates community and membership.
 
 **Postconditions**: Community exists; user is member; community discoverable per UC-SOCIAL-004.
 
@@ -2396,7 +2526,7 @@ The following use cases have backend support (OpenAPI/runtime). Frontend and E2E
 
 **Preconditions**: User authenticated; compliance feature enabled; asset or file available.
 
-**Main Flow**: 1. User navigates to compliance runs (e.g. `/compliance/runs`). 2. User creates a run (asset/file, regulations) or opens existing run. 3. System executes scan; user views results and remediation guidance.
+**Main Flow**: 1. User navigates to compliance runs (e.g. `/compliance/runs`). 2. User creates a run via **AssetPicker**, **DatasetPicker**, **FilePicker** (searchable dropdowns; cascading when selecting asset). 3. System executes scan; user views results and remediation guidance.
 
 **Postconditions**: Compliance run recorded; results and risk level visible; fail-closed guidance when applicable.
 
@@ -2419,7 +2549,7 @@ The following use cases have backend support (OpenAPI/runtime). Frontend and E2E
 
 **Preconditions**: User with governance/admin permission; governance feature enabled.
 
-**Main Flow**: 1. User navigates to governance (e.g. `/governance`). 2. User lists retention policies; creates or updates policy. 3. System validates and stores; enforcer runs per schedule.
+**Main Flow**: 1. User navigates to governance (e.g. `/governance`). 2. User lists retention policies; creates or updates policy via **AssetPicker**, **DatasetPicker**, **FilePicker** (searchable dropdowns; cascading). 3. System validates and stores; enforcer runs per schedule.
 
 **Postconditions**: Policy active; retention actions (soft delete, archive, etc.) applied per policy.
 
@@ -2534,7 +2664,7 @@ The following use cases have backend support (OpenAPI/runtime). Frontend and E2E
 
 **Preconditions**: User authenticated; asset exists; social feature enabled.
 
-**Main Flow**: 1. User opens asset detail (social panel). 2. User submits rating (1–5) and/or review text. 3. System stores; status PENDING or APPROVED per config.
+**Main Flow**: 1. User opens asset detail (Community section on asset page, Phase 27.1). 2. User submits rating (1–5) and/or review text. 3. System stores; status PENDING or APPROVED per config.
 
 **Postconditions**: Rating/review stored; visible to others after moderation if applicable.
 
@@ -2925,7 +3055,7 @@ The following use cases have backend support (OpenAPI/runtime). Frontend and E2E
 
 **Preconditions**: User authenticated; contracts/ODPS enabled.
 
-**Main Flow**: 1. User uploads ODPS product (e.g. `/odps/upload`). 2. System runs workflow; user sees status. 3. User links to ODCS contract where required; exports if supported.
+**Main Flow**: 1. User uploads ODPS product (e.g. `/odps/upload`). User selects target asset via **AssetPicker** (searchable dropdown). 2. System runs workflow; user sees status. 3. User links to ODCS contract where required; exports if supported.
 
 **Postconditions**: ODPS product created; workflow traceable; link/export available per JOURNEY-DPO-015–017.
 
@@ -2948,7 +3078,7 @@ The following use cases have backend support (OpenAPI/runtime). Frontend and E2E
 
 **Preconditions**: User authenticated; DQ feature enabled; asset or dataset available.
 
-**Main Flow**: 1. User navigates to DQ runs (e.g. `/dq/runs`). 2. User creates run or opens existing. 3. User views results and remediation guidance.
+**Main Flow**: 1. User navigates to DQ runs (e.g. `/dq/runs`). 2. User creates run via **AssetPicker**, **DatasetPicker**, **FilePicker** (searchable dropdowns; cascading when selecting asset). 3. User views results and remediation guidance.
 
 **Postconditions**: DQ run recorded; results and pass/fail visible; asset health usable when endpoint exists.
 
@@ -2975,7 +3105,7 @@ The following use cases have backend support (OpenAPI/runtime). Frontend and E2E
 
 **Main Flow**:
 1. User navigates to scheduled exports page
-2. User creates scheduled export with source scope (asset_ids, dataset_ids, file_ids, or contract_id)
+2. User creates scheduled export with source scope via **AssetMultiPicker**, **DatasetMultiPicker**, **FileMultiPicker**, **ContractPicker** (searchable dropdowns)
 3. User configures destination (S3/GCS/Azure Blob) and credentials
 4. User sets schedule (cron expression)
 5. System syncs export to Prefect deployment
@@ -3183,7 +3313,7 @@ The following use case IDs are referenced in the doc but **have no backend imple
 **ID**: UC-TA-007
 **Title**: Monitor Cost Tracking
 **Persona**: Tenant Admin
-**Backend status**: **Not implemented.** No tenant cost-tracking endpoints evidenced (except scheduled-ingestion costs where applicable). UI: `/unavailable`.
+**Backend status**: **Implemented.** GET /api/v1/analytics/costs/ (summary, breakdown, by-asset, recommendations, trends). Usage → cost via CostTrackingService (storage, API, ingestion from IngestionCost). UI: `/settings/cost` (CostPage).
 
 **Related Use Cases**: UC-OBS-ADV-002, JOURNEY-TA-007
 
@@ -3248,8 +3378,9 @@ The following use case IDs are referenced in the doc but **have no backend imple
 | UC-AUTH-002 | User Logs In | Visitor, any persona | High | MVP | Authentication & Access | **NEW** |
 | UC-AUTH-003 | User Resets Password | Visitor, any persona | Medium | MVP | Authentication & Access | **NEW** |
 | UC-AUTH-004 | Unauthenticated User Accesses Public Resources | Visitor | Medium | MVP | Authentication & Access | **NEW** |
+| UC-AUTH-005 | User Switches Active Tenant | Any with multiple tenants | High | MVP | Authentication & Access | **NEW** |
 
-**Total**: ~113 use cases (~50 original + ~59 new + 4 authentication & access)
+**Total**: ~114 use cases (~50 original + ~59 new + 5 authentication & access)
 
 ---
 

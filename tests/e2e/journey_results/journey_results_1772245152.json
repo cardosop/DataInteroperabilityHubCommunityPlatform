@@ -1,0 +1,70 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-005-f0c46865",
+      "journey_name": "CI/CD Integration",
+      "persona": "Data Engineer / Contract Author",
+      "status": "failed",
+      "start_time": 1772245152.237529,
+      "end_time": 1772245152.2684667,
+      "duration": 0.030937671661376953,
+      "completion_rate": 66.66666666666666,
+      "success_rate": 66.66666666666666,
+      "error_message": "An error occurred in the current transaction. You can't execute queries until the end of the 'atomic' block.",
+      "error_type": "TransactionManagementError",
+      "steps": [
+        {
+          "step_name": "Create Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772245152.2375348,
+          "end_time": 1772245152.2524467,
+          "duration": 0.014911890029907227,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Run Validation",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772245152.2524543,
+          "end_time": 1772245152.2672317,
+          "duration": 0.014777421951293945,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Check Validation Results",
+          "status": "StepStatus.FAILED",
+          "start_time": 1772245152.2672384,
+          "end_time": 1772245152.2684634,
+          "duration": 0.0012249946594238281,
+          "error_message": "An error occurred in the current transaction. You can't execute queries until the end of the 'atomic' block.",
+          "error_type": "TransactionManagementError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('969fc268-1f61-41dc-9825-fced98d95472', {'validation_status': 'VALID', 'valid': True, 'errors': [], 'warnings': [], 'grouped_errors': {}, 'error_count': 0, 'warning_count': 0, 'schema_compliance': {'status': 'COMPLIANT', 'details': 'Schema validation passed'}, 'normalization_status': 'NORMALIZED_WITH_WARNINGS', 'normalization_compliant': True, 'cli_version': '1.0.0-test', 'validated_at': '2026-02-28T02:19:12.263926+00:00', 'contract_id': '969fc268-1f61-41dc-9825-fced98d95472'})",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-28T02:19:12.268557"
+}

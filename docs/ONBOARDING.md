@@ -16,7 +16,7 @@ New tenants can create accounts and start using the platform through a self-serv
 
 ### Create Tenant with First User
 
-**POST** `/api/v1/tenants/onboarding/`
+**POST** `/api/v1/tenants/onboarding/` (also available at `/api/v1/tenants/config/onboarding/`)
 
 Creates a new tenant with first user (tenant admin).
 
@@ -226,8 +226,70 @@ After onboarding, the first user can log in:
 
 ---
 
+---
+
+## Personal Tenant (Self-Service Registration)
+
+**Endpoint**: `POST /api/v1/auth/register/`
+
+When a user registers **without** providing `tenant_id`, the system creates a **personal tenant** for that user. This enables self-service onboarding: visitors can sign up and immediately use the platform without an invite or manual tenant assignment.
+
+### Behavior
+
+- **tenant_id omitted**: System creates a personal tenant (name: `Personal - {email}`, slug: `personal-{uuid8}`), assigns FREE plan, creates TenantConfig and Subscription, assigns `DATA_PROVIDER` and `DATA_CONSUMER` roles, and returns `tenant_id` in the response.
+- **tenant_id provided**: User is associated with that tenant (unchanged behavior).
+
+### What Gets Created
+
+- **Tenant**: ACTIVE, KYC UNVERIFIED, FREE plan
+- **TenantConfig**: Platform defaults
+- **Subscription**: ACTIVE, FREE plan
+- **User roles**: DATA_PROVIDER, DATA_CONSUMER
+
+### Post-Registration
+
+The user can immediately:
+- Create assets in their personal tenant
+- Access marketplace listings (as DATA_CONSUMER)
+- Use platform features subject to FREE plan limits
+
+### Feature Flag
+
+`PERSONAL_TENANT_ON_REGISTRATION` (default: True). When False, legacy behavior: user created with `tenant=None`.
+
+### Troubleshooting
+
+See [Personal tenant creation failures](RUNBOOKS.md#personal-tenant-creation-failures) runbook for FREE plan missing, slug collision, and subscription creation failures.
+
+---
+
+## Tenant Switch
+
+Users with multiple tenants (e.g. personal tenant + org tenant via invitation) can switch active tenant context without re-login.
+
+### How It Works
+
+- **GET /auth/me/tenants/** — Returns list of tenants the user has membership in
+- **POST /auth/switch-tenant/** — Validates membership and returns updated me summary with `tenant_id` overridden
+- **X-Tenant-Id header** — Clients send this header on subsequent requests to scope operations to the switched tenant
+
+### Prerequisites
+
+- User has membership in at least two tenants (UserTenantMembership)
+- `FEATURE_TENANT_SWITCH_ENABLED` is true (default)
+
+### Feature Flag
+
+`FEATURE_TENANT_SWITCH_ENABLED` (default: True). When False, tenant switch API returns 403 and X-Tenant-Id is rejected.
+
+See [TENANT_SWITCH_PLAN.md](TENANT_SWITCH_PLAN.md) for production migration and rollback. See [Tenant switch failures](RUNBOOKS.md#tenant-switch-failures) runbook for troubleshooting.
+
+---
+
 ## Related Documentation
 
 - `docs/BILLING.md` - Plans, limits, and billing
 - `docs/TENANT_ISOLATION.md` - Tenant isolation and multi-tenancy
 - `docs/DATA_RESIDENCY.md` - Data residency and regional considerations
+- `docs/API_REFERENCE.md` - POST /auth/register/, tenant switch endpoints
+- `docs/TENANT_SWITCH_PLAN.md` - Tenant switch migration and rollback

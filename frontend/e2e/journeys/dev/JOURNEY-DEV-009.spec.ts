@@ -79,19 +79,20 @@ test.describe('JOURNEY-DEV-009: Integrate with Developer Portal', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/developer', {
         timeout: 90000,
-        contentSelector: '.developer-portal-page, .app-main, .unavailable-page',
+        contentSelector:
+          '.developer-portal-page, .developer-page, .app-main, .unavailable-page, .loading-spinner-container',
       });
       expect(
         page.url().includes('/developer') ||
           page.url().includes('/403') ||
           page.url().includes('/login')
       ).toBe(true);
+      if (page.url().includes('/login')) return;
       await page.goto('/settings/api-keys');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
+      await page.waitForURL(/\/(settings\/api-keys|login)(\?|$)/, { timeout: 15000 });
       expect(
-        page.url().includes('/settings/api-keys') ||
-          page.url().includes('/login')
+        page.url().includes('/settings/api-keys') || page.url().includes('/login')
       ).toBe(true);
     });
   });

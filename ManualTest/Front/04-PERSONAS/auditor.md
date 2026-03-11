@@ -12,16 +12,23 @@ Reviews audit logs, compliance, data mesh governance, and social feature activit
 
 ---
 
+## Before You Start
+
+1. Complete [00-PREREQUISITES.md](../00-PREREQUISITES.md)
+2. **Dependency**: Audit logs populated. Run other flows first (login, asset create, etc.) to generate audit entries.
+
+---
+
 ## Journeys Covered
 
-| Journey | Title | Docs | E2E Spec | Est. |
-|---------|-------|------|----------|------|
-| JOURNEY-AUD-001 | Review Audit Logs | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-aud-001-review-audit-logs) | `journeys/aud/JOURNEY-AUD-001.spec.ts` | 10 min |
-| JOURNEY-AUD-002 | Export Audit Report | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/aud/JOURNEY-AUD-002.spec.ts` | 5 min |
-| JOURNEY-AUD-003 | Review Compliance Audit | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/aud/JOURNEY-AUD-003.spec.ts` | 5 min |
-| JOURNEY-AUD-004 | Review Data Mesh Governance | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-aud-004-review-data-mesh-governance-new) | `journeys/aud/JOURNEY-AUD-004.spec.ts` | 5 min |
+| Journey | Title | Step-by-Step Script | E2E Spec | Est. |
+|---------|-------|---------------------|----------|------|
+| JOURNEY-AUD-001 | Review Audit Logs | [aud/JOURNEY-AUD-001.md](../03-USER-JOURNEYS/aud/JOURNEY-AUD-001.md) | `journeys/aud/JOURNEY-AUD-001.spec.ts` | 10 min |
+| JOURNEY-AUD-002 | Export Audit Report | [aud/JOURNEY-AUD-002.md](../03-USER-JOURNEYS/aud/JOURNEY-AUD-002.md) | `journeys/aud/JOURNEY-AUD-002.spec.ts` | 5 min |
+| JOURNEY-AUD-003 | Review Compliance Audit | [aud/JOURNEY-AUD-003.md](../03-USER-JOURNEYS/aud/JOURNEY-AUD-003.md) | `journeys/aud/JOURNEY-AUD-003.spec.ts` | 5 min |
+| JOURNEY-AUD-004 | Review Data Mesh Governance | [aud/JOURNEY-AUD-004.md](../03-USER-JOURNEYS/aud/JOURNEY-AUD-004.md) | `journeys/aud/JOURNEY-AUD-004.spec.ts` | 5 min |
 | JOURNEY-AUD-005 | Audit Transformation Pipelines | **Deferred** | — | — |
-| JOURNEY-AUD-006 | Review Social Feature Activity | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-aud-006-review-social-feature-activity-new) | `journeys/aud/JOURNEY-AUD-006.spec.ts` | 5 min |
+| JOURNEY-AUD-006 | Review Social Feature Activity | [aud/JOURNEY-AUD-006.md](../03-USER-JOURNEYS/aud/JOURNEY-AUD-006.md) | `journeys/aud/JOURNEY-AUD-006.spec.ts` | 5 min |
 
 **Total Estimated Duration**: ~30 min (excluding deferred)
 
@@ -43,11 +50,6 @@ Reviews audit logs, compliance, data mesh governance, and social feature activit
 - `/admin` (audit section, if role permits)
 
 ---
-
-## Prerequisites
-
-- AUDITOR role
-- Audit logs populated (run other flows first)
 
 ---
 

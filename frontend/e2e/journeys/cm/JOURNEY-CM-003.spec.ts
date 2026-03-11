@@ -5,8 +5,8 @@
  * Persona: Community Manager
  * Reference: docs/USER_JOURNEYS.md
  *
- * Success/Failure/Edge. Routes: /social, /assets (stewardship).
- * Capability-gated: social.ratings. Uses getTestUser(). Real backend only; no mocks.
+ * Success/Failure/Edge. Routes: /communities, /assets (Phase 27.2).
+ * Capability-gated: social.communities. Uses getTestUser(). Real backend only; no mocks.
  */
 
 import { expect, test } from '@playwright/test';
@@ -18,18 +18,20 @@ test.describe('JOURNEY-CM-003: Assign Data Stewards', () => {
   test.setTimeout(300000);
 
   test.describe('Success', () => {
-    test('social page loads for stewardship', async ({ page }) => {
+    test('communities page loads for stewardship', async ({ page }) => {
       const testUser = await getTestUser();
       await loginUser(page, testUser);
-      await page.goto('/social');
+      await page.goto('/communities');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
-      const onLogin = page.url().includes('/login');
-      const on403 = page.url().includes('/403');
-      const onSocial = page.url().includes('/social');
+      const url = page.url();
+      const onLogin = url.includes('/login');
+      const on403 = url.includes('/403');
+      const onUnavailable = url.includes('/unavailable');
+      const onCommunities = url.includes('/communities');
       const hasContent =
-        (await page.locator('.social-page, .app-main, .unavailable-page').count()) > 0;
-      expect(onLogin || on403 || (onSocial && hasContent)).toBe(true);
+        (await page.locator('.communities-page, .communities-tab, .app-main, .unavailable-page, .loading-spinner-container').count()) > 0;
+      expect(onLogin || on403 || onUnavailable || (onCommunities && hasContent)).toBe(true);
     });
 
     test('assets list loads for steward assignment', async ({ page }) => {
@@ -56,16 +58,18 @@ test.describe('JOURNEY-CM-003: Assign Data Stewards', () => {
   });
 
   test.describe('Edge', () => {
-    test('social and assets routes accessible', async ({ page }) => {
+    test('communities and assets routes accessible', async ({ page }) => {
       const testUser = await getTestUser();
       await loginUser(page, testUser);
-      await page.goto('/social');
+      await page.goto('/communities');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(2000);
+      const url = page.url();
       expect(
-        page.url().includes('/social') ||
-          page.url().includes('/403') ||
-          page.url().includes('/login')
+        url.includes('/communities') ||
+          url.includes('/403') ||
+          url.includes('/unavailable') ||
+          url.includes('/login')
       ).toBe(true);
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 90000,

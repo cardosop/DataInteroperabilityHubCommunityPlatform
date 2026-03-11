@@ -5,6 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { assertFailureRedirect, assertSuccessLoad } from '../fixtures/journey-helpers';
 import { waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Marketplace', () => {
@@ -18,10 +19,12 @@ test.describe('Feature: Marketplace', () => {
         timeout: 65000,
       });
       if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
+        await assertFailureRedirect(page);
         return;
       }
-      expect(page.url()).toContain('/marketplace');
+      await assertSuccessLoad(page, {
+        successContentSelector: '[data-testid="listing-list-page"], .listing-list-page, .empty-state',
+      });
     });
   });
 
@@ -47,12 +50,14 @@ test.describe('Feature: Marketplace', () => {
         await waitForAppMainReady(page, { timeout: 60000 });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
+          await assertFailureRedirect(page);
           return;
         }
         throw _err;
       }
-      expect(page.url()).toContain('/marketplace/orders');
+      await assertSuccessLoad(page, {
+        successContentSelector: '.order-list-page, .empty-state, .error-display',
+      });
     });
   });
 });

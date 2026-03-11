@@ -5,7 +5,9 @@
  */
 
 import { useEffect, useState } from 'react';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { useToast } from '../../../shared/components/Toast';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type { ApiError } from '../../../shared/types/api';
 import type { Session } from '../../../shared/types/auth';
@@ -18,6 +20,8 @@ export function SessionListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ApiError | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+  const toast = useToast();
 
   const loadSessions = async () => {
     setLoading(true);
@@ -36,15 +40,20 @@ export function SessionListPage() {
     loadSessions();
   }, []);
 
-  const handleRevoke = async (sessionId: string) => {
-    if (!confirm('Revoke this session? The user will need to sign in again on that device.'))
-      return;
+  const handleRevokeClick = (sessionId: string) => setConfirmRevokeId(sessionId);
+  const handleRevokeConfirm = async () => {
+    const sessionId = confirmRevokeId;
+    if (!sessionId) return;
+    setConfirmRevokeId(null);
     setRevokingId(sessionId);
     try {
       await authService.revokeSession(sessionId);
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      toast.success('Session revoked.');
     } catch (err) {
-      setError(normalizeError(err));
+      const normalized = normalizeError(err);
+      setError(normalized);
+      toast.error(normalized.error.message);
     } finally {
       setRevokingId(null);
     }
@@ -103,7 +112,7 @@ export function SessionListPage() {
                       <button
                         type="button"
                         className="btn-revoke"
-                        onClick={() => handleRevoke(session.id)}
+                        onClick={() => handleRevokeClick(session.id)}
                         disabled={revokingId === session.id}
                       >
                         {revokingId === session.id ? 'Revoking...' : 'Revoke'}
@@ -116,6 +125,16 @@ export function SessionListPage() {
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmRevokeId !== null}
+        onClose={() => setConfirmRevokeId(null)}
+        onConfirm={handleRevokeConfirm}
+        title="Revoke session"
+        message="Revoke this session? The user will need to sign in again on that device."
+        confirmLabel="Revoke"
+        variant="warning"
+      />
     </div>
   );
 }

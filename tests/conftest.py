@@ -667,6 +667,29 @@ if True:  # Always apply patches
     # ROOT CAUSE: When reusing hub_test_test_shared, migrate may run and post_migrate fires create_contenttypes.
     # ContentTypes already exist from prefect-integration or prior run, causing UniqueViolation on bulk_create.
     # Fix: use bulk_create(..., ignore_conflicts=True) so duplicates are skipped (Django 4+).
+    def _reapply_contenttypes_permissions_patches():
+        """Re-apply contenttypes/permissions patches before migrate (post_migrate can overwrite)."""
+        try:
+            from django.db.models.signals import post_migrate
+
+            import django.contrib.auth.management as auth_mgmt
+            import django.contrib.contenttypes.management as ct_mgmt
+
+            if hasattr(ct_mgmt, "_patched_create_contenttypes_func"):
+                ct_mgmt.create_contenttypes = ct_mgmt._patched_create_contenttypes_func
+                auth_mgmt.create_contenttypes = ct_mgmt._patched_create_contenttypes_func
+            if hasattr(auth_mgmt, "_patched_create_permissions_func"):
+                auth_mgmt.create_permissions = auth_mgmt._patched_create_permissions_func
+                from django.db.models.signals import post_migrate
+
+                post_migrate.disconnect(dispatch_uid="django.contrib.auth.management.create_permissions")
+                post_migrate.connect(
+                    auth_mgmt._patched_create_permissions_func,
+                    dispatch_uid="django.contrib.auth.management.create_permissions",
+                )
+        except Exception as e:
+            _patch_logger.debug(f"Could not reapply contenttypes/permissions patches: {e}")
+
     try:
         import django.contrib.contenttypes.management as ct_management
 
@@ -716,9 +739,154 @@ if True:  # Always apply patches
                     _patch_logger.debug(f"Adding content type '{ct.app_label} | {ct.model}'")
 
         ct_management.create_contenttypes = _patched_create_contenttypes
+        ct_management._patched_create_contenttypes_func = _patched_create_contenttypes
+        # auth.management imports create_contenttypes at load time; patch auth's reference too
+        # so create_permissions (post_migrate) uses our idempotent version (ignore_conflicts).
+        try:
+            import django.contrib.auth.management as auth_mgmt
+            auth_mgmt.create_contenttypes = _patched_create_contenttypes
+        except Exception:
+            pass
         _log_patch("create_contenttypes (idempotent when TEST_DB_SUFFIX set)")
     except Exception as e:
         _patch_logger.warning(f"✗ Could not patch create_contenttypes: {e}")
+
+    # CRITICAL: Patch create_permissions to be idempotent when TEST_DB_SUFFIX is set.
+    # ROOT CAUSE: When hub_test_test_phase13 is pre-migrated then conftest runs migrate again,
+    # post_migrate fires create_permissions which bulk_creates permissions that already exist ->
+    # IntegrityError: duplicate key "auth_permission_content_type_id_codename_01ab375a_uniq".
+    # Fix: use bulk_create(..., ignore_conflicts=True) so duplicates are skipped (Django 4+).
+    try:
+        import django.contrib.auth.management as auth_management
+
+        if not hasattr(auth_management, "_original_create_permissions"):
+            auth_management._original_create_permissions = auth_management.create_permissions
+
+        def _patched_create_permissions(
+            app_config, verbosity=2, interactive=True, using=None, apps=None, **kwargs
+        ):
+            """Idempotent create_permissions when TEST_DB_SUFFIX set - skip duplicates via ignore_conflicts."""
+            _orig = auth_management._original_create_permissions
+            if not os.getenv("TEST_DB_SUFFIX"):
+                return _orig(
+                    app_config,
+                    verbosity=verbosity,
+                    interactive=interactive,
+                    using=using,
+                    apps=apps,
+                    **kwargs,
+                )
+            # Patched path: intercept bulk_create to add ignore_conflicts
+            from django.contrib.auth.management import _get_all_permissions
+
+            if not app_config.models_module:
+                return
+            from django.apps import apps as global_apps
+
+            apps = apps or global_apps
+            try:
+                Permission = apps.get_model("auth", "Permission")
+            except LookupError:
+                return
+            from django.db import router, DEFAULT_DB_ALIAS
+
+            if not router.allow_migrate_model(using or DEFAULT_DB_ALIAS, Permission):
+                return
+            # Ensure contenttypes exist (uses our patched create_contenttypes)
+            import django.contrib.contenttypes.management as ct_mgmt
+
+            ct_mgmt.create_contenttypes(
+                app_config,
+                verbosity=verbosity,
+                interactive=interactive,
+                using=using,
+                apps=apps,
+                **kwargs,
+            )
+            app_label = app_config.label
+            try:
+                app_config = apps.get_app_config(app_label)
+                ContentType = apps.get_model("contenttypes", "ContentType")
+            except LookupError:
+                return
+            models = list(app_config.get_models())
+            ctypes = ContentType.objects.db_manager(using or DEFAULT_DB_ALIAS).get_for_models(
+                *models, for_concrete_models=False
+            )
+            all_perms = set(
+                Permission.objects.using(using or DEFAULT_DB_ALIAS)
+                .filter(content_type__in=set(ctypes.values()))
+                .values_list("content_type", "codename")
+            )
+            perms = []
+            for model in models:
+                ctype = ctypes[model]
+                for codename, name in _get_all_permissions(model._meta):
+                    if (ctype.pk, codename) not in all_perms:
+                        permission = Permission()
+                        permission._state.db = using or DEFAULT_DB_ALIAS
+                        permission.codename = codename
+                        permission.name = name
+                        permission.content_type = ctype
+                        perms.append(permission)
+            if perms:
+                Permission.objects.using(using or DEFAULT_DB_ALIAS).bulk_create(
+                    perms, ignore_conflicts=True
+                )
+            if verbosity >= 2:
+                for perm in perms:
+                    _patch_logger.debug("Adding permission '%s'" % perm)
+
+        auth_management.create_permissions = _patched_create_permissions
+        auth_management._patched_create_permissions_func = _patched_create_permissions
+        # Reconnect post_migrate so our patched create_permissions is used (signal holds original ref)
+        try:
+            from django.db.models.signals import post_migrate
+
+            post_migrate.disconnect(dispatch_uid="django.contrib.auth.management.create_permissions")
+            post_migrate.connect(
+                _patched_create_permissions,
+                dispatch_uid="django.contrib.auth.management.create_permissions",
+            )
+        except Exception:
+            pass
+        _log_patch("create_permissions (idempotent when TEST_DB_SUFFIX set)")
+    except Exception as e:
+        _patch_logger.warning(f"✗ Could not patch create_permissions: {e}")
+
+    # CRITICAL: Patch PostgreSQL _create_test_db (internal) to handle DuplicateDatabase when TEST_DB_SUFFIX set.
+    # ROOT CAUSE: hub_test_test_phase13 is pre-created by run_phase28_2; when keepdb=False (e.g. --reuse-db
+    # not passed), Django tries CREATE DATABASE -> DuplicateDatabase -> DROP -> ObjectInUse (DB in use).
+    # Fix: catch DuplicateDatabase when TEST_DB_SUFFIX set and treat as success (DB exists, use it).
+    try:
+        import django.db.backends.postgresql.creation as pg_creation_module
+        from django.db.utils import ProgrammingError
+
+        if not hasattr(pg_creation_module.DatabaseCreation, "_original_create_test_db_internal"):
+            pg_creation_module.DatabaseCreation._original_create_test_db_internal = (
+                pg_creation_module.DatabaseCreation._create_test_db
+            )
+
+        def _patched_create_test_db_internal(
+            self, verbosity=1, autoclobber=False, keepdb=False
+        ):
+            test_database_name = self._get_test_db_name()
+            try:
+                return pg_creation_module.DatabaseCreation._original_create_test_db_internal(
+                    self, verbosity=verbosity, autoclobber=autoclobber, keepdb=keepdb
+                )
+            except ProgrammingError as e:
+                if os.getenv("TEST_DB_SUFFIX") and "already exists" in str(e).lower():
+                    _patch_logger.info(
+                        "create_test_db: TEST_DB_SUFFIX set, DuplicateDatabase treated as success (DB exists)"
+                    )
+                    return test_database_name
+                raise
+
+        pg_creation_module.DatabaseCreation._create_test_db = _patched_create_test_db_internal
+        _log_patch("PostgreSQL _create_test_db (DuplicateDatabase when TEST_DB_SUFFIX)")
+    except Exception as e:
+        _patch_logger.warning(f"✗ Could not patch PostgreSQL _create_test_db: {e}")
 
     # CRITICAL: Patch BaseDatabaseCreation.create_test_db AND PostgreSQL-specific DatabaseCreation
     # ROOT CAUSE FIX: Django's create_test_db explicitly sets run_syncdb=True at line 59-61
@@ -760,50 +928,90 @@ if True:  # Always apply patches
             # Skip migrate and serialize only if django_migrations exists and has rows.
             if keepdb:
                 test_database_name = self._get_test_db_name()
-                if verbosity >= 1:
-                    self.log(
-                        "Using existing test database for alias %s..."
-                        % (self._get_database_display_str(verbosity, test_database_name),)
-                    )
-                self._create_test_db(verbosity, autoclobber, keepdb)
-                self.connection.close()
-                settings.DATABASES[self.connection.alias]["NAME"] = test_database_name
-                self.connection.settings_dict["NAME"] = test_database_name
-                self.connection.ensure_connection()
-                # Only skip migrate if DB is already migrated.
-                # Check django_migrations first; when TEST_DB_SUFFIX set, also accept django_content_type
-                # (more robust for shared DB where migrations may differ from our loader state).
-                already_migrated = False
+                # If DB was dropped (e.g. by run_phase28_2_tests), create it via full path.
+                db_exists = False
                 try:
                     with self.connection.cursor() as cursor:
-                        cursor.execute("SELECT 1 FROM django_migrations LIMIT 1")
-                        already_migrated = cursor.fetchone() is not None
-                        if not already_migrated and os.getenv("TEST_DB_SUFFIX"):
-                            cursor.execute("SELECT 1 FROM django_content_type LIMIT 1")
-                            already_migrated = cursor.fetchone() is not None
+                        cursor.execute(
+                            "SELECT 1 FROM pg_catalog.pg_database WHERE datname = %s",
+                            [test_database_name],
+                        )
+                        db_exists = cursor.fetchone() is not None
                 except Exception:
                     pass
-                if already_migrated:
+                if not db_exists:
                     _patch_logger.debug(
-                        "create_test_db: fast path (DB already migrated), skipping migrate and serialize"
+                        "create_test_db: keepdb but DB %s does not exist, using full create path",
+                        test_database_name,
                     )
-                    current_call_command("createcachetable", database=self.connection.alias)
+                    keepdb = False  # Fall through to full path below
+                else:
+                    if verbosity >= 1:
+                        self.log(
+                            "Using existing test database for alias %s..."
+                            % (self._get_database_display_str(verbosity, test_database_name),)
+                        )
+                    try:
+                        self._create_test_db(verbosity, autoclobber, keepdb)
+                    except Exception as e:
+                        # PostgreSQL DuplicateDatabase when DB already exists; acceptable when keepdb=True
+                        if "already exists" not in str(e).lower():
+                            raise
+                    self.connection.close()
+                    settings.DATABASES[self.connection.alias]["NAME"] = test_database_name
+                    self.connection.settings_dict["NAME"] = test_database_name
                     self.connection.ensure_connection()
-                    return test_database_name
-                # DB exists but not migrated (e.g. empty); run migrate only (no serialize).
-                _patch_logger.debug("create_test_db: keepdb but DB not migrated, running migrate")
-                current_call_command(
-                    "migrate",
-                    verbosity=max(verbosity - 1, 0),
-                    interactive=False,
-                    database=self.connection.alias,
-                    run_syncdb=False,
-                )
-                current_call_command("createcachetable", database=self.connection.alias)
-                self.connection.ensure_connection()
-                return test_database_name
+                    # When TEST_DB_SUFFIX is set, DB was created from hub_test template by migrate-test-dbs.sh.
+                    # Skip migrate entirely to avoid sync_apps/pg_type/duplicate-permission conflicts.
+                    if not os.getenv("TEST_DB_SUFFIX"):
+                        _reapply_contenttypes_permissions_patches()
+                        _patch_logger.debug("create_test_db: keepdb path, running migrate to ensure schema current")
+                        try:
+                            current_call_command(
+                                "migrate",
+                                verbosity=max(verbosity - 1, 0),
+                                interactive=False,
+                                database=self.connection.alias,
+                                run_syncdb=False,
+                            )
+                        except Exception as migrate_err:
+                            # pg_type UniqueViolation when DB has stale schema: drop and recreate via full path.
+                            err_str = str(migrate_err).lower()
+                            if "pg_type_typname_nsp_index" in err_str or "duplicate key" in err_str:
+                                _patch_logger.warning(
+                                    "create_test_db: migrate failed (stale schema), dropping DB and using full create path"
+                                )
+                                self.connection.close()
+                                import psycopg2
+                                from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+                                db = settings.DATABASES[self.connection.alias]
+                                conn = psycopg2.connect(
+                                    dbname="postgres",
+                                    user=db["USER"],
+                                    password=db["PASSWORD"],
+                                    host=db.get("HOST", "localhost"),
+                                    port=db.get("PORT", "5432"),
+                                )
+                                conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+                                try:
+                                    with conn.cursor() as cur:
+                                        cur.execute(
+                                            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                                            "WHERE datname = %s AND pid <> pg_backend_pid()",
+                                            [test_database_name],
+                                        )
+                                        cur.execute('DROP DATABASE IF EXISTS "{}"'.format(test_database_name))
+                                finally:
+                                    conn.close()
+                                keepdb = False
+                                # Fall through to full path - will create fresh DB
+                            else:
+                                raise
+                    if keepdb:
+                        current_call_command("createcachetable", database=self.connection.alias)
+                        return test_database_name
 
-            # Full path: creating DB. Patch call_command so migrate uses run_syncdb=False.
+            # Full path: creating DB (or DB was dropped and keepdb was set False). Patch call_command so migrate uses run_syncdb=False.
             def _local_patched_call_command(command_name, *args, **call_options):
                 if command_name == "migrate":
                     call_options["run_syncdb"] = False
@@ -813,6 +1021,11 @@ if True:  # Always apply patches
 
             original_call_command_backup = django.core.management.call_command
             django.core.management.call_command = _local_patched_call_command
+            # When using shared test DB (TEST_DB_SUFFIX), skip serialize to avoid InvalidCursorName
+            # when runserver shares the container and holds connections.
+            _serialize = serialize
+            if os.getenv("TEST_DB_SUFFIX"):
+                _serialize = False
             try:
                 if isinstance(self, pg_creation_module.DatabaseCreation):
                     result = _original_create_test_db_pg(
@@ -820,7 +1033,7 @@ if True:  # Always apply patches
                         verbosity=verbosity,
                         autoclobber=autoclobber,
                         keepdb=keepdb,
-                        serialize=serialize,
+                        serialize=_serialize,
                         **kwargs,
                     )
                 else:
@@ -829,7 +1042,7 @@ if True:  # Always apply patches
                         verbosity=verbosity,
                         autoclobber=autoclobber,
                         keepdb=keepdb,
-                        serialize=serialize,
+                        serialize=_serialize,
                         **kwargs,
                     )
                 return result

@@ -70,15 +70,17 @@ test.describe('JOURNEY-DEV-005: Use Natural Language Search API', () => {
       expect(
         urlAfterSearch.includes('/search') || urlAfterSearch.includes('/login')
       ).toBe(true);
+      if (urlAfterSearch.includes('/login')) return; // Already redirected; skip AI nav
       // Client-side nav to AI search (already logged in)
       const aiLink = page.locator('.app-sidebar .nav-link').filter({ hasText: 'AI Search' }).first();
       if ((await aiLink.count()) > 0) {
         await aiLink.click();
+        await page.waitForURL(/\/(ai\/search|403|login)(\?|$)/, { timeout: 15000 });
       } else {
         await page.goto('/ai/search');
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForURL(/\/(ai\/search|403|login)(\?|$)/, { timeout: 15000 });
       }
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
       const urlAfterAi = page.url();
       expect(
         urlAfterAi.includes('/ai/search') ||

@@ -1,0 +1,22 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "invalid-product",
+        "name": "Invalid Product - Missing Contract Schema",
+        "description": "ODPS with invalid contract - missing schema.fields. Use for error handling tests."
+      }
+    },
+    "contract": {
+      "spec": {
+        "apiVersion": "odcs.io/v3.0.2",
+        "kind": "DataContract",
+        "id": "invalid-missing-schema",
+        "name": "Invalid - No Schema Fields",
+        "version": "1.0.0"
+      }
+    }
+  }
+}

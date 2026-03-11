@@ -1,0 +1,129 @@
+.virtual-dataset-source-builder {
+  margin-bottom: 1rem;
+}
+
+.source-builder-label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.sources-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.source-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--color-background-secondary);
+  border-radius: 4px;
+}
+
+.source-type-badge {
+  font-size: 0.875rem;
+}
+
+.btn-remove-source {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0;
+  color: var(--color-text-tertiary);
+}
+
+.btn-remove-source:hover {
+  color: var(--color-error);
+}
+
+.source-type-dropdown-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.source-type-select {
+  flex: 1;
+  max-width: 200px;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.btn-add-source {
+  padding: 0.5rem 1rem;
+  background: var(--color-primary);
+  color: var(--color-background-primary);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-add-source:hover {
+  opacity: 0.9;
+}
+
+.source-add-form {
+  padding: 1rem;
+  background: var(--color-background-secondary);
+  border-radius: 4px;
+  margin-top: 0.5rem;
+}
+
+.odbc-form-fields {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.odbc-form-fields .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.odbc-form-fields label {
+  font-size: 0.875rem;
+}
+
+.odbc-form-fields input[type='text'],
+.odbc-form-fields input[type='number'],
+.odbc-form-fields input[type='password'] {
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.source-add-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.btn-secondary {
+  padding: 0.5rem 1rem;
+  background: var(--color-neutral-100);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-primary {
+  padding: 0.5rem 1rem;
+  background: var(--color-primary);
+  color: var(--color-background-primary);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -42,7 +42,7 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow)', () =>
       await loginUser(page, testUser);
       await page.goto('/odps');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.odps-list-page, .odps-empty-state, .error-display, #email', {
+      await page.waitForSelector('.odps-list-page, .odps-empty-state, .error-display, .loading-spinner-container, #email', {
         timeout: 65000,
       });
       if (page.url().includes('/login')) {
@@ -73,9 +73,24 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow)', () =>
     test('ODPS upload page loads', async ({ page }) => {
       const testUser = await getTestUser();
       await loginUser(page, testUser);
-      await page.goto('/odps/upload');
+      // Retry goto on transient network errors (ERR_NETWORK_CHANGED under parallel load)
+      let lastErr: unknown;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await page.goto('/odps/upload', { waitUntil: 'domcontentloaded', timeout: 30000 });
+          break;
+        } catch (e) {
+          lastErr = e;
+          if (String(e).includes('ERR_NETWORK_CHANGED') || String(e).includes('net::')) {
+            await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+            continue;
+          }
+          throw e;
+        }
+      }
+      if (lastErr) throw lastErr;
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.odps-upload-page, .error-display, #email', {
+      await page.waitForSelector('.odps-upload-page, .error-display, .loading-spinner-container, #email', {
         timeout: 20000,
       });
       if (page.url().includes('/login')) {

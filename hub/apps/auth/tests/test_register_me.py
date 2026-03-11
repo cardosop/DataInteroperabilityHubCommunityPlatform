@@ -46,6 +46,7 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.management import call_command
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from django_rq import get_queue
@@ -54,8 +55,9 @@ from rest_framework.test import APIClient
 
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
 from hub.apps.auth.models import APIKey, RefreshToken
+from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.core.events.models import Event
-from hub.apps.tenants.models import Tenant
+from hub.apps.tenants.models import Tenant, TenantConfig, TenantPlan
 from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -68,6 +70,7 @@ class RegisterEndpointTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
+        call_command("seed_default_plans")
 
         # Create tenant with unique name to avoid conflicts
         unique_id = uuid.uuid4().hex[:8]
@@ -419,6 +422,221 @@ class RegisterEndpointTest(TestCase):
 
 
 @override_settings(
+    EVENT_BUS_ENABLE_PERSISTENCE=True,
+    EVENT_BUS_ASYNC_PERSISTENCE=False,
+    EVENT_BUS_WRITE_BEHIND_ENABLED=False,
+)
+class RegisterPersonalTenantTest(TestCase):
+    """
+    Test registration without tenant_id creates personal tenant (useronboardfix 1.2).
+
+    When tenant_id is omitted, system creates personal tenant, assigns DATA_PROVIDER
+    and DATA_CONSUMER roles, and returns tenant_id in response.
+    """
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.client = APIClient()
+        call_command("seed_default_plans")
+
+        unique_id = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {unique_id}",
+            slug=f"test-tenant-{unique_id}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+
+    def test_register_without_tenant_id_creates_personal_tenant(self):
+        """Registration without tenant_id creates a personal tenant for the user."""
+        email = "personal@example.com"
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {"email": email, "password": "SecurePass123", "name": "Personal User"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        user = User.objects.get(email=email)
+        self.assertIsNotNone(user.tenant_id)
+        self.assertTrue(user.tenant.slug.startswith("personal-"))
+        self.assertEqual(user.tenant.name, f"Personal - {email}")
+
+    def test_register_without_tenant_id_assigns_data_provider_and_consumer_roles(self):
+        """Registration without tenant_id assigns DATA_PROVIDER and DATA_CONSUMER roles."""
+        email = "roles@example.com"
+        self.client.post(
+            "/api/v1/auth/register/",
+            {"email": email, "password": "SecurePass123", "name": "Roles User"},
+            format="json",
+        )
+
+        user = User.objects.get(email=email)
+        role_names = [ur.role.name for ur in user.user_roles.all()]
+        self.assertIn("DATA_PROVIDER", role_names)
+        self.assertIn("DATA_CONSUMER", role_names)
+
+    def test_register_without_tenant_id_user_has_tenant_id_in_response(self):
+        """Registration without tenant_id returns tenant_id (personal tenant) in response."""
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {"email": "response@example.com", "password": "SecurePass123", "name": "Response User"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("tenant_id", response.data)
+        self.assertIsNotNone(response.data["tenant_id"])
+
+    def test_register_without_tenant_id_personal_tenant_has_free_plan(self):
+        """Personal tenant created on registration has FREE plan."""
+        email = "freeplan@example.com"
+        self.client.post(
+            "/api/v1/auth/register/",
+            {"email": email, "password": "SecurePass123", "name": "Free Plan User"},
+            format="json",
+        )
+
+        user = User.objects.get(email=email)
+        self.assertEqual(user.tenant.plan.slug, "free")
+
+    def test_register_without_tenant_id_personal_tenant_has_tenant_config(self):
+        """Personal tenant has TenantConfig with platform defaults."""
+        email = "config@example.com"
+        self.client.post(
+            "/api/v1/auth/register/",
+            {"email": email, "password": "SecurePass123", "name": "Config User"},
+            format="json",
+        )
+
+        user = User.objects.get(email=email)
+        config = TenantConfig.objects.get(tenant=user.tenant)
+        self.assertIsNotNone(config)
+        self.assertIsNotNone(config.default_dq_profile)
+
+    def test_register_without_tenant_id_personal_tenant_has_active_subscription(self):
+        """Personal tenant has active Subscription (required for write operations)."""
+        email = "sub@example.com"
+        self.client.post(
+            "/api/v1/auth/register/",
+            {"email": email, "password": "SecurePass123", "name": "Sub User"},
+            format="json",
+        )
+
+        user = User.objects.get(email=email)
+        subscription = Subscription.objects.get(tenant=user.tenant)
+        self.assertEqual(subscription.status, SubscriptionStatus.ACTIVE)
+
+    def test_register_with_tenant_id_unchanged_behavior(self):
+        """Registration with tenant_id provided works as before (unchanged behavior)."""
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {
+                "email": "tenantuser@example.com",
+                "password": "SecurePass123",
+                "name": "Tenant User",
+                "tenant_id": str(self.tenant.id),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["tenant_id"], str(self.tenant.id))
+        user = User.objects.get(email="tenantuser@example.com")
+        self.assertEqual(user.tenant_id, self.tenant.id)
+
+    def test_register_without_tenant_id_publishes_user_created_with_tenant_id(self):
+        """user.created event includes tenant_id when personal tenant created."""
+        unique_id = uuid.uuid4().hex[:8]
+        email = f"event-{unique_id}@example.com"
+
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {"email": email, "password": "SecurePass123", "name": "Event User"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        user_id = response.data.get("id")
+        tenant_id = response.data.get("tenant_id")
+        self.assertIsNotNone(tenant_id)
+
+        from tests.utils.polling import wait_until
+
+        def event_has_tenant_id():
+            return Event.objects.filter(
+                event_type="user.created",
+                data__user_id=str(user_id),
+                tenant_id=tenant_id,
+            ).exists()
+
+        wait_until(event_has_tenant_id, timeout=5.0, message="user.created event with tenant_id")
+
+    @override_settings(PERSONAL_TENANT_ON_REGISTRATION=False)
+    def test_register_without_tenant_id_legacy_behavior_when_flag_disabled(self):
+        """When PERSONAL_TENANT_ON_REGISTRATION=False, user gets tenant=None (legacy)."""
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {"email": "legacy@example.com", "password": "SecurePass123", "name": "Legacy User"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(response.data.get("tenant_id"))
+        user = User.objects.get(email="legacy@example.com")
+        self.assertIsNone(user.tenant_id)
+
+
+class RegisterPlanNotFoundTest(TestCase):
+    """
+    Registration returns 503 (not 500) when the FREE plan is absent from the database.
+
+    This can happen on a fresh environment where seed_default_plans has not been run.
+    The response must NOT leak the internal operator hint to end users.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        # Deliberately do NOT seed plans — FREE plan must be absent for this test.
+        TenantPlan.objects.filter(slug="free").delete()
+
+    def test_register_without_free_plan_returns_503(self):
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {"email": "nofreeplan@example.com", "password": "SecurePass123", "name": "No Plan"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 503)
+
+    def test_register_without_free_plan_returns_service_unavailable_code(self):
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {"email": "nofreeplan2@example.com", "password": "SecurePass123", "name": "No Plan"},
+            format="json",
+        )
+        # api_error_response returns flat {"code": ..., "detail": ..., "details": {...}}
+        self.assertEqual(response.data["code"], "SERVICE_UNAVAILABLE")
+
+    def test_register_without_free_plan_does_not_leak_operator_hint(self):
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {"email": "nofreeplan3@example.com", "password": "SecurePass123", "name": "No Plan"},
+            format="json",
+        )
+        body = str(response.data)
+        self.assertNotIn("seed_default_plans", body)
+        self.assertNotIn("PLAN_NOT_FOUND", body)
+
+    def test_register_without_free_plan_does_not_create_user(self):
+        self.client.post(
+            "/api/v1/auth/register/",
+            {"email": "nofreeplan4@example.com", "password": "SecurePass123", "name": "No Plan"},
+            format="json",
+        )
+        self.assertFalse(User.objects.filter(email="nofreeplan4@example.com").exists())
+
+
+@override_settings(
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Disable async persistence for tests
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,  # Disable write-behind for tests
 )
@@ -440,6 +658,7 @@ class RegisterEventPublishingTest(TransactionTestCase):
         """Set up test fixtures"""
         super().setUp()
         self.client = APIClient()
+        call_command("seed_default_plans")
 
         # Create tenant with unique name to avoid conflicts
         unique_id = uuid.uuid4().hex[:8]
@@ -819,6 +1038,7 @@ class RegisterMeSecurityTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
+        call_command("seed_default_plans")
         unique_id = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {unique_id}", slug=f"test-tenant-{unique_id}", status="ACTIVE"
@@ -903,6 +1123,7 @@ class RegisterMePerformanceTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
+        call_command("seed_default_plans")
         unique_id = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {unique_id}", slug=f"test-tenant-{unique_id}", status="ACTIVE"

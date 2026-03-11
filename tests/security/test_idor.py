@@ -7,49 +7,17 @@ assert 404 or 403 for cross-tenant or wrong user.
 """
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.test import TestCase
 from rest_framework import status
-from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.audit.models import AuditEvent
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
 
-User = get_user_model()
+from .base_idor import IDORTestBase
+
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-class IDORSecurityTestBase(TestCase):
-    """Base for IDOR tests. Two tenants, two users; real client."""
-
-    def setUp(self):
-        super().setUp()
-        self.client = APIClient()
-        self.tenant_a = Tenant.objects.create(
-            name="IDOR Tenant A",
-            slug="idor-tenant-a",
-        )
-        self.tenant_b = Tenant.objects.create(
-            name="IDOR Tenant B",
-            slug="idor-tenant-b",
-        )
-        self.user_a = User.objects.create_user(
-            email="idora@example.com",
-            password="testpass123",
-            tenant=self.tenant_a,
-            status=UserStatus.ACTIVE,
-        )
-        self.user_b = User.objects.create_user(
-            email="idorb@example.com",
-            password="testpass123",
-            tenant=self.tenant_b,
-            status=UserStatus.ACTIVE,
-        )
-
-
-class AssetIDORTest(IDORSecurityTestBase):
+class AssetIDORTest(IDORTestBase):
     """IDOR: user from tenant A must not access tenant B's asset by ID."""
 
     def test_asset_retrieve_returns_403_or_404_for_other_tenant(self):
@@ -79,7 +47,7 @@ class AssetIDORTest(IDORSecurityTestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
-class AuditEventIDORTest(IDORSecurityTestBase):
+class AuditEventIDORTest(IDORTestBase):
     """IDOR: user from tenant A must not access tenant B's audit event by ID."""
 
     def test_audit_retrieve_returns_403_or_404_for_other_tenant(self):

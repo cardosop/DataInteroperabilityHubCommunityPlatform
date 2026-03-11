@@ -101,6 +101,11 @@ async function globalSetup(config: FullConfig) {
             const { execSync } = await import('child_process');
             const port = new URL(API_BASE_URL).port || '8000';
             const container = port === '8001' ? 'hub-test-api' : 'hub-api';
+            // Seed default plans first (required for registration; ensure_e2e_user_roles may create users)
+            execSync(`docker exec ${container} python hub/manage.py seed_default_plans`, {
+              stdio: 'pipe',
+              encoding: 'utf8',
+            });
             execSync(`docker exec ${container} python hub/manage.py ensure_e2e_user_roles`, {
               stdio: 'pipe',
               encoding: 'utf8',

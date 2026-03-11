@@ -17,7 +17,7 @@ export function UnavailablePage({ title, message }: UnavailablePageProps = {}) {
   const description = message ?? `${capability} is not available in your current environment or requires additional configuration.`;
 
   return (
-    <div className="unavailable-page">
+    <div className="unavailable-page" data-testid="unavailable-page">
       <div className="unavailable-container">
         <h1>{title ?? 'Feature Unavailable'}</h1>
         <p>

@@ -55,7 +55,7 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display, .loading-spinner-container',
       });
       await page.goto('/mesh/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
@@ -71,7 +71,7 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display, .loading-spinner-container',
       });
       expect(page.url()).toContain('/mesh');
     });

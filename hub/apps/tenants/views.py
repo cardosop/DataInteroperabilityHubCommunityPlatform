@@ -428,6 +428,9 @@ class TenantConfigViewSet(viewsets.ViewSet):
             max_file_size_bytes=serializer.validated_data.get("max_file_size_bytes"),
             max_job_concurrency=serializer.validated_data.get("max_job_concurrency"),
             max_queued_jobs=serializer.validated_data.get("max_queued_jobs"),
+            trust_signals_enabled=serializer.validated_data.get("trust_signals_enabled"),
+            versioning_enabled=serializer.validated_data.get("versioning_enabled"),
+            workflows_enabled=serializer.validated_data.get("workflows_enabled"),
         )
 
         # Log audit event
@@ -517,6 +520,99 @@ class TenantConfigViewSet(viewsets.ViewSet):
                 return handle_service_exception(e)
             raise
 
+    @extend_schema(
+        operation_id="get_me_config",
+        summary="Get current tenant configuration",
+        description="Get tenant configuration for the authenticated user's tenant. Returns config with platform defaults for unset values.",
+        responses={
+            200: TenantConfigSerializer,
+            400: OpenApiResponse(description="Tenant context required"),
+            401: OpenApiResponse(description="Unauthorized"),
+            403: OpenApiResponse(description="Forbidden - TENANT_ADMIN or Platform Admin required"),
+        },
+        tags=["Tenants"],
+    )
+    @extend_schema(
+        operation_id="patch_me_config",
+        summary="Update current tenant configuration",
+        description="Update tenant configuration (partial) for the authenticated user's tenant.",
+        request=TenantConfigUpdateSerializer,
+        responses={
+            200: TenantConfigSerializer,
+            400: OpenApiResponse(description="Validation error"),
+            401: OpenApiResponse(description="Unauthorized"),
+            403: OpenApiResponse(description="Forbidden - TENANT_ADMIN or Platform Admin required"),
+        },
+        tags=["Tenants"],
+        methods=["PATCH"],
+    )
+    @action(detail=False, methods=["get", "patch"], url_path="me/config")
+    def me_config(self, request):
+        """
+        Get or update tenant configuration for current user's tenant.
+
+        GET /api/v1/tenants/me/config/
+        PATCH /api/v1/tenants/me/config/
+        """
+        tenant_id = get_request_tenant_id(request)
+        if not tenant_id:
+            return Response(
+                {"error": "Tenant context required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        tenant = self.get_tenant(tenant_id)
+
+        if request.method == "GET":
+            config_dict = get_tenant_config(tenant)
+            return Response(config_dict, status=status.HTTP_200_OK)
+
+        # PATCH
+        config, _ = TenantConfig.objects.get_or_create(tenant=tenant)
+        serializer = TenantConfigUpdateSerializer(config, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        service = TenantService(tenant_id=str(tenant.id), user_id=str(request.user.id))
+        service.update_tenant_config(
+            tenant_id=str(tenant.id),
+            default_dq_profile=serializer.validated_data.get("default_dq_profile"),
+            allowed_compliance_regimes=serializer.validated_data.get(
+                "allowed_compliance_regimes"
+            ),
+            default_compliance_regimes=serializer.validated_data.get(
+                "default_compliance_regimes"
+            ),
+            data_retention_days=serializer.validated_data.get("data_retention_days"),
+            rate_limits=serializer.validated_data.get("rate_limits"),
+            max_file_size_bytes=serializer.validated_data.get("max_file_size_bytes"),
+            max_job_concurrency=serializer.validated_data.get("max_job_concurrency"),
+            max_queued_jobs=serializer.validated_data.get("max_queued_jobs"),
+            trust_signals_enabled=serializer.validated_data.get("trust_signals_enabled"),
+            versioning_enabled=serializer.validated_data.get("versioning_enabled"),
+            workflows_enabled=serializer.validated_data.get("workflows_enabled"),
+        )
+
+        log_tenant_operation(
+            action="TENANT_CONFIG_UPDATED",
+            tenant=tenant,
+            actor_user=request.user,
+            details=serializer.validated_data,
+            request=request,
+        )
+
+        config_dict = get_tenant_config(tenant)
+        return Response(config_dict, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        operation_id="get_me_usage",
+        summary="Get current tenant usage",
+        description="Get usage metrics (storage, API calls, limits) for the authenticated user's tenant.",
+        responses={
+            200: TenantUsageSerializer,
+            400: OpenApiResponse(description="Tenant context required"),
+            401: OpenApiResponse(description="Unauthorized"),
+        },
+        tags=["Tenants"],
+    )
     @action(detail=False, methods=["get"], url_path="me/usage")
     def usage(self, request):
         """

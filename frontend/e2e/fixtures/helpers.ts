@@ -6,6 +6,8 @@
 import { Page, expect } from '@playwright/test';
 import { getTestUser, loginUser, type TestUser } from './auth';
 
+export { isBenignConsoleError } from './console-utils';
+
 /**
  * Check if page shows login prompt (email input, login link, or Sign in text).
  * Use after unauthenticated access to protected routes that may show inline login.
@@ -358,8 +360,12 @@ const ROUTES_WITH_DATA_API: Record<string, string> = {
   '/governance/retention': 'governance/retention-policies',
 };
 
+/** Routes that don't fetch list data on load; skip API wait to avoid timeout. */
+const ROUTES_WITHOUT_LIST_API = ['/mesh/create', '/marketplace/publish'];
+
 /** Get API pattern for route; supports exact match and prefix (e.g. /assets/123 -> assets). */
 function getRouteApiPattern(route: string): string | undefined {
+  if (ROUTES_WITHOUT_LIST_API.includes(route)) return undefined;
   const exact = ROUTES_WITH_DATA_API[route];
   if (exact) return exact;
   const prefixes = Object.keys(ROUTES_WITH_DATA_API)
@@ -394,7 +400,7 @@ const ROUTE_NAV_LABELS: Record<string, string> = {
   '/marketplace': 'Marketplace',
   '/search': 'Search',
   '/virtualization': 'Virtualization',
-  '/social': 'Social',
+  '/communities': 'Communities',
   '/ai/search': 'AI Search',
   '/developer': 'Developer',
   '/baas': 'BaaS',
@@ -422,10 +428,13 @@ const ROUTE_NAV_LABELS: Record<string, string> = {
 const ROUTE_CONTENT_SELECTORS: Record<string, string> = {
   '/audit': '.audit-event-list-page, .audit-list-filters, .empty-state, .error-display, .loading-spinner-container',
   '/mesh': '.mesh-domain-list-page, .loading-spinner-container, .error-display, .empty-state',
+  '/mesh/create': '.mesh-domain-create-page, .loading-spinner-container, .error-display',
+  '/mesh/topology': '.topology-visualization, .loading-spinner-container, .error-display',
   '/contracts': '.contract-list-page, .empty-state, .error-display, .loading-spinner-container',
   '/odps': '.odps-list-page, .odps-empty-state, .error-display, .loading-spinner-container, #email',
-  '/social': '.social-page, .unavailable-page, .error-display, .loading-spinner-container, .app-main',
-  '/compliance': '.compliance-run-list-page, .empty-state, .error-display, .loading-spinner-container',
+  '/communities': '.communities-page, .communities-tab, .unavailable-page, .error-display, .loading-spinner-container, .app-main',
+  '/compliance':
+    '.compliance-run-list-page, .empty-state, .error-display, .loading-spinner-container, .unavailable-page, #email',
   '/assets': '.asset-list-page, .empty-state, .error-display, .loading-spinner-container',
   '/dq': '.dq-run-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
   '/webhooks':
@@ -439,13 +448,17 @@ const ROUTE_CONTENT_SELECTORS: Record<string, string> = {
     '.auth-api-key-list-page, .unavailable-page, .loading-spinner-container, .error-display, h1',
   '/observability':
     '.observability-page, [data-testid="observability-page"], .loading-spinner-container, .error-display, .unavailable-page',
-  '/developer': '.developer-page, .unavailable-page, .loading-spinner-container, .app-main',
+  '/developer': '.developer-portal-page, .developer-page, .unavailable-page, .loading-spinner-container, .app-main',
+  '/virtualization':
+    '.virtual-dataset-list-page, .virtual-dataset-list-header, .empty-state, .error-display, .loading-spinner-container',
   '/baas': '.baas-page, .unavailable-page, .loading-spinner-container, .app-main',
   '/ml': '.ml-page, .unavailable-page, .loading-spinner-container, .app-main',
   '/integrations/connections':
-    '.marketplace-connection-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+    '.connection-list-page, .marketplace-connection-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+  '/jobs':
+    '.job-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
   '/scheduled-ingestions':
-    '[data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, .loading-spinner-container, h1',
+    '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, .loading-spinner-container, h1',
   '/ai/schema-matching':
     '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, .loading-spinner-container, h1',
   '/files':
@@ -454,6 +467,12 @@ const ROUTE_CONTENT_SELECTORS: Record<string, string> = {
     '.dataset-create-page, .file-upload, .loading-spinner-container, form, h1',
   '/scheduled-exports':
     '.scheduled-export-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+  '/marketplace':
+    '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .loading-spinner-container',
+  '/marketplace/orders':
+    '.order-list-page, .empty-state, .error-display, .loading-spinner-container',
+  '/marketplace/entitlements':
+    '.entitlement-list-page, .empty-state, .error-display, .loading-spinner-container',
   '/marketplace/publish':
     '.listing-publish-page, .listing-publish-form, .loading-spinner-container, form, h1',
   '/governance':
@@ -525,7 +544,8 @@ export async function loginAndNavigateToRoute(
 }
 
 /** Capability-gated routes that often redirect to login; always accept redirect when option set. */
-const CAPABILITY_GATED_ROUTES = ['/ai/search', '/developer', '/baas', '/ml', '/social'];
+// /communities (Phase 27.2; was /social). social.ratings, social.reviews, social.comments on /assets/:id.
+const CAPABILITY_GATED_ROUTES = ['/ai/search', '/developer', '/baas', '/ml', '/communities'];
 
 /** Run nav logic; throws on redirect-to-login. Used for retry. */
 async function runNavToRoute(
@@ -787,6 +807,7 @@ async function runNavToRoute(
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(2000);
       if (apiWait) await apiWait;
+      await waitForLoadingComplete(page, { timeout: 20000 });
       const createBtn = page
         .locator('button:has-text("Create Dataset")')
         .or(page.locator('.empty-state-action:has-text("Create Dataset")'));
@@ -797,6 +818,7 @@ async function runNavToRoute(
       }
       if ((await createBtn.count()) > 0) {
         await createBtn.first().click();
+        await page.waitForURL(/\/datasets\/create/, { timeout: 15000 }).catch(() => null);
         await page.waitForLoadState('domcontentloaded');
         await page.waitForTimeout(1000);
         await waitForAppMainReady(page, waitOptions);
@@ -1099,6 +1121,7 @@ export async function navigateToRouteFromApp(
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(2000);
       if (apiWait) await apiWait;
+      await waitForLoadingComplete(page, { timeout: 20000 });
       const createBtn = page.locator('button:has-text("Create Dataset")').or(page.locator('.empty-state-action:has-text("Create Dataset")'));
       try {
         await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
@@ -1107,6 +1130,7 @@ export async function navigateToRouteFromApp(
       }
       if ((await createBtn.count()) > 0) {
         await createBtn.first().click();
+        await page.waitForURL(/\/datasets\/create/, { timeout: 15000 }).catch(() => null);
         await page.waitForLoadState('domcontentloaded');
         await page.waitForTimeout(1000);
       }
@@ -1651,13 +1675,14 @@ export async function assertNonExistentIdShowsError(
   options: {
     detailContentSelector?: string;
     waitAfterLoad?: number;
+    selectorTimeout?: number;
   } = {}
 ): Promise<void> {
-  const { detailContentSelector, waitAfterLoad = 8000 } = options;
+  const { detailContentSelector, waitAfterLoad = 8000, selectorTimeout = 60000 } = options;
   await page.waitForSelector(
     '.error-display, .loading-spinner, .loading-spinner-container, .empty-state, #email, [data-testid="forbidden-page"]' +
       (detailContentSelector ? `, ${detailContentSelector}` : ''),
-    { timeout: 25000 }
+    { timeout: selectorTimeout }
   );
   await page.waitForTimeout(waitAfterLoad);
 
@@ -1696,15 +1721,32 @@ export async function ensureAssetActivationPrerequisites(
       if (!token) return { success: false, error: 'No access token' };
       const base = `${window.location.origin}/api/v1`;
 
+      // Try E2E-only backend helper first (when RATE_LIMIT_E2E_RELAX or ENVIRONMENT=test)
+      const helperRes = await fetch(`${base}/assets/${aid}/ensure-e2e-activation-prerequisites/`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+      if (helperRes.ok) return { success: true };
+      if (helperRes.status === 404) {
+        // Helper not available; fall through to full flow
+      } else {
+        const err = await helperRes.text();
+        return { success: false, error: `E2E helper: ${helperRes.status} ${err}` };
+      }
+
+      // Full flow: create contract, validate, attach, set ACTIVE
+      // Use valid ODCS 3.0.0 format (matches examples/contracts/odcs_test_3_0_0.json)
       const contractJson = {
+        apiVersion: 'odcs.io/v3.0.0',
+        kind: 'DataContract',
         id: `e2e-activate-${Date.now()}`,
         name: 'E2E Activation Contract',
-        hub_contract_version: '1.0.0',
-        info: { title: 'E2E Contract', name: 'E2E Contract', version: '1.0.0' },
+        version: '1.0.0',
         schema: {
           fields: [
-            { name: 'id', type: 'string', description: 'ID' },
-            { name: 'name', type: 'string', description: 'Name' },
+            { name: 'id', type: 'string' },
+            { name: 'name', type: 'string' },
           ],
         },
       };
@@ -1712,7 +1754,9 @@ export async function ensureAssetActivationPrerequisites(
       const contractRes = await fetch(`${base}/contracts/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        cache: 'no-store',
         body: JSON.stringify({
+          asset_id: aid,
           original_spec_type: 'ODCS',
           original_spec_version: '3.0.0',
           original_format: 'JSON',
@@ -1730,6 +1774,7 @@ export async function ensureAssetActivationPrerequisites(
       const validateRes = await fetch(`${base}/contracts/${contractId}/validate/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        cache: 'no-store',
         body: JSON.stringify({ async: false }),
       });
       if (!validateRes.ok) {
@@ -1744,6 +1789,7 @@ export async function ensureAssetActivationPrerequisites(
         await new Promise((r) => setTimeout(r, pollInterval));
         const check = await fetch(`${base}/contracts/${contractId}/`, {
           headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
         });
         if (check.ok) {
           contractData = await check.json();
@@ -1769,19 +1815,11 @@ export async function ensureAssetActivationPrerequisites(
         };
       }
 
-      const attachRes = await fetch(`${base}/assets/${aid}/contracts/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ contract_id: contractId }),
-      });
-      if (!attachRes.ok) {
-        const err = await attachRes.text();
-        return { success: false, error: `Attach contract: ${attachRes.status} ${err}` };
-      }
-
+      // Contract was created with asset_id, so already attached; skip attach step
       const patchRes = await fetch(`${base}/contracts/${contractId}/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        cache: 'no-store',
         body: JSON.stringify({ status: 'ACTIVE', version: contractVersion }),
       });
       if (!patchRes.ok) {

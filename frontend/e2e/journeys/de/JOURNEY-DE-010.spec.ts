@@ -11,10 +11,10 @@
 
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { assertNonExistentIdShowsError } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-010: Configure Connector for Data Source', () => {
-  test.setTimeout(120000);
+  test.setTimeout(360000);
 
   test.describe('Success', () => {
     test('integrations connections list loads', async ({ page }) => {
@@ -22,14 +22,13 @@ test.describe('JOURNEY-DE-010: Configure Connector for Data Source', () => {
       await loginUser(page, testUser);
       await page.goto('/integrations/connections');
       await page.waitForLoadState('domcontentloaded');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
-          return;
-        }
-        throw _err;
+      await page.waitForSelector(
+        '.connection-list-page, .marketplace-connection-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
+      if (page.url().includes('/login')) {
+        expect(page.url()).toContain('/login');
+        return;
       }
       expect(page.url()).toContain('/integrations/connections');
     });
@@ -39,7 +38,10 @@ test.describe('JOURNEY-DE-010: Configure Connector for Data Source', () => {
       await loginUser(page, testUser);
       await page.goto('/integrations/connections/create');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await page.waitForSelector(
+        '.marketplace-connection-create-page, .connection-create-page, .marketplace-connection-create-form, .loading-spinner-container, .error-display, #email',
+        { timeout: 90000 }
+      );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
@@ -56,7 +58,7 @@ test.describe('JOURNEY-DE-010: Configure Connector for Data Source', () => {
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.marketplace-connection-detail-page',
-        waitAfterLoad: 8000,
+        waitAfterLoad: 12000,
       });
     });
   });
@@ -67,7 +69,10 @@ test.describe('JOURNEY-DE-010: Configure Connector for Data Source', () => {
       await loginUser(page, testUser);
       await page.goto('/integrations/connections');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await page.waitForSelector(
+        '.connection-list-page, .marketplace-connection-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;

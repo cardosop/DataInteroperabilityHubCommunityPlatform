@@ -377,10 +377,12 @@ test.describe('Phase 4 Marketplace Journey', () => {
     test.setTimeout(300000); // 5 min (listing creation is API-first ~5–15s; rest is UI)
     const t0 = Date.now();
 
-    // Enable console logging for debugging
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
-        console.log(`Browser console error: ${msg.text()}`);
+        const text = msg.text();
+        if (!isBenignConsoleError(text)) {
+          console.log(`Browser console error: ${text}`);
+        }
       }
     });
 

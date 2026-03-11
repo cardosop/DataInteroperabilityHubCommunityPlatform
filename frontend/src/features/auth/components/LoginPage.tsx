@@ -5,8 +5,10 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { useAuthStore } from '../store/authStore';
 import { useCapabilities } from '../../../shared/hooks/useCapabilities';
+import { APP_NAME } from '../../../shared/constants/brand';
 import './AuthPage.css';
 
 type LoginLocationState = {
@@ -52,14 +54,14 @@ export function LoginPage() {
       await login({ email, password });
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(normalizeError(err).error.message || 'Login failed');
     }
   };
 
   return (
     <div className="auth-page">
       <div className="auth-container">
-        <h1>Data Interoperability Hub</h1>
+        <h1>{APP_NAME}</h1>
         {successMessage && (
           <div className="success-message" role="status">
             {successMessage}

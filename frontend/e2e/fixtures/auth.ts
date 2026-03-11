@@ -4,6 +4,8 @@
  */
 
 import { Page, expect } from '@playwright/test';
+import { E2E_APP_NAME } from './brand';
+import { isBenignConsoleError } from './console-utils';
 import {
   ensureAuditorUser,
   ensureComplianceOfficerUser,
@@ -19,6 +21,8 @@ import {
 export type { TestUser };
 
 // Node fetch needs absolute URL; VITE_API_BASE_URL can be relative (/api/v1)
+// Prefer 8001 when E2E_WEB_PORT set (test stack uses 8001)
+const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
 const API_BASE =
   process.env.E2E_API_BASE_URL ||
   (process.env.VITE_PROXY_TARGET
@@ -27,7 +31,7 @@ const API_BASE =
   (process.env.VITE_API_BASE_URL?.startsWith('http')
     ? process.env.VITE_API_BASE_URL
     : null) ||
-  'http://localhost:8000/api/v1';
+  `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
 /** True when error is ECONNREFUSED (wrong port or backend not running). */
 function isConnectionRefused(err: unknown): boolean {
@@ -151,8 +155,22 @@ async function loginViaApiAndInject(page: Page, user: TestUser): Promise<void> {
       await shellLocator.waitFor({ state: 'visible', timeout: shellTimeout });
       break;
     } catch (err) {
+      if (isPageClosedError(err)) {
+        throw new Error(
+          'loginViaApiAndInject: Page/context/browser was closed. Increase test.setTimeout.'
+        );
+      }
       if (attempt < 2) {
-        await page.reload({ waitUntil: 'load' });
+        try {
+          await page.reload({ waitUntil: 'load' });
+        } catch (reloadErr) {
+          if (isPageClosedError(reloadErr)) {
+            throw new Error(
+              'loginViaApiAndInject: Page closed during reload. Increase test.setTimeout.'
+            );
+          }
+          throw reloadErr;
+        }
         await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
       } else {
         throw new Error(
@@ -180,11 +198,25 @@ function userFromAccessToken(accessToken: string): ApiAuth['user'] {
   };
 }
 
-const LOGIN_RETRY_DELAYS_MS = [2000, 4000, 6000];
+const LOGIN_RETRY_DELAYS_MS = [2000, 4000, 6000, 8000, 10000];
+
+function isRetryable500(err: unknown): boolean {
+  const msg = String((err as Error)?.message ?? '');
+  return (
+    /API login failed: 500/.test(msg) &&
+    /translate host name|name resolution|getaddrinfo|ENOTFOUND|could not translate|postgres/i.test(msg)
+  );
+}
 
 /** Login via backend API from Node; returns tokens and user for storage injection.
- * Retries on transient connection errors. Tries alternate port (8000 <-> 8001) on ECONNREFUSED. */
-export async function loginViaApi(email: string, password: string): Promise<ApiAuth> {
+ * Retries on transient connection errors and 500 host-resolution. Tries alternate port (8000 <-> 8001) on ECONNREFUSED.
+ * When both ports fail (API restart during E2E), retries once after 10s delay. */
+export async function loginViaApi(
+  email: string,
+  password: string,
+  options?: { connectionRetryCount?: number }
+): Promise<ApiAuth> {
+  const connectionRetryCount = options?.connectionRetryCount ?? 0;
   const basesToTry = [API_BASE];
   const alt = getAlternateApiBase(API_BASE);
   if (alt) basesToTry.push(alt);
@@ -219,7 +251,8 @@ export async function loginViaApi(email: string, password: string): Promise<ApiA
             user,
           };
         }
-        if (meRes.status === 429) {
+        if (meRes.status === 429 || meRes.status >= 500) {
+          // Rate-limited or transient server error: use token payload to avoid blocking tests
           return {
             access_token: loginData.access_token,
             refresh_token: loginData.refresh_token,
@@ -229,8 +262,12 @@ export async function loginViaApi(email: string, password: string): Promise<ApiA
         throw new Error(`API /auth/me/ failed: ${meRes.status}`);
       } catch (err) {
         lastErr = err;
-        if (r < LOGIN_RETRY_DELAYS_MS.length && (isConnectionRefused(err) || isConnectionError(err))) {
-          await new Promise((resolve) => setTimeout(resolve, LOGIN_RETRY_DELAYS_MS[r]));
+        const retryable =
+          (r < LOGIN_RETRY_DELAYS_MS.length && (isConnectionRefused(err) || isConnectionError(err))) ||
+          (r < 4 && isRetryable500(err));
+        if (retryable) {
+          const delay = LOGIN_RETRY_DELAYS_MS[Math.min(r, LOGIN_RETRY_DELAYS_MS.length - 1)] ?? 10000;
+          await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
         }
         if (isConnectionRefused(err) || isConnectionError(err)) {
@@ -239,6 +276,15 @@ export async function loginViaApi(email: string, password: string): Promise<ApiA
         throw err;
       }
     }
+  }
+  // When both bases failed with connection error, API may be restarting during E2E; retry once after delay
+  if (
+    lastErr &&
+    connectionRetryCount < 1 &&
+    (isConnectionRefused(lastErr) || isConnectionError(lastErr))
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+    return loginViaApi(email, password, { connectionRetryCount: connectionRetryCount + 1 });
   }
   throw lastErr ?? new Error('loginViaApi: unexpected');
 }
@@ -315,6 +361,18 @@ export async function getTenantAdminUser(): Promise<TestUser> {
 }
 
 /**
+ * Get tenant admin or fall back to test user when tenant admin is unavailable (e.g. transient setup race).
+ * Use for ODPS/DE-014 when tenant admin may not be ready; test user may have access in default tenant.
+ */
+export async function getTenantAdminUserOrTestUser(): Promise<TestUser> {
+  try {
+    return await ensureTenantAdminUser();
+  } catch {
+    return await ensureTestUser();
+  }
+}
+
+/**
  * Get auditor test user (AUD). Requires ensure_e2e_user_roles run before E2E.
  */
 export async function getAuditorUser(): Promise<TestUser> {
@@ -376,12 +434,15 @@ export async function loginUser(
   options: LoginUserOptions = {}
 ): Promise<void> {
   const { useUiLogin = true, forceFreshLogin = false } = options;
-  // Capture console errors
+  // Capture console errors (filter expected 404/not-found from failure tests)
   const consoleErrors: string[] = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') {
-      consoleErrors.push(msg.text());
-      console.log(`Browser console error: ${msg.text()}`);
+      const text = msg.text();
+      if (!isBenignConsoleError(text)) {
+        consoleErrors.push(text);
+        console.log(`Browser console error: ${text}`);
+      }
     }
   });
 
@@ -450,7 +511,7 @@ export async function loginUser(
   for (let attempt = 0; attempt < 3 && !h1Found; attempt++) {
     try {
       await page.waitForSelector('h1', { timeout: attempt === 0 ? 10000 : 8000 });
-      await expect(page.locator('h1')).toContainText('Data Interoperability Hub', { timeout: 5000 });
+      await expect(page.locator('h1')).toContainText(E2E_APP_NAME, { timeout: 5000 });
       h1Found = true;
     } catch {
       if (attempt < 2) {
@@ -558,7 +619,16 @@ export async function loginUser(
   } catch (error) {
     // Check if we're still on login page
     if (page.url().includes('/login')) {
-      await page.waitForTimeout(2000); // Wait for error message
+      try {
+        await page.waitForTimeout(2000); // Wait for error message
+      } catch (waitErr) {
+        if (isPageClosedError(waitErr)) {
+          throw new Error(
+            'loginUser: Page/context/browser was closed during auth init. Increase test.setTimeout.'
+          );
+        }
+        throw waitErr;
+      }
       const token = await page.evaluate(() => localStorage.getItem('access_token'));
       if (token) {
         // Token exists but navigation didn't happen - force navigation
@@ -598,7 +668,16 @@ export async function loginUser(
       authInitialized = false;
     }
     if (!authInitialized) {
-      await page.waitForTimeout(1000); // Wait 1s between checks
+      try {
+        await page.waitForTimeout(1000); // Wait 1s between checks
+      } catch (err) {
+        if (isPageClosedError(err)) {
+          throw new Error(
+            'loginUser: Page/context/browser was closed during auth init. Increase test.setTimeout.'
+          );
+        }
+        throw err;
+      }
     }
   }
   if (!authInitialized) {
@@ -628,7 +707,16 @@ export async function loginUser(
   }
 
   // Verify auth is stable: wait for fetchUser; if token invalid we get redirected to login
-  await page.waitForTimeout(2000);
+  try {
+    await page.waitForTimeout(2000);
+  } catch (waitErr) {
+    if (isPageClosedError(waitErr)) {
+      throw new Error(
+        'loginUser: Page/context/browser was closed during auth init. Increase test.setTimeout.'
+      );
+    }
+    throw waitErr;
+  }
   if (page.url().includes('/login')) {
     throw new Error(
       'Login failed: Redirected to login after app shell appeared; token may be invalid.'

@@ -77,6 +77,8 @@ export interface ContractListFilters {
   quality_profile?: string;
   compliance_regime?: string;
   asset_id?: string;
+  /** Filter by original_spec_type (e.g. ODPS, ODCS) for ODPS Link page */
+  spec_type?: string;
 }
 
 export interface ContractValidationResult {

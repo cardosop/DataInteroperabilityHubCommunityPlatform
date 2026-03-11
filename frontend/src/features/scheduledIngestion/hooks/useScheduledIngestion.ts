@@ -14,7 +14,13 @@ import { scheduledIngestionService } from '../services/scheduledIngestionService
 export function useScheduledIngestions(filters: ScheduledIngestionListFilters = {}) {
   return useQuery({
     queryKey: ['scheduled-ingestions', 'list', filters],
-    queryFn: () => scheduledIngestionService.list(filters),
+    queryFn: async () => {
+      const data = await scheduledIngestionService.list(filters);
+      if (data == null) {
+        return { results: [], count: 0, next: null, previous: null };
+      }
+      return data;
+    },
   });
 }
 

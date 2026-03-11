@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCreateMeshDomain } from '../hooks/useMesh';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { isValidUUID } from '../../../shared/utils/validation';
 import { DomainStatus } from '../../../shared/types/mesh';
 import './MeshDomainCreatePage.css';
 
@@ -28,11 +29,16 @@ export function MeshDomainCreatePage() {
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!formData.name.trim()) {
       newErrors.name = 'Name is required';
     }
-    
+
+    const ownerId = formData.owner_id.trim();
+    if (ownerId && !isValidUUID(ownerId)) {
+      newErrors.owner_id = 'Owner ID must be a valid UUID';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -108,7 +114,9 @@ export function MeshDomainCreatePage() {
             value={formData.owner_id}
             onChange={(e) => setFormData({ ...formData, owner_id: e.target.value })}
             placeholder="UUID of the owner user"
+            className={errors.owner_id ? 'error' : ''}
           />
+          {errors.owner_id && <span className="error-message">{errors.owner_id}</span>}
         </div>
 
         <div className="form-group">

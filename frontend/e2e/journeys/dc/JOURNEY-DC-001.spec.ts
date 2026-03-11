@@ -11,6 +11,7 @@
 
 import { expect, test } from '@playwright/test';
 import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
+import { assertFailureRedirect, assertSuccessLoad } from '../../fixtures/journey-helpers';
 import { waitForAppMainReady } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
@@ -22,14 +23,17 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
       await loginUser(page, consumer);
       await page.goto('/marketplace');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.listing-list-page, .error-display, .empty-state, #email', {
-        timeout: 65000,
-      });
+      await page.waitForSelector(
+        '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .error-display, .empty-state, .loading-spinner-container, #email',
+        { timeout: 65000 }
+      );
       if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
+        await assertFailureRedirect(page);
         return;
       }
-      expect(page.url()).toContain('/marketplace');
+      await assertSuccessLoad(page, {
+        successContentSelector: '[data-testid="listing-list-page"], .listing-list-page, .empty-state',
+      });
     });
 
     test('marketplace orders list loads', async ({ page }) => {
@@ -40,17 +44,14 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
         await waitForAppMainReady(page, { timeout: 60000 });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
+          await assertFailureRedirect(page);
           return;
         }
         throw _err;
       }
-      expect(page.url()).toContain('/marketplace/orders');
-      const hasContent =
-        (await page.locator('.order-list-page').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      await assertSuccessLoad(page, {
+        successContentSelector: '.order-list-page, .empty-state, .error-display',
+      });
     });
 
     test('marketplace entitlements list loads', async ({ page }) => {
@@ -61,17 +62,14 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
         await waitForAppMainReady(page, { timeout: 60000 });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
+          await assertFailureRedirect(page);
           return;
         }
         throw _err;
       }
-      expect(page.url()).toContain('/marketplace/entitlements');
-      const hasContent =
-        (await page.locator('.entitlement-list-page').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      await assertSuccessLoad(page, {
+        successContentSelector: '.entitlement-list-page, .empty-state, .error-display',
+      });
     });
   });
 
@@ -98,14 +96,17 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
       await loginUser(page, consumer);
       await page.goto('/marketplace');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.listing-list-page, .empty-state, .error-display, #email', {
-        timeout: 65000,
-      });
+      await page.waitForSelector(
+        '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 65000 }
+      );
       if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
+        await assertFailureRedirect(page);
         return;
       }
-      expect(page.url()).toContain('/marketplace');
+      await assertSuccessLoad(page, {
+        successContentSelector: '[data-testid="listing-list-page"], .listing-list-page, .empty-state',
+      });
     });
   });
 });

@@ -3,11 +3,17 @@
  * Displays dataset details with query execution UI
  */
 
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useVirtualDataset, useDeleteVirtualDataset, useValidateVirtualDataset } from '../hooks/useVirtualization';
 import { QueryExecutionUI } from './QueryExecutionUI';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './VirtualDatasetDetailPage.css';
 
 export function VirtualDatasetDetailPage() {
@@ -16,14 +22,19 @@ export function VirtualDatasetDetailPage() {
   const { data: dataset, isLoading, error, refetch } = useVirtualDataset(id);
   const deleteMutation = useDeleteVirtualDataset();
   const validateMutation = useValidateVirtualDataset();
+  const toast = useToast();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const handleDelete = async () => {
-    if (!id || !confirm('Are you sure you want to delete this dataset? This action cannot be undone.')) return;
+  const handleDeleteClick = () => setShowDeleteConfirm(true);
+  const handleDeleteConfirm = async () => {
+    if (!id) return;
+    setShowDeleteConfirm(false);
     try {
       await deleteMutation.mutateAsync(id);
+      toast.success('Virtual dataset deleted.');
       navigate('/virtualization');
     } catch (err) {
-      // Error handled by mutation
+      toast.error(normalizeError(err).error.message || 'Failed to delete virtual dataset');
     }
   };
 
@@ -62,15 +73,27 @@ export function VirtualDatasetDetailPage() {
           <button onClick={() => navigate(`/virtualization/${id}/edit`)} className="btn-secondary" type="button">
             Edit
           </button>
-          <button onClick={handleDelete} className="btn-danger" type="button" disabled={deleteMutation.isPending}>
+          <button onClick={handleDeleteClick} className="btn-danger" type="button" disabled={deleteMutation.isPending}>
             {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
           </button>
         </div>
       </div>
 
       <div className="virtual-dataset-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Virtual Datasets', href: '/virtualization' },
+            { label: dataset.name || 'Dataset' },
+          ]}
+        />
         <div className="dataset-info-section">
           <h1>{dataset.name}</h1>
+          {id && (
+            <div className="virtual-dataset-uuid" data-testid="virtual-dataset-uuid">
+              <UuidWithCopy value={id} label="Virtual Dataset ID" />
+            </div>
+          )}
           {dataset.description && <p className="dataset-description">{dataset.description}</p>}
           
           <div className="dataset-metadata">
@@ -114,6 +137,16 @@ export function VirtualDatasetDetailPage() {
           <QueryExecutionUI datasetId={id!} />
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete virtual dataset"
+        message="Are you sure you want to delete this dataset? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

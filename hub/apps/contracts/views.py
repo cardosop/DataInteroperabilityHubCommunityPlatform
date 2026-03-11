@@ -481,6 +481,16 @@ class ContractViewSet(
             # Fallback for Django WSGIRequest (e.g., in tests with APIRequestFactory)
             query_params = request.GET
 
+        # Search by info.name or info.title (29.69.3 ContractPicker; LIST_API_PICKER_AUDIT)
+        search_term = query_params.get("search")
+        if search_term and search_term.strip():
+            term = search_term.strip()
+            search_q = (
+                Q(hub_contract_json__info__name__icontains=term)
+                | Q(hub_contract_json__info__title__icontains=term)
+            )
+            queryset = queryset.filter(search_q)
+
         # Filter by owners (email or name)
         owner_email = query_params.get("owner_email")
         owner_name = query_params.get("owner_name")

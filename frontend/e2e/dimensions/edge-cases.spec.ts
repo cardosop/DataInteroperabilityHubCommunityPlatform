@@ -2,10 +2,12 @@
  * Dimension: Edge Cases
  * Aggregates journey specs that verify boundary conditions.
  * Per E2E_FULL_COVERAGE_PLAN: Empty/null, min/max values, special chars, pagination.
- * Run: npm run test:e2e -- e2e/dimensions/edge-cases.spec.ts
+ * Phase 29.4.4: Real tests in cross-cutting/edge-cases-tests.spec.ts (runnable; dimensions in testIgnore).
+ * Run: npm run test:e2e -- e2e/cross-cutting/edge-cases-tests.spec.ts
  * No mocks/stubs; real backend only.
  */
 
+import '../cross-cutting/edge-cases-tests.spec';
 import '../journeys/auth/JOURNEY-AUTH-001.spec';
 import '../journeys/auth/JOURNEY-AUTH-002.spec';
 import '../journeys/auth/JOURNEY-AUTH-003.spec';

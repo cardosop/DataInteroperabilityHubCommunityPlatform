@@ -1,6 +1,6 @@
 # Audit Policy
 
-**Last Updated**: 2026-01-29
+**Last Updated**: 2026-03-07
 
 This document defines which operations MUST emit an audit event and lists all public (AllowAny) endpoints for review. It supports Phase 15 — Governance: Audit policy and AllowAny review.
 
@@ -82,7 +82,42 @@ The following resource types and actions **MUST** emit an audit event via `hub.a
 | Listing create/update/delete | Marketplace listing changes | `hub.apps.marketplace.views`, `hub.apps.marketplace.services` |
 | Integration sync/mapping | Sync or mapping created/updated | `hub.apps.integrations.services` |
 
-### 1.10 Files and datasets
+#### 1.9.1 Integrations — Connection, sync job, mapping
+
+All integrations mutations go through `MarketplaceIntegrationService` (`hub.apps.integrations.services`, `services_mapping_methods`, `services_sync_methods`). Views delegate to the service; the service emits audit events. No direct model mutations from views.
+
+| Resource | Action | View → Service path | Audit event |
+|----------|--------|---------------------|-------------|
+| **Connection** | Create | `MarketplaceConnectionViewSet.create` → `service.create_connection` | `CONNECTION_CREATED` |
+| **Connection** | Update | `MarketplaceConnectionViewSet.update` / `partial_update` → `service.update_connection` | `CONNECTION_UPDATED` |
+| **Connection** | Delete | `MarketplaceConnectionViewSet.destroy` → `service.delete_connection` | `CONNECTION_DELETED` |
+| **Connection** | Test | `MarketplaceConnectionViewSet.test` → `service.test_connection` | `CONNECTION_TESTED` |
+| **Sync job** | Create | `MarketplaceSyncJobViewSet.create` → `service.sync_assets_to_marketplace` / `sync_from_marketplace` | `SYNC_JOB_CREATED` |
+| **Sync job** | Cancel | `MarketplaceSyncJobViewSet.cancel` → `service.cancel_sync_job` | `SYNC_JOB_CANCELLED` |
+| **Mapping** | Create | Sync operations / tasks → `service.create_mapping` | `MAPPING_CREATED` |
+| **Mapping** | Update | Programmatic → `service.update_mapping` | `MAPPING_UPDATED` |
+| **Mapping** | Delete | `MarketplaceMappingViewSet.destroy` → `service.delete_mapping` | `MAPPING_DELETED` |
+| **Scheduled sync** | Create | Programmatic → `service.schedule_sync` | `SCHEDULED_SYNC_CREATED` |
+| **Scheduled sync** | Delete | Programmatic → `service.unschedule_sync` | `SCHEDULED_SYNC_DELETED` |
+
+**Trace confirmation (2026-03-07):** All mutation paths verified. No views perform `instance.save()` or `instance.delete()` directly; all delegate to `MarketplaceIntegrationService` methods that call `create_audit_event` before returning. Tests: `hub.apps.integrations.tests.test_services_integration`, `test_mapping_views`, `test_marketplace_framework`, `test_scheduled_sync` (SCHEDULED_SYNC_CREATED, SCHEDULED_SYNC_DELETED).
+
+### 1.10 Platform admin operations
+
+Platform admin operations (tenant suspend/resume, user erasure) are restricted to users with `is_platform_admin=True`. All mutations go through services that emit audit events. No direct model mutations from views.
+
+#### 1.10.1 Tenant suspend/resume, user erasure
+
+| Resource | Action | View → Service path | Audit event |
+|----------|--------|---------------------|-------------|
+| **Tenant** | Suspend | `PlatformTenantViewSet.suspend` → `TenantLifecycleService.suspend_tenant` | `TENANT_SUSPENDED` |
+| **Tenant** | Resume | `PlatformTenantViewSet.resume` → `TenantLifecycleService.resume_tenant` | `TENANT_REACTIVATED` |
+| **Erasure request** | Create (platform-initiated) | `PlatformUserViewSet.request_erasure` → `ErasureService.create_request` | `ERASURE_REQUESTED` |
+| **Erasure request** | Execute | `PlatformUserViewSet.request_erasure` → `ErasureService.execute_erasure` | `ERASURE_COMPLETED` |
+
+**Trace confirmation (2026-03-07):** (1) **Tenant suspend/resume** — `PlatformTenantViewSet` delegates to `TenantLifecycleService` (`hub.apps.tenants.services`); service emits `TENANT_SUSPENDED` / `TENANT_REACTIVATED` with `actor_user` = platform admin. API: `POST /api/v1/platform/tenants/{id}/suspend/`, `POST /api/v1/platform/tenants/{id}/resume/`. (2) **User erasure** — `PlatformUserViewSet.request_erasure` calls `ErasureService` (`hub.apps.gdpr.services`)(user_id=request.user.id).create_request(user_id=target.id); actor is platform admin; details include `initiated_by` and `source: "platform_admin"`. `execute_erasure` emits `ERASURE_COMPLETED` with `actor_user=None` (system action). API: `POST /api/v1/platform/users/{id}/request-erasure/`. Tests: `hub.apps.platform.tests.test_views` (test_platform_tenant_suspend_creates_audit_event, test_platform_tenant_resume_creates_audit_event, test_platform_request_erasure_audit_actor_is_platform_admin, test_platform_request_erasure_creates_erasure_completed_audit_event), `tests.integration.test_platform_apis_integration`.
+
+### 1.11 Files and datasets
 
 | Action | When | Reference |
 |--------|------|-----------|

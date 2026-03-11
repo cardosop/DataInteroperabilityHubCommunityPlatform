@@ -12,27 +12,41 @@ Owns datasets and publishes them as data products. Works primarily through the w
 
 ---
 
+## Before You Start
+
+1. **Start test stack**: `docker compose -f docker-compose.test.yml up -d`
+2. **Ensure E2E users**: `docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
+3. **Ensure subscriptions**: `docker exec hub-test-api python hub/manage.py ensure_e2e_subscription`
+4. **Open frontend**: http://localhost:3010
+5. **Log in** as e2e_test@example.com / TestPass123
+6. **Prepare support material** (see [05-SUPPORT-MATERIAL](../05-SUPPORT-MATERIAL/README.md)):
+   - `05-SUPPORT-MATERIAL/data/sample-upload.csv` — for asset/dataset creation
+   - `05-SUPPORT-MATERIAL/contracts/odps-with-embedded-odcs.json` — for contract creation
+   - `05-SUPPORT-MATERIAL/contracts/odps-invalid-missing-schema.json` — for error testing
+
+---
+
 ## Journeys Covered
 
-| Journey | Title | Docs | E2E Spec | Est. |
-|---------|-------|------|----------|------|
-| JOURNEY-DPO-001 | Onboard New Asset via Data-First Flow | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dpo-001-onboard-new-asset-via-data-first-flow) | `journeys/dpo/asset-creation-flow.spec.ts` | 20 min |
-| JOURNEY-DPO-002 | Publish Asset to Marketplace | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dpo-002-publish-asset-to-marketplace) | `journeys/dpo/JOURNEY-DPO-002.spec.ts` | 15 min |
-| JOURNEY-DPO-003 | Manage Asset Lifecycle | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dpo-003-manage-asset-lifecycle) | `journeys/dpo/JOURNEY-DPO-003.spec.ts` | 10 min |
-| JOURNEY-DPO-004 | Monitor Asset Quality | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/dpo/JOURNEY-DPO-004.spec.ts` | 10 min |
-| JOURNEY-DPO-005 | Configure Data Contracts | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/dpo/contract-creation-flow.spec.ts` | 15 min |
-| JOURNEY-DPO-006 | Manage Marketplace Listings | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/dpo/JOURNEY-DPO-006.spec.ts` | 10 min |
-| JOURNEY-DPO-007 | Use AI Schema Matching | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dpo-007-use-ai-schema-matching-for-asset-creation-new) | `journeys/dpo/JOURNEY-DPO-007.spec.ts` | 10 min |
+| Journey | Title | Step-by-Step Script | E2E Spec | Est. |
+|---------|-------|--------------------|----------|------|
+| JOURNEY-DPO-001 | Onboard New Asset via Data-First Flow | [dpo/JOURNEY-DPO-001.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-001.md) | `journeys/dpo/asset-creation-flow.spec.ts` | 20 min |
+| JOURNEY-DPO-002 | Publish Asset to Marketplace | [dpo/JOURNEY-DPO-002.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-002.md) | `journeys/dpo/JOURNEY-DPO-002.spec.ts` | 15 min |
+| JOURNEY-DPO-003 | Manage Asset Lifecycle | [dpo/JOURNEY-DPO-003.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-003.md) | `journeys/dpo/JOURNEY-DPO-003.spec.ts` | 10 min |
+| JOURNEY-DPO-004 | Monitor Asset Quality | [dpo/JOURNEY-DPO-004.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-004.md) | `journeys/dpo/JOURNEY-DPO-004.spec.ts` | 10 min |
+| JOURNEY-DPO-005 | Configure Data Contracts | [dpo/JOURNEY-DPO-005.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-005.md) | `journeys/dpo/contract-creation-flow.spec.ts` | 15 min |
+| JOURNEY-DPO-006 | Manage Marketplace Listings | [dpo/JOURNEY-DPO-006.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-006.md) | `journeys/dpo/JOURNEY-DPO-006.spec.ts` | 10 min |
+| JOURNEY-DPO-007 | Use AI Schema Matching | [dpo/JOURNEY-DPO-007.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-007.md) | `journeys/dpo/JOURNEY-DPO-007.spec.ts` | 10 min |
 | JOURNEY-DPO-008 | Create Transformation Pipeline | **Deferred** | — | — |
-| JOURNEY-DPO-009 | Manage Asset Ratings and Reviews | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dpo-009-manage-asset-ratings-and-reviews-new) | `journeys/dpo/JOURNEY-DPO-009.spec.ts` | 5 min |
-| JOURNEY-DPO-010 | Publish with Usage-Based Pricing | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dpo-010-publish-asset-with-usage-based-pricing-new) | `journeys/dpo/JOURNEY-DPO-010.spec.ts` | 10 min |
-| JOURNEY-DPO-011 | Assign Data Stewards | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dpo-011-assign-data-stewards-new) | `journeys/dpo/JOURNEY-DPO-011.spec.ts` | 5 min |
-| JOURNEY-DPO-012 | Join Data Community | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dpo-012-join-data-community-new) | `journeys/dpo/JOURNEY-DPO-012.spec.ts` | 5 min |
-| JOURNEY-DPO-013 | Configure Data Mesh Domain | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dpo-013-configure-data-mesh-domain-new) | `journeys/dpo/JOURNEY-DPO-013.spec.ts` | 10 min |
-| JOURNEY-DPO-014 | Monitor Asset Reliability Score | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dpo-014-monitor-asset-reliability-score-new) | `journeys/dpo/JOURNEY-DPO-014.spec.ts` | 5 min |
-| JOURNEY-DPO-015 | Create ODPS Product (Product-First Flow) | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dpo-015-create-odps-product-product-first-flow-new) | `journeys/dpo/JOURNEY-DPO-015.spec.ts` | 15 min |
-| JOURNEY-DPO-016 | Link ODPS to ODCS Contract | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dpo-016-link-odps-to-odcs-contract-technical-first-flow-new) | `journeys/dpo/JOURNEY-DPO-016.spec.ts` | 15 min |
-| JOURNEY-DPO-017 | Export ODPS Product | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dpo-017-export-odps-product-new) | `journeys/dpo/JOURNEY-DPO-017.spec.ts` | 10 min |
+| JOURNEY-DPO-009 | Manage Asset Ratings and Reviews | [dpo/JOURNEY-DPO-009.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-009.md) | `journeys/dpo/JOURNEY-DPO-009.spec.ts` | 5 min |
+| JOURNEY-DPO-010 | Publish with Usage-Based Pricing | [dpo/JOURNEY-DPO-010.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-010.md) | `journeys/dpo/JOURNEY-DPO-010.spec.ts` | 10 min |
+| JOURNEY-DPO-011 | Assign Data Stewards | [dpo/JOURNEY-DPO-011.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-011.md) | `journeys/dpo/JOURNEY-DPO-011.spec.ts` | 5 min |
+| JOURNEY-DPO-012 | Join Data Community | [dpo/JOURNEY-DPO-012.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-012.md) | `journeys/dpo/JOURNEY-DPO-012.spec.ts` | 5 min |
+| JOURNEY-DPO-013 | Configure Data Mesh Domain | [dpo/JOURNEY-DPO-013.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-013.md) | `journeys/dpo/JOURNEY-DPO-013.spec.ts` | 10 min |
+| JOURNEY-DPO-014 | Monitor Asset Reliability Score | [dpo/JOURNEY-DPO-014.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-014.md) | `journeys/dpo/JOURNEY-DPO-014.spec.ts` | 5 min |
+| JOURNEY-DPO-015 | Create ODPS Product (Product-First Flow) | [dpo/JOURNEY-DPO-015.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-015.md) | `journeys/dpo/JOURNEY-DPO-015.spec.ts` | 15 min |
+| JOURNEY-DPO-016 | Link ODPS to ODCS Contract | [dpo/JOURNEY-DPO-016.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-016.md) | `journeys/dpo/JOURNEY-DPO-016.spec.ts` | 15 min |
+| JOURNEY-DPO-017 | Export ODPS Product | [dpo/JOURNEY-DPO-017.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-017.md) | `journeys/dpo/JOURNEY-DPO-017.spec.ts` | 10 min |
 
 **Total Estimated Duration**: ~90 min (excluding deferred)
 
@@ -40,13 +54,16 @@ Owns datasets and publishes them as data products. Works primarily through the w
 
 ## Execution Order (Recommended)
 
-1. [ ] **JOURNEY-DPO-001** — Create asset → upload file → dataset → compliance → DQ → contract → activate
-2. [ ] **JOURNEY-DPO-005** — Create contract (or contract-creation flow)
-3. [ ] **JOURNEY-DPO-002** — Publish asset to marketplace
+1. [ ] **JOURNEY-DPO-001** — Create asset → upload file → dataset → compliance → DQ → contract → activate  
+   **Support**: `data/sample-upload.csv`, `contracts/odps-with-embedded-odcs.json`
+2. [ ] **JOURNEY-DPO-005** — Create contract via ODPS upload (valid + invalid)  
+   **Support**: `contracts/odps-with-embedded-odcs.json`, `odps-invalid-missing-schema.json`
+3. [ ] **JOURNEY-DPO-002** — Publish asset to marketplace (requires ACTIVE asset from DPO-001)
 4. [ ] **JOURNEY-DPO-003** — Manage asset lifecycle (status changes)
 5. [ ] **JOURNEY-DPO-004** — Monitor asset quality (DQ runs)
-6. [ ] **JOURNEY-DPO-015** — Create ODPS product (product-first)
-7. [ ] **JOURNEY-DPO-016** — Link ODPS to ODCS contract
+6. [ ] **JOURNEY-DPO-015** — Create ODPS product (product-first)  
+   **Support**: `contracts/odps-with-embedded-odcs.json`
+7. [ ] **JOURNEY-DPO-016** — Link ODPS to ODCS contract (requires ODCS + ODPS from DPO-015)
 8. [ ] **JOURNEY-DPO-017** — Export ODPS product
 9. [ ] **JOURNEY-DPO-007** — AI schema matching (if capability enabled)
 10. [ ] **JOURNEY-DPO-006** — Manage marketplace listings
@@ -61,13 +78,17 @@ Owns datasets and publishes them as data products. Works primarily through the w
 
 ## Key Routes
 
-- `/assets`, `/assets/create`, `/assets/:id`
-- `/datasets`, `/datasets/create`, `/datasets/:id`
-- `/contracts`, `/contracts/:id`, `/contracts/:id/link-odps`
-- `/marketplace`, `/marketplace/publish`, `/marketplace/listings/:id`
-- `/odps`, `/odps/upload`, `/odps/:id`
-- `/dq`, `/dq/runs/:id`
-- `/compliance`, `/compliance/runs/:id`
+| Route | Purpose |
+|-------|---------|
+| `/assets`, `/assets/create`, `/assets/:id` | Asset list, create, detail |
+| `/datasets`, `/datasets/create`, `/datasets/:id` | Dataset list, create (from file upload), detail |
+| `/contracts`, `/contracts/:id`, `/contracts/:id/link-odps` | Contract list, detail, link ODPS |
+| `/marketplace`, `/marketplace/publish`, `/marketplace/listings/:id` | Marketplace, publish, listing detail |
+| `/odps`, `/odps/upload`, `/odps/:id` | ODPS list, upload (Create Contract → here), detail |
+| `/dq`, `/dq/runs/:id` | Data quality runs |
+| `/compliance`, `/compliance/runs/:id` | Compliance runs |
+
+**Note**: "Create Contract" (Contracts page) navigates to `/odps/upload` — contract creation is via ODPS upload.
 
 ---
 

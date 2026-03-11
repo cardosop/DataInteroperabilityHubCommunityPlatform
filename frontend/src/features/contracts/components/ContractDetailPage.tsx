@@ -10,6 +10,8 @@ import { ContractLineageVisualization } from '../../lineage/components/ContractL
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { ContractFormat } from '../../../shared/types/contracts';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './ContractDetailPage.css';
 
 type ContractDetailTab = 'details' | 'lineage';
@@ -135,12 +137,24 @@ export function ContractDetailPage() {
       </div>
 
       <div className="contract-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Contracts', href: '/contracts' },
+            { label: contract.name || 'Contract' },
+          ]}
+        />
         <div className="contract-detail-main">
           {activeTab === 'lineage' && id ? (
             <ContractLineageVisualization contractId={id} maxDepth={10} />
           ) : (
             <>
           <h1>{contract.name || 'Unnamed Contract'}</h1>
+          {id && (
+            <div className="contract-uuid" data-testid="contract-uuid">
+              <UuidWithCopy value={id} label="Contract ID" />
+            </div>
+          )}
           {contract.description && <p className="contract-description">{contract.description}</p>}
 
           <div className="contract-detail-metadata">

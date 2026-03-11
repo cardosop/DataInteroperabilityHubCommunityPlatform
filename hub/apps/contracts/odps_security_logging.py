@@ -289,48 +289,52 @@ class SecurityLogger:
             return
 
         try:
-            from hub.apps.tenants.models import Tenant
+            from django.db import transaction
 
-            # Get tenant if tenant_id provided
-            tenant = None
-            if violation_log.tenant_id:
-                try:
-                    tenant = Tenant.objects.get(id=violation_log.tenant_id)
-                except Tenant.DoesNotExist:
-                    pass
-
-            # Get user if user_id provided
-            user = None
-            if violation_log.user_id and get_user_model:
-                try:
-                    User = get_user_model()
-                    user = User.objects.get(id=violation_log.user_id)
-                except (User.DoesNotExist, Exception):
-                    pass
-
-            SecurityAuditLog.objects.create(
-                event_type=violation_log.event_type,  # Use actual event type, not always SECURITY_VIOLATION
-                severity=violation_log.severity,
-                tenant=tenant,
-                user=user,
-                ref_path=violation_log.attempted_path or violation_log.attempted_url,
-                attempted_path=violation_log.attempted_path,
-                attempted_url=violation_log.attempted_url,
-                violation_type=violation_log.violation_type,
-                description=violation_log.description,
-                request_id=violation_log.request_id,
-                ip_address=violation_log.ip_address,
-                user_agent=violation_log.user_agent,
-                metadata_json=violation_log.metadata or {},
-            )
+            with transaction.atomic():
+                self._persist_security_violation_inner(violation_log)
         except Exception as e:
-            # Don't fail on database persistence errors - logging is more important
             logger.warning(
                 "odps_security_audit_persistence_failed",
                 error=str(e),
                 event_type=violation_log.event_type,
                 message="Failed to persist security violation to database (non-critical)"
             )
+
+    def _persist_security_violation_inner(self, violation_log: SecurityViolationLog) -> None:
+        """Inner persistence logic; runs inside savepoint."""
+        from hub.apps.tenants.models import Tenant
+
+        tenant = None
+        if violation_log.tenant_id:
+            try:
+                tenant = Tenant.objects.get(id=violation_log.tenant_id)
+            except (Tenant.DoesNotExist, Exception):
+                pass
+
+        user = None
+        if violation_log.user_id and get_user_model:
+            try:
+                User = get_user_model()
+                user = User.objects.get(id=violation_log.user_id)
+            except Exception:
+                pass
+
+        SecurityAuditLog.objects.create(
+            event_type=violation_log.event_type,
+            severity=violation_log.severity,
+            tenant=tenant,
+            user=user,
+            ref_path=violation_log.attempted_path or violation_log.attempted_url,
+            attempted_path=violation_log.attempted_path,
+            attempted_url=violation_log.attempted_url,
+            violation_type=violation_log.violation_type,
+            description=violation_log.description,
+            request_id=violation_log.request_id,
+            ip_address=violation_log.ip_address,
+            user_agent=violation_log.user_agent,
+            metadata_json=violation_log.metadata or {},
+        )
 
     def log_ref_resolution_audit(
         self,
@@ -414,54 +418,58 @@ class SecurityLogger:
             return
 
         try:
-            from hub.apps.tenants.models import Tenant
+            from django.db import transaction
 
-            # Get tenant if tenant_id provided
-            tenant = None
-            if audit_log.tenant_id:
-                try:
-                    tenant = Tenant.objects.get(id=audit_log.tenant_id)
-                except Tenant.DoesNotExist:
-                    pass
-
-            # Get user if user_id provided
-            user = None
-            if audit_log.user_id and get_user_model:
-                try:
-                    User = get_user_model()
-                    user = User.objects.get(id=audit_log.user_id)
-                except (User.DoesNotExist, Exception):
-                    pass
-
-            SecurityAuditLog.objects.create(
-                event_type="REF_RESOLUTION_AUDIT",
-                tenant=tenant,
-                user=user,
-                ref_type=audit_log.ref_type,
-                ref_path=audit_log.ref_path,
-                resolved_path=audit_log.resolved_path,
-                description=f"Ref resolution: {audit_log.ref_type} - {'success' if audit_log.success else 'failure'}",
-                metadata_json={
-                    "operation_id": audit_log.operation_id,
-                    "success": audit_log.success,
-                    "duration_ms": audit_log.duration_ms,
-                    "error_type": audit_log.error_type,
-                    "error_message": audit_log.error_message,
-                    "security_checks_passed": audit_log.security_checks_passed,
-                    "security_violations": audit_log.security_violations,
-                    "size_bytes": audit_log.size_bytes,
-                    "cache_hit": audit_log.cache_hit,
-                    **(audit_log.metadata or {}),
-                },
-            )
+            with transaction.atomic():
+                self._persist_ref_resolution_audit_inner(audit_log)
         except Exception as e:
-            # Don't fail on database persistence errors - logging is more important
             logger.warning(
                 "odps_ref_resolution_audit_persistence_failed",
                 error=str(e),
                 operation_id=audit_log.operation_id,
                 message="Failed to persist ref resolution audit to database (non-critical)"
             )
+
+    def _persist_ref_resolution_audit_inner(self, audit_log: RefResolutionAuditLog) -> None:
+        """Inner ref resolution audit persistence; runs inside savepoint."""
+        from hub.apps.tenants.models import Tenant
+
+        tenant = None
+        if audit_log.tenant_id:
+            try:
+                tenant = Tenant.objects.get(id=audit_log.tenant_id)
+            except (Tenant.DoesNotExist, Exception):
+                pass
+
+        user = None
+        if audit_log.user_id and get_user_model:
+            try:
+                User = get_user_model()
+                user = User.objects.get(id=audit_log.user_id)
+            except Exception:
+                pass
+
+        SecurityAuditLog.objects.create(
+            event_type="REF_RESOLUTION_AUDIT",
+            tenant=tenant,
+            user=user,
+            ref_type=audit_log.ref_type,
+            ref_path=audit_log.ref_path,
+            resolved_path=audit_log.resolved_path,
+            description=f"Ref resolution: {audit_log.ref_type} - {'success' if audit_log.success else 'failure'}",
+            metadata_json={
+                "operation_id": audit_log.operation_id,
+                "success": audit_log.success,
+                "duration_ms": audit_log.duration_ms,
+                "error_type": audit_log.error_type,
+                "error_message": audit_log.error_message,
+                "security_checks_passed": audit_log.security_checks_passed,
+                "security_violations": audit_log.security_violations,
+                "size_bytes": audit_log.size_bytes,
+                "cache_hit": audit_log.cache_hit,
+                **(audit_log.metadata or {}),
+            },
+        )
 
     def log_external_ref_fetch(
         self,
@@ -682,39 +690,18 @@ class SecurityLogger:
             eviction_reason=eviction_reason,
         )
 
-        # Persist to database
+        # Persist to database (savepoint isolates failures from caller's transaction)
         if not self._persist_to_db:
             return
 
         try:
-            from hub.apps.tenants.models import Tenant
+            from django.db import transaction
 
-            tenant = None
-            if tenant_id:
-                try:
-                    tenant = Tenant.objects.get(id=tenant_id)
-                except Tenant.DoesNotExist:
-                    pass
-
-            user = None
-            if user_id and get_user_model:
-                try:
-                    User = get_user_model()
-                    user = User.objects.get(id=user_id)
-                except (User.DoesNotExist, Exception):
-                    pass
-
-            SecurityAuditLog.objects.create(
-                event_type=event_type.value,
-                tenant=tenant,
-                user=user,
-                ref_path=ref_path,
-                cache_operation=operation.lower(),
-                cache_key=cache_key,
-                eviction_reason=eviction_reason,
-                description=f"Cache {operation}: {ref_path or cache_key}",
-                metadata_json=metadata or {},
-            )
+            with transaction.atomic():
+                self._persist_cache_operation_inner(
+                    event_type, tenant_id, user_id, ref_path,
+                    operation, cache_key, eviction_reason, metadata
+                )
         except Exception as e:
             logger.warning(
                 "odps_cache_operation_persistence_failed",
@@ -722,6 +709,40 @@ class SecurityLogger:
                 operation=operation,
                 message="Failed to persist cache operation to database (non-critical)"
             )
+
+    def _persist_cache_operation_inner(
+        self, event_type, tenant_id, user_id, ref_path,
+        operation, cache_key, eviction_reason, metadata
+    ) -> None:
+        """Inner cache operation persistence; runs inside savepoint."""
+        from hub.apps.tenants.models import Tenant
+
+        tenant = None
+        if tenant_id:
+            try:
+                tenant = Tenant.objects.get(id=tenant_id)
+            except (Tenant.DoesNotExist, Exception):
+                pass
+
+        user = None
+        if user_id and get_user_model:
+            try:
+                User = get_user_model()
+                user = User.objects.get(id=user_id)
+            except Exception:
+                pass
+
+        SecurityAuditLog.objects.create(
+            event_type=event_type.value,
+            tenant=tenant,
+            user=user,
+            ref_path=ref_path,
+            cache_operation=operation.lower(),
+            cache_key=cache_key,
+            eviction_reason=eviction_reason,
+            description=f"Cache {operation}: {ref_path or cache_key}",
+            metadata_json=metadata or {},
+        )
 
 
 class SecurityAlertRule:

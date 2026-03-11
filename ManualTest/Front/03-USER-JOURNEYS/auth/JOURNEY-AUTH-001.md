@@ -15,6 +15,8 @@
 - [ ] Registration feature enabled (when deployment supports self-signup)
 - [ ] Valid email and password meeting policy (uppercase, lowercase, number)
 
+**Note**: Steps 9–10 verify post-login: no tenant_id → personal tenant; tenant_id provided → user's tenant.
+
 ---
 
 ## Steps
@@ -26,9 +28,11 @@
 | 3 | Enter email, password, optional display name | Fields accept input | ☐ |
 | 4 | Submit form | System validates email format and password policy | ☐ |
 | 5 | If validation passes | System checks email is not already registered | ☐ |
-| 6 | If email unique | System creates user in default tenant | ☐ |
+| 6 | If email unique (no tenant_id) | System creates personal tenant, assigns DATA_PROVIDER and DATA_CONSUMER; if tenant_id provided, user associated with that tenant | ☐ |
 | 7 | On success | User receives confirmation (success message or redirect) | ☐ |
 | 8 | Log in with new credentials | User can authenticate (JOURNEY-AUTH-002) | ☐ |
+| 9 | Call GET /auth/me/ | Response includes tenant_id | ☐ |
+| 10 | Create asset in user's tenant | Asset created successfully | ☐ |
 
 ---
 
@@ -36,6 +40,7 @@
 
 - Registration endpoint/page available (when feature enabled)
 - User account created
+- User has tenant (personal or provided) and can create/consume data
 - User can authenticate
 
 ---

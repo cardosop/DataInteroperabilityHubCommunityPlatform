@@ -85,6 +85,104 @@ class TestPlatformTenantViewSetPermissions(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("results", response.data)
         self.assertIn("count", response.data)
+        self.assertIn("period_start", response.data)
+        self.assertIn("period_end", response.data)
+
+    def test_platform_tenant_suspend_returns_200_and_sets_suspended(self):
+        """Phase 15: POST suspend sets tenant status to SUSPENDED."""
+        from hub.apps.tenants.models import TenantStatus
+
+        self.client.force_authenticate(user=self.platform_admin)
+        response = self.client.post(
+            f"/api/v1/platform/tenants/{self.tenant.id}/suspend/",
+            data={"reason": "Phase 15 test"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], TenantStatus.SUSPENDED)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.status, TenantStatus.SUSPENDED)
+
+    def test_platform_tenant_suspend_creates_audit_event(self):
+        """AUDIT_POLICY 1.10.1: Suspend emits TENANT_SUSPENDED with actor_user = platform admin."""
+        from hub.apps.audit.models import AuditEvent
+        from hub.apps.tenants.models import TenantStatus
+
+        self.client.force_authenticate(user=self.platform_admin)
+        response = self.client.post(
+            f"/api/v1/platform/tenants/{self.tenant.id}/suspend/",
+            data={"reason": "Audit policy test"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        event = AuditEvent.objects.filter(
+            resource_type="TENANT", action="TENANT_SUSPENDED"
+        ).order_by("-timestamp").first()
+        self.assertIsNotNone(event)
+        assert event is not None
+        self.assertEqual(event.actor_user_id, self.platform_admin.id)
+        self.assertEqual(str(event.resource_id), str(self.tenant.id))
+        self.assertEqual(event.details_json.get("new_status"), TenantStatus.SUSPENDED)
+
+    def test_platform_tenant_resume_returns_200_and_sets_active(self):
+        """Phase 15: POST resume sets suspended tenant to ACTIVE."""
+        from hub.apps.tenants.models import TenantStatus
+
+        self.tenant.status = TenantStatus.SUSPENDED
+        self.tenant.save(update_fields=["status"])
+        self.client.force_authenticate(user=self.platform_admin)
+        response = self.client.post(
+            f"/api/v1/platform/tenants/{self.tenant.id}/resume/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], TenantStatus.ACTIVE)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.status, TenantStatus.ACTIVE)
+
+    def test_platform_tenant_resume_creates_audit_event(self):
+        """AUDIT_POLICY 1.10.1: Resume emits TENANT_REACTIVATED with actor_user = platform admin."""
+        from hub.apps.audit.models import AuditEvent
+        from hub.apps.tenants.models import TenantStatus
+
+        self.tenant.status = TenantStatus.SUSPENDED
+        self.tenant.save(update_fields=["status"])
+        self.client.force_authenticate(user=self.platform_admin)
+        response = self.client.post(
+            f"/api/v1/platform/tenants/{self.tenant.id}/resume/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        event = AuditEvent.objects.filter(
+            resource_type="TENANT", action="TENANT_REACTIVATED"
+        ).order_by("-timestamp").first()
+        self.assertIsNotNone(event)
+        assert event is not None
+        self.assertEqual(event.actor_user_id, self.platform_admin.id)
+        self.assertEqual(str(event.resource_id), str(self.tenant.id))
+        self.assertEqual(event.details_json.get("new_status"), TenantStatus.ACTIVE)
+
+    def test_platform_tenant_suspend_resume_flow(self):
+        """Phase 15: Full suspend then resume flow."""
+        from hub.apps.tenants.models import TenantStatus
+
+        self.client.force_authenticate(user=self.platform_admin)
+        # Suspend
+        r1 = self.client.post(
+            f"/api/v1/platform/tenants/{self.tenant.id}/suspend/",
+            data={"reason": "Flow test"},
+            format="json",
+        )
+        self.assertEqual(r1.status_code, status.HTTP_200_OK)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.status, TenantStatus.SUSPENDED)
+        # Resume
+        r2 = self.client.post(
+            f"/api/v1/platform/tenants/{self.tenant.id}/resume/"
+        )
+        self.assertEqual(r2.status_code, status.HTTP_200_OK)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.status, TenantStatus.ACTIVE)
 
 
 class TestPlatformUserViewSetPermissions(TestCase):
@@ -140,3 +238,41 @@ class TestPlatformUserViewSetPermissions(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("id", response.data)
+
+    def test_platform_request_erasure_audit_actor_is_platform_admin(self):
+        """Task 29.67.2.3: Platform admin request_erasure → audit actor_user = platform admin."""
+        from hub.apps.audit.models import AuditEvent
+
+        self.client.force_authenticate(user=self.platform_admin)
+        response = self.client.post(
+            f"/api/v1/platform/users/{self.regular_user.id}/request-erasure/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        event = AuditEvent.objects.filter(
+            resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED"
+        ).order_by("-timestamp").first()
+        self.assertIsNotNone(event)
+        assert event is not None
+        self.assertEqual(event.actor_user_id, self.platform_admin.id)
+        self.assertEqual(event.details_json.get("source"), "platform_admin")
+        self.assertEqual(
+            event.details_json.get("initiated_by"), str(self.platform_admin.id)
+        )
+
+    def test_platform_request_erasure_creates_erasure_completed_audit_event(self):
+        """AUDIT_POLICY 1.10.1: Platform request_erasure → execute_erasure emits ERASURE_COMPLETED."""
+        from hub.apps.audit.models import AuditEvent
+
+        self.client.force_authenticate(user=self.platform_admin)
+        response = self.client.post(
+            f"/api/v1/platform/users/{self.regular_user.id}/request-erasure/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        event = AuditEvent.objects.filter(
+            resource_type="ERASURE_REQUEST", action="ERASURE_COMPLETED"
+        ).order_by("-timestamp").first()
+        self.assertIsNotNone(event)
+        assert event is not None
+        self.assertIsNone(event.actor_user_id, "ERASURE_COMPLETED is system action")

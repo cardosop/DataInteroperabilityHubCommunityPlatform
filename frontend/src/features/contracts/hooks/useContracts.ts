@@ -3,8 +3,10 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { emptyPaginatedResponse } from '../../../shared/types/api';
 import { contractService } from '../services/contractService';
 import type {
+  Contract,
   ContractCreateRequest,
   ContractUpdateRequest,
   ContractListFilters,
@@ -12,10 +14,20 @@ import type {
 } from '../../../shared/types/contracts';
 import type { ContractLineageVisualizationParams } from '../../../shared/types/lineage';
 
-export function useContracts(filters: ContractListFilters = {}) {
+export function useContracts(
+  filters: ContractListFilters = {},
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: ['contracts', 'list', filters],
-    queryFn: () => contractService.list(filters),
+    queryFn: async () => {
+      const data = await contractService.list(filters);
+      if (data === undefined) {
+        return emptyPaginatedResponse<Contract>();
+      }
+      return data;
+    },
+    enabled: options?.enabled !== false,
   });
 }
 

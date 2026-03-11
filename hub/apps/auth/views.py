@@ -35,6 +35,7 @@ from .serializers import (
     CurrentUserSerializer,
     InvitationAcceptanceSerializer,
     LoginSerializer,
+    MePatchSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     RefreshTokenResponseSerializer,
@@ -456,8 +457,9 @@ def register(request):
     name = serializer.validated_data["name"]
     tenant_id = serializer.validated_data.get("tenant_id")
 
-    # Get tenant if provided; when not provided, user registers without tenant (tenant_id=null in response)
+    # Get tenant: provided tenant_id, or create personal tenant when omitted (useronboardfix 1.2)
     tenant = None
+    personal_tenant_created = False
     if tenant_id:
         from hub.apps.tenants.models import Tenant
 
@@ -467,6 +469,44 @@ def register(request):
                 raise ValidationError({"tenant_id": "Tenant is not active"})
         except Tenant.DoesNotExist:
             raise ValidationError({"tenant_id": "Tenant not found"})
+    elif getattr(settings, "PERSONAL_TENANT_ON_REGISTRATION", True):
+        from hub.apps.core.responses import api_error_response, handle_service_exception
+        from hub.apps.core.services.base import NotFoundError as ServiceNotFoundError
+        from hub.apps.core.services.base import ValidationError as ServiceValidationError
+        from hub.apps.tenants.services import PersonalTenantService
+
+        try:
+            with transaction.atomic():
+                tenant = PersonalTenantService().create_personal_tenant_for_user(
+                    email=email, display_name=name
+                )
+            personal_tenant_created = True
+        except ServiceValidationError as e:
+            # Sanitize TENANT_CREATE_COLLISION to avoid leaking collision/slug info (useronboardfix 2.2.1)
+            if getattr(e, "code", None) == "TENANT_CREATE_COLLISION":
+                return api_error_response(
+                    message="Registration failed. Please try again.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    code="REGISTRATION_FAILED",
+                    details={},
+                )
+            return handle_service_exception(e)
+        except ServiceNotFoundError as e:
+            # PLAN_NOT_FOUND means the database was not seeded — this is an infra/operator error.
+            # Never leak the internal hint ("Run seed_default_plans") to end users.
+            if getattr(e, "code", None) == "PLAN_NOT_FOUND":
+                logger.error(
+                    "registration_plan_not_found",
+                    email=email,
+                    hint="Run 'python manage.py seed_default_plans' to create default plans",
+                )
+                return api_error_response(
+                    message="Registration is temporarily unavailable. Please try again later or contact support.",
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    code="SERVICE_UNAVAILABLE",
+                    details={},
+                )
+            return handle_service_exception(e)
 
     # Create user
     user = User.objects.create_user(
@@ -476,6 +516,20 @@ def register(request):
         display_name=name,
         status=UserStatus.ACTIVE,  # Users register as active (not invited)
     )
+
+    # Assign DATA_PROVIDER and DATA_CONSUMER when personal tenant created (useronboardfix 1.2)
+    if personal_tenant_created and tenant:
+        from hub.apps.users.models import Role, UserRole
+
+        for role_name in ("DATA_PROVIDER", "DATA_CONSUMER"):
+            role = Role.objects.get(tenant=tenant, name=role_name)
+            UserRole.objects.get_or_create(user=user, role=role)
+
+    # Ensure UserTenantMembership exists so X-Tenant-Id validation passes (auth middleware)
+    if tenant:
+        from hub.apps.users.services import UserTenantMembershipService
+
+        UserTenantMembershipService().add_membership(user, tenant)
 
     # Publish user.created event
     try:
@@ -521,7 +575,7 @@ def register(request):
             send_email_async,
             email_type=email_type,
             to_email=user.email,
-            subject=f"Welcome to {tenant.name if tenant else 'Data Interoperability Hub'}",
+            subject=f"Welcome to {tenant.name if tenant else getattr(settings, 'APP_NAME', 'Meshant')}",
             template_name="notifications/emails/user_welcome.html",
             context=context,
             tenant_id=str(tenant.id) if tenant else None,
@@ -553,39 +607,8 @@ def register(request):
     return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
 
-@extend_schema(
-    responses={
-        200: CurrentUserSerializer,
-        401: OpenApiResponse(description="Unauthorized - Invalid or missing token"),
-    },
-    tags=["Authentication"],
-)
-@api_view(["GET"])
-@permission_classes([permissions.IsAuthenticated])
-def me(request):
-    """
-    Get current authenticated user information.
-
-    GET /auth/me
-
-    Returns information about the currently authenticated user including:
-    - Basic user info (id, email, name, tenant_id)
-    - Roles
-    - Permissions
-    - Account metadata (created_at, last_login_at)
-
-    Performance target: < 200ms p95
-    Caching: Response may be cached for up to 5 minutes
-    """
-    user = request.user
-
-    # Check cache first (5 minute TTL)
-    cache_key = f"user:me:{user.id}"
-    cached_response = cache.get(cache_key)
-    if cached_response:
-        return Response(cached_response, status=status.HTTP_200_OK)
-
-    # Get roles (include PLATFORM_ADMIN when is_platform_admin for frontend ProtectedRoute)
+def _build_me_response(user):
+    """Build /auth/me/ response data. Shared by GET and PATCH."""
     roles = []
     if hasattr(user, "user_roles"):
         roles = [ur.role.name for ur in user.user_roles.all()]
@@ -593,40 +616,223 @@ def me(request):
         if "PLATFORM_ADMIN" not in roles:
             roles = list(roles) + ["PLATFORM_ADMIN"]
 
-    # Get permissions
     from .serializers import get_user_permissions
 
     permissions = get_user_permissions(user)
-
-    # Get last login (if available - this would need to be tracked separately)
-    # For now, we'll use updated_at as a proxy
     last_login_at = None
-    # TODO: Track last_login_at in User model or separate LoginHistory model
 
-    # Build response
-    # Handle deleted tenant gracefully
     tenant_id = None
     try:
         if user.tenant:
             tenant_id = user.tenant.id
     except Exception:
-        # Tenant was deleted or doesn't exist
         tenant_id = None
 
-    response_data = {
-        "id": str(user.id),  # Ensure UUID is serialized as string
+    avatar = getattr(user, "avatar_url", None) or None
+    preferences = getattr(user, "preferences", None)
+    if preferences is None:
+        preferences = {}
+
+    feature_tenant_switch_enabled = getattr(
+        settings, "FEATURE_TENANT_SWITCH_ENABLED", True
+    )
+
+    return {
+        "id": str(user.id),
         "email": user.email,
         "name": user.display_name,
-        "tenant_id": str(tenant_id) if tenant_id else None,  # Ensure UUID is serialized as string
+        "tenant_id": str(tenant_id) if tenant_id else None,
         "roles": roles,
         "permissions": permissions,
         "created_at": user.created_at,
         "last_login_at": last_login_at,
+        "avatar": avatar,
+        "preferences": preferences,
+        "feature_tenant_switch_enabled": feature_tenant_switch_enabled,
     }
 
-    # Cache response for 5 minutes
-    cache.set(cache_key, response_data, 300)
 
+@extend_schema(
+    request=MePatchSerializer,
+    responses={
+        200: CurrentUserSerializer,
+        400: OpenApiResponse(description="Validation error - invalid display_name, avatar URL, or preferences"),
+        401: OpenApiResponse(description="Unauthorized - Invalid or missing token"),
+    },
+    tags=["Authentication"],
+)
+@api_view(["GET", "PATCH"])
+@permission_classes([permissions.IsAuthenticated])
+def me(request):
+    """
+    Get or update current authenticated user information.
+
+    GET /auth/me — Returns user info (id, email, name, tenant_id, roles, permissions, avatar, preferences).
+    PATCH /auth/me — Partial update of display_name, avatar, preferences.
+
+    Performance target: < 200ms p95
+    Caching: GET response may be cached for up to 5 minutes; PATCH invalidates cache.
+    """
+    user = request.user
+    cache_key = f"user:me:{user.id}"
+
+    if request.method == "GET":
+        cached_response = cache.get(cache_key)
+        if cached_response:
+            return Response(cached_response, status=status.HTTP_200_OK)
+        response_data = _build_me_response(user)
+        cache.set(cache_key, response_data, 300)
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    # PATCH
+    serializer = MePatchSerializer(data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+
+    update_fields = []
+    if "display_name" in serializer.validated_data:
+        user.display_name = serializer.validated_data["display_name"]
+        update_fields.append("display_name")
+    if "avatar" in serializer.validated_data:
+        user.avatar_url = serializer.validated_data["avatar"] or None
+        update_fields.append("avatar_url")
+    if "preferences" in serializer.validated_data:
+        user.preferences = serializer.validated_data["preferences"]
+        update_fields.append("preferences")
+
+    if update_fields:
+        user.save(update_fields=update_fields + ["updated_at"])
+        cache.delete(cache_key)
+
+        log_auth_operation(
+            action="PROFILE_UPDATE",
+            user=user,
+            details={"updated_fields": update_fields},
+            request=request,
+        )
+
+    response_data = _build_me_response(user)
+    return Response(response_data, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    responses={
+        200: inline_serializer(
+            name="MeTenantsResponse",
+            fields={
+                "id": serializers.UUIDField(),
+                "name": serializers.CharField(),
+                "slug": serializers.CharField(),
+            },
+        ),
+        401: OpenApiResponse(description="Unauthorized"),
+    },
+    tags=["Authentication"],
+)
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def me_tenants(request):
+    """
+    List tenants the current user has membership in.
+
+    GET /auth/me/tenants/ — Returns list of { id, name, slug } from UserTenantMembership.
+    """
+    if not getattr(settings, "FEATURE_TENANT_SWITCH_ENABLED", True):
+        return Response(
+            {"detail": "Tenant switch feature is disabled"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    from hub.apps.users.services import UserTenantMembershipService
+
+    service = UserTenantMembershipService()
+    tenants = service.list_tenants_for_user(request.user)
+    data = [
+        {"id": str(t.id), "name": t.name, "slug": t.slug}
+        for t in tenants
+    ]
+    return Response(data, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    request=inline_serializer(
+        name="SwitchTenantRequest",
+        fields={"tenant_id": serializers.UUIDField(required=True)},
+    ),
+    responses={
+        200: CurrentUserSerializer,
+        400: OpenApiResponse(description="Missing or invalid tenant_id"),
+        403: OpenApiResponse(description="User has no membership in tenant"),
+        401: OpenApiResponse(description="Unauthorized"),
+    },
+    tags=["Authentication"],
+)
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def switch_tenant(request):
+    """
+    Switch active tenant context (validates membership, returns me summary).
+
+    POST /auth/switch-tenant/ — Body { tenant_id }. Validates UserTenantMembership.
+    Returns 200 + me summary (id, email, tenant_id, roles, etc.) for the switched context.
+    """
+    if not getattr(settings, "FEATURE_TENANT_SWITCH_ENABLED", True):
+        return Response(
+            {"detail": "Tenant switch feature is disabled"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    from hub.apps.tenants.models import Tenant
+    from hub.apps.users.services import UserTenantMembershipService
+
+    tenant_id = request.data.get("tenant_id")
+    if not tenant_id:
+        return Response(
+            {"detail": "tenant_id is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        tenant_uuid = uuid.UUID(str(tenant_id))
+    except (ValueError, TypeError, AttributeError):
+        return Response(
+            {"detail": "tenant_id must be a valid UUID"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    service = UserTenantMembershipService()
+    if not service.validate_membership(request.user, str(tenant_uuid)):
+        return Response(
+            {"detail": "You do not have access to this tenant"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        tenant = Tenant.objects.get(id=tenant_uuid)
+    except Tenant.DoesNotExist:
+        return Response(
+            {"detail": "Tenant not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    from_tenant_id = None
+    if hasattr(request.user, "tenant_id") and request.user.tenant_id:
+        from_tenant_id = str(request.user.tenant_id)
+
+    log_auth_operation(
+        action="TENANT_SWITCH",
+        user=request.user,
+        details={
+            "from_tenant_id": from_tenant_id,
+            "to_tenant_id": str(tenant.id),
+        },
+        request=request,
+    )
+
+    request.tenant_id = str(tenant.id)
+    request.tenant = tenant
+
+    response_data = _build_me_response(request.user)
+    response_data["tenant_id"] = str(tenant.id)
     return Response(response_data, status=status.HTTP_200_OK)
 
 

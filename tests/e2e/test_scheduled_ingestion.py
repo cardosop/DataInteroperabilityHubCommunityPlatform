@@ -51,18 +51,27 @@ def _prefect_integration_reachable() -> bool:
 
 
 def _retry_sync_deployment(
-    scheduled_ingestion_id: str, tenant_id: str, timeout: int = 20
+    scheduled_ingestion_id: str,
+    tenant_id: str,
+    schedule_type: str | None = None,
+    schedule_config: dict | None = None,
+    timeout: int = 20,
 ) -> tuple[str | None, str]:
     """Retry deployment sync via prefect-integration-service (when creation sync failed).
     Returns (deployment_id, error_message). deployment_id is set if sync succeeded.
+    Pass schedule_type/schedule_config to avoid DB fetch (needed when test has uncommitted tx).
     """
     base = os.getenv("PREFECT_INTEGRATION_SERVICE_URL", "").rstrip("/")
     if not base:
         return None, "PREFECT_INTEGRATION_SERVICE_URL not set"
+    payload = {"scheduled_ingestion_id": scheduled_ingestion_id, "tenant_id": tenant_id}
+    if schedule_config is not None:
+        payload["schedule_type"] = schedule_type or "DAILY"
+        payload["schedule_config"] = schedule_config
     try:
         r = requests.post(
             f"{base}/deployments/sync",
-            json={"scheduled_ingestion_id": scheduled_ingestion_id, "tenant_id": tenant_id},
+            json=payload,
             timeout=timeout,
         )
         if not r.ok:
@@ -86,22 +95,29 @@ def _retry_sync_deployment(
 class ScheduledIngestionE2ETest(TransactionTestCase):
     """E2E tests for scheduled ingestion"""
 
+    # Skip flush in teardown to avoid IntegrityError in create_permissions during
+    # post_migrate (auth_permission duplicate key). Use unique slugs/emails per test.
+    @classmethod
+    def _fixture_teardown(cls):
+        pass  # Rely on transaction rollback for isolation; flush triggers create_permissions bug
+
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
+        self._unique = uuid.uuid4().hex[:8]
 
-        # Create tenant
+        # Create tenant (unique slug to avoid conflicts when flush is skipped)
         self.tenant = Tenant.objects.create(
-            name="Scheduled Ingestion Tenant",
-            slug="scheduled-ingestion-tenant",
+            name=f"Scheduled Ingestion Tenant {self._unique}",
+            slug=f"scheduled-ingestion-tenant-{self._unique}",
             kyc_status=KYCStatus.VERIFIED,
         )
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
         ensure_tenant_has_active_subscription(self.tenant)
 
-        # Create user
+        # Create user (unique email when flush is skipped)
         self.user = User.objects.create_user(
-            email="sched-ingestion@example.com",
+            email=f"sched-ingestion-{self._unique}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -174,7 +190,12 @@ class ScheduledIngestionE2ETest(TransactionTestCase):
 
         # Retry sync if deployment was not created during creation (e.g. transient failure)
         if not ingestion.prefect_deployment_id:
-            deployment_id, sync_err = _retry_sync_deployment(str(ingestion.id), str(self.tenant.id))
+            deployment_id, sync_err = _retry_sync_deployment(
+                str(ingestion.id),
+                str(self.tenant.id),
+                schedule_type=ingestion.schedule_type,
+                schedule_config=ingestion.schedule_config or {},
+            )
             if deployment_id:
                 ingestion.prefect_deployment_id = deployment_id
                 ingestion.save(update_fields=["prefect_deployment_id"])
@@ -278,10 +299,11 @@ class ScheduledIngestionE2ETest(TransactionTestCase):
         Note: This test works with real implementations. Prefect services may not be available,
         but the code handles this gracefully (ImportError is caught and logged).
         """
-        # Create second tenant (with subscription so POST scheduled-ingestions succeeds)
+        # Create second tenant (unique slug/email when flush is skipped)
+        uid2 = uuid.uuid4().hex[:8]
         tenant2 = Tenant.objects.create(
-            name="Other Tenant Sched",
-            slug="other-tenant-sched",
+            name=f"Other Tenant Sched {uid2}",
+            slug=f"other-tenant-sched-{uid2}",
             kyc_status=KYCStatus.VERIFIED,
         )
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
@@ -293,7 +315,7 @@ class ScheduledIngestionE2ETest(TransactionTestCase):
         )
 
         user2 = User.objects.create_user(
-            email="user2-sched@example.com",
+            email=f"user2-sched-{uid2}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE,

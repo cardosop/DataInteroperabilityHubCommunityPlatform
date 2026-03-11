@@ -41,6 +41,8 @@
     "test:e2e:batch5": "bash scripts/e2e-batches.sh 5",
     "test:e2e:batch6": "bash scripts/e2e-batches.sh 6",
     "test:e2e:batch7": "bash scripts/e2e-batches.sh 7",
+    "test:e2e:batch8": "bash scripts/e2e-batches.sh 8",
+    "test:e2e:ux": "bash scripts/e2e-detect-api.sh --project=chromium e2e/use-cases/ux/",
     "test:e2e:batches:list": "bash scripts/e2e-batches.sh list",
     "test:e2e:report": "npx playwright show-report"
   },
@@ -77,6 +79,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "vitest-axe": "^0.1.0"
   }
 }

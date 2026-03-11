@@ -13,14 +13,26 @@ import type {
 export function useListings(filters: ListingListFilters = {}) {
   return useQuery({
     queryKey: ['marketplace', 'listings', 'list', filters],
-    queryFn: () => listingService.list(filters),
+    queryFn: async () => {
+      const data = await listingService.list(filters);
+      if (data === undefined) {
+        return { results: [], count: 0 };
+      }
+      return data;
+    },
   });
 }
 
 export function useSearchListings(query: string, filters: ListingListFilters = {}) {
   return useQuery({
     queryKey: ['marketplace', 'listings', 'search', query, filters],
-    queryFn: () => listingService.search(query, filters),
+    queryFn: async () => {
+      const data = await listingService.search(query, filters);
+      if (data === undefined) {
+        return { results: [], count: 0 };
+      }
+      return data;
+    },
     enabled: !!query && query.length > 0,
   });
 }

@@ -751,7 +751,7 @@ class AssetCRUDTest(TestCase):
 
     def test_recommendations_no_tenant_returns_empty_list(self):
         """Recommendations endpoint returns 200 with empty list when user has no tenant (graceful degradation)."""
-        # User without tenant (e.g. newly registered without tenant_id)
+        # User without tenant (e.g. legacy user, platform admin, or pre-migration)
         user_no_tenant = User.objects.create_user(
             email="no-tenant@example.com",
             password="testpass123",

@@ -14,7 +14,7 @@
 .btn-back {
   background: none;
   border: none;
-  color: #0066cc;
+  color: var(--color-info);
   cursor: pointer;
   font-size: 1rem;
   padding: 0.5rem 0;
@@ -37,7 +37,7 @@
 
 .dataset-info-section,
 .query-execution-section {
-  background: white;
+  background: var(--color-background-primary);
   padding: 1.5rem;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -78,8 +78,8 @@
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 600;
-  background: #e3f2fd;
-  color: #1976d2;
+  background: var(--color-info-light);
+  color: var(--color-info);
 }
 
 .status-badge {
@@ -92,18 +92,18 @@
 }
 
 .status-draft {
-  background: #fff3cd;
-  color: #856404;
+  background: var(--color-warning-50);
+  color: var(--color-warning-700);
 }
 
 .status-active {
-  background: #d4edda;
-  color: #155724;
+  background: var(--color-success-100);
+  color: var(--color-success-700);
 }
 
 .status-inactive {
-  background: #f8d7da;
-  color: #721c24;
+  background: var(--color-error-100);
+  color: var(--color-error-900);
 }
 
 .dataset-query-section,
@@ -119,7 +119,7 @@
 
 .query-display,
 .schema-display {
-  background: #f5f5f5;
+  background: var(--color-neutral-100);
   padding: 1rem;
   border-radius: 4px;
   overflow-x: auto;
@@ -148,31 +148,31 @@
 }
 
 .btn-primary {
-  background: #0066cc;
-  color: white;
+  background: var(--color-info);
+  color: var(--color-background-primary);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #0052a3;
+  background: var(--color-info-dark);
 }
 
 .btn-secondary {
-  background: #f5f5f5;
+  background: var(--color-neutral-100);
   color: #333;
   border: 1px solid #ddd;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #e9e9e9;
+  background: var(--color-neutral-200);
 }
 
 .btn-danger {
-  background: #dc3545;
-  color: white;
+  background: var(--color-error-500);
+  color: var(--color-text-on-primary);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #c82333;
+  background: var(--color-error-700);
 }
 
 .btn-primary:disabled,

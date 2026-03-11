@@ -8,6 +8,14 @@
 
 ---
 
+## Before You Start
+
+1. Complete [00-PREREQUISITES.md](../00-PREREQUISITES.md)
+2. Use existing account: e2e_test@example.com (see [test-users.md](../05-SUPPORT-MATERIAL/test-users.md))
+3. **Note**: Password reset requires email delivery. If not configured, use case is N/A.
+
+---
+
 ## Prerequisites
 
 - [ ] User **not authenticated** (or authenticated and changing password)

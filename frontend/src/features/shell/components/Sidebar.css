@@ -1,5 +1,5 @@
 .app-sidebar {
-  width: 240px;
+  width: var(--layout-sidebar-width);
   background-color: var(--color-neutral-50);
   border-right: 1px solid var(--color-neutral-200);
   height: 100%;
@@ -37,7 +37,7 @@
 
 .nav-link.active {
   background-color: var(--color-primary-50);
-  /* WCAG 2 AA: primary-800 (#1565C0) on primary-50 (#e3f2fd) = 5.5:1; primary-700 = 4.02:1 */
+  /* WCAG 2 AA: primary-800 (#0A1F44 Meshant navy) on primary-50 (#E8ECF4) ≥ 10:1 */
   color: var(--color-primary-800);
   font-weight: var(--font-weight-medium);
 }

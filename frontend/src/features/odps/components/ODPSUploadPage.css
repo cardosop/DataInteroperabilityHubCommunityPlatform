@@ -17,7 +17,7 @@
 }
 
 .odps-upload-content {
-  background: white;
+  background: var(--color-background-primary);
   border-radius: 8px;
   padding: 2rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -96,7 +96,7 @@
 .progress-bar {
   width: 100%;
   height: 24px;
-  background-color: #f0f0f0;
+  background-color: var(--color-neutral-100);
   border-radius: 12px;
   overflow: hidden;
   position: relative;
@@ -104,7 +104,7 @@
 
 .progress-bar-fill {
   height: 100%;
-  background-color: #4caf50;
+  background-color: var(--color-success-500);
   transition: width 0.3s ease;
 }
 
@@ -132,17 +132,28 @@
 
 .success-icon {
   font-size: 4rem;
-  color: #4caf50;
+  color: var(--color-success-500);
 }
 
 .workflow-completed h3 {
   margin: 0;
-  color: #4caf50;
+  color: var(--color-success-700);
+}
+
+.created-contract-id {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0.5rem 0;
+}
+
+.created-contract-id .uuid-with-copy {
+  flex: 1;
 }
 
 .created-contracts {
   text-align: left;
-  background: #f9f9f9;
+  background: var(--color-background-secondary);
   padding: 1rem;
   border-radius: 4px;
   margin: 1rem 0;
@@ -155,14 +166,14 @@
 .btn-link {
   background: none;
   border: none;
-  color: #0066cc;
+  color: var(--color-info);
   text-decoration: underline;
   cursor: pointer;
   font-size: inherit;
 }
 
 .btn-link:hover {
-  color: #0052a3;
+  color: var(--color-info-dark);
 }
 
 .workflow-failed {
@@ -174,12 +185,12 @@
 
 .error-icon {
   font-size: 4rem;
-  color: #f44336;
+  color: var(--color-error-700);
 }
 
 .workflow-failed h3 {
   margin: 0;
-  color: #f44336;
+  color: var(--color-error-700);
 }
 
 .workflow-failed p {

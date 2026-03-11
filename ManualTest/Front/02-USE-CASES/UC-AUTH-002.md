@@ -8,6 +8,14 @@
 
 ---
 
+## Before You Start
+
+1. Complete [00-PREREQUISITES.md](../00-PREREQUISITES.md)
+2. Credentials: [test-users.md](../05-SUPPORT-MATERIAL/test-users.md) (e.g. e2e_test@example.com / TestPass123)
+3. Frontend: http://localhost:3010
+
+---
+
 ## Prerequisites
 
 - [ ] User has valid credentials (see [test-users.md](../05-SUPPORT-MATERIAL/test-users.md))

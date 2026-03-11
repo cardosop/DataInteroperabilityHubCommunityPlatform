@@ -5,6 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { assertFailureRedirect, assertSuccessLoad } from '../fixtures/journey-helpers';
 import { waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Contracts', () => {
@@ -20,12 +21,14 @@ test.describe('Feature: Contracts', () => {
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
+          await assertFailureRedirect(page);
           return;
         }
         throw _err;
       }
-      expect(page.url()).toContain('/contracts');
+      await assertSuccessLoad(page, {
+        successContentSelector: '[data-testid="contract-list-page"], .contract-list-page, .empty-state',
+      });
     });
   });
 

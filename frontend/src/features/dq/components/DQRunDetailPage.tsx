@@ -8,6 +8,8 @@ import { useDQRun, useDQRunResults } from '../hooks/useDQ';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { DQRunResultsViewer } from './DQRunResultsViewer';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './DQRunDetailPage.css';
 
 export function DQRunDetailPage() {
@@ -45,8 +47,20 @@ export function DQRunDetailPage() {
       </div>
 
       <div className="dq-run-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'DQ Runs', href: '/dq' },
+            { label: dqRun.profile_key || 'Run' },
+          ]}
+        />
         <div className="dq-run-detail-main">
           <h1>DQ Run: {dqRun.profile_key}</h1>
+          {id && (
+            <div className="dq-run-uuid" data-testid="dq-run-uuid">
+              <UuidWithCopy value={id} label="DQ Run ID" />
+            </div>
+          )}
 
           <div className="dq-run-status-section">
             <div className="status-header">

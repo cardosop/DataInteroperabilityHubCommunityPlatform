@@ -22,15 +22,15 @@
   max-width: 400px;
   padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-base);
 }
 
 .comment-form {
   margin-bottom: var(--spacing-lg);
   padding: var(--spacing-lg);
-  background: var(--color-bg-secondary);
-  border-radius: var(--border-radius);
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
 }
 
 .comment-form h3 {
@@ -40,7 +40,7 @@
 
 .replying-to {
   padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--color-bg-primary);
+  background: var(--color-background-primary);
   border-left: 3px solid var(--color-primary);
   margin-bottom: var(--spacing-md);
   font-style: italic;
@@ -51,7 +51,7 @@
   width: 100%;
   padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-base);
   font-family: inherit;
   margin-bottom: var(--spacing-sm);
@@ -78,14 +78,14 @@
 
 .comment-item {
   padding: var(--spacing-md);
-  background: var(--color-bg-secondary);
-  border-radius: var(--border-radius);
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
   border: 1px solid var(--color-border);
 }
 
 .comment-item.reply {
   border-left: 3px solid var(--color-primary);
-  background: var(--color-bg-primary);
+  background: var(--color-background-primary);
 }
 
 .comment-header {
@@ -109,7 +109,7 @@
 
 .comment-status {
   padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
 }

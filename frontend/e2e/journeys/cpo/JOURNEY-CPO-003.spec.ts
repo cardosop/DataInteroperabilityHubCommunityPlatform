@@ -1,36 +1,88 @@
 /**
- * E2E Test: JOURNEY-CPO-003 — Configure Retention Policies
+ * E2E Test: JOURNEY-CPO-003 — Review Access Request
  *
- * Journey: Configure Retention Policies
+ * Journey: Review Access Request
  * Persona: Compliance Officer
- * Reference: docs/deprecated-doc/archive/USER_JOURNEY_MAPPING.md, FRONTEND_BACKEND_GAP_REMEDIATION_PLAN.md
+ * Reference: ManualTest/Front/03-USER-JOURNEYS/cpo/JOURNEY-CPO-003.md
  *
- * Routes: /governance (retention). Backend has tests; frontend spec for alignment.
+ * Success/Failure/Edge. Routes: /governance/access-requests, /governance/access-requests/:id.
  * Fixture: getComplianceOfficerUser(). Real backend only; no mocks.
  */
 
 import { expect, test } from '@playwright/test';
-import { clearAuthStorage, getComplianceOfficerUser, loginAsPersona } from '../../fixtures/auth';
-import { hasLoginPrompt } from '../../fixtures/helpers';
+import { clearAuthStorage, getComplianceOfficerUser } from '../../fixtures/auth';
+import {
+  assertNonExistentIdShowsError,
+  hasLoginPrompt,
+  loginAndNavigateToRoute,
+} from '../../fixtures/helpers';
 
-test.describe('JOURNEY-CPO-003: Configure Retention Policies', () => {
+test.describe('JOURNEY-CPO-003: Review Access Request', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
-    test('governance page loads for retention config', async ({ page }) => {
-      await loginAsPersona(page, getComplianceOfficerUser);
-      await page.goto('/governance');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      const onGov = page.url().includes('/governance');
-      const on403 = page.url().includes('/403');
-      const onLogin = page.url().includes('/login');
-      expect(onGov || on403 || onLogin).toBe(true);
+    test('access requests list loads', async ({ page }) => {
+      const cpoUser = await getComplianceOfficerUser();
+      await loginAndNavigateToRoute(page, cpoUser, '/governance', {
+        timeout: 60000,
+        contentSelector:
+          '.governance-access-request-list-page, .access-request-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+      });
+      if (page.url().includes('/login') || page.url().includes('/403')) {
+        expect(page.url()).toMatch(/\/login|\/403/);
+        return;
+      }
+      expect(page.url()).toContain('/governance');
+      const hasContent =
+        (await page.locator('.governance-access-request-list-page, .access-request-list-page').count()) > 0 ||
+        (await page.locator('.empty-state').count()) > 0 ||
+        (await page.locator('.error-display').count()) > 0;
+      expect(hasContent).toBe(true);
+    });
+
+    test('access request detail loads when request exists', async ({ page }) => {
+      const cpoUser = await getComplianceOfficerUser();
+      await loginAndNavigateToRoute(page, cpoUser, '/governance', {
+        timeout: 60000,
+        contentSelector:
+          '.governance-access-request-list-page, .access-request-list-page, .empty-state, .error-display, #email',
+      });
+      if (page.url().includes('/login') || page.url().includes('/403')) {
+        expect(page.url()).toMatch(/\/login|\/403/);
+        return;
+      }
+      const requestRow = page.locator('.governance-access-request-table tr.row-link').first();
+      if ((await requestRow.count()) > 0) {
+        await requestRow.click();
+        await page.waitForURL(/\/governance\/access-requests\/[^/]+$/, { timeout: 10000 });
+        await page.waitForSelector(
+          '.governance-access-request-detail-page, .error-display, .governance-status-badge',
+          { timeout: 15000 }
+        );
+        const hasDetail =
+          (await page.locator('.governance-access-request-detail-page').count()) > 0 ||
+          (await page.locator('.governance-status-badge').count()) > 0;
+        expect(hasDetail || page.url().includes('/governance/access-requests/')).toBe(true);
+      }
     });
   });
 
   test.describe('Failure', () => {
-    test('unauthenticated access to governance route redirects to login or 403', async ({
+    test('access request detail with non-existent id shows error', async ({ page }) => {
+      const cpoUser = await getComplianceOfficerUser();
+      await loginAndNavigateToRoute(page, cpoUser, '/', {
+        timeout: 60000,
+        contentSelector: '[data-testid="home-page"], .home-page, main',
+      });
+      await page.goto('/governance/access-requests/00000000-0000-0000-0000-000000000000');
+      await page.waitForLoadState('domcontentloaded');
+      await assertNonExistentIdShowsError(page, {
+        detailContentSelector: '.governance-access-request-detail-page',
+        waitAfterLoad: 8000,
+      });
+    });
+
+    test('unauthenticated access to access requests redirects to login or 403', async ({
       page,
     }) => {
       await clearAuthStorage(page);
@@ -47,16 +99,18 @@ test.describe('JOURNEY-CPO-003: Configure Retention Policies', () => {
   });
 
   test.describe('Edge', () => {
-    test('governance route accessible', async ({ page }) => {
-      await loginAsPersona(page, getComplianceOfficerUser);
-      await page.goto('/governance');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      expect(
-        page.url().includes('/governance') ||
-          page.url().includes('/403') ||
-          page.url().includes('/login')
-      ).toBe(true);
+    test('access requests list loads with empty state', async ({ page }) => {
+      const cpoUser = await getComplianceOfficerUser();
+      await loginAndNavigateToRoute(page, cpoUser, '/governance', {
+        timeout: 60000,
+        contentSelector:
+          '.governance-access-request-list-page, .access-request-list-page, .empty-state, .error-display',
+      });
+      if (page.url().includes('/login') || page.url().includes('/403')) {
+        expect(page.url()).toMatch(/\/login|\/403/);
+        return;
+      }
+      expect(page.url()).toContain('/governance');
     });
   });
 });

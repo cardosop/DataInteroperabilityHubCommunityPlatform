@@ -3,10 +3,16 @@
  * Display job details with progress visualization
  */
 
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useJob, useCancelJob } from '../hooks/useJobs';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './JobDetailPage.css';
 
 export function JobDetailPage() {
@@ -14,14 +20,19 @@ export function JobDetailPage() {
   const navigate = useNavigate();
   const { data: job, isLoading, error, refetch } = useJob(id || null);
   const cancelMutation = useCancelJob();
+  const toast = useToast();
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
-  const handleCancel = async () => {
-    if (!id || !confirm('Are you sure you want to cancel this job?')) return;
+  const handleCancelClick = () => setShowCancelConfirm(true);
+  const handleCancelConfirm = async () => {
+    if (!id) return;
+    setShowCancelConfirm(false);
     try {
       await cancelMutation.mutateAsync(id);
+      toast.success('Job cancelled.');
       refetch();
     } catch (err) {
-      // Error handled by mutation
+      toast.error(normalizeError(err).error.message || 'Failed to cancel job');
     }
   };
 
@@ -45,7 +56,7 @@ export function JobDetailPage() {
         <div className="job-detail-actions">
           {isRunning && (
             <button
-              onClick={handleCancel}
+              onClick={handleCancelClick}
               disabled={cancelMutation.isPending}
               className="btn-danger"
               type="button"
@@ -57,8 +68,20 @@ export function JobDetailPage() {
       </div>
 
       <div className="job-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Jobs', href: '/jobs' },
+            { label: job.type || 'Job' },
+          ]}
+        />
         <div className="job-detail-main">
           <h1>Job: {job.type}</h1>
+          {id && (
+            <div className="job-uuid" data-testid="job-uuid">
+              <UuidWithCopy value={id} label="Job ID" />
+            </div>
+          )}
 
           <div className="job-status-section">
             <div className="status-header">
@@ -143,6 +166,16 @@ export function JobDetailPage() {
       {cancelMutation.isError && (
         <ErrorDisplay error={cancelMutation.error} title="Failed to cancel job" onRetry={() => cancelMutation.reset()} />
       )}
+
+      <ConfirmDialog
+        isOpen={showCancelConfirm}
+        onClose={() => setShowCancelConfirm(false)}
+        onConfirm={handleCancelConfirm}
+        title="Cancel job"
+        message="Are you sure you want to cancel this job?"
+        confirmLabel="Cancel Job"
+        variant="warning"
+      />
     </div>
   );
 }

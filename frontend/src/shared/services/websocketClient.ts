@@ -25,6 +25,12 @@ function getWsBaseUrl(): string {
       return apiBase.replace('http://', 'ws://').replace('https://', 'wss://').replace(/\/api\/v1.*$/, '');
     }
   }
+  // No explicit URL configured (nginx-proxied deployment): derive from page origin so
+  // the WebSocket connection goes through nginx's /ws proxy rule.
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}`;
+  }
   return 'ws://localhost:8000';
 }
 

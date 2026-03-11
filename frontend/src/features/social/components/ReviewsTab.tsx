@@ -3,7 +3,7 @@
  * Displays and manages asset reviews
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useReviews, useSubmitReview } from '../hooks/useSocial';
 import { useAssets } from '../../assets/hooks/useAssets';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
@@ -14,17 +14,24 @@ import './ReviewsTab.css';
 
 interface ReviewsTabProps {
   assetId: string | null;
-  onAssetSelect: (assetId: string) => void;
+  onAssetSelect?: (assetId: string) => void;
+  /** When true, hide asset selector (e.g. when embedded in AssetDetailPage with assetId from route) */
+  assetIdOnly?: boolean;
 }
 
-export function ReviewsTab({ assetId, onAssetSelect: _onAssetSelect }: ReviewsTabProps) {
+export function ReviewsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnly = false }: ReviewsTabProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(assetId);
+
+  useEffect(() => {
+    if (!assetIdOnly) setSelectedAssetId(assetId);
+  }, [assetId, assetIdOnly]);
   const [showForm, setShowForm] = useState(false);
   const [reviewText, setReviewText] = useState('');
   const [rating, setRating] = useState<number | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<ReviewStatus | ''>('');
 
-  const { data: reviewsData, isLoading, error, refetch } = useReviews(selectedAssetId || '', {
+  const effectiveAssetId = assetIdOnly ? assetId : selectedAssetId;
+  const { data: reviewsData, isLoading, error, refetch } = useReviews(effectiveAssetId || '', {
     page_size: 50,
     status: statusFilter || undefined,
   });
@@ -32,11 +39,11 @@ export function ReviewsTab({ assetId, onAssetSelect: _onAssetSelect }: ReviewsTa
   const submitReviewMutation = useSubmitReview();
 
   const handleSubmitReview = async () => {
-    if (!selectedAssetId || !reviewText.trim() || reviewText.length < 10) return;
+    if (!effectiveAssetId || !reviewText.trim() || reviewText.length < 10) return;
 
     try {
       await submitReviewMutation.mutateAsync({
-        asset_id: selectedAssetId,
+        asset_id: effectiveAssetId,
         review_text: reviewText,
         rating: rating,
       });
@@ -61,41 +68,60 @@ export function ReviewsTab({ assetId, onAssetSelect: _onAssetSelect }: ReviewsTa
 
   return (
     <div className="reviews-tab">
-      <div className="reviews-tab-header">
-        <div className="asset-selector">
-          <label htmlFor="asset-select">Select Asset:</label>
-          <select
-            id="asset-select"
-            value={selectedAssetId || ''}
-            onChange={(e) => {
-              setSelectedAssetId(e.target.value || null);
-              setShowForm(false);
-            }}
-          >
-            <option value="">-- Select an asset --</option>
-            {assetsData?.results.map(asset => (
-              <option key={asset.id} value={asset.id}>
-                {asset.name}
-              </option>
-            ))}
-          </select>
+      {!assetIdOnly && (
+        <div className="reviews-tab-header">
+          <div className="asset-selector">
+            <label htmlFor="asset-select">Select Asset:</label>
+            <select
+              id="asset-select"
+              value={selectedAssetId || ''}
+              onChange={(e) => {
+                setSelectedAssetId(e.target.value || null);
+                setShowForm(false);
+              }}
+            >
+              <option value="">-- Select an asset --</option>
+              {assetsData?.results?.map(asset => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-controls">
+            <label htmlFor="status-filter">Status:</label>
+            <select
+              id="status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as ReviewStatus | '')}
+            >
+              <option value="">All</option>
+              <option value="APPROVED">Approved</option>
+              <option value="PENDING">Pending</option>
+              <option value="REJECTED">Rejected</option>
+            </select>
+          </div>
         </div>
-        <div className="filter-controls">
-          <label htmlFor="status-filter">Status:</label>
-          <select
-            id="status-filter"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as ReviewStatus | '')}
-          >
-            <option value="">All</option>
-            <option value="APPROVED">Approved</option>
-            <option value="PENDING">Pending</option>
-            <option value="REJECTED">Rejected</option>
-          </select>
+      )}
+      {assetIdOnly && (
+        <div className="reviews-tab-header">
+          <div className="filter-controls">
+            <label htmlFor="status-filter-reviews">Status:</label>
+            <select
+              id="status-filter-reviews"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as ReviewStatus | '')}
+            >
+              <option value="">All</option>
+              <option value="APPROVED">Approved</option>
+              <option value="PENDING">Pending</option>
+              <option value="REJECTED">Rejected</option>
+            </select>
+          </div>
         </div>
-      </div>
+      )}
 
-      {selectedAssetId && (
+      {effectiveAssetId && (
         <>
           {!showForm && (
             <button
@@ -184,7 +210,7 @@ export function ReviewsTab({ assetId, onAssetSelect: _onAssetSelect }: ReviewsTa
                           ))}
                         </div>
                       )}
-                      <span className="review-status status-{review.status.toLowerCase()}">
+                      <span className={`review-status status-${review.status.toLowerCase()}`}>
                         {review.status}
                       </span>
                       <span className="review-date">
@@ -203,7 +229,7 @@ export function ReviewsTab({ assetId, onAssetSelect: _onAssetSelect }: ReviewsTa
         </>
       )}
 
-      {!selectedAssetId && (
+      {!effectiveAssetId && (
         <EmptyState
           title="Select an asset"
           message="Choose an asset from the dropdown above to view and write reviews."

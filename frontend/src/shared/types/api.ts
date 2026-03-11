@@ -31,6 +31,21 @@ export interface PaginatedResponse<T> {
   results: T[];
 }
 
+/** Empty paginated response for fallback when API returns undefined */
+export function emptyPaginatedResponse<T>(): PaginatedResponse<T> {
+  return {
+    results: [],
+    count: 0,
+    page: 1,
+    page_size: 100,
+    total_pages: 1,
+    has_next: false,
+    has_previous: false,
+    next_page: null,
+    previous_page: null,
+  };
+}
+
 export interface ApiResponse<T> {
   data: T;
   status: number;

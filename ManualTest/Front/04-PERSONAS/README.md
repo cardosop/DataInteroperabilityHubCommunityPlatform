@@ -1,13 +1,17 @@
 # Persona Scripts
 
-**Version**: 1.0.0  
-**Last Updated**: 2026-02-17
+**Version**: 1.1.0  
+**Last Updated**: 2026-03-01
 
 ---
 
 ## Overview
 
 Each persona script maps to a persona in [docs/USER_PERSONAS.md](../../docs/USER_PERSONAS.md). Scripts combine journeys and use cases for that persona into a single executable manual test flow.
+
+**Before running any persona**:
+1. Complete [00-PREREQUISITES.md](../00-PREREQUISITES.md) (test stack, E2E users, subscriptions)
+2. Use [05-SUPPORT-MATERIAL](../05-SUPPORT-MATERIAL/README.md) for credentials, contracts, and sample data
 
 ---
 

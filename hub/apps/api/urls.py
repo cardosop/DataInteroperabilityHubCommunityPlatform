@@ -7,7 +7,9 @@ from .views import (
     SwaggerUIView,
     api_info,
     api_not_found,
+    ensure_e2e_invitation_token,
     ensure_e2e_subscription,
+    ensure_e2e_tenant_switch_setup,
 )
 
 urlpatterns = [
@@ -56,6 +58,8 @@ urlpatterns = [
     path("workflows/", include("hub.apps.orchestration.urls")),
     path("transformation/", include("hub.apps.api.transformation_urls")),
     path("test/ensure-e2e-subscription/", ensure_e2e_subscription, name="ensure-e2e-subscription"),
+    path("test/ensure-e2e-invitation-token/", ensure_e2e_invitation_token, name="ensure-e2e-invitation-token"),
+    path("test/ensure-e2e-tenant-switch-setup/", ensure_e2e_tenant_switch_setup, name="ensure-e2e-tenant-switch-setup"),
     # Catch-all for non-existent API endpoints (must be last)
     # This will only match if none of the above patterns matched
     # Use a more specific pattern that doesn't interfere with router actions

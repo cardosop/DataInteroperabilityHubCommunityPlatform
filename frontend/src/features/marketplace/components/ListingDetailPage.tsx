@@ -9,6 +9,8 @@ import { useCreateOrder } from '../hooks/useOrders';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { PricingModel, ListingStatus } from '../../../shared/types/marketplace';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './ListingDetailPage.css';
 
 export function ListingDetailPage() {
@@ -64,9 +66,21 @@ export function ListingDetailPage() {
             {listing.status}
           </span>
         </div>
+        {id && (
+          <div className="listing-uuid" data-testid="listing-uuid">
+            <UuidWithCopy value={id} label="Listing ID" />
+          </div>
+        )}
       </div>
 
       <div className="listing-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Marketplace', href: '/marketplace' },
+            { label: listing.title || 'Listing' },
+          ]}
+        />
         <div className="listing-detail-main">
           <div className="listing-section">
             <h2>Description</h2>

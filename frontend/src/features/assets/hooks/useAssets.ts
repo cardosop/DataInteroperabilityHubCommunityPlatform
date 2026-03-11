@@ -3,7 +3,9 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { emptyPaginatedResponse } from '../../../shared/types/api';
 import type {
+  Asset,
   AssetCreateRequest,
   AssetListFilters,
   AssetUpdateRequest,
@@ -12,10 +14,20 @@ import type {
 } from '../../../shared/types/assets';
 import { assetService } from '../services/assetService';
 
-export function useAssets(filters: AssetListFilters = {}) {
+export function useAssets(
+  filters: AssetListFilters = {},
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: ['assets', 'list', filters],
-    queryFn: () => assetService.list(filters),
+    queryFn: async () => {
+      const data = await assetService.list(filters);
+      if (data === undefined) {
+        return emptyPaginatedResponse<Asset>();
+      }
+      return data;
+    },
+    enabled: options?.enabled !== false,
   });
 }
 
@@ -98,11 +110,12 @@ export function useAttachDataset() {
     mutationFn: ({ id, data }: { id: string; data: AttachDatasetRequest }) =>
       assetService.attachDataset(id, data),
     onSuccess: (updatedAsset, variables) => {
-      // Update the asset in cache with the response (which includes dataset_id)
+      // Update the asset in cache immediately (reduces refetch dependency)
       queryClient.setQueryData(['assets', 'detail', variables.id], updatedAsset);
-      // Also invalidate to ensure fresh data
       queryClient.invalidateQueries({ queryKey: ['assets', 'detail', variables.id] });
       queryClient.invalidateQueries({ queryKey: ['assets'] });
+      // Dataset may have asset_id updated; invalidate datasets list
+      queryClient.invalidateQueries({ queryKey: ['datasets'] });
     },
   });
 }
@@ -130,6 +143,25 @@ export function useRecalculateHealthScore() {
   });
 }
 
+export function useDataFirstAsset() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: {
+      file_id: string;
+      key: string;
+      name: string;
+      description?: string;
+      domain?: string;
+    }) => assetService.createDataFirst(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({ queryKey: ['datasets'] });
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+    },
+  });
+}
+
 export function useAssetRecommendations(
   filters: {
     asset_id?: string;
@@ -140,7 +172,13 @@ export function useAssetRecommendations(
 ) {
   return useQuery({
     queryKey: ['assets', 'recommendations', filters],
-    queryFn: () => assetService.getRecommendations(filters),
+    queryFn: async () => {
+      const data = await assetService.getRecommendations(filters);
+      if (data === undefined) {
+        return [];
+      }
+      return data;
+    },
     enabled: options?.enabled !== false,
   });
 }

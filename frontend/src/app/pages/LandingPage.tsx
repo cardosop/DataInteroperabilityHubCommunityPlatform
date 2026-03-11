@@ -6,6 +6,7 @@
 
 import { Link } from 'react-router-dom';
 import { useCapabilities } from '../../shared/hooks/useCapabilities';
+import { APP_NAME } from '../../shared/constants/brand';
 import './LandingPage.css';
 
 export function LandingPage() {
@@ -17,7 +18,7 @@ export function LandingPage() {
   return (
     <div className="landing-page" data-testid="landing-page" role="main">
       <header className="landing-hero">
-        <h1 className="landing-hero-title">Data Interoperability Hub</h1>
+        <h1 className="landing-hero-title">{APP_NAME}</h1>
         <p className="landing-hero-subtitle">
           Connect, govern, and share data across your organization with a single platform for assets, contracts, and
           compliance.
@@ -42,6 +43,9 @@ export function LandingPage() {
             Create an account
           </Link>
         )}
+        <Link to="/onboard-org" className="landing-link" data-testid="landing-onboard-org-link">
+          Create organization
+        </Link>
         <Link to="/public" className="landing-link">
           Public resources
         </Link>

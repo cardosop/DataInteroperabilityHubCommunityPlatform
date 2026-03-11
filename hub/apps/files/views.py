@@ -16,6 +16,7 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
@@ -46,12 +47,17 @@ class FileViewSet(viewsets.ModelViewSet):
     ViewSet for file management.
 
     Tenant-scoped: users can only see/manage files in their tenant.
+    List supports: search (name), filter (status), ordering (29.69.2).
     """
 
     queryset = File.objects.all()
     serializer_class = FileSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ["name"]
+    ordering_fields = ["name", "created_at", "updated_at"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         """Filter queryset based on user permissions and optional status filter."""

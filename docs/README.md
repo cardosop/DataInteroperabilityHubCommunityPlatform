@@ -1,6 +1,6 @@
 # Data Interoperability Hub - Documentation
 
-Complete documentation for the Data Interoperability Hub platform.
+Complete documentation for the Data Interoperability Hub platform. The product UI defaults to the **Meshant** brand (configurable via `APP_NAME` / `VITE_APP_NAME`).
 
 ## Quick Start
 

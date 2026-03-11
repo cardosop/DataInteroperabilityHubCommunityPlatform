@@ -6,7 +6,9 @@
 
 import { useEffect, useState } from 'react';
 import type { ApiError } from '../../../shared/types/api';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { useToast } from '../../../shared/components/Toast';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type {
   AuthAPIKey,
@@ -33,6 +35,8 @@ export function AuthAPIKeyListPage() {
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const toast = useToast();
 
   const loadKeys = async () => {
     setLoading(true);
@@ -79,14 +83,20 @@ export function AuthAPIKeyListPage() {
     setCreateModalOpen(false);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this API key? It will stop working immediately.')) return;
-    setDeletingId(id);
+  const handleDeleteClick = (keyId: string) => setConfirmDeleteId(keyId);
+  const handleDeleteConfirm = async () => {
+    const keyId = confirmDeleteId;
+    if (!keyId) return;
+    setConfirmDeleteId(null);
+    setDeletingId(keyId);
     try {
-      await authService.deleteAuthApiKey(id);
-      setKeys((prev) => prev.filter((k) => k.id !== id));
+      await authService.deleteAuthApiKey(keyId);
+      setKeys((prev) => prev.filter((k) => k.id !== keyId));
+      toast.success('API key deleted.');
     } catch (err) {
-      setError(normalizeError(err));
+      const normalized = normalizeError(err);
+      setError(normalized);
+      toast.error(normalized.error.message);
     } finally {
       setDeletingId(null);
     }
@@ -145,7 +155,7 @@ export function AuthAPIKeyListPage() {
                     <button
                       type="button"
                       className="btn-delete"
-                      onClick={() => handleDelete(key.id)}
+                      onClick={() => handleDeleteClick(key.id)}
                       disabled={deletingId === key.id}
                     >
                       {deletingId === key.id ? 'Deleting...' : 'Delete'}
@@ -277,6 +287,16 @@ export function AuthAPIKeyListPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete API key"
+        message="Delete this API key? It will stop working immediately."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

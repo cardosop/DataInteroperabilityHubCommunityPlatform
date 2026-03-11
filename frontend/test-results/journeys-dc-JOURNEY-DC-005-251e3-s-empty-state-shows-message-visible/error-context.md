@@ -1,0 +1,116 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - link "Skip to main content" [ref=e4] [cursor=pointer]:
+      - /url: "#main-content"
+    - banner [ref=e5]:
+      - generic [ref=e6]:
+        - link "Meshant — go to home" [ref=e8] [cursor=pointer]:
+          - /url: /
+          - heading "Meshant" [level=1] [ref=e9]
+        - searchbox "Global search" [ref=e11]
+        - generic [ref=e12]:
+          - button "Switch tenant" [ref=e14] [cursor=pointer]:
+            - generic [ref=e15]: 98547636-bffc-48cb-b014-a17511729ffd
+            - generic [ref=e16]: ▼
+          - button "Notifications" [ref=e18] [cursor=pointer]:
+            - text: 🔔
+            - generic [ref=e19]: "0"
+          - button "User menu" [ref=e21] [cursor=pointer]:
+            - generic [ref=e22]: E2E Consumer User
+            - generic [ref=e23]: ▼
+    - generic [ref=e24]:
+      - navigation "Main navigation" [ref=e25]:
+        - navigation [ref=e26]:
+          - list [ref=e27]:
+            - listitem [ref=e28]:
+              - link "🏠 Home" [ref=e29] [cursor=pointer]:
+                - /url: /
+                - generic [ref=e30]: 🏠
+                - generic [ref=e31]: Home
+            - listitem [ref=e32]:
+              - link "📦 Assets" [ref=e33] [cursor=pointer]:
+                - /url: /assets
+                - generic [ref=e34]: 📦
+                - generic [ref=e35]: Assets
+            - listitem [ref=e36]:
+              - link "📊 Datasets" [ref=e37] [cursor=pointer]:
+                - /url: /datasets
+                - generic [ref=e38]: 📊
+                - generic [ref=e39]: Datasets
+            - listitem [ref=e40]:
+              - link "📁 Files" [ref=e41] [cursor=pointer]:
+                - /url: /files
+                - generic [ref=e42]: 📁
+                - generic [ref=e43]: Files
+            - listitem [ref=e44]:
+              - link "📄 Contracts" [ref=e45] [cursor=pointer]:
+                - /url: /contracts
+                - generic [ref=e46]: 📄
+                - generic [ref=e47]: Contracts
+            - listitem [ref=e48]:
+              - link "🛒 Marketplace" [ref=e49] [cursor=pointer]:
+                - /url: /marketplace
+                - generic [ref=e50]: 🛒
+                - generic [ref=e51]: Marketplace
+            - listitem [ref=e52]:
+              - link "🔌 Integrations" [ref=e53] [cursor=pointer]:
+                - /url: /integrations/connections
+                - generic [ref=e54]: 🔌
+                - generic [ref=e55]: Integrations
+            - listitem [ref=e56]:
+              - link "🔗 ODPS" [ref=e57] [cursor=pointer]:
+                - /url: /odps
+                - generic [ref=e58]: 🔗
+                - generic [ref=e59]: ODPS
+            - listitem [ref=e60]:
+              - link "✅ Data Quality" [ref=e61] [cursor=pointer]:
+                - /url: /dq
+                - generic [ref=e62]: ✅
+                - generic [ref=e63]: Data Quality
+            - listitem [ref=e64]:
+              - link "🛡️ Compliance" [ref=e65] [cursor=pointer]:
+                - /url: /compliance
+                - generic [ref=e66]: 🛡️
+                - generic [ref=e67]: Compliance
+            - listitem [ref=e68]:
+              - link "🌐 Data Mesh" [ref=e69] [cursor=pointer]:
+                - /url: /mesh
+                - generic [ref=e70]: 🌐
+                - generic [ref=e71]: Data Mesh
+            - listitem [ref=e72]:
+              - link "🔮 Virtualization" [ref=e73] [cursor=pointer]:
+                - /url: /virtualization
+                - generic [ref=e74]: 🔮
+                - generic [ref=e75]: Virtualization
+            - listitem [ref=e76]:
+              - link "🔍 Search" [ref=e77] [cursor=pointer]:
+                - /url: /search
+                - generic [ref=e78]: 🔍
+                - generic [ref=e79]: Search
+            - listitem [ref=e80]:
+              - link "📈 Observability" [ref=e81] [cursor=pointer]:
+                - /url: /observability
+                - generic [ref=e82]: 📈
+                - generic [ref=e83]: Observability
+            - listitem [ref=e84]:
+              - link "⚙️ Jobs" [ref=e85] [cursor=pointer]:
+                - /url: /jobs
+                - generic [ref=e86]: ⚙️
+                - generic [ref=e87]: Jobs
+            - listitem [ref=e88]:
+              - link "🔗 Webhooks" [ref=e89] [cursor=pointer]:
+                - /url: /webhooks
+                - generic [ref=e90]: 🔗
+                - generic [ref=e91]: Webhooks
+      - main [ref=e92]:
+        - status "Loading entitlements..." [ref=e93]:
+          - paragraph [ref=e95]: Loading entitlements...
+  - region "Notifications"
+  - generic [ref=e96]:
+    - img [ref=e98]
+    - button "Open Tanstack query devtools" [ref=e146] [cursor=pointer]:
+      - img [ref=e147]
+```

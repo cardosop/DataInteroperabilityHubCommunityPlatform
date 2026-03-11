@@ -1,7 +1,7 @@
 """
 Search Service
 
-A FastAPI service providing full-text search capabilities for the Data Interoperability Hub.
+A FastAPI service providing full-text search capabilities for Meshant.
 """
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 app = FastAPI(
     title="Search Service",
     version="1.0.0",
-    description="Full-text search service for Data Interoperability Hub"
+    description="Full-text search service for Meshant"
 )
 
 SERVICE_NAME = "search-service"

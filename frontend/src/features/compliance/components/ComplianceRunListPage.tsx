@@ -9,11 +9,17 @@ import { useComplianceRuns, useCreateComplianceRun } from '../hooks/useComplianc
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
+import { AssetPicker } from '../../../shared/components/pickers/AssetPicker';
+import { DatasetPicker } from '../../../shared/components/pickers/DatasetPicker';
+import { FilePicker } from '../../../shared/components/pickers/FilePicker';
 import type { ComplianceRunStatus } from '../../../shared/types/compliance';
 import './ComplianceRunListPage.css';
 
 export function ComplianceRunListPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   const [statusFilter, setStatusFilter] = useState<ComplianceRunStatus | ''>('');
@@ -44,10 +50,17 @@ export function ComplianceRunListPage() {
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateError(null);
+    const assetId = createForm.asset_id.trim() || undefined;
+    const datasetId = createForm.dataset_id.trim() || undefined;
+    const fileId = createForm.file_id.trim() || undefined;
+    if (!assetId && !datasetId && !fileId) {
+      setCreateError('Provide at least one of: Asset, Dataset, or File');
+      return;
+    }
     const payload = {
-      asset_id: createForm.asset_id.trim() || undefined,
-      dataset_id: createForm.dataset_id.trim() || undefined,
-      file_id: createForm.file_id.trim() || undefined,
+      asset_id: assetId,
+      dataset_id: datasetId,
+      file_id: fileId,
       scan_mode: createForm.scan_mode,
       applicable_regulations: createForm.applicable_regulations
         .split(',')
@@ -56,10 +69,6 @@ export function ComplianceRunListPage() {
         ? createForm.applicable_regulations.split(',').map((s) => s.trim()).filter(Boolean)
         : undefined,
     };
-    if (!payload.asset_id && !payload.dataset_id && !payload.file_id) {
-      setCreateError('Provide at least one of: Asset ID, Dataset ID, or File ID');
-      return;
-    }
     try {
       const run = await createMutation.mutateAsync(payload);
       setCreateModalOpen(false);
@@ -70,11 +79,84 @@ export function ComplianceRunListPage() {
         scan_mode: 'internal',
         applicable_regulations: '',
       });
+      toast.success('Compliance run created successfully.');
       navigate(`/compliance/runs/${run.id}`);
     } catch (err: unknown) {
-      setCreateError(err instanceof Error ? err.message : 'Failed to create compliance run');
+      const msg = normalizeError(err).error.message || 'Failed to create compliance run';
+      setCreateError(msg);
+      toast.error(msg);
     }
   };
+
+  const renderCreateModal = () => (
+    <div className="compliance-create-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="compliance-create-modal-title">
+      <div className="compliance-create-modal">
+        <h2 id="compliance-create-modal-title">Create compliance run</h2>
+        <form onSubmit={handleCreateSubmit} className="compliance-create-form">
+          <div className="form-group">
+            <label htmlFor="compliance-create-asset_id">Asset (optional)</label>
+            <AssetPicker
+              value={createForm.asset_id || null}
+              onChange={(id) => setCreateForm({ ...createForm, asset_id: id ?? '' })}
+              placeholder="Search and select an asset..."
+              data-testid="compliance-create-asset-picker"
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="compliance-create-dataset_id">Dataset (optional)</label>
+            <DatasetPicker
+              value={createForm.dataset_id || null}
+              onChange={(id) => setCreateForm({ ...createForm, dataset_id: id ?? '' })}
+              assetId={createForm.asset_id || undefined}
+              placeholder="Search and select a dataset..."
+              data-testid="compliance-create-dataset-picker"
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="compliance-create-file_id">File (optional)</label>
+            <FilePicker
+              value={createForm.file_id || null}
+              onChange={(id) => setCreateForm({ ...createForm, file_id: id ?? '' })}
+              assetId={createForm.asset_id || undefined}
+              datasetId={createForm.dataset_id || undefined}
+              placeholder="Search and select a file..."
+              data-testid="compliance-create-file-picker"
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="compliance-create-scan_mode">Scan mode</label>
+            <select
+              id="compliance-create-scan_mode"
+              value={createForm.scan_mode}
+              onChange={(e) => setCreateForm({ ...createForm, scan_mode: e.target.value as 'internal' | 'external' })}
+            >
+              <option value="internal">Internal</option>
+              <option value="external">External</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label htmlFor="compliance-create-regulations">Applicable regulations (comma-separated, optional)</label>
+            <input
+              id="compliance-create-regulations"
+              type="text"
+              value={createForm.applicable_regulations}
+              onChange={(e) => setCreateForm({ ...createForm, applicable_regulations: e.target.value })}
+              placeholder="e.g. GDPR, HIPAA"
+            />
+          </div>
+          {createError && <p className="compliance-create-error" role="alert">{createError}</p>}
+          <div className="compliance-create-modal-actions">
+            <button type="button" className="btn-secondary" onClick={() => setCreateModalOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
+              {createMutation.isPending ? 'Creating...' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 
   if (isLoading) {
     return <LoadingSpinner message="Loading compliance runs..." />;
@@ -103,75 +185,7 @@ export function ComplianceRunListPage() {
           title="No compliance runs found"
           message="Compliance runs will appear here when created. Use the button above to create a run."
         />
-        {createModalOpen && (
-          <div className="compliance-create-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="compliance-create-modal-title">
-            <div className="compliance-create-modal">
-              <h2 id="compliance-create-modal-title">Create compliance run</h2>
-              <form onSubmit={handleCreateSubmit} className="compliance-create-form">
-                <div className="form-group">
-                  <label htmlFor="compliance-create-asset_id">Asset ID (optional)</label>
-                  <input
-                    id="compliance-create-asset_id"
-                    type="text"
-                    value={createForm.asset_id}
-                    onChange={(e) => setCreateForm({ ...createForm, asset_id: e.target.value })}
-                    placeholder="UUID"
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="compliance-create-dataset_id">Dataset ID (optional)</label>
-                  <input
-                    id="compliance-create-dataset_id"
-                    type="text"
-                    value={createForm.dataset_id}
-                    onChange={(e) => setCreateForm({ ...createForm, dataset_id: e.target.value })}
-                    placeholder="UUID"
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="compliance-create-file_id">File ID (optional)</label>
-                  <input
-                    id="compliance-create-file_id"
-                    type="text"
-                    value={createForm.file_id}
-                    onChange={(e) => setCreateForm({ ...createForm, file_id: e.target.value })}
-                    placeholder="UUID"
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="compliance-create-scan_mode">Scan mode</label>
-                  <select
-                    id="compliance-create-scan_mode"
-                    value={createForm.scan_mode}
-                    onChange={(e) => setCreateForm({ ...createForm, scan_mode: e.target.value as 'internal' | 'external' })}
-                  >
-                    <option value="internal">Internal</option>
-                    <option value="external">External</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label htmlFor="compliance-create-regulations">Applicable regulations (comma-separated, optional)</label>
-                  <input
-                    id="compliance-create-regulations"
-                    type="text"
-                    value={createForm.applicable_regulations}
-                    onChange={(e) => setCreateForm({ ...createForm, applicable_regulations: e.target.value })}
-                    placeholder="e.g. GDPR, HIPAA"
-                  />
-                </div>
-                {createError && <p className="compliance-create-error" role="alert">{createError}</p>}
-                <div className="compliance-create-modal-actions">
-                  <button type="button" className="btn-secondary" onClick={() => setCreateModalOpen(false)}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
-                    {createMutation.isPending ? 'Creating...' : 'Create'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        {createModalOpen && renderCreateModal()}
       </div>
     );
   }
@@ -206,75 +220,7 @@ export function ComplianceRunListPage() {
         </div>
       </div>
 
-      {createModalOpen && (
-        <div className="compliance-create-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="compliance-create-modal-title">
-          <div className="compliance-create-modal">
-            <h2 id="compliance-create-modal-title">Create compliance run</h2>
-            <form onSubmit={handleCreateSubmit} className="compliance-create-form">
-              <div className="form-group">
-                <label htmlFor="compliance-create-asset_id">Asset ID (optional)</label>
-                <input
-                  id="compliance-create-asset_id"
-                  type="text"
-                  value={createForm.asset_id}
-                  onChange={(e) => setCreateForm({ ...createForm, asset_id: e.target.value })}
-                  placeholder="UUID"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="compliance-create-dataset_id">Dataset ID (optional)</label>
-                <input
-                  id="compliance-create-dataset_id"
-                  type="text"
-                  value={createForm.dataset_id}
-                  onChange={(e) => setCreateForm({ ...createForm, dataset_id: e.target.value })}
-                  placeholder="UUID"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="compliance-create-file_id">File ID (optional)</label>
-                <input
-                  id="compliance-create-file_id"
-                  type="text"
-                  value={createForm.file_id}
-                  onChange={(e) => setCreateForm({ ...createForm, file_id: e.target.value })}
-                  placeholder="UUID"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="compliance-create-scan_mode">Scan mode</label>
-                <select
-                  id="compliance-create-scan_mode"
-                  value={createForm.scan_mode}
-                  onChange={(e) => setCreateForm({ ...createForm, scan_mode: e.target.value as 'internal' | 'external' })}
-                >
-                  <option value="internal">Internal</option>
-                  <option value="external">External</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label htmlFor="compliance-create-regulations">Applicable regulations (comma-separated, optional)</label>
-                <input
-                  id="compliance-create-regulations"
-                  type="text"
-                  value={createForm.applicable_regulations}
-                  onChange={(e) => setCreateForm({ ...createForm, applicable_regulations: e.target.value })}
-                  placeholder="e.g. GDPR, HIPAA"
-                />
-              </div>
-              {createError && <p className="compliance-create-error" role="alert">{createError}</p>}
-              <div className="compliance-create-modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setCreateModalOpen(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Creating...' : 'Create'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {createModalOpen && renderCreateModal()}
 
       <div className="compliance-run-list-table">
         <table>

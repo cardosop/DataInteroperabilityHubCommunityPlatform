@@ -13,9 +13,9 @@ export function PublicResourcesPage() {
     return <Navigate to="/login" replace />;
   }
 
-  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8001/api/v1';
-  const openApiUrl = `${apiBase.replace(/\/$/, '')}/openapi.json`;
-  const healthUrl = `${apiBase.replace(/\/api\/v1\/?$/, '')}/health`;
+  // Use relative URLs so links resolve to frontend origin (e.g. localhost:3010) and get proxied by nginx
+  const openApiUrl = '/api/v1/openapi.json';
+  const healthUrl = '/health';
 
   return (
     <div className="auth-page">

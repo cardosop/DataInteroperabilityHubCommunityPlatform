@@ -206,6 +206,106 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('Network Error Retries', () => {
+    let setTimeoutSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it.each(['post', 'patch', 'put', 'delete'])(
+      'should NOT schedule a retry for %s requests on ECONNABORTED (timeout)',
+      async (method) => {
+        if (!responseErrorInterceptor) throw new Error('Response error interceptor not set');
+
+        const networkError = {
+          response: undefined,
+          code: 'ECONNABORTED',
+          message: 'timeout of 45000ms exceeded',
+          config: {
+            method,
+            headers: {},
+            _networkRetryCount: undefined,
+          } as unknown as InternalAxiosRequestConfig,
+          isAxiosError: true,
+          name: 'AxiosError',
+        } as unknown as AxiosError;
+
+        try {
+          await responseErrorInterceptor(networkError);
+          expect.fail('Should have rejected');
+        } catch {
+          // Expected rejection — key assertion: no retry back-off timer was started
+        }
+
+        expect(setTimeoutSpy).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each(['post', 'patch', 'put', 'delete'])(
+      'should NOT schedule a retry for %s requests on ECONNRESET',
+      async (method) => {
+        if (!responseErrorInterceptor) throw new Error('Response error interceptor not set');
+
+        const networkError = {
+          response: undefined,
+          code: 'ECONNRESET',
+          message: 'socket hang up',
+          config: {
+            method,
+            headers: {},
+            _networkRetryCount: undefined,
+          } as unknown as InternalAxiosRequestConfig,
+          isAxiosError: true,
+          name: 'AxiosError',
+        } as unknown as AxiosError;
+
+        try {
+          await responseErrorInterceptor(networkError);
+          expect.fail('Should have rejected');
+        } catch {
+          // Expected rejection
+        }
+
+        expect(setTimeoutSpy).not.toHaveBeenCalled();
+      }
+    );
+
+    it('should schedule a retry back-off for GET requests on ECONNRESET', async () => {
+      if (!responseErrorInterceptor) throw new Error('Response error interceptor not set');
+
+      const networkError = {
+        response: undefined,
+        code: 'ECONNRESET',
+        message: 'socket hang up',
+        config: {
+          method: 'get',
+          headers: {},
+          url: '/some-resource/',
+          _networkRetryCount: undefined,
+        } as unknown as InternalAxiosRequestConfig,
+        isAxiosError: true,
+        name: 'AxiosError',
+      } as unknown as AxiosError;
+
+      // Kick off the interceptor but don't await — the retry timer will pause it
+      const pendingPromise = responseErrorInterceptor(networkError).catch(() => {});
+
+      // The retry logic awaits a setTimeout before calling this.client again;
+      // advance timers to unblock it so the test doesn't hang
+      await vi.runAllTimersAsync();
+      await pendingPromise;
+
+      expect(setTimeoutSpy).toHaveBeenCalledOnce();
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1000);
+    });
+  });
+
   describe('Tenant ID Header', () => {
     it('should add X-Tenant-ID header when tenant ID getter is set', () => {
       const tenantId = 'tenant-123';

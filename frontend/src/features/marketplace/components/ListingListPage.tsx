@@ -83,8 +83,8 @@ export function ListingListPage() {
   }
 
   return (
-    <div className="listing-list-page">
-      <div className="listing-list-header">
+    <div className="listing-list-page" data-testid="listing-list-page">
+      <div className="listing-list-header" data-testid="listing-list-header">
         <h1>Marketplace</h1>
         <div className="listing-list-header-actions">
           <button className="btn-secondary" onClick={handleOrdersClick} type="button">
@@ -96,7 +96,7 @@ export function ListingListPage() {
         </div>
       </div>
 
-      <div className="listing-list-filters">
+      <div className="listing-list-filters" data-testid="listing-list-filters">
         <input
           type="text"
           placeholder="Search listings..."

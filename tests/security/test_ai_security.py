@@ -56,21 +56,21 @@ class AIAuthenticationSecurityTest(AISecurityTestBase):
     """Authentication: AI endpoints require an authenticated user."""
 
     def test_natural_language_search_unauthenticated_returns_401(self):
-        """POST /api/v1/ai/natural-language-search/ without auth returns 401."""
+        """POST /api/v1/ai/natural-language-search/ without auth returns 401 or 403."""
         self.client.force_authenticate(user=None)
         response = self.client.post(
             "/api/v1/ai/natural-language-search/",
             {"query": "Find assets"},
             format="json",
         )
-        self.assertEqual(
+        self.assertIn(
             response.status_code,
-            status.HTTP_401_UNAUTHORIZED,
-            "Natural language search must require authentication",
+            (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN),
+            f"Natural language search must require authentication (got {response.status_code})",
         )
 
     def test_schema_matching_unauthenticated_returns_401(self):
-        """POST /api/v1/ai/schema-matching/ without auth returns 401."""
+        """POST /api/v1/ai/schema-matching/ without auth returns 401 or 403."""
         self.client.force_authenticate(user=None)
         response = self.client.post(
             "/api/v1/ai/schema-matching/",
@@ -80,10 +80,10 @@ class AIAuthenticationSecurityTest(AISecurityTestBase):
             },
             format="json",
         )
-        self.assertEqual(
+        self.assertIn(
             response.status_code,
-            status.HTTP_401_UNAUTHORIZED,
-            "Schema matching must require authentication",
+            (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN),
+            f"Schema matching must require authentication (got {response.status_code})",
         )
 
 

@@ -41,7 +41,7 @@
 
 .ml-tab:hover {
   color: var(--color-text-primary);
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
 }
 
 .ml-tab.active {
@@ -74,7 +74,7 @@
 .filter-select {
   padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-base);
 }
 
@@ -90,9 +90,9 @@
 .job-card,
 .deployment-card {
   padding: var(--spacing-lg);
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   transition: all 0.2s ease;
 }
 
@@ -124,7 +124,7 @@
 
 .status-badge {
   padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
 }
@@ -148,7 +148,7 @@
 }
 
 .status-badge.status-archived {
-  background: var(--color-bg-primary);
+  background: var(--color-background-primary);
   color: var(--color-text-secondary);
 }
 
@@ -168,7 +168,7 @@
 }
 
 .status-badge.status-cancelled {
-  background: var(--color-bg-primary);
+  background: var(--color-background-primary);
   color: var(--color-text-secondary);
 }
 
@@ -194,7 +194,7 @@
   padding: var(--spacing-sm);
   background: var(--color-error-light);
   color: var(--color-error);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-sm);
 }
 

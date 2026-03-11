@@ -12,16 +12,20 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser, loginUser } from './fixtures/auth';
+import { E2E_APP_NAME } from './fixtures/brand';
+import { isBenignConsoleError } from './fixtures/console-utils';
 import { waitForLoadingComplete } from './fixtures/helpers';
 
 test.describe('Login → Load App Shell (DoD-2.2)', () => {
   test.setTimeout(120000); // 2 min: visible/slowMo + rate limiting
 
   test('user can login and app shell loads correctly', async ({ page }) => {
-    // Enable console logging for debugging
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
-        console.log(`Browser console error: ${msg.text()}`);
+        const text = msg.text();
+        if (!isBenignConsoleError(text)) {
+          console.log(`Browser console error: ${text}`);
+        }
       }
     });
 
@@ -39,7 +43,7 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
     // Step 5: Verify App Shell is loaded
     const header = page.locator('.app-header');
     await expect(header).toBeVisible({ timeout: 15000 });
-    await expect(header.locator('.app-title')).toContainText('Data Interoperability Hub');
+    await expect(header.locator('.app-title')).toContainText(E2E_APP_NAME);
 
     // Verify global search is visible
     await expect(header.locator('.global-search')).toBeVisible();
@@ -141,6 +145,64 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
     await page.goto('/assets', { waitUntil: 'domcontentloaded' });
 
     await page.waitForURL(/\/login/, { timeout: 15000 });
-    await expect(page.locator('h1')).toContainText('Data Interoperability Hub', { timeout: 10000 });
+    await expect(page.locator('h1')).toContainText(E2E_APP_NAME, { timeout: 10000 });
+  });
+
+  test('logout redirects to login and clears auth tokens', async ({ page }) => {
+    test.setTimeout(60000);
+
+    // Login first
+    const testUser = await getTestUser();
+    await loginUser(page, testUser);
+    await expect(page.locator('.app-header')).toBeVisible({ timeout: 15000 });
+
+    // Confirm tokens are present before logout
+    const tokenBefore = await page.evaluate(() => localStorage.getItem('access_token'));
+    expect(tokenBefore).toBeTruthy();
+
+    // Open user menu and click logout
+    const userMenuTrigger = page.locator('.user-menu-trigger');
+    await userMenuTrigger.click();
+    const logoutBtn = page.locator('.user-menu-logout');
+    await expect(logoutBtn).toBeVisible({ timeout: 5000 });
+    await logoutBtn.click();
+
+    // After logout the app clears auth state. RootRoute behaviour depends on the current path:
+    //   - At '/'  → isAuthenticated=false + isRoot=true → renders LandingPage (URL stays '/')
+    //   - At any other path → Navigate to='/login'
+    //
+    // IMPORTANT: the URL never changes when logging out from '/', so waitForURL(/\/(login|$)/)
+    // would resolve immediately on the current URL before clearAuth() has run. Instead we wait
+    // directly on the observable side-effect we care about: localStorage.access_token becoming null.
+    // authService.clearAuth() runs synchronously in the finally-block of authService.logout() so
+    // this waitForFunction reliably signals that the full logout sequence has completed.
+    await page.waitForFunction(
+      () => localStorage.getItem('access_token') === null,
+      { timeout: 15000 }
+    );
+
+    // Verify the page reflects the unauthenticated state (landing page or login page)
+    const postLogoutUrl = page.url();
+    const isOnLogin = postLogoutUrl.includes('/login');
+    const isOnLanding =
+      (new URL(postLogoutUrl).pathname === '/' || new URL(postLogoutUrl).pathname === '') &&
+      (await page.locator('[data-testid="landing-page"], .landing-page, h1').count()) > 0;
+    const appShellGone = (await page.locator('.app-header').count()) === 0;
+    expect(isOnLogin || isOnLanding || appShellGone).toBe(true);
+
+    // Tokens must be cleared from localStorage (already confirmed by waitForFunction above,
+    // but assert all three keys for completeness)
+    const tokenAfter = await page.evaluate(() => ({
+      access: localStorage.getItem('access_token'),
+      refresh: localStorage.getItem('refresh_token'),
+      user: localStorage.getItem('user'),
+    }));
+    expect(tokenAfter.access).toBeNull();
+    expect(tokenAfter.refresh).toBeNull();
+    expect(tokenAfter.user).toBeNull();
+
+    // Protected route should now redirect back to login (session is gone)
+    await page.goto('/assets', { waitUntil: 'domcontentloaded' });
+    await page.waitForURL(/\/login/, { timeout: 10000 });
   });
 });

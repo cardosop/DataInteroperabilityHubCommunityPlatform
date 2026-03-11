@@ -3,7 +3,7 @@
  * Displays and manages asset comments with threading support
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useComments, useSubmitComment } from '../hooks/useSocial';
 import { useAssets } from '../../assets/hooks/useAssets';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
@@ -14,27 +14,34 @@ import './CommentsTab.css';
 
 interface CommentsTabProps {
   assetId: string | null;
-  onAssetSelect: (assetId: string) => void;
+  onAssetSelect?: (assetId: string) => void;
+  /** When true, hide asset selector (e.g. when embedded in AssetDetailPage with assetId from route) */
+  assetIdOnly?: boolean;
 }
 
-export function CommentsTab({ assetId, onAssetSelect: _onAssetSelect }: CommentsTabProps) {
+export function CommentsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnly = false }: CommentsTabProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(assetId);
+
+  useEffect(() => {
+    if (!assetIdOnly) setSelectedAssetId(assetId);
+  }, [assetId, assetIdOnly]);
   const [showForm, setShowForm] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
 
-  const { data: commentsData, isLoading, error, refetch } = useComments(selectedAssetId || '', {
+  const effectiveAssetId = assetIdOnly ? assetId : selectedAssetId;
+  const { data: commentsData, isLoading, error, refetch } = useComments(effectiveAssetId || '', {
     page_size: 100,
   });
   const { data: assetsData } = useAssets({ page_size: 100 });
   const submitCommentMutation = useSubmitComment();
 
   const handleSubmitComment = async () => {
-    if (!selectedAssetId || !commentText.trim()) return;
+    if (!effectiveAssetId || !commentText.trim()) return;
 
     try {
       await submitCommentMutation.mutateAsync({
-        asset_id: selectedAssetId,
+        asset_id: effectiveAssetId,
         comment_text: commentText,
         parent_comment_id: replyingTo?.id,
       });
@@ -124,29 +131,31 @@ export function CommentsTab({ assetId, onAssetSelect: _onAssetSelect }: Comments
 
   return (
     <div className="comments-tab">
-      <div className="comments-tab-header">
-        <div className="asset-selector">
-          <label htmlFor="asset-select">Select Asset:</label>
-          <select
-            id="asset-select"
-            value={selectedAssetId || ''}
-            onChange={(e) => {
-              setSelectedAssetId(e.target.value || null);
-              setShowForm(false);
-              setReplyingTo(null);
-            }}
-          >
-            <option value="">-- Select an asset --</option>
-            {assetsData?.results.map(asset => (
-              <option key={asset.id} value={asset.id}>
-                {asset.name}
-              </option>
-            ))}
-          </select>
+      {!assetIdOnly && (
+        <div className="comments-tab-header">
+          <div className="asset-selector">
+            <label htmlFor="asset-select">Select Asset:</label>
+            <select
+              id="asset-select"
+              value={selectedAssetId || ''}
+              onChange={(e) => {
+                setSelectedAssetId(e.target.value || null);
+                setShowForm(false);
+                setReplyingTo(null);
+              }}
+            >
+              <option value="">-- Select an asset --</option>
+              {assetsData?.results?.map(asset => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-      </div>
+      )}
 
-      {selectedAssetId && (
+      {effectiveAssetId && (
         <>
           {!showForm && (
             <button
@@ -217,7 +226,7 @@ export function CommentsTab({ assetId, onAssetSelect: _onAssetSelect }: Comments
         </>
       )}
 
-      {!selectedAssetId && (
+      {!effectiveAssetId && (
         <EmptyState
           title="Select an asset"
           message="Choose an asset from the dropdown above to view and add comments."

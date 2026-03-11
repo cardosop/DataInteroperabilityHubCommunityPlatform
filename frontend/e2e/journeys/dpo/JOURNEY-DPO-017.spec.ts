@@ -21,7 +21,7 @@ test.describe('JOURNEY-DPO-017: Export ODPS Product', () => {
       await loginUser(page, testUser);
       await page.goto('/odps');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.odps-list-page, .odps-empty-state, .error-display, #email', {
+      await page.waitForSelector('.odps-list-page, .odps-empty-state, .error-display, .loading-spinner-container, #email', {
         timeout: 65000,
       });
       if (page.url().includes('/login')) {
@@ -65,7 +65,7 @@ test.describe('JOURNEY-DPO-017: Export ODPS Product', () => {
       await loginUser(page, testUser);
       await page.goto('/odps');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.odps-list-page, .odps-empty-state, .error-display, #email', {
+      await page.waitForSelector('.odps-list-page, .odps-empty-state, .error-display, .loading-spinner-container, #email', {
         timeout: 65000,
       });
       if (page.url().includes('/login')) {

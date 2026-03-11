@@ -136,9 +136,25 @@ class UserViewSet(viewsets.ModelViewSet):
         """Retrieve user by ID"""
         return super().retrieve(request, *args, **kwargs)
 
+    def _check_admin_update_permission(self, request):
+        """Require TENANT_ADMIN or PLATFORM_ADMIN for user update."""
+        actor = request.user
+        if not (
+            (hasattr(actor, "is_platform_admin") and actor.is_platform_admin)
+            or (hasattr(actor, "has_role") and actor.has_role("TENANT_ADMIN"))
+        ):
+            return Response(
+                {"error": "Permission denied: TENANT_ADMIN or PLATFORM_ADMIN role required"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None
+
     @transaction.atomic
     def update(self, request, *args, **kwargs):
-        """Update user via service layer (full update)"""
+        """Update user via service layer (full update). Requires TENANT_ADMIN or PLATFORM_ADMIN."""
+        perm = self._check_admin_update_permission(request)
+        if perm is not None:
+            return perm
         user = self.get_object()
         serializer = UserUpdateSerializer(user, data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -177,7 +193,10 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def partial_update(self, request, *args, **kwargs):
-        """Update user via service layer (partial update)"""
+        """Update user via service layer (partial update). Requires TENANT_ADMIN or PLATFORM_ADMIN."""
+        perm = self._check_admin_update_permission(request)
+        if perm is not None:
+            return perm
         user = self.get_object()
         serializer = UserUpdateSerializer(user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -323,17 +342,17 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = UserInviteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # Get tenant from request user
-        tenant = request.user.tenant if hasattr(request.user, "tenant") else None
-        if not tenant:
+        # Get tenant from request (Phase 16 contract: get_request_tenant)
+        from hub.apps.tenants.request_tenant import get_request_tenant
+
+        tenant_id, tenant = get_request_tenant(request)
+        if not tenant_id or not tenant:
             return Response(
                 {"error": "User must belong to a tenant to invite others"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        tenant_id = str(tenant.id)
-
-        # Use service layer for invitation (Phase 24.7.2)
+        # Use service layer for invitation (Phase 24.7.2, 29.65.4)
         from hub.apps.core.responses import handle_service_exception
         from hub.apps.core.services.base import NotFoundError
         from hub.apps.core.services.base import ValidationError as ServiceValidationError
@@ -341,25 +360,23 @@ class UserViewSet(viewsets.ModelViewSet):
 
         service = UserService(tenant_id=tenant_id, user_id=str(request.user.id))
         try:
-            user = service.create_user(
+            user, created_new = service.invite_user_to_tenant(
                 tenant_id=tenant_id,
                 actor_user_id=str(request.user.id),
                 email=serializer.validated_data["email"],
                 display_name=serializer.validated_data.get("display_name"),
-                status=UserStatus.INVITED,
                 role_ids=serializer.validated_data.get("role_ids", []),
                 send_invitation=True,
             )
         except (ServiceValidationError, NotFoundError) as e:
             return handle_service_exception(e)
 
-        # Generate invitation token (service layer doesn't handle this yet)
-        user.invitation_token = uuid.uuid4()
-        user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
-        user.save(update_fields=["invitation_token", "invitation_token_expires_at"])
-
-        # Send invitation email
-        self._send_invitation_email(user)
+        if created_new:
+            # Generate invitation token and send email only for new users
+            user.invitation_token = uuid.uuid4()
+            user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
+            user.save(update_fields=["invitation_token", "invitation_token_expires_at"])
+            self._send_invitation_email(user)
 
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
@@ -369,9 +386,19 @@ class UserViewSet(viewsets.ModelViewSet):
         """
         Assign or remove a role from a user.
 
-        Increments token_version to invalidate existing sessions.
+        Requires TENANT_ADMIN or platform admin. Increments token_version to
+        invalidate existing sessions.
         """
         user = self.get_object()
+        actor = request.user
+        if not (
+            (hasattr(actor, "is_platform_admin") and actor.is_platform_admin)
+            or (hasattr(actor, "has_role") and actor.has_role("TENANT_ADMIN"))
+        ):
+            return Response(
+                {"error": "Permission denied: TENANT_ADMIN role required to manage roles"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = UserRoleAssignmentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

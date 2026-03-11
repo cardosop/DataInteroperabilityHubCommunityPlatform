@@ -14,6 +14,8 @@ import {
   useApproveAccessRequest,
   useRejectAccessRequest,
 } from '../hooks/useGovernance';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './AccessRequestDetailPage.css';
 
 function canApproveOrReject(roles: string[] | undefined): boolean {
@@ -89,7 +91,19 @@ export function AccessRequestDetailPage() {
       </div>
 
       <div className="governance-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Access Requests', href: '/governance' },
+            { label: 'Request' },
+          ]}
+        />
         <h1>Access Request</h1>
+        {id && (
+          <div className="access-request-uuid" data-testid="access-request-uuid">
+            <UuidWithCopy value={id} label="Access Request ID" />
+          </div>
+        )}
 
         <div className="governance-detail-section">
           <span className={`governance-status-badge ${accessRequest.status}`}>

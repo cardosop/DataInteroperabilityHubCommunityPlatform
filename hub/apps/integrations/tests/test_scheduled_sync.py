@@ -11,10 +11,11 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset
+from hub.apps.audit.models import AuditEvent
 from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
 from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
 from hub.apps.integrations.models import (
@@ -288,6 +289,70 @@ class ScheduledSyncServiceUnitTest(TestCase):
 
         with self.assertRaises(NotFoundError):
             self.service.unschedule_sync(scheduled_sync_id=fake_id, tenant_id=str(self.tenant.id))
+
+    @override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False)
+    def test_schedule_sync_creates_audit_event(self):
+        """Test that schedule_sync emits SCHEDULED_SYNC_CREATED audit event."""
+        import time
+
+        schedule_config = {"time": "02:00"}
+        scheduled_sync = self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="Audit Test Scheduled Sync",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config=schedule_config,
+            sync_options={"asset_ids": ["asset-1"]},
+        )
+
+        # Audit event is created synchronously in service; brief pause for DB flush
+        time.sleep(0.05)
+        audit_events = AuditEvent.objects.filter(
+            resource_type="SCHEDULED_MARKETPLACE_SYNC",
+            action="SCHEDULED_SYNC_CREATED",
+            resource_id=str(scheduled_sync.id),
+        )
+        self.assertEqual(audit_events.count(), 1)
+        audit_event = audit_events.first()
+        self.assertIsNotNone(audit_event)
+        self.assertEqual(audit_event.actor_user, self.user)
+        self.assertEqual(audit_event.tenant, self.tenant)
+        self.assertEqual(audit_event.result, "SUCCESS")
+
+    @override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False)
+    def test_unschedule_sync_creates_audit_event(self):
+        """Test that unschedule_sync emits SCHEDULED_SYNC_DELETED audit event."""
+        import time
+
+        scheduled_sync = self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="Audit Unschedule Test",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config={"time": "00:00"},
+        )
+        scheduled_sync_id = str(scheduled_sync.id)
+
+        self.service.unschedule_sync(
+            scheduled_sync_id=scheduled_sync_id, tenant_id=str(self.tenant.id)
+        )
+
+        time.sleep(0.05)
+        audit_events = AuditEvent.objects.filter(
+            resource_type="SCHEDULED_MARKETPLACE_SYNC",
+            action="SCHEDULED_SYNC_DELETED",
+            resource_id=scheduled_sync_id,
+        )
+        self.assertEqual(audit_events.count(), 1)
+        audit_event = audit_events.first()
+        self.assertIsNotNone(audit_event)
+        self.assertEqual(audit_event.actor_user, self.user)
+        self.assertEqual(audit_event.tenant, self.tenant)
+        self.assertEqual(audit_event.result, "SUCCESS")
 
     def test_schedule_sync_calculates_next_run_at(self):
         """Test that next_run_at is calculated correctly"""

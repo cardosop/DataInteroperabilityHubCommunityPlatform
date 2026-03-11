@@ -32,7 +32,21 @@ export const marketplaceConnectionService = {
     const response = await apiClient.getClient().get<PaginatedResponse<MarketplaceConnection>>(
       `${CONNECTIONS_BASE_PATH}/${params.toString() ? `?${params.toString()}` : ''}`
     );
-    return response.data;
+    const data = response.data;
+    if (data == null) {
+      return {
+        results: [],
+        count: 0,
+        page: 1,
+        page_size: 50,
+        total_pages: 0,
+        has_next: false,
+        has_previous: false,
+        next_page: null,
+        previous_page: null,
+      };
+    }
+    return data;
   },
 
   /**

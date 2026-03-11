@@ -1,6 +1,6 @@
 # Frontend Application
 
-React + TypeScript + Vite frontend for Data Interoperability Hub.
+React + TypeScript + Vite frontend for the Data Interoperability Hub platform (Meshant brand by default).
 
 ## Development
 
@@ -35,6 +35,7 @@ npm run test:e2e:visible   # uses E2E_VISIBLE=1 and --project=visible
 
 Copy `.env.example` to `.env` and configure:
 
+- `VITE_APP_NAME`: Product brand name (default: Meshant). Used in header, login, landing page.
 - `VITE_API_BASE_URL`: Backend API base URL (default: http://localhost:8000/api/v1). When using Traefik as entrypoint, set to the Traefik API base (e.g. https://api.hub.local/api/v1). See `docs/API_GATEWAY_TRAEFIK.md`.
 - `VITE_WS_BASE_URL`: WebSocket base URL (default: ws://localhost:8000)
 - `VITE_USE_TRAEFIK_ENTRYPOINT`: Set to `true` when the app and API are reached via Traefik (single entrypoint). When true, `VITE_API_BASE_URL` must point at the Traefik API base. Default: unset/false.

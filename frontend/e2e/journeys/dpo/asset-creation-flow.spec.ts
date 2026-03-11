@@ -3,6 +3,7 @@
  * Independent test for asset creation (extracted from complete journey)
  */
 
+import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
@@ -24,19 +25,48 @@ test.describe('Asset Creation Flow', () => {
     });
   });
 
+  test('"I have data to upload" redirects to dataset create with create_new mode', async ({ page }) => {
+    const testUser = await getTestUser();
+    await loginAndNavigateToRoute(page, testUser, '/assets/create', {
+      timeout: 60000,
+      contentSelector: '.asset-create-page, .error-display, .loading-spinner-container, h1',
+    });
+    await waitForLoadingComplete(page);
+
+    const iHaveDataButton = page.locator('[data-testid="flow-i-have-data"]');
+    await expect(iHaveDataButton).toBeVisible({ timeout: 10000 });
+    await iHaveDataButton.click();
+
+    await expect(page).toHaveURL(/\/datasets\/create\?linkMode=create_new/, { timeout: 10000 });
+    await waitForLoadingComplete(page);
+
+    const createNewRadio = page.locator('[data-testid="flow-create-new"]');
+    await expect(createNewRadio).toBeChecked({ timeout: 5000 });
+  });
+
   test('should create asset successfully', async ({ page }) => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
       contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
     });
-    await waitForLoadingComplete(page);
+    await waitForLoadingComplete(page, { timeout: 30000 });
 
-    // Wait for create button to be visible
+    // If assets list shows error (API 500), click Retry and wait for list/empty state
+    const errorDisplay = page.locator('.error-display');
+    if ((await errorDisplay.count()) > 0) {
+      const retryBtn = page.locator('.error-display-retry');
+      if ((await retryBtn.count()) > 0) {
+        await retryBtn.first().click();
+        await waitForLoadingComplete(page, { timeout: 30000 });
+      }
+    }
+
+    // Wait for create button to be visible (list or empty state)
     const createButton = page
       .locator('button:has-text("Create Asset")')
       .or(page.locator('.empty-state-action:has-text("Create Asset")'));
-    await expect(createButton.first()).toBeVisible({ timeout: 10000 });
+    await expect(createButton.first()).toBeVisible({ timeout: 15000 });
     await createButton.first().click();
 
     // Wait for create page
@@ -44,7 +74,7 @@ test.describe('Asset Creation Flow', () => {
     await waitForLoadingComplete(page);
 
     // Fill form
-    const assetKey = `test-asset-${Date.now()}`;
+    const assetKey = `test-asset-${randomUUID()}`;
     await expect(page.locator('input[id="key"]')).toBeVisible({ timeout: 10000 });
     await page.fill('input[id="key"]', assetKey);
     await page.fill('input[id="name"]', 'Test Asset');
@@ -61,7 +91,7 @@ test.describe('Asset Creation Flow', () => {
     // API can be slow under Docker/parallel load; wait for loading to finish then detail
     await waitForLoadingComplete(page, { timeout: 35000 });
     await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 25000 });
-    await page.waitForTimeout(2000); // Allow React to finish rendering and API to settle
+    await new Promise((r) => setTimeout(r, 2000)); // Allow React to finish rendering and API to settle
 
     // Verify asset was created
     const hasError = (await page.locator('.error-display').count()) > 0;

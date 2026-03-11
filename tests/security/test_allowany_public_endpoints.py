@@ -8,6 +8,7 @@ See tasks.md Phase 15.2.2 and docs/AUDIT_POLICY.md.
 """
 
 import re
+import uuid
 
 import pytest
 from django.test import TestCase
@@ -117,3 +118,26 @@ class AllowAnyPublicEndpointsTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         text = response.content.decode("utf-8", errors="replace")
         self._assert_no_sensitive_data_in_text(text, "developer/sdk-documentation")
+
+    def test_auth_register_remains_public_and_behaves_correctly(self):
+        """POST /api/v1/auth/register/ is public (AllowAny) and behaves correctly."""
+        from django.core.management import call_command
+
+        call_command("seed_default_plans")
+        email = f"allowany-{uuid.uuid4().hex[:8]}@example.com"
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {"email": email, "password": "SecurePass123", "name": "AllowAny User"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        data = response.json()
+        self.assertIn("id", data)
+        self.assertIn("email", data)
+        self.assertEqual(data["email"], email)
+        self.assertIn("tenant_id", data)
+        self.assertIsNotNone(data["tenant_id"])
+        self.assertNotIn("password", data)
+        text = response.content.decode("utf-8", errors="replace")
+        self.assertNotIn("Bearer ", text, "auth/register must not expose tokens")
+        self.assertNotIn("refresh_token", text.lower(), "auth/register must not expose refresh token")

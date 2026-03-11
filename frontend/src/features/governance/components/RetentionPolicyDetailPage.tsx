@@ -3,10 +3,16 @@
  * Shows retention policy details
  */
 
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { useDeleteRetentionPolicy, useRetentionPolicy } from '../hooks/useRetention';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './RetentionPolicyDetailPage.css';
 
 export function RetentionPolicyDetailPage() {
@@ -14,20 +20,19 @@ export function RetentionPolicyDetailPage() {
   const navigate = useNavigate();
   const { data: policy, isLoading, error, refetch } = useRetentionPolicy(id || null);
   const deleteMutation = useDeleteRetentionPolicy();
+  const toast = useToast();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const handleDelete = async () => {
-    if (
-      !id ||
-      !confirm(
-        'Are you sure you want to delete this retention policy? This action cannot be undone.'
-      )
-    )
-      return;
+  const handleDeleteClick = () => setShowDeleteConfirm(true);
+  const handleDeleteConfirm = async () => {
+    if (!id) return;
+    setShowDeleteConfirm(false);
     try {
       await deleteMutation.mutateAsync(id);
+      toast.success('Retention policy deleted.');
       navigate('/governance/retention');
-    } catch {
-      // Error handled by mutation
+    } catch (err) {
+      toast.error(normalizeError(err).error.message || 'Failed to delete retention policy');
     }
   };
 
@@ -71,7 +76,7 @@ export function RetentionPolicyDetailPage() {
           <button
             type="button"
             className="btn-danger"
-            onClick={handleDelete}
+            onClick={handleDeleteClick}
             disabled={deleteMutation.isPending}
           >
             {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
@@ -80,7 +85,19 @@ export function RetentionPolicyDetailPage() {
       </div>
 
       <div className="governance-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Retention Policies', href: '/governance/retention' },
+            { label: policy.name || 'Policy' },
+          ]}
+        />
         <h1>{policy.name}</h1>
+        {id && (
+          <div className="retention-policy-uuid" data-testid="retention-policy-uuid">
+            <UuidWithCopy value={id} label="Retention Policy ID" />
+          </div>
+        )}
 
         <div className="governance-detail-section">
           <div className="governance-detail-metadata">
@@ -174,6 +191,16 @@ export function RetentionPolicyDetailPage() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete retention policy"
+        message="Are you sure you want to delete this retention policy? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

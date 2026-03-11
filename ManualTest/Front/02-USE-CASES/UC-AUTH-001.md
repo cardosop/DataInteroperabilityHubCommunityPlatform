@@ -8,6 +8,15 @@
 
 ---
 
+## Before You Start
+
+1. Complete [00-PREREQUISITES.md](../00-PREREQUISITES.md)
+2. Use a **new email** not in [test-users.md](../05-SUPPORT-MATERIAL/test-users.md) (or expect A2 if reusing)
+3. Password policy: uppercase, lowercase, number (e.g. TestPass123)
+4. Steps 8–9 apply after login: no tenant_id → personal tenant; tenant_id provided → user's tenant
+
+---
+
 ## Prerequisites
 
 - [ ] User **not authenticated**
@@ -24,9 +33,11 @@
 | 2 | Enter email, password, optional display name | Fields accept input | ☐ |
 | 3 | Submit form | System validates email format and password policy | ☐ |
 | 4 | If validation passes | System checks email is not already registered | ☐ |
-| 5 | If email unique | System creates user in default tenant | ☐ |
+| 5 | If email unique (no tenant_id) | System creates personal tenant, assigns DATA_PROVIDER and DATA_CONSUMER; if tenant_id provided, user associated with that tenant | ☐ |
 | 6 | On success | User receives confirmation (success message or redirect) | ☐ |
 | 7 | Log in with new credentials | User can authenticate (UC-AUTH-002) | ☐ |
+| 8 | Call GET /auth/me/ | Response includes tenant_id (personal or provided) | ☐ |
+| 9 | Create asset in user's tenant | Asset created successfully (user can create/consume data) | ☐ |
 
 ---
 

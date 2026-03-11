@@ -53,11 +53,17 @@ const navItems: NavItem[] = [
     icon: '🔀',
     requiredCapability: 'ai.schema-matching',
   },
-  { path: '/social', label: 'Social', icon: '👥', requiredCapability: 'social.ratings' },
+  { path: '/communities', label: 'Communities', icon: '👥', requiredCapability: 'social.communities' },
   { path: '/developer', label: 'Developer', icon: '🛠️', requiredCapability: 'developer.plugins' },
   { path: '/baas', label: 'BaaS', icon: '🔑', requiredCapability: 'baas.api-keys' },
   { path: '/ml', label: 'ML', icon: '🧠', requiredCapability: 'ml.models' },
   { path: '/observability', label: 'Observability', icon: '📈' },
+  {
+    path: '/transformation',
+    label: 'Transformation',
+    icon: '🔄',
+    requiredCapability: 'transformation',
+  },
   { path: '/jobs', label: 'Jobs', icon: '⚙️' },
   { path: '/webhooks', label: 'Webhooks', icon: '🔗' },
   {

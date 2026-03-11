@@ -7,38 +7,14 @@ input is sanitized and does not alter query behavior.
 """
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.test import TestCase
 from rest_framework import status
-from rest_framework.test import APIClient
 
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
+from .base_injection import InjectionTestBase
 
-User = get_user_model()
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-class InjectionSecurityTestBase(TestCase):
-    """Base for injection tests. Real client and DB."""
-
-    def setUp(self):
-        super().setUp()
-        self.client = APIClient()
-        self.tenant = Tenant.objects.create(
-            name="Injection Test Tenant",
-            slug="injection-test-tenant",
-        )
-        self.user = User.objects.create_user(
-            email="injection@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
-        self.client.force_authenticate(user=self.user)
-
-
-class SQLInjectionAPITest(InjectionSecurityTestBase):
+class SQLInjectionAPITest(InjectionTestBase):
     """Test that API inputs are sanitized against SQL injection."""
 
     def test_audit_list_with_sql_like_param(self):
@@ -65,7 +41,8 @@ class SQLInjectionAPITest(InjectionSecurityTestBase):
                     response.json() if hasattr(response, "json") else {}
                 )
                 self.assertTrue(
-                    isinstance(data, list) or (isinstance(data, dict) and "results" in data),
+                    isinstance(data, list)
+                    or (isinstance(data, dict) and "results" in data),
                     "Response must remain list or paginated",
                 )
 
@@ -88,8 +65,92 @@ class SQLInjectionAPITest(InjectionSecurityTestBase):
                 f"Ordering {order!r} must not cause 500",
             )
 
+    def test_assets_list_with_sql_like_search(self):
+        """Assets list with search param that looks like SQL is safely handled."""
+        payloads = [
+            "'; DROP TABLE assets_asset; --",
+            "1 OR 1=1",
+            "%' OR '1'='1",
+        ]
+        for q in payloads:
+            response = self.client.get(
+                "/api/v1/assets/",
+                data={"search": q},
+                HTTP_ACCEPT="application/json",
+            )
+            self.assertIn(
+                response.status_code,
+                (status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST),
+                f"Assets search param {q!r} must not cause 500",
+            )
+            if response.status_code == 200:
+                data = getattr(response, "data", None) or (
+                    response.json() if hasattr(response, "json") else {}
+                )
+                self.assertTrue(
+                    isinstance(data, list)
+                    or (isinstance(data, dict) and "results" in data),
+                    "Response must remain list or paginated",
+                )
 
-class CommandInjectionAPITest(InjectionSecurityTestBase):
+    def test_datasets_list_with_sql_like_search(self):
+        """Datasets list with search param that looks like SQL is safely handled."""
+        payloads = [
+            "'; DROP TABLE datasets_dataset; --",
+            "1 OR 1=1",
+            "%' OR '1'='1",
+        ]
+        for q in payloads:
+            response = self.client.get(
+                "/api/v1/datasets/",
+                data={"search": q},
+                HTTP_ACCEPT="application/json",
+            )
+            self.assertIn(
+                response.status_code,
+                (status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST),
+                f"Datasets search param {q!r} must not cause 500",
+            )
+            if response.status_code == 200:
+                data = getattr(response, "data", None) or (
+                    response.json() if hasattr(response, "json") else {}
+                )
+                self.assertTrue(
+                    isinstance(data, list)
+                    or (isinstance(data, dict) and "results" in data),
+                    "Response must remain list or paginated",
+                )
+
+    def test_marketplace_search_with_sql_like_param(self):
+        """Marketplace listings search with param that looks like SQL is safely handled."""
+        payloads = [
+            "'; DROP TABLE listings; --",
+            "1 OR 1=1",
+            "%' OR '1'='1",
+        ]
+        for q in payloads:
+            response = self.client.get(
+                "/api/v1/marketplace/listings/search/",
+                data={"q": q},
+                HTTP_ACCEPT="application/json",
+            )
+            self.assertIn(
+                response.status_code,
+                (status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST),
+                f"Marketplace search param {q!r} must not cause 500",
+            )
+            if response.status_code == 200:
+                data = getattr(response, "data", None) or (
+                    response.json() if hasattr(response, "json") else {}
+                )
+                self.assertTrue(
+                    isinstance(data, list)
+                    or (isinstance(data, dict) and "results" in data),
+                    "Response must remain list or paginated",
+                )
+
+
+class CommandInjectionAPITest(InjectionTestBase):
     """Test that API does not pass unsanitized input to shell or commands."""
 
     def test_health_endpoint_no_command_injection(self):
@@ -108,7 +169,7 @@ class CommandInjectionAPITest(InjectionSecurityTestBase):
             )
 
 
-class NoSQLStyleInjectionAPITest(InjectionSecurityTestBase):
+class NoSQLStyleInjectionAPITest(InjectionTestBase):
     """Test handling of NoSQL-style operators in JSON/query params."""
 
     def test_audit_list_with_special_chars(self):

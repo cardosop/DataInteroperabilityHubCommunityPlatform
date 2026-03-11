@@ -1,11 +1,11 @@
 {% extends "notifications/emails/base.html" %}
 
-{% block title %}Invitation to Data Interoperability Hub{% endblock %}
+{% block title %}Invitation to {{ app_name|default:"Meshant" }}{% endblock %}
 
 {% block content %}
 <h2>You've been invited!</h2>
 <p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
-<p>You have been invited to join <strong>{{ tenant.name }}</strong> on Data Interoperability Hub.</p>
+<p>You have been invited to join <strong>{{ tenant.name }}</strong> on {{ app_name|default:"Meshant" }}.</p>
 <p>To accept this invitation and activate your account, please click the button below:</p>
 <p style="text-align: center;">
     <a href="{{ invitation_url }}" class="button">Accept Invitation</a>

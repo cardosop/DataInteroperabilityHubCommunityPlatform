@@ -12,6 +12,35 @@ export const QueryType = {
 } as const;
 export type QueryType = (typeof QueryType)[keyof typeof QueryType];
 
+/** Source types for virtual dataset sources (matches backend business_rules) */
+export const VirtualDatasetSourceType = {
+  POSTGRESQL: 'postgresql',
+  MYSQL: 'mysql',
+  SQLSERVER: 'sqlserver',
+  MSSQL: 'mssql',
+  ODBC: 'odbc',
+  SPARQL: 'sparql',
+  REST: 'rest',
+  GRAPHQL: 'graphql',
+  FEDERATED_ASSET: 'federated_asset',
+  EXTERNAL_RESOURCE: 'external_resource',
+} as const;
+export type VirtualDatasetSourceType = (typeof VirtualDatasetSourceType)[keyof typeof VirtualDatasetSourceType];
+
+/** ODBC source config (connection_string OR host+database) */
+export interface OdbcSourceConfig {
+  type: 'odbc';
+  [key: string]: unknown;
+  connection_string?: string;
+  dsn?: string;
+  driver?: string;
+  host?: string;
+  port?: number;
+  database?: string;
+  username?: string;
+  password?: string;
+}
+
 export const VirtualDatasetStatus = {
   DRAFT: 'DRAFT',
   ACTIVE: 'ACTIVE',

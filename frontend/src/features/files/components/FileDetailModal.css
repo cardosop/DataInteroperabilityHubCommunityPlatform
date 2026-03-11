@@ -73,6 +73,16 @@
   word-break: break-all;
 }
 
+.file-detail-id-ref {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.file-detail-id-ref .file-detail-link {
+  margin-top: var(--spacing-xs);
+}
+
 .file-status-badge {
   display: inline-block;
   padding: 2px 8px;

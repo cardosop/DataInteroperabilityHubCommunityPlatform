@@ -28,10 +28,10 @@ if [[ -n "${VITE_API_BASE_URL:-}" ]]; then
     HEALTH_URL="${E2E_API_BASE_URL%/api/v1*}/health/"
   fi
   if [[ -z "$HEALTH_URL" ]]; then
-    if curl -sf http://localhost:8000/health/ > /dev/null 2>&1; then
+    if curl -sf --connect-timeout 5 http://localhost:8000/health/ > /dev/null 2>&1; then
       export VITE_PROXY_TARGET=http://localhost:8000
       export E2E_API_BASE_URL="${E2E_API_BASE_URL:-http://localhost:8000/api/v1}"
-    elif curl -sf http://localhost:8001/health/ > /dev/null 2>&1; then
+    elif curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1; then
       export VITE_PROXY_TARGET=http://localhost:8001
       export E2E_API_BASE_URL="${E2E_API_BASE_URL:-http://localhost:8001/api/v1}"
       export E2E_WEB_PORT="${E2E_WEB_PORT:-5184}"
@@ -40,7 +40,7 @@ if [[ -n "${VITE_API_BASE_URL:-}" ]]; then
     fi
   else
     HEALTH_URL="${HEALTH_URL%/}/health/"
-    if ! curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
+    if ! curl -sf --connect-timeout 5 "$HEALTH_URL" > /dev/null 2>&1; then
       fail_no_backend
     fi
   fi
@@ -51,7 +51,9 @@ fi
 # Auto-detect: try 8000 (dev) first, then 8001 (test stack)
 # VITE_API_BASE_URL=/api/v1 + VITE_PROXY_TARGET: frontend uses proxy (avoids CORS)
 # E2E_API_BASE_URL: full URL for Node-side fetch in fixtures
-if curl -sf http://localhost:8000/health/ > /dev/null 2>&1; then
+# --connect-timeout 5: fail fast if backend not running (avoids hanging for minutes)
+echo "Checking backend API (ports 8000, 8001)..."
+if curl -sf --connect-timeout 5 http://localhost:8000/health/ > /dev/null 2>&1; then
   export VITE_API_BASE_URL=/api/v1
   export VITE_PROXY_TARGET=http://localhost:8000
   export E2E_API_BASE_URL=http://localhost:8000/api/v1
@@ -61,36 +63,75 @@ if curl -sf http://localhost:8000/health/ > /dev/null 2>&1; then
   # Try hub-api (default) or hub-dev-api (docker-compose.dev)
   docker exec hub-api python hub/manage.py reset_e2e_auth_rate_limits 2>/dev/null || \
     docker exec hub-dev-api python hub/manage.py reset_e2e_auth_rate_limits 2>/dev/null || true
+  docker exec hub-api python hub/manage.py seed_default_plans 2>/dev/null || \
+    docker exec hub-dev-api python hub/manage.py seed_default_plans 2>/dev/null || true
   docker exec hub-api python hub/manage.py ensure_e2e_user_roles 2>/dev/null || \
     docker exec hub-dev-api python hub/manage.py ensure_e2e_user_roles 2>/dev/null || true
   docker exec hub-api python hub/manage.py ensure_e2e_subscription 2>/dev/null || \
     docker exec hub-dev-api python hub/manage.py ensure_e2e_subscription 2>/dev/null || true
-elif curl -sf http://localhost:8001/health/ > /dev/null 2>&1; then
+elif curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1; then
   export VITE_API_BASE_URL=/api/v1
   export VITE_PROXY_TARGET=http://localhost:8001
   export E2E_API_BASE_URL=http://localhost:8001/api/v1
   export E2E_WEB_PORT=5184
   export PREFECT_INTEGRATION_SERVICE_URL="${PREFECT_INTEGRATION_SERVICE_URL:-http://localhost:8114}"
+  # ODBC E2E (phase6): API connects to postgres-test from inside container
+  export E2E_POSTGRES_HOST="${E2E_POSTGRES_HOST:-postgres-test}"
+  export E2E_POSTGRES_USER="${E2E_POSTGRES_USER:-hub_test}"
+  export E2E_POSTGRES_PASSWORD="${E2E_POSTGRES_PASSWORD:-hub_test}"
+  export E2E_POSTGRES_DB="${E2E_POSTGRES_DB:-hub_test_test_shared}"
   echo "Detected API at port 8001 (docker-compose.test)"
-  # Ensure Prefect stack is running for scheduled export/ingestion journey tests
   REPO_ROOT="$(cd "$FRONTEND_DIR/.." && pwd)"
-  if ! curl -sf http://localhost:8114/health > /dev/null 2>&1; then
+  # Ensure MailHog and worker-service for JOURNEY-AUTH-003 (password reset email delivery).
+  # Always start worker-service when using test compose; worker processes send_password_reset_email jobs.
+  # Start MailHog if not reachable; worker depends on it for SMTP.
+  if ! curl -sf --connect-timeout 5 http://localhost:8025/api/v2/messages?limit=1 > /dev/null 2>&1; then
+    echo "Starting MailHog and worker-service for password reset E2E..."
+    docker compose -f "$REPO_ROOT/docker-compose.test.yml" up -d mailhog-test worker-service-test 2>/dev/null || true
+    for i in $(seq 1 15); do
+      if curl -sf --connect-timeout 5 http://localhost:8025/api/v2/messages?limit=1 > /dev/null 2>&1; then
+        echo "MailHog ready at http://localhost:8025"
+        break
+      fi
+      sleep 2
+    done
+  fi
+  # Ensure worker-service is running (processes email jobs); may have been stopped or never started
+  if ! curl -sf --connect-timeout 5 http://localhost:8087/healthz > /dev/null 2>&1; then
+    echo "Starting worker-service for password reset E2E..."
+    docker compose -f "$REPO_ROOT/docker-compose.test.yml" up -d worker-service-test 2>/dev/null || true
+    for i in $(seq 1 15); do
+      if curl -sf --connect-timeout 5 http://localhost:8087/healthz > /dev/null 2>&1; then
+        echo "Worker service ready at http://localhost:8087"
+        break
+      fi
+      sleep 2
+    done
+  fi
+  # Ensure Prefect stack is running for scheduled export/ingestion journey tests
+  if ! curl -sf --connect-timeout 5 http://localhost:8114/health > /dev/null 2>&1; then
     echo "Starting Prefect stack for scheduled export/ingestion tests..."
     docker compose -f "$REPO_ROOT/docker-compose.test.yml" up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test 2>/dev/null || true
     for i in $(seq 1 30); do
-      if curl -sf http://localhost:8114/health > /dev/null 2>&1; then
+      if curl -sf --connect-timeout 5 http://localhost:8114/health > /dev/null 2>&1; then
         echo "Prefect integration service ready at http://localhost:8114"
         break
       fi
       sleep 2
     done
   fi
-  # Restart API so storage presigned-URL fix (minio-test→localhost:9010 for browser) is applied
+  # Restart API so storage presigned-URL fix (minio-test→localhost:9010 for browser) is applied.
+  # Skip with E2E_SKIP_API_RESTART=1 when API is already stable (avoids socket hang up / ECONNREFUSED during tests).
   REPO_ROOT="$(cd "$FRONTEND_DIR/.." && pwd)"
-  docker compose -f "$REPO_ROOT/docker-compose.test.yml" restart api-service-test 2>/dev/null || true
+  if [[ "${E2E_SKIP_API_RESTART:-0}" != "1" ]]; then
+    echo "Restarting API service (may take 10–30s)..."
+    docker compose -f "$REPO_ROOT/docker-compose.test.yml" restart api-service-test 2>/dev/null || true
+  else
+    echo "Skipping API restart (E2E_SKIP_API_RESTART=1)"
+  fi
   API_READY=false
   for i in $(seq 1 30); do
-    if curl -sf http://localhost:8001/health/ > /dev/null 2>&1; then
+    if curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1; then
       API_READY=true
       break
     fi
@@ -102,8 +143,15 @@ elif curl -sf http://localhost:8001/health/ > /dev/null 2>&1; then
     echo "Logs:  docker compose -f docker-compose.test.yml logs api-service-test"
     exit 1
   fi
+  # Settle time: frontend proxy may have stale connections after API restart; reduces ECONNRESET
+  if [[ "${E2E_SKIP_API_RESTART:-0}" != "1" ]]; then
+    echo "Waiting 5s for proxy connections to settle after API restart..."
+    sleep 5
+  fi
   # Reset auth rate limits so setup and tests can log in (avoids 429 after many runs)
   docker exec hub-test-api python hub/manage.py reset_e2e_auth_rate_limits 2>/dev/null || true
+  # Seed default plans so tenants can have subscriptions (required before ensure_e2e_user_roles assigns plans)
+  docker exec hub-test-api python hub/manage.py seed_default_plans 2>/dev/null || true
   # Ensure E2E persona users exist with roles (DPO, DC, TA, PA, AUD, CPO)
   docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles 2>/dev/null || true
   # Ensure E2E test tenants have active subscription (idempotent; no-op if user doesn't exist yet)
@@ -112,14 +160,14 @@ elif curl -sf http://localhost:8001/health/ > /dev/null 2>&1; then
   # Start frontend dev server explicitly so Playwright has a reliable target.
   # Playwright's webServer with reuseExistingServer will reuse this.
   FRONTEND_STARTED=false
-  if ! curl -sf "http://localhost:${E2E_WEB_PORT}/" > /dev/null 2>&1; then
+  if ! curl -sf --connect-timeout 5 "http://localhost:${E2E_WEB_PORT}/" > /dev/null 2>&1; then
     echo "Starting frontend dev server on port ${E2E_WEB_PORT}..."
     VITE_WS_ENABLED=false npm run dev -- --port "${E2E_WEB_PORT}" --strictPort &
     FRONTEND_PID=$!
     FRONTEND_STARTED=true
     trap "kill $FRONTEND_PID 2>/dev/null || true" EXIT
     for i in $(seq 1 60); do
-      if curl -sf "http://localhost:${E2E_WEB_PORT}/" > /dev/null 2>&1; then
+      if curl -sf --connect-timeout 5 "http://localhost:${E2E_WEB_PORT}/" > /dev/null 2>&1; then
         echo "Frontend ready at http://localhost:${E2E_WEB_PORT}"
         break
       fi
@@ -129,7 +177,7 @@ elif curl -sf http://localhost:8001/health/ > /dev/null 2>&1; then
       fi
       sleep 2
     done
-    if ! curl -sf "http://localhost:${E2E_WEB_PORT}/" > /dev/null 2>&1; then
+    if ! curl -sf --connect-timeout 5 "http://localhost:${E2E_WEB_PORT}/" > /dev/null 2>&1; then
       echo "Frontend failed to become ready within 120s"
       kill $FRONTEND_PID 2>/dev/null || true
       exit 1
@@ -163,8 +211,9 @@ done
 
 # Pre-flight: verify backend is still reachable before running tests
 # Catches backend-down when reusing existing frontend or after API restart
+# Use -s (not -f): 503 (unhealthy) still means API is reachable; only connection refused fails
 API_ORIGIN="${VITE_PROXY_TARGET:-http://localhost:8000}"
-if ! curl -sf "${API_ORIGIN}/health/" > /dev/null 2>&1; then
+if ! curl -s --connect-timeout 5 "${API_ORIGIN}/health/" > /dev/null 2>&1; then
   echo "❌ Backend API at ${API_ORIGIN} is not reachable (connection refused)."
   echo ""
   echo "If you have a frontend dev server running, it may be proxying to a stopped backend."

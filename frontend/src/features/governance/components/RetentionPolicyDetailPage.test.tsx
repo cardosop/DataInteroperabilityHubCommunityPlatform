@@ -9,6 +9,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import type { AxiosInstance } from 'axios';
 import { type ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { ToastProvider } from '../../../shared/components/Toast';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RetentionPolicy } from '../../../shared/types/governanceRetention';
 import { RetentionAction, RetentionPolicyType } from '../../../shared/types/governanceRetention';
@@ -42,11 +43,13 @@ describe('RetentionPolicyDetailPage', () => {
   function wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={['/governance/retention/policy-1']}>
-          <Routes>
-            <Route path="/governance/retention/:id" element={children} />
-          </Routes>
-        </MemoryRouter>
+        <ToastProvider>
+          <MemoryRouter initialEntries={['/governance/retention/policy-1']}>
+            <Routes>
+              <Route path="/governance/retention/:id" element={children} />
+            </Routes>
+          </MemoryRouter>
+        </ToastProvider>
       </QueryClientProvider>
     );
   }
@@ -161,7 +164,7 @@ describe('RetentionPolicyDetailPage', () => {
     render(<RetentionPolicyDetailPage />, { wrapper });
 
     await waitFor(() => {
-      expect(screen.getByText('Test Policy')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Test Policy' })).toBeInTheDocument();
       expect(screen.getByText('Test description')).toBeInTheDocument();
       expect(screen.getByText('TIME_BASED')).toBeInTheDocument();
     });

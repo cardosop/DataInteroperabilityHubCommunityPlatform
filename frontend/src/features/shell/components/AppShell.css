@@ -13,6 +13,8 @@
 
 .app-main {
   flex: 1;
+  max-width: var(--layout-content-max-width);
+  margin: 0 auto;
   overflow-y: auto;
   padding: var(--spacing-lg);
   background-color: var(--color-neutral-50);

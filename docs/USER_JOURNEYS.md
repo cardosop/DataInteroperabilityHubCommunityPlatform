@@ -1,16 +1,16 @@
 # User Journeys
 
-**Last Updated**: 2026-02-16
-**Version**: 2.4.1
+**Last Updated**: 2026-03-06
+**Version**: 2.4.2
 
 ---
 
 ## Overview
 
-This document provides detailed user journey maps for **Visitor** (unauthenticated / non-registered) and all **12 role-based personas**. The platform supports **96 total journeys** (4 authentication + 37 original + 55 new) covering authentication and access, all features, the 10 strategic differentiators, and ODPS integration.
+This document provides detailed user journey maps for **Visitor** (unauthenticated / non-registered) and all **12 role-based personas**. The platform supports **97 total journeys** (5 authentication + 37 original + 55 new) covering authentication and access, all features, the 10 strategic differentiators, and ODPS integration.
 
 **Journey Statistics**:
-- **Total Journeys**: 96
+- **Total Journeys**: 97
 - **Total Steps**: ~730+
 - **Average Steps per Journey**: ~8
 - **Target Completion Rate**: 100%
@@ -18,6 +18,7 @@ This document provides detailed user journey maps for **Visitor** (unauthenticat
 
 **Cross-References**:
 - **[Marketplace User Journeys](MARKETPLACE_USER_JOURNEYS.md)** - Marketplace integration journeys (publish to external marketplace, discover and import, sync, federated assets).
+- **[Resource Pickers (Component Docs)](UI/RESOURCE_PICKERS.md)** - Searchable pickers (AssetPicker, ContractPicker, DatasetPicker, FilePicker) used in ODPS upload, asset attach, DQ/Compliance/Access Request, Scheduled Export, Retention, Dataset edit, ODPS Link flows.
 
 ---
 
@@ -43,12 +44,12 @@ The following **6 journeys** are **deferred until the transformation pipeline ex
 ## Table of Contents
 
 1. [Deferred Journeys (Transformation Pipeline)](#deferred-journeys-transformation-pipeline) — 6 journeys (deferred until transformation pipeline exists)
-2. [Visitor / Authentication Journeys](#visitor--authentication-journeys) - 4 journeys (NEW)
+2. [Visitor / Authentication Journeys](#visitor--authentication-journeys) - 5 journeys (NEW)
 3. [Data Product Owner Journeys](#data-product-owner-journeys) - 17 journeys (6 original + 11 new)
 4. [Data Engineer Journeys](#data-engineer-journeys) - 14 journeys (6 original + 8 new)
 5. [Compliance Officer Journeys](#compliance-officer-journeys) - 10 journeys (5 original + 5 new)
 6. [Data Consumer Journeys](#data-consumer-journeys) - 15 journeys (5 original + 10 new)
-7. [Tenant Admin Journeys](#tenant-admin-journeys) - 8 journeys (4 original + 4 new)
+7. [Tenant Admin Journeys](#tenant-admin-journeys) - 10 journeys (4 original + 4 new + 2 gap coverage)
 8. [Platform Admin Journeys](#platform-admin-journeys) - 10 journeys (4 original + 6 new)
 9. [External Developer Journeys](#external-developer-journeys) - 9 journeys (4 original + 5 new)
 10. [Auditor Journeys](#auditor-journeys) - 6 journeys (3 original + 3 new)
@@ -77,7 +78,7 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 3. User enters email, password, and optional display name
 4. System validates email format and password policy
 5. System checks email is not already registered
-6. System creates user in default tenant (or selected tenant)
+6. If no tenant_id provided: system creates personal tenant, assigns user to tenant, creates DATA_PROVIDER and DATA_CONSUMER roles, assigns user roles; if tenant_id provided: user associated with that tenant
 7. System sets user status (e.g. ACTIVE or PENDING_VERIFICATION)
 8. User receives confirmation (success message or email)
 9. User can log in (JOURNEY-AUTH-002)
@@ -85,6 +86,7 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 **Success Criteria**:
 - Registration endpoint/page available (when feature enabled)
 - User account created
+- User has tenant (personal or provided)
 - User can authenticate
 
 **Performance Targets**:
@@ -204,6 +206,48 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 
 ---
 
+### JOURNEY-AUTH-005: User Switches Active Tenant
+
+**Journey ID**: JOURNEY-AUTH-005
+**Title**: User Switches Active Tenant
+**Persona**: Any authenticated user with multiple tenants
+**Goal**: Switch active tenant context without re-login; subsequent operations scoped to switched tenant
+
+**Steps**:
+1. User is logged in and has membership in at least two tenants (e.g. personal + org via invitation)
+2. User opens tenant switcher in header (dropdown)
+3. System fetches GET /auth/me/tenants/ and displays list
+4. User selects target tenant
+5. Client calls POST /auth/switch-tenant/ with tenant_id
+6. System validates membership and returns updated me summary
+7. Client updates auth store (active_tenant_id) and sends X-Tenant-Id on subsequent requests
+8. User sees assets, listings, and data scoped to switched tenant
+
+**Success Criteria**:
+- Tenant list displayed
+- Switch completes without error
+- Subsequent API requests use X-Tenant-Id
+- Assets/listings reflect switched tenant
+
+**Performance Targets**:
+- GET /auth/me/tenants/: < 200ms
+- POST /auth/switch-tenant/: < 200ms
+
+**API Endpoints**:
+- `GET /api/v1/auth/me/tenants/` - List tenants
+- `POST /api/v1/auth/switch-tenant/` - Switch tenant
+
+**Error Scenarios**:
+- Feature disabled → 403; tenant switcher hidden
+- No membership in target tenant → 403 Forbidden
+- Invalid tenant_id → 400 Bad Request
+
+**Related Use Cases**: UC-AUTH-005, UC-AUTH-002
+
+**Test Traceability**: [TEST_TRACEABILITY.md#journey-auth-005-user-switches-active-tenant](TEST_TRACEABILITY.md#journey-auth-005-user-switches-active-tenant)
+
+---
+
 ## Data Product Owner Journeys
 
 **Journey List**:
@@ -224,6 +268,7 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 - JOURNEY-DPO-015: Create ODPS Product (Product-First Flow) **NEW**
 - JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow) **NEW**
 - JOURNEY-DPO-017: Export ODPS Product **NEW**
+- JOURNEY-DPO-018: Edit Dataset and Link to Asset **NEW**
 - JOURNEY-EXPORT-001: Create and Run Scheduled Export **NEW** (see [Scheduled Export Journeys](#scheduled-export-journeys))
 - JOURNEY-EXPORT-002: Monitor and Troubleshoot Export Runs **NEW** (see [Scheduled Export Journeys](#scheduled-export-journeys))
 
@@ -399,7 +444,7 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 
 **Steps**:
 1. Navigate to asset details
-2. **NEW**: View ratings and reviews section
+2. **NEW**: View Community section (ratings/reviews on asset page, Phase 27.1)
 3. **NEW**: Review ratings (1-5 stars)
 4. **NEW**: Read reviews
 5. **NEW**: Respond to reviews (if needed)
@@ -540,19 +585,20 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 **Goal**: Create an ODPS product with embedded ODCS contract using the product-first flow
 
 **Steps**:
-1. Navigate to contract creation
+1. Navigate to contract creation (e.g. `/odps/upload`)
 2. Select "Create ODPS Product" option
-3. Upload ODPS document (JSON or YAML format)
-4. System parses and validates ODPS document
-5. System detects ODPS version (e.g., 4.1, 4.0)
-6. System validates ODPS schema
-7. System extracts ODCS from `product.contract.spec`
-8. System validates extracted ODCS contract
-9. System creates ODCS contract (technical contract)
-10. System creates ODPS contract (marketplace contract)
-11. System links ODPS ↔ ODCS bidirectionally
-12. System maps to semantic layer (RDF)
-13. Asset activated (if asset attached)
+3. Select target asset via **AssetPicker** (searchable dropdown)
+4. Upload ODPS document (JSON or YAML format)
+5. System parses and validates ODPS document
+6. System detects ODPS version (e.g., 4.1, 4.0)
+7. System validates ODPS schema
+8. System extracts ODCS from `product.contract.spec`
+9. System validates extracted ODCS contract
+10. System creates ODCS contract (technical contract)
+11. System creates ODPS contract (marketplace contract)
+12. System links ODPS ↔ ODCS bidirectionally
+13. System maps to semantic layer (RDF)
+14. Asset activated (if asset attached)
 
 **Success Criteria**:
 - ODPS document uploaded successfully
@@ -601,7 +647,7 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 1. Navigate to existing ODCS contract
 2. Click "Link ODPS Contract" option
 3. Choose linking method:
-   - **Link to existing ODPS**: Select existing ODPS contract
+   - **Link to existing ODPS**: Select existing ODPS contract via **ContractPicker** (searchable dropdown; specType=ODPS)
    - **Create new ODPS**: Upload new ODPS document
 4. If creating new ODPS:
    - Upload ODPS document
@@ -696,6 +742,33 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 
 ---
 
+### JOURNEY-DPO-018: Edit Dataset and Link to Asset **NEW**
+
+**Journey ID**: JOURNEY-DPO-018
+**Title**: Edit Dataset and Link to Asset
+**Persona**: Data Product Owner, Data Engineer
+**Goal**: Link an existing dataset to an asset (or unlink) via dataset edit
+
+**Steps**:
+1. Navigate to Datasets
+2. Select a dataset (or create one from Files → Create Dataset)
+3. Click "Edit" or "Link to Asset"
+4. Select asset via **AssetPicker** (searchable dropdown; or clear to unlink)
+5. Optionally update format
+6. Save
+7. Dataset detail shows linked asset (asset_id, asset_name)
+
+**Success Criteria**:
+- Dataset linked to asset (or unlinked)
+- AssetPicker returns valid tenant-scoped IDs only
+
+**API Endpoints**: `PATCH /api/v1/datasets/{id}/` (asset, format)
+
+**Related Use Cases**: UC-DS-EDIT
+**Test Traceability**: [TEST_TRACEABILITY.md](TEST_TRACEABILITY.md) — `frontend/e2e/use-cases/ux/dataset-edit.spec.ts`
+
+---
+
 ## Data Engineer Journeys
 
 **Journey List**:
@@ -713,6 +786,7 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 - JOURNEY-DE-012: Create Custom Plugin **NEW**
 - JOURNEY-DE-013: Configure Data Mesh Domain **NEW**
 - JOURNEY-DE-014: Create ODPS via API **NEW**
+- JOURNEY-DE-015: Upload File via Files Page **NEW**
 - JOURNEY-EXPORT-001: Create and Run Scheduled Export **NEW** (see [Scheduled Export Journeys](#scheduled-export-journeys))
 - JOURNEY-EXPORT-002: Monitor and Troubleshoot Export Runs **NEW** (see [Scheduled Export Journeys](#scheduled-export-journeys))
 
@@ -993,6 +1067,33 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 
 ---
 
+### JOURNEY-DE-015: Upload File via Files Page **NEW**
+
+**Journey ID**: JOURNEY-DE-015
+**Title**: Upload File via Files Page
+**Persona**: Data Engineer, Data Product Owner
+**Goal**: Upload a data file (CSV, JSON, Parquet) via the Files page for later dataset creation
+
+**Steps**:
+1. Navigate to Files
+2. Click "Upload File"
+3. Select file or drop into dropzone
+4. System validates format and size
+5. File uploads; appears in list
+6. User can create dataset from file (Datasets → Create Dataset → Select File)
+
+**Success Criteria**:
+- File uploaded successfully
+- File appears in Files list
+- File available for dataset creation
+
+**API Endpoints**: `POST /api/v1/files/init/`, `POST /api/v1/files/{id}/complete/` (multipart upload flow)
+
+**Related Use Cases**: UC-FILE-UPLOAD
+**Test Traceability**: [TEST_TRACEABILITY.md](TEST_TRACEABILITY.md) — `frontend/e2e/use-cases/ux/files-upload.spec.ts`
+
+---
+
 ## Compliance Officer Journeys
 
 ### JOURNEY-CPO-001: Review Compliance for Asset
@@ -1233,7 +1334,7 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 
 **Steps**:
 1. **NEW**: Navigate to asset details
-2. **NEW**: Navigate to ratings/reviews section
+2. **NEW**: Open Community section (ratings/reviews on asset page, Phase 27.1)
 3. **NEW**: Rate asset (1-5 stars)
 4. **NEW**: Write review
 5. **NEW**: Submit review
@@ -1609,6 +1710,55 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 - Tests pass
 - Integrations deployed
 - Health monitored
+
+---
+
+### JOURNEY-TA-SUBSCRIPTION: Manage Subscription and Invoices **NEW** (useronboardfix Phase 17)
+
+**Journey ID**: JOURNEY-TA-SUBSCRIPTION
+**Title**: Manage Subscription and Invoices
+**Persona**: Tenant Admin
+**Goal**: View subscription plan, change plan, and access invoice history
+
+**Steps**:
+1. **NEW**: Navigate to Settings → Subscription (`/settings/subscription`)
+2. **NEW**: View current plan (e.g. FREE, PRO)
+3. **NEW**: View invoice history (table or empty state)
+4. **NEW**: Change plan (if other plans exist) via dropdown
+5. **NEW**: Download invoice (if invoices exist)
+
+**Success Criteria**:
+- Subscription page accessible
+- Current plan visible
+- Invoice history visible
+- Plan change UI visible when other plans exist
+- Invoice download works when invoices exist
+
+**API Endpoints**: `GET /api/v1/billing/subscription/current/`, `POST .../change-plan/`, `GET /api/v1/billing/plans/`, `GET /api/v1/billing/invoices/`, `GET .../invoices/{id}/download/`
+
+---
+
+### JOURNEY-TA-TENANT-SETTINGS: View Usage and Configure Tenant **NEW** (useronboardfix Phase 8)
+
+**Journey ID**: JOURNEY-TA-TENANT-SETTINGS
+**Title**: View Usage and Configure Tenant
+**Persona**: Tenant Admin
+**Goal**: View tenant usage and configure tenant settings (DQ profile, versioning, workflows)
+
+**Steps**:
+1. **NEW**: Navigate to Settings → Tenant (`/settings/tenant`)
+2. **NEW**: View usage tab (storage, API calls, limits)
+3. **NEW**: Switch to Configuration tab
+4. **NEW**: Edit default DQ profile, save
+5. **NEW**: Toggle versioning enabled, save
+6. **NEW**: Toggle workflows enabled, save
+
+**Success Criteria**:
+- Usage tab shows metrics
+- Config tab allows edits
+- Changes persist after save
+
+**API Endpoints**: `GET /api/v1/tenants/me/usage/`, `GET /api/v1/tenants/me/config/`, `PATCH /api/v1/tenants/me/config/`
 
 ---
 
@@ -2296,6 +2446,8 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 
 ## Community Manager Journeys **NEW**
 
+**Route reference (Phase 27)**: Communities are at `/communities`; `/social` redirects to `/communities`. Asset ratings, reviews, and Community section are on the asset detail page (`/assets/:id`). See [E2E_FULL_COVERAGE_PLAN.md](../frontend/e2e/E2E_FULL_COVERAGE_PLAN.md).
+
 ### JOURNEY-CM-001: Manage Data Community
 
 **Journey ID**: JOURNEY-CM-001
@@ -2533,6 +2685,7 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 | JOURNEY-AUTH-002 | User Logs In | Visitor (becomes authenticated) | High | MVP | Authentication & Access | **NEW** |
 | JOURNEY-AUTH-003 | User Resets Password | Visitor, any registered | Medium | Optional | Authentication & Access | **NEW** |
 | JOURNEY-AUTH-004 | Unauthenticated User Accesses Public Resources | Visitor | Medium | MVP | Authentication & Access | **NEW** |
+| JOURNEY-AUTH-005 | User Switches Active Tenant | Any with multiple tenants | High | MVP | Authentication & Access | **NEW** |
 | JOURNEY-DPO-001 | Onboard New Asset via Data-First Flow | Data Product Owner | High | MVP | Asset Management | Enhanced with AI |
 | JOURNEY-DPO-002 | Publish Asset to Marketplace | Data Product Owner | High | MVP | Marketplace | Enhanced with transformation |
 | JOURNEY-DPO-007 | Use AI Schema Matching | Data Product Owner | High | New | AI/ML | **NEW** |
@@ -2579,26 +2732,28 @@ These journeys apply to **unauthenticated** and **non-registered** users (Visito
 | JOURNEY-DPO-015 | Create ODPS Product (Product-First Flow) | Data Product Owner | High | New | ODPS | **NEW** |
 | JOURNEY-DPO-016 | Link ODPS to ODCS Contract (Technical-First Flow) | Data Product Owner | High | New | ODPS | **NEW** |
 | JOURNEY-DPO-017 | Export ODPS Product | Data Product Owner | Medium | New | ODPS | **NEW** |
+| JOURNEY-DPO-018 | Edit Dataset and Link to Asset | Data Product Owner, Data Engineer | High | MVP | Datasets | **NEW** |
 | JOURNEY-DC-014 | Discover ODPS Products (Semantic Search) | Data Consumer | High | New | ODPS | **NEW** |
 | JOURNEY-DC-015 | Purchase ODPS Product (Marketplace) | Data Consumer | High | New | ODPS | **NEW** |
 | JOURNEY-DE-014 | Create ODPS via API | Data Engineer | High | New | ODPS | **NEW** |
+| JOURNEY-DE-015 | Upload File via Files Page | Data Engineer, Data Product Owner | High | MVP | Files | **NEW** |
 | JOURNEY-PA-010 | Manage ODPS Products | Platform Admin | Medium | New | ODPS | **NEW** |
 | JOURNEY-EXPORT-001 | Create and Run Scheduled Export | Data Engineer, Data Product Owner | High | New | Scheduled Export | **NEW** |
 | JOURNEY-EXPORT-002 | Monitor and Troubleshoot Export Runs | Data Engineer, Data Product Owner | High | New | Scheduled Export | **NEW** |
 
-**Total**: 96 journeys (4 authentication + 37 original + 55 new)
+**Total**: 98 journeys (4 authentication + 37 original + 57 new)
 
 ---
 
-**Last Updated**: 2026-02-16
-**Version**: 2.4.1 (Task 6.4: Deferred journeys consolidated in [Deferred Journeys (Transformation Pipeline)](#deferred-journeys-transformation-pipeline); backlog item [BACKLOG_TRANSFORMATION_PIPELINE.md](BACKLOG_TRANSFORMATION_PIPELINE.md))
+**Last Updated**: 2026-03-06
+**Version**: 2.4.2 (Task 6.4: Deferred journeys consolidated in [Deferred Journeys (Transformation Pipeline)](#deferred-journeys-transformation-pipeline); backlog item [BACKLOG_TRANSFORMATION_PIPELINE.md](BACKLOG_TRANSFORMATION_PIPELINE.md); Task 28.6.4: Social route reference /communities, asset Community section)
 
 ---
 
 ## Related Documentation
 
 - **[Transformation Pipeline Backlog](BACKLOG_TRANSFORMATION_PIPELINE.md)** - Backlog item for transformation pipeline; links to deferred journeys (JOURNEY-DPO-008, DE-007, DC-007, AUD-005, DA-001, DEV-006)
-- **[Use Cases](USE_CASES.md)** - Use cases including Authentication & Access (UC-AUTH-001–004)
+- **[Use Cases](USE_CASES.md)** - Use cases including Authentication & Access (UC-AUTH-001–005)
 - **[User Personas](USER_PERSONAS.md)** - Personas including Visitor/Prospect
 - **[Features](FEATURES.md)** - Feature documentation and Capabilities ↔ Use Cases matrix
 - **[Test Traceability](TEST_TRACEABILITY.md)** - Comprehensive test traceability matrix mapping features, use cases, and journeys to tests

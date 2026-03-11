@@ -165,7 +165,7 @@ print(api_key_value)
         result = runner.invoke(cli, ['baas', 'docs', 'show'])
 
         assert result.exit_code == 0
-        assert 'API Documentation' in result.output or 'Data Interoperability Hub' in result.output
+        assert 'API Documentation' in result.output or 'Meshant' in result.output
         assert '<html>' in result.output or '<!DOCTYPE html>' in result.output
         assert 'OpenAPI' in result.output or 'openapi' in result.output.lower()
 
@@ -208,7 +208,7 @@ print(api_key_value)
 
         assert result.exit_code == 0
         assert '<html>' in result.output or '<!DOCTYPE html>' in result.output
-        assert 'API Documentation' in result.output or 'Data Interoperability Hub' in result.output
+        assert 'API Documentation' in result.output or 'Meshant' in result.output
         assert 'OpenAPI' in result.output or 'openapi' in result.output.lower()
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
@@ -225,7 +225,7 @@ print(api_key_value)
 
         assert result.exit_code == 0
         assert '#' in result.output  # Markdown headers
-        assert 'API Documentation' in result.output or 'Data Interoperability Hub' in result.output
+        assert 'API Documentation' in result.output or 'Meshant' in result.output
         assert 'OpenAPI' in result.output or 'openapi' in result.output.lower()
         assert '##' in result.output  # Sub-headers
 

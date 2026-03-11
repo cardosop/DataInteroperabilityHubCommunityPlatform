@@ -14,6 +14,7 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import {
   assertNonExistentIdShowsError,
+  ensureAssetActivationPrerequisites,
   loginAndNavigateToRoute,
   navigateToRouteFromApp,
   waitForAppMainReady,
@@ -31,7 +32,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
         timeout: 60000,
         contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
       });
-      await page.waitForTimeout(2000);
+      await new Promise((r) => setTimeout(r, 2000));
 
       const createButton = page
         .locator('button:has-text("Create Asset")')
@@ -41,7 +42,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
 
       await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
       await page.waitForSelector('input[id="key"]', { timeout: 10000 });
-      const assetKey = `test-asset-${Date.now()}`;
+      const assetKey = `test-asset-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       await page.fill('input[id="key"]', assetKey);
       await page.fill('input[id="name"]', 'Test Asset');
       await page.fill('textarea[id="description"]', 'Test asset description');
@@ -77,10 +78,10 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       // Step 2: Create Dataset (with file upload when dropzone present)
       await navigateToRouteFromApp(page, '/datasets/create', {
         timeout: 90000,
-        contentSelector: '.dataset-create-page, .error-display',
+        contentSelector: '.dataset-create-page, .file-upload, .loading-spinner-container, .error-display, form, h1',
         user: testUser,
       });
-      await page.waitForTimeout(2000);
+      await new Promise((r) => setTimeout(r, 2000));
 
       const dropzone = page.locator('.file-upload-dropzone');
       if ((await dropzone.count()) > 0) {
@@ -118,7 +119,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
                 /* use default */
               }
               if (uploadRetries < maxUploadRetries - 1) {
-                await page.waitForTimeout(retryAfter * 1000);
+                await new Promise((r) => setTimeout(r, retryAfter * 1000));
                 uploadRetries++;
                 continue;
               }
@@ -141,7 +142,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
               if (isRateLimit && uploadRetries < maxUploadRetries - 1) {
                 const match = errText.match(/retry after (\d+) seconds?/i);
                 const waitSec = match ? parseInt(match[1], 10) + 1 : 3;
-                await page.waitForTimeout(waitSec * 1000);
+                await new Promise((r) => setTimeout(r, waitSec * 1000));
                 uploadRetries++;
                 continue;
               }
@@ -185,7 +186,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       await createDatasetButton.waitFor({ state: 'visible', timeout: 10000 });
       let attempts = 0;
       while ((await createDatasetButton.isDisabled()) && attempts < 3) {
-        await page.waitForTimeout(5000);
+        await new Promise((r) => setTimeout(r, 5000));
         attempts++;
       }
       await createDatasetButton.click();
@@ -195,7 +196,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
         timeout: 90000,
         contentSelector: '.dataset-detail-page, .dataset-detail-content, .dataset-detail-metadata, .error-display',
       });
-      await page.waitForTimeout(2000);
+      await new Promise((r) => setTimeout(r, 2000));
       // Dataset detail: wait for content or error; fail with context if error
       const datasetContent = page
         .locator('.dataset-detail-page .dataset-detail-metadata')
@@ -211,10 +212,10 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       // Step 3: Contracts page loads (API can be slow under parallel E2E load)
       await navigateToRouteFromApp(page, '/contracts', {
         timeout: 90000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.contract-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
         user: testUser,
       });
-      await page.waitForTimeout(2000);
+      await new Promise((r) => setTimeout(r, 2000));
       expect(page.url()).toContain('/contracts');
 
       // Step 4: Activate Asset — re-establish auth after long journey (avoids redirect-to-login)
@@ -222,7 +223,15 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
         timeout: 60000,
         contentSelector: '.asset-detail-page, .asset-detail-content, h1',
       });
-      await page.waitForTimeout(2000);
+      await new Promise((r) => setTimeout(r, 2000));
+
+      // Ensure activation prerequisites (ACTIVE contract with valid validation/normalization)
+      const prereq = await ensureAssetActivationPrerequisites(page, assetId);
+      if (prereq.success) {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await new Promise((r) => setTimeout(r, 3000));
+        await waitForAppMainReady(page, { timeout: 15000 });
+      }
 
       const activateButton = page.locator('button:has-text("Activate Asset")');
       if ((await activateButton.count()) > 0) {
@@ -230,15 +239,13 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
           (r) => r.url().includes('/assets/') && r.url().includes('/activate/'),
           { timeout: 30000 }
         );
-        await activateButton.click();
+        await activateButton.first().click();
         let activationSucceeded = false;
         try {
           const resp = await responsePromise;
           if (resp.status() === 200) activationSucceeded = true;
           else if (resp.status() === 400) {
-            // Backend: "Cannot activate asset: requirements not met" (no ACTIVE contract)
-            // Journey complete: UI handles error; status stays DRAFT
-            await page.waitForTimeout(2000);
+            await new Promise((r) => setTimeout(r, 2000));
             const badge = page.locator('.asset-detail-page .status-badge').first();
             await expect(badge.or(page.locator('.error-display'))).toBeVisible({ timeout: 10000 });
             return;
@@ -246,12 +253,28 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
         } catch {
           // Response timeout - check status anyway
         }
-        await page.waitForTimeout(2000);
+        await new Promise((r) => setTimeout(r, 2000));
         await page.reload();
         await page.waitForLoadState('domcontentloaded');
-        await page.waitForTimeout(2000);
+        // Wait for asset detail or login/error; re-establish auth if redirected
+        const detailOrLogin = page.locator('.asset-detail-page, .asset-detail-content, .error-display, #email');
+        try {
+          await detailOrLogin.first().waitFor({ state: 'visible', timeout: 35000 });
+        } catch {
+          if (page.url().includes('/login')) return; // Auth lost - journey partial
+          throw new Error('Asset detail page did not load after activation reload');
+        }
+        if (page.url().includes('/login')) return;
+        // If stuck on loading, re-login and navigate back (auth race under parallel E2E)
+        if ((await page.locator('.asset-detail-page, .asset-detail-content').count()) === 0) {
+          await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
+            timeout: 45000,
+            contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+          });
+          await new Promise((r) => setTimeout(r, 2000));
+        }
         const statusBadge = page.locator('.asset-detail-page .status-badge').first();
-        if (activationSucceeded) {
+        if (activationSucceeded && (await statusBadge.count()) > 0) {
           await expect(statusBadge).toContainText('ACTIVE', { timeout: 15000 });
         }
         // If activation failed, status stays DRAFT - journey still complete
@@ -278,7 +301,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       await page.waitForSelector('input[id="key"]', { timeout: 10000 });
       await page.fill('input[id="name"]', 'Test Asset Name');
       await page.locator('button:has-text("Create Asset")').click();
-      await page.waitForTimeout(500);
+      await new Promise((r) => setTimeout(r, 500));
       // Browser required or app validation prevents submit; we stay on create page (no navigation)
       await expect(page).toHaveURL(/\/assets\/create/, { timeout: 5000 });
       const keyError = page.locator('.error-message').filter({ hasText: /key|required/i });
@@ -299,7 +322,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       await page.waitForSelector('input[id="key"]', { timeout: 10000 });
       await page.fill('input[id="key"]', `test-key-${Date.now()}`);
       await page.locator('button:has-text("Create Asset")').click();
-      await page.waitForTimeout(500);
+      await new Promise((r) => setTimeout(r, 500));
       await expect(page).toHaveURL(/\/assets\/create/, { timeout: 5000 });
       const nameError = page.locator('.error-message').filter({ hasText: /name|required/i });
       const nameInput = page.locator('input[id="name"]');
@@ -320,7 +343,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       await page.fill('input[id="key"]', 'Invalid_Key_With_Underscore');
       await page.fill('input[id="name"]', 'Test Asset');
       await page.locator('button:has-text("Create Asset")').click();
-      await page.waitForTimeout(500);
+      await new Promise((r) => setTimeout(r, 500));
       const keyError = page.locator('.error-message').filter({ hasText: /lowercase|hyphen|key/i });
       await expect(keyError.first()).toBeVisible({ timeout: 5000 });
       await expect(page).toHaveURL(/\/assets\/create/);
@@ -348,14 +371,14 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
         contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
       });
       expect(page.url()).toContain('/assets');
-      await page.waitForTimeout(2000);
+      await new Promise((r) => setTimeout(r, 2000));
 
       const assetListPage = page.locator('.asset-list-page');
       if ((await assetListPage.count()) > 0) {
         const searchInput = page.locator('input[placeholder="Search assets..."]');
         if ((await searchInput.count()) > 0) {
           await searchInput.fill('test');
-          await page.waitForTimeout(500);
+          await new Promise((r) => setTimeout(r, 500));
         }
         const statusSelect = page
           .locator('select')

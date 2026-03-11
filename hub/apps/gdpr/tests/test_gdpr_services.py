@@ -38,6 +38,7 @@ from hub.apps.gdpr.models import (
 )
 from hub.apps.gdpr.services import DataPortabilityService, ErasureService
 from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -47,13 +48,18 @@ class DataPortabilityServiceTest(TransactionTestCase):
     """Comprehensive tests for DataPortabilityService"""
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures (unique names for --reuse-db compatibility)."""
+        unique = str(uuid.uuid4())[:8]
         # Create tenant
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant", status="ACTIVE")
+        self.tenant = Tenant.objects.create(
+            name=f"GDPR DPS Tenant {unique}",
+            slug=f"gdpr-dps-tenant-{unique}",
+            status="ACTIVE",
+        )
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"gdpr-dps-{unique}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User",
@@ -357,9 +363,10 @@ class DataPortabilityServiceTest(TransactionTestCase):
 
     def test_create_export_job_different_users(self):
         """Test that different users can have export jobs simultaneously"""
+        unique = str(uuid.uuid4())[:8]
         # Create another user
         user2 = User.objects.create_user(
-            email="test2@example.com",
+            email=f"gdpr-dps-user2-{unique}@example.com",
             password="testpass123",
             tenant=self.tenant,
         )
@@ -377,10 +384,15 @@ class DataPortabilityServiceTest(TransactionTestCase):
 
     def test_create_export_job_different_tenants(self):
         """Test that different tenants can have export jobs simultaneously"""
+        unique = str(uuid.uuid4())[:8]
         # Create another tenant and user
-        tenant2 = Tenant.objects.create(name="Test Tenant 2", slug="test-tenant-2", status="ACTIVE")
+        tenant2 = Tenant.objects.create(
+            name=f"GDPR DPS Tenant2 {unique}",
+            slug=f"gdpr-dps-tenant2-{unique}",
+            status="ACTIVE",
+        )
         user2 = User.objects.create_user(
-            email="test2@example.com",
+            email=f"gdpr-dps-tenant2-{unique}@example.com",
             password="testpass123",
             tenant=tenant2,
         )
@@ -401,13 +413,18 @@ class ErasureServiceTest(TransactionTestCase):
     """Comprehensive tests for ErasureService"""
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures (unique names for --reuse-db compatibility)."""
+        unique = str(uuid.uuid4())[:8]
         # Create tenant
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant", status="ACTIVE")
+        self.tenant = Tenant.objects.create(
+            name=f"GDPR ES Tenant {unique}",
+            slug=f"gdpr-es-tenant-{unique}",
+            status="ACTIVE",
+        )
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"gdpr-es-{unique}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User",
@@ -449,7 +466,7 @@ class ErasureServiceTest(TransactionTestCase):
         self.assertEqual(request.status, ErasureRequestStatus.PENDING)
 
     def test_create_request_creates_audit_event(self):
-        """Test that create_request creates audit event"""
+        """Test that create_request creates audit event (self-requested; no source)."""
         initial_count = AuditEvent.objects.filter(
             resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED"
         ).count()
@@ -461,6 +478,43 @@ class ErasureServiceTest(TransactionTestCase):
         ).count()
 
         self.assertEqual(final_count, initial_count + 1)
+
+        # Self-requested: actor_user = target user; no initiated_by/source
+        event = AuditEvent.objects.filter(
+            resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED"
+        ).order_by("-timestamp").first()
+        self.assertIsNotNone(event)
+        assert event is not None
+        self.assertEqual(event.actor_user_id, self.user.id)
+        self.assertNotIn("source", event.details_json)
+        self.assertNotIn("initiated_by", event.details_json)
+
+    def test_create_request_platform_admin_actor_in_audit(self):
+        """Task 29.67.2.3: Platform admin creates erasure → audit actor_user = platform admin."""
+        unique = str(uuid.uuid4())[:8]
+        platform_admin = User.objects.create_user(
+            email=f"platform-admin-{unique}@example.com",
+            password="testpass123",
+            tenant=None,
+            is_platform_admin=True,
+            status=UserStatus.ACTIVE,
+        )
+        target_user = self.user  # Different from platform_admin
+
+        service = ErasureService(
+            tenant_id=str(self.tenant.id), user_id=str(platform_admin.id)
+        )
+        service.create_request(user_id=str(target_user.id))
+
+        event = AuditEvent.objects.filter(
+            resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED"
+        ).order_by("-timestamp").first()
+
+        self.assertIsNotNone(event)
+        assert event is not None
+        self.assertEqual(event.actor_user_id, platform_admin.id)
+        self.assertEqual(event.details_json.get("source"), "platform_admin")
+        self.assertEqual(event.details_json.get("initiated_by"), str(platform_admin.id))
 
     def test_create_request_with_existing_pending_request(self):
         """Test that creating request when pending request exists raises ValidationError"""
@@ -630,12 +684,13 @@ class ErasureServiceTest(TransactionTestCase):
         request = self.service.create_request(user_id=str(self.user.id))
 
         # Pre-create user with anonymized email so user.save() fails (unique constraint)
+        unique = str(uuid.uuid4())[:8]
         anon_email = f"deleted-{self.user.id}@deleted.local"
         User.objects.create_user(
             email=anon_email,
             password="unused",
             tenant=self.tenant,
-            display_name="Collision User",
+            display_name=f"Collision User {unique}",
         )
 
         # Should raise exception, but request should be marked as FAILED
@@ -651,9 +706,10 @@ class ErasureServiceTest(TransactionTestCase):
 
     def test_create_request_different_users(self):
         """Test that different users can have erasure requests simultaneously"""
+        unique = str(uuid.uuid4())[:8]
         # Create another user
         user2 = User.objects.create_user(
-            email="test2@example.com",
+            email=f"gdpr-es-user2-{unique}@example.com",
             password="testpass123",
             tenant=self.tenant,
         )

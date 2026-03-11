@@ -22,8 +22,55 @@ test.describe('Contract Creation Flow', () => {
         (await hasLoginPrompt(page));
       expect(onLogin || onContractsWithLoginPrompt).toBe(true);
     });
+
+    test('invalid ODPS (missing schema.fields) shows error', async ({ page }) => {
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/odps/upload', {
+        timeout: 60000,
+        contentSelector: 'textarea#odps-content, textarea, .odps-upload-page, .error-display',
+      });
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login');
+      }
+      const contentTextarea = page.locator('textarea#odps-content, textarea').first();
+      await expect(contentTextarea).toBeVisible({ timeout: 10000 });
+      // odps-invalid-missing-schema.json: contract.spec without schema.fields
+      const invalidOdps = {
+        schema: 'https://opendataproducts.org/schema/v4.1',
+        version: '4.1',
+        product: {
+          details: { en: { productID: 'invalid', name: 'Invalid', description: 'Missing schema.fields' } },
+          contract: {
+            spec: {
+              apiVersion: 'odcs.io/v3.0.2',
+              kind: 'DataContract',
+              id: 'invalid-missing-schema',
+              name: 'Invalid - No Schema Fields',
+              version: '1.0.0',
+            },
+          },
+        },
+      };
+      await contentTextarea.fill(JSON.stringify(invalidOdps));
+      await page.waitForTimeout(500);
+      const submitButton = page.locator('button:has-text("Create ODPS Product")').first();
+      await expect(submitButton).toBeVisible({ timeout: 5000 });
+      await submitButton.click();
+      await page.waitForTimeout(8000);
+      await waitForLoadingComplete(page);
+      // Expect error: 400 or validation error; no contract created (stay on upload or show error)
+      const errorDisplay = page.locator('.error-display, [role="alert"], .alert-danger');
+      const hasErrorDisplay =
+        (await errorDisplay.count()) > 0 && (await errorDisplay.first().isVisible().catch(() => false));
+      const hasErrorText =
+        (await page.getByText(/400|validation|invalid|schema|required|dataSchema/i).count()) > 0;
+      const stillOnUpload = page.url().includes('/odps/upload');
+      const noRedirectToDetail = !page.url().match(/\/contracts\/[^/]+$/) && !page.url().match(/\/odps\/[^/]+$/);
+      expect(hasErrorDisplay || hasErrorText || (stillOnUpload && noRedirectToDetail)).toBe(true);
+    });
   });
 
+  test.describe('Success', () => {
   test('should create contract successfully', async ({ page }) => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/contracts', {
@@ -80,14 +127,18 @@ test.describe('Contract Creation Flow', () => {
       const odpsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: 'ODPS' }).first();
       await odpsLink.click();
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(1000);
+      await waitForLoadingComplete(page, { timeout: 20000 });
       const uploadBtn = page.locator('button:has-text("Create ODPS Product"), button:has-text("Create Your First")').first();
       if ((await uploadBtn.count()) > 0) {
         await uploadBtn.click();
         await page.waitForLoadState('domcontentloaded');
         await page.waitForTimeout(1000);
       }
-      await waitForLoadingComplete(page);
+      // If still on /odps (list), navigate directly to upload
+      if (page.url().includes('/odps') && !page.url().includes('/odps/upload')) {
+        await page.goto('/odps/upload');
+        await waitForLoadingComplete(page);
+      }
     }
 
     // Wait for navigation - button now navigates to /odps/upload (or redirect to login if auth failed)
@@ -185,5 +236,6 @@ test.describe('Contract Creation Flow', () => {
     } else {
       throw new Error(`Unexpected URL after submit: ${finalUrl}`);
     }
+  });
   });
 });

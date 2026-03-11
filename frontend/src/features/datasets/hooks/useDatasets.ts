@@ -3,17 +3,29 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { emptyPaginatedResponse } from '../../../shared/types/api';
 import { datasetService } from '../services/datasetService';
 import type {
+  Dataset,
   DatasetCreateRequest,
   DatasetUpdateRequest,
   DatasetListFilters,
 } from '../../../shared/types/datasets';
 
-export function useDatasets(filters: DatasetListFilters = {}) {
+export function useDatasets(
+  filters: DatasetListFilters = {},
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: ['datasets', 'list', filters],
-    queryFn: () => datasetService.list(filters),
+    queryFn: async () => {
+      const data = await datasetService.list(filters);
+      if (data === undefined) {
+        return emptyPaginatedResponse<Dataset>();
+      }
+      return data;
+    },
+    enabled: options?.enabled !== false,
   });
 }
 

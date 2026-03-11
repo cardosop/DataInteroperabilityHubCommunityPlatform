@@ -3,11 +3,17 @@
  * View detailed information about an order
  */
 
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useOrder, useApproveOrder, useRejectOrder, useCancelOrder } from '../hooks/useOrders';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { OrderStatus } from '../../../shared/types/marketplace';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './OrderDetailPage.css';
 
 export function OrderDetailPage() {
@@ -17,6 +23,8 @@ export function OrderDetailPage() {
   const approveMutation = useApproveOrder();
   const rejectMutation = useRejectOrder();
   const cancelMutation = useCancelOrder();
+  const toast = useToast();
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const handleApprove = async () => {
     if (!id) return;
@@ -37,13 +45,15 @@ export function OrderDetailPage() {
     }
   };
 
-  const handleCancel = async () => {
+  const handleCancelClick = () => setShowCancelConfirm(true);
+  const handleCancelConfirm = async () => {
     if (!id) return;
-    if (!window.confirm('Are you sure you want to cancel this order?')) return;
+    setShowCancelConfirm(false);
     try {
       await cancelMutation.mutateAsync(id);
-    } catch (error) {
-      // Error handled by mutation
+      toast.success('Order cancelled.');
+    } catch (err) {
+      toast.error(normalizeError(err).error.message || 'Failed to cancel order');
     }
   };
 
@@ -75,9 +85,19 @@ export function OrderDetailPage() {
             {order.status}
           </span>
         </div>
+        <div className="order-uuid" data-testid="order-uuid">
+          <UuidWithCopy value={order.id} label="Order ID" />
+        </div>
       </div>
 
       <div className="order-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Orders', href: '/marketplace/orders' },
+            { label: `Order ${order.id.slice(0, 8)}` },
+          ]}
+        />
         <div className="order-detail-main">
           <div className="order-section">
             <h2>Listing Information</h2>
@@ -184,7 +204,7 @@ export function OrderDetailPage() {
             {canCancel && (
               <button
                 className="btn-secondary btn-large"
-                onClick={handleCancel}
+                onClick={handleCancelClick}
                 disabled={cancelMutation.isPending}
                 type="button"
               >
@@ -206,6 +226,16 @@ export function OrderDetailPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showCancelConfirm}
+        onClose={() => setShowCancelConfirm(false)}
+        onConfirm={handleCancelConfirm}
+        title="Cancel order"
+        message="Are you sure you want to cancel this order?"
+        confirmLabel="Cancel Order"
+        variant="warning"
+      />
     </div>
   );
 }

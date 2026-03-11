@@ -1,0 +1,277 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - link "Skip to main content" [ref=e4] [cursor=pointer]:
+      - /url: "#main-content"
+    - banner [ref=e5]:
+      - generic [ref=e6]:
+        - link "Meshant — go to home" [ref=e8] [cursor=pointer]:
+          - /url: /
+          - heading "Meshant" [level=1] [ref=e9]
+        - searchbox "Global search" [ref=e11]
+        - generic [ref=e12]:
+          - generic [ref=e13]:
+            - button "Switch tenant" [expanded] [active] [ref=e14] [cursor=pointer]:
+              - generic [ref=e15]: Default Tenant
+              - generic [ref=e16]: ▼
+            - menu [ref=e17]:
+              - strong [ref=e19]: "Current: Default Tenant"
+              - menuitem "Default Tenant" [ref=e20] [cursor=pointer]
+              - menuitem "E2E Switch Tenant 1c6b7c0e" [ref=e21] [cursor=pointer]
+          - button "Notifications" [ref=e23] [cursor=pointer]:
+            - text: 🔔
+            - generic [ref=e24]: "0"
+          - button "User menu" [ref=e26] [cursor=pointer]:
+            - generic [ref=e27]: E2E Test User (DPO)
+            - generic [ref=e28]: ▼
+    - generic [ref=e29]:
+      - navigation "Main navigation" [ref=e30]:
+        - navigation [ref=e31]:
+          - list [ref=e32]:
+            - listitem [ref=e33]:
+              - link "🏠 Home" [ref=e34] [cursor=pointer]:
+                - /url: /
+                - generic [ref=e35]: 🏠
+                - generic [ref=e36]: Home
+            - listitem [ref=e37]:
+              - link "📦 Assets" [ref=e38] [cursor=pointer]:
+                - /url: /assets
+                - generic [ref=e39]: 📦
+                - generic [ref=e40]: Assets
+            - listitem [ref=e41]:
+              - link "📊 Datasets" [ref=e42] [cursor=pointer]:
+                - /url: /datasets
+                - generic [ref=e43]: 📊
+                - generic [ref=e44]: Datasets
+            - listitem [ref=e45]:
+              - link "📁 Files" [ref=e46] [cursor=pointer]:
+                - /url: /files
+                - generic [ref=e47]: 📁
+                - generic [ref=e48]: Files
+            - listitem [ref=e49]:
+              - link "📄 Contracts" [ref=e50] [cursor=pointer]:
+                - /url: /contracts
+                - generic [ref=e51]: 📄
+                - generic [ref=e52]: Contracts
+            - listitem [ref=e53]:
+              - link "🛒 Marketplace" [ref=e54] [cursor=pointer]:
+                - /url: /marketplace
+                - generic [ref=e55]: 🛒
+                - generic [ref=e56]: Marketplace
+            - listitem [ref=e57]:
+              - link "🔌 Integrations" [ref=e58] [cursor=pointer]:
+                - /url: /integrations/connections
+                - generic [ref=e59]: 🔌
+                - generic [ref=e60]: Integrations
+            - listitem [ref=e61]:
+              - link "🔗 ODPS" [ref=e62] [cursor=pointer]:
+                - /url: /odps
+                - generic [ref=e63]: 🔗
+                - generic [ref=e64]: ODPS
+            - listitem [ref=e65]:
+              - link "✅ Data Quality" [ref=e66] [cursor=pointer]:
+                - /url: /dq
+                - generic [ref=e67]: ✅
+                - generic [ref=e68]: Data Quality
+            - listitem [ref=e69]:
+              - link "🛡️ Compliance" [ref=e70] [cursor=pointer]:
+                - /url: /compliance
+                - generic [ref=e71]: 🛡️
+                - generic [ref=e72]: Compliance
+            - listitem [ref=e73]:
+              - link "🌐 Data Mesh" [ref=e74] [cursor=pointer]:
+                - /url: /mesh
+                - generic [ref=e75]: 🌐
+                - generic [ref=e76]: Data Mesh
+            - listitem [ref=e77]:
+              - link "🔮 Virtualization" [ref=e78] [cursor=pointer]:
+                - /url: /virtualization
+                - generic [ref=e79]: 🔮
+                - generic [ref=e80]: Virtualization
+            - listitem [ref=e81]:
+              - link "🔍 Search" [ref=e82] [cursor=pointer]:
+                - /url: /search
+                - generic [ref=e83]: 🔍
+                - generic [ref=e84]: Search
+            - listitem [ref=e85]:
+              - link "🔗 Semantic" [ref=e86] [cursor=pointer]:
+                - /url: /semantic
+                - generic [ref=e87]: 🔗
+                - generic [ref=e88]: Semantic
+            - listitem [ref=e89]:
+              - link "🤖 AI Search" [ref=e90] [cursor=pointer]:
+                - /url: /ai/search
+                - generic [ref=e91]: 🤖
+                - generic [ref=e92]: AI Search
+            - listitem [ref=e93]:
+              - link "🔀 Schema Matching" [ref=e94] [cursor=pointer]:
+                - /url: /ai/schema-matching
+                - generic [ref=e95]: 🔀
+                - generic [ref=e96]: Schema Matching
+            - listitem [ref=e97]:
+              - link "👥 Communities" [ref=e98] [cursor=pointer]:
+                - /url: /communities
+                - generic [ref=e99]: 👥
+                - generic [ref=e100]: Communities
+            - listitem [ref=e101]:
+              - link "🛠️ Developer" [ref=e102] [cursor=pointer]:
+                - /url: /developer
+                - generic [ref=e103]: 🛠️
+                - generic [ref=e104]: Developer
+            - listitem [ref=e105]:
+              - link "🔑 BaaS" [ref=e106] [cursor=pointer]:
+                - /url: /baas
+                - generic [ref=e107]: 🔑
+                - generic [ref=e108]: BaaS
+            - listitem [ref=e109]:
+              - link "🧠 ML" [ref=e110] [cursor=pointer]:
+                - /url: /ml
+                - generic [ref=e111]: 🧠
+                - generic [ref=e112]: ML
+            - listitem [ref=e113]:
+              - link "📈 Observability" [ref=e114] [cursor=pointer]:
+                - /url: /observability
+                - generic [ref=e115]: 📈
+                - generic [ref=e116]: Observability
+            - listitem [ref=e117]:
+              - link "🔄 Transformation" [ref=e118] [cursor=pointer]:
+                - /url: /transformation
+                - generic [ref=e119]: 🔄
+                - generic [ref=e120]: Transformation
+            - listitem [ref=e121]:
+              - link "⚙️ Jobs" [ref=e122] [cursor=pointer]:
+                - /url: /jobs
+                - generic [ref=e123]: ⚙️
+                - generic [ref=e124]: Jobs
+            - listitem [ref=e125]:
+              - link "🔗 Webhooks" [ref=e126] [cursor=pointer]:
+                - /url: /webhooks
+                - generic [ref=e127]: 🔗
+                - generic [ref=e128]: Webhooks
+            - listitem [ref=e129]:
+              - link "⏰ Scheduled Ingestion" [ref=e130] [cursor=pointer]:
+                - /url: /scheduled-ingestions
+                - generic [ref=e131]: ⏰
+                - generic [ref=e132]: Scheduled Ingestion
+      - main [ref=e133]:
+        - generic [ref=e134]:
+          - generic [ref=e136]:
+            - generic [ref=e137]:
+              - heading "Dashboard" [level=1] [ref=e138]
+              - paragraph [ref=e139]: Welcome to your data interoperability hub
+            - generic [ref=e140]:
+              - generic [ref=e141]: "System Status:"
+              - generic [ref=e142]: HEALTHY
+          - generic [ref=e143]:
+            - heading "Quick Actions" [level=2] [ref=e144]
+            - generic [ref=e145]:
+              - link "📦 Create Asset" [ref=e146] [cursor=pointer]:
+                - /url: /assets/create
+                - generic [ref=e147]: 📦
+                - generic [ref=e148]: Create Asset
+              - link "🔍 Search" [ref=e149] [cursor=pointer]:
+                - /url: /search
+                - generic [ref=e150]: 🔍
+                - generic [ref=e151]: Search
+              - link "📊 View Datasets" [ref=e152] [cursor=pointer]:
+                - /url: /datasets
+                - generic [ref=e153]: 📊
+                - generic [ref=e154]: View Datasets
+              - link "⚙️ View Jobs" [ref=e155] [cursor=pointer]:
+                - /url: /jobs
+                - generic [ref=e156]: ⚙️
+                - generic [ref=e157]: View Jobs
+          - generic [ref=e158]:
+            - generic [ref=e159]:
+              - generic [ref=e160]:
+                - heading "Recent Assets" [level=2] [ref=e161]
+                - link "View All →" [ref=e162] [cursor=pointer]:
+                  - /url: /assets
+              - generic [ref=e163]:
+                - link "Test Asset ACTIVE Test asset description Created Mar 11, 2026" [ref=e164] [cursor=pointer]:
+                  - /url: /assets/4e3ec0e5-9313-4e06-8eba-16be41fdbdad
+                  - generic [ref=e165]:
+                    - generic [ref=e166]: Test Asset
+                    - generic [ref=e167]: ACTIVE
+                  - paragraph [ref=e168]: Test asset description
+                  - generic [ref=e170]: Created Mar 11, 2026
+                - link "Test Asset DRAFT Test asset description Created Mar 11, 2026" [ref=e171] [cursor=pointer]:
+                  - /url: /assets/d98deda7-282b-4ffc-933f-40d3d09ca655
+                  - generic [ref=e172]:
+                    - generic [ref=e173]: Test Asset
+                    - generic [ref=e174]: DRAFT
+                  - paragraph [ref=e175]: Test asset description
+                  - generic [ref=e177]: Created Mar 11, 2026
+                - link "Test Asset ACTIVE Created Mar 11, 2026" [ref=e178] [cursor=pointer]:
+                  - /url: /assets/72287656-0725-42d2-9bcd-fec8df100def
+                  - generic [ref=e179]:
+                    - generic [ref=e180]: Test Asset
+                    - generic [ref=e181]: ACTIVE
+                  - generic [ref=e183]: Created Mar 11, 2026
+                - link "Test Asset ACTIVE Test asset description Created Mar 11, 2026" [ref=e184] [cursor=pointer]:
+                  - /url: /assets/d6fcf87e-5aff-4b73-a606-2817a98da372
+                  - generic [ref=e185]:
+                    - generic [ref=e186]: Test Asset
+                    - generic [ref=e187]: ACTIVE
+                  - paragraph [ref=e188]: Test asset description
+                  - generic [ref=e190]: Created Mar 11, 2026
+                - link "Test Asset DRAFT Test asset description Created Mar 11, 2026" [ref=e191] [cursor=pointer]:
+                  - /url: /assets/12c1b995-3437-406f-a8c9-2fddb5f52c65
+                  - generic [ref=e192]:
+                    - generic [ref=e193]: Test Asset
+                    - generic [ref=e194]: DRAFT
+                  - paragraph [ref=e195]: Test asset description
+                  - generic [ref=e197]: Created Mar 11, 2026
+            - generic [ref=e198]:
+              - generic [ref=e199]:
+                - heading "Recent Datasets" [level=2] [ref=e200]
+                - link "View All →" [ref=e201] [cursor=pointer]:
+                  - /url: /datasets
+              - generic [ref=e202]:
+                - link "test.csv CSV Created Mar 11, 2026" [ref=e203] [cursor=pointer]:
+                  - /url: /datasets/e413f653-2370-48e5-8849-25f7b773e723
+                  - generic [ref=e204]:
+                    - generic [ref=e205]: test.csv
+                    - generic [ref=e206]: CSV
+                  - generic [ref=e208]: Created Mar 11, 2026
+                - link "test.csv CSV Created Mar 11, 2026" [ref=e209] [cursor=pointer]:
+                  - /url: /datasets/aea34c95-ac23-4c84-97d8-b662bfb95805
+                  - generic [ref=e210]:
+                    - generic [ref=e211]: test.csv
+                    - generic [ref=e212]: CSV
+                  - generic [ref=e214]: Created Mar 11, 2026
+                - link "test.csv CSV Created Mar 11, 2026" [ref=e215] [cursor=pointer]:
+                  - /url: /datasets/6ee7c4c1-4b3b-4844-bce2-7faf94084ed7
+                  - generic [ref=e216]:
+                    - generic [ref=e217]: test.csv
+                    - generic [ref=e218]: CSV
+                  - generic [ref=e220]: Created Mar 11, 2026
+                - link "test.csv CSV Created Mar 11, 2026" [ref=e221] [cursor=pointer]:
+                  - /url: /datasets/ef95c51d-2701-46aa-ba11-062111a6e323
+                  - generic [ref=e222]:
+                    - generic [ref=e223]: test.csv
+                    - generic [ref=e224]: CSV
+                  - generic [ref=e226]: Created Mar 11, 2026
+                - link "test.csv CSV Created Mar 11, 2026" [ref=e227] [cursor=pointer]:
+                  - /url: /datasets/0e98a4ce-bf09-4add-a685-8c7060316bb7
+                  - generic [ref=e228]:
+                    - generic [ref=e229]: test.csv
+                    - generic [ref=e230]: CSV
+                  - generic [ref=e232]: Created Mar 11, 2026
+            - generic [ref=e233]:
+              - generic [ref=e234]:
+                - heading "Recent Jobs" [level=2] [ref=e235]
+                - link "View All →" [ref=e236] [cursor=pointer]:
+                  - /url: /jobs
+              - generic [ref=e237]:
+                - generic [ref=e238]: 📭
+                - heading "No jobs yet." [level=3] [ref=e239]
+                - paragraph [ref=e240]: No jobs yet.
+  - region "Notifications"
+  - generic [ref=e241]:
+    - img [ref=e243]
+    - button "Open Tanstack query devtools" [ref=e291] [cursor=pointer]:
+      - img [ref=e292]
+```

@@ -12,14 +12,21 @@ Manages data communities, moderates reviews and ratings, assigns data stewards, 
 
 ---
 
+## Before You Start
+
+1. Complete [00-PREREQUISITES.md](../00-PREREQUISITES.md)
+2. **Note**: Social/community capability must be enabled. Document "Capability not available" if skipped.
+
+---
+
 ## Journeys Covered
 
-| Journey | Title | Docs | E2E Spec | Est. |
-|---------|-------|------|----------|------|
-| JOURNEY-CM-001 | Manage Data Community | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-cm-001-manage-data-community) | `journeys/cm/JOURNEY-CM-001.spec.ts` | 10 min |
-| JOURNEY-CM-002 | Moderate Reviews and Ratings | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-cm-002-moderate-reviews-and-ratings) | `journeys/cm/JOURNEY-CM-002.spec.ts` | 5 min |
-| JOURNEY-CM-003 | Assign Data Stewards | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-cm-003-assign-data-stewards) | `journeys/cm/JOURNEY-CM-003.spec.ts` | 5 min |
-| JOURNEY-CM-004 | Manage Activity Feeds | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-cm-004-manage-activity-feeds) | `journeys/cm/JOURNEY-CM-004.spec.ts` | 10 min |
+| Journey | Title | Step-by-Step Script | E2E Spec | Est. |
+|---------|-------|---------------------|----------|------|
+| JOURNEY-CM-001 | Manage Data Community | [cm/JOURNEY-CM-001.md](../03-USER-JOURNEYS/cm/JOURNEY-CM-001.md) | `journeys/cm/JOURNEY-CM-001.spec.ts` | 10 min |
+| JOURNEY-CM-002 | Moderate Reviews and Ratings | [cm/JOURNEY-CM-002.md](../03-USER-JOURNEYS/cm/JOURNEY-CM-002.md) | `journeys/cm/JOURNEY-CM-002.spec.ts` | 5 min |
+| JOURNEY-CM-003 | Assign Data Stewards | [cm/JOURNEY-CM-003.md](../03-USER-JOURNEYS/cm/JOURNEY-CM-003.md) | `journeys/cm/JOURNEY-CM-003.spec.ts` | 5 min |
+| JOURNEY-CM-004 | Manage Activity Feeds | [cm/JOURNEY-CM-004.md](../03-USER-JOURNEYS/cm/JOURNEY-CM-004.md) | `journeys/cm/JOURNEY-CM-004.spec.ts` | 10 min |
 
 **Total Estimated Duration**: ~30 min
 
@@ -39,11 +46,6 @@ Manages data communities, moderates reviews and ratings, assigns data stewards, 
 - `/social` (if capability enabled)
 
 ---
-
-## Prerequisites
-
-- Capability: social.ratings or social.communities
-- Community/social features enabled
 
 ---
 

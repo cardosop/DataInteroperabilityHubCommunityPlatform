@@ -1,7 +1,7 @@
 # Manual Test Traceability
 
-**Version**: 1.0.0  
-**Last Updated**: 2026-02-17
+**Version**: 1.2.0  
+**Last Updated**: 2026-03-06
 
 ---
 
@@ -21,6 +21,12 @@ This directory maps **Use Cases**, **User Journeys**, and **Personas** to manual
 | UC-AUTH-002 | User Logs In | [02-USE-CASES/UC-AUTH-002.md](../02-USE-CASES/UC-AUTH-002.md) | `journeys/auth/JOURNEY-AUTH-002.spec.ts`, `login-app-shell.spec.ts` |
 | UC-AUTH-003 | User Resets Password | [02-USE-CASES/UC-AUTH-003.md](../02-USE-CASES/UC-AUTH-003.md) | `journeys/auth/JOURNEY-AUTH-003.spec.ts` |
 | UC-AUTH-004 | Unauthenticated User Accesses Public Resources | [02-USE-CASES/UC-AUTH-004.md](../02-USE-CASES/UC-AUTH-004.md) | `journeys/auth/JOURNEY-AUTH-004.spec.ts` |
+
+### Visual Verification (Phase 29.66.18.3)
+
+| Item | Checklist |
+|------|-----------|
+| UX components | [VISUAL_VERIFICATION_UX.md](VISUAL_VERIFICATION_UX.md) — asset upload, dataset edit, UUID copy, breadcrumbs, toast, ConfirmDialog |
 
 ### Other Use Cases
 
@@ -42,6 +48,26 @@ For use cases beyond auth, manual coverage is via **persona scripts** (04-PERSON
 ### Role-Based Journeys
 
 Role-based journeys are covered by **persona scripts**. Each persona script lists all journeys for that persona with links to docs and E2E specs. See [04-PERSONAS/README.md](../04-PERSONAS/README.md).
+
+### Gap Coverage Journeys (useronboardfix Phases 8, 17)
+
+| Journey | Title | Manual Script | E2E Spec |
+|---------|-------|---------------|----------|
+| JOURNEY-TA-SUBSCRIPTION | Manage Subscription and Invoices | [03-USER-JOURNEYS/ta/JOURNEY-TA-SUBSCRIPTION.md](../03-USER-JOURNEYS/ta/JOURNEY-TA-SUBSCRIPTION.md) | `journeys/ta/JOURNEY-TA-SUBSCRIPTION.spec.ts` |
+| JOURNEY-TA-TENANT-SETTINGS | View Usage and Configure Tenant | [03-USER-JOURNEYS/ta/JOURNEY-TA-TENANT-SETTINGS.md](../03-USER-JOURNEYS/ta/JOURNEY-TA-TENANT-SETTINGS.md) | `journeys/ta/JOURNEY-TA-TENANT-SETTINGS.spec.ts` |
+
+See [docs/TEST_TRACEABILITY.md](../../docs/TEST_TRACEABILITY.md#useronboardfix-gap-coverage-phases-7-17) for full traceability.
+
+### Social / Communities Journeys (Phase 27)
+
+| Journey | Title | Manual Script | E2E Spec |
+|---------|-------|---------------|----------|
+| JOURNEY-CM-001 | Manage Data Community | [03-USER-JOURNEYS/cm/JOURNEY-CM-001.md](../03-USER-JOURNEYS/cm/JOURNEY-CM-001.md) | `journeys/cm/JOURNEY-CM-001.spec.ts` |
+| JOURNEY-DC-008 | Rate and Review Asset | [03-USER-JOURNEYS/dc/JOURNEY-DC-008.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-008.md) | `journeys/dc/JOURNEY-DC-008.spec.ts` |
+| JOURNEY-DC-009 | Join Data Community | [03-USER-JOURNEYS/dc/JOURNEY-DC-009.md](../03-USER-JOURNEYS/dc/JOURNEY-DC-009.md) | `journeys/dc/JOURNEY-DC-009.spec.ts` |
+| JOURNEY-DPO-009 | Manage Asset Ratings and Reviews | [03-USER-JOURNEYS/dpo/JOURNEY-DPO-009.md](../03-USER-JOURNEYS/dpo/JOURNEY-DPO-009.md) | `journeys/dpo/JOURNEY-DPO-009.spec.ts` |
+
+**Route reference**: `/communities` (Phase 27.2); `/social` redirects to `/communities`. Asset Community section on `/assets/:id` (Phase 27.1).
 
 ---
 

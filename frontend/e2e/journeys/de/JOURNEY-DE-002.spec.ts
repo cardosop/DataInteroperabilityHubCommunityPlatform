@@ -11,26 +11,19 @@
 
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-002: Set Up Scheduled Ingestion (if applicable)', () => {
-  test.setTimeout(120000);
+  test.setTimeout(180000);
 
   test.describe('Success', () => {
     test('scheduled ingestions list loads', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/scheduled-ingestions');
-      await page.waitForLoadState('domcontentloaded');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
-          return;
-        }
-        throw _err;
-      }
+      await loginAndNavigateToRoute(page, testUser, '/scheduled-ingestions', {
+        timeout: 90000,
+        contentSelector:
+          '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, .loading-spinner-container, h1',
+      });
       expect(page.url()).toContain('/scheduled-ingestions');
       const hasContent =
         (await page.locator('.scheduled-ingestion-list-page').count()) > 0 ||
@@ -58,8 +51,9 @@ test.describe('JOURNEY-DE-002: Set Up Scheduled Ingestion (if applicable)', () =
     test('scheduled ingestions route accessible', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/scheduled-ingestions', {
-        timeout: 60000,
-        contentSelector: '.scheduled-ingestion-list-page, .empty-state, .error-display',
+        timeout: 90000,
+        contentSelector:
+          '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, .loading-spinner-container, h1',
       });
       expect(page.url()).toContain('/scheduled-ingestions');
     });

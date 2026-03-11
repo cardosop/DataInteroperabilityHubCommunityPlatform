@@ -7,10 +7,12 @@
 import type { TestUser } from '../setup/create-test-user';
 
 // Node fetch needs absolute URL; VITE_API_BASE_URL is relative (/api/v1)
+// Prefer 8001 when E2E_WEB_PORT set (test stack uses 8001)
+const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
 let API_BASE_URL =
   process.env.E2E_API_BASE_URL ||
   (process.env.VITE_PROXY_TARGET ? `${process.env.VITE_PROXY_TARGET.replace(/\/$/, '')}/api/v1` : null) ||
-  'http://localhost:8000/api/v1';
+  `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
 /** True when error is ECONNREFUSED (wrong port or backend not running). */
 function isConnectionRefused(err: unknown): boolean {
@@ -107,12 +109,16 @@ async function loginViaApi(user: TestUser): Promise<string> {
  * Tries to use an existing asset first to avoid plan limit issues.
  * Use before tests that need at least one asset (e.g. marketplace publish, scheduled export).
  * Retries on transient connection errors (other side closed, ECONNRESET).
+ * @param ensureActivated - when true, ensures asset is ACTIVE (for marketplace publish which requires ACTIVE)
  */
-export async function createAssetViaApi(user: TestUser): Promise<string> {
+export async function createAssetViaApi(
+  user: TestUser,
+  options?: { ensureActivated?: boolean }
+): Promise<string> {
   let lastErr: unknown;
   for (let r = 0; r < RETRIES; r++) {
     try {
-      return await createAssetViaApiOnce(user);
+      return await createAssetViaApiOnce(user, options);
     } catch (err) {
       lastErr = err;
       if (r < RETRIES - 1 && isTransientConnectionError(err)) {
@@ -125,27 +131,33 @@ export async function createAssetViaApi(user: TestUser): Promise<string> {
   throw lastErr;
 }
 
-async function createAssetViaApiOnce(user: TestUser): Promise<string> {
+async function createAssetViaApiOnce(
+  user: TestUser,
+  options?: { ensureActivated?: boolean }
+): Promise<string> {
   const token = await loginViaApi(user);
 
-  // First, try to get an existing asset to avoid plan limit issues
-  const listResponse = await fetch(`${API_BASE_URL}/assets/?limit=1`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  // First, try to get an existing ACTIVE asset to avoid plan limit issues
+  const listResponse = await fetch(
+    `${API_BASE_URL}/assets/?limit=20${options?.ensureActivated ? '&status=ACTIVE' : ''}`,
+    {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
 
   if (listResponse.ok) {
     const listData = (await listResponse.json()) as
-      | { results?: Array<{ id?: string }> }
-      | Array<{ id?: string }>;
-    // Handle both paginated ({ results: [...] }) and non-paginated ([...]) responses
+      | { results?: Array<{ id?: string; status?: string }> }
+      | Array<{ id?: string; status?: string }>;
     const assets = Array.isArray(listData) ? listData : listData.results || [];
-    if (assets.length > 0 && assets[0].id) {
-      return assets[0].id;
-    }
+    const suitable = options?.ensureActivated
+      ? assets.find((a) => a.status === 'ACTIVE' && a.id)
+      : assets[0];
+    if (suitable?.id) return suitable.id;
   }
 
   // If no existing asset found, try to create a new one
@@ -173,11 +185,47 @@ async function createAssetViaApiOnce(user: TestUser): Promise<string> {
     }
     throw new Error(`Create asset API failed: ${response.status} ${body}`);
   }
-  const data = (await response.json()) as { id?: string };
+  const data = (await response.json()) as { id?: string; version?: number };
   if (!data.id) {
     throw new Error('Create asset response missing id');
   }
-  return data.id;
+  const assetId = data.id;
+
+  if (options?.ensureActivated) {
+    // E2E helper: ensure activation prerequisites and activate
+    const prereqRes = await fetch(
+      `${API_BASE_URL}/assets/${assetId}/ensure-e2e-activation-prerequisites/`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    if (!prereqRes.ok) {
+      if (prereqRes.status === 404) {
+        throw new Error(
+          'E2E activation prerequisites endpoint not available (404). ' +
+            'Rebuild api-service-test: docker compose -f docker-compose.test.yml build api-service-test --no-cache'
+        );
+      }
+      const err = await prereqRes.text();
+      throw new Error(`E2E activation prerequisites failed: ${prereqRes.status} ${err}`);
+    }
+    if (prereqRes.ok) {
+      const actRes = await fetch(`${API_BASE_URL}/assets/${assetId}/activate/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ version: data.version ?? 1 }),
+      });
+      if (!actRes.ok) {
+        const err = await actRes.text();
+        throw new Error(`Asset activation failed: ${actRes.status} ${err}`);
+      }
+    }
+  }
+  return assetId;
 }
 
 /**
@@ -223,4 +271,292 @@ export async function cleanupOldScheduledExports(user: TestUser): Promise<void> 
       }
     }
   }
+}
+
+/**
+ * Create or get one retention policy via API for the given user.
+ * Tries to use an existing policy first. Creates one with asset_id if none found.
+ * Use before tests that need at least one retention policy (e.g. edit page).
+ */
+export async function createRetentionPolicyViaApi(user: TestUser): Promise<string> {
+  const token = await loginViaApi(user);
+
+  const listResponse = await fetch(`${API_BASE_URL}/governance/retention-policies/`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (listResponse.ok) {
+    const listData = (await listResponse.json()) as { results?: Array<{ id?: string }> };
+    const policies = listData.results ?? [];
+    if (policies[0]?.id) return policies[0].id;
+  }
+
+  const assetId = await createAssetViaApi(user);
+  const name = `e2e-rp-${Date.now()}`;
+  const response = await fetch(`${API_BASE_URL}/governance/retention-policies/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      name,
+      asset_id: assetId,
+      policy_type: 'TIME_BASED',
+      retention_period_days: 30,
+      action: 'SOFT_DELETE',
+      enabled: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Create retention policy API failed: ${response.status} ${body}`);
+  }
+  const data = (await response.json()) as { id?: string };
+  if (!data.id) throw new Error('Create retention policy response missing id');
+  return data.id;
+}
+
+/**
+ * Create or get one scheduled export via API for the given user.
+ * Tries to use an existing export first. Creates one with asset_ids if none found.
+ * Use before tests that need at least one scheduled export (e.g. edit page).
+ */
+export async function createScheduledExportViaApi(user: TestUser): Promise<string> {
+  const token = await loginViaApi(user);
+
+  const listResponse = await fetch(`${API_BASE_URL}/scheduled-exports/`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (listResponse.ok) {
+    const listData = (await listResponse.json()) as { results?: Array<{ id?: string }> };
+    const exports = listData.results ?? [];
+    if (exports[0]?.id) return exports[0].id;
+  }
+
+  const assetId = await createAssetViaApi(user);
+  const name = `e2e-se-${Date.now()}`;
+  const response = await fetch(`${API_BASE_URL}/scheduled-exports/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      name,
+      schedule_config: { cron: '0 2 * * *', timezone: 'UTC' },
+      destination_type: 'S3',
+      destination_config: { bucket: 'e2e-test-bucket' },
+      source_scope: { asset_ids: [assetId] },
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Create scheduled export API failed: ${response.status} ${body}`);
+  }
+  const data = (await response.json()) as { id?: string };
+  if (!data.id) throw new Error('Create scheduled export response missing id');
+  return data.id;
+}
+
+/**
+ * Get first ODCS contract ID via API for the given user.
+ * Returns null if no ODCS contract exists (ODPS Link page requires ODCS contract).
+ */
+export async function getODCSContractIdViaApi(user: TestUser): Promise<string | null> {
+  const token = await loginViaApi(user);
+
+  const response = await fetch(
+    `${API_BASE_URL}/contracts/?spec_type=ODCS&page_size=10`,
+    {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) return null;
+  const data = (await response.json()) as { results?: Array<{ id?: string }> };
+  const contracts = data.results ?? [];
+  return contracts[0]?.id ?? null;
+}
+
+/**
+ * Create or get one dataset via API for the given user.
+ * Tries to use an existing dataset first. Creates one (file + dataset) if none found.
+ * Use before tests that need at least one dataset (e.g. dataset edit, Link to Asset).
+ */
+export async function createDatasetViaApi(user: TestUser): Promise<string> {
+  const token = await loginViaApi(user);
+
+  const listResponse = await fetch(`${API_BASE_URL}/datasets/?page_size=10`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (listResponse.ok) {
+    const listData = (await listResponse.json()) as { results?: Array<{ id?: string }> };
+    const datasets = listData.results ?? [];
+    if (datasets[0]?.id) return datasets[0].id;
+  }
+
+  // Create file via init + complete, then create dataset
+  const csvContent = 'id,name\n1,test\n2,sample';
+  const contentSha256 = await sha256Hex(csvContent);
+
+  const initResponse = await fetch(`${API_BASE_URL}/files/init/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      name: `e2e-dataset-${Date.now()}.csv`,
+      content_type: 'text/csv',
+      size: Buffer.byteLength(csvContent, 'utf-8'),
+      upload_method: 'browser',
+    }),
+  });
+
+  if (!initResponse.ok) {
+    const body = await initResponse.text().catch(() => '');
+    throw new Error(`File init API failed: ${initResponse.status} ${body}`);
+  }
+
+  const initData = (await initResponse.json()) as { file_id?: string; id?: string; upload_url?: string };
+  const fileId = initData.file_id ?? initData.id;
+  if (!fileId) throw new Error('File init response missing file_id');
+
+  // Upload to presigned URL (may point to MinIO; replace host for localhost reachability)
+  const uploadUrl = initData.upload_url;
+  if (uploadUrl) {
+    try {
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: csvContent,
+        headers: { 'Content-Type': 'text/csv' },
+      });
+      if (!putRes.ok) {
+        // Try with localhost if URL uses docker hostname (e2e runs on host)
+        const url = new URL(uploadUrl);
+        if (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+          const localUrl = `http://localhost:${url.port || '9010'}${url.pathname}${url.search}`;
+          const localPutRes = await fetch(localUrl, {
+            method: 'PUT',
+            body: csvContent,
+            headers: { 'Content-Type': 'text/csv' },
+          });
+          if (!localPutRes.ok) {
+            throw new Error(`Upload failed: ${localPutRes.status}`);
+          }
+        } else {
+          throw new Error(`Upload failed: ${putRes.status}`);
+        }
+      }
+    } catch (err) {
+      // In test/dev mode backend may allow complete without storage; continue
+    }
+  }
+
+  const completeResponse = await fetch(`${API_BASE_URL}/files/${fileId}/complete/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ content_sha256: contentSha256 }),
+  });
+
+  if (!completeResponse.ok) {
+    const body = await completeResponse.text().catch(() => '');
+    throw new Error(`File complete API failed: ${completeResponse.status} ${body}`);
+  }
+
+  const datasetResponse = await fetch(`${API_BASE_URL}/datasets/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ file_id: fileId }),
+  });
+
+  if (!datasetResponse.ok) {
+    const body = await datasetResponse.text().catch(() => '');
+    throw new Error(`Create dataset API failed: ${datasetResponse.status} ${body}`);
+  }
+
+  const datasetData = (await datasetResponse.json()) as { id?: string };
+  if (!datasetData.id) throw new Error('Create dataset response missing id');
+  return datasetData.id;
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const { createHash } = await import('node:crypto');
+  return createHash('sha256').update(text, 'utf-8').digest('hex');
+}
+
+/**
+ * Create or get one ODCS contract via API for the given user.
+ * Tries to use an existing ODCS contract first. Creates one if none found.
+ * Use before tests that need an ODCS contract (e.g. ODPS Link page).
+ */
+export async function createODCSContractViaApi(user: TestUser): Promise<string> {
+  const existing = await getODCSContractIdViaApi(user);
+  if (existing) return existing;
+
+  const token = await loginViaApi(user);
+  const assetId = await createAssetViaApi(user);
+
+  const odcsContract = {
+    apiVersion: 'odcs.io/v3.0.2',
+    kind: 'DataContract',
+    id: `e2e-odcs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: 'E2E ODCS Contract for ODPS Link',
+    version: '1.0.0',
+    description: 'Minimal ODCS contract for E2E ODPS Link tests',
+    schema: {
+      fields: [
+        { name: 'id', type: 'string', nullable: false, description: 'Unique identifier' },
+      ],
+    },
+  };
+
+  const response = await fetch(`${API_BASE_URL}/contracts/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      original_raw: JSON.stringify(odcsContract),
+      original_format: 'JSON',
+      original_spec_type: 'ODCS',
+      asset_id: assetId,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Create ODCS contract API failed: ${response.status} ${body}`);
+  }
+  const data = (await response.json()) as { id?: string };
+  if (!data.id) throw new Error('Create ODCS contract response missing id');
+  return data.id;
 }

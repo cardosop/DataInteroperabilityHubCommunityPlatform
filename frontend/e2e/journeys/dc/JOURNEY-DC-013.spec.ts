@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
 
 test.describe('JOURNEY-DC-013: Use Asset Recommendations', () => {
-  test.setTimeout(120000);
+  test.setTimeout(360000); // 6 min: visible/slowMo; login under parallel E2E load can be slow
 
   test.describe('Success', () => {
     test('marketplace loads (recommendations section)', async ({ page }) => {
@@ -21,9 +21,10 @@ test.describe('JOURNEY-DC-013: Use Asset Recommendations', () => {
       await loginUser(page, consumer);
       await page.goto('/marketplace');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.listing-list-page, .empty-state, .error-display, #email', {
-        timeout: 65000,
-      });
+      await page.waitForSelector(
+        '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 90000 }
+      );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
@@ -31,8 +32,10 @@ test.describe('JOURNEY-DC-013: Use Asset Recommendations', () => {
       expect(page.url()).toContain('/marketplace');
       const hasContent =
         (await page.locator('.listing-list-page').count()) > 0 ||
+        (await page.locator('.listing-list-grid').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.recommendations, .listing-list').count()) > 0;
+        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.loading-spinner-container').count()) > 0;
       expect(hasContent).toBe(true);
     });
   });

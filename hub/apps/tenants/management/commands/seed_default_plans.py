@@ -2,11 +2,14 @@
 Management command to seed default tenant plans (FREE, PRO, ENTERPRISE).
 
 Creates default plans with standard limits if they don't already exist.
+Idempotent: skips existing plans by slug. If create fails due to duplicate name
+(e.g. plan exists with wrong slug), fixes slug so PersonalTenantService can find it.
 """
 
 import structlog
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db import IntegrityError
 
 from hub.apps.tenants.models import PlanTier, TenantPlan
 
@@ -125,6 +128,39 @@ class Command(BaseCommand):
                         message=f"Created default plan {plan.slug}",
                     )
 
+            except IntegrityError as e:
+                # Plan may exist with same name (wrong slug, or race: another process created it)
+                if "tenant_plans_name_key" in str(e) or "unique constraint" in str(e).lower():
+                    existing = TenantPlan.objects.filter(name=plan_data["name"]).first()
+                    if existing:
+                        if existing.slug != slug:
+                            existing.slug = slug
+                            existing.tier = plan_data["tier"]
+                            existing.limits_json = plan_data["limits_json"]
+                            existing.is_active = True
+                            existing.save()
+                            created_count += 1
+                            self.stdout.write(
+                                self.style.SUCCESS(
+                                    f'  ✓ Fixed plan "{existing.name}" slug to {slug}'
+                                )
+                            )
+                        else:
+                            skipped_count += 1
+                            self.stdout.write(
+                                f'  - Plan "{plan_data["name"]}" ({slug}) - already exists, skipping'
+                            )
+                        continue
+                error_count += 1
+                self.stdout.write(
+                    self.style.ERROR(f'  ✗ Error creating plan "{plan_data["name"]}" ({slug}): {e}')
+                )
+                logger.error(
+                    "tenant_plan_creation_failed",
+                    plan_slug=slug,
+                    error=str(e),
+                    message=f"Failed to create plan {slug}",
+                )
             except Exception as e:
                 error_count += 1
                 self.stdout.write(

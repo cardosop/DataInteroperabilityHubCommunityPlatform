@@ -1,7 +1,7 @@
 # Test Execution Plan
 
-**Document Version**: 1.2.0
-**Last Updated**: 2026-02-20
+**Document Version**: 1.3.0
+**Last Updated**: 2026-03-04
 **Status**: ✅ Active
 **Task**: Phase 1.3 - Test Execution Plan Documentation; gapfix1 Phase 2.1 - Six mandatory principles and test pyramid order (2.1.1, 2.1.2)
 
@@ -17,8 +17,9 @@
 6. [Test Isolation and Parallel Execution Constraints](#test-isolation-and-parallel-execution-constraints)
 7. [CI/CD Integration](#cicd-integration)
 8. [Environment Configuration](#environment-configuration)
-9. [Troubleshooting](#troubleshooting)
-10. [Best Practices](#best-practices)
+9. [Real E2E Testing](#real-e2e-testing)
+10. [Troubleshooting](#troubleshooting)
+11. [Best Practices](#best-practices)
 
 ---
 
@@ -351,7 +352,23 @@ PYTEST_DOCKER_COMPOSE_RUNTIME=1 docker compose -f docker-compose.test.yml exec -
 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/test_marketplace_comprehensive.py -v --docker-compose-runtime --reuse-db"
 ```
 
-**E2E Batches** (Docker):
+**E2E Batches** (Docker — recommended when full suite breaks):
+```bash
+# Run all E2E batches (21 batches by domain)
+./scripts/run_e2e_tests_batched.sh
+
+# Run from batch N to end
+./scripts/run_e2e_tests_batched.sh --start-from=5
+
+# Run only batch N
+./scripts/run_e2e_tests_batched.sh --batch=3
+
+# List batch definitions
+./scripts/run_e2e_tests_batched.sh --list-batches
+```
+Batches: 1 API & Docs, 2 Auth, 3 Errors, 4 Assets & Contracts, 5 Contract Schema, 6 Datasets & Files, 7 DQ Compliance Audit, 8 Jobs & Worker, 9 Marketplace, 10 Tenant & User, 11–12 Personas, 13 User Journeys, 14 Data Flows, 15 ODPS, 16 Semantic & GraphQL, 17 Monitoring, 18 Scheduled & Services, 19 Versioning & Governance, 20 Workflows & Misc, 21 CLI SDK Performance. (Batch 2 split from Auth & Errors to reduce OOM risk on constrained hosts.) Reports: `test_reports_e2e/<date>/batches/`.
+
+**Marker-based batches** (alternative):
 ```bash
 # Batch 1: Core API, Contracts, Assets
 docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/e2e/ -v -m e2e_batch1 --docker-compose-runtime --reuse-db"
@@ -1560,6 +1577,45 @@ export PLAYWRIGHT_BROWSERS_PATH=~/.cache/ms-playwright
 
 ---
 
+## Real E2E Testing
+
+Beyond the standard backend E2E suite (`tests/e2e/`), the platform has **real E2E runbooks** that validate flows against **real external services** (no mocks). These runs are **manual or environment-gated**; credentials are never stored in the repository.
+
+### Phase 20–24 real E2E overview
+
+| Phase | Scope | Tests / runbook |
+|-------|-------|-----------------|
+| **Phase 20** | Real PostgreSQL, ODBC, SPARQL (Fuseki), REST (HTTP) | `hub/apps/virtualization/tests/test_real_source_integration.py`; `tests/integration/test_phase20_real_postgresql.py` |
+| **Phase 21** | Federated asset E2E (demo.ckan.org → virtual dataset → query) | `hub/apps/virtualization/tests/test_virtualization_real_federated_e2e.py`; `tests/integration/test_phase21_federated_e2e.py` |
+| **Phase 22–23** | Marketplace connectors (AWS, GCP, Azure, Databricks, Snowflake, CKAN); fixtures in `tests/fixtures/marketplace/`; Phase 23: `test_marketplace_demo_ckan_fixture.py`, `tests/integration/test_phase23_marketplace_demo_ckan_fixture.py` | [REAL_MARKETPLACE_E2E.md](runbooks/REAL_MARKETPLACE_E2E.md); `./scripts/run_phase_22_marketplace_e2e.sh`; integration batch 3 |
+| **Phase 24** | Scheduled ingestion/export; developer experience | [REAL_SCHEDULED_INGESTION_EXPORT_E2E.md](runbooks/REAL_SCHEDULED_INGESTION_EXPORT_E2E.md); `REAL_SCHEDULED_E2E=1` |
+
+### Runbooks
+
+| Runbook | Scope | When to run |
+|---------|-------|-------------|
+| [REAL_MARKETPLACE_E2E.md](runbooks/REAL_MARKETPLACE_E2E.md) | Marketplace connectors (AWS, GCP, Azure, Databricks, Snowflake, CKAN) | Manual or env-gated; record one OK per provider or documented skip |
+| [REAL_VIRTUALIZATION_E2E.md](runbooks/REAL_VIRTUALIZATION_E2E.md) | Virtualization sources (PostgreSQL, Jena Fuseki, REST, CKAN, data.gov) | Manual or env-gated; record one OK per source type |
+| [REAL_SCHEDULED_INGESTION_EXPORT_E2E.md](runbooks/REAL_SCHEDULED_INGESTION_EXPORT_E2E.md) | Scheduled ingestion/export with real storage (S3, GCS, Azure Blob, HTTP, FTP, DB) | Manual or env-gated; requires `REAL_SCHEDULED_E2E=1` |
+
+### How to run
+
+- **Phase 20 + 21 (Virtualization)**: `./scripts/run_virtualization_real_source_tests.sh` (uses `docker-compose.test.yml` and `api-service-test`). Or: `docker compose -f docker-compose.test.yml exec api-service-test pytest hub/apps/virtualization/tests/ -v -m "integration and real_virtualization_e2e" --reuse-db`. Or run via integration batch 11: `./scripts/run_integration_tests_batched.sh --batch=11`.
+- **Phase 22–23 (Marketplace)**: `./scripts/run_phase_22_marketplace_e2e.sh --quick` or `--full`. Runs management command `test_connectors_e2e`, pytest `test_connectors_e2e.py`, Phase 23 `test_marketplace_demo_ckan_fixture.py`, and `--source both`. Uses `docker-compose.test.yml` and `api-service-test`. CKAN (demo.ckan.org) runs without credentials; cloud providers require env vars (see runbook). Or run via integration batch 3: `./scripts/run_integration_tests_batched.sh --batch=3`.
+- **Scheduled ingestion/export**: Set `REAL_SCHEDULED_E2E=1` and run the tests marked `real_scheduled_e2e`. Requires Prefect worker, Hub API, and provider credentials (env vars or Prefect Blocks). See [REAL_SCHEDULED_INGESTION_EXPORT_E2E.md](runbooks/REAL_SCHEDULED_INGESTION_EXPORT_E2E.md).
+
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `REAL_SCHEDULED_E2E` | Set to `1` to run `real_scheduled_e2e` tests. When unset, those tests are skipped. Exclude from CI/default runs with `-m 'not real_scheduled_e2e'`. |
+
+### Validation tables
+
+Each runbook includes a **validation checklist** to record one successful real E2E run per provider/source or a documented skip reason. Update the tables after each run.
+
+---
+
 ## Troubleshooting
 
 ### Common Issues
@@ -1735,6 +1791,6 @@ docker compose -f docker-compose.test.yml ps api-service-test
 ---
 
 **Document Created**: 2026-02-05
-**Last Updated**: 2026-02-08
-**Version**: 1.1.0
+**Last Updated**: 2026-03-04
+**Version**: 1.3.0
 **Status**: ✅ Active

@@ -17,7 +17,7 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-class PlatformAPIsIntegrationTest:
+class TestPlatformAPIsIntegration:
     """Integration tests for platform/tenants/ and platform admin actions."""
 
     @pytest.fixture(autouse=True)
@@ -84,3 +84,26 @@ class PlatformAPIsIntegrationTest:
         response = self.client.get(url)
         assert response.status_code == status.HTTP_200_OK
         assert isinstance(response.json(), list)
+
+    def test_platform_request_erasure_returns_201_and_audit_actor_is_platform_admin(self):
+        """POST platform/users/{id}/request-erasure/ (29.67.2): audit actor = platform admin."""
+        from hub.apps.audit.models import AuditEvent
+
+        regular_user = User.objects.create_user(
+            email="regular_platform_erasure@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        response = self.client.post(
+            f"/api/v1/platform/users/{regular_user.id}/request-erasure/"
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+        event = AuditEvent.objects.filter(
+            resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED"
+        ).order_by("-timestamp").first()
+        assert event is not None
+        assert event.actor_user_id == self.admin.id
+        assert event.details_json.get("source") == "platform_admin"
+        assert event.details_json.get("initiated_by") == str(self.admin.id)

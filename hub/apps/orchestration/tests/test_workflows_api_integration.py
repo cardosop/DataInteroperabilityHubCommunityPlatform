@@ -14,7 +14,7 @@ from rest_framework.test import APIClient
 from hub.apps.orchestration.models import WorkflowDefinition, WorkflowInstance
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantConfig, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
@@ -202,3 +202,18 @@ class WorkflowsAPIIntegrationTest(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("input_data", response.data)
+
+    def test_trigger_workflow_workflows_disabled_returns_403(self):
+        """Phase 14: POST trigger when workflows_enabled=False returns 403 WORKFLOWS_DISABLED."""
+        TenantConfig.objects.update_or_create(
+            tenant=self.tenant,
+            defaults={"workflows_enabled": False},
+        )
+        response = self.client.post(
+            "/api/v1/workflows/version_creation/trigger/",
+            {"input_data": {}},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("code"), "WORKFLOWS_DISABLED")
+        self.assertFalse(WorkflowInstance.objects.filter(tenant=self.tenant).exists())

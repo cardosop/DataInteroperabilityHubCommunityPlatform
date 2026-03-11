@@ -17,6 +17,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset
+from hub.apps.audit.models import AuditEvent
 from hub.apps.auth.models import APIKey
 from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.models import MarketplaceConnection, MarketplaceMapping
@@ -329,6 +330,20 @@ class MarketplaceMappingViewSetTest(TestCase):
 
         # Verify mapping is deleted
         self.assertFalse(MarketplaceMapping.objects.filter(id=mapping_to_delete.id).exists())
+
+        # Verify MAPPING_DELETED audit event was emitted (via MarketplaceIntegrationService.delete_mapping)
+        audit_event = (
+            AuditEvent.objects.filter(
+                resource_type="MARKETPLACE_MAPPING",
+                action="MAPPING_DELETED",
+                resource_id=str(mapping_to_delete.id),
+            )
+            .order_by("-timestamp")
+            .first()
+        )
+        self.assertIsNotNone(audit_event)
+        self.assertEqual(audit_event.actor_user, self.user)
+        self.assertEqual(audit_event.result, "SUCCESS")
 
     def test_delete_mapping_not_found(self):
         """Test deleting non-existent mapping (API key auth so permission passes, then 404)"""

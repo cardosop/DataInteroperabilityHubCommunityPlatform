@@ -5,11 +5,14 @@ This command provides comprehensive E2E testing capabilities for marketplace con
 allowing manual verification of connection, discovery, asset creation, and verification workflows.
 
 Usage:
-    # Test both connectors
-    python manage.py test_connectors_e2e --source both --limit 5
+    # Test CKAN (demo.ckan.org) - no API key required
+    python hub/manage.py test_connectors_e2e --source ckan --limit 5 --verify-assets
 
-    # Test only dados.gov.br
-    python manage.py test_connectors_e2e --source dados_gov_br --limit 10 --wait --verify-assets
+    # Test all connectors (skips those without credentials)
+    python hub/manage.py test_connectors_e2e --source both --limit 5
+
+    # Test only dados.gov.br (DADOS_GOV_BR_API_KEY required)
+    python hub/manage.py test_connectors_e2e --source dados_gov_br --limit 10 --wait --verify-assets
 
     # Test Snowflake with selective resource download
     python manage.py test_connectors_e2e --source snowflake --limit 3 --data-strategy DOWNLOAD_SELECTIVE --download-resources "res1,res2"
@@ -35,6 +38,7 @@ from hub.apps.integrations.base import (
 )
 from hub.apps.integrations.config.marketplace_instances import get_marketplace_instance_config
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
+from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.connectors.dados_gov_br_connector import DadosGovBrConnector
 from hub.apps.integrations.connectors.snowflake_connector import (
     SnowflakeConnector,
@@ -48,7 +52,8 @@ from hub.apps.assets.models import (
     DataStrategy,
 )
 from hub.apps.contracts.models import Contract, OriginalSpecType
-from hub.apps.tenants.models import Tenant
+from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 
 User = get_user_model()
@@ -112,15 +117,15 @@ def get_snowflake_credentials() -> dict:
 
 
 class Command(BaseCommand):
-    help = 'Manual end-to-end testing of marketplace connectors (dados.gov.br, Snowflake)'
+    help = 'Manual end-to-end testing of marketplace connectors (CKAN, dados.gov.br, Snowflake, Azure)'
 
     def add_arguments(self, parser):
         parser.add_argument(
             '--source',
             type=str,
-            choices=['dados_gov_br', 'snowflake', 'azure', 'both'],
+            choices=['ckan', 'dados_gov_br', 'snowflake', 'azure', 'both'],
             default='both',
-            help='Source to test: dados_gov_br, snowflake, azure, or both (default: both)',
+            help='Source to test: ckan (demo.ckan.org), dados_gov_br, snowflake, azure, or both (default: both)',
         )
         parser.add_argument(
             '--limit',
@@ -210,7 +215,7 @@ class Command(BaseCommand):
         # Determine sources to test
         sources_to_test = []
         if source == 'both':
-            sources_to_test = ['dados_gov_br', 'snowflake']
+            sources_to_test = ['ckan', 'dados_gov_br', 'snowflake', 'azure']
         else:
             sources_to_test = [source]
 
@@ -219,6 +224,19 @@ class Command(BaseCommand):
 
         # Test each source
         for source_name in sources_to_test:
+            # Skip sources that require credentials when not available
+            skip_reason = self._check_credentials_available(source_name)
+            if skip_reason:
+                self.stdout.write(self.style.WARNING(f"\n{'='*70}"))
+                self.stdout.write(self.style.WARNING(f"  Skipping {source_name.upper()}: {skip_reason}"))
+                self.stdout.write(self.style.WARNING('='*70 + '\n'))
+                results[source_name] = {
+                    'success': False,
+                    'skipped': True,
+                    'skip_reason': skip_reason,
+                }
+                continue
+
             self.stdout.write(self.style.SUCCESS(f"\n{'='*70}"))
             self.stdout.write(self.style.SUCCESS(f"  Testing: {source_name.upper()}"))
             self.stdout.write(self.style.SUCCESS('='*70 + '\n'))
@@ -247,6 +265,21 @@ class Command(BaseCommand):
         # Display overall summary
         self._display_overall_summary(results)
 
+    def _check_credentials_available(self, source_name: str) -> Optional[str]:
+        """Return skip reason if credentials not available, None if OK to run."""
+        if source_name == 'ckan':
+            return None  # demo.ckan.org does not require API key for read
+        if source_name == 'dados_gov_br':
+            if not (os.getenv('DADOS_GOV_BR_API_KEY') or os.getenv('CKAN_DADOS_GOV_BR_API_KEY')):
+                return "DADOS_GOV_BR_API_KEY not set"
+        elif source_name == 'snowflake':
+            if not (os.getenv('SNOWFLAKE_ACCOUNT') and os.getenv('SNOWFLAKE_USER') and os.getenv('SNOWFLAKE_TOKEN')):
+                return "SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_TOKEN not set"
+        elif source_name == 'azure':
+            if not (os.getenv('AZURE_MARKETPLACE_API_KEY') or os.getenv('AZURE_CATALOG_API_KEY')):
+                return "AZURE_MARKETPLACE_API_KEY (or AZURE_CATALOG_API_KEY) not set"
+        return None
+
     def _get_tenant(self, tenant_spec: Optional[str]) -> Tenant:
         """Get tenant by slug or ID"""
         if tenant_spec:
@@ -260,7 +293,14 @@ class Command(BaseCommand):
         else:
             tenant = Tenant.objects.first()
             if not tenant:
-                raise CommandError("No tenant found. Please create a tenant first.")
+                self.stdout.write("No tenant found. Creating E2E test tenant...")
+                tenant = Tenant.objects.create(
+                    name="E2E Marketplace Test Tenant",
+                    slug="e2e-marketplace-test",
+                    status="ACTIVE",
+                    kyc_status=KYCStatus.VERIFIED,
+                )
+                self.stdout.write(self.style.SUCCESS(f"   Created tenant: {tenant.name} ({tenant.id})"))
             return tenant
 
     def _get_user(self, user_spec: Optional[str], tenant: Tenant) -> User:
@@ -281,7 +321,20 @@ class Command(BaseCommand):
             if not user:
                 user = User.objects.first()
             if not user:
-                raise CommandError("No user found. Please create a user first.")
+                self.stdout.write("No user found. Creating E2E test user...")
+                user = User.objects.create_user(
+                    email="e2e-marketplace@example.com",
+                    password="e2e-test-pass",
+                    tenant=tenant,
+                    status=UserStatus.ACTIVE,
+                )
+                provider_role, _ = Role.objects.get_or_create(
+                    tenant=tenant,
+                    name="DATA_PROVIDER",
+                    defaults={"description": "Data Provider"},
+                )
+                UserRole.objects.get_or_create(user=user, role=provider_role)
+                self.stdout.write(self.style.SUCCESS(f"   Created user: {user.email} ({user.id})"))
             return user
 
     def _test_source(
@@ -383,7 +436,35 @@ class Command(BaseCommand):
 
     def _create_connection(self, source_name: str, tenant: Tenant) -> MarketplaceConnection:
         """Create MarketplaceConnection for source"""
-        if source_name == 'dados_gov_br':
+        if source_name == 'ckan':
+            instance_config = get_marketplace_instance_config("demo.ckan.org")
+            if not instance_config:
+                raise CommandError("demo.ckan.org instance configuration not found")
+
+            config = {
+                'instance_id': 'demo.ckan.org',
+                'api_key': instance_config.get_api_key(),  # Optional for read-only
+            }
+
+            with transaction.atomic():
+                connection, created = MarketplaceConnection.objects.get_or_create(
+                    tenant=tenant,
+                    marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+                    name='demo.ckan.org E2E Test',
+                    defaults={
+                        'config': config,
+                        'is_active': True,
+                    }
+                )
+
+                if not created:
+                    connection.set_config(config)
+                    connection.is_active = True
+                    connection.save()
+
+            return connection
+
+        elif source_name == 'dados_gov_br':
             instance_config = get_marketplace_instance_config("dados.gov.br")
             if not instance_config:
                 raise CommandError("dados.gov.br instance configuration not found")
@@ -475,7 +556,15 @@ class Command(BaseCommand):
 
     def _test_connection(self, source_name: str, connection: MarketplaceConnection):
         """Test connection to source"""
-        if source_name == 'dados_gov_br':
+        if source_name == 'ckan':
+            instance_config = get_marketplace_instance_config("demo.ckan.org")
+            if not instance_config:
+                raise CommandError("demo.ckan.org instance configuration not found")
+            connector = CKANConnector(
+                base_url=instance_config.base_url,
+                api_key=instance_config.get_api_key(),
+            )
+        elif source_name == 'dados_gov_br':
             connector = DadosGovBrConnector(
                 base_url=get_marketplace_instance_config("dados.gov.br").base_url,
                 jwt_token=connection.get_config()['api_key'],
@@ -790,7 +879,10 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('='*70 + '\n'))
 
         for source_name, result in results.items():
-            if result.get('success'):
+            if result.get('skipped'):
+                self.stdout.write(self.style.WARNING(f"⊘ {source_name.upper()}: SKIPPED"))
+                self.stdout.write(f"  Reason: {result.get('skip_reason', 'Unknown')}")
+            elif result.get('success'):
                 self.stdout.write(self.style.SUCCESS(f"✓ {source_name.upper()}: PASSED"))
                 self.stdout.write(f"  - Connection tested: {result.get('connection_tested', False)}")
                 self.stdout.write(f"  - Listings discovered: {result.get('listings_discovered', 0)}")
@@ -807,11 +899,15 @@ class Command(BaseCommand):
             self.stdout.write("")
 
         # Overall status
-        all_passed = all(r.get('success', False) for r in results.values())
-        if all_passed:
-            self.stdout.write(self.style.SUCCESS("✓ All tests PASSED"))
+        passed = sum(1 for r in results.values() if r.get('success'))
+        skipped = sum(1 for r in results.values() if r.get('skipped'))
+        failed = sum(1 for r in results.values() if not r.get('success') and not r.get('skipped'))
+        if failed == 0 and passed > 0:
+            self.stdout.write(self.style.SUCCESS(f"✓ All run tests PASSED ({passed} passed, {skipped} skipped)"))
+        elif failed > 0:
+            self.stdout.write(self.style.ERROR(f"✗ {failed} test(s) FAILED ({passed} passed, {skipped} skipped)"))
         else:
-            self.stdout.write(self.style.ERROR("✗ Some tests FAILED"))
+            self.stdout.write(self.style.WARNING(f"⊘ All sources skipped (no credentials set)"))
 
         self.stdout.write("")
 

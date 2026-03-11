@@ -24,8 +24,8 @@
 .admin-no-permission {
   text-align: center;
   padding: var(--spacing-xl);
-  background: var(--color-bg-secondary);
-  border-radius: var(--border-radius);
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
   box-shadow: var(--shadow-sm);
 }
 
@@ -69,9 +69,9 @@
 }
 
 .admin-content {
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
   padding: var(--spacing-lg);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   box-shadow: var(--shadow-sm);
 }
 
@@ -106,9 +106,9 @@
   align-items: center;
   justify-content: center;
   padding: var(--spacing-lg);
-  background: var(--color-bg-primary);
+  background: var(--color-background-primary);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   text-decoration: none;
   color: var(--color-text-primary);
   transition: all 0.2s;
@@ -149,9 +149,9 @@
   display: flex;
   flex-direction: column;
   padding: var(--spacing-md);
-  background: var(--color-bg-primary);
+  background: var(--color-background-primary);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   min-width: 150px;
 }
 
@@ -174,13 +174,13 @@
 .admin-table {
   width: 100%;
   border-collapse: collapse;
-  background: var(--color-bg-primary);
-  border-radius: var(--border-radius);
+  background: var(--color-background-primary);
+  border-radius: var(--border-radius-md);
   overflow: hidden;
 }
 
 .admin-table thead {
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
 }
 
 .admin-table th {
@@ -198,7 +198,7 @@
 }
 
 .admin-table tbody tr:hover {
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
 }
 
 .table-cell-name,
@@ -218,21 +218,74 @@
 
 .status-active,
 .status-verified {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--color-success-50);
+  color: var(--color-success-700);
 }
 
 .status-suspended,
 .status-inactive,
 .status-pending,
 .status-unverified {
-  background: #fff3e0;
-  color: #ed6c02;
+  background: var(--color-warning-50);
+  color: var(--color-warning-700);
+}
+
+.status-deleted {
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-600);
 }
 
 .status-rejected {
-  background: #ffebee;
-  color: #c62828;
+  background: var(--color-error-50);
+  color: var(--color-error-700);
+}
+
+.admin-action-btn {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+}
+
+.admin-action-btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.admin-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.admin-action-suspend:hover:not(:disabled) {
+  border-color: var(--color-warning-700);
+  color: var(--color-warning-700);
+}
+
+.admin-action-resume:hover:not(:disabled) {
+  border-color: var(--color-success-700);
+  color: var(--color-success-700);
+}
+
+.admin-action-disabled {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.usage-period {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.table-cell-slug-muted {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-weight: normal;
 }
 
 .roles-list {
@@ -244,9 +297,19 @@
 .role-badge {
   display: inline-block;
   padding: var(--spacing-xs) var(--spacing-sm);
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
   color: var(--color-text-primary);
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
+}
+
+.admin-user-edit-link {
+  color: var(--color-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.admin-user-edit-link:hover {
+  text-decoration: underline;
 }

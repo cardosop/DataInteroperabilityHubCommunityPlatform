@@ -106,6 +106,26 @@ export const assetService = {
   },
 
   /**
+   * Create asset, dataset, and contract from uploaded file (data-first flow).
+   * POST /api/v1/assets/data-first/
+   */
+  async createDataFirst(data: {
+    file_id: string;
+    key: string;
+    name: string;
+    description?: string;
+    domain?: string;
+  }): Promise<{ asset_id: string; dataset_id: string | null; contract_id: string | null }> {
+    const response = await apiClient
+      .getClient()
+      .post<{ asset_id: string; dataset_id: string | null; contract_id: string | null }>(
+        `${ASSETS_BASE_PATH}/data-first/`,
+        data
+      );
+    return response.data;
+  },
+
+  /**
    * Get asset health score (GET /api/v1/assets/{id}/health-score/)
    */
   async getHealthScore(

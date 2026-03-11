@@ -1,3 +1,3 @@
 """
-Performance tests for the Data Interoperability Hub.
+Performance tests for Meshant.
 """

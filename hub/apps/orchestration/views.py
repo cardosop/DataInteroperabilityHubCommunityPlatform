@@ -22,6 +22,8 @@ from hub.apps.orchestration.serializers import (
     WorkflowDefinitionListSerializer,
     WorkflowTriggerRequestSerializer,
 )
+from hub.apps.core.responses import handle_service_exception
+from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.orchestration.workflow_engine import WorkflowExecutionError
 
 logger = logging.getLogger(__name__)
@@ -159,6 +161,8 @@ class WorkflowTriggerView(APIView):
                 tenant_id=str(tenant.id),
                 created_by_id=str(request.user.id),
             )
+        except ServiceValidationError as e:
+            return handle_service_exception(e)
         except WorkflowExecutionError as e:
             return Response(
                 {

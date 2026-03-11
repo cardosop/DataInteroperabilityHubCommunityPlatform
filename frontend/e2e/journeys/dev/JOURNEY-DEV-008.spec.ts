@@ -21,7 +21,8 @@ test.describe('JOURNEY-DEV-008: Use Plugin System', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/developer', {
         timeout: 90000,
-        contentSelector: '.developer-portal-page, .app-main, .unavailable-page, .error-display',
+        contentSelector:
+          '.developer-portal-page, .developer-page, .app-main, .unavailable-page, .error-display, .loading-spinner-container',
       });
       const onDeveloper = page.url().includes('/developer');
       const onLogin = page.url().includes('/login');
@@ -37,7 +38,8 @@ test.describe('JOURNEY-DEV-008: Use Plugin System', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/developer', {
         timeout: 90000,
-        contentSelector: '.developer-portal-page, .app-main, .unavailable-page, .error-display',
+        contentSelector:
+          '.developer-portal-page, .developer-page, .app-main, .unavailable-page, .error-display, .loading-spinner-container',
       });
       const on403 = page.url().includes('/403');
       const onLogin = page.url().includes('/login');
@@ -52,7 +54,8 @@ test.describe('JOURNEY-DEV-008: Use Plugin System', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/developer', {
         timeout: 90000,
-        contentSelector: '.developer-portal-page, .app-main, .unavailable-page',
+        contentSelector:
+          '.developer-portal-page, .developer-page, .app-main, .unavailable-page, .loading-spinner-container',
       });
       const url = page.url();
       expect(url.includes('/login') || url.includes('/403') || url.includes('/developer')).toBe(true);

@@ -23,6 +23,15 @@ ENV_ARGS=""
 echo "== Stopping test stack (COMPOSE_FILE=$COMPOSE_FILE)${REMOVE_VOLUMES:+ with volumes}..."
 docker compose -f "$COMPOSE_FILE" $ENV_ARGS down $REMOVE_VOLUMES --remove-orphans -t 90 2>/dev/null || true
 
+if [[ -n "$REMOVE_VOLUMES" ]]; then
+  echo "== Removing test DB volumes explicitly (ensures fresh schema)..."
+  for v in postgres-test-data prefect-db-test-data prefect-server-test-data; do
+    for full in $(docker volume ls -q 2>/dev/null | grep -E "${v}$" || true); do
+      docker volume rm "$full" 2>/dev/null && echo "  removed: $full" || true
+    done
+  done
+fi
+
 echo "== Removing any remaining test containers (incl. hash-prefixed names)..."
 removed=0
 while IFS= read -r name; do
@@ -33,6 +42,12 @@ while IFS= read -r name; do
   fi
 done < <(docker ps -a --format "{{.Names}}" 2>/dev/null | grep -E 'hub-test|_hub-test-' || true)
 [[ $removed -gt 0 ]] && echo "  ($removed container(s) removed)" || echo "  (none found)"
+
+# Run ensure-test-db and migrate-test-db first (blocking). Creates DBs and runs migrations.
+# Avoids "migrate-test-db is missing dependency ensure-test-db" when Compose dependency
+# resolution fails with many services or parallel startup.
+echo "== Running ensure-test-db and migrate-test-db (one-offs)..."
+docker compose -f "$COMPOSE_FILE" $ENV_ARGS up ensure-test-db migrate-test-db
 
 echo "== Starting test stack (all services matching docker-compose.yml)..."
 docker compose -f "$COMPOSE_FILE" $ENV_ARGS up -d

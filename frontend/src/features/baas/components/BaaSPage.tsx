@@ -5,7 +5,10 @@
 
 import { useState } from 'react';
 import { useAPIKeys, useCreateAPIKey, useRevokeAPIKey, useUsageStats, useUsageByEndpoint } from '../hooks/useBaaS';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { APITier } from '../../../shared/types/baas';
@@ -25,6 +28,8 @@ export function BaaSPage() {
   const { data: usageByEndpoint, isLoading: endpointLoading } = useUsageByEndpoint();
   const createAPIKeyMutation = useCreateAPIKey();
   const revokeAPIKeyMutation = useRevokeAPIKey();
+  const toast = useToast();
+  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
 
   const handleCreateAPIKey = async () => {
     if (!apiKeyName.trim()) return;
@@ -43,14 +48,17 @@ export function BaaSPage() {
     }
   };
 
-  const handleRevokeAPIKey = async (id: string) => {
-    if (!confirm('Are you sure you want to revoke this API key?')) return;
-
+  const handleRevokeClick = (keyId: string) => setConfirmRevokeId(keyId);
+  const handleRevokeConfirm = async () => {
+    const keyId = confirmRevokeId;
+    if (!keyId) return;
+    setConfirmRevokeId(null);
     try {
-      await revokeAPIKeyMutation.mutateAsync(id);
+      await revokeAPIKeyMutation.mutateAsync(keyId);
+      toast.success('API key revoked.');
       refetchAPIKeys();
     } catch (err) {
-      // Error handled by mutation
+      toast.error(normalizeError(err).error.message || 'Failed to revoke API key');
     }
   };
 
@@ -191,7 +199,7 @@ export function BaaSPage() {
                       {!key.revoked_at && (
                         <button
                           className="btn-danger"
-                          onClick={() => handleRevokeAPIKey(key.id)}
+                          onClick={() => handleRevokeClick(key.id)}
                           disabled={revokeAPIKeyMutation.isPending}
                           type="button"
                         >
@@ -264,6 +272,16 @@ export function BaaSPage() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={confirmRevokeId !== null}
+        onClose={() => setConfirmRevokeId(null)}
+        onConfirm={handleRevokeConfirm}
+        title="Revoke API key"
+        message="Are you sure you want to revoke this API key?"
+        confirmLabel="Revoke"
+        variant="danger"
+      />
     </div>
   );
 }

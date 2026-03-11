@@ -4,6 +4,16 @@
   margin: 0 auto;
 }
 
+.asset-list-error-wrapper {
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.asset-list-error-actions {
+  margin-top: var(--spacing-lg);
+}
+
 .asset-list-header {
   display: flex;
   justify-content: space-between;
@@ -127,12 +137,16 @@
 
 .status-draft {
   background: var(--color-warning-light);
-  color: var(--color-warning-dark);
+  /* --color-warning-dark (#F57C00) on --color-warning-100 (#FFECB3) = 2.3:1 — fails WCAG AA.
+     Use --color-warning-800 (#7D4200) which gives ≥6.5:1 on #FFECB3. */
+  color: var(--color-warning-800);
 }
 
 .status-active {
   background: var(--color-success-light);
-  color: var(--color-success-dark);
+  /* --color-success-dark (#388E3C) on --color-success-100 (#C8E6C9) = 3.06:1 — fails WCAG AA.
+     Use --color-success-900 (#1B5E20) which gives ≥5.3:1 on #C8E6C9. */
+  color: var(--color-success-900);
 }
 
 .status-retired {

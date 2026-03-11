@@ -433,9 +433,9 @@ class RateLimitBypassPenetrationTest(TestCase):
         """Test multiple tenants: each resolver uses real rate limit and real HTTP (no mocks)."""
         server = _RefResolverTestHTTPServer()
         server.add_json_route("/schema.json", {"type": "object"})
-        self.config._config_data["url_allowlist"] = [server.base_url()]
 
         with server:
+            self.config._config_data["url_allowlist"] = [server.base_url()]
             url = f"{server.base_url()}/schema.json"
             tenant_ids = ["tenant-1", "tenant-2", "tenant-3"]
             for tenant_id in tenant_ids:

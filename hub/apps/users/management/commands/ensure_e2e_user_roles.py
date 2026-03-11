@@ -153,6 +153,13 @@ class Command(BaseCommand):
                         "is_platform_admin": is_platform_admin,
                     },
                 )
+                # Ensure existing users without tenant get assigned (fixes users created before tenant was required)
+                if not dry_run and not user_created and user.tenant_id is None:
+                    user.tenant = tenant
+                    user.save(update_fields=["tenant"])
+                    self.stdout.write(
+                        self.style.SUCCESS(f"Assigned tenant {tenant.slug} to {email} (was missing)")
+                    )
                 # Migrate consumer to separate tenant if they were in default (for marketplace tests)
                 if (
                     not dry_run
@@ -190,6 +197,11 @@ class Command(BaseCommand):
 
                 # Assign roles
                 user_tenant = user.tenant or tenant
+                # Ensure UserTenantMembership exists for home tenant (X-Tenant-Id validation in API)
+                if not dry_run and user_tenant:
+                    from hub.apps.users.services import UserTenantMembershipService
+
+                    UserTenantMembershipService().add_membership(user, user_tenant)
                 for role_name in roles:
                     role, role_created = Role.objects.get_or_create(
                         tenant=user_tenant,

@@ -21,7 +21,7 @@ test.describe('JOURNEY-AUTH-002: User Logs In', () => {
    * Uses shared loginUser fixture; measures duration. Run early so auth rate limit is fresh.
    */
   test('performance: login completes within target time', async ({ page }) => {
-    test.setTimeout(120000); // Normally fast; 2 min if one 429 retry
+    test.setTimeout(180000); // 3 min: API under load, rate-limit retries
 
     await clearAuthStorage(page);
     const testUser = await getTestUser();
@@ -43,7 +43,7 @@ test.describe('JOURNEY-AUTH-002: User Logs In', () => {
    * retries (429) and redirect handling are consistent. Verifies redirect and app shell.
    */
   test('happy path: user successfully logs in', async ({ page }) => {
-    test.setTimeout(120000); // Allow rate-limit retries (65s wait) if needed
+    test.setTimeout(180000); // 3 min: API under load, rate-limit retries
 
     await clearAuthStorage(page);
     const testUser = await getTestUser();
@@ -60,23 +60,23 @@ test.describe('JOURNEY-AUTH-002: User Logs In', () => {
      * Verifies that invalid credentials are rejected with appropriate error message.
      */
     test('invalid credentials show error', async ({ page }) => {
-      test.setTimeout(60000);
+      test.setTimeout(90000);
 
+      await clearAuthStorage(page);
       await page.goto('/login', { waitUntil: 'domcontentloaded' });
       await waitForLoadingComplete(page);
 
       await page.fill('input#email', 'invalid@example.com');
       await page.fill('input#password', 'wrongpassword');
 
-      const submitButton = page.locator('button[type="submit"]');
-      // Wait for API response: 400/401 (invalid credentials) or 429 (rate limit)
+      // Submit via Enter to avoid button disabled-state race; wait for API response
       const responsePromise = page.waitForResponse(
         (resp) =>
           resp.url().includes('/auth/login/') &&
           (resp.status() === 400 || resp.status() === 401 || resp.status() === 429),
-        { timeout: 35000 }
+        { timeout: 60000 }
       );
-      await submitButton.click();
+      await page.locator('input#password').press('Enter');
       const response = await responsePromise;
 
       // Verify API returned client error (400/401) or rate limit (429)
@@ -181,7 +181,7 @@ test.describe('JOURNEY-AUTH-002: User Logs In', () => {
      * Verifies that special characters in email are handled correctly.
      */
     test('special characters in email handled', async ({ page }) => {
-      test.setTimeout(45000);
+      test.setTimeout(90000);
 
       await clearAuthStorage(page);
       await page.goto('/login', { waitUntil: 'domcontentloaded' });
@@ -197,9 +197,9 @@ test.describe('JOURNEY-AUTH-002: User Logs In', () => {
             resp.status() === 400 ||
             resp.status() === 401 ||
             resp.status() === 429),
-        { timeout: 35000 }
+        { timeout: 60000 }
       );
-      await page.locator('button[type="submit"]').click();
+      await page.locator('input#password').press('Enter');
       const response = await responsePromise;
 
       expect(response.status()).toBeGreaterThanOrEqual(200);

@@ -45,7 +45,7 @@ test.describe('Dataset Creation Flow', () => {
     if ((await dropzone.count()) > 0) {
       await expect(dropzone.first()).toBeVisible({ timeout: 10000 });
       await dropzone.first().click();
-      await page.waitForTimeout(500);
+      await new Promise((r) => setTimeout(r, 500));
 
       const fileInput = page.locator('input[type="file"]');
       if ((await fileInput.count()) > 0) {
@@ -91,7 +91,7 @@ test.describe('Dataset Creation Flow', () => {
               console.log(
                 `File upload rate limited (429), waiting ${retryAfter}s before retry ${retries + 1}/${maxRetries}`
               );
-              await page.waitForTimeout(retryAfter * 1000);
+              await new Promise((r) => setTimeout(r, retryAfter * 1000));
               retries++;
               continue;
             }
@@ -119,7 +119,7 @@ test.describe('Dataset Creation Flow', () => {
                 console.log(
                   `File upload rate limited (from error), waiting ${retryAfter}s before retry ${retries + 1}/${maxRetries}`
                 );
-                await page.waitForTimeout(retryAfter * 1000);
+                await new Promise((r) => setTimeout(r, retryAfter * 1000));
                 retries++;
                 continue;
               }
@@ -127,7 +127,7 @@ test.describe('Dataset Creation Flow', () => {
 
             if (retries < maxRetries - 1) {
               console.log(`File upload attempt ${retries + 1} failed, retrying...`);
-              await page.waitForTimeout(2000);
+              await new Promise((r) => setTimeout(r, 2000));
               retries++;
             } else {
               throw error;

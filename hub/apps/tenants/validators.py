@@ -214,5 +214,8 @@ def get_platform_defaults() -> Dict[str, Any]:
         "max_file_size_bytes": 10737418240,  # 10 GB
         "max_job_concurrency": 5,
         "max_queued_jobs": 50,
+        "trust_signals_enabled": True,
+        "versioning_enabled": True,
+        "workflows_enabled": True,
     }
 

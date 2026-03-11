@@ -12,20 +12,27 @@ Manages tenants, platform-wide settings, audit, and marketplace operations. Has 
 
 ---
 
+## Before You Start
+
+1. Complete [00-PREREQUISITES.md](../00-PREREQUISITES.md)
+2. Multi-tenant backend and platform admin UI must be available
+
+---
+
 ## Journeys Covered
 
-| Journey | Title | Docs | E2E Spec | Est. |
-|---------|-------|------|----------|------|
-| JOURNEY-PA-001 | Onboard New Tenant | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-pa-001-onboard-new-tenant) | `journeys/pa/JOURNEY-PA-001.spec.ts` | 20 min |
-| JOURNEY-PA-002 | Manage Tenant Lifecycle | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/pa/JOURNEY-MPA-002.spec.ts` | 10 min |
-| JOURNEY-PA-003 | Configure Platform Settings | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/pa/JOURNEY-MPA-003.spec.ts` | 10 min |
-| JOURNEY-PA-004 | Review Platform Analytics | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/pa/JOURNEY-MPA-004.spec.ts` | 5 min |
-| JOURNEY-PA-005 | Manage Marketplace Configuration | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/pa/JOURNEY-MPA-005.spec.ts` | 10 min |
-| JOURNEY-PA-006 | Monitor Marketplace Health | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/pa/JOURNEY-MPA-006.spec.ts` | 5 min |
-| JOURNEY-PA-007 | Manage ODPS Products (Platform) | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/pa/JOURNEY-MPA-007.spec.ts` | 10 min |
-| JOURNEY-PA-008 | Configure External Marketplace Connections | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/pa/JOURNEY-MPA-008.spec.ts` | 10 min |
-| JOURNEY-PA-009 | Manage Federated Assets | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/pa/JOURNEY-MPA-009.spec.ts` | 10 min |
-| JOURNEY-PA-010 | Manage ODPS Products | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-pa-010-manage-odps-products-new) | `journeys/pa/JOURNEY-PA-010.spec.ts` | 10 min |
+| Journey | Title | Step-by-Step Script | E2E Spec | Est. |
+|---------|-------|---------------------|----------|------|
+| JOURNEY-PA-001 | Onboard New Tenant | [pa/JOURNEY-PA-001.md](../03-USER-JOURNEYS/pa/JOURNEY-PA-001.md) | `journeys/pa/JOURNEY-PA-001.spec.ts` | 20 min |
+| JOURNEY-PA-002 | Manage Tenant Lifecycle | [pa/JOURNEY-PA-002.md](../03-USER-JOURNEYS/pa/JOURNEY-PA-002.md) | `journeys/pa/JOURNEY-MPA-002.spec.ts` | 10 min |
+| JOURNEY-PA-003 | Configure Platform Settings | [pa/JOURNEY-PA-003.md](../03-USER-JOURNEYS/pa/JOURNEY-PA-003.md) | `journeys/pa/JOURNEY-MPA-003.spec.ts` | 10 min |
+| JOURNEY-PA-004 | Review Platform Analytics | [pa/JOURNEY-PA-004.md](../03-USER-JOURNEYS/pa/JOURNEY-PA-004.md) | `journeys/pa/JOURNEY-MPA-004.spec.ts` | 5 min |
+| JOURNEY-PA-005 | Manage Marketplace Configuration | [pa/JOURNEY-PA-005.md](../03-USER-JOURNEYS/pa/JOURNEY-PA-005.md) | `journeys/pa/JOURNEY-MPA-005.spec.ts` | 10 min |
+| JOURNEY-PA-006 | Monitor Marketplace Health | [pa/JOURNEY-PA-006.md](../03-USER-JOURNEYS/pa/JOURNEY-PA-006.md) | `journeys/pa/JOURNEY-MPA-006.spec.ts` | 5 min |
+| JOURNEY-PA-007 | Manage ODPS Products (Platform) | [pa/JOURNEY-PA-007.md](../03-USER-JOURNEYS/pa/JOURNEY-PA-007.md) | `journeys/pa/JOURNEY-MPA-007.spec.ts` | 10 min |
+| JOURNEY-PA-008 | Configure External Marketplace Connections | [pa/JOURNEY-PA-008.md](../03-USER-JOURNEYS/pa/JOURNEY-PA-008.md) | `journeys/pa/JOURNEY-MPA-008.spec.ts` | 10 min |
+| JOURNEY-PA-009 | Manage Federated Assets | [pa/JOURNEY-PA-009.md](../03-USER-JOURNEYS/pa/JOURNEY-PA-009.md) | `journeys/pa/JOURNEY-MPA-009.spec.ts` | 10 min |
+| JOURNEY-PA-010 | Manage ODPS Products | [pa/JOURNEY-PA-010.md](../03-USER-JOURNEYS/pa/JOURNEY-PA-010.md) | `journeys/pa/JOURNEY-PA-010.spec.ts` | 10 min |
 
 **Total Estimated Duration**: ~60 min
 
@@ -56,11 +63,6 @@ Manages tenants, platform-wide settings, audit, and marketplace operations. Has 
 - `/governance` (platform-level)
 
 ---
-
-## Prerequisites
-
-- Platform Admin role (is_platform_admin=True)
-- Backend configured for multi-tenant
 
 ---
 

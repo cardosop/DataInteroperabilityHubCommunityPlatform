@@ -1,0 +1,23 @@
+{
+  "demo.ckan.org": {
+    "default": "annakarenina",
+    "listings": [
+      {
+        "id": "annakarenina",
+        "description": "A Novel By Tolstoy — metadata-rich package, multiple resources"
+      },
+      {
+        "id": "warandpeace",
+        "description": "War and Peace — classic dataset"
+      },
+      {
+        "id": "child-gg",
+        "description": "Child dataset — may have CSV resources"
+      },
+      {
+        "id": "my-sample-dataset-001",
+        "description": "Sample dataset"
+      }
+    ]
+  }
+}

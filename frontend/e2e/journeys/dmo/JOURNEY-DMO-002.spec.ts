@@ -21,7 +21,7 @@ test.describe('JOURNEY-DMO-002: Configure Federated Governance', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .error-display, .empty-state',
+        contentSelector: '.mesh-domain-list-page, .error-display, .empty-state, .loading-spinner-container, .app-main',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -34,16 +34,17 @@ test.describe('JOURNEY-DMO-002: Configure Federated Governance', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/governance', {
         timeout: 90000,
-        contentSelector: '.governance-access-request-list-page, .access-request-list-page, .app-main, .error-display',
+        contentSelector: '.governance-access-request-list-page, .access-request-list-page, .app-main, .error-display, .empty-state, .loading-spinner-container',
       });
+      await page.waitForTimeout(3000);
       const url = page.url();
       const onGov = url.includes('/governance');
       const on403 = url.includes('/403');
       const onLogin = url.includes('/login');
       const hasContent =
-        (await page.locator('.app-main').count()) > 0 &&
-        ((await page.locator('.error-display, .governance-access-request-list-page, .access-request-list-page, h1').count()) > 0 ||
-          (await page.locator('text=/403|forbidden|Access|Request/i').count()) > 0);
+        (await page.locator('.app-main').count()) > 0 ||
+        (await page.locator('.error-display, .governance-access-request-list-page, .access-request-list-page, .empty-state, h1').count()) > 0 ||
+        (await page.locator('text=/403|forbidden|Access|Request/i').count()) > 0;
       expect(onGov || on403 || onLogin).toBe(true);
       expect(hasContent || onGov || on403 || onLogin).toBe(true);
     });

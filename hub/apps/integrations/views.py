@@ -1496,12 +1496,23 @@ class MarketplaceMappingViewSet(viewsets.ModelViewSet):
                     "retry_after": reset_time - int(time.time()) if reset_time else None,
                 }
             )
-            exception.wait = reset_time - int(time.time()) if reset_time else None
+            exception.headers = headers
             raise exception
 
         instance = self.get_object()
         user_id = self._get_user_id(request)
         tenant_id = self._get_tenant_id(request)
+
+        # Verify tenant isolation
+        if tenant_id and str(instance.tenant_id) != str(tenant_id):
+            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
+                raise PermissionDenied("Cannot delete mapping from different tenant")
+
+        if not user_id:
+            return Response(
+                {'error': 'User authentication required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
 
         # Log deletion attempt
         logger.info(
@@ -1517,52 +1528,34 @@ class MarketplaceMappingViewSet(viewsets.ModelViewSet):
         )
 
         try:
-            mapping_id = str(instance.id)
-            connection_id = str(instance.connection_id)
-            hub_asset_id = str(instance.hub_asset_id)
-            external_listing_id = instance.external_listing_id
+            service = MarketplaceIntegrationService(
+                tenant_id=str(instance.tenant_id),
+                user_id=user_id,
+                request_id=getattr(request, 'id', None)
+            )
 
-            # Delete the mapping
-            instance.delete()
-
-            # Log successful deletion
-            logger.info(
-                "marketplace_mapping_deleted",
-                extra={
-                    "mapping_id": mapping_id,
-                    "connection_id": connection_id,
-                    "hub_asset_id": hub_asset_id,
-                    "external_listing_id": external_listing_id,
-                    "user_id": user_id,
-                    "tenant_id": str(tenant_id) if tenant_id else None,
-                }
+            service.delete_mapping(
+                mapping_id=str(instance.id),
+                tenant_id=str(instance.tenant_id),
+                user_id=user_id,
+                request=request
             )
 
             return Response(
                 status=status.HTTP_204_NO_CONTENT
             )
 
-        except NotFound:
+        except NotFoundError as e:
             logger.warning(
                 "marketplace_mapping_not_found",
-                extra={
-                    "mapping_id": str(kwargs.get('id', 'unknown')),
-                    "user_id": user_id,
-                    "tenant_id": str(tenant_id) if tenant_id else None,
-                }
-            )
-            raise
-
-        except PermissionDenied:
-            logger.warning(
-                "marketplace_mapping_delete_permission_denied",
+                error=str(e),
                 extra={
                     "mapping_id": str(instance.id),
                     "user_id": user_id,
                     "tenant_id": str(tenant_id) if tenant_id else None,
                 }
             )
-            raise
+            raise NotFound(str(e))
 
         except Exception as e:
             logger.error(
@@ -1575,12 +1568,7 @@ class MarketplaceMappingViewSet(viewsets.ModelViewSet):
                     "tenant_id": str(tenant_id) if tenant_id else None,
                 }
             )
-            return Response(
-                {
-                    'error': f"Failed to delete marketplace mapping: {str(e)}"
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            raise DRFValidationError(f"Failed to delete marketplace mapping: {str(e)}")
 
 
 @extend_schema(

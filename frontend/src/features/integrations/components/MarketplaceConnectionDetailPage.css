@@ -41,7 +41,7 @@
 
 .header-actions .btn-danger {
   background: var(--color-error);
-  color: white;
+  color: var(--color-background-primary);
   border: none;
 }
 

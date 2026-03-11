@@ -8,6 +8,13 @@
 
 ---
 
+## Before You Start
+
+1. Complete [00-PREREQUISITES.md](../00-PREREQUISITES.md)
+2. Log out or use incognito. Public URLs: http://localhost:3010/health, http://localhost:3010/api/v1/openapi.json, http://localhost:3010/api-docs/
+
+---
+
 ## Prerequisites
 
 - [ ] User **not authenticated** (logged out or incognito)

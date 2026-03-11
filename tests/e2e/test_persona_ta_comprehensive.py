@@ -121,10 +121,10 @@ class JourneyTA001OnboardNewUserTests(E2ETestBase):
         role_names = [r.get('name', r) if isinstance(r, dict) else str(r) for r in roles]
         self.assertIn('DATA_PROVIDER', role_names)
         
-        # Step 2: Verify audit log entry
+        # Step 2: Verify audit log entry (invited users get USER_INVITED, not USER_CREATED)
         self.verify_audit_log(
             resource_type='USER',
-            action='USER_CREATED',
+            action='USER_INVITED',
             resource_id=user_id,
             actor_user=self.tenant_admin
         )

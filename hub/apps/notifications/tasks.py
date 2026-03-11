@@ -277,7 +277,7 @@ def send_invitation_email(user_id: str):
         result = send_email_async(
             email_type=EmailType.USER_INVITATION,
             to_email=user.email,
-            subject=f"Invitation to join {user.tenant.name if user.tenant else 'Data Interoperability Hub'}",
+            subject=f"Invitation to join {user.tenant.name if user.tenant else getattr(settings, 'APP_NAME', 'Meshant')}",
             template_name='notifications/emails/user_invitation.html',
             context=context,
             tenant_id=str(user.tenant.id) if user.tenant else None,

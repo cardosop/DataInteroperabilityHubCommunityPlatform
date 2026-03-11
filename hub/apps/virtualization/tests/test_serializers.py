@@ -395,6 +395,27 @@ class VirtualDatasetSerializerTest(TestCase):
         # ID should remain unchanged
         self.assertEqual(serializer.instance.id, self.virtual_dataset.id)
 
+    def test_sources_credential_masking(self):
+        """Test that password and connection_string in sources are masked in API response."""
+        dataset_with_secrets = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Dataset With Secrets",
+            query="SELECT 1",
+            query_type=QueryType.SQL,
+            sources=[
+                {"type": "postgresql", "host": "db1", "database": "mydb", "password": "secret123"},
+                {"type": "odbc", "connection_string": "DRIVER={PG};PWD=odbc_secret"},
+            ],
+            status=VirtualDatasetStatus.ACTIVE,
+        )
+        serializer = VirtualDatasetSerializer(dataset_with_secrets)
+        data = serializer.data
+        self.assertEqual(data["sources"][0]["password"], "***masked***")
+        self.assertEqual(data["sources"][1]["connection_string"], "***masked***")
+        self.assertEqual(data["sources"][0]["host"], "db1")
+        self.assertEqual(data["sources"][0]["database"], "mydb")
+
 
 class QueryExecutionCreateSerializerTest(TestCase):
     """Test QueryExecutionCreateSerializer validation"""

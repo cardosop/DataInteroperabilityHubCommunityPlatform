@@ -8,6 +8,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { useDeleteWebhook, useTestWebhook, useWebhook } from '../hooks/useWebhooks';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './WebhookDetailPage.css';
 
 export function WebhookDetailPage() {
@@ -80,7 +82,19 @@ export function WebhookDetailPage() {
         </div>
       </div>
 
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'Webhooks', href: '/webhooks' },
+          { label: webhook.name || 'Webhook' },
+        ]}
+      />
       <h1>{webhook.name}</h1>
+      {id && (
+        <div className="webhook-uuid" data-testid="webhook-uuid">
+          <UuidWithCopy value={id} label="Webhook ID" />
+        </div>
+      )}
 
       <dl className="webhook-detail-dl">
         <dt>URL</dt>

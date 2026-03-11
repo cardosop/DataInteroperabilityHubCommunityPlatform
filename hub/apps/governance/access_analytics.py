@@ -6,7 +6,9 @@ Tracking access patterns, anomaly detection, and security event tracking.
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+
 from django.conf import settings
+from django.db.utils import ProgrammingError
 from django.db import models
 from django.utils import timezone
 from django.db.models import Count, Q, Avg
@@ -138,36 +140,49 @@ class AccessAnalyticsService:
             user_agent: Optional user agent
         """
         try:
-            from hub.apps.tenants.models import Tenant
             from django.contrib.auth import get_user_model
-            
+            from django.db import transaction
+
+            from hub.apps.tenants.models import Tenant
+
             User = get_user_model()
-            
-            tenant = Tenant.objects.get(id=tenant_id)
-            user = User.objects.get(id=user_id) if user_id else None
-            
-            access_log = AccessLog.objects.create(
-                tenant=tenant,
-                user=user,
-                resource_type=resource_type,
-                resource_id=resource_id,
-                action=action,
-                result=result,
-                policy_evaluation=policy_evaluation,
-                ip_address=ip_address,
-                user_agent=user_agent
-            )
-            
-            # Check for anomalies asynchronously (in production, use background job)
-            AccessAnalyticsService._check_anomalies(access_log)
-            
+
+            # Use nested atomic so INSERT failure rolls back savepoint without corrupting
+            # the request transaction (e.g. when access_logs table does not exist)
+            with transaction.atomic():
+                tenant = Tenant.objects.get(id=tenant_id)
+                user = User.objects.get(id=user_id) if user_id else None
+
+                access_log = AccessLog.objects.create(
+                    tenant=tenant,
+                    user=user,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    action=action,
+                    result=result,
+                    policy_evaluation=policy_evaluation,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                )
+
+                # Check for anomalies asynchronously (in production, use background job)
+                AccessAnalyticsService._check_anomalies(access_log)
+
         except Exception as e:
-            logger.warning(
-                "access_logging_failed",
-                error=str(e),
-                resource_type=resource_type,
-                resource_id=resource_id
-            )
+            # Table may not exist in test DB before governance migrations
+            if isinstance(e, ProgrammingError) and "does not exist" in str(e):
+                logger.debug(
+                    "access_logging_skipped_table_missing",
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                )
+            else:
+                logger.warning(
+                    "access_logging_failed",
+                    error=str(e),
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                )
     
     @staticmethod
     def _check_anomalies(access_log: AccessLog):

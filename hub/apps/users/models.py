@@ -72,6 +72,17 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
         help_text="User display name"
     )
+    avatar_url = models.URLField(
+        max_length=500,
+        null=True,
+        blank=True,
+        help_text="URL to user avatar image (e.g. gravatar, CDN)"
+    )
+    preferences = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="User preferences (theme, language, notifications, etc.)"
+    )
     status = models.CharField(
         max_length=20,
         choices=UserStatus.choices,
@@ -269,4 +280,44 @@ class UserRole(models.Model):
     
     def __str__(self):
         return f"{self.user.email} -> {self.role.name}"
+
+
+class UserTenantMembership(models.Model):
+    """
+    Many-to-many user–tenant membership for tenant switching.
+
+    A user may belong to multiple tenants (e.g. personal tenant + org tenants via invitation).
+    UNIQUE(user_id, tenant_id). Per design D16 (Tenant Switch).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="tenant_memberships",
+        help_text="User this membership belongs to",
+    )
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="user_memberships",
+        help_text="Tenant this membership grants access to",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "user_tenant_memberships"
+        ordering = ["user", "tenant"]
+        indexes = [
+            models.Index(fields=["user", "tenant"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "tenant"],
+                name="unique_user_tenant_membership",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} -> {self.tenant.name}"
 

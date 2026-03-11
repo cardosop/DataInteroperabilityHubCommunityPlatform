@@ -13,6 +13,7 @@ Covers:
 Uses REAL services (no mocks).
 """
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -49,6 +50,9 @@ class AuthenticationE2ETest(E2ETestBase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
+        from django.core.management import call_command
+
+        call_command("seed_default_plans")  # Required for registration (personal tenant)
         # Ensure test user is active for API key tests
         self.user.status = UserStatus.ACTIVE
         self.user.save()
@@ -155,10 +159,13 @@ class AuthenticationE2ETest(E2ETestBase):
         self.assertIn("id", data)
         self.assertEqual(data.get("email"), email)
         self.assertEqual(data.get("name"), "New Visitor")
+        self.assertIn("tenant_id", data, "Registration without tenant_id creates personal tenant (useronboardfix)")
+        self.assertIsNotNone(data.get("tenant_id"))
         user = User.objects.get(email=email)
         self.assertTrue(user.check_password("SecurePass123"))
         self.assertEqual(user.display_name, "New Visitor")
         self.assertEqual(user.status, UserStatus.ACTIVE)
+        self.assertIsNotNone(user.tenant_id, "User must have personal tenant after registration")
 
     def test_register_then_login(self):
         """JOURNEY-AUTH-001 + AUTH-002: Register then log in with new credentials."""
@@ -170,6 +177,9 @@ class AuthenticationE2ETest(E2ETestBase):
             format="json",
         )
         self.assertEqual(reg.status_code, status.HTTP_201_CREATED)
+        reg_data = get_response_data(reg) or {}
+        self.assertIn("tenant_id", reg_data)
+        self.assertIsNotNone(reg_data.get("tenant_id"))
         login_resp = self.client.post(
             "/api/v1/auth/login/",
             {"email": email, "password": "SecurePass123"},
@@ -179,6 +189,60 @@ class AuthenticationE2ETest(E2ETestBase):
         login_data = get_response_data(login_resp) or {}
         self.assertIn("access_token", login_data)
         self.assertIn("refresh_token", login_data)
+
+    def test_register_without_tenant_creates_personal_tenant_and_user_can_use_platform(self):
+        """Useronboardfix 4.2.1: Register without tenant_id → personal tenant → full platform use."""
+        self.client.force_authenticate(user=None)
+
+        email = f"platform-{uuid.uuid4().hex[:8]}@example.com"
+        password = "SecurePass123"
+        name = "Platform User"
+
+        reg = self.client.post(
+            "/api/v1/auth/register/",
+            {"email": email, "password": password, "name": name},
+            format="json",
+        )
+        self.assertEqual(reg.status_code, status.HTTP_201_CREATED)
+        reg_data = get_response_data(reg) or {}
+        self.assertIn("tenant_id", reg_data)
+        self.assertIsNotNone(reg_data.get("tenant_id"))
+
+        login_resp = self.client.post(
+            "/api/v1/auth/login/",
+            {"email": email, "password": password},
+            format="json",
+        )
+        self.assertEqual(login_resp.status_code, status.HTTP_200_OK)
+        access_token = (get_response_data(login_resp) or {}).get("access_token")
+        self.assertIsNotNone(access_token, "Login must return access_token")
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+
+        me = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(me.status_code, status.HTTP_200_OK)
+        me_data = get_response_data(me) or {}
+        self.assertIn("tenant_id", me_data)
+        self.assertEqual(
+            str(me_data["tenant_id"]),
+            str(reg_data["tenant_id"]),
+            "/auth/me/ tenant_id must match registration",
+        )
+
+        asset_resp = self.client.post(
+            "/api/v1/assets/",
+            {"key": "e2e-platform-asset", "name": "E2E Platform Asset", "domain": "test"},
+            format="json",
+        )
+        self.assertEqual(asset_resp.status_code, status.HTTP_201_CREATED)
+        asset_data = get_response_data(asset_resp) or {}
+        self.assertIn("id", asset_data)
+        self.assertEqual(asset_data["key"], "e2e-platform-asset")
+
+        listings = self.client.get("/api/v1/marketplace/listings/")
+        self.assertEqual(listings.status_code, status.HTTP_200_OK)
+        listings_data = get_response_data(listings) or {}
+        self.assertIn("results", listings_data)
 
     def test_public_resources_without_auth(self):
         """JOURNEY-AUTH-004: Unauthenticated user accesses public resources (health)."""
@@ -192,6 +256,55 @@ class AuthenticationE2ETest(E2ETestBase):
         data = response.json()
         self.assertIn("status", data)
         self.assertIn("database", data)
+
+    def test_user_edits_profile_and_sees_changes_in_me(self):
+        """Phase 7.4: User edits profile via PATCH /auth/me/ and sees changes in GET /auth/me/."""
+        self.client.force_authenticate(user=None)
+        email = f"profilee2e_{uuid.uuid4().hex[:8]}@example.com"
+        test_user = User.objects.create_user(
+            email=email,
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        test_user.display_name = "Original Name"
+        test_user.save(update_fields=["display_name"])
+
+        login_resp = self.client.post(
+            "/api/v1/auth/login/",
+            {"email": email, "password": "testpass123"},
+            format="json",
+        )
+        self.assertEqual(login_resp.status_code, status.HTTP_200_OK)
+        access_token = (get_response_data(login_resp) or {}).get("access_token")
+        self.assertIsNotNone(access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+
+        me_before = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(me_before.status_code, status.HTTP_200_OK)
+        me_before_data = get_response_data(me_before) or {}
+        self.assertEqual(
+            me_before_data.get("name"),
+            "Original Name",
+            f"GET /auth/me/ before PATCH should return name=Original Name, got {me_before_data}",
+        )
+
+        patch_resp = self.client.patch(
+            "/api/v1/auth/me/",
+            {"display_name": "E2E Updated Name"},
+            format="json",
+        )
+        self.assertEqual(patch_resp.status_code, status.HTTP_200_OK)
+        patch_data = get_response_data(patch_resp) or {}
+        self.assertEqual(patch_data.get("name"), "E2E Updated Name")
+
+        me_after = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(me_after.status_code, status.HTTP_200_OK)
+        me_data = get_response_data(me_after) or {}
+        self.assertEqual(me_data.get("name"), "E2E Updated Name")
+
+        test_user.refresh_from_db()
+        self.assertEqual(test_user.display_name, "E2E Updated Name")
 
     def test_refresh_token_success(self):
         """Test successful token refresh"""

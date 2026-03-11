@@ -135,17 +135,42 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for user update"""
-    
+    """Serializer for user update (roles, status, display_name). Admin only."""
+
+    role_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        help_text="List of role IDs to assign (replaces existing roles)",
+    )
+
     class Meta:
         model = User
-        fields = ["display_name", "status"]
-    
+        fields = ["display_name", "status", "role_ids"]
+
     def validate_status(self, value):
         """Validate status transitions"""
         user = self.instance
         if user.status == UserStatus.DISABLED and value != UserStatus.ACTIVE:
             raise serializers.ValidationError("Cannot change status from DISABLED")
+        return value
+
+    def validate_role_ids(self, value):
+        """Validate role IDs belong to user's tenant"""
+        if not value:
+            return value
+        user = self.instance
+        if not user or not user.tenant_id:
+            raise serializers.ValidationError("User must belong to a tenant")
+        from .models import Role
+
+        valid_ids = set(
+            Role.objects.filter(id__in=value, tenant_id=user.tenant_id).values_list("id", flat=True)
+        )
+        invalid = set(value) - valid_ids
+        if invalid:
+            raise serializers.ValidationError(
+                f"Role(s) not found or not in same tenant: {list(invalid)}"
+            )
         return value
 
 

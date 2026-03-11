@@ -45,7 +45,7 @@ test.describe('File Upload Flow', () => {
     // Upload file with retry on rate limit (429) - parse retry-after from error message
     let uploadSuccess = false;
     let retries = 0;
-    const maxRetries = 5;
+    const maxRetries = process.env.E2E_VISIBLE === '1' ? 8 : 5; // visible/slowMo needs more retries
 
     while (!uploadSuccess && retries < maxRetries) {
       try {

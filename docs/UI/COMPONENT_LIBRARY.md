@@ -266,6 +266,15 @@ Helper components and utilities
 
 ## Form Components
 
+### Resource Pickers
+
+Searchable dropdowns for selecting assets, contracts, datasets, and files. See [RESOURCE_PICKERS.md](RESOURCE_PICKERS.md) for full documentation, props, and examples.
+
+- **AssetPicker**, **ContractPicker**, **DatasetPicker**, **FilePicker** — single-select
+- **AssetMultiPicker**, **DatasetMultiPicker**, **FileMultiPicker** — multi-select
+
+---
+
 ### Text Input
 
 **Purpose**: Single-line text input

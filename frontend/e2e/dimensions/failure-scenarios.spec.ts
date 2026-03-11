@@ -2,10 +2,12 @@
  * Dimension: Failure Scenarios
  * Aggregates journey specs that verify error handling.
  * Per E2E_FULL_COVERAGE_PLAN: Invalid input, API errors (4xx/5xx), network failures, timeouts.
- * Run: npm run test:e2e -- e2e/dimensions/failure-scenarios.spec.ts
+ * Phase 29.4.3: Real tests in cross-cutting/failure-scenarios-tests.spec.ts (runnable; dimensions in testIgnore).
+ * Run: npm run test:e2e -- e2e/cross-cutting/failure-scenarios-tests.spec.ts
  * No mocks/stubs; real backend only.
  */
 
+import '../cross-cutting/failure-scenarios-tests.spec';
 import '../journeys/auth/JOURNEY-AUTH-001.spec';
 import '../journeys/auth/JOURNEY-AUTH-002.spec';
 import '../journeys/auth/JOURNEY-AUTH-003.spec';

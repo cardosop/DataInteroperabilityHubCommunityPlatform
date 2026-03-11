@@ -39,12 +39,12 @@ services:
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       # pg_isready returns 0 when Postgres accepts connections; -d verifies hub_test DB is ready.
-      # start_period 600s allows initdb (first run) or recovery (restart). Avoids unhealthy during slow disk/init.
+      # start_period 900s: crash recovery + fsync can take 10-12min on slow disk; 600s was too short.
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_TEST_USER:-hub_test} -d ${POSTGRES_TEST_DB:-hub_test} -t 5"]
       interval: 15s
       timeout: 10s
-      retries: 12
-      start_period: 600s
+      retries: 15
+      start_period: 900s
     deploy:
       resources:
         limits:
@@ -71,8 +71,43 @@ services:
       PGUSER: ${POSTGRES_TEST_USER:-hub_test}
       PGPASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
       PGDATABASE: template1
-    command: ["sh", "-c", "psql -c \"CREATE DATABASE hub_test;\" 2>/dev/null || true && psql -c \"CREATE DATABASE hub_test_test_shared;\" 2>/dev/null || true"]
+    # hub_test_test_shared is created by migrate-test-db (from hub_test template), not here.
+    # phase13: isolation DB for compliance/security, E2E, and dataset-creation-flow tests
+    #          (TEST_DB_SUFFIX=phase13 and TEST_DB_SUFFIX=phase68 both resolve to this DB;
+    #           do not run those test suites concurrently).
+    command: ["sh", "-c", "psql -c \"CREATE DATABASE hub_test;\" 2>/dev/null || true && psql -c \"CREATE DATABASE hub_test_test_phase13;\" 2>/dev/null || true"]
     depends_on:
+      postgres-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    restart: "no"
+
+  # One-off: run Django migrations for hub_test and hub_test_test_shared.
+  # Runs once before api/workflow-engine; they start runserver/main directly (no migrate).
+  # Speeds up restarts: migrate is fast when already applied; api becomes healthy sooner.
+  migrate-test-db:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    container_name: hub-test-migrate
+    command: ["sh", "-c", "exec ./scripts/migrate-test-dbs.sh"]
+    volumes:
+      - .:/app
+    environment:
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
+      REDIS_URL: redis://redis-cache-test:6379/0
+      PYTHONPATH: /app
+      DJANGO_SETTINGS_MODULE: hub.settings
+    depends_on:
+      redis-cache-test:
+        condition: service_healthy
+      ensure-test-db:
+        condition: service_completed_successfully
       postgres-test:
         condition: service_healthy
     networks:
@@ -221,7 +256,7 @@ services:
       - postgres-baas-test-data:/var/lib/postgresql/data
     command: postgres -c max_connections=50
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${BAAS_POSTGRES_USER:-hub_baas}"]
+      test: ["CMD-SHELL", "pg_isready -U ${BAAS_POSTGRES_USER:-hub_baas} -d ${BAAS_POSTGRES_DB:-baas}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -314,6 +349,8 @@ services:
       ENVIRONMENT: test
       DEBUG: "True"
       LOG_LEVEL: DEBUG
+      # Allow browser uploads from E2E frontend (localhost:5173, 5184, etc.)
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
     ports:
       - "${MINIO_TEST_API_PORT:-9010}:9000"
       - "${MINIO_TEST_CONSOLE_PORT:-9011}:9001"
@@ -427,6 +464,7 @@ services:
           memory: 256M
 
   # DQ Service for Testing
+  # Heavy imports (pandas, numpy, great_expectations) can delay startup under resource contention
   dq-service-test:
     build:
       context: .
@@ -438,10 +476,10 @@ services:
       - hub-test-net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
-      interval: 20s
+      interval: 15s
       timeout: 10s
-      retries: 8
-      start_period: 90s
+      retries: 16
+      start_period: 150s
     environment:
       ENVIRONMENT: test
       DEBUG: "True"
@@ -532,7 +570,7 @@ services:
     container_name: hub-test-api
     init: true  # Reap zombies and forward signals; avoids "PID is zombie and can not be killed" on restart
     restart: on-failure
-    command: python hub/manage.py runserver 0.0.0.0:8000 --noreload
+    command: ["sh", "-c", "exec python hub/manage.py runserver 0.0.0.0:8000 --noreload"]
     volumes:
       - .:/app
     ports:
@@ -542,7 +580,9 @@ services:
       POSTGRES_PORT: "5432"
       POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
       POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
-      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
+      # Use hub_test_test_shared so runserver sees same data as pytest (TEST_DB_SUFFIX=shared)
+      # and Prefect worker API calls (get_export_config, patch_export_run) update the same run the test polls
+      POSTGRES_DB: hub_test_test_shared
       EMAIL_BACKEND: ${EMAIL_BACKEND:-smtp}
       EMAIL_BASE_URL: ${EMAIL_BASE_URL:-http://localhost:8001}
       EMAIL_JOB_NOTIFICATIONS_ENABLED: ${EMAIL_JOB_NOTIFICATIONS_ENABLED:-false}
@@ -574,6 +614,8 @@ services:
       PREFECT_INTEGRATION_SERVICE_URL: http://prefect-integration-service-test:8084
       PREFECT_API_URL: http://prefect-server-test:4200/api
       MOCK_SERVER_URL: http://mock-server-test:8080
+      # Worker service URL for E2E tests (test_worker_service.py) - reachable from api-service-test container
+      WORKER_SERVICE_URL: http://worker-service-test:8080
       ODH_INFERENCE_SCHEDULER_URL: http://odh-inference-scheduler-test:8080
       ODH_TRAINING_OPERATOR_URL: http://odh-training-operator-test:8080
       JAEGER_AGENT_HOST: jaeger-test
@@ -608,7 +650,11 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_test}
       # Suppress test env validation warning; dev default is fine for test
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-test-jwt-secret-key-for-pytest}
+      # Worker API key for scheduled export/ingestion internal endpoints (E2E test default)
+      HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-e2e-test-worker-key-scheduled-export}
     depends_on:
+      migrate-test-db:
+        condition: service_completed_successfully
       ensure-test-db:
         condition: service_completed_successfully
       postgres-test:
@@ -637,6 +683,7 @@ services:
         condition: service_started
       mailhog-test:
         condition: service_started
+      # worker-service-test: not in depends_on to avoid cycle (worker depends on api); API enqueues to Redis, worker polls when ready
       odh-inference-scheduler-test:
         condition: service_healthy
       odh-training-operator-test:
@@ -647,11 +694,14 @@ services:
       hub-test-net:
         aliases:
           - api-service
+    # Liveness: /health/live/ always 200 if process is up; /health/ checks DB+Redis and can 503 under load
+    # Migrations run in migrate-test-db; api starts runserver only. start_period 120s: under full-stack load
+    # Django startup + many deps can take 60s+; retries 15 gives ~4min after start_period.
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/').read()\" || exit 1"]
-      interval: 30s
-      timeout: 20s
-      retries: 8
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live/', timeout=20).read()\" || exit 1"]
+      interval: 15s
+      timeout: 25s
+      retries: 15
       start_period: 120s
     # 2.5G limit: runserver + pytest with large batches (e.g. scheduled_ingestion) need headroom; --no-cov used for heaviest batches to avoid OOM
     deploy:
@@ -669,7 +719,8 @@ services:
       context: .
       dockerfile: services/worker/Dockerfile
     container_name: hub-test-worker
-    command: python services/worker/main.py job_critical job_default job_low
+    # Include 'default' to drain legacy jobs enqueued before compliance fix (job_critical routing)
+    command: python services/worker/main.py job_critical job_default job_low default
     ports:
       - "${WORKER_TEST_HEALTH_PORT:-8087}:8080"
     volumes:
@@ -693,7 +744,8 @@ services:
       POSTGRES_PORT: "5432"
       POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
       POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
-      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
+      # Use hub_test_test_shared so worker sees same data as api-service-test (password reset, etc.)
+      POSTGRES_DB: hub_test_test_shared
       REDIS_URL: redis://redis-cache-test:6379/0
       REDIS_HOST: redis-cache-test
       REDIS_CACHE_URL: redis://redis-cache-test:6379/0
@@ -704,6 +756,8 @@ services:
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
       AWS_S3_ENDPOINT_URL: http://minio-test:9000
       AWS_STORAGE_BUCKET_NAME: ${AWS_STORAGE_BUCKET_NAME:-hub-files}
+      COMPLIANCE_SERVICE_URL: http://compliance-service-test:8082
+      DQ_SERVICE_URL: http://dq-service-test:8083
       MOCK_SERVER_URL: http://mock-server-test:8080
       JAEGER_AGENT_HOST: jaeger-test
       JAEGER_AGENT_PORT: 6831
@@ -752,11 +806,12 @@ services:
     image: prefecthq/prefect:2.16.9-python3.12
     container_name: hub-test-prefect-server
     restart: on-failure
-    command: ["sh", "-c", "pip install --quiet asyncpg && python /wait_for_prefect_db.py && prefect server database upgrade -y && exec prefect server start --host 0.0.0.0"]
+    command: ["sh", "-c", "pip install --quiet asyncpg && python /wait_for_prefect_db.py && sleep 15 && prefect server database upgrade -y && exec prefect server start --host 0.0.0.0"]
     environment:
       PREFECT_API_URL: http://localhost:4200/api
       PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@prefect-db-test:5432/prefect
       PREFECT_SERVER_DATABASE_MIGRATE_ON_START: "false"
+      PREFECT_SERVER_DATABASE_SQLALCHEMY_POOL_TIMEOUT: "120"
       PREFECT_LOGGING_LEVEL: DEBUG
       ENVIRONMENT: test
     ports:
@@ -779,8 +834,9 @@ services:
 
   # Prefect Database (PostgreSQL) for Testing
   # Bounded memory and low shared_buffers so it does not compete with postgres-test or OOM.
+  # Use postgres:16 (non-alpine) to avoid pg_ctl shutdown timeout during init (alpine can hang).
   prefect-db-test:
-    image: postgres:16-alpine
+    image: postgres:16
     container_name: hub-test-prefect-db
     environment:
       POSTGRES_USER: prefect
@@ -790,6 +846,7 @@ services:
     # Port not published: services use prefect-db-test:5432 on the Docker network. Omit ports to avoid host port conflicts (5435/5436/5437).
     volumes:
       - prefect-db-test-data:/var/lib/postgresql/data
+      - ./infrastructure/prefect-db/01-pgcrypto.sql:/docker-entrypoint-initdb.d/01-pgcrypto.sql:ro
       - ./infrastructure/prefect-db/02-pg-hba-host.sh:/docker-entrypoint-initdb.d/02-pg-hba-host.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U prefect -t 5"]
@@ -807,9 +864,28 @@ services:
       - hub-test-net
     command: >
       postgres
-      -c shared_buffers=128MB
+      -c shared_buffers=64MB
       -c work_mem=4MB
       -c max_connections=50
+      -c checkpoint_timeout=60
+
+  # One-off: create default docker work pool so deployments succeed before worker is fully up
+  # Worker creates pool on start, but there can be a race; this ensures pool exists.
+  ensure-prefect-work-pool:
+    build:
+      context: .
+      dockerfile: services/prefect-integration/Dockerfile.worker-docker
+    image: hub-test-prefect-worker-docker:latest
+    container_name: hub-test-ensure-prefect-work-pool
+    command: ["sh", "-c", "prefect work-pool create default --type docker 2>/dev/null || true"]
+    environment:
+      PREFECT_API_URL: http://prefect-server-test:4200/api
+    depends_on:
+      prefect-server-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    restart: "no"
 
   # Prefect Worker for Testing (Docker work pool - required for deployments with custom images)
   # Process work pool does not support image=; use Docker worker so flow.deploy(image=...) works
@@ -823,9 +899,9 @@ services:
     environment:
       PREFECT_API_URL: http://prefect-server-test:4200/api
       PREFECT_LOGGING_LEVEL: DEBUG
-      # Hub API configuration for scheduled ingestion worker API (E2E profile)
+      # Hub API configuration for scheduled ingestion/export worker API (E2E profile)
       HUB_BASE_URL: ${HUB_BASE_URL:-http://api-service-test:8000}
-      HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-}
+      HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-e2e-test-worker-key-scheduled-export}
       ENVIRONMENT: test
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -835,6 +911,7 @@ services:
       # Note: api-service-test removed to avoid circular dep; worker creates work pool for deployment sync
     networks:
       - hub-test-net
+    restart: on-failure
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import os; procs = [d for d in os.listdir('/proc') if d.isdigit()]; found = any(os.path.exists(f'/proc/{p}/cmdline') and b'prefect' in open(f'/proc/{p}/cmdline', 'rb').read() for p in procs); exit(0 if found else 1)\""]
       interval: 30s
@@ -847,12 +924,21 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_APP_NAME: ${APP_NAME:-Meshant}
+        VITE_FEATURE_TOAST_ENABLED: ${VITE_FEATURE_TOAST_ENABLED:-}
+        VITE_FEATURE_BREADCRUMBS_ENABLED: ${VITE_FEATURE_BREADCRUMBS_ENABLED:-}
+        VITE_FEATURE_RESOURCE_PICKERS_ENABLED: ${VITE_FEATURE_RESOURCE_PICKERS_ENABLED:-}
+        # Empty by default: app uses relative /api/v1 paths proxied by nginx.
+        # Set to an absolute URL only for non-nginx deployments (e.g. CDN-hosted SPA).
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_WS_BASE_URL: ${VITE_WS_BASE_URL:-}
     container_name: hub-test-frontend
     ports:
       - "${FRONTEND_TEST_PORT:-3010}:80"
+    volumes:
+      - ./frontend/nginx.test.conf:/etc/nginx/conf.d/default.conf:ro
     environment:
-      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://api-service-test:8000/api/v1}
-      - VITE_WS_BASE_URL=${VITE_WS_BASE_URL:-ws://api-service-test:8000}
       - VITE_ENV=${ENV:-development}
     networks:
       - hub-test-net
@@ -867,13 +953,14 @@ services:
       start_period: 40s
 
   # Workflow Engine Service for Testing
+  # Depends on migrate-test-db (completed); migrations run once there, no concurrent migrate.
   workflow-engine-service-test:
     build:
       context: .
       dockerfile: services/workflow-engine/Dockerfile
     container_name: hub-test-workflow-engine
     restart: on-failure
-    command: sh -c "python hub/manage.py migrate --noinput && exec python services/workflow-engine/main.py --poll-interval 5 --batch-size 10"
+    command: ["sh", "-c", "exec python services/workflow-engine/main.py --poll-interval 5 --batch-size 10"]
     ports:
       - "${WORKFLOW_ENGINE_TEST_PORT:-8098}:8088"
     volumes:
@@ -897,6 +984,8 @@ services:
       ENVIRONMENT: test
       DEBUG: "True"
     depends_on:
+      migrate-test-db:
+        condition: service_completed_successfully
       ensure-test-db:
         condition: service_completed_successfully
       postgres-test:
@@ -950,11 +1039,14 @@ services:
       REDIS_CHANNELS_URL: redis://redis-channels-test:6379/0
       REDIS_URL: redis://redis-cache-test:6379/0
       HUB_BASE_URL: http://api-service-test:8000
+      HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-e2e-test-worker-key-scheduled-export}
       ENVIRONMENT: test
       DEBUG: "True"
     depends_on:
       prefect-server-test:
         condition: service_healthy
+      ensure-prefect-work-pool:
+        condition: service_completed_successfully
       prefect-worker-test:
         condition: service_started
       postgres-test:
@@ -1185,15 +1277,14 @@ services:
       retries: 3
       start_period: 10s
 
-  # Workflow Registry Service for Testing (runs migrations before startup so workflow_definitions exists)
-  # Depends on workflow-engine so migrations run after workflow-engine; avoids duplicate key race
-  # (governance.0002) when both run migrate concurrently on fresh DB.
+  # Workflow Registry Service for Testing
+  # Depends on migrate-test-db (completed); migrations run once there.
   workflow-registry-service-test:
     build:
       context: .
       dockerfile: services/workflow-registry/Dockerfile
     container_name: hub-test-workflow-registry
-    command: sh -c "python hub/manage.py migrate --noinput && exec uvicorn services.workflow-registry.main:app --host 0.0.0.0 --port 8089"
+    command: ["sh", "-c", "exec uvicorn services.workflow-registry.main:app --host 0.0.0.0 --port 8089"]
     ports:
       - "${WORKFLOW_REGISTRY_TEST_PORT:-8089}:8089"
     environment:
@@ -1208,6 +1299,8 @@ services:
       ENVIRONMENT: test
       DEBUG: "True"
     depends_on:
+      migrate-test-db:
+        condition: service_completed_successfully
       ensure-test-db:
         condition: service_completed_successfully
       postgres-test:
@@ -1431,7 +1524,7 @@ services:
       - "${TRAEFIK_SECURE_TEST_PORT:-8443}:443"
       - "${TRAEFIK_DASHBOARD_TEST_PORT:-8099}:8080"
     volumes:
-      - ./infrastructure/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./infrastructure/traefik/traefik-test.yml:/etc/traefik/traefik.yml:ro
       - ./infrastructure/traefik/dynamic:/etc/traefik/dynamic:ro
     networks:
       - hub-test-net

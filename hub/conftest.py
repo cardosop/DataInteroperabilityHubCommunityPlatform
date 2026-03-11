@@ -33,6 +33,15 @@ _repo_root = Path(__file__).resolve().parents[1]
 if _repo_root.exists() and str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
+# CRITICAL: Load tests/conftest patches when running hub-only tests (e.g. hub/apps/auth/tests/).
+# When testpaths collect only from hub/apps, tests/conftest.py is never loaded, so create_test_db
+# and setup_databases patches (run_syncdb=False, keepdb for TEST_DB_SUFFIX) are not applied.
+# Without these patches, create_test_db runs sync_apps and hits UniqueViolation on pg_type.
+try:
+    import tests.conftest  # noqa: F401
+except ImportError:
+    pass  # tests package not on path (e.g. minimal env)
+
 # Defaults for DB connectivity check (used only when env not set). Read at runtime in pytest_sessionstart.
 _DB_CHECK_RETRIES_DEFAULT = "72"
 _DB_CHECK_INTERVAL_DEFAULT = "5.0"
@@ -219,6 +228,17 @@ def pytest_configure(config):
     # Ensure app code can detect test environment when only hub/apps tests run
     # (e.g. batch runs that collect only from hub/apps; tests/conftest.py may not load)
     os.environ.setdefault("TESTING", "1")
+
+    # CRITICAL: When only hub/apps paths are collected, tests/conftest.py is never discovered
+    # so its pytest_configure (setup_databases keepdb, create_test_db DuplicateDatabase patch)
+    # never runs. Invoke it explicitly so shared-DB security tests (hub_test_test_shared) work.
+    try:
+        import tests.conftest as tests_conftest
+
+        if hasattr(tests_conftest, "pytest_configure"):
+            tests_conftest.pytest_configure(config)
+    except ImportError:
+        pass
     try:
         import django.db.backends.postgresql.operations as pg_operations
 

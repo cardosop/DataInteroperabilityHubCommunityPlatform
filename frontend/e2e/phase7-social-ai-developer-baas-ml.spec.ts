@@ -15,26 +15,26 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
     test.setTimeout(180000); // 3 min: 429 retries (25s × 3) + getTestUser + login
   });
 
-  test('Social page loads or shows clear gated message', async ({ page }) => {
+  test('Communities page loads or shows clear gated message', async ({ page }) => {
     const testUser = await getTestUser();
-    await loginAndNavigateToRoute(page, testUser, '/social', {
+    await loginAndNavigateToRoute(page, testUser, '/communities', {
       timeout: 60000,
-      contentSelector: '.social-page, .unavailable-page',
+      contentSelector: '.communities-page, .communities-tab, .unavailable-page',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
 
-    const socialPage = page.locator('.social-page');
+    const communitiesPage = page.locator('.communities-page, .communities-tab');
     const unavailablePage = page.locator('.unavailable-page');
-    const hasSocialContent = (await socialPage.count()) > 0;
+    const hasCommunitiesContent = (await communitiesPage.count()) > 0;
     const hasUnavailable = (await unavailablePage.count()) > 0;
 
-    expect(hasSocialContent || hasUnavailable).toBe(true);
+    expect(hasCommunitiesContent || hasUnavailable).toBe(true);
     if (hasUnavailable) {
       await expect(unavailablePage).toContainText(/unavailable|not available|contact/i);
     }
-    if (hasSocialContent) {
-      await expect(socialPage.locator('h1')).toContainText(/Social/i);
+    if (hasCommunitiesContent) {
+      await expect(communitiesPage.locator('h2, h1')).toContainText(/Communities|Data Communities/i);
     }
   });
 
@@ -140,14 +140,14 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
     await expect(sidebar).toBeVisible({ timeout: 10000 });
 
     // At least one of the Phase 7 nav items may be present (capability-gated)
-    const socialLink = sidebar.locator('.nav-link').filter({ hasText: /Social/i });
+    const communitiesLink = sidebar.locator('.nav-link').filter({ hasText: /Communities/i });
     const aiLink = sidebar.locator('.nav-link').filter({ hasText: /AI Search/i });
     const devLink = sidebar.locator('.nav-link').filter({ hasText: /Developer/i });
     const baasLink = sidebar.locator('.nav-link').filter({ hasText: /BaaS/i });
     const mlLink = sidebar.locator('.nav-link').filter({ hasText: /ML/i });
 
     const hasAnyPhase7Link =
-      (await socialLink.count()) > 0 ||
+      (await communitiesLink.count()) > 0 ||
       (await aiLink.count()) > 0 ||
       (await devLink.count()) > 0 ||
       (await baasLink.count()) > 0 ||

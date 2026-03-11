@@ -1,32 +1,45 @@
 /**
  * Design System Tokens
- * Based on docs/UI/DESIGN_SYSTEM.md
+ * Meshant palette: primary #0A1F44, secondary #2F6BFF, accent #17C6E6
+ * Reference: MESHANT_DESIGN_SYSTEM_PLAN.md, docs/UI/DESIGN_SYSTEM.md
  */
 
 export const colors = {
   primary: {
-    50: '#E3F2FD',
-    100: '#BBDEFB',
-    200: '#90CAF9',
-    300: '#64B5F6',
-    400: '#42A5F5',
-    500: '#2196F3',
-    600: '#1E88E5',
-    700: '#1976D2',
-    800: '#1565C0',
-    900: '#0D47A1',
+    50: '#E8ECF4',
+    100: '#CFD8E8',
+    200: '#9BA8C4',
+    300: '#6778A0',
+    400: '#33497C',
+    500: '#0A1F44',
+    600: '#081A3A',
+    700: '#061530',
+    800: '#0A1F44',
+    900: '#030D22',
   },
   secondary: {
-    50: '#E0F2F1',
-    100: '#B2DFDB',
-    200: '#80CBC4',
-    300: '#4DB6AC',
-    400: '#26A69A',
-    500: '#009688',
-    600: '#00897B',
-    700: '#00796B',
-    800: '#00695C',
-    900: '#004D40',
+    50: '#EBF0FF',
+    100: '#D6E0FF',
+    200: '#ADBFFF',
+    300: '#849EFF',
+    400: '#5B7DFF',
+    500: '#2F6BFF',
+    600: '#2756E6',
+    700: '#1F41CC',
+    800: '#172DB3',
+    900: '#0F1999',
+  },
+  accent: {
+    50: '#E6FAFC',
+    100: '#CCF5F9',
+    200: '#99EBF3',
+    300: '#66E0ED',
+    400: '#33D6E7',
+    500: '#17C6E6',
+    600: '#12A0C0',
+    700: '#0E7A9A',
+    800: '#095474',
+    900: '#052E3D',
   },
   success: {
     50: '#E8F5E9',
@@ -75,7 +88,7 @@ export const spacing = {
 
 export const typography = {
   fontFamily: {
-    sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+    sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
     mono: ['Monaco', 'Menlo', 'Consolas', 'monospace'],
   },
   fontSize: {
@@ -106,6 +119,12 @@ export const breakpoints = {
   md: '900px',
   lg: '1200px',
   xl: '1536px',
+} as const;
+
+/** Layout constants — align with index.css --layout-* variables */
+export const layout = {
+  sidebarWidth: '240px',
+  contentMaxWidth: '1200px',
 } as const;
 
 export const shadows = {

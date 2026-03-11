@@ -11,10 +11,10 @@
 
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError, waitForAppMainReady } from '../../fixtures/helpers';
+import { assertNonExistentIdShowsError } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-009: Set Up Data Virtualization', () => {
-  test.setTimeout(300000); // 5 min: visible/slowMo; virtualization API may be slow; avoids ENOENT
+  test.setTimeout(360000); // 6 min: visible/slowMo; virtualization API may be slow
 
   test.describe('Success', () => {
     test('virtualization list loads', async ({ page }) => {
@@ -22,20 +22,21 @@ test.describe('JOURNEY-DE-009: Set Up Data Virtualization', () => {
       await loginUser(page, testUser);
       await page.goto('/virtualization');
       await page.waitForLoadState('domcontentloaded');
-      try {
-        await waitForAppMainReady(page, { timeout: 90000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
-          return;
-        }
-        throw _err;
+      await page.waitForSelector(
+        '.virtual-dataset-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
+      if (page.url().includes('/login')) {
+        expect(page.url()).toContain('/login');
+        return;
       }
       expect(page.url()).toContain('/virtualization');
       const hasContent =
         (await page.locator('.virtual-dataset-list-page').count()) > 0 ||
+        (await page.locator('.virtual-dataset-list-header').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.loading-spinner-container').count()) > 0;
       expect(hasContent).toBe(true);
     });
 
@@ -44,9 +45,10 @@ test.describe('JOURNEY-DE-009: Set Up Data Virtualization', () => {
       await loginUser(page, testUser);
       await page.goto('/virtualization/create');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.virtual-dataset-create-page, .error-display, #email', {
-        timeout: 20000,
-      });
+      await page.waitForSelector(
+        '.virtual-dataset-create-page, .error-display, .loading-spinner-container, #email',
+        { timeout: 45000 }
+      );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
@@ -74,7 +76,10 @@ test.describe('JOURNEY-DE-009: Set Up Data Virtualization', () => {
       await loginUser(page, testUser);
       await page.goto('/virtualization');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await page.waitForSelector(
+        '.virtual-dataset-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;

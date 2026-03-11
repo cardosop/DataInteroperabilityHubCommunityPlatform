@@ -164,9 +164,17 @@ def check_rate_limit(
         logger.warning("Redis not available for rate limiting, allowing request")
         return True, None
 
-    # When tenant_id is missing or empty, only global rate limit is checked (e.g. ref resolution in CI/CLI).
+    # Reject None or empty tenant_id for security: unauthenticated/unscoped requests must be denied.
+    # CI/CLI contexts should pass a sentinel (e.g. "system") if they need to bypass tenant checks.
+    if tenant_id is None or (isinstance(tenant_id, str) and not tenant_id.strip()):
+        error = ODPSRefResolutionError(
+            message="tenant_id is required for ODPS $ref rate limiting",
+            error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED,
+        )
+        return False, error
+
     # When tenant_id is present, global + tenant + user checks run.
-    has_tenant = tenant_id is not None and (not isinstance(tenant_id, str) or bool(tenant_id.strip()))
+    has_tenant = True
 
     # Get Redis client
     if redis_client is None:

@@ -18,7 +18,8 @@ if [[ -n "${VITE_API_BASE_URL:-}" ]]; then
 fi
 
 # Auto-detect: try 8000 (dev) first, then 8001 (test stack)
-if curl -sf http://localhost:8000/health/ > /dev/null 2>&1; then
+# Use /api/v1/ (returns 200) instead of /health/ (returns 503 when Redis unhealthy)
+if curl -sf http://localhost:8000/api/v1/ > /dev/null 2>&1; then
   export VITE_API_BASE_URL="http://localhost:8000/api/v1"
   echo "Detected API at port 8000 (docker-compose / docker-compose.dev)"
   # Reset auth rate limits for integration tests
@@ -28,7 +29,7 @@ if curl -sf http://localhost:8000/health/ > /dev/null 2>&1; then
     docker exec hub-dev-api python hub/manage.py ensure_e2e_user_roles 2>/dev/null || true
   docker exec hub-api python hub/manage.py ensure_e2e_subscription 2>/dev/null || \
     docker exec hub-dev-api python hub/manage.py ensure_e2e_subscription 2>/dev/null || true
-elif curl -sf http://localhost:8001/health/ > /dev/null 2>&1; then
+elif curl -sf http://localhost:8001/api/v1/ > /dev/null 2>&1; then
   export VITE_API_BASE_URL="http://localhost:8001/api/v1"
   echo "Detected API at port 8001 (docker-compose.test)"
   docker exec hub-test-api python hub/manage.py reset_e2e_auth_rate_limits 2>/dev/null || true

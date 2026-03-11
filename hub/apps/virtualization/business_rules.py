@@ -91,18 +91,18 @@ class VirtualizationBusinessRules(BusinessRules):
 
     # Supported source types (odps_contract: ODPS product/contract as source; no external connector)
     SUPPORTED_SOURCE_TYPES = [
-        'postgresql', 'mysql', 'sqlserver', 'mssql',
+        'postgresql', 'mysql', 'sqlserver', 'mssql', 'odbc',
         'sparql', 'rest', 'graphql', 's3', 'minio',
         'federated_asset', 'external_resource', 'odps_contract'
     ]
 
     # Source type compatibility with query types
     QUERY_TYPE_SOURCE_COMPATIBILITY = {
-        QueryType.SQL: ['postgresql', 'mysql', 'sqlserver', 'mssql', 'federated_asset', 'external_resource'],
+        QueryType.SQL: ['postgresql', 'mysql', 'sqlserver', 'mssql', 'odbc', 'federated_asset', 'external_resource'],
         QueryType.SPARQL: ['sparql', 'federated_asset'],
         QueryType.REST: ['rest', 'federated_asset', 'external_resource', 'odps_contract'],
         QueryType.GRAPHQL: ['graphql', 'federated_asset'],
-        QueryType.FEDERATED: ['postgresql', 'mysql', 'sqlserver', 'mssql', 'sparql', 'rest', 'graphql', 'federated_asset', 'external_resource', 'odps_contract']
+        QueryType.FEDERATED: ['postgresql', 'mysql', 'sqlserver', 'mssql', 'odbc', 'sparql', 'rest', 'graphql', 'federated_asset', 'external_resource', 'odps_contract']
     }
 
     def get_rule_name(self) -> str:
@@ -686,9 +686,38 @@ class VirtualizationBusinessRules(BusinessRules):
                 else:
                     details["host_format_valid"] = True
 
+        # For ODBC sources, check connection_string or host+database
+        elif source_type == 'odbc':
+            has_connection_string = bool(source_config.get('connection_string'))
+            has_host_db = 'host' in source_config and 'database' in source_config
+            if not has_connection_string and not has_host_db:
+                errors.append(
+                    f"Source at index {source_index} (type: {source_type}) "
+                    f"must have 'connection_string' or both 'host' and 'database'"
+                )
+                details["connection_fields_complete"] = False
+            else:
+                details["connection_fields_complete"] = True
+            has_credentials = (
+                'connection_string' in source_config or
+                'username' in source_config or 'user' in source_config or
+                'password' in source_config or
+                source_config.get('asset_id') is not None
+            )
+            details["has_credentials"] = has_credentials
+            if not has_credentials:
+                warnings.append(
+                    f"Source at index {source_index} (type: {source_type}) "
+                    f"may not have credentials configured. Connection may fail."
+                )
+
         # For REST sources, validate URL format
         elif source_type == 'rest':
-            url = source_config.get('url') or source_config.get('endpoint', '')
+            url = (
+                source_config.get('url')
+                or source_config.get('endpoint')
+                or source_config.get('base_url', '')
+            )
             if url:
                 try:
                     from urllib.parse import urlparse
@@ -1645,7 +1674,7 @@ class VirtualizationBusinessRules(BusinessRules):
         Validate source configuration based on source type.
 
         Supports:
-        - Traditional sources: postgresql, mysql, sqlserver, sparql, rest, graphql, s3, minio
+        - Traditional sources: postgresql, mysql, sqlserver, mssql, odbc, sparql, rest, graphql, s3, minio
         - Federated asset sources: {"type": "federated_asset", "asset_id": "uuid", "query": "SELECT * FROM ..."}
         - External resource sources: {"type": "external_resource", "resource_id": "uuid", "asset_id": "uuid"}
 
@@ -1677,12 +1706,26 @@ class VirtualizationBusinessRules(BusinessRules):
                         f"must have '{field}' field"
                     )
 
-        # REST sources require URL
-        elif source_type == 'rest':
-            if 'url' not in source_config and 'endpoint' not in source_config:
+        # ODBC sources require connection_string OR (host + database)
+        elif source_type == 'odbc':
+            has_connection_string = bool(source_config.get('connection_string'))
+            has_host_db = 'host' in source_config and 'database' in source_config
+            if not has_connection_string and not has_host_db:
                 errors.append(
                     f"Source at index {source_index} (type: {source_type}) "
-                    f"must have 'url' or 'endpoint' field"
+                    f"must have 'connection_string' or both 'host' and 'database' fields"
+                )
+
+        # REST sources require URL (base_url, url, or endpoint)
+        elif source_type == 'rest':
+            if (
+                'url' not in source_config
+                and 'endpoint' not in source_config
+                and 'base_url' not in source_config
+            ):
+                errors.append(
+                    f"Source at index {source_index} (type: {source_type}) "
+                    f"must have 'url', 'endpoint', or 'base_url' field"
                 )
 
         # GraphQL sources require endpoint
@@ -2964,7 +3007,7 @@ class VirtualizationBusinessRules(BusinessRules):
         source_type_lower = source_type.lower()
 
         # SQL-based sources
-        if source_type_lower in ['postgresql', 'mysql', 'sqlserver', 'mssql', 'oracle', 'sqlite']:
+        if source_type_lower in ['postgresql', 'mysql', 'sqlserver', 'mssql', 'oracle', 'sqlite', 'odbc']:
             return "sql"
 
         # SPARQL sources
@@ -3249,7 +3292,7 @@ class VirtualizationBusinessRules(BusinessRules):
         source_type_lower = source_type.lower()
 
         # Database sources map to DATABASE connector
-        if source_type_lower in ['postgresql', 'mysql', 'sqlserver', 'mssql', 'oracle', 'sqlite']:
+        if source_type_lower in ['postgresql', 'mysql', 'sqlserver', 'mssql', 'oracle', 'sqlite', 'odbc']:
             return "DATABASE"
 
         # REST/HTTP sources

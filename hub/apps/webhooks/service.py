@@ -280,7 +280,7 @@ class WebhookDeliveryService:
             "Content-Type": "application/json",
             "X-Webhook-Signature": delivery.signature,
             "X-Webhook-Event-Type": delivery.event_type,
-            "User-Agent": "DataInteroperabilityHub/1.0"
+            "User-Agent": f"{getattr(django_settings, 'APP_NAME', 'Meshant').replace(' ', '')}/1.0"
         }
 
         # Use WebhookDeliveryClient for circuit breaker and retry logic

@@ -50,7 +50,8 @@ class RoleManagementTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
-        
+        UserRole.objects.create(user=self.tenant_admin, role=self.admin_role)
+
         # Create regular user
         self.regular_user = User.objects.create_user(
             email="user@example.com",

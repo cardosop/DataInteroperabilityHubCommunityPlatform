@@ -6,6 +6,8 @@ Handlers for Compliance job execution.
 SAVING CHECKPOINT: This module contains Compliance job handlers (< 700 lines per project rule).
 """
 
+from django.utils import timezone
+
 from .models import Job
 
 
@@ -50,6 +52,23 @@ def _execute_compliance_run_job(job_obj: Job) -> dict:
         compliance_client = ComplianceServiceClient()
         is_healthy, _ = compliance_client.health_check()
         if not is_healthy:
+            # Update ComplianceRun to FAILED so UI shows error instead of stuck PENDING
+            compliance_run.status = ComplianceRunStatus.FAILED
+            compliance_run.allowed_to_store = False
+            compliance_run.regulation_mapping_json = {
+                "error": "Compliance service is unavailable",
+                "error_type": "ConnectionError",
+                "fail_closed": True,
+            }
+            compliance_run.completed_at = compliance_run.started_at or timezone.now()
+            compliance_run.save(
+                update_fields=[
+                    "status",
+                    "allowed_to_store",
+                    "regulation_mapping_json",
+                    "completed_at",
+                ]
+            )
             raise ConnectionError("Compliance service is unavailable")
 
         # Execute compliance run (this handles its own errors and updates ComplianceRun status)

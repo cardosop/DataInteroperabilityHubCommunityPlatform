@@ -175,6 +175,9 @@ class TenantConfigSerializer(serializers.ModelSerializer):
             "max_file_size_bytes",
             "max_job_concurrency",
             "max_queued_jobs",
+            "trust_signals_enabled",
+            "versioning_enabled",
+            "workflows_enabled",
             "created_at",
             "updated_at",
         ]
@@ -253,6 +256,9 @@ class TenantConfigUpdateSerializer(serializers.ModelSerializer):
             "max_file_size_bytes",
             "max_job_concurrency",
             "max_queued_jobs",
+            "trust_signals_enabled",
+            "versioning_enabled",
+            "workflows_enabled",
         ]
 
     def validate_default_dq_profile(self, value):
@@ -308,8 +314,8 @@ class TenantUsageSerializer(serializers.Serializer):
     """Serializer for tenant usage summary"""
 
     tenant_id = serializers.UUIDField(read_only=True)
-    period_start = serializers.DateTimeField(read_only=True)
-    period_end = serializers.DateTimeField(read_only=True)
+    period_start = serializers.DateTimeField(read_only=True, allow_null=True)
+    period_end = serializers.DateTimeField(read_only=True, allow_null=True)
     asset_count = serializers.IntegerField(read_only=True)
     dataset_count = serializers.IntegerField(read_only=True)
     scheduled_ingestion_count = serializers.IntegerField(read_only=True)
@@ -319,3 +325,5 @@ class TenantUsageSerializer(serializers.Serializer):
     api_calls_this_month = serializers.IntegerField(read_only=True)
     plan_limits = serializers.DictField(read_only=True)
     usage_percentages = serializers.DictField(read_only=True)
+    plan_slug = serializers.CharField(read_only=True, allow_null=True)
+    plan_tier = serializers.CharField(read_only=True, allow_null=True)

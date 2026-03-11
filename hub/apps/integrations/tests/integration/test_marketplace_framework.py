@@ -59,6 +59,7 @@ User = get_user_model()
 # API base path must match hub/urls.py (api/v1/) and integrations router
 API_BASE = "/api/v1/integrations"
 MARKETPLACE_CONNECTIONS = f"{API_BASE}/marketplace/connections"
+MARKETPLACE_MAPPINGS = f"{API_BASE}/marketplace/mappings"
 MARKETPLACE_SYNC = f"{API_BASE}/marketplace/sync"
 
 pytestmark = [
@@ -528,6 +529,50 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
 
         # Verify deleted
         self.assertFalse(MarketplaceConnection.objects.filter(id=connection_id).exists())
+
+    def test_api_mapping_delete_emits_audit_event(self):
+        """Test DELETE mapping via API emits MAPPING_DELETED audit event (framework integration)."""
+        connection = self.service.create_connection(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Mapping Delete Test Connection",
+            config=self.config,
+        )
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Mapping Delete Test Asset",
+            source_type=AssetSourceType.HUB_NATIVE,
+        )
+        mapping = self.service.create_mapping(
+            connection_id=str(connection.id),
+            hub_asset_id=str(asset.id),
+            external_listing_id="ext-listing-framework-delete",
+        )
+
+        response = self.api_client.delete(f"{MARKETPLACE_MAPPINGS}/{mapping.id}/")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_204_NO_CONTENT,
+            msg=f"DELETE mapping: {response.status_code} - {getattr(response, 'data', response.content)}",
+        )
+
+        self.assertFalse(MarketplaceMapping.objects.filter(id=mapping.id).exists())
+
+        time.sleep(0.1)
+        audit_event = (
+            AuditEvent.objects.filter(
+                resource_type="MARKETPLACE_MAPPING",
+                action="MAPPING_DELETED",
+                resource_id=str(mapping.id),
+            )
+            .order_by("-timestamp")
+            .first()
+        )
+        self.assertIsNotNone(audit_event)
+        self.assertEqual(audit_event.actor_user, self.user)
+        self.assertEqual(audit_event.result, "SUCCESS")
 
     def test_api_connection_test_endpoint(self):
         """Test API connection test endpoint (API key auth)."""

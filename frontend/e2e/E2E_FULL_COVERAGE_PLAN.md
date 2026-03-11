@@ -1,6 +1,6 @@
 # E2E Full Coverage Plan
 
-**Last Updated**: 2026-02-17
+**Last Updated**: 2026-03-06
 **Status**: 📋 **Planning Phase** (Phase 13 in progress)
 
 ## Overview
@@ -54,12 +54,19 @@ frontend/e2e/
 │   │   └── JOURNEY-MP-007.spec.ts   # Monitor Sync Jobs
 │   └── [other journey files organized by persona prefix]
 ├── use-cases/
-│   ├── auth/
-│   │   ├── UC-AUTH-001.spec.ts      # User Registers
-│   │   ├── UC-AUTH-002.spec.ts      # User Logs In
-│   │   ├── UC-AUTH-003.spec.ts      # User Resets Password
-│   │   └── UC-AUTH-004.spec.ts      # Unauthenticated User Accesses Public Resources
-│   └── [other use case files organized by category]
+│   ├── auth/           # UC-AUTH-001–004, accept-invitation
+│   ├── assets/         # UC-AM-001 (Phase 29.4.1)
+│   ├── contracts/      # UC-CM-001, UC-CM-002 (Phase 29.4.1)
+│   ├── marketplace/    # UC-MKT-001–004 (Phase 29.4.1)
+│   ├── dq/             # UC-DQ-001 (Phase 29.4.1)
+│   ├── compliance/     # UC-COMP-001 (Phase 29.4.1)
+│   ├── odps/           # UC-ODPS-001–003 (Phase 29.4.2)
+│   ├── integrations/   # UC-INT-001, UC-INT-002 (Phase 29.4.2)
+│   └── webhooks/       # UC-WH-001 (Phase 29.4.2)
+├── design-system/                  # Phase 29.0 — Meshant design system
+│   ├── meshant-brand.spec.ts       # APP_NAME in Header, Landing, Login, document title
+│   ├── meshant-layout.spec.ts      # .app-main max-width, sidebar 240px, content centered
+│   └── meshant-typography.spec.ts  # body font Inter, headings use tokens
 ├── features/
 │   ├── auth.spec.ts                 # Auth feature coverage
 │   ├── contracts.spec.ts            # Contracts feature coverage
@@ -88,10 +95,13 @@ frontend/e2e/
 │   ├── webhooks.spec.ts             # Webhooks feature coverage
 │   ├── audit.spec.ts                # Audit feature coverage
 │   └── health.spec.ts               # Health feature coverage
+├── cross-cutting/
+│   ├── failure-scenarios-tests.spec.ts  # Phase 29.4.3: ≥7 real tests (session expiry, invalid JSON, 404, 403, API error, network error, 429)
+│   └── edge-cases-tests.spec.ts          # Phase 29.4.4: ≥5 real tests (empty submit, max length, special chars, pagination, unicode)
 └── dimensions/
-    ├── happy-paths.spec.ts          # Happy path scenarios across all journeys
-    ├── failure-scenarios.spec.ts   # Failure scenarios (error handling)
-    ├── edge-cases.spec.ts          # Edge cases (boundary conditions, etc.)
+    ├── happy-paths.spec.ts          # Phase 29.4.5: Aggregator; imports use-cases + journeys
+    ├── failure-scenarios.spec.ts   # Failure scenarios (imports cross-cutting/failure-scenarios-tests)
+    ├── edge-cases.spec.ts          # Edge cases (imports cross-cutting/edge-cases-tests)
     ├── network-failures.spec.ts    # Cross-cutting: offline, connection refused, timeout (Phase 8.7.1)
     ├── timeout-handling.spec.ts    # Cross-cutting: long-running ops, retry behavior (Phase 8.7.2)
     ├── rate-limit.spec.ts          # Cross-cutting: 429 handling, backoff (Phase 8.7.3)
@@ -110,13 +120,13 @@ Every route in `frontend/src/app/routes/routes.tsx` SHALL have at least one succ
 | `/public`                                                                                                  | JOURNEY-AUTH-004                                 | UC-AUTH-004   | ✅ auth-visitor                                    | —                                        | Public resources                                             |
 | `/register`                                                                                                | JOURNEY-AUTH-001                                 | UC-AUTH-001   | ✅ auth-visitor                                    | Registration disabled, duplicate email   |                                                              |
 | `/password-reset`, `/password-reset/confirm`, `/auth/password-reset/confirm`                               | JOURNEY-AUTH-003                                 | UC-AUTH-003   | ✅ auth-visitor (when MailHog)                     | Reset disabled                           |                                                              |
-| `/accept-invitation`, `/auth/accept-invitation`                                                            | JOURNEY-TA-001                                   | —             | ⏳                                                 | —                                        |                                                              |
+| `/accept-invitation`, `/auth/accept-invitation`                                                            | JOURNEY-TA-001                                   | —             | ✅ use-cases/auth/accept-invitation.spec.ts       | ✅ invalid/expired token, no token, edge |                                                              |
 | `/unavailable`                                                                                             | —                                                | —             | Assert redirect or message                         | —                                        | Backend-not-implemented flows show this                      |
 | `/403`                                                                                                     | —                                                | —             | ⏳                                                 | —                                        | Forbidden page                                               |
 | `/` (home)                                                                                                 | —                                                | —             | ✅ login-app-shell                                 | —                                        |                                                              |
 | `/assets`, `/assets/create`, `/assets/:id`                                                                 | JOURNEY-DPO-001                                  | UC-AM-001     | ✅ phase2 → JOURNEY-DPO-001                        | ⏳                                       |                                                              |
 | `/datasets`, `/datasets/create`, `/datasets/:id`, `:id/versions`                                           | JOURNEY-DPO-001                                  | UC-AM-001     | ✅ phase2 → JOURNEY-DPO-001                        | ⏳                                       |                                                              |
-| `/files`                                                                                                   | JOURNEY-DPO-001                                  | —             | ⏳                                                 | —                                        |                                                              |
+| `/files`                                                                                                   | JOURNEY-DPO-001                                  | —             | ✅ features/files.spec.ts                         | ✅ 403 unauthenticated, empty state       |                                                              |
 | `/contracts`, `/:id`, `/:id/edit`, `/:id/link-odps`                                                        | JOURNEY-DPO-001, JOURNEY-DE-001, JOURNEY-DPO-016 | UC-CM-\*      | ✅ contracts-odps-routes                           | ✅ non-existent id, link-odps edge       | Phase 13 — 15.3                                              |
 | `/marketplace`, `/listings/:id`, `/publish`, `/orders`, `/entitlements`                                    | JOURNEY-DPO-002, JOURNEY-DC-001, JOURNEY-DC-015  | UC-MKT-\*     | ✅ marketplace-dc-routes                           | ✅ non-existent listing, governance/403  | Phase 13 — 15.4                                              |
 | `/integrations/connections`, `/sync-jobs`, `/mappings`                                                     | JOURNEY-MP-001, JOURNEY-TA-008                   | UC-INT-\*     | ✅ integrations-jobs-webhooks                      | —                                        | Phase 13 — 15.7                                              |
@@ -124,12 +134,13 @@ Every route in `frontend/src/app/routes/routes.tsx` SHALL have at least one succ
 | `/dq`, `/dq/runs/:id`                                                                                      | JOURNEY-DPO-001, JOURNEY-DE-003                  | UC-DQ-\*      | ✅ dq-compliance-governance                        | ✅ non-existent run id                   | Phase 13 — 15.5                                              |
 | `/compliance`, `/compliance/runs/:id`                                                                      | JOURNEY-CPO-001                                  | UC-COMP-\*    | ✅ dq-compliance-governance                        | ✅ non-existent run id                   | Phase 13 — 15.5                                              |
 | `/mesh`, `/mesh/topology`, `/mesh/create`, `/mesh/:id`                                                     | JOURNEY-DMO-001, JOURNEY-DMO-003, JOURNEY-TA-005 | UC-MESH-\*    | ✅ mesh-search-ai-routes                           | Skip or /unavailable if backend limited  | Phase 13 — 15.6                                              |
-| `/virtualization`, `/virtualization/create`, `/:id`, `/:id/edit`                                           | JOURNEY-DE-009, JOURNEY-DA-003, JOURNEY-DC-010   | UC-VIRT-\*    | ✅ mesh-search-ai-routes                           | —                                        | Phase 13 — 15.6                                              |
+| `/virtualization`, `/virtualization/create`, `/:id`, `/:id/edit`                                           | JOURNEY-DE-009, JOURNEY-DA-003, JOURNEY-DC-010   | UC-VIRT-\*    | ✅ mesh-search-ai-routes, phase6-mesh-virtualization (ODBC 26.8, 28.4.2) | —                                        | Phase 13 — 15.6; ODBC create/execute (API + UI) in phase6     |
 | `/search`                                                                                                  | JOURNEY-DC-006, JOURNEY-DS-001                   | UC-AI-\*      | ✅ mesh-search-ai-routes                           | —                                        | Phase 13 — 15.6                                              |
-| `/semantic`                                                                                                | JOURNEY-DC-014                                   | UC-SEM-\*     | ⏳                                                 | —                                        | Capability: semantic.sparql                                  |
+| `/semantic`                                                                                                | JOURNEY-DC-014                                   | UC-SEM-\*     | ✅ features/semantic.spec.ts                      | ✅ /unavailable when capability-gated     | Capability: semantic.sparql                                  |
 | `/ai/search`                                                                                               | JOURNEY-DC-006, JOURNEY-DS-001                   | UC-AI-\*      | ✅ mesh-search-ai-routes                           | Assert /unavailable if gated             | Phase 13 — 15.6; Capability: ai.natural-language-search      |
 | `/ai/schema-matching`                                                                                      | JOURNEY-DPO-007                                  | UC-AI-\*      | ✅ mesh-search-ai-routes                           | Assert /unavailable if gated             | Phase 13 — 15.6; Capability: ai.schema-matching              |
-| `/social`                                                                                                  | JOURNEY-DC-008, JOURNEY-DPO-009                  | UC-SOCIAL-\*  | ✅ admin-audit-settings-routes                     | Load or /unavailable                     | Phase 13 — 15.8; Capability: social.ratings                  |
+| `/communities` (Phase 27.2; `/social` redirects)                                                            | JOURNEY-DC-008, JOURNEY-DPO-009                  | UC-SOCIAL-\*  | ✅ admin-audit-settings-routes, social.spec.ts      | Load or /unavailable                     | Phase 13 — 15.8; Capability: social.communities; **Note**: `/social` redirects to `/communities` (Phase 27.2) |
+| `/assets/:id` (Community section, Phase 27.1)                                                               | JOURNEY-DC-008, JOURNEY-DPO-009                  | UC-SOCIAL-001, UC-SOCIAL-002 | ✅ social.spec.ts, JOURNEY-DC-008, JOURNEY-DPO-009 | Rate/review on asset page (27.3.2)       | Phase 27.1; **Asset social section**: ratings, reviews, Community on asset detail page; social.ratings, social.reviews |
 | `/developer`                                                                                               | JOURNEY-DEV-001, JOURNEY-DEV-009                 | UC-DEV-\*     | ✅ admin-audit-settings-routes                     | Load or /unavailable                     | Phase 13 — 15.8; Capability: developer.plugins               |
 | `/baas`                                                                                                    | —                                                | UC-BAAS-\*    | ✅ admin-audit-settings-routes                     | Load or /unavailable                     | Phase 13 — 15.8; Capability: baas.api-keys                   |
 | `/ml`                                                                                                      | JOURNEY-DS-003                                   | —             | ✅ admin-audit-settings-routes                     | Load or /unavailable                     | Phase 13 — 15.8; Capability: ml.models                       |
@@ -162,13 +173,16 @@ This section documents **which route specs cover which journeys** for traceabili
 | Route Spec File | Routes Covered | Journeys Covered | Notes |
 | --------------- | -------------- | ---------------- | ----- |
 | `journeys/mesh-virtualization-search-ai/mesh-search-ai-routes.spec.ts` | `/mesh`, `/virtualization`, `/search`, `/ai/search`, `/ai/schema-matching` | DMO-001, DMO-002, DMO-003, DMO-004, DMO-005, DPO-007, DPO-013, DE-009, DA-003, DA-004, DC-006, DC-010, DS-001, DS-002, TA-005 | Mesh domains, virtualization, NL search, AI schema matching; capability-gated |
+| `phase6-mesh-virtualization.spec.ts` | `/virtualization/create` (ODBC source), `/virtualization/:id` (execute) | DE-009, DA-003, DC-010 | ODBC create via API (Phase 26.8), ODBC create via UI form (Phase 28.4.2); real backend only |
 | `journeys/contracts-odps/contracts-odps-routes.spec.ts` | `/contracts`, `/contracts/:id/edit`, `/contracts/:id/link-odps`, `/odps`, `/odps/upload`, `/odps/:id` | DPO-001, DPO-015, DPO-016, DPO-017, DE-001, DE-002, DE-014 | Contract-first, ODPS product-first, link-odps flows |
 | `journeys/marketplace-dc/marketplace-dc-routes.spec.ts` | `/marketplace`, `/marketplace/listings/:id`, `/marketplace/orders`, `/marketplace/entitlements`, `/governance` | DPO-002, DC-001, DC-002, DC-003, DC-004, DC-005, DC-011, DC-012, DC-014, DC-015, TA-006, CPO-004 | Discover, purchase, entitlements; governance access-requests |
-| `journeys/admin-audit-settings/admin-audit-settings-routes.spec.ts` | `/admin`, `/audit`, `/audit/:id`, `/settings/sessions`, `/settings/api-keys`, `/developer`, `/baas`, `/ml`, `/social`, `/observability` | PA-001–PA-010, MPA-001–MPA-009, AUD-001, DEV-001, DEV-009, DS-003, DC-008, DPO-009, TA-* (admin), CM-* | Role-gated; capability-gated for developer, baas, ml, social |
+| `journeys/admin-audit-settings/admin-audit-settings-routes.spec.ts` | `/admin`, `/audit`, `/audit/:id`, `/settings/sessions`, `/settings/api-keys`, `/developer`, `/baas`, `/ml`, `/communities`, `/observability` | PA-001–PA-010, MPA-001–MPA-009, AUD-001, DEV-001, DEV-009, DS-003, DC-008, DPO-009, TA-* (admin), CM-* | Role-gated; capability-gated for developer, baas, ml, communities |
+| `features/social.spec.ts` | `/communities`, `/social` (redirects to `/communities`), `/assets/:id` (Community section) | DC-008, DPO-009 | Phase 27.1–27.3; /social → /communities; asset social section (ratings, reviews); rate/review E2E |
 | `journeys/integrations-jobs-webhooks/integrations-jobs-webhooks-routes.spec.ts` | `/integrations/connections`, `/integrations/sync-jobs`, `/integrations/mappings`, `/jobs`, `/jobs/:id`, `/webhooks`, `/scheduled-ingestions` | DE-006, DE-010, TA-008, MP-001, MP-002, MP-003, MP-004, MP-005, MP-006, MP-007 | Integrations, sync jobs, mappings, jobs, webhooks, scheduled ingestion |
 | `journeys/dq-compliance-governance/dq-compliance-governance-routes.spec.ts` | `/dq`, `/dq/runs/:id`, `/compliance`, `/compliance/runs/:id`, `/governance` | DPO-001, DPO-004, DE-003, DE-004, CPO-001, CPO-002, TA-006 | DQ runs, compliance runs, access requests |
 | `journeys/governance-retention/governance-retention-crud.spec.ts` | `/governance/retention`, `/governance/retention/new`, `/governance/retention/:id`, `/governance/retention/:id/edit` | CPO-003, CPO-009, TA-006 | Retention policy CRUD; role-gated (TENANT_ADMIN, PLATFORM_ADMIN) |
 | `journeys/scheduled-export/scheduled-export-journey.spec.ts` | `/scheduled-exports`, `/scheduled-exports/create`, `/scheduled-exports/:id`, `/scheduled-exports/:id/edit` | EXPORT-001, EXPORT-002 | Journey spec (not route-only); full flow coverage |
+| `design-system/meshant-brand.spec.ts`, `meshant-layout.spec.ts`, `meshant-typography.spec.ts` | `/`, `/login` (brand, layout, typography) | Phase 28.7 Meshant design system | Phase 29.0; design tokens, brand, layout, typography |
 
 ### Route Spec vs Journey Spec Strategy (6.11.6.2)
 
@@ -404,7 +418,7 @@ Marketplace journeys (MP-001–MP-007) are imported by the Data Product Owner pe
 | Semantic            | `features/semantic.spec.ts`            | UC-SEM-001 to UC-SEM-004         | ⏳ Pending     |
 | AI                  | `features/ai.spec.ts`                  | UC-AI-001 to UC-AI-010           | ⏳ Pending     |
 | ML                  | `features/ml.spec.ts`                  | Related use cases                | ⏳ Pending     |
-| Social              | `features/social.spec.ts`              | UC-SOCIAL-001 to UC-SOCIAL-006   | ⏳ Pending     |
+| Communities (Phase 27.2) | `features/social.spec.ts`              | UC-SOCIAL-001 to UC-SOCIAL-006   | ⏳ Pending     |
 | Data Mesh           | `features/data-mesh.spec.ts`           | UC-MESH-001 to UC-MESH-005       | ⏳ Pending     |
 | Virtualization      | `features/virtualization.spec.ts`      | UC-VIRT-001 to UC-VIRT-004       | ⏳ Pending     |
 | Scheduled Ingestion | `features/scheduled-ingestion.spec.ts` | UC-SI-001 to UC-SI-003           | ⏳ Pending     |
@@ -466,6 +480,7 @@ Dedicated dimension specs for cross-cutting failure behavior; runnable with real
 | `dimensions/timeout-handling.spec.ts` | Long-running operations, retry behavior, slow API | `npm run test:e2e -- e2e/dimensions/timeout-handling.spec.ts` |
 | `dimensions/rate-limit.spec.ts` | 429 handling, backoff, rate limit message in UI | `npm run test:e2e -- e2e/dimensions/rate-limit.spec.ts` |
 | `dimensions/concurrent-operations.spec.ts` | Race conditions, optimistic locking, double-submit | `npm run test:e2e -- e2e/dimensions/concurrent-operations.spec.ts` |
+| `design-system/meshant-*.spec.ts` (Phase 29.0) | Meshant brand, layout, typography | `npm run test:e2e -- e2e/design-system/ --project=chromium` or `./scripts/run_meshant_tests.sh` |
 
 ---
 
@@ -499,6 +514,28 @@ Dedicated dimension specs for cross-cutting failure behavior; runnable with real
 - ⏳ Failure scenarios
 - ⏳ Edge cases
 - ⏳ Performance tests
+
+---
+
+## E2E Execution Order and Batching (CI)
+
+E2E tests are split into batches for CI and iterate-and-fix cycles. Run order matters: auth/setup first, then routes, then persona journeys.
+
+| Batch | Scope | Run Command | ~Tests |
+|-------|-------|--------------|--------|
+| 1 | Auth, setup, cross-cutting, a11y | `npm run test:e2e:batch1` | ~79 |
+| 2 | Routes (contracts, marketplace, dq, mesh, integrations, admin) | `npm run test:e2e:batch2` | ~121 |
+| 3 | DPO journeys | `npm run test:e2e:batch3` | ~253 |
+| 4 | Auth, DC, DE journeys | `npm run test:e2e:batch4` | ~376 |
+| 5 | TA, PA, Dev, Aud journeys | `npm run test:e2e:batch5` | ~352 |
+| 6 | CPO, DS, DMO, DA, CM, Marketplace journeys | `npm run test:e2e:batch6` | ~364 |
+| 7 | Features, phase specs, governance, scheduled | `npm run test:e2e:batch7` | ~400 |
+
+**Full suite**: `npm run test:e2e` (runs all batches via `e2e-detect-api.sh`).
+
+**Faster iteration**: `E2E_PROJECT=chromium npm run test:e2e:batch1` (single project, ~27 tests).
+
+**List batches**: `npm run test:e2e:batches:list`.
 
 ---
 

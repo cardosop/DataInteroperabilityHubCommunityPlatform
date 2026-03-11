@@ -3220,7 +3220,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         Execute query against a single source.
 
         Supports:
-        - Traditional sources: postgresql, mysql, sqlserver, sparql, rest, graphql, s3, minio
+        - Traditional sources: postgresql, mysql, sqlserver, mssql, odbc, sparql, rest, graphql, s3, minio
         - Federated asset sources: {"type": "federated_asset", "asset_id": "uuid", "query": "SELECT * FROM ..."}
         - External resource sources: {"type": "external_resource", "resource_id": "uuid", "asset_id": "uuid"}
 
@@ -3254,6 +3254,8 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
             # Execute SQL query against database
             if source_type in ["postgresql", "mysql", "sqlserver", "mssql"]:
                 return self._execute_sql_query(source, query, parameters, timeout_seconds)
+            elif source_type == "odbc":
+                return self._execute_odbc_query(source, query, parameters, timeout_seconds)
             else:
                 raise ValidationError(
                     f"Unsupported database type for SQL query: {source_type}",
@@ -3628,8 +3630,17 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
             try:
                 # Apply parameters to query
                 parameterized_query = self._apply_parameters(query, parameters)
-                # Execute pandas query
-                result_df = df.query(parameterized_query.replace("SELECT *", "").strip()) if "SELECT *" in parameterized_query.upper() else df
+                # For "SELECT * FROM X" or "SELECT *" return all rows; pandas query expects boolean expr
+                remainder = parameterized_query.replace("SELECT *", "").strip()
+                if "SELECT *" in parameterized_query.upper():
+                    if not remainder or remainder.upper().startswith("FROM "):
+                        result_df = df
+                    elif remainder.upper().startswith("WHERE "):
+                        result_df = df.query(remainder[6:].strip())  # "WHERE col > 5" -> "col > 5"
+                    else:
+                        result_df = df
+                else:
+                    result_df = df
                 # Convert to list of dictionaries
                 data = result_df.to_dict('records')
                 columns = list(result_df.columns)
@@ -3876,6 +3887,128 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 f"SQL query execution failed: {e}",
                 extra={
                     "source_type": source_type,
+                    "host": host,
+                    "database": database,
+                    "error": str(e)
+                },
+                exc_info=True
+            )
+            raise ValidationError(
+                f"SQL query execution failed: {str(e)}",
+                code="SQL_EXECUTION_FAILED"
+            ) from e
+
+    def _execute_odbc_query(
+        self,
+        source: Dict[str, Any],
+        query: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: int
+    ) -> Dict[str, Any]:
+        """
+        Execute SQL query against ODBC source.
+
+        Supports:
+        - connection_string: Full ODBC connection string (e.g. DSN=... or Driver=...;Server=...)
+        - host + database: Build connection string from host, port, database, username, password.
+          Optional: driver (default: PostgreSQL Unicode for PostgreSQL).
+
+        Args:
+            source: ODBC source configuration
+            query: SQL query
+            parameters: Query parameters
+            timeout_seconds: Timeout in seconds
+
+        Returns:
+            Result dictionary with data and metadata
+        """
+        try:
+            import pyodbc
+        except ImportError:
+            raise ValidationError(
+                "pyodbc is required for ODBC connections. Install it with: pip install pyodbc",
+                code="MISSING_DEPENDENCY"
+            )
+
+        connection_string = source.get("connection_string")
+        host = source.get("host")
+        database = source.get("database")
+        if connection_string:
+            conn_str = connection_string
+        else:
+            if not host or not database:
+                raise ValidationError(
+                    "ODBC source requires 'connection_string' or both 'host' and 'database'",
+                    code="MISSING_DATABASE_CONFIG"
+                )
+            port = source.get("port", 5432)
+            username = source.get("username") or source.get("user")
+            password = source.get("password", "")
+            driver = source.get("driver", "PostgreSQL Unicode")
+
+            # Build connection string for PostgreSQL (common case for Hub ODBC)
+            if "postgresql" in driver.lower() or driver == "PostgreSQL Unicode":
+                conn_str = (
+                    f"DRIVER={{{driver}}};"
+                    f"SERVER={host};"
+                    f"PORT={port};"
+                    f"DATABASE={database};"
+                    f"UID={username or ''};"
+                    f"PWD={password}"
+                )
+            else:
+                # Generic ODBC format
+                conn_str = (
+                    f"DRIVER={{{driver}}};"
+                    f"SERVER={host};"
+                    f"PORT={port};"
+                    f"DATABASE={database};"
+                    f"UID={username or ''};"
+                    f"PWD={password}"
+                )
+
+        try:
+            conn = pyodbc.connect(
+                conn_str,
+                timeout=min(timeout_seconds, 30)
+            )
+            try:
+                cursor = conn.cursor()
+                parameterized_query = self._apply_parameters(query, parameters)
+                cursor.execute(parameterized_query)
+                columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                rows = cursor.fetchall()
+
+                data = [dict(zip(columns, row)) for row in rows]
+
+                return {
+                    "data": data,
+                    "columns": columns,
+                    "row_count": len(data),
+                    "source_type": "odbc"
+                }
+            finally:
+                cursor.close()
+                conn.close()
+        except pyodbc.Error as e:
+            logger.error(
+                f"ODBC query execution failed: {e}",
+                extra={
+                    "source_type": "odbc",
+                    "error": str(e)
+                },
+                exc_info=True
+            )
+            raise ValidationError(
+                f"ODBC query execution failed: {str(e)}",
+                code="SQL_EXECUTION_FAILED"
+            ) from e
+
+        except Exception as e:
+            logger.error(
+                f"ODBC query execution failed: {e}",
+                extra={
+                    "source_type": "odbc",
                     "host": host,
                     "database": database,
                     "error": str(e)

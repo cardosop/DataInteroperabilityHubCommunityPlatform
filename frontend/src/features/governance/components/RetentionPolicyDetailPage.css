@@ -15,7 +15,7 @@
 }
 
 .governance-detail-content {
-  background: white;
+  background: var(--color-background-primary);
   border-radius: 4px;
   padding: 2rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -55,7 +55,7 @@
 }
 
 .metadata-item a {
-  color: #0066cc;
+  color: var(--color-info);
   text-decoration: none;
   margin-top: 0.25rem;
 }
@@ -67,7 +67,7 @@
 .error-display {
   margin-top: 1rem;
   padding: 1rem;
-  background-color: #f8d7da;
-  color: #721c24;
-  border-radius: 4px;
+  background-color: var(--color-error-100);
+  color: var(--color-error-900);
+  border-radius: var(--border-radius-sm);
 }

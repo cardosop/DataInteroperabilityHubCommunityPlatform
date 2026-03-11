@@ -1,0 +1,6 @@
+id,email,created_at
+usr-001,alice@example.com,2024-01-15T10:00:00Z
+usr-002,bob@example.com,2024-01-16T11:30:00Z
+usr-003,carol@example.org,2024-01-17T09:15:00Z
+usr-004,dave@test.com,2024-01-18T14:45:00Z
+usr-005,eve@sample.net,2024-01-19T08:00:00Z

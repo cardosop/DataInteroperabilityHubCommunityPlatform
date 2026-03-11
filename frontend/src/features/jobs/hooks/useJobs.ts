@@ -3,13 +3,20 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { emptyPaginatedResponse } from '../../../shared/types/api';
 import { jobService } from '../services/jobService';
-import type { JobCreateRequest, JobListFilters } from '../../../shared/types/jobs';
+import type { Job, JobCreateRequest, JobListFilters } from '../../../shared/types/jobs';
 
 export function useJobs(filters: JobListFilters = {}) {
   return useQuery({
     queryKey: ['jobs', 'list', filters],
-    queryFn: () => jobService.list(filters),
+    queryFn: async () => {
+      const data = await jobService.list(filters);
+      if (data === undefined) {
+        return emptyPaginatedResponse<Job>();
+      }
+      return data;
+    },
     refetchInterval: (query) => {
       // Auto-refetch if there are running jobs
       const data = query.state.data;

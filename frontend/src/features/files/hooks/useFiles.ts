@@ -10,10 +10,13 @@ export function useFiles(filters: {
   page_size?: number;
   asset_id?: string;
   dataset_id?: string;
-} = {}) {
+  search?: string;
+  ordering?: string;
+} = {}, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['files', 'list', filters],
     queryFn: () => fileService.list(filters),
+    enabled: options?.enabled !== false,
   });
 }
 

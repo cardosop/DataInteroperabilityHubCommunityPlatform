@@ -4,7 +4,7 @@
 }
 
 .governance-retention-policy-form {
-  background: white;
+  background: var(--color-background-primary);
   border-radius: 4px;
   padding: 2rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -48,8 +48,25 @@
   gap: 0.5rem;
 }
 
+.retention-picker-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.retention-picker-field {
+  flex: 1;
+  min-width: 200px;
+}
+
+.retention-picker-field label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+}
+
 .required {
-  color: #d32f2f;
+  color: var(--color-error-700);
 }
 
 .form-actions {

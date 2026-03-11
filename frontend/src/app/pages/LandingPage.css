@@ -81,16 +81,16 @@
 
 .landing-button-primary {
   background-color: var(--color-primary-700);
-  color: white;
+  color: var(--color-text-on-primary);
 }
 
 .landing-button-primary:hover {
   background-color: var(--color-primary-800);
-  color: white;
+  color: var(--color-text-on-primary);
 }
 
 .landing-button-secondary {
-  background-color: white;
+  background-color: var(--color-background-primary);
   color: var(--color-primary-700);
   border: 2px solid var(--color-primary-700);
 }

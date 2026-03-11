@@ -23,7 +23,13 @@ export function JobListPage() {
   if (error)
     return <ErrorDisplay error={error} title="Failed to load jobs" onRetry={() => refetch()} />;
   if (!data || data.results.length === 0) {
-    return <EmptyState title="No jobs found" message="Jobs will appear here when created." />;
+    return (
+      <EmptyState
+        title="No jobs found"
+        message="Jobs are created when you create datasets, run DQ checks, or trigger compliance scans. Create a dataset to get started."
+        action={{ label: 'Create Dataset', onClick: () => navigate('/datasets/create') }}
+      />
+    );
   }
 
   return (

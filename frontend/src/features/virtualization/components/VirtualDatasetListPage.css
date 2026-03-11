@@ -36,11 +36,11 @@
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 1rem;
-  background: white;
+  background: var(--color-background-primary);
 }
 
 .virtual-dataset-list-table {
-  background: white;
+  background: var(--color-background-primary);
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -52,7 +52,7 @@
 }
 
 .virtual-dataset-list-table thead {
-  background: #f5f5f5;
+  background: var(--color-neutral-100);
 }
 
 .virtual-dataset-list-table th {
@@ -76,7 +76,7 @@
 }
 
 .virtual-dataset-list-table tbody tr.clickable-row:hover {
-  background-color: #f9f9f9;
+  background-color: var(--color-background-secondary);
 }
 
 .query-type-badge {
@@ -85,8 +85,8 @@
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 600;
-  background: #e3f2fd;
-  color: #1976d2;
+  background: var(--color-info-light);
+  color: var(--color-info);
 }
 
 .status-badge {
@@ -99,23 +99,23 @@
 }
 
 .status-draft {
-  background: #fff3cd;
-  color: #856404;
+  background: var(--color-warning-50);
+  color: var(--color-warning-700);
 }
 
 .status-active {
-  background: #d4edda;
-  color: #155724;
+  background: var(--color-success-100);
+  color: var(--color-success-700);
 }
 
 .status-inactive {
-  background: #f8d7da;
-  color: #721c24;
+  background: var(--color-error-100);
+  color: var(--color-error-900);
 }
 
 .status-archived {
-  background: #e2e3e5;
-  color: #383d41;
+  background: var(--color-neutral-200);
+  color: var(--color-neutral-700);
 }
 
 .text-muted {
@@ -126,7 +126,7 @@
 .btn-link {
   background: none;
   border: none;
-  color: #0066cc;
+  color: var(--color-info);
   cursor: pointer;
   text-decoration: underline;
   padding: 0;
@@ -134,7 +134,7 @@
 }
 
 .btn-link:hover {
-  color: #0052a3;
+  color: var(--color-info-dark);
 }
 
 .virtual-dataset-list-pagination {
@@ -157,22 +157,22 @@
 }
 
 .btn-primary {
-  background: #0066cc;
-  color: white;
+  background: var(--color-info);
+  color: var(--color-background-primary);
 }
 
 .btn-primary:hover {
-  background: #0052a3;
+  background: var(--color-info-dark);
 }
 
 .btn-secondary {
-  background: #f5f5f5;
+  background: var(--color-neutral-100);
   color: #333;
   border: 1px solid #ddd;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #e9e9e9;
+  background: var(--color-neutral-200);
 }
 
 .btn-secondary:disabled {

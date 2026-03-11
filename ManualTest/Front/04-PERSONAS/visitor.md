@@ -12,6 +12,13 @@ A **Visitor** is someone who has not yet authenticated or registered. They may l
 
 ---
 
+## Before You Start
+
+1. Complete [00-PREREQUISITES.md](../00-PREREQUISITES.md)
+2. For registration (JOURNEY-AUTH-001): Use a **new email** or see [test-users.md](../05-SUPPORT-MATERIAL/test-users.md) for login credentials
+
+---
+
 ## Journeys Covered
 
 | Journey | Title | Script | Duration |

@@ -1,0 +1,264 @@
+/**
+ * FileMultiPicker Component
+ * Searchable, multi-select picker for choosing multiple files.
+ * Used in ScheduledExportCreatePage (file_ids), etc.
+ * Supports keyboard navigation (ArrowDown, ArrowUp, Enter, Escape).
+ */
+
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import { useFiles, useFile } from '../../../features/files/hooks/useFiles';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { LoadingSpinner } from '../LoadingSpinner';
+import { ErrorDisplay } from '../ErrorDisplay';
+import { FEATURE_RESOURCE_PICKERS_ENABLED } from '../../config/featureFlags';
+import type { File as FileItem } from '../../types/files';
+import './picker-base.css';
+
+const SEARCH_DEBOUNCE_MS = 300;
+
+function SelectedFileTag({ id, onRemove }: { id: string; onRemove: () => void }) {
+  const { data } = useFile(id);
+  const label = data ? `${data.name} (${data.content_type})` : id.slice(0, 8) + '...';
+  return (
+    <li className="resource-picker-tag">
+      <span>{label}</span>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="resource-picker-tag-remove"
+        aria-label={`Remove ${label}`}
+      >
+        ×
+      </button>
+    </li>
+  );
+}
+
+export interface FileMultiPickerProps {
+  value: string[];
+  onChange: (fileIds: string[]) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  assetId?: string;
+  datasetId?: string;
+  'data-testid'?: string;
+}
+
+export function FileMultiPicker({
+  value,
+  onChange,
+  placeholder = 'Search and select files...',
+  disabled = false,
+  assetId,
+  datasetId,
+  'data-testid': dataTestId = 'file-multi-picker',
+}: FileMultiPickerProps) {
+  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
+    return (
+      <div className="file-multi-picker resource-picker" data-testid={dataTestId}>
+        <input
+          type="text"
+          value={value.join(', ')}
+          onChange={(e) =>
+            onChange(
+              e.target.value
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            )
+          }
+          placeholder="Enter file IDs (comma-separated UUIDs)"
+          disabled={disabled}
+          className="resource-picker-input"
+          aria-label="File IDs"
+        />
+      </div>
+    );
+  }
+
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
+  const [isOpen, setIsOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  const filters = {
+    page,
+    page_size: 20,
+    search: debouncedSearch || undefined,
+    ordering: '-created_at',
+    asset_id: assetId,
+    dataset_id: datasetId,
+  };
+
+  const { data, isLoading, error, refetch } = useFiles(filters, { enabled: isOpen });
+
+  const results = data?.results ?? [];
+  const maxIndex = results.length - 1;
+
+  const handleToggle = useCallback(
+    (file: FileItem) => {
+      const isSelected = value.includes(file.id);
+      if (isSelected) {
+        onChange(value.filter((id) => id !== file.id));
+      } else {
+        onChange([...value, file.id]);
+      }
+    },
+    [value, onChange]
+  );
+
+  const handleRemove = useCallback(
+    (fileId: string) => {
+      onChange(value.filter((id) => id !== fileId));
+    },
+    [value, onChange]
+  );
+
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [debouncedSearch, results.length]);
+
+  useEffect(() => {
+    if (highlightedIndex >= 0 && listRef.current) {
+      const option = listRef.current.children[highlightedIndex] as HTMLElement;
+      option?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightedIndex]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isOpen) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        setIsOpen(true);
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightedIndex((i) => (i < maxIndex ? i + 1 : 0));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightedIndex((i) => (i > 0 ? i - 1 : maxIndex));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (highlightedIndex >= 0 && results[highlightedIndex]) {
+          handleToggle(results[highlightedIndex]);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setIsOpen(false);
+        setHighlightedIndex(-1);
+        break;
+      default:
+        break;
+    }
+  };
+
+  return (
+    <div className="resource-picker" data-testid={dataTestId}>
+      <div className="resource-picker-trigger">
+        <input
+          type="text"
+          value={isOpen ? searchInput : ''}
+          onChange={(e) => {
+            setSearchInput(e.target.value);
+            setPage(1);
+            if (!isOpen) setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+          onKeyDown={handleKeyDown}
+          placeholder={value.length === 0 ? placeholder : undefined}
+          disabled={disabled}
+          className="resource-picker-input"
+          aria-label="Select files"
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
+          aria-activedescendant={
+            highlightedIndex >= 0 && results[highlightedIndex]
+              ? `file-multi-picker-option-${results[highlightedIndex].id}`
+              : undefined
+          }
+          role="combobox"
+          aria-multiselectable="true"
+        />
+      </div>
+
+      {value.length > 0 && (
+        <ul className="resource-picker-selected-tags" data-testid="selected-files">
+          {value.map((id) => (
+            <SelectedFileTag key={id} id={id} onRemove={() => handleRemove(id)} />
+          ))}
+        </ul>
+      )}
+
+      {isOpen && (
+        <div className="resource-picker-dropdown" role="listbox" aria-label="File options" aria-multiselectable="true">
+          {isLoading && (
+            <div className="resource-picker-loading">
+              <LoadingSpinner size="small" message="Loading files..." />
+            </div>
+          )}
+          {error && (
+            <div className="resource-picker-error">
+              <ErrorDisplay
+                error={error}
+                title="Failed to load files"
+                onRetry={() => refetch()}
+              />
+            </div>
+          )}
+          {!isLoading && !error && results.length === 0 && (
+            <div className="resource-picker-empty">
+              <p>No files found.</p>
+              <Link to="/files" className="resource-picker-browse-link">
+                Browse files
+              </Link>
+            </div>
+          )}
+          {!isLoading && !error && results.length > 0 && (
+            <ul className="resource-picker-list" ref={listRef}>
+              {results.map((file: FileItem, index: number) => {
+                const isSelected = value.includes(file.id);
+                return (
+                  <li
+                    key={file.id}
+                    id={`file-multi-picker-option-${file.id}`}
+                    role="option"
+                    aria-selected={isSelected}
+                    className={`resource-picker-option ${isSelected ? 'selected' : ''} ${index === highlightedIndex ? 'highlighted' : ''}`}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleToggle(file);
+                    }}
+                    onMouseEnter={() => setHighlightedIndex(index)}
+                  >
+                    <span className="resource-picker-option-name">{file.name}</span>
+                    <span className="resource-picker-option-meta">
+                      {file.content_type} {isSelected ? '✓' : ''}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+
+      <p className="resource-picker-hint">
+        <Link to="/files" className="resource-picker-browse-link" data-testid="browse-files-link">
+          Browse files
+        </Link>
+        {' '}to find and select files.
+      </p>
+    </div>
+  );
+}

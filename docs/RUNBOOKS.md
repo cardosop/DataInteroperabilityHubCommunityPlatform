@@ -29,6 +29,173 @@ Complete troubleshooting and operational procedures for the Data Interoperabilit
 23. [KYC provider integration](#kyc-provider-integration)
 24. [Real Scheduled Ingestion/Export E2E](#real-scheduled-ingestionexport-e2e)
 25. [Compliance Service — Policy and Risk Config](#compliance-service--policy-and-risk-config)
+26. [Compliance Run Stuck PENDING](#compliance-run-stuck-pending)
+27. [Personal tenant creation failures](#personal-tenant-creation-failures)
+28. [Subscription plan change failures](#subscription-plan-change-failures)
+29. [ODBC Virtualization Issues](#odbc-virtualization-issues)
+30. [Brand Name Change](#brand-name-change)
+31. [Tenant switch failures](#tenant-switch-failures)
+32. [Frontend UX troubleshooting](#frontend-ux-troubleshooting)
+33. [Data-first asset creation](#data-first-asset-creation)
+34. [Resource Picker troubleshooting](#resource-picker-troubleshooting)
+
+---
+
+## Data-first asset creation
+
+**When to use:** POST /api/v1/assets/data-first/ fails; workflow errors; file not found; cross-tenant file_id.
+
+**Quick reference:**
+- Endpoint: `POST /api/v1/assets/data-first/` with `file_id`, `key`, `name`.
+- Prerequisites: File uploaded, ACTIVE status, same tenant.
+- Tests: `./scripts/run_dataset_creation_flow_tests.sh --skip-e2e` or `--quick` for validation+IDOR only.
+
+**Full runbook:** [docs/runbooks/DATA_FIRST_ASSET_CREATION.md](runbooks/DATA_FIRST_ASSET_CREATION.md)
+
+---
+
+## Frontend UX troubleshooting
+
+**When to use:** Toast notifications not showing; Breadcrumbs hidden; ConfirmDialog/EmptyState issues; UUID validation errors; Notifications dropdown.
+
+**Quick reference:**
+- Feature flags: `VITE_FEATURE_TOAST_ENABLED`, `VITE_FEATURE_BREADCRUMBS_ENABLED` (default: true). Rebuild after env change.
+- Components: Toast, Breadcrumbs, ConfirmDialog, EmptyState, UuidWithCopy — see shared components.
+
+**Full runbook:** [docs/runbooks/FRONTEND_UX.md](runbooks/FRONTEND_UX.md)
+
+---
+
+## Resource Picker troubleshooting
+
+**When to use:** Picker dropdowns empty or not loading; list API 403/404; integration tests failing; a11y violations; picker shows text input instead of search UI.
+
+**Quick reference:**
+- Feature flag: `VITE_FEATURE_RESOURCE_PICKERS_ENABLED=true` (default). When `false`, pickers render text inputs for manual UUID entry.
+- Test script: `./scripts/run_resource_picker_tests.sh` — frontend unit (102), backend list API (51), integration, a11y; `--e2e` for optional E2E picker flows.
+- Components: AssetPicker, ContractPicker, DatasetPicker, FilePicker (and Multi variants) in `frontend/src/shared/components/pickers/`.
+
+**Full runbook:** [docs/runbooks/RESOURCE_PICKER_TROUBLESHOOTING.md](runbooks/RESOURCE_PICKER_TROUBLESHOOTING.md)
+
+---
+
+## Tenant switch failures
+
+**When to use:** GET /auth/me/tenants/ or POST /auth/switch-tenant/ returns 403; X-Tenant-Id header rejected; tenant switcher not visible in UI.
+
+**Quick reference:**
+- Feature flag: `FEATURE_TENANT_SWITCH_ENABLED=true` (default). Set to `false` to disable.
+- Endpoints: GET /auth/me/tenants/, POST /auth/switch-tenant/
+- X-Tenant-Id: Validated against UserTenantMembership; 403 if no membership or feature disabled.
+
+**Full runbook:** [docs/runbooks/TENANT_SWITCH.md](runbooks/TENANT_SWITCH.md)
+
+---
+
+## Brand Name Change
+
+**When to use:** Changing the product brand name (e.g. from Meshant to a custom name) across UI, emails, OpenAPI, SDKs.
+
+**Quick reference:**
+- Frontend: `VITE_APP_NAME=MyBrand` in `frontend/.env` or `APP_NAME=MyBrand` for Docker build
+- Backend: `APP_NAME=MyBrand` in `.env.dev` / `.env.staging` / `.env.production`
+
+**Full runbook:** [docs/runbooks/BRAND_NAME_CHANGE.md](runbooks/BRAND_NAME_CHANGE.md)
+
+---
+
+## ODBC Virtualization Issues
+
+**When to use:** Virtual dataset query execution fails for ODBC sources. Error may indicate missing driver, connection failure, or invalid config.
+
+**Root causes and fixes:**
+
+1. **pyodbc or driver not available — `MISSING_DEPENDENCY` or `[IM002] [unixODBC][Driver Manager]Data source name not found`**
+   - **Cause:** `pyodbc` not installed, or ODBC driver (e.g. PostgreSQL) not installed in the API container or host.
+   - **Fix:** Install `pip install pyodbc`. For API Docker image, ensure `unixodbc`, `unixodbc-dev`, and `odbc-postgresql` are in the Dockerfile. For local/CI: `sudo apt-get install -y unixodbc unixodbc-dev odbc-postgresql`.
+   - **Verify:** `odbcinst -q -d` lists the driver; `python -c "import pyodbc; print(pyodbc.drivers())"` shows driver names.
+
+2. **Connection refused or timeout**
+   - **Cause:** Wrong host/port, firewall, or database not reachable from API container.
+   - **Fix:** Use correct host (e.g. `postgres` from API container in docker-compose, not `localhost`). Ensure database accepts connections from API network. Check `pg_hba.conf` for PostgreSQL.
+   - **Verify:** From API container: `nc -zv postgres 5432` or `psql -h postgres -U hub -d hub -c "SELECT 1"`.
+
+3. **Authentication failed**
+   - **Cause:** Incorrect username/password in `connection_string` or host+database config.
+   - **Fix:** Ensure `username`/`password` or `UID`/`PWD` in connection string match database credentials.
+   - **Verify:** Test with `psql` or `isql` using same credentials.
+
+4. **ODBC source requires 'connection_string' or both 'host' and 'database'**
+   - **Cause:** Source config missing required fields. Must have either full `connection_string` or both `host` and `database`.
+   - **Fix:** Add `connection_string` or populate `host`, `database`, and optionally `port`, `username`, `password`, `driver`.
+   - **Verify:** API validates on create/update; check request body.
+
+5. **Credential masking in logs**
+   - **Cause:** Expected behavior — passwords and connection strings are masked in logs and audit.
+   - **Fix:** None; use debug/verbose logging cautiously. Verify config via API response (masked) or direct DB check.
+
+**References:** `docs/VIRTUALIZATION_ODBC_SOURCES.md`; `hub/apps/virtualization/services.py` `_execute_odbc_query`; `hub/apps/virtualization/tests/test_real_source_integration.py`.
+
+---
+
+## Subscription plan change failures
+
+**When to use:** POST `/api/v1/billing/subscription/current/change-plan/` fails with 400, 403, or 404. Tenant admin or platform admin cannot change subscription plan.
+
+**Root causes and fixes:**
+
+1. **403 Forbidden — "You do not have permission to change the subscription plan"**
+   - **Cause:** User lacks TENANT_ADMIN or PLATFORM_ADMIN role.
+   - **Fix:** Assign TENANT_ADMIN role to the user for their tenant, or use a platform admin account.
+   - **Verify:** User has `user_roles` with role name `TENANT_ADMIN`, or `user.is_platform_admin` is True.
+
+2. **400 — "Plan 'X' not found or inactive"**
+   - **Cause:** Requested plan slug does not exist or `is_active=False`.
+   - **Fix:** Run `python manage.py seed_default_plans` to ensure FREE, PRO, ENTERPRISE exist. Or create/activate the plan in TenantPlan.
+   - **Verify:** `TenantPlan.objects.filter(slug='pro', is_active=True).exists()` returns True.
+
+3. **400 — "Already on this plan"**
+   - **Cause:** Tenant's current subscription already uses the requested plan.
+   - **Fix:** No action needed; this is expected when user selects current plan. UI should filter out current plan from dropdown.
+
+4. **400 — "Tenant context required"**
+   - **Cause:** User has no tenant (e.g. platform admin without tenant, or X-Tenant-ID header missing).
+   - **Fix:** Ensure user has `tenant_id` set or X-Tenant-ID header is sent. Platform admin changing plan for a tenant must have tenant context (e.g. from user.tenant or header).
+
+5. **404 — "No subscription found"**
+   - **Cause:** Tenant has no Subscription record.
+   - **Fix:** Create subscription via `SubscriptionService.create_subscription(tenant, plan)` or ensure tenant onboarding created one. Run `seed_default_plans` and create subscription for FREE plan if needed.
+   - **Verify:** `Subscription.objects.filter(tenant_id=tenant_id).exists()` returns True.
+
+**Stripe integration:** When subscription has `stripe_subscription_id`, plan change also updates Stripe metadata. Stripe errors are logged but do not fail the request (graceful degradation). Check logs for `Failed to update Stripe subscription` if Stripe sync is needed.
+
+**Audit:** Successful plan changes create `SUBSCRIPTION` / `PLAN_CHANGED` audit event with old_plan_slug, new_plan_slug.
+
+**References:** Phase 17; `hub/apps/billing/views.py` change_plan; `hub/apps/billing/services.py` SubscriptionService.update_subscription; `docs/BILLING.md`.
+
+---
+
+## Personal tenant creation failures
+
+**When to use:** Registration fails when creating a personal tenant (POST `/api/v1/auth/register/` without `tenant_id`). Error may indicate FREE plan missing, slug collision, or subscription creation failure.
+
+**Root causes and fixes:**
+
+1. **FREE plan missing** — `TenantPlan.DoesNotExist` or similar
+   - **Fix:** Run `python manage.py seed_default_plans` to create FREE, PRO, ENTERPRISE plans.
+   - **Verify:** `TenantPlan.objects.filter(slug='free', is_active=True).exists()` returns True.
+
+2. **Slug collision** — Tenant slug `personal-{uuid8}` already exists (rare)
+   - **Fix:** Service retries up to 5 times with new UUID. If still failing, check for manual duplicate slugs or DB constraint issues.
+   - **Verify:** No duplicate `Tenant.slug` values in database.
+
+3. **Subscription creation failure** — Subscription record creation fails
+   - **Fix:** Ensure TenantPlan exists; check TenantConfig and Subscription model constraints.
+   - **Verify:** `Subscription.objects.filter(tenant=tenant, status=ACTIVE).exists()` after personal tenant creation.
+
+**Generic error:** API returns `REGISTRATION_FAILED` (400) with message "Registration failed. Please try again." — does not leak internal details (slug, collision). Retry registration; if persistent, check logs and run `seed_default_plans`.
+
+**References:** useronboardfix design; `hub/apps/tenants/services.py` PersonalTenantService; `hub/apps/auth/views.py` register().
 
 ---
 
@@ -37,6 +204,35 @@ Complete troubleshooting and operational procedures for the Data Interoperabilit
 **When to use:** Adjust compliance-service policy thresholds (allowed_to_store) and risk level thresholds via environment variables without code changes.
 
 **Full runbook:** [runbooks/COMPLIANCE_SERVICE_CONFIG.md](runbooks/COMPLIANCE_SERVICE_CONFIG.md) — env vars `COMPLIANCE_POLICY_*`, `COMPLIANCE_RISK_THRESHOLD_*`, defaults, and references.
+
+---
+
+## Compliance Run Stuck PENDING
+
+**When to use:** Compliance run shows PENDING / "Running..." indefinitely; never completes.
+
+**Root causes and checks:**
+
+1. **Wrong queue** — Jobs were enqueued to `default` but the RQ worker listens to `job_critical`, `job_default`, `job_low`. Fixed in code: compliance service now enqueues to `job_critical`.
+
+2. **Worker not running** — Verify worker container is up:
+   - Dev: `docker compose ps hub-worker` (or `hub-dev-worker`)
+   - Test: `docker compose -f docker-compose.test.yml ps hub-test-worker`
+
+3. **Redis misconfiguration** — API and worker must use the same `REDIS_QUEUE_URL` (e.g. `redis://redis-queue:6379/0` for dev, `redis://redis-queue-test:6379/0` for test).
+
+4. **Compliance service unreachable** — Worker needs `COMPLIANCE_SERVICE_URL` to reach the compliance microservice. Test stack: `COMPLIANCE_SERVICE_URL=http://compliance-service-test:8082`. If health check fails, ComplianceRun is now updated to FAILED with error details.
+
+5. **Enqueue failure** — Check API logs for "Failed to enqueue compliance run job" (Redis unreachable or worker queue misconfigured).
+
+**Quick check (test stack):**
+```bash
+docker exec hub-test-worker python -c "
+from django_rq import get_queue
+for q in ['job_critical','job_default','default']:
+    print(q, get_queue(q).count)
+"
+```
 
 ---
 
@@ -211,6 +407,22 @@ If `docker compose -f docker-compose.test.yml ps` does not show `hub-test-api` o
      ```
      This removes all named volumes for the test stack (including `postgres-test-data`), then brings the stack up so Postgres initializes with `hub_test` user and `hub_test` database. Wait for `ensure-test-db` and core services to be up.
    - **Postgres auth**: `FATAL: password authentication failed for user "hub_test"` — ensure the same env is used for postgres-test and API/workflow-engine. Use `--env-file .env.test` when bringing up the stack if you override `POSTGRES_USER`/`POSTGRES_PASSWORD` there. If postgres was created earlier with different credentials, either pass that same env when starting the stack or recreate the DB volume: `docker compose -f docker-compose.test.yml down`, remove the postgres-test volume, then `up -d` again.
+   - **`migrate-test-db is missing dependency ensure-test-db`**: Docker Compose dependency resolution can fail when many services start in parallel. Fix: run the one-offs first, then the full stack:
+     ```bash
+     docker compose -f docker-compose.test.yml --env-file .env.test up ensure-test-db migrate-test-db
+     docker compose -f docker-compose.test.yml --env-file .env.test up -d
+     ```
+     Or use `./scripts/clean-test-stack.sh` or `./scripts/bring-up-test-stack.sh`, which now run these one-offs first.
+   - **`dependency failed to start: container hub-test-api is unhealthy`** or **`relation "tenants" already exists`** or **`UniqueViolation: pg_type_typname_nsp_index`**: (1) **Concurrent migrations** — api-service-test and workflow-engine-service-test both run `migrate` on `hub_test`; if they start together, PostgreSQL's pg_type catalog conflicts. Fix: workflow-engine depends on api (service_healthy) so migrations run sequentially. (2) **Stale volume** — schema from partial rollback or different init. Fix: reset the test DB volume and start fresh:
+    ```bash
+    ./scripts/clean-test-stack.sh --volumes
+    # Or manually:
+    docker compose -f docker-compose.test.yml down -v --remove-orphans
+    docker compose -f docker-compose.test.yml --env-file .env.test up -d
+    ```
+    Wait 2–3 min for api-service-test to become healthy. Then run `./scripts/bring-up-test-stack.sh` if any services stay in Created.
+  - **`dependency failed to start: container hub-test-postgres is unhealthy`**: Postgres is performing crash recovery (e.g. after unclean shutdown); fsync can take 10–12 min on slow disk. Wait up to 15 min and retry, or run `docker compose -f docker-compose.test.yml logs postgres-test` to confirm "database system is ready to accept connections". If it never becomes ready, try `docker compose -f docker-compose.test.yml down -v` to remove volumes and start fresh (data loss for test DB).
+  - **`dependency failed to start: container hub-test-prefect-server is unhealthy`** or **`hub-test-prefect-db` Exited (1)**: (1) **Prefect DB init** (e.g. "pg_ctl: server does not shut down"): Fix init script — `infrastructure/prefect-db/02-pg-hba-host.sh` must not use `exit` or `set -e`. (2) **Prefect migrations** (e.g. `DuplicateTableError: relation "trgm_ix_block_type_name" already exists`): Stale Prefect DB from a prior run. Fix: `./scripts/clean-test-stack.sh --volumes` or `docker compose -f docker-compose.test.yml down -v`, then `up -d` again. (3) **TimeoutError during migrations**: DB under load or missing pgcrypto. Ensure `01-pgcrypto.sql` is mounted; increase `PREFECT_SERVER_DATABASE_SQLALCHEMY_POOL_TIMEOUT`; run `clean-test-stack.sh --volumes` and retry.
    - **Migrations / startup error**: Check the traceback in the logs; fix the application or run migrations manually if needed.
    - **DuplicateTable `scheduled_exports` (dev)**: If workflow-engine (or api-service) exits with `relation "scheduled_exports" already exists`, the table exists but Django’s migration record is missing. One-time fix: mark the migration as applied without running it, then restart. Use the same compose file you use for `up` (e.g. `docker-compose.dev.yml` or `docker-compose.yml`) and the service that runs migrate (e.g. api-service or workflow-engine-service):
      ```bash
@@ -248,10 +460,11 @@ All runs use `docker-compose.test.yml` and `api-service-test`; evidence is writt
 
 If a batch fails at **setup** with `OperationalError: server closed the connection unexpectedly`, `FATAL: the database system is shutting down`, `FATAL: the database system is starting up`, or `FATAL: the database system is in recovery mode`, the cause is usually Postgres becoming unavailable or still in recovery during test DB creation/migrations (e.g. container restarted, OOM, or stack not fully ready).
 
+- **api-service-test "health: starting" for a long time**: Migrations run in `migrate-test-db` (one-off); api starts runserver only and should become healthy within ~60s. If stuck, check `docker logs hub-test-migrate` for migration errors, or `docker logs hub-test-api` for runserver issues.
 - **Before batches run**: The batched scripts (`run_phase_12a_batched.sh`, `run_performance_tests_batched.sh`) wait for **Postgres to be ready** (via `pg_isready` in the postgres-test container, up to 10 minutes) after core services are up, so pytest does not start until the database accepts connections. `hub/conftest.py` also retries the session-start DB check on transient messages (`starting up`, `not yet accepting connections`, `refused`) so runs that start right after compose up succeed once Postgres is ready.
 - **Automatic retry**: `tests/conftest.py` retries `setup_databases` up to 3 times on these transient errors (with 5s, 10s, 15s backoff and connection close between attempts). Many runs will pass on retry.
 - **If errors persist**: Keep the test stack up for the full batch run; do not restart Postgres mid-run. Use `--reuse-db` when re-running so the first-run migration storm is avoided. See [Batch execution](#batch-execution-phase-12a-path-based-batches) start step.
-- **Infrastructure hardening**: `docker-compose.test.yml` configures `postgres-test` and `prefect-db-test` with **start_period 600s** so initdb (first run) or recovery (restart) can finish before the healthcheck marks them unhealthy. `prefect-server-test` depends on `prefect-db-test` with **service_healthy** and has **restart: on-failure** and **start_period 240s** so migrations can complete and the server retries if startup fails (e.g. TimeoutError during migrations). If a batch log shows "database system is shutting down", "database system is starting up", a FATAL connection error, or **DNS resolution failure** ("could not translate host name", "Temporary failure in name resolution"), the batched script waits for Postgres to be healthy again (**600s** when "starting up", **120s** for DNS, **300s** otherwise), then **re-runs only the failed tests** once with `pytest --lf`. If the retry passes, the batch is reported as passed (root-cause fix for transient infra; no mocks).
+- **Infrastructure hardening**: `docker-compose.test.yml` configures `postgres-test` with **start_period 900s** (crash recovery + fsync can take 10–12 min on slow disk) and `prefect-db-test` with **start_period 600s** so initdb (first run) or recovery (restart) can finish before the healthcheck marks them unhealthy. `prefect-server-test` depends on `prefect-db-test` with **service_healthy** and has **restart: on-failure** and **start_period 240s** so migrations can complete and the server retries if startup fails (e.g. TimeoutError during migrations). If a batch log shows "database system is shutting down", "database system is starting up", a FATAL connection error, or **DNS resolution failure** ("could not translate host name", "Temporary failure in name resolution"), the batched script waits for Postgres to be healthy again (**600s** when "starting up", **120s** for DNS, **300s** otherwise), then **re-runs only the failed tests** once with `pytest --lf`. If the retry passes, the batch is reported as passed (root-cause fix for transient infra; no mocks).
 - **Postgres exit 137 (OOM)**: If `hub-test-postgres` exits with code 137, the container was killed (usually OOM). Reduce load (fewer concurrent services), increase Docker memory for the engine, or raise `postgres-test` `deploy.resources.limits.memory` in `docker-compose.test.yml` (e.g. 6G). Then bring the stack down, remove the volume if the data dir is corrupt (`docker compose -f docker-compose.test.yml down -v` for the named volume), and start again.
 
 ### AWS integration optional tests (batch 52 / integrations)
@@ -365,6 +578,8 @@ Omit the date to use the latest date directory under `test_reports_comprehensive
 
 **When to run**: As part of the full Phase 12A run (nightly, release, or manual); or alone when validating security after changes. Security tests are **part of the full run and sign-off** per [TEST_EXECUTION_PLAN.md — Phase 12A.3](TEST_EXECUTION_PLAN.md#phase-12a3--security-performance-concurrency-regression-runnable) and gapfix1/testreview1.
 
+**Validation (29.7.2)**: Full security suite target <10 min. Includes `pytest tests/security/` plus ODPS ref resolver (`hub.apps.contracts.tests.security.test_ref_resolver_security`) and penetration tests (`tests.security.penetration_test_odps_ref_resolver`). **Service × vulnerability × test file matrix**: [SECURITY_TEST_COVERAGE.md](SECURITY_TEST_COVERAGE.md). Run: `./scripts/run_validation_29_7.sh --security` (runs all three; uses `.env.test` when present).
+
 ### As part of full run
 
 The security suite runs automatically in **Phase 12A.3** when you execute:
@@ -394,6 +609,10 @@ docker compose exec -T api-service bash -c "cd /app && PYTHONPATH=/app DJANGO_SE
 - **Do not mask or skip**: Fix any failure at **root cause** (no mocks/stubs; no "skip if flaky").
 - Inspect `test_reports_comprehensive/{date}/security/security.log` and `junit.xml` for failures.
 - Re-run the security suite (or full Phase 12A) after fixes; ensure green before sign-off.
+
+**"relation tenants does not exist"**: Validation script uses `TEST_DB_SUFFIX=phase13` and `POSTGRES_DB=hub_test` (target DB: `hub_test_test_phase13`). Ensure `migrate-test-db` has run: `docker compose -f docker-compose.test.yml stop api-service-test worker-service-test && docker compose -f docker-compose.test.yml run --rm --no-deps migrate-test-db && docker compose -f docker-compose.test.yml start api-service-test worker-service-test`.
+
+**Port conflicts** (when main compose is running): `Bind for 0.0.0.0:6831 failed` or `Bind for 0.0.0.0:6380 failed` — add to `.env.test`: `JAEGER_UDP_TEST_PORT=6832`, `REDIS_CACHE_TEST_PORT=6479`, `REDIS_QUEUE_TEST_PORT=6470`, `REDIS_EVENTS_TEST_PORT=6471`, `REDIS_CHANNELS_TEST_PORT=6472`.
 
 ### CI
 
@@ -2064,6 +2283,26 @@ docker compose exec frontend ls -la /usr/share/nginx/html/assets/
    # Check Django CORS settings
    docker compose exec api-service python -c "from django.conf import settings; print(settings.CORS_ALLOWED_ORIGINS)"
    ```
+
+#### Issue: Frontend E2E — relation "users" does not exist
+
+**Symptoms**: Frontend E2E setup fails with `Registration failed: 500 - {"error":{"message":"relation \"users\" does not exist"...}}` when creating the test user via POST `/api/v1/auth/register/`.
+
+**Root Cause**: The test database (`hub_test_test_shared`) used by the API at port 8001 is not migrated or has inconsistent migration state. The API runs against the same DB as backend pytest; if `migrate-test-db` did not complete or the DB was reset, the `users` table may be missing.
+
+**Resolution**:
+
+1. **Ensure test stack is up with migrations**: `docker compose -f docker-compose.test.yml --env-file .env.test up -d` and wait until `migrate-test-db` completes (api-service-test depends on it). Check: `docker compose -f docker-compose.test.yml ps migrate-test-db` shows "exited (0)".
+
+2. **If DB was reset or corrupted**: `docker compose -f docker-compose.test.yml down -v` then `docker compose -f docker-compose.test.yml --env-file .env.test up -d` to recreate the DB and run migrations fresh. Wait for api-service-test to be healthy.
+
+3. **Run backend tests first** (creates DB and migrations via pytest): `./scripts/run_phase_12a_backend_suites.sh` or at least one pytest run with `--reuse-db`. Then run frontend E2E: `cd frontend && npm run test:e2e`.
+
+4. **Verify API health**: `curl -s http://localhost:8001/health/` should return 200. If registration still fails with "relation users does not exist", the API is using a DB without migrations.
+
+**References**: `docker-compose.test.yml` migrate-test-db service; api-service-test uses `POSTGRES_DB=hub_test_test_shared`; [Full test suite (Phase 12A-style)](#full-test-suite-phase-12a-style).
+
+---
 
 #### Issue: WebSocket Connections Failing
 

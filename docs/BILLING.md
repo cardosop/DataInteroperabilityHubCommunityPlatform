@@ -222,11 +222,11 @@ Common metric keys:
 
 ## API Endpoints
 
-### Get Subscription
+### Get Current Subscription
 
-**GET** `/api/v1/billing/subscription/`
+**GET** `/api/v1/billing/subscription/current/`
 
-Returns current subscription for tenant.
+Returns current subscription for tenant (latest by created_at).
 
 **Response**:
 ```json
@@ -247,6 +247,32 @@ Returns current subscription for tenant.
   "cancel_at_period_end": false
 }
 ```
+
+### Change Subscription Plan (Phase 17)
+
+**POST** `/api/v1/billing/subscription/current/change-plan/`
+
+Change the tenant's subscription plan. Requires TENANT_ADMIN or PLATFORM_ADMIN.
+
+**Request**:
+```json
+{
+  "plan_slug": "pro"
+}
+```
+
+**Response**: Updated subscription (same as Get Current Subscription).
+
+**Errors**:
+- 400: Plan not found, already on this plan, or tenant context required
+- 403: User lacks TENANT_ADMIN or Platform Admin
+- 404: No subscription found
+
+### List Available Plans (Phase 17)
+
+**GET** `/api/v1/billing/plans/`
+
+Returns list of active plans available for subscription change. Used by tenant admins when changing plan.
 
 ### List Invoices
 
@@ -284,6 +310,12 @@ Returns list of invoices for tenant.
 **GET** `/api/v1/billing/invoices/{id}/`
 
 Returns invoice detail.
+
+### Download Invoice (Phase 17)
+
+**GET** `/api/v1/billing/invoices/{id}/download/`
+
+Redirects (302) to invoice PDF URL or hosted invoice page when available. Returns 404 when neither URL is present.
 
 ---
 

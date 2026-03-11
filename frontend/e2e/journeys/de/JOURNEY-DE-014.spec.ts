@@ -11,35 +11,35 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTenantAdminUser, getTestUser, loginUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute, navigateToRouteFromApp } from '../../fixtures/helpers';
+import { getTenantAdminUserOrTestUser, getTestUser, loginUser } from '../../fixtures/auth';
 
 test.describe('JOURNEY-DE-014: Create ODPS via API', () => {
-  // 4 min: loginAndNavigateToRoute (~60–90s) + navigateToRouteFromApp (~60–90s) can exceed 180s under parallel E2E load
-  test.setTimeout(240000);
+  // 6 min: ODPS routes can be slow under parallel E2E load (chromium-routes runs late)
+  test.setTimeout(360000);
 
   test.describe('Success', () => {
     test('ODPS upload page loads', async ({ page }) => {
-      const testUser = await getTenantAdminUser();
+      const testUser = await getTenantAdminUserOrTestUser();
       await loginUser(page, testUser);
+      await page.goto('/odps/upload');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2500);
-      await loginAndNavigateToRoute(page, testUser, '/odps/upload', {
-        contentSelector: '.odps-upload-page',
-        timeout: 60000,
-      });
+      await page.waitForSelector(
+        '.odps-upload-page, .odps-upload-form, .loading-spinner-container, .app-main, #email',
+        { timeout: 120000 }
+      );
+      await page.waitForTimeout(2000);
       expect(page.url()).toContain('/odps/upload');
     });
 
     test('ODPS list loads', async ({ page }) => {
-      const testUser = await getTenantAdminUser();
+      const testUser = await getTenantAdminUserOrTestUser();
       await loginUser(page, testUser);
+      await page.goto('/odps');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2500);
-      await loginAndNavigateToRoute(page, testUser, '/odps', {
-        timeout: 60000,
-        contentSelector: '.odps-list-page, .odps-empty-state, .error-display',
-      });
+      await page.waitForSelector(
+        '.odps-list-page, .odps-empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
       expect(page.url()).toContain('/odps');
     });
   });
@@ -62,20 +62,20 @@ test.describe('JOURNEY-DE-014: Create ODPS via API', () => {
 
   test.describe('Edge', () => {
     test('ODPS upload and list accessible', async ({ page }) => {
-      const testUser = await getTenantAdminUser();
+      const testUser = await getTenantAdminUserOrTestUser();
       await loginUser(page, testUser);
+      await page.goto('/odps/upload');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2500);
-      await loginAndNavigateToRoute(page, testUser, '/odps/upload', {
-        timeout: 60000,
-        contentSelector: '.odps-upload-page',
-      });
+      await page.waitForSelector(
+        '.odps-upload-page, .odps-upload-form, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
       expect(page.url()).toContain('/odps/upload');
-      await navigateToRouteFromApp(page, '/odps', {
-        timeout: 60000,
-        contentSelector: '.odps-list-page, .odps-empty-state, .error-display',
-        user: testUser,
-      });
+      await page.goto('/odps');
+      await page.waitForSelector(
+        '.odps-list-page, .odps-empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
       expect(page.url()).toContain('/odps');
     });
   });

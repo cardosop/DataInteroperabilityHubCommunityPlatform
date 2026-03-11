@@ -45,9 +45,9 @@
 }
 
 .semantic-content {
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
   padding: var(--spacing-lg);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   box-shadow: var(--shadow-sm);
 }
 
@@ -85,7 +85,7 @@
 }
 
 .form-group .required {
-  color: #c62828;
+  color: var(--color-error-700);
 }
 
 .form-group input,
@@ -94,9 +94,9 @@
   width: 100%;
   padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-base);
-  background: var(--color-bg-primary);
+  background: var(--color-background-primary);
   color: var(--color-text-primary);
   font-family: inherit;
 }
@@ -123,8 +123,8 @@
 .context-content {
   margin-top: var(--spacing-lg);
   padding: var(--spacing-md);
-  background: var(--color-bg-primary);
-  border-radius: var(--border-radius);
+  background: var(--color-background-primary);
+  border-radius: var(--border-radius-md);
   border: 1px solid var(--color-border);
 }
 
@@ -140,9 +140,9 @@
 
 .sparql-warning {
   padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--color-warning-light, #fff3e0);
-  color: var(--color-warning, #ed6c02);
-  border-radius: var(--border-radius);
+  background: var(--color-warning-light);
+  color: var(--color-warning-700);
+  border-radius: var(--border-radius-md);
   margin-bottom: var(--spacing-md);
   font-size: var(--font-size-sm);
 }
@@ -150,9 +150,9 @@
 .sparql-results-json,
 .uri-results-json,
 .context-json {
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
   padding: var(--spacing-md);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   overflow-x: auto;
   font-size: var(--font-size-sm);
   font-family: 'Courier New', monospace;
@@ -163,9 +163,9 @@
 }
 
 .ontology-turtle {
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
   padding: var(--spacing-md);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   overflow-x: auto;
   font-size: var(--font-size-sm);
   font-family: 'Courier New', monospace;

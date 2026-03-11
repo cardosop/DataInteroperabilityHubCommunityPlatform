@@ -27,7 +27,9 @@ class GetTenantConfigTest(TestCase):
     """Test get_tenant_config and get_tenant_config_value with real DB."""
 
     def setUp(self):
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        import uuid
+        uid = str(uuid.uuid4())[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
     def test_get_tenant_config_no_config_returns_platform_defaults(self):
         """Success: tenant with no TenantConfig returns dict with platform defaults and tenant_id."""
@@ -63,6 +65,36 @@ class GetTenantConfigTest(TestCase):
         """Success: get_tenant_config_value returns platform default when no config."""
         value = get_tenant_config_value(self.tenant, "default_dq_profile")
         self.assertIsNotNone(value)
+
+    def test_get_tenant_config_includes_trust_signals_enabled(self):
+        """Phase 11: get_tenant_config includes trust_signals_enabled."""
+        result = get_tenant_config(self.tenant)
+        self.assertIn("trust_signals_enabled", result)
+        self.assertIs(result["trust_signals_enabled"], True)
+
+        TenantConfig.objects.create(tenant=self.tenant, trust_signals_enabled=False)
+        result2 = get_tenant_config(self.tenant)
+        self.assertIs(result2["trust_signals_enabled"], False)
+
+    def test_get_tenant_config_includes_versioning_enabled(self):
+        """Phase 12: get_tenant_config includes versioning_enabled."""
+        result = get_tenant_config(self.tenant)
+        self.assertIn("versioning_enabled", result)
+        self.assertIs(result["versioning_enabled"], True)
+
+        TenantConfig.objects.create(tenant=self.tenant, versioning_enabled=False)
+        result2 = get_tenant_config(self.tenant)
+        self.assertIs(result2["versioning_enabled"], False)
+
+    def test_get_tenant_config_includes_workflows_enabled(self):
+        """Phase 14: get_tenant_config includes workflows_enabled."""
+        result = get_tenant_config(self.tenant)
+        self.assertIn("workflows_enabled", result)
+        self.assertIs(result["workflows_enabled"], True)
+
+        TenantConfig.objects.create(tenant=self.tenant, workflows_enabled=False)
+        result2 = get_tenant_config(self.tenant)
+        self.assertIs(result2["workflows_enabled"], False)
 
     def test_get_tenant_config_value_custom_default_overrides_platform(self):
         """Edge case: custom default argument overrides platform default."""

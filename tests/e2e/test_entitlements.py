@@ -78,7 +78,7 @@ class EntitlementsE2ETest(E2ETestBase):
                 "asset_id": asset_id,
                 "title": "Entitlement Test Listing",
                 "short_description": "Test description",
-                "price_model": "FREE_AUTO_APPROVE",
+                "pricing_model": "FREE_AUTO_APPROVE",
             },
             format="json",
         )
@@ -106,26 +106,31 @@ class EntitlementsE2ETest(E2ETestBase):
 
         # Create order (should auto-approve and create entitlement)
         order_response = self.client.post(
-            "/api/v1/marketplace/orders/", {"listing_id": listing_id}, format="json"
+            "/api/v1/marketplace/orders/",
+            {"listing_id": str(listing_id)},
+            format="json",
         )
-        # Order creation may fail if listing not published or other requirements not met
-        if order_response.status_code != status.HTTP_201_CREATED:
-            # Skip test if order creation fails
-            pytest.skip(f"Order creation failed: {order_response.status_code}")
+        self.assertEqual(
+            order_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Order creation failed: {get_response_data(order_response)}",
+        )
 
-        order_id = (get_response_data(order_response) or {}).get("id")
-        if not order_id:
-            pytest.skip("Order created but no ID in response")
+        data = get_response_data(order_response) or {}
+        order_id = data.get("id") or (data.get("order") or {}).get("id")
+        self.assertIsNotNone(order_id, f"Order ID missing in response: {data}")
 
-        # Verify entitlement created
+        # Verify entitlement created (FREE_AUTO_APPROVE creates it immediately)
         order = Order.objects.get(id=order_id)
         entitlement = Entitlement.objects.filter(order=order).first()
-
-        if entitlement:
-            self.assertEqual(entitlement.status, EntitlementStatus.ACTIVE)
-            self.assertEqual(str(entitlement.tenant_id), str(self.consumer_tenant.id))
-            self.assertEqual(entitlement.asset_id, asset_id)
-            self.verify_entitlement_created(self.consumer_tenant.id, asset_id)
+        self.assertIsNotNone(
+            entitlement,
+            f"Entitlement should be created for auto-approved order {order_id}",
+        )
+        self.assertEqual(entitlement.status, EntitlementStatus.ACTIVE)
+        self.assertEqual(str(entitlement.tenant_id), str(self.consumer_tenant.id))
+        self.assertEqual(str(entitlement.asset_id), str(asset_id))
+        self.verify_entitlement_created(order.id, asset_id)
 
     def test_entitlement_expiration(self):
         """Test entitlement expiration"""

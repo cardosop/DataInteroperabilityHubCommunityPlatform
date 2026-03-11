@@ -4,10 +4,12 @@
  */
 
 // Node fetch needs absolute URL; VITE_API_BASE_URL is relative (/api/v1)
+// Prefer 8001 when E2E_WEB_PORT set (test stack uses 8001)
+const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
 const API_BASE_URL =
   process.env.E2E_API_BASE_URL ||
   (process.env.VITE_PROXY_TARGET ? `${process.env.VITE_PROXY_TARGET.replace(/\/$/, '')}/api/v1` : null) ||
-  'http://localhost:8000/api/v1';
+  `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
 export interface TestUser {
   email: string;
@@ -62,21 +64,43 @@ function isConnectionError(error: unknown): boolean {
   return false;
 }
 
-const FETCH_RETRIES = 4;
-const RETRY_DELAYS_MS = [2000, 4000, 6000, 8000];
+const FETCH_RETRIES = 6;
+const RETRY_DELAYS_MS = [2000, 4000, 6000, 8000, 10000, 12000];
+
+/** True when error is Postgres "too many clients" (transient under parallel E2E load) */
+function isTooManyClientsError(error: unknown): boolean {
+  const msg = String((error as Error)?.message ?? '');
+  return /too many clients|too many connections/i.test(msg);
+}
+
+/** True when error is host resolution (API container temporarily cannot resolve postgres/postgres-test) */
+function isHostResolutionRetryable(error: unknown): boolean {
+  const msg = String((error as Error)?.message ?? '');
+  return /cannot resolve host|translate host name|name resolution|getaddrinfo|ENOTFOUND|could not translate/i.test(msg);
+}
 
 /** Run fn with retries on transient connection errors */
 async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+  const maxAttempts = FETCH_RETRIES + 2; // Extra retries for host resolution (longer recovery)
   let lastError: unknown;
-  for (let i = 0; i < FETCH_RETRIES; i++) {
+  for (let i = 0; i < maxAttempts; i++) {
     try {
       return await fn();
     } catch (error) {
       lastError = error;
-      if (i < FETCH_RETRIES - 1 && isConnectionError(error)) {
-        const delay = RETRY_DELAYS_MS[i];
+      const retryable =
+        isConnectionError(error) ||
+        isTooManyClientsError(error) ||
+        (i < 4 && isHostResolutionRetryable(error));
+      if (i < maxAttempts - 1 && retryable) {
+        const delay = RETRY_DELAYS_MS[Math.min(i, RETRY_DELAYS_MS.length - 1)] ?? 8000;
+        const reason = isTooManyClientsError(error)
+          ? 'Postgres pool exhausted'
+          : isHostResolutionRetryable(error)
+            ? 'host resolution (API recovering)'
+            : 'connection error';
         console.log(
-          `⚠️ ${label} failed (connection error), retrying in ${delay}ms (attempt ${i + 1}/${FETCH_RETRIES})...`
+          `⚠️ ${label} failed (${reason}), retrying in ${delay}ms (attempt ${i + 1}/${maxAttempts})...`
         );
         await new Promise((r) => setTimeout(r, delay));
         continue;
@@ -103,7 +127,7 @@ export async function ensureTestUser(): Promise<TestUser> {
   const name = 'E2E Test User';
 
   const runWithBase = async (baseUrl: string): Promise<TestUser> => {
-    const loginResult = await withRetry(async () => {
+    let loginResult = await withRetry(async () => {
       const loginResponse = await fetch(`${baseUrl}/auth/login/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -113,8 +137,25 @@ export async function ensureTestUser(): Promise<TestUser> {
         console.log('✅ Test user exists and can login');
         return { email, password, name } as TestUser;
       }
+      if (loginResponse.status === 429) {
+        throw new Error('Rate limited (429); will retry');
+      }
       return null;
     }, 'Test user login');
+
+    if (!loginResult) {
+      await runEnsureE2EUserRoles();
+      await new Promise((r) => setTimeout(r, 2000));
+      loginResult = await withRetry(async () => {
+        const loginResponse = await fetch(`${baseUrl}/auth/login/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        if (loginResponse.ok) return { email, password, name } as TestUser;
+        return null;
+      }, 'Test user login (retry after ensure)');
+    }
 
     if (loginResult) {
       await ensureE2ESubscriptionForUser(loginResult, baseUrl);
@@ -136,8 +177,21 @@ export async function ensureTestUser(): Promise<TestUser> {
       // Intentional fallback: malformed JSON (e.g. HTML error page) -> empty object for error parsing
       const errorData = await registerResponse.json().catch(() => ({}));
       if (registerResponse.status === 400 && isAlreadyRegisteredError(errorData)) {
-        console.log('⚠️  Test user already registered, using existing credentials');
-        return { email, password, name };
+        console.log('⚠️  Test user already registered, syncing password via ensure_e2e_user_roles');
+        await runEnsureE2EUserRoles();
+        await new Promise((r) => setTimeout(r, 2000));
+        const retryLogin = await fetch(`${baseUrl}/auth/login/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        if (retryLogin.ok) {
+          console.log('✅ Test user login OK after ensure_e2e_user_roles');
+          return { email, password, name };
+        }
+        throw new Error(
+          `Test user exists but login failed after ensure_e2e_user_roles. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
+        );
       }
       const errMsg =
         typeof (errorData as { error?: { message?: string } })?.error?.message === 'string'
@@ -153,6 +207,7 @@ export async function ensureTestUser(): Promise<TestUser> {
             'Start the stack: docker compose -f docker-compose.dev.yml up -d and ensure no process on the host is bound to port 8000.'
         );
       }
+      // "too many clients" is transient (Postgres pool exhausted under parallel E2E); retry will be handled by withRetry
       throw new Error(
         `Registration failed: ${registerResponse.status} - ${JSON.stringify(errorData)}`
       );
@@ -445,17 +500,31 @@ async function runEnsureE2EUserRoles(): Promise<boolean> {
 /**
  * Ensure tenant admin test user exists and can login.
  * Retries after running ensure_e2e_user_roles if login fails (handles global setup race).
+ * Retries on connection errors (ECONNRESET, fetch failed) to handle backend overload.
  */
 export async function ensureTenantAdminUser(): Promise<TestUser> {
   const user = E2E_PERSONA_USERS.tenant_admin;
-  let ok = await tryLogin(user);
-  if (!ok) {
-    await runEnsureE2EUserRoles();
-    ok = await tryLogin(user);
-  }
-  if (ok) {
-    await ensureE2ESubscriptionForUser(user);
-    return user;
+  const maxAttempts = 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      let ok = await tryLogin(user);
+      if (!ok) {
+        await runEnsureE2EUserRoles();
+        await new Promise((r) => setTimeout(r, 3000));
+        ok = await tryLogin(user);
+      }
+      if (ok) {
+        await ensureE2ESubscriptionForUser(user);
+        return user;
+      }
+    } catch (err) {
+      if (isConnectionError(err) && attempt < maxAttempts - 1) {
+        await runEnsureE2EUserRoles();
+        await new Promise((r) => setTimeout(r, 4000 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
   }
   throw new Error(
     `Tenant admin user not found. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`

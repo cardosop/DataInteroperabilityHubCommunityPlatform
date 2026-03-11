@@ -9,6 +9,8 @@ so that rate limiting middleware can access it.
 
 REST Framework authentication will run later and can override/validate.
 """
+from django.contrib.auth.models import AnonymousUser
+from django.http import HttpResponse
 from django.contrib.auth import get_user_model
 import structlog
 
@@ -41,22 +43,12 @@ class TenantScopingMiddleware:
             if forced_user is not None:
                 request.user = forced_user
         
-        # Process request
-        self.process_request(request)
+        # Process request; short-circuit if middleware returns HttpResponse (e.g. 403)
+        response = self.process_request(request)
+        if response is not None:
+            return response
         
-        # Get response
-        response = self.get_response(request)
-        
-        # Process response (if needed in future)
-        return response
-    """
-    Middleware to extract and set tenant_id from JWT token or API key.
-    
-    This runs BEFORE REST Framework authentication, so it extracts tenant_id
-    directly from Authorization headers to support rate limiting middleware.
-    
-    Sets request.tenant_id and request.tenant for use in views and rate limiting.
-    """
+        return self.get_response(request)
     
     def _extract_tenant_id_from_api_key(self, request):
         """
@@ -147,14 +139,61 @@ class TenantScopingMiddleware:
         Extract tenant_id from Authorization header or request.user.
         
         Priority:
-        1. If tenant_id already set, use it
-        2. Extract from API key in Authorization header (for rate limiting)
-        3. Extract from JWT token in Authorization header (for rate limiting)
-        4. Get from request.user (set by Django's AuthenticationMiddleware)
+        1. X-Tenant-Id header (if present): validate membership; set tenant or 403
+        2. If tenant_id already set, use it
+        3. Extract from API key in Authorization header (for rate limiting)
+        4. Extract from JWT token in Authorization header (for rate limiting)
+        5. Get from request.user (set by Django's AuthenticationMiddleware)
         
         This ensures tenant_id is available for rate limiting middleware
         even though REST Framework authentication hasn't run yet.
         """
+        # X-Tenant-Id: validate membership and set tenant or return 403
+        x_tenant_id = request.META.get("HTTP_X_TENANT_ID", "").strip()
+        if x_tenant_id:
+            from django.conf import settings
+
+            if not getattr(settings, "FEATURE_TENANT_SWITCH_ENABLED", True):
+                return HttpResponse(status=403)
+            user = getattr(request, "user", None) or getattr(request, "_force_auth_user", None)
+            is_anon = user is None or isinstance(user, AnonymousUser)
+            # When user not in request (e.g. JWT before DRF auth), try to get from JWT
+            if is_anon:
+                auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+                if auth_header.startswith("Bearer "):
+                    token = auth_header.split(" ", 1)[1] if " " in auth_header else None
+                    if token:
+                        try:
+                            from hub.apps.auth.jwt_utils import JWTTokenGenerator
+
+                            payload = JWTTokenGenerator.decode_access_token(token)
+                            if payload:
+                                user = JWTTokenGenerator.get_user_from_token(payload)
+                                if user and user.is_active():
+                                    request.user = user
+                                    is_anon = False
+                        except Exception:
+                            pass
+            is_authenticated = (
+                not is_anon
+                and (getattr(user, "is_authenticated", False) or (hasattr(user, "id") and user.id is not None))
+            )
+            if not is_authenticated:
+                return HttpResponse(status=403)
+            from hub.apps.users.services import UserTenantMembershipService
+
+            if not UserTenantMembershipService().validate_membership(user, x_tenant_id):
+                return HttpResponse(status=403)
+            from hub.apps.tenants.models import Tenant
+
+            try:
+                tenant = Tenant.objects.get(id=x_tenant_id)
+                request.tenant_id = str(tenant.id)
+                request.tenant = tenant
+            except Tenant.DoesNotExist:
+                return HttpResponse(status=403)
+            return None
+
         # If tenant_id is already set, ensure it's a string and get tenant object
         if hasattr(request, 'tenant_id') and request.tenant_id:
             # Ensure tenant_id is a string (authentication might set it as UUID)
@@ -213,7 +252,6 @@ class TenantScopingMiddleware:
             )
         
         if user:
-            from django.contrib.auth.models import AnonymousUser
             # Check if user is authenticated (works with both real auth and force_authenticate)
             is_anonymous = isinstance(user, AnonymousUser)
             # In test environments, force_authenticate sets user but is_authenticated might not be evaluated

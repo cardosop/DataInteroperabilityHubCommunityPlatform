@@ -4,6 +4,7 @@ Tenant Service
 Business logic for tenant operations.
 """
 
+import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
@@ -102,6 +103,21 @@ def get_tenant_config(tenant: Tenant) -> Dict[str, Any]:
             if config.max_queued_jobs is not None
             else platform_defaults["max_queued_jobs"]
         ),
+        "trust_signals_enabled": (
+            config.trust_signals_enabled
+            if config.trust_signals_enabled is not None
+            else platform_defaults["trust_signals_enabled"]
+        ),
+        "versioning_enabled": (
+            config.versioning_enabled
+            if config.versioning_enabled is not None
+            else platform_defaults["versioning_enabled"]
+        ),
+        "workflows_enabled": (
+            config.workflows_enabled
+            if config.workflows_enabled is not None
+            else platform_defaults["workflows_enabled"]
+        ),
         "created_at": config.created_at.isoformat() if config.created_at else None,
         "updated_at": config.updated_at.isoformat() if config.updated_at else None,
     }
@@ -134,6 +150,9 @@ def get_tenant_config_value(tenant: Tenant, key: str, default: Any = None) -> An
             "max_file_size_bytes": ("max_file_size_bytes", lambda v: v if v is not None else None),
             "max_job_concurrency": ("max_job_concurrency", lambda v: v if v is not None else None),
             "max_queued_jobs": ("max_queued_jobs", lambda v: v if v is not None else None),
+            "trust_signals_enabled": ("trust_signals_enabled", lambda v: v if v is not None else None),
+            "versioning_enabled": ("versioning_enabled", lambda v: v if v is not None else None),
+            "workflows_enabled": ("workflows_enabled", lambda v: v if v is not None else None),
         }
 
         if key in key_to_attr:
@@ -474,6 +493,9 @@ class TenantService(BaseService, TenantEventPublisher):
         max_file_size_bytes: Optional[int] = None,
         max_job_concurrency: Optional[int] = None,
         max_queued_jobs: Optional[int] = None,
+        trust_signals_enabled: Optional[bool] = None,
+        versioning_enabled: Optional[bool] = None,
+        workflows_enabled: Optional[bool] = None,
         **kwargs,
     ) -> TenantConfig:
         """
@@ -516,6 +538,9 @@ class TenantService(BaseService, TenantEventPublisher):
                 "max_file_size_bytes": ("file_size", max_file_size_bytes),
                 "max_job_concurrency": ("job_concurrency", max_job_concurrency),
                 "max_queued_jobs": ("job_concurrency", max_queued_jobs),
+                "trust_signals_enabled": ("trust_signals", trust_signals_enabled),
+                "versioning_enabled": ("versioning", versioning_enabled),
+                "workflows_enabled": ("workflows", workflows_enabled),
             }
 
             # Track which fields are being updated
@@ -824,24 +849,19 @@ class TenantUsageService(BaseService):
             ).aggregate(total_size=Sum("size"))
             storage_bytes = storage_result["total_size"] or 0
 
-            # Calculate ingestion cost (optional, from cost tracking)
+            # Aggregate ingestion cost from existing IngestionCost records (created when runs complete).
+            # Do NOT call CostTrackingManager.calculate_run_costs here—that would create duplicates.
             ingestion_cost = None
             try:
-                from hub.apps.scheduled_ingestion.cost_tracking import CostTrackingManager
+                from hub.apps.scheduled_ingestion.models import IngestionCost
 
-                runs = ScheduledIngestionRun.objects.filter(
+                ingestion_total = IngestionCost.objects.filter(
                     scheduled_ingestion__tenant_id=tenant_id,
-                    created_at__gte=local_period_start,
-                    created_at__lte=local_period_end,
-                    status="COMPLETED",
-                )
-                total_cost = sum(
-                    CostTrackingManager.calculate_run_costs(str(run.id)).total_cost
-                    for run in runs
-                    if run.completed_at
-                )
-                if total_cost > 0:
-                    ingestion_cost = total_cost
+                    period_start__gte=local_period_start,
+                    period_end__lte=local_period_end,
+                ).aggregate(total=Sum("total_cost_usd"))["total"]
+                if ingestion_total is not None and ingestion_total > 0:
+                    ingestion_cost = ingestion_total
             except Exception:
                 # Cost tracking may not be available, skip
                 pass
@@ -1150,6 +1170,137 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
         return self.execute_with_metrics(
             operation="create_tenant_with_first_user",
             tenant_id=None,  # No tenant_id yet
+            func=_create,
+        )
+
+
+class PersonalTenantService(BaseService, TenantEventPublisher):
+    """
+    Service for creating personal tenants for self-service registration.
+
+    Creates a tenant with FREE plan, TenantConfig, Subscription, and
+    DATA_PROVIDER/DATA_CONSUMER roles when a user registers without tenant_id.
+    Publishes tenant.created event for consistency with other tenant creation flows.
+    """
+
+    service_name = "personal_tenant_service"
+
+    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+        """Initialize PersonalTenantService."""
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        TenantEventPublisher.__init__(self, tenant_id=tenant_id, user_id=user_id)
+
+    @transaction.atomic
+    def create_personal_tenant_for_user(
+        self, email: str, display_name: Optional[str] = None
+    ) -> Tenant:
+        """
+        Create a personal tenant for a user (self-service registration).
+
+        Creates Tenant (name="Personal - {email}", slug="personal-{uuid8}"),
+        assigns FREE plan, creates TenantConfig with platform defaults,
+        creates Subscription (ACTIVE), and creates DATA_PROVIDER and DATA_CONSUMER roles.
+        Publishes tenant.created event.
+
+        Args:
+            email: User email (used for tenant name)
+            display_name: Optional display name (unused; reserved for future use)
+
+        Returns:
+            Created Tenant instance
+
+        Raises:
+            NotFoundError: If FREE plan does not exist (run seed_default_plans)
+        """
+        from django.db import IntegrityError
+
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        from hub.apps.users.models import Role
+
+        def _create() -> Tenant:
+            # Get FREE plan; raise clear error if missing
+            try:
+                plan = TenantPlan.objects.get(slug="free", is_active=True)
+            except TenantPlan.DoesNotExist:
+                raise NotFoundError(
+                    "FREE plan not found. Run 'python manage.py seed_default_plans' to create default plans.",
+                    code="PLAN_NOT_FOUND",
+                    details={"required_plan": "free"},
+                )
+
+            name = f"Personal - {email}"
+            max_slug_attempts = 5
+            tenant = None
+
+            for _ in range(max_slug_attempts):
+                slug = f"personal-{uuid.uuid4().hex[:8]}"
+                try:
+                    with transaction.atomic():
+                        tenant = Tenant.objects.create(
+                            name=name,
+                            slug=slug,
+                            region=None,
+                            status=TenantStatus.ACTIVE,
+                            kyc_status=KYCStatus.UNVERIFIED,
+                            plan=plan,
+                        )
+                    break
+                except IntegrityError:
+                    tenant = None
+                    continue
+
+            if tenant is None:
+                raise ValidationError(
+                    "Registration failed. Please try again.",
+                    code="TENANT_CREATE_COLLISION",
+                )
+
+            self.publish_tenant_created(
+                tenant_id=str(tenant.id),
+                name=tenant.name,
+                slug=tenant.slug,
+                status=tenant.status,
+                kyc_status=tenant.kyc_status,
+                region=tenant.region,
+            )
+
+            platform_defaults = get_platform_defaults()
+            TenantConfig.objects.create(
+                tenant=tenant,
+                default_dq_profile=platform_defaults.get("default_dq_profile"),
+                allowed_compliance_regimes=platform_defaults.get("allowed_compliance_regimes", []),
+                default_compliance_regimes=platform_defaults.get("default_compliance_regimes", []),
+                data_retention_days=platform_defaults.get("data_retention_days"),
+                rate_limits=platform_defaults.get("rate_limits", {}),
+                max_file_size_bytes=platform_defaults.get("max_file_size_bytes"),
+                max_job_concurrency=platform_defaults.get("max_job_concurrency"),
+                max_queued_jobs=platform_defaults.get("max_queued_jobs"),
+            )
+
+            Subscription.objects.create(
+                tenant=tenant,
+                plan=plan,
+                status=SubscriptionStatus.ACTIVE,
+                current_period_start=timezone.now(),
+                current_period_end=timezone.now() + timedelta(days=365 * 100),
+            )
+
+            for role_name, description in [
+                ("DATA_PROVIDER", "Can create and manage data assets"),
+                ("DATA_CONSUMER", "Can consume and purchase data products"),
+            ]:
+                Role.objects.get_or_create(
+                    tenant=tenant,
+                    name=role_name,
+                    defaults={"description": description},
+                )
+
+            return tenant
+
+        return self.execute_with_metrics(
+            operation="create_personal_tenant_for_user",
+            tenant_id=None,
             func=_create,
         )
 

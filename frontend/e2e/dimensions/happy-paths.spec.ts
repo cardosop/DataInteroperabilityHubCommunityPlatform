@@ -2,11 +2,26 @@
  * Dimension: Happy Paths
  * Aggregates journey specs that verify primary success scenarios.
  * Per E2E_FULL_COVERAGE_PLAN: "Happy path scenarios across all journeys".
- * All steps complete successfully, expected outcomes achieved.
- * Run: npm run test:e2e -- e2e/dimensions/happy-paths.spec.ts
+ * Phase 29.4.5: Aggregator for use-case happy paths.
+ * Run: npm run test:e2e -- e2e/use-cases/ (dimensions in testIgnore; use-cases run directly)
  * No mocks/stubs; real backend only.
  */
 
+import '../use-cases/assets/UC-AM-001.spec';
+import '../use-cases/contracts/UC-CM-001.spec';
+import '../use-cases/contracts/UC-CM-002.spec';
+import '../use-cases/dq/UC-DQ-001.spec';
+import '../use-cases/compliance/UC-COMP-001.spec';
+import '../use-cases/marketplace/UC-MKT-001.spec';
+import '../use-cases/marketplace/UC-MKT-002.spec';
+import '../use-cases/marketplace/UC-MKT-003.spec';
+import '../use-cases/marketplace/UC-MKT-004.spec';
+import '../use-cases/odps/UC-ODPS-001.spec';
+import '../use-cases/odps/UC-ODPS-002.spec';
+import '../use-cases/odps/UC-ODPS-003.spec';
+import '../use-cases/integrations/UC-INT-001.spec';
+import '../use-cases/integrations/UC-INT-002.spec';
+import '../use-cases/webhooks/UC-WH-001.spec';
 import '../login-app-shell.spec';
 import '../journeys/auth/JOURNEY-AUTH-001.spec';
 import '../journeys/auth/JOURNEY-AUTH-002.spec';

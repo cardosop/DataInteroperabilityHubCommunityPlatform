@@ -1,0 +1,70 @@
+{
+  "apiVersion": "odcs.io/v3.0.2",
+  "kind": "DataContract",
+  "id": "manual-test-marketplace-contract",
+  "name": "Manual Test Contract with Marketplace",
+  "version": "1.0.0",
+  "description": "ODCS contract with marketplace section for manual testing. Use for publish-to-marketplace flows.",
+  "schema": {
+    "fields": [
+      {
+        "name": "id",
+        "type": "string",
+        "nullable": false,
+        "description": "Unique identifier"
+      },
+      {
+        "name": "amount",
+        "type": "decimal",
+        "nullable": true,
+        "description": "Amount field"
+      }
+    ]
+  },
+  "info": {
+    "owners": [
+      {
+        "name": "Data Product Owner",
+        "email": "e2e_test@example.com"
+      }
+    ],
+    "tags": ["manual-test", "marketplace"]
+  },
+  "marketplace": {
+    "x_odps": {
+      "pricing_plans": [
+        {
+          "planID": "basic",
+          "name": "Basic Plan",
+          "price": 9.99,
+          "currency": "USD",
+          "billingPeriod": "monthly"
+        },
+        {
+          "planID": "premium",
+          "name": "Premium Plan",
+          "price": 29.99,
+          "currency": "USD",
+          "billingPeriod": "monthly"
+        }
+      ],
+      "access_methods": {
+        "api": {
+          "type": "REST API",
+          "endpoint": "https://api.example.com/v1/products/manual-test",
+          "protocol": "HTTPS"
+        },
+        "download": {
+          "type": "File Download",
+          "url": "https://download.example.com/manual-test.zip"
+        }
+      },
+      "payment_gateways": {
+        "stripe": {
+          "enabled": true,
+          "publicKey": "pk_test_example"
+        }
+      }
+    }
+  }
+}

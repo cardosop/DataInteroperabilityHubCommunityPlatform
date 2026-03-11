@@ -1,10 +1,16 @@
 /**
  * Retention Policy Edit Page
- * Form for editing an existing retention policy
+ * Form for editing an existing retention policy.
+ * Uses AssetPicker, DatasetPicker, FilePicker for resource selection (task 29.69.6.2).
  */
 
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import {
+  AssetPicker,
+  DatasetPicker,
+  FilePicker,
+} from '../../../shared/components/pickers';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type { ApiError } from '../../../shared/types/api';
@@ -60,90 +66,20 @@ export function RetentionPolicyEditPage() {
 
     if (!id) return;
 
-    // Read current values from DOM inputs as fallback (handles React state timing issues)
-    const formElement = e.currentTarget;
-    const getInputValue = (name: string): string | null => {
-      const input = formElement.querySelector(`[name="${name}"]`) as
-        | HTMLInputElement
-        | HTMLTextAreaElement
-        | HTMLSelectElement
-        | null;
-      if (!input) {
-        return null; // Return null only if input not found
-      }
-      if (input.type === 'checkbox') {
-        return (input as HTMLInputElement).checked ? 'true' : '';
-      }
-      // Return the actual value (even if empty string) - this is what user typed
-      // For controlled inputs, input.value reflects the current DOM state
-      return input.value;
-    };
-
-    const getNumberValue = (name: string): number | undefined => {
-      const value = getInputValue(name);
-      if (value === null || value === '') {
-        return undefined;
-      }
-      const parsed = parseInt(value, 10);
-      return isNaN(parsed) ? undefined : parsed;
-    };
-
-    const getCheckboxValue = (name: string): boolean | undefined => {
-      const input = formElement.querySelector(`[name="${name}"]`) as HTMLInputElement | null;
-      if (input) {
-        return input.checked;
-      }
-      return undefined; // Return undefined if not found, so fallback to state works
-    };
-
-    // Get current form values - prefer React state (most reliable) but fallback to DOM
-    // Get current form values - prefer DOM values (most up-to-date) but fallback to state
-    // For controlled inputs, DOM value reflects React state, but DOM updates immediately
-    // while React state updates are async. Reading from DOM ensures we get the latest value.
-    const nameFromDom = getInputValue('name');
-    // Always prefer DOM value if available (most up-to-date), fallback to state only if DOM not found
-    // This ensures we read the current input value even if React state hasn't updated yet
-    // For controlled inputs, input.value always reflects the current React state value
-    const currentName = nameFromDom !== null ? nameFromDom : form.name || '';
-
-    const descFromDom = getInputValue('description');
-    const currentDescription = descFromDom !== null ? descFromDom : form.description || '';
-    const assetIdFromDom = getInputValue('asset_id');
-    const currentAssetId = assetIdFromDom !== null ? assetIdFromDom : form.asset_id || '';
-    const datasetIdFromDom = getInputValue('dataset_id');
-    const currentDatasetId = datasetIdFromDom !== null ? datasetIdFromDom : form.dataset_id || '';
-    const fileIdFromDom = getInputValue('file_id');
-    const currentFileId = fileIdFromDom !== null ? fileIdFromDom : form.file_id || '';
-    const policyTypeFromDom = getInputValue('policy_type');
-    const currentPolicyType = (
-      policyTypeFromDom !== null
-        ? policyTypeFromDom
-        : form.policy_type || RetentionPolicyTypeEnum.TIME_BASED
-    ) as RetentionPolicyType;
-    const retentionPeriodFromDom = getNumberValue('retention_period_days');
-    const currentRetentionPeriod =
-      retentionPeriodFromDom !== undefined ? retentionPeriodFromDom : form.retention_period_days;
-    const eventTriggerFromDom = getInputValue('event_trigger');
-    const currentEventTrigger =
-      eventTriggerFromDom !== null ? eventTriggerFromDom : form.event_trigger || '';
-    const actionFromDom = getInputValue('action');
-    const currentAction = (
-      actionFromDom !== null ? actionFromDom : form.action || RetentionActionEnum.SOFT_DELETE
-    ) as RetentionAction;
-    const gracePeriodFromDom = getNumberValue('grace_period_days');
-    const currentGracePeriod =
-      gracePeriodFromDom !== undefined ? gracePeriodFromDom : form.grace_period_days;
-    const legalHoldFromDom = getCheckboxValue('legal_hold');
-    const currentLegalHold =
-      legalHoldFromDom !== undefined ? legalHoldFromDom : (form.legal_hold ?? false);
-    const legalHoldReasonFromDom = getInputValue('legal_hold_reason');
-    const currentLegalHoldReason =
-      legalHoldReasonFromDom !== null ? legalHoldReasonFromDom : form.legal_hold_reason || '';
-    const legalHoldExpiresFromDom = getInputValue('legal_hold_expires_at');
-    const currentLegalHoldExpires =
-      legalHoldExpiresFromDom !== null ? legalHoldExpiresFromDom : form.legal_hold_expires_at || '';
-    const enabledFromDom = getCheckboxValue('enabled');
-    const currentEnabled = enabledFromDom !== undefined ? enabledFromDom : (form.enabled ?? true);
+    const currentName = form.name || '';
+    const currentDescription = form.description || '';
+    const currentAssetId = form.asset_id || '';
+    const currentDatasetId = form.dataset_id || '';
+    const currentFileId = form.file_id || '';
+    const currentPolicyType = (form.policy_type || RetentionPolicyTypeEnum.TIME_BASED) as RetentionPolicyType;
+    const currentRetentionPeriod = form.retention_period_days;
+    const currentEventTrigger = form.event_trigger || '';
+    const currentAction = (form.action || RetentionActionEnum.SOFT_DELETE) as RetentionAction;
+    const currentGracePeriod = form.grace_period_days;
+    const currentLegalHold = form.legal_hold ?? false;
+    const currentLegalHoldReason = form.legal_hold_reason || '';
+    const currentLegalHoldExpires = form.legal_hold_expires_at || '';
+    const currentEnabled = form.enabled ?? true;
 
     // Validation
     if (!currentName.trim()) {
@@ -167,7 +103,7 @@ export function RetentionPolicyEditPage() {
       setSubmitError({
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'At least one of Asset ID, Dataset ID, or File ID is required',
+          message: 'At least one of Asset, Dataset, or File is required',
           http_status: 400,
           request_id: 'unknown',
           timestamp: new Date().toISOString(),
@@ -289,28 +225,37 @@ export function RetentionPolicyEditPage() {
 
         <div className="form-group">
           <label>Resource (at least one required)</label>
-          <div className="resource-inputs">
-            <input
-              type="text"
-              name="asset_id"
-              placeholder="Asset ID (optional)"
-              value={form.asset_id || ''}
-              onChange={(e) => setForm({ ...form, asset_id: e.target.value })}
-            />
-            <input
-              type="text"
-              name="dataset_id"
-              placeholder="Dataset ID (optional)"
-              value={form.dataset_id || ''}
-              onChange={(e) => setForm({ ...form, dataset_id: e.target.value })}
-            />
-            <input
-              type="text"
-              name="file_id"
-              placeholder="File ID (optional)"
-              value={form.file_id || ''}
-              onChange={(e) => setForm({ ...form, file_id: e.target.value })}
-            />
+          <div className="resource-inputs retention-picker-row">
+            <div className="retention-picker-field">
+              <label htmlFor="retention-asset-picker">Asset (optional)</label>
+              <AssetPicker
+                value={form.asset_id || null}
+                onChange={(id) => setForm({ ...form, asset_id: id ?? '' })}
+                placeholder="Search and select an asset..."
+                data-testid="retention-asset-picker"
+              />
+            </div>
+            <div className="retention-picker-field">
+              <label htmlFor="retention-dataset-picker">Dataset (optional)</label>
+              <DatasetPicker
+                value={form.dataset_id || null}
+                onChange={(id) => setForm({ ...form, dataset_id: id ?? '' })}
+                placeholder="Search and select a dataset..."
+                assetId={form.asset_id || undefined}
+                data-testid="retention-dataset-picker"
+              />
+            </div>
+            <div className="retention-picker-field">
+              <label htmlFor="retention-file-picker">File (optional)</label>
+              <FilePicker
+                value={form.file_id || null}
+                onChange={(id) => setForm({ ...form, file_id: id ?? '' })}
+                placeholder="Search and select a file..."
+                assetId={form.asset_id || undefined}
+                datasetId={form.dataset_id || undefined}
+                data-testid="retention-file-picker"
+              />
+            </div>
           </div>
         </div>
 

@@ -3,11 +3,11 @@
   top: -40px;
   left: 0;
   background: var(--color-primary-600);
-  color: white;
-  padding: 8px 16px;
+  color: var(--color-text-on-primary);
+  padding: var(--spacing-sm) var(--spacing-md);
   text-decoration: none;
   z-index: 1000;
-  border-radius: 0 0 4px 0;
+  border-radius: 0 0 var(--border-radius-sm) 0;
 }
 
 .skip-link:focus {

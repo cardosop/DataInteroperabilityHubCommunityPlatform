@@ -61,3 +61,26 @@ export function useCreateComplianceRun() {
     },
   });
 }
+
+export function useCancelComplianceRun() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => complianceService.cancel(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['compliance', 'runs'] });
+      queryClient.invalidateQueries({ queryKey: ['compliance', 'runs', 'detail', id] });
+    },
+  });
+}
+
+export function useDeleteComplianceRun() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => complianceService.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['compliance', 'runs'] });
+    },
+  });
+}

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Data Interoperability Hub{% endblock %}</title>
+    <title>{% block title %}{{ app_name|default:"Meshant" }}{% endblock %}</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -69,14 +69,14 @@
 <body>
     <div class="email-container">
         <div class="header">
-            <div class="logo">Data Interoperability Hub</div>
+            <div class="logo">{{ app_name|default:"Meshant" }}</div>
         </div>
         <div class="content">
             {% block content %}{% endblock %}
         </div>
         <div class="footer">
             {% block footer %}
-            <p>This is an automated message from Data Interoperability Hub.</p>
+            <p>This is an automated message from {{ app_name|default:"Meshant" }}.</p>
             <p>If you did not request this email, please ignore it.</p>
             {% endblock %}
         </div>

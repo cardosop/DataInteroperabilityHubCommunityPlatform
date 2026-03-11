@@ -161,7 +161,7 @@ services:
       - postgres-baas-data:/var/lib/postgresql/data
     command: postgres -c max_connections=100
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${BAAS_POSTGRES_USER:-hub_baas}"]
+      test: ["CMD-SHELL", "pg_isready -U ${BAAS_POSTGRES_USER:-hub_baas} -d ${BAAS_POSTGRES_DB:-baas}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -323,7 +323,7 @@ services:
       context: .
       dockerfile: services/api/Dockerfile
     container_name: hub-api
-    command: python hub/manage.py runserver 0.0.0.0:8000
+    command: sh -c "python hub/manage.py migrate --noinput && python hub/manage.py seed_default_plans && exec python hub/manage.py runserver 0.0.0.0:8000"
     volumes:
       - .:/app
     ports:
@@ -331,6 +331,8 @@ services:
     env_file:
       - .env.dev
     environment:
+      # Brand (default: Meshant)
+      - APP_NAME=${APP_NAME:-Meshant}
       # Email Service Configuration (can be overridden in .env.dev)
       - EMAIL_BACKEND=${EMAIL_BACKEND:-smtp}
       # Default to frontend container port mapping for clickable links (password reset, invitations)
@@ -339,11 +341,11 @@ services:
       # SendGrid (if EMAIL_BACKEND=sendgrid)
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-}
-      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-Data Interoperability Hub}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-${APP_NAME:-Meshant}}
       # AWS SES (if EMAIL_BACKEND=ses)
       - AWS_SES_REGION=${AWS_SES_REGION:-}
       - AWS_SES_FROM_EMAIL=${AWS_SES_FROM_EMAIL:-}
-      - AWS_SES_FROM_NAME=${AWS_SES_FROM_NAME:-Data Interoperability Hub}
+      - AWS_SES_FROM_NAME=${AWS_SES_FROM_NAME:-${APP_NAME:-Meshant}}
       # SMTP (if EMAIL_BACKEND=smtp). For local E2E password-reset, use MailHog: SMTP_HOST=mailhog SMTP_PORT=1025 SMTP_USE_TLS=false
       - SMTP_HOST=${SMTP_HOST:-localhost}
       - SMTP_PORT=${SMTP_PORT:-587}
@@ -352,7 +354,7 @@ services:
       - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
       - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
-      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Data Interoperability Hub}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-${APP_NAME:-Meshant}}
       # OpenTelemetry configuration
       - OPENTELEMETRY_ENABLED=${OPENTELEMETRY_ENABLED:-true}
       - OPENTELEMETRY_METRICS_ENABLED=${OPENTELEMETRY_METRICS_ENABLED:-true}
@@ -444,13 +446,19 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_APP_NAME: ${APP_NAME:-Meshant}
+        VITE_FEATURE_TOAST_ENABLED: ${VITE_FEATURE_TOAST_ENABLED:-}
+        VITE_FEATURE_BREADCRUMBS_ENABLED: ${VITE_FEATURE_BREADCRUMBS_ENABLED:-}
+        VITE_FEATURE_RESOURCE_PICKERS_ENABLED: ${VITE_FEATURE_RESOURCE_PICKERS_ENABLED:-}
+        # Empty by default: app uses relative /api/v1 paths proxied by nginx.
+        # Set to an absolute URL only for non-nginx deployments (e.g. CDN-hosted SPA).
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_WS_BASE_URL: ${VITE_WS_BASE_URL:-}
     container_name: hub-frontend
     ports:
       - "${FRONTEND_PORT:-3000}:80"
     environment:
-      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://api-service:8000/api/v1}
-      - VITE_WS_BASE_URL=${VITE_WS_BASE_URL:-ws://api-service:8000}
-      - VITE_USE_TRAEFIK_ENTRYPOINT=${VITE_USE_TRAEFIK_ENTRYPOINT:-}
       - VITE_ENV=${ENV:-development}
     networks:
       - hub-net
@@ -471,6 +479,8 @@ services:
       context: .
       dockerfile: services/worker/Dockerfile
     environment:
+      # Brand (default: Meshant)
+      - APP_NAME=${APP_NAME:-Meshant}
       # Email Service Configuration (inherited from api-service)
       - EMAIL_BACKEND=${EMAIL_BACKEND:-smtp}
       - EMAIL_BASE_URL=${EMAIL_BASE_URL:-http://localhost:3000}
@@ -478,11 +488,11 @@ services:
       # SendGrid (if EMAIL_BACKEND=sendgrid)
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-}
-      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-Data Interoperability Hub}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-${APP_NAME:-Meshant}}
       # AWS SES (if EMAIL_BACKEND=ses)
       - AWS_SES_REGION=${AWS_SES_REGION:-}
       - AWS_SES_FROM_EMAIL=${AWS_SES_FROM_EMAIL:-}
-      - AWS_SES_FROM_NAME=${AWS_SES_FROM_NAME:-Data Interoperability Hub}
+      - AWS_SES_FROM_NAME=${AWS_SES_FROM_NAME:-${APP_NAME:-Meshant}}
       # SMTP (if EMAIL_BACKEND=smtp). For local E2E password-reset, use MailHog: SMTP_HOST=mailhog SMTP_PORT=1025 SMTP_USE_TLS=false
       - SMTP_HOST=${SMTP_HOST:-localhost}
       - SMTP_PORT=${SMTP_PORT:-587}
@@ -491,7 +501,7 @@ services:
       - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
       - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
-      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Data Interoperability Hub}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-${APP_NAME:-Meshant}}
       # Worker-specific configuration
       - WORKER_HEALTH_PORT=${WORKER_HEALTH_PORT:-8080}
       - WORKER_MAX_CONCURRENCY=${WORKER_MAX_CONCURRENCY:-4}
@@ -527,7 +537,8 @@ services:
     # Process all priority queues: job_critical (HIGH) → job_default (NORMAL) → job_low (LOW)
     # Worker polls queues in priority order with reserved slots for HIGH priority
     # Uses services/worker/main.py which includes health check HTTP server on port 8080
-    command: python services/worker/main.py job_critical job_default job_low
+    # Include 'default' to drain legacy jobs enqueued before compliance fix (job_critical routing)
+    command: python services/worker/main.py job_critical job_default job_low default
     ports:
       - "${WORKER_HEALTH_PORT:-8092}:8080"  # Health check endpoints (/healthz, /ready, /metrics) - Changed from 8080 to avoid conflict with traefik
     volumes:
@@ -721,6 +732,7 @@ services:
       - "${PREFECT_DB_PORT:-5433}:5432"
     volumes:
       - prefect-db-data:/var/lib/postgresql/data
+      - ./infrastructure/prefect-db/01-pgcrypto.sql:/docker-entrypoint-initdb.d/01-pgcrypto.sql:ro
       # Allow non-SSL connections so Prefect (asyncpg) can connect; init runs only on first init
       - ./infrastructure/prefect-db/02-pg-hba-host.sh:/docker-entrypoint-initdb.d/02-pg-hba-host.sh:ro
     healthcheck:

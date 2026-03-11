@@ -1,0 +1,25 @@
+# ODCS contract in YAML format - for testing YAML intake
+# Use for contract creation when original_format: YAML
+apiVersion: odcs.io/v3.0.2
+kind: DataContract
+id: manual-test-minimal-yaml
+name: Manual Test Minimal Contract (YAML)
+version: "1.0.0"
+description: Minimal ODCS contract in YAML for manual testing.
+schema:
+  fields:
+    - name: id
+      type: string
+      nullable: false
+      description: Unique identifier
+    - name: label
+      type: string
+      nullable: true
+      description: Label field
+info:
+  owners:
+    - name: Data Product Owner
+      email: e2e_test@example.com
+  tags:
+    - manual-test
+    - yaml

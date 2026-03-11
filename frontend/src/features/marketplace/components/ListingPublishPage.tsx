@@ -15,8 +15,8 @@ import './ListingPublishPage.css';
 export function ListingPublishPage() {
   const navigate = useNavigate();
   const createMutation = useCreateListing();
-  // Use reasonable page size (default is usually 20-100, use 100 to get most assets)
-  const { data: assetsData } = useAssets({ page_size: 100, ordering: 'name' });
+  // Only ACTIVE assets can be listed (business rule); filter to avoid user selecting DRAFT
+  const { data: assetsData } = useAssets({ page_size: 100, ordering: 'name', status: 'ACTIVE' });
   
   const [formData, setFormData] = useState({
     asset_id: '',

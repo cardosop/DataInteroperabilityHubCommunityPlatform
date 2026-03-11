@@ -26,7 +26,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       page,
     }) => {
       const testUser = await getTestUser();
-      await createAssetViaApi(testUser);
+      const assetId = await createAssetViaApi(testUser, { ensureActivated: true });
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
         contentSelector: '.listing-publish-page, h1',
@@ -42,16 +42,43 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       }
 
       const assetSelect = page.locator('select#asset_id');
-      await assetSelect.selectOption({ index: 1 });
+      await assetSelect.selectOption({ value: assetId });
       await page.fill('#title', `E2E Listing ${Date.now()}`);
       await page.fill('#description', 'E2E listing description');
       const submitBtn = page
         .locator('button[type="submit"]')
         .or(page.locator('button:has-text("Create Listing")'));
-      await submitBtn.first().click();
 
-      await page.waitForURL(/\/(marketplace\/listings\/[^/]+|marketplace)/, { timeout: 30000 });
-      expect(page.url()).toMatch(/\/(marketplace\/listings\/[^/]+|marketplace)/);
+      // Wait for create-listing API response and assert success (do not accept 4xx as passing)
+      const createListingResponse = page.waitForResponse(
+        (resp) =>
+          resp.request().method() === 'POST' &&
+          resp.url().includes('/marketplace/listings/') &&
+          !resp.url().includes('/search/'),
+        { timeout: 30000 }
+      );
+      await submitBtn.first().click();
+      const resp = await createListingResponse;
+      if (resp.status() >= 400) {
+        const body = await resp.text().catch(() => '');
+        throw new Error(
+          `Create listing API failed: ${resp.status()} ${body}. ` +
+            `Asset must be ACTIVE; ensure createAssetViaApi(ensureActivated: true) succeeded.`
+        );
+      }
+
+      // Success: navigate to listing detail or marketplace list (never stay on publish)
+      await page.waitForURL(
+        (url) => {
+          const u = new URL(url);
+          const path = u.pathname;
+          return (
+            /\/marketplace\/listings\/[^/]+/.test(path) || path === '/marketplace' || path === '/marketplace/'
+          );
+        },
+        { timeout: 30000 }
+      );
+      expect(page.url()).not.toContain('/marketplace/publish');
     });
   });
 
@@ -69,14 +96,14 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
         .or(page.locator('button:has-text("Create Listing")'))
         .first()
         .click();
-      await page.waitForTimeout(500);
+      await new Promise((r) => setTimeout(r, 500));
       const assetError = page.locator('.error-message').filter({ hasText: /asset|required/i });
       await expect(assetError.first()).toBeVisible({ timeout: 5000 });
     });
 
     test('publish without title shows validation error', async ({ page }) => {
       const testUser = await getTestUser();
-      await createAssetViaApi(testUser);
+      const assetId = await createAssetViaApi(testUser, { ensureActivated: true });
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
         contentSelector: '.listing-publish-page',
@@ -89,14 +116,14 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
         );
       }
       const assetSelect = page.locator('select#asset_id');
-      await assetSelect.selectOption({ index: 1 });
+      await assetSelect.selectOption({ value: assetId });
       await page.fill('#description', 'Some description');
       page
         .locator('button[type="submit"]')
         .or(page.locator('button:has-text("Create Listing")'))
         .first()
         .click();
-      await page.waitForTimeout(500);
+      await new Promise((r) => setTimeout(r, 500));
       const titleError = page.locator('.error-message').filter({ hasText: /title|required/i });
       await expect(titleError.first()).toBeVisible({ timeout: 5000 });
     });

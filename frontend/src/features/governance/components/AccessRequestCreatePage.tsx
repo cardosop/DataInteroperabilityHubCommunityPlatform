@@ -6,6 +6,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AccessRequestCreateRequest } from '../../../shared/types/governance';
+import { AssetPicker } from '../../../shared/components/pickers/AssetPicker';
+import { DatasetPicker } from '../../../shared/components/pickers/DatasetPicker';
+import { FilePicker } from '../../../shared/components/pickers/FilePicker';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { useCreateAccessRequest } from '../hooks/useGovernance';
 import './AccessRequestCreatePage.css';
 
@@ -35,7 +39,7 @@ export function AccessRequestCreatePage() {
     const dataset_id = form.dataset_id.trim() || undefined;
     const file_id = form.file_id.trim() || undefined;
     if (!asset_id && !dataset_id && !file_id) {
-      setSubmitError('Provide at least one of: Asset ID, Dataset ID, or File ID');
+      setSubmitError('Provide at least one of: Asset, Dataset, or File');
       return;
     }
     if (!form.reason.trim()) {
@@ -51,8 +55,9 @@ export function AccessRequestCreatePage() {
         requested_access_type: form.requested_access_type,
       });
       navigate(`/governance/access-requests/${created.id}`);
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to create access request');
+    } catch (err: unknown) {
+      const msg = normalizeError(err).error.message || 'Failed to create access request';
+      setSubmitError(msg);
     }
   };
 
@@ -80,33 +85,33 @@ export function AccessRequestCreatePage() {
           />
         </div>
         <div className="form-group">
-          <label htmlFor="create-asset_id">Asset ID (optional)</label>
-          <input
-            id="create-asset_id"
-            type="text"
-            value={form.asset_id}
-            onChange={(e) => setForm({ ...form, asset_id: e.target.value })}
-            placeholder="UUID"
+          <label htmlFor="create-asset_id">Asset (optional)</label>
+          <AssetPicker
+            value={form.asset_id || null}
+            onChange={(id) => setForm({ ...form, asset_id: id ?? '' })}
+            placeholder="Search and select an asset..."
+            data-testid="access-request-asset-picker"
           />
         </div>
         <div className="form-group">
-          <label htmlFor="create-dataset_id">Dataset ID (optional)</label>
-          <input
-            id="create-dataset_id"
-            type="text"
-            value={form.dataset_id}
-            onChange={(e) => setForm({ ...form, dataset_id: e.target.value })}
-            placeholder="UUID"
+          <label htmlFor="create-dataset_id">Dataset (optional)</label>
+          <DatasetPicker
+            value={form.dataset_id || null}
+            onChange={(id) => setForm({ ...form, dataset_id: id ?? '' })}
+            assetId={form.asset_id || undefined}
+            placeholder="Search and select a dataset..."
+            data-testid="access-request-dataset-picker"
           />
         </div>
         <div className="form-group">
-          <label htmlFor="create-file_id">File ID (optional)</label>
-          <input
-            id="create-file_id"
-            type="text"
-            value={form.file_id}
-            onChange={(e) => setForm({ ...form, file_id: e.target.value })}
-            placeholder="UUID"
+          <label htmlFor="create-file_id">File (optional)</label>
+          <FilePicker
+            value={form.file_id || null}
+            onChange={(id) => setForm({ ...form, file_id: id ?? '' })}
+            assetId={form.asset_id || undefined}
+            datasetId={form.dataset_id || undefined}
+            placeholder="Search and select a file..."
+            data-testid="access-request-file-picker"
           />
         </div>
         <div className="form-group">

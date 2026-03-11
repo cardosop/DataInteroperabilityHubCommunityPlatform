@@ -12,6 +12,18 @@ import type { ApiError } from '../types/api';
 /** Raw API error response - backend may return nested { error: {...} } or flat { error, code, ... } */
 type RawErrorResponse = ApiError | Record<string, unknown>;
 
+/** Extract first error message from DRF serializer validation format: { "field": ["message"] } */
+function extractFirstDrfFieldError(obj: Record<string, unknown>): string | undefined {
+  for (const v of Object.values(obj)) {
+    if (Array.isArray(v) && v.length > 0) {
+      const first = v[0];
+      if (typeof first === 'string') return first;
+    }
+    if (typeof v === 'string') return v;
+  }
+  return undefined;
+}
+
 // Use relative URL in browser to leverage Vite proxy, or full URL if explicitly set
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
@@ -63,6 +75,12 @@ export class ApiClient {
           }
         }
 
+        // Prevent caching for GET requests (ensures fresh data after mutations like activate)
+        if (config.method?.toLowerCase() === 'get') {
+          config.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+          config.headers['Pragma'] = 'no-cache';
+        }
+
         // Add correlation ID (request ID for tracing)
         const correlationId = crypto.randomUUID();
         config.headers['X-Correlation-ID'] = correlationId;
@@ -107,8 +125,29 @@ export class ApiClient {
       async (error: AxiosError<RawErrorResponse>) => {
         const originalRequest = error.config as InternalAxiosRequestConfig & {
           _retry?: boolean;
+          _networkRetryCount?: number;
           _correlationId?: string;
         };
+
+        // Retry on transient network errors (ECONNRESET, ERR_NETWORK, socket hang up) - common under E2E parallel load
+        // Explicitly exclude ECONNABORTED: Axios uses it for request timeouts, which are not transient
+        // network blips and must not be retried (especially for non-idempotent methods like POST).
+        const isNetworkError =
+          !error.response &&
+          (error.code === 'ECONNRESET' ||
+            error.code === 'ERR_NETWORK' ||
+            error.code === 'ETIMEDOUT' ||
+            /socket hang up|other side closed|network error/i.test(error.message || ''));
+        const isSafeMethod = ['get', 'head', 'options'].includes(
+          originalRequest.method?.toLowerCase() ?? ''
+        );
+        const retryCount = originalRequest._networkRetryCount ?? 0;
+        const maxNetworkRetries = 2;
+        if (isNetworkError && isSafeMethod && retryCount < maxNetworkRetries && originalRequest) {
+          originalRequest._networkRetryCount = retryCount + 1;
+          await new Promise((r) => setTimeout(r, 1000 * (retryCount + 1)));
+          return this.client(originalRequest);
+        }
 
         // Handle 401 Unauthorized - try refresh token
         if (error.response?.status === 401 && !originalRequest._retry && this.refreshToken) {
@@ -177,13 +216,15 @@ export class ApiClient {
         } else if (responseData && typeof responseData === 'object') {
           // Flat shape: { error: string, code: string, details: object }
           // DRF 404 returns { detail: "Not found." } - use detail when error/code absent
+          // DRF serializer validation returns { "field": ["message"] } - extract first message
           const r = responseData as Record<string, unknown>;
           const detailMsg = typeof r.detail === 'string' ? r.detail : undefined;
           const errorMsg = typeof r.error === 'string' ? r.error : undefined;
+          const drfFieldMsg = extractFirstDrfFieldError(r);
           normalizedError = {
             code: (r.code as string) || 'UNKNOWN_ERROR',
             message:
-              errorMsg ?? detailMsg ?? error.message ?? 'An error occurred',
+              errorMsg ?? detailMsg ?? drfFieldMsg ?? error.message ?? 'An error occurred',
             http_status: error.response?.status || 500,
             request_id: correlationId || 'unknown',
             timestamp: (r.timestamp as string) || new Date().toISOString(),

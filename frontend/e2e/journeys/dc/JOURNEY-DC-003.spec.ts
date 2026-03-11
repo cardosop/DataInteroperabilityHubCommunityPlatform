@@ -1,72 +1,101 @@
 /**
- * E2E Test: JOURNEY-DC-003 — View Asset Details
+ * E2E Test: JOURNEY-DC-003 — Search and Filter Assets
  *
- * Journey: View Asset Details
+ * Journey: Search and Filter Assets
  * Persona: Data Consumer
- * Reference: docs/USER_JOURNEYS.md, docs/TEST_COVERAGE_MATRIX.md
+ * Reference: ManualTest/Front/03-USER-JOURNEYS/dc/JOURNEY-DC-003.md
  *
- * Success/Failure/Edge per marketplace-dc-routes pattern. Routes: /marketplace/listings/:id.
+ * Success/Failure/Edge. Routes: /marketplace, /search.
  * Uses getConsumerTestUser(). Real backend only; no mocks.
  */
 
 import { expect, test } from '@playwright/test';
-import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
+import { getConsumerTestUser } from '../../fixtures/auth';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DC-003: View Asset Details', () => {
-  test.setTimeout(120000);
+test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
+  test.setTimeout(180000);
 
   test.describe('Success', () => {
-    test('marketplace listing detail loads when listing exists', async ({ page }) => {
+    test('search in marketplace updates results or shows empty', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/marketplace');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.listing-list-page, .empty-state, .error-display, #email', {
-        timeout: 65000,
+      await loginAndNavigateToRoute(page, consumer, '/marketplace', {
+        timeout: 90000,
+        contentSelector:
+          '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .loading-spinner-container, .listing-list-filters',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
       }
-      const listingLink = page.locator('.listing-list-page a[href*="/marketplace/listings/"]').first();
-      if ((await listingLink.count()) > 0) {
-        await listingLink.click();
-        await page.waitForURL(/\/marketplace\/listings\/[^/]+/, { timeout: 10000 });
-        await page.waitForSelector('.listing-detail-main, .error-display', { timeout: 15000 });
-        const hasDetail = (await page.locator('.listing-detail-main').count()) > 0;
-        expect(hasDetail || page.url().includes('/marketplace/listings/')).toBe(true);
+      const searchInput = page
+        .locator(
+          '.listing-list-filters input[type="text"], .listing-list-filters input, input[placeholder*="Search"]'
+        )
+        .first();
+      if ((await searchInput.count()) > 0) {
+        await searchInput.fill('test');
+        await page.waitForTimeout(1500);
       }
+      expect(page.url()).toContain('/marketplace');
+      const hasContent =
+        (await page.locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display').count()) > 0;
+      expect(hasContent).toBe(true);
+    });
+
+    test('filters in marketplace apply and show filtered results', async ({ page }) => {
+      const consumer = await getConsumerTestUser();
+      await loginAndNavigateToRoute(page, consumer, '/marketplace', {
+        timeout: 90000,
+        contentSelector:
+          '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .listing-list-filters, .filter-select',
+      });
+      if (page.url().includes('/login')) {
+        expect(page.url()).toContain('/login');
+        return;
+      }
+      const filterSelect = page.locator('.filter-select').first();
+      if ((await filterSelect.count()) > 0) {
+        await filterSelect.selectOption({ index: 1 });
+        await page.waitForTimeout(1000);
+      }
+      expect(page.url()).toContain('/marketplace');
     });
   });
 
   test.describe('Failure', () => {
-    test('listing detail with non-existent id shows error', async ({ page }) => {
-      const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/marketplace/listings/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
-      const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
-      const noSuccessContent = (await page.locator('.listing-detail-main').count()) === 0;
-      const onLogin = page.url().includes('/login');
-      expect(hasError || noSuccessContent || onLogin).toBe(true);
+    test('unauthenticated access to marketplace redirects to login', async ({ page }) => {
+      const { clearAuthStorage } = await import('../../fixtures/auth');
+      await clearAuthStorage(page);
+      await page.goto('/marketplace', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|marketplace)/, { timeout: 20_000 });
+      const url = page.url();
+      const onLogin = url.includes('/login');
+      const onMarketplaceWithPrompt =
+        url.includes('/marketplace') &&
+        ((await page.locator('input#email, [href*="/login"]').count()) > 0 ||
+          (await page.locator('text=Sign in').count()) > 0);
+      expect(onLogin || onMarketplaceWithPrompt).toBe(true);
     });
   });
 
   test.describe('Edge', () => {
-    test('marketplace list with no listings shows empty state', async ({ page }) => {
+    test('clear filters restores full list or empty state', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/marketplace');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.listing-list-page, .empty-state, .error-display, #email', {
-        timeout: 65000,
+      await loginAndNavigateToRoute(page, consumer, '/marketplace', {
+        timeout: 90000,
+        contentSelector: '.listing-list-page, .listing-list-grid, .empty-state, .listing-list-filters',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
+      }
+      const searchInput = page.locator('.listing-list-filters input, input[placeholder*="Search"]').first();
+      if ((await searchInput.count()) > 0) {
+        await searchInput.fill('xyznonexistent');
+        await page.waitForTimeout(1000);
+        await searchInput.fill('');
+        await page.waitForTimeout(1000);
       }
       expect(page.url()).toContain('/marketplace');
     });

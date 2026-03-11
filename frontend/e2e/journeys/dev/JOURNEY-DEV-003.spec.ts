@@ -21,12 +21,16 @@ test.describe('JOURNEY-DEV-003: Integrate via CLI', () => {
       await loginAsPersona(page, getExternalDeveloperUser);
       await page.goto('/developer');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await page.waitForSelector(
+        '.developer-portal-page, .app-main, .unavailable-page, .loading-spinner-container, [role="status"]',
+        { timeout: 25000 }
+      );
+      await page.waitForTimeout(2000);
       const onDeveloper = page.url().includes('/developer');
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
       const hasContent =
-        (await page.locator('.developer-portal-page, .app-main, .unavailable-page').count()) > 0;
+        (await page.locator('.developer-portal-page, .app-main, .unavailable-page, .loading-spinner-container').count()) > 0;
       expect(onLogin || on403 || (onDeveloper && hasContent)).toBe(true);
     });
   });

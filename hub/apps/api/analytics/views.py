@@ -3,16 +3,20 @@ API Analytics Views
 
 REST API views for API analytics dashboard.
 """
-from rest_framework import viewsets, status, permissions
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError
+from datetime import datetime, timedelta
+
 from django.utils import timezone
-from datetime import timedelta
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
+from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
+
+from hub.apps.auth.permissions import HasAnyRole
 
 from .analytics import APIAnalyticsService
+from .cost_tracking import CostTrackingService
 
 
 class APIAnalyticsViewSet(viewsets.ViewSet):
@@ -294,11 +298,19 @@ class APIAnalyticsViewSet(viewsets.ViewSet):
 
 class CostsViewSet(viewsets.ViewSet):
     """
-    ViewSet for cost tracking analytics.
+    ViewSet for cost tracking analytics (UC-TA-007).
 
     GET /api/v1/analytics/costs/
+    Requires TENANT_ADMIN or PLATFORM_ADMIN (cost data is tenant-admin scope).
     """
+
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        return [
+            permissions.IsAuthenticated(),
+            HasAnyRole(["TENANT_ADMIN", "PLATFORM_ADMIN"]),
+        ]
 
     def _get_tenant_id(self, request):
         if hasattr(request, "tenant_id") and request.tenant_id:
@@ -308,58 +320,129 @@ class CostsViewSet(viewsets.ViewSet):
             return str(tenant.id)
         return None
 
+    def _check_tenant(self, request):
+        """Return 400 if tenant context required but missing."""
+        tenant_id = self._get_tenant_id(request)
+        if not tenant_id:
+            raise ValidationError(
+                {"detail": "Tenant context required. Use tenant-scoped authentication."}
+            )
+        return tenant_id
+
+    def _parse_period(self, request):
+        """Parse start_date and end_date from query params."""
+        start_date = None
+        end_date = None
+        if "start_date" in request.query_params:
+            try:
+                start_date = timezone.datetime.fromisoformat(
+                    request.query_params["start_date"].replace("Z", "+00:00")
+                )
+            except ValueError:
+                raise ValidationError("Invalid start_date format. Use ISO format.")
+        if "end_date" in request.query_params:
+            try:
+                end_date = timezone.datetime.fromisoformat(
+                    request.query_params["end_date"].replace("Z", "+00:00")
+                )
+            except ValueError:
+                raise ValidationError("Invalid end_date format. Use ISO format.")
+        return start_date, end_date
+
+    @extend_schema(
+        summary="Get cost summary",
+        description="Get cost tracking summary for tenant (usage → cost).",
+        responses={200: OpenApiResponse(description="Cost summary")},
+        tags=["Cost Tracking"],
+    )
     def list(self, request):
         """Get cost tracking summary for tenant."""
-        tenant_id = self._get_tenant_id(request)
-        # Return placeholder - cost data may come from scheduled_ingestion, billing, etc.
-        return Response({
-            "tenant_id": tenant_id,
-            "costs": [],
-            "total_cost": 0,
-            "period": "month",
-        }, status=status.HTTP_200_OK)
+        tenant_id = self._check_tenant(request)
+        start_date, end_date = self._parse_period(request)
+        result = CostTrackingService.get_cost_summary(
+            tenant_id, period_start=start_date, period_end=end_date
+        )
+        return Response(result, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Get cost breakdown",
+        description="Get cost breakdown by category (storage, API, ingestion, export).",
+        parameters=[
+            OpenApiParameter("period", str, description="period (month)"),
+            OpenApiParameter("start_date", OpenApiTypes.DATETIME),
+            OpenApiParameter("end_date", OpenApiTypes.DATETIME),
+        ],
+        responses={200: OpenApiResponse(description="Cost breakdown")},
+        tags=["Cost Tracking"],
+    )
     @action(detail=False, methods=["get"], url_path="breakdown")
     def breakdown(self, request):
-        """
-        Get cost breakdown by category.
+        """GET /api/v1/analytics/costs/breakdown/"""
+        tenant_id = self._check_tenant(request)
+        start_date, end_date = self._parse_period(request)
+        result = CostTrackingService.get_cost_breakdown(
+            tenant_id,
+            period_start=start_date,
+            period_end=end_date,
+            period=request.query_params.get("period", "month"),
+        )
+        return Response(result, status=status.HTTP_200_OK)
 
-        GET /api/v1/analytics/costs/breakdown/
-        """
-        tenant_id = self._get_tenant_id(request)
-        return Response({
-            "tenant_id": tenant_id,
-            "breakdown": [],
-            "total_cost": 0,
-            "period": request.query_params.get("period", "month"),
-        }, status=status.HTTP_200_OK)
-
+    @extend_schema(
+        summary="Get cost by asset",
+        description="Get cost breakdown by asset (storage per asset).",
+        parameters=[
+            OpenApiParameter("start_date", OpenApiTypes.DATETIME),
+            OpenApiParameter("end_date", OpenApiTypes.DATETIME),
+        ],
+        responses={200: OpenApiResponse(description="Cost by asset")},
+        tags=["Cost Tracking"],
+    )
     @action(detail=False, methods=["get"], url_path="by-asset")
     def by_asset(self, request):
         """GET /api/v1/analytics/costs/by-asset/"""
-        tenant_id = self._get_tenant_id(request)
-        return Response({
-            "tenant_id": tenant_id,
-            "by_asset": [],
-            "total_cost": 0,
-        }, status=status.HTTP_200_OK)
+        tenant_id = self._check_tenant(request)
+        start_date, end_date = self._parse_period(request)
+        result = CostTrackingService.get_cost_by_asset(
+            tenant_id, period_start=start_date, period_end=end_date
+        )
+        return Response(result, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Get cost recommendations",
+        description="Get cost optimization recommendations.",
+        responses={200: OpenApiResponse(description="Recommendations")},
+        tags=["Cost Tracking"],
+    )
     @action(detail=False, methods=["get"], url_path="recommendations")
     def recommendations(self, request):
         """GET /api/v1/analytics/costs/recommendations/"""
-        tenant_id = self._get_tenant_id(request)
-        return Response({
-            "tenant_id": tenant_id,
-            "recommendations": [],
-        }, status=status.HTTP_200_OK)
+        tenant_id = self._check_tenant(request)
+        result = CostTrackingService.get_cost_recommendations(tenant_id)
+        return Response(result, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Get cost trends",
+        description="Get cost trends over time.",
+        parameters=[
+            OpenApiParameter("period", str),
+            OpenApiParameter("months", OpenApiTypes.INT, description="Number of months (default 6)"),
+        ],
+        responses={200: OpenApiResponse(description="Cost trends")},
+        tags=["Cost Tracking"],
+    )
     @action(detail=False, methods=["get"], url_path="trends")
     def trends(self, request):
         """GET /api/v1/analytics/costs/trends/"""
-        tenant_id = self._get_tenant_id(request)
-        return Response({
-            "tenant_id": tenant_id,
-            "trends": [],
-            "period": request.query_params.get("period", "month"),
-        }, status=status.HTTP_200_OK)
+        tenant_id = self._check_tenant(request)
+        try:
+            months = int(request.query_params.get("months", 6))
+        except (TypeError, ValueError):
+            months = 6
+        result = CostTrackingService.get_cost_trends(
+            tenant_id,
+            period=request.query_params.get("period", "month"),
+            months=min(max(months, 1), 24),
+        )
+        return Response(result, status=status.HTTP_200_OK)
 

@@ -1397,6 +1397,8 @@ class MarketplaceSyncWorkflow:
         """
         Download resources from marketplace.
 
+        Skips when data_strategy is METADATA_ONLY (no resource downloads).
+
         Args:
             input_data: Workflow input data
             instance: Workflow instance
@@ -1405,6 +1407,19 @@ class MarketplaceSyncWorkflow:
         Returns:
             Task output with download results
         """
+        options = input_data.get("options", {})
+        data_strategy = options.get("data_strategy", "METADATA_ONLY")
+        if data_strategy == "METADATA_ONLY":
+            logger.info(
+                "Skipping resource download (data_strategy=METADATA_ONLY)",
+                workflow_instance_id=str(instance.id),
+            )
+            MarketplaceSyncWorkflow._update_progress(instance, 70, "download_resources")
+            return {
+                "downloaded_resources": [],
+                "state": {"downloaded_resources": []},
+            }
+
         mapped_assets = instance.state_data.get("mapped_assets", [])
         connection_id = instance.state_data.get("connection_id")
         tenant_id = input_data.get("tenant_id") or instance.tenant_id

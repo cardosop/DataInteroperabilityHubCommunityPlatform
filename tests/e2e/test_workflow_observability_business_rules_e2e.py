@@ -236,7 +236,15 @@ class TestWorkflowMetricsBusinessRulesE2E(WorkflowE2ETestBase):
         samples = _parse_metric_samples(metrics_text, "workflow_business_rules_validations_total")
         self.assertGreater(len(samples), 0, "Need at least one sample to check labels")
 
-        labels = samples[0][0]
+        # Filter for our workflow (registry accumulates metrics from prior tests)
+        expected_workflow = ContractCreationWorkflow.WORKFLOW_NAME
+        matching = [s for s in samples if s[0].get("workflow_name") == expected_workflow]
+        self.assertGreater(
+            len(matching),
+            0,
+            f"Need at least one sample for workflow {expected_workflow}; got {[s[0].get('workflow_name') for s in samples[:5]]}",
+        )
+        labels = matching[0][0]
         self.assertIn(
             "workflow_name",
             labels,
@@ -244,7 +252,7 @@ class TestWorkflowMetricsBusinessRulesE2E(WorkflowE2ETestBase):
         )
         self.assertEqual(
             labels.get("workflow_name"),
-            ContractCreationWorkflow.WORKFLOW_NAME,
+            expected_workflow,
             "workflow_name label should match",
         )
         self.assertIn("step_name", labels, "Metric should have step_name label")

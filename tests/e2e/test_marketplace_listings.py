@@ -75,17 +75,27 @@ class MarketplaceListingsE2ETest(E2ETestBase):
         self.assertEqual(listing.tenant, self.tenant)
         self.assertEqual(listing.status, ListingStatus.DRAFT)
     
-    def test_create_listing_with_unverified_tenant_fails(self):
-        """Test creating listing with unverified tenant fails"""
+    def test_create_listing_with_unverified_tenant_allowed_then_publish_fails(self):
+        """Test unverified tenant can create draft listing but cannot publish.
+
+        KYC is enforced on publish, not on draft creation (per design).
+        """
         self.tenant.kyc_status = KYCStatus.UNVERIFIED
         self.tenant.save(update_fields=['kyc_status'])
-        
+
         asset_id = self.create_asset(key='unverified-test', name='Unverified Test')
+        contract_id = self.create_contract(
+            asset_id,
+            original_raw='{"id": "test", "name": "Test Contract", "schema": {"fields": []}}'
+        )
+        self.prepare_contract_for_activation(contract_id)
+        self.prepare_asset_for_activation(asset_id)
         asset = Asset.objects.get(id=asset_id)
         asset.status = AssetStatus.ACTIVE
         asset.save(update_fields=['status'])
-        
-        response = self.client.post(
+
+        # Draft creation is allowed for unverified tenant
+        create_response = self.client.post(
             '/api/v1/marketplace/listings/',
             {
                 'asset_id': asset_id,
@@ -95,12 +105,32 @@ class MarketplaceListingsE2ETest(E2ETestBase):
             },
             format='json'
         )
-        
-        # Should fail due to KYC requirement
-        # If API doesn't enforce KYC yet, skip this test
-        if response.status_code == status.HTTP_201_CREATED:
-            pytest.skip("KYC verification enforcement may not be fully implemented - listing creation succeeded for unverified tenant")
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN])
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        listing_id = create_response.data['id']
+
+        # Publish must fail due to KYC
+        publish_response = self.client.post(
+            f'/api/v1/marketplace/listings/{listing_id}/publish/',
+            format='json'
+        )
+        if publish_response.status_code != status.HTTP_404_NOT_FOUND:
+            self.assertIn(
+                publish_response.status_code,
+                [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN],
+                f"Publish should fail for unverified tenant, got {publish_response.status_code}"
+            )
+        else:
+            # Fallback: try PATCH if publish endpoint not found
+            patch_response = self.client.patch(
+                f'/api/v1/marketplace/listings/{listing_id}/',
+                {'status': ListingStatus.PUBLISHED},
+                format='json'
+            )
+            self.assertIn(
+                patch_response.status_code,
+                [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN],
+                f"Publish via PATCH should fail for unverified tenant, got {patch_response.status_code}"
+            )
     
     def test_create_listing_with_inactive_asset_fails(self):
         """Test creating listing with inactive asset fails"""
@@ -119,7 +149,8 @@ class MarketplaceListingsE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('ACTIVE', response.data.get('error', ''))
+        msg = response.data.get('detail') or response.data.get('error', '')
+        self.assertIn('ACTIVE', str(msg))
     
     def test_publish_listing_success(self):
         """Test publishing a listing"""

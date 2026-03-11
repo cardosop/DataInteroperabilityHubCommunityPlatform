@@ -12,20 +12,27 @@ Reviews compliance for assets, configures retention policies, and manages govern
 
 ---
 
+## Before You Start
+
+1. Complete [00-PREREQUISITES.md](../00-PREREQUISITES.md)
+2. **Dependency**: At least one asset with compliance runs. Run [Data Product Owner](data-product-owner.md) JOURNEY-DPO-001 or compliance scan first.
+
+---
+
 ## Journeys Covered
 
-| Journey | Title | Docs | E2E Spec | Est. |
-|---------|-------|------|----------|------|
-| JOURNEY-CPO-001 | Review Compliance for Asset | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-cpo-001-review-compliance-for-asset) | `journeys/cpo/JOURNEY-CPO-001.spec.ts` | 10 min |
-| JOURNEY-CPO-002 | Configure Retention Policy | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/cpo/JOURNEY-CPO-002.spec.ts` | 10 min |
-| JOURNEY-CPO-003 | Review Access Request | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/governance-retention/governance-retention-crud.spec.ts` | 10 min |
-| JOURNEY-CPO-004 | Run Compliance Scan | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/cpo/JOURNEY-CPO-004.spec.ts` | 10 min |
-| JOURNEY-CPO-005 | Generate Compliance Report | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md) | `journeys/cpo/JOURNEY-CPO-005.spec.ts` | 5 min |
-| JOURNEY-CPO-006 | Configure Automated Compliance | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-cpo-006-configure-automated-compliance-new) | `journeys/cpo/JOURNEY-CPO-006.spec.ts` | 5 min |
-| JOURNEY-CPO-007 | Set Up GDPR Right to be Forgotten | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-cpo-007-set-up-gdpr-right-to-be-forgotten-new) | `journeys/cpo/JOURNEY-CPO-007.spec.ts` | 5 min |
-| JOURNEY-CPO-008 | Manage Consent Tracking | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-cpo-008-manage-consent-tracking-new) | `journeys/cpo/JOURNEY-CPO-008.spec.ts` | 5 min |
-| JOURNEY-CPO-009 | Configure Automated Retention Policies | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-cpo-009-configure-automated-retention-policies-new) | `journeys/cpo/JOURNEY-CPO-009.spec.ts` | 10 min |
-| JOURNEY-CPO-010 | Review AI Auto-Classification Results | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-cpo-010-review-ai-auto-classification-results-new) | `journeys/cpo/JOURNEY-CPO-010.spec.ts` | 5 min |
+| Journey | Title | Step-by-Step Script | E2E Spec | Est. |
+|---------|-------|---------------------|----------|------|
+| JOURNEY-CPO-001 | Review Compliance for Asset | [cpo/JOURNEY-CPO-001.md](../03-USER-JOURNEYS/cpo/JOURNEY-CPO-001.md) | `journeys/cpo/JOURNEY-CPO-001.spec.ts` | 10 min |
+| JOURNEY-CPO-002 | Configure Retention Policy | [cpo/JOURNEY-CPO-002.md](../03-USER-JOURNEYS/cpo/JOURNEY-CPO-002.md) | `journeys/cpo/JOURNEY-CPO-002.spec.ts` | 10 min |
+| JOURNEY-CPO-003 | Review Access Request | [cpo/JOURNEY-CPO-003.md](../03-USER-JOURNEYS/cpo/JOURNEY-CPO-003.md) | `journeys/governance-retention/governance-retention-crud.spec.ts` | 10 min |
+| JOURNEY-CPO-004 | Run Compliance Scan | [cpo/JOURNEY-CPO-004.md](../03-USER-JOURNEYS/cpo/JOURNEY-CPO-004.md) | `journeys/cpo/JOURNEY-CPO-004.spec.ts` | 10 min |
+| JOURNEY-CPO-005 | Generate Compliance Report | [cpo/JOURNEY-CPO-005.md](../03-USER-JOURNEYS/cpo/JOURNEY-CPO-005.md) | `journeys/cpo/JOURNEY-CPO-005.spec.ts` | 5 min |
+| JOURNEY-CPO-006 | Configure Automated Compliance | [cpo/JOURNEY-CPO-006.md](../03-USER-JOURNEYS/cpo/JOURNEY-CPO-006.md) | `journeys/cpo/JOURNEY-CPO-006.spec.ts` | 5 min |
+| JOURNEY-CPO-007 | Set Up GDPR Right to be Forgotten | [cpo/JOURNEY-CPO-007.md](../03-USER-JOURNEYS/cpo/JOURNEY-CPO-007.md) | `journeys/cpo/JOURNEY-CPO-007.spec.ts` | 5 min |
+| JOURNEY-CPO-008 | Manage Consent Tracking | [cpo/JOURNEY-CPO-008.md](../03-USER-JOURNEYS/cpo/JOURNEY-CPO-008.md) | `journeys/cpo/JOURNEY-CPO-008.spec.ts` | 5 min |
+| JOURNEY-CPO-009 | Configure Automated Retention Policies | [cpo/JOURNEY-CPO-009.md](../03-USER-JOURNEYS/cpo/JOURNEY-CPO-009.md) | `journeys/cpo/JOURNEY-CPO-009.spec.ts` | 10 min |
+| JOURNEY-CPO-010 | Review AI Auto-Classification Results | [cpo/JOURNEY-CPO-010.md](../03-USER-JOURNEYS/cpo/JOURNEY-CPO-010.md) | `journeys/cpo/JOURNEY-CPO-010.spec.ts` | 5 min |
 
 **Total Estimated Duration**: ~45 min
 
@@ -54,11 +61,6 @@ Reviews compliance for assets, configures retention policies, and manages govern
 - `/dq` (DQ runs for quality/compliance)
 
 ---
-
-## Prerequisites
-
-- TENANT_ADMIN or COMPLIANCE_OFFICER role
-- At least one asset with compliance runs
 
 ---
 

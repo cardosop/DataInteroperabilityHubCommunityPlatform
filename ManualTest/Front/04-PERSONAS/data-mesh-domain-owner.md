@@ -12,15 +12,22 @@ Creates and manages data mesh domains, configures federated governance, manages 
 
 ---
 
+## Before You Start
+
+1. Complete [00-PREREQUISITES.md](../00-PREREQUISITES.md)
+2. **Note**: Data mesh capability must be enabled. e2e_dmo may need subscription (ensure_e2e_subscription does not include e2e_dmo by default—check if 403 occurs).
+
+---
+
 ## Journeys Covered
 
-| Journey | Title | Docs | E2E Spec | Est. |
-|---------|-------|------|----------|------|
-| JOURNEY-DMO-001 | Create Data Mesh Domain | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dmo-001-create-data-mesh-domain) | `journeys/dmo/JOURNEY-DMO-001.spec.ts` | 10 min |
-| JOURNEY-DMO-002 | Configure Federated Governance | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dmo-002-configure-federated-governance) | `journeys/dmo/JOURNEY-DMO-002.spec.ts` | 10 min |
-| JOURNEY-DMO-003 | Manage Domain Topology | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dmo-003-manage-domain-topology) | `journeys/dmo/JOURNEY-DMO-003.spec.ts` | 5 min |
-| JOURNEY-DMO-004 | Transfer Asset Ownership | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dmo-004-transfer-asset-ownership) | `journeys/dmo/JOURNEY-DMO-004.spec.ts` | 5 min |
-| JOURNEY-DMO-005 | Monitor Domain Health | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-dmo-005-monitor-domain-health) | `journeys/dmo/JOURNEY-DMO-005.spec.ts` | 5 min |
+| Journey | Title | Step-by-Step Script | E2E Spec | Est. |
+|---------|-------|---------------------|----------|------|
+| JOURNEY-DMO-001 | Create Data Mesh Domain | [dmo/JOURNEY-DMO-001.md](../03-USER-JOURNEYS/dmo/JOURNEY-DMO-001.md) | `journeys/dmo/JOURNEY-DMO-001.spec.ts` | 10 min |
+| JOURNEY-DMO-002 | Configure Federated Governance | [dmo/JOURNEY-DMO-002.md](../03-USER-JOURNEYS/dmo/JOURNEY-DMO-002.md) | `journeys/dmo/JOURNEY-DMO-002.spec.ts` | 10 min |
+| JOURNEY-DMO-003 | Manage Domain Topology | [dmo/JOURNEY-DMO-003.md](../03-USER-JOURNEYS/dmo/JOURNEY-DMO-003.md) | `journeys/dmo/JOURNEY-DMO-003.spec.ts` | 5 min |
+| JOURNEY-DMO-004 | Transfer Asset Ownership | [dmo/JOURNEY-DMO-004.md](../03-USER-JOURNEYS/dmo/JOURNEY-DMO-004.md) | `journeys/dmo/JOURNEY-DMO-004.spec.ts` | 5 min |
+| JOURNEY-DMO-005 | Monitor Domain Health | [dmo/JOURNEY-DMO-005.md](../03-USER-JOURNEYS/dmo/JOURNEY-DMO-005.md) | `journeys/dmo/JOURNEY-DMO-005.spec.ts` | 5 min |
 
 **Total Estimated Duration**: ~30 min
 
@@ -41,11 +48,6 @@ Creates and manages data mesh domains, configures federated governance, manages 
 - `/mesh`, `/mesh/topology`, `/mesh/create`, `/mesh/:id`
 
 ---
-
-## Prerequisites
-
-- TENANT_ADMIN or DATA_MESH_DOMAIN_OWNER role
-- Data mesh capability enabled
 
 ---
 

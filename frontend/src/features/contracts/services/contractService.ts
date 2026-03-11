@@ -39,6 +39,7 @@ export const contractService = {
     if (filters.quality_profile) params.append('quality_profile', filters.quality_profile);
     if (filters.compliance_regime) params.append('compliance_regime', filters.compliance_regime);
     if (filters.asset_id) params.append('asset_id', filters.asset_id);
+    if (filters.spec_type) params.append('spec_type', filters.spec_type);
 
     const response = await apiClient.getClient().get<PaginatedResponse<Contract>>(
       `${CONTRACTS_BASE_PATH}/${params.toString() ? `?${params.toString()}` : ''}`

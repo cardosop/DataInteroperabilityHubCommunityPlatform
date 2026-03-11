@@ -3,7 +3,7 @@
  * Displays and manages asset ratings
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRatings, useSubmitRating } from '../hooks/useSocial';
 import { useAssets } from '../../assets/hooks/useAssets';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
@@ -13,25 +13,32 @@ import './RatingsTab.css';
 
 interface RatingsTabProps {
   assetId: string | null;
-  onAssetSelect: (assetId: string) => void;
+  onAssetSelect?: (assetId: string) => void;
+  /** When true, hide asset selector (e.g. when embedded in AssetDetailPage with assetId from route) */
+  assetIdOnly?: boolean;
 }
 
-export function RatingsTab({ assetId, onAssetSelect: _onAssetSelect }: RatingsTabProps) {
+export function RatingsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnly = false }: RatingsTabProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(assetId);
+
+  useEffect(() => {
+    if (!assetIdOnly) setSelectedAssetId(assetId);
+  }, [assetId, assetIdOnly]);
   const [rating, setRating] = useState<number>(0);
   const [comment, setComment] = useState('');
   const [showForm, setShowForm] = useState(false);
 
-  const { data: ratingsData, isLoading, error, refetch } = useRatings(selectedAssetId || '', { page_size: 50 });
+  const effectiveAssetId = assetIdOnly ? assetId : selectedAssetId;
+  const { data: ratingsData, isLoading, error, refetch } = useRatings(effectiveAssetId || '', { page_size: 50 });
   const { data: assetsData } = useAssets({ page_size: 100 });
   const submitRatingMutation = useSubmitRating();
 
   const handleSubmitRating = async () => {
-    if (!selectedAssetId || rating === 0) return;
+    if (!effectiveAssetId || rating === 0) return;
 
     try {
       await submitRatingMutation.mutateAsync({
-        asset_id: selectedAssetId,
+        asset_id: effectiveAssetId,
         rating,
         comment: comment || undefined,
       });
@@ -64,28 +71,30 @@ export function RatingsTab({ assetId, onAssetSelect: _onAssetSelect }: RatingsTa
 
   return (
     <div className="ratings-tab">
-      <div className="ratings-tab-header">
-        <div className="asset-selector">
-          <label htmlFor="asset-select">Select Asset:</label>
-          <select
-            id="asset-select"
-            value={selectedAssetId || ''}
-            onChange={(e) => {
-              setSelectedAssetId(e.target.value || null);
-              setShowForm(false);
-            }}
-          >
-            <option value="">-- Select an asset --</option>
-            {assetsData?.results.map(asset => (
-              <option key={asset.id} value={asset.id}>
-                {asset.name}
-              </option>
-            ))}
-          </select>
+      {!assetIdOnly && (
+        <div className="ratings-tab-header">
+          <div className="asset-selector">
+            <label htmlFor="asset-select">Select Asset:</label>
+            <select
+              id="asset-select"
+              value={selectedAssetId || ''}
+              onChange={(e) => {
+                setSelectedAssetId(e.target.value || null);
+                setShowForm(false);
+              }}
+            >
+              <option value="">-- Select an asset --</option>
+              {assetsData?.results?.map(asset => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-      </div>
+      )}
 
-      {selectedAssetId && (
+      {effectiveAssetId && (
         <>
           <div className="ratings-summary">
             <div className="average-rating">
@@ -194,7 +203,7 @@ export function RatingsTab({ assetId, onAssetSelect: _onAssetSelect }: RatingsTa
         </>
       )}
 
-      {!selectedAssetId && (
+      {!effectiveAssetId && (
         <EmptyState
           title="Select an asset"
           message="Choose an asset from the dropdown above to view and submit ratings."

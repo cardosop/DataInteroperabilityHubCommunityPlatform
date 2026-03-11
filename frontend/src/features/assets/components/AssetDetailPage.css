@@ -177,7 +177,7 @@
 
 .asset-health-score-breakdown .breakdown-item {
   padding: var(--spacing-xs) var(--spacing-sm);
-  background: var(--color-bg-primary);
+  background: var(--color-background-primary);
   border-radius: var(--border-radius-sm);
 }
 
@@ -257,17 +257,16 @@
 
 .attach-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--spacing-sm);
   margin-top: var(--spacing-sm);
+  align-items: flex-start;
 }
 
-.attach-input {
+.attach-controls .resource-picker,
+.attach-controls .asset-picker {
   flex: 1;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border: 1px solid var(--color-border);
-  border-radius: var(--border-radius-sm);
-  font-size: var(--font-size-sm);
-  font-family: var(--font-family-mono);
+  min-width: 200px;
 }
 
 .btn-small {
@@ -332,7 +331,7 @@
 
 .quality-gate-run-item {
   padding: var(--spacing-md);
-  background: white;
+  background: var(--color-background-primary);
   border: 1px solid var(--color-border);
   border-radius: var(--border-radius-sm);
   cursor: pointer;
@@ -346,7 +345,7 @@
 
 .quality-gate-run-item.run-blocked {
   border-color: var(--color-error);
-  background: #fff5f5;
+  background: var(--color-error-50);
 }
 
 .run-status {
@@ -382,10 +381,10 @@
 .blocked-message {
   margin-top: var(--spacing-xs);
   padding: var(--spacing-xs);
-  background: #fff3cd;
+  background: var(--color-warning-50);
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-xs);
-  color: #856404;
+  color: var(--color-warning-700);
 }
 
 .btn-link {
@@ -429,7 +428,7 @@
 .risk-level-badge.risk-level-critical,
 .risk-level-badge.risk-level-high {
   background: var(--color-error);
-  color: white;
+  color: var(--color-background-primary);
 }
 
 .risk-level-badge.risk-level-medium {

@@ -5,11 +5,10 @@
 import './LoadingSpinner.css';
 
 export function LoadingSpinner({ size = 'medium', message }: { size?: 'small' | 'medium' | 'large'; message?: string }) {
+  const ariaLabel = message ?? 'Loading';
   return (
-    <div className="loading-spinner-container">
-      <div className={`loading-spinner loading-spinner-${size}`} role="status" aria-label="Loading">
-        <span className="visually-hidden">Loading...</span>
-      </div>
+    <div className="loading-spinner-container" role="status" aria-live="polite" aria-label={ariaLabel}>
+      <div className={`loading-spinner loading-spinner-${size}`} aria-hidden="true" />
       {message && <p className="loading-spinner-message">{message}</p>}
     </div>
   );

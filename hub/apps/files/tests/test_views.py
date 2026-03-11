@@ -441,6 +441,29 @@ class FileViewSetTest(FilesAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_list_files_search_by_name(self):
+        """Test searching files by name (29.69.2)."""
+        File.objects.create(
+            tenant=self.tenant,
+            name="report-data.csv",
+            content_type="text/csv",
+            size=100,
+            status=FileStatus.ACTIVE,
+            storage_path=f"{self.tenant.id}/report-data.csv",
+            created_by=self.user,
+        )
+        response = self.client.get("/api/v1/files/?search=report")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = [f["name"] for f in response.data["results"]]
+        self.assertTrue(any("report" in n for n in names))
+
+    def test_list_files_ordering(self):
+        """Test ordering files (29.69.2)."""
+        response = self.client.get("/api/v1/files/?ordering=name")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        response_desc = self.client.get("/api/v1/files/?ordering=-created_at")
+        self.assertEqual(response_desc.status_code, status.HTTP_200_OK)
+
     def test_list_files_filter_by_status(self):
         """Test filtering files by status."""
         # Create files with different statuses

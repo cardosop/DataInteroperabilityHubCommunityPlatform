@@ -8,13 +8,14 @@ import { useDataset, useDatasetVersions } from '../hooks/useDatasets';
 import { datasetService } from '../services/datasetService';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { useState } from 'react';
 import './DatasetVersionsPage.css';
 
 export function DatasetVersionsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data: _dataset } = useDataset(id || null);
+  const { data: dataset } = useDataset(id || null);
   const { data: versions, isLoading, error, refetch } = useDatasetVersions(id || null);
   const [compareMode, setCompareMode] = useState(false);
   const [version1, setVersion1] = useState<string>('');
@@ -40,6 +41,14 @@ export function DatasetVersionsPage() {
   if (!versions || versions.length === 0) {
     return (
       <div className="dataset-versions-page">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Datasets', href: '/datasets' },
+            { label: dataset?.name || 'Dataset', href: id ? `/datasets/${id}` : undefined },
+            { label: 'Versions' },
+          ]}
+        />
         <div className="dataset-versions-header">
           <button onClick={() => navigate(`/datasets/${id}`)} className="btn-back" type="button">
             ← Back to Dataset
@@ -53,6 +62,14 @@ export function DatasetVersionsPage() {
 
   return (
     <div className="dataset-versions-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'Datasets', href: '/datasets' },
+          { label: dataset?.name || 'Dataset', href: id ? `/datasets/${id}` : undefined },
+          { label: 'Versions' },
+        ]}
+      />
       <div className="dataset-versions-header">
         <button onClick={() => navigate(`/datasets/${id}`)} className="btn-back" type="button">
           ← Back to Dataset

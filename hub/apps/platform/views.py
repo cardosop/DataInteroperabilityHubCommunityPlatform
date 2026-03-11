@@ -92,18 +92,31 @@ class PlatformTenantViewSet(viewsets.ReadOnlyModelViewSet):
 
         Returns list of tenants with usage summary for current period.
         """
-        from datetime import datetime
+        from datetime import datetime, timedelta
 
         from django.utils import timezone
 
-        from hub.apps.tenants.models import Tenant
+        from hub.apps.tenants.models import Tenant, TenantStatus
 
         # Get current month
         now = timezone.now()
         month_start = datetime(now.year, now.month, 1, tzinfo=now.tzinfo)
+        if month_start.month == 12:
+            period_end = datetime(
+                month_start.year + 1, 1, 1, tzinfo=month_start.tzinfo
+            ) - timedelta(seconds=1)
+        else:
+            period_end = datetime(
+                month_start.year,
+                month_start.month + 1,
+                1,
+                tzinfo=month_start.tzinfo,
+            ) - timedelta(seconds=1)
 
-        # Get all tenants
-        tenants = Tenant.objects.filter(status="ACTIVE").order_by("name")
+        # Get all tenants (ACTIVE and SUSPENDED for usage visibility)
+        tenants = Tenant.objects.filter(
+            status__in=[TenantStatus.ACTIVE, TenantStatus.SUSPENDED]
+        ).order_by("name")
 
         usage_service = TenantUsageService()
         results = []
@@ -115,10 +128,10 @@ class PlatformTenantViewSet(viewsets.ReadOnlyModelViewSet):
                     tenant_id=str(tenant.id), period_start=month_start
                 )
 
-                # Get plan limits
+                # Get plan limits (defensive: limits_json can be None)
                 plan_limits = {}
-                if tenant.plan:
-                    plan_limits = tenant.plan.limits_json.copy()
+                if tenant.plan and tenant.plan.limits_json:
+                    plan_limits = dict(tenant.plan.limits_json)
 
                 results.append(
                     {
@@ -143,10 +156,9 @@ class PlatformTenantViewSet(viewsets.ReadOnlyModelViewSet):
                 )
             except Exception as e:
                 logger.warning(
-                    "failed_to_get_usage_for_tenant",
-                    tenant_id=str(tenant.id),
-                    error=str(e),
-                    message=f"Failed to get usage for tenant {tenant.id}: {e}",
+                    "Failed to get usage for tenant %s: %s",
+                    tenant.id,
+                    e,
                 )
                 # Continue with other tenants
 
@@ -155,7 +167,7 @@ class PlatformTenantViewSet(viewsets.ReadOnlyModelViewSet):
                 "count": len(results),
                 "results": results,
                 "period_start": month_start.isoformat(),
-                "period_end": usage_summary.period_end.isoformat() if results else None,
+                "period_end": period_end.isoformat(),
             },
             status=status.HTTP_200_OK,
         )

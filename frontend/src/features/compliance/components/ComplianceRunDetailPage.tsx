@@ -3,17 +3,28 @@
  * Displays compliance run details with results viewer
  */
 
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useComplianceRun, useComplianceRunResults } from '../hooks/useCompliance';
+import { useComplianceRun, useComplianceRunResults, useCancelComplianceRun, useDeleteComplianceRun } from '../hooks/useCompliance';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ComplianceRunResultsViewer } from './ComplianceRunResultsViewer';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import './ComplianceRunDetailPage.css';
 
 export function ComplianceRunDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   const { data: complianceRun, isLoading, error, refetch } = useComplianceRun(id || null);
+  const cancelMutation = useCancelComplianceRun();
+  const deleteMutation = useDeleteComplianceRun();
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const {
     data: results,
     isLoading: resultsLoading,
@@ -36,17 +47,86 @@ export function ComplianceRunDetailPage() {
 
   const isRunning = complianceRun.status === 'PENDING' || complianceRun.status === 'RUNNING';
 
+  // Run is "stuck" if PENDING for >2 min with no started_at (worker never picked up the job)
+  const createdMs = complianceRun.created_at
+    ? new Date(complianceRun.created_at).getTime()
+    : 0;
+  const stuckThresholdMs = 2 * 60 * 1000;
+  const isStuckPending =
+    complianceRun.status === 'PENDING' &&
+    !complianceRun.started_at &&
+    createdMs > 0 &&
+    Date.now() - createdMs > stuckThresholdMs;
+
+  const handleCancelClick = () => setShowCancelConfirm(true);
+  const handleCancelConfirm = async () => {
+    if (!id) return;
+    setShowCancelConfirm(false);
+    try {
+      await cancelMutation.mutateAsync(id);
+      toast.success('Compliance run cancelled.');
+      refetch();
+    } catch (err) {
+      toast.error(normalizeError(err).error.message || 'Failed to cancel compliance run');
+    }
+  };
+
+  const handleDeleteClick = () => setShowDeleteConfirm(true);
+  const handleDeleteConfirm = async () => {
+    if (!id) return;
+    setShowDeleteConfirm(false);
+    try {
+      await deleteMutation.mutateAsync(id);
+      toast.success('Compliance run deleted.');
+      navigate('/compliance');
+    } catch (err) {
+      toast.error(normalizeError(err).error.message || 'Failed to delete compliance run');
+    }
+  };
+
   return (
     <div className="compliance-run-detail-page">
       <div className="compliance-run-detail-header">
         <button onClick={() => navigate('/compliance')} className="btn-back" type="button">
           ← Back to Compliance Runs
         </button>
+        <div className="compliance-run-detail-actions">
+          {isRunning && (
+            <button
+              onClick={handleCancelClick}
+              disabled={cancelMutation.isPending}
+              className="btn-danger"
+              type="button"
+            >
+              {cancelMutation.isPending ? 'Cancelling...' : 'Cancel Run'}
+            </button>
+          )}
+          <button
+            onClick={handleDeleteClick}
+            disabled={deleteMutation.isPending}
+            className="btn-danger"
+            type="button"
+          >
+            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
       </div>
 
       <div className="compliance-run-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Compliance Runs', href: '/compliance' },
+            { label: id ? `Run ${id.slice(0, 8)}` : 'Run' },
+          ]}
+        />
         <div className="compliance-run-detail-main">
           <h1>Compliance Run</h1>
+          {id && (
+            <div className="compliance-run-uuid" data-testid="compliance-run-uuid">
+              <UuidWithCopy value={id} label="Compliance Run ID" />
+            </div>
+          )}
 
           <div className="compliance-run-status-section">
             <div className="status-header">
@@ -73,7 +153,15 @@ export function ComplianceRunDetailPage() {
               )}
             </div>
 
-            {complianceRun.allowed_to_store !== undefined && (
+            {isStuckPending && (
+              <div className="compliance-run-stuck-hint" role="alert">
+                <strong>Job may not have started.</strong> This run has been queued for over 2 minutes
+                without starting. Ensure the <strong>RQ worker</strong> service is running (e.g.{' '}
+                <code>worker-service</code> in Docker Compose). Check API logs for enqueue errors.
+              </div>
+            )}
+
+            {!isRunning && complianceRun.allowed_to_store !== undefined && (
               <div className="allowed-to-store-display">
                 <span className={`allowed-badge ${complianceRun.allowed_to_store ? 'allowed' : 'blocked'}`}>
                   {complianceRun.allowed_to_store ? '✓ Allowed to Store' : '✗ Blocked from Storage'}
@@ -156,6 +244,24 @@ export function ComplianceRunDetailPage() {
           )}
         </div>
       </div>
+      <ConfirmDialog
+        isOpen={showCancelConfirm}
+        onClose={() => setShowCancelConfirm(false)}
+        onConfirm={handleCancelConfirm}
+        title="Cancel compliance run"
+        message="Are you sure you want to cancel this compliance run? The job will be stopped."
+        confirmLabel="Cancel Run"
+        variant="warning"
+      />
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete compliance run"
+        message="Are you sure you want to delete this compliance run? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

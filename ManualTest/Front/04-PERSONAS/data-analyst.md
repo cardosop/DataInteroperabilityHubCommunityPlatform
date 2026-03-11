@@ -17,9 +17,9 @@ Wrangles data interactively, queries virtual datasets, and executes federated qu
 | Journey | Title | Docs | E2E Spec | Est. |
 |---------|-------|------|----------|------|
 | JOURNEY-DA-001 | Create Transformation Pipeline | **Deferred** | — | — |
-| JOURNEY-DA-002 | Wrangle Data Interactively | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-da-002-wrangle-data-interactively) | `journeys/da/JOURNEY-DA-002.spec.ts` | 10 min |
-| JOURNEY-DA-003 | Query Virtual Dataset | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-da-003-query-virtual-dataset) | `journeys/da/JOURNEY-DA-003.spec.ts` | 10 min |
-| JOURNEY-DA-004 | Execute Federated Query | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-da-004-execute-federated-query) | `journeys/da/JOURNEY-DA-004.spec.ts` | 10 min |
+| JOURNEY-DA-002 | Wrangle Data Interactively | [da/JOURNEY-DA-002.md](../03-USER-JOURNEYS/da/JOURNEY-DA-002.md) | `journeys/da/JOURNEY-DA-002.spec.ts` | 10 min |
+| JOURNEY-DA-003 | Query Virtual Dataset | [da/JOURNEY-DA-003.md](../03-USER-JOURNEYS/da/JOURNEY-DA-003.md) | `journeys/da/JOURNEY-DA-003.spec.ts` | 10 min |
+| JOURNEY-DA-004 | Execute Federated Query | [da/JOURNEY-DA-004.md](../03-USER-JOURNEYS/da/JOURNEY-DA-004.md) | `journeys/da/JOURNEY-DA-004.spec.ts` | 10 min |
 
 **Total Estimated Duration**: ~30 min (excluding deferred)
 
@@ -39,11 +39,6 @@ Wrangles data interactively, queries virtual datasets, and executes federated qu
 - `/search` (data exploration)
 
 ---
-
-## Prerequisites
-
-- Virtualization capability enabled
-- At least one virtual dataset or federated source
 
 ---
 

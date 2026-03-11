@@ -3,8 +3,12 @@
  * Shows detailed information about a scheduled ingestion and its runs
  */
 
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { EmptyState } from '../../../shared/components/EmptyState';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import {
@@ -13,6 +17,8 @@ import {
   useScheduledIngestionRuns,
   useTriggerScheduledIngestion,
 } from '../hooks/useScheduledIngestion';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './ScheduledIngestionDetailPage.css';
 
 export function ScheduledIngestionDetailPage() {
@@ -22,30 +28,33 @@ export function ScheduledIngestionDetailPage() {
   const { data: runs, isLoading: runsLoading } = useScheduledIngestionRuns(id || null);
   const triggerMutation = useTriggerScheduledIngestion();
   const deleteMutation = useDeleteScheduledIngestion();
+  const toast = useToast();
+  const [showTriggerConfirm, setShowTriggerConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const handleTrigger = async () => {
-    if (!id || !confirm('Are you sure you want to trigger this scheduled ingestion?')) return;
+  const handleTriggerClick = () => setShowTriggerConfirm(true);
+  const handleTriggerConfirm = async () => {
+    if (!id) return;
+    setShowTriggerConfirm(false);
     try {
       await triggerMutation.mutateAsync({ id });
+      toast.success('Scheduled ingestion triggered.');
       refetch();
     } catch (err) {
-      console.error('Trigger failed:', err);
+      toast.error(normalizeError(err).error.message || 'Failed to trigger scheduled ingestion');
     }
   };
 
-  const handleDelete = async () => {
-    if (
-      !id ||
-      !confirm(
-        'Are you sure you want to delete this scheduled ingestion? This action cannot be undone.'
-      )
-    )
-      return;
+  const handleDeleteClick = () => setShowDeleteConfirm(true);
+  const handleDeleteConfirm = async () => {
+    if (!id) return;
+    setShowDeleteConfirm(false);
     try {
       await deleteMutation.mutateAsync(id);
+      toast.success('Scheduled ingestion deleted.');
       navigate('/scheduled-ingestions');
     } catch (err) {
-      console.error('Delete failed:', err);
+      toast.error(normalizeError(err).error.message || 'Failed to delete scheduled ingestion');
     }
   };
 
@@ -106,7 +115,7 @@ export function ScheduledIngestionDetailPage() {
             <button
               type="button"
               className="btn-primary"
-              onClick={handleTrigger}
+              onClick={handleTriggerClick}
               disabled={triggerMutation.isPending}
               aria-label="Trigger scheduled ingestion"
             >
@@ -116,7 +125,7 @@ export function ScheduledIngestionDetailPage() {
           <button
             type="button"
             className="btn-danger"
-            onClick={handleDelete}
+            onClick={handleDeleteClick}
             disabled={deleteMutation.isPending}
             aria-label="Delete scheduled ingestion"
           >
@@ -126,8 +135,20 @@ export function ScheduledIngestionDetailPage() {
       </div>
 
       <div className="scheduled-ingestion-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Scheduled Ingestions', href: '/scheduled-ingestions' },
+            { label: schedule.name || 'Ingestion' },
+          ]}
+        />
         <div className="scheduled-ingestion-detail-section">
           <h2>Basic Information</h2>
+          {id && (
+            <div className="scheduled-ingestion-uuid" data-testid="scheduled-ingestion-uuid">
+              <UuidWithCopy value={id} label="Scheduled Ingestion ID" />
+            </div>
+          )}
           <dl className="scheduled-ingestion-detail-list">
             <dt>Name</dt>
             <dd>{schedule.name}</dd>
@@ -241,6 +262,25 @@ export function ScheduledIngestionDetailPage() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showTriggerConfirm}
+        onClose={() => setShowTriggerConfirm(false)}
+        onConfirm={handleTriggerConfirm}
+        title="Trigger scheduled ingestion"
+        message="Are you sure you want to trigger this scheduled ingestion?"
+        confirmLabel="Trigger Now"
+        variant="info"
+      />
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete scheduled ingestion"
+        message="Are you sure you want to delete this scheduled ingestion? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

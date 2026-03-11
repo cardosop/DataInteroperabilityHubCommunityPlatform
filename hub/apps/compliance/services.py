@@ -139,7 +139,9 @@ class ComplianceService(BaseService):
                 details=result.details,
             )
 
-        # Create job and run (same as previous view logic)
+        # Create job and run. Use executed_by_prefect=True so create_job does NOT enqueue
+        # (we must update job with compliance_run_id first). We enqueue to job_critical
+        # after updating, since worker listens to job_critical (not "default").
         import uuid
         temp_resource_id = str(uuid.uuid4())
         job = create_job(
@@ -153,6 +155,7 @@ class ComplianceService(BaseService):
                 "applicable_regulations": applicable_regulations or [],
             },
             timeout_seconds=get_job_timeout(JobType.COMPLIANCE_RUN),
+            executed_by_prefect=True,  # Do not enqueue yet; we enqueue after updating job
         )
         compliance_run = ComplianceRun.objects.create(
             tenant=tenant,
@@ -168,16 +171,38 @@ class ComplianceService(BaseService):
 
         try:
             from hub.apps.jobs.tasks import process_job
-            from django_rq import get_queue
+            from hub.apps.jobs.utils import (
+                check_tenant_job_limits,
+                get_queue,
+                get_queue_for_job_type,
+                increment_tenant_job_counter,
+            )
 
-            queue = get_queue("default")
+            can_create, error_message = check_tenant_job_limits(str(tenant.id))
+            if not can_create:
+                raise ValidationError(error_message or "Tenant job limit exceeded")
+
+            increment_tenant_job_counter(str(tenant.id), "queued")
+
+            queue_name = get_queue_for_job_type(JobType.COMPLIANCE_RUN)
+            queue = get_queue(queue_name)
             queue.enqueue(
                 process_job,
                 str(job.id),
                 job_type=JobType.COMPLIANCE_RUN,
                 timeout=get_job_timeout(JobType.COMPLIANCE_RUN),
             )
-        except Exception:
-            pass  # Log in view/caller if needed; job remains PENDING
+        except Exception as e:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "Failed to enqueue compliance run job %s (run %s): %s. "
+                "Ensure Redis and the RQ worker are running.",
+                job.id,
+                compliance_run.id,
+                e,
+                exc_info=True,
+            )
 
         return compliance_run

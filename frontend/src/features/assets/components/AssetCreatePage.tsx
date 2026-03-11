@@ -8,11 +8,14 @@ import { useNavigate } from 'react-router-dom';
 import { useCreateAsset } from '../hooks/useAssets';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import type { AssetVisibility } from '../../../shared/types/assets';
 import './AssetCreatePage.css';
 
 export function AssetCreatePage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const createMutation = useCreateAsset();
   const [formData, setFormData] = useState({
     key: '',
@@ -55,10 +58,15 @@ export function AssetCreatePage() {
         domain: formData.domain.trim() || undefined,
         visibility: formData.visibility,
       });
+      toast.success('Asset created successfully.');
       navigate(`/assets/${asset.id}`);
     } catch (error) {
-      // Error handled by mutation
+      toast.error(normalizeError(error).error.message || 'Failed to create asset');
     }
+  };
+
+  const handleIHaveDataClick = () => {
+    navigate('/datasets/create?linkMode=create_new');
   };
 
   return (
@@ -68,6 +76,26 @@ export function AssetCreatePage() {
           ← Back to Assets
         </button>
         <h1>Create Asset</h1>
+      </div>
+
+      <div className="asset-create-flow-choice" role="group" aria-label="Asset creation method">
+        <button
+          type="button"
+          className="flow-choice-card flow-choice-data-first"
+          onClick={handleIHaveDataClick}
+          data-testid="flow-i-have-data"
+          aria-label="I have data to upload - create asset with file upload"
+        >
+          <span className="flow-choice-icon">📤</span>
+          <span className="flow-choice-title">I have data to upload</span>
+          <span className="flow-choice-desc">
+            Upload a file and create an asset with dataset and contract automatically
+          </span>
+        </button>
+      </div>
+
+      <div className="asset-create-divider">
+        <span>or create from metadata</span>
       </div>
 
       {createMutation.isError && (

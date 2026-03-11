@@ -84,9 +84,9 @@ class DatasetCachingTest(DatasetsTestBase):
 
     def test_hash_filters(self):
         """Test filter hash generation"""
-        filters1 = {"page": 1, "page_size": 50, "format": "CSV"}
-        filters2 = {"format": "CSV", "page_size": 50, "page": 1}
-        filters3 = {"page": 1, "page_size": 50, "format": "JSON"}
+        filters1 = {"page": 1, "page_size": 50, "dataset_format": "CSV"}
+        filters2 = {"dataset_format": "CSV", "page_size": 50, "page": 1}
+        filters3 = {"page": 1, "page_size": 50, "dataset_format": "JSON"}
 
         hash1 = hash_filters(filters1)
         hash2 = hash_filters(filters2)
@@ -99,7 +99,7 @@ class DatasetCachingTest(DatasetsTestBase):
 
     def test_hash_filters_normalizes_none_values(self):
         """Test that None values are excluded from hash"""
-        filters1 = {"page": 1, "format": None, "asset_id": ""}
+        filters1 = {"page": 1, "dataset_format": None, "asset_id": ""}
         filters2 = {"page": 1}
 
         hash1 = hash_filters(filters1)

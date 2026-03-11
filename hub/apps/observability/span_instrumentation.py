@@ -8,6 +8,8 @@ Utilities for creating and managing OpenTelemetry spans for:
 
 This module provides decorators and context managers for easy span creation.
 """
+from __future__ import annotations
+
 import time
 import logging
 from typing import Optional, Dict, Any, Callable

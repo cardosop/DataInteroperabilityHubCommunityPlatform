@@ -120,9 +120,15 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
     test('scheduled-ingestions loads or redirects by role', async ({ page }) => {
       await page.goto('/scheduled-ingestions');
       await page.waitForLoadState('domcontentloaded');
-      // Wait for loading to finish or terminal state (list/error/403/unavailable)
-      await waitForLoadingComplete(page, { timeout: 25000 });
-      await page.waitForTimeout(2000);
+      // Wait for a terminal state — list, error, 403, unavailable, or redirect to login.
+      // Loading spinner alone is NOT a terminal state; increase timeout to reach one.
+      await page
+        .locator(
+          '.scheduled-ingestion-list-page, .empty-state, .error-display, .unavailable-page, #email'
+        )
+        .first()
+        .waitFor({ state: 'visible', timeout: 40000 })
+        .catch(() => null);
       const url = page.url();
       const onScheduled = url.includes('/scheduled-ingestions');
       const onLogin = url.includes('/login');
@@ -131,10 +137,9 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
       const hasError = (await page.locator('.error-display').count()) > 0;
       const has403 = (await page.locator('text=/403|forbidden/i').count()) > 0;
       const hasUnavailable = (await page.locator('.unavailable-page').count()) > 0;
-      const hasLoading = (await page.locator('.loading-spinner-container').count()) > 0;
       expect(onScheduled || onLogin || on403).toBe(true);
-      // Accept: list, error, 403, unavailable, or still loading (API slow) - all indicate route is reachable
-      expect(hasList || hasError || has403 || hasUnavailable || hasLoading || onLogin || on403).toBe(true);
+      // Terminal states only: list, error, 403 text, unavailable page, or redirect (no loading spinner)
+      expect(hasList || hasError || has403 || hasUnavailable || onLogin || on403).toBe(true);
     });
   });
 });

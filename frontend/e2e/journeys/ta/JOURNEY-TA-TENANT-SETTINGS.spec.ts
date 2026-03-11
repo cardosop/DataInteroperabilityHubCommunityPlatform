@@ -1,0 +1,153 @@
+/**
+ * E2E Test: Phase 8.4 — Tenant Admin Views Usage & Config
+ *
+ * Tenant admin views usage and config at /settings/tenant.
+ * No mocks/stubs; real backend only.
+ */
+
+import { expect, test } from '@playwright/test';
+import { getTenantAdminUser } from '../../fixtures/auth';
+import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
+
+test.describe('Phase 8.4: Tenant Admin Views Usage & Config', () => {
+  test.setTimeout(120000);
+
+  test('tenant admin views usage tab', async ({ page }) => {
+    const taUser = await getTenantAdminUser();
+    await loginAndNavigateToRoute(page, taUser, '/settings/tenant', { timeout: 60000 });
+    if (page.url().includes('/login') || page.url().includes('/403')) {
+      expect(page.url()).toMatch(/\/login|\/403/);
+      return;
+    }
+    expect(page.url()).toContain('/settings/tenant');
+    await waitForLoadingComplete(page, { timeout: 15000 });
+
+    const usageSection = page.locator('[data-testid="tenant-settings-usage"]');
+    await expect(usageSection).toBeVisible({ timeout: 10000 });
+
+    const usageLabel = page.locator('.tenant-metric-label').first();
+    await expect(usageLabel).toBeVisible({ timeout: 5000 });
+  });
+
+  test('tenant admin views config tab and can save', async ({ page }) => {
+    const taUser = await getTenantAdminUser();
+    await loginAndNavigateToRoute(page, taUser, '/settings/tenant', { timeout: 60000 });
+    if (page.url().includes('/login') || page.url().includes('/403')) {
+      expect(page.url()).toMatch(/\/login|\/403/);
+      return;
+    }
+    await waitForLoadingComplete(page, { timeout: 15000 });
+
+    const configTab = page.locator('button:has-text("Configuration")');
+    await configTab.click();
+    await page.waitForTimeout(1000);
+
+    const configSection = page.locator('[data-testid="tenant-settings-config"]');
+    await expect(configSection).toBeVisible({ timeout: 10000 });
+
+    const dqSelect = page.locator('#tenant-default_dq_profile');
+    await expect(dqSelect).toBeVisible({ timeout: 5000 });
+
+    await dqSelect.selectOption('intake_basic_soda');
+    const saveBtn = page.locator('button[type="submit"]').or(page.locator('button:has-text("Save")')).first();
+    await saveBtn.click();
+    await page.waitForTimeout(2000);
+
+    const successMsg = page.locator('.tenant-settings-success');
+    await expect(successMsg).toBeVisible({ timeout: 5000 });
+    await expect(successMsg).toContainText(/updated|success/i);
+  });
+
+  test('Phase 11: tenant admin can toggle trust signals enabled', async ({ page }) => {
+    const taUser = await getTenantAdminUser();
+    await loginAndNavigateToRoute(page, taUser, '/settings/tenant', { timeout: 60000 });
+    if (page.url().includes('/login') || page.url().includes('/403')) {
+      expect(page.url()).toMatch(/\/login|\/403/);
+      return;
+    }
+    await waitForLoadingComplete(page, { timeout: 15000 });
+
+    const configTab = page.locator('button:has-text("Configuration")');
+    await configTab.click();
+    await page.waitForTimeout(1000);
+
+    const trustSignalsCheckbox = page.locator('#tenant-trust_signals_enabled');
+    await expect(trustSignalsCheckbox).toBeVisible({ timeout: 5000 });
+
+    const initialState = await trustSignalsCheckbox.isChecked();
+    await trustSignalsCheckbox.click();
+    await page.waitForTimeout(300);
+
+    const saveBtn = page.locator('button[type="submit"]').or(page.locator('button:has-text("Save")')).first();
+    await saveBtn.click();
+    await page.waitForTimeout(2000);
+
+    const successMsg = page.locator('.tenant-settings-success');
+    await expect(successMsg).toBeVisible({ timeout: 5000 });
+
+    const newState = await trustSignalsCheckbox.isChecked();
+    expect(newState).toBe(!initialState);
+  });
+
+  test('Phase 12: tenant admin can toggle versioning enabled', async ({ page }) => {
+    const taUser = await getTenantAdminUser();
+    await loginAndNavigateToRoute(page, taUser, '/settings/tenant', { timeout: 60000 });
+    if (page.url().includes('/login') || page.url().includes('/403')) {
+      expect(page.url()).toMatch(/\/login|\/403/);
+      return;
+    }
+    await waitForLoadingComplete(page, { timeout: 15000 });
+
+    const configTab = page.locator('button:has-text("Configuration")');
+    await configTab.click();
+    await page.waitForTimeout(1000);
+
+    const versioningCheckbox = page.locator('#tenant-versioning_enabled');
+    await expect(versioningCheckbox).toBeVisible({ timeout: 5000 });
+
+    const initialState = await versioningCheckbox.isChecked();
+    await versioningCheckbox.click();
+    await page.waitForTimeout(300);
+
+    const saveBtn = page.locator('button[type="submit"]').or(page.locator('button:has-text("Save")')).first();
+    await saveBtn.click();
+    await page.waitForTimeout(2000);
+
+    const successMsg = page.locator('.tenant-settings-success');
+    await expect(successMsg).toBeVisible({ timeout: 5000 });
+
+    const newState = await versioningCheckbox.isChecked();
+    expect(newState).toBe(!initialState);
+  });
+
+  test('Phase 14: tenant admin can toggle workflows enabled', async ({ page }) => {
+    const taUser = await getTenantAdminUser();
+    await loginAndNavigateToRoute(page, taUser, '/settings/tenant', { timeout: 60000 });
+    if (page.url().includes('/login') || page.url().includes('/403')) {
+      expect(page.url()).toMatch(/\/login|\/403/);
+      return;
+    }
+    await waitForLoadingComplete(page, { timeout: 15000 });
+
+    const configTab = page.locator('button:has-text("Configuration")');
+    await configTab.click();
+    await page.waitForTimeout(1000);
+
+    const workflowsCheckbox = page.locator('#tenant-workflows_enabled');
+    await expect(workflowsCheckbox).toBeVisible({ timeout: 5000 });
+
+    const initialState = await workflowsCheckbox.isChecked();
+    await workflowsCheckbox.click();
+    await page.waitForTimeout(300);
+
+    const saveBtn = page.locator('button[type="submit"]').or(page.locator('button:has-text("Save")')).first();
+    await saveBtn.click();
+    await page.waitForTimeout(2000);
+
+    const successMsg = page.locator('.tenant-settings-success');
+    await expect(successMsg).toBeVisible({ timeout: 5000 });
+
+    const newState = await workflowsCheckbox.isChecked();
+    expect(newState).toBe(!initialState);
+  });
+});

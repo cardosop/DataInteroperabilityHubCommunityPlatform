@@ -23,6 +23,7 @@ from rest_framework.views import APIView
 from rest_framework.viewsets import ViewSet
 
 from hub.apps.audit.utils import create_audit_event
+from hub.apps.jobs.models import Job
 from hub.apps.observability.otel_metrics import (
     scheduled_ingestion_datasets_created_total,
     scheduled_ingestion_duration_seconds,
@@ -679,6 +680,27 @@ class InternalCreateJobView(APIView):
         prefect_flow_run_id = data["prefect_flow_run_id"]
         run_id = data.get("scheduled_ingestion_run_id")
 
+        # Idempotent: if run already has job_id (created by trigger), return it
+        if run_id:
+            try:
+                run = ScheduledIngestionRun.objects.select_related("scheduled_ingestion").get(
+                    id=run_id
+                )
+                if run.job_id:
+                    job_existing = Job.objects.get(id=run.job_id)
+                    return Response(
+                        {
+                            "id": str(job_existing.id),
+                            "type": job_existing.type,
+                            "status": job_existing.status,
+                            "executed_by_prefect": True,
+                            "prefect_flow_run_id": prefect_flow_run_id,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+            except (ScheduledIngestionRun.DoesNotExist, Job.DoesNotExist):
+                pass
+
         try:
             si = ScheduledIngestion.objects.get(id=scheduled_ingestion_id)
         except ScheduledIngestion.DoesNotExist:
@@ -719,6 +741,12 @@ class InternalCreateJobView(APIView):
             details_json=details,
             executed_by_prefect=True,
         )
+
+        # Link run to job when run_id provided (flow-created job path)
+        if run_id:
+            ScheduledIngestionRun.objects.filter(id=run_id).update(
+                job_id=job.id, updated_at=timezone.now()
+            )
 
         tenant = _get_tenant(request)
         create_audit_event(

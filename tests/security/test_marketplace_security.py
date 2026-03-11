@@ -151,9 +151,10 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
     def test_dados_gov_br_connector_authentication_with_valid_credentials(self):
         """Test DadosGovBr connector authentication with valid credentials"""
         factory = MarketplaceConnectorFactory()
+        # Use instance_id so factory creates DadosGovBrConnector (dados.gov.br uses Swagger, not CKAN)
         config = {
-            "base_url": "https://dados.gov.br",
-            "jwt_token": "test-jwt-token"
+            "instance_id": "dados.gov.br",
+            "api_key": "test-jwt-token",
         }
 
         try:
@@ -174,9 +175,10 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
     def test_dados_gov_br_connector_authentication_with_invalid_credentials(self):
         """Test DadosGovBr connector authentication with invalid credentials"""
         factory = MarketplaceConnectorFactory()
+        # Use instance_id so factory creates DadosGovBrConnector (dados.gov.br uses Swagger, not CKAN)
         config = {
-            "base_url": "https://dados.gov.br",
-            "jwt_token": ""  # Empty JWT token
+            "instance_id": "dados.gov.br",
+            "api_key": "",  # Empty API key
         }
 
         try:

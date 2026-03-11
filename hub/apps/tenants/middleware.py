@@ -46,14 +46,18 @@ class TenantSuspensionMiddleware:
     # HTTP methods that are considered write operations
     WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"]
 
-    # Endpoints that are always allowed (health checks, auth, etc.)
+    # Endpoints that are always allowed (health checks, auth, platform admin).
     # Auth endpoints must work without subscription: login, logout, sessions (list/revoke),
     # api-keys, password-reset, etc. Session list/revoke and logout must work so users can
     # manage sessions and sign out regardless of billing state.
+    # Platform admin endpoints (/api/v1/platform/) bypass subscription: platform admins
+    # perform platform-level operations (tenant suspend/resume, user erasure) that must not
+    # be blocked by their tenant's subscription status.
     ALLOWED_PATHS = [
         "/health/",
         "/api/health/",
         "/api/v1/auth/",
+        "/api/v1/platform/",
     ]
 
     def process_request(self, request):

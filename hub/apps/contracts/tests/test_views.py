@@ -163,6 +163,29 @@ class ContractViewSetTest(ContractsAPITestBase):
         for contract in results:
             self.assertEqual(contract["original_spec_type"], OriginalSpecType.ODCS)
 
+    def test_list_contracts_search_by_info_name(self):
+        """Test searching contracts by hub_contract_json.info.name (29.69.3 ContractPicker)."""
+        Contract.objects.create(
+            tenant=self.tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"info":{"name":"Sales Analytics Contract"}}',
+            hub_contract_version="1.0.0",
+            hub_contract_json={"info": {"name": "Sales Analytics Contract", "title": "Sales"}},
+            created_by=self.user,
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get("/api/v1/contracts/?search=Analytics")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", [])
+        self.assertGreaterEqual(len(results), 1)
+        self.assertTrue(
+            any("Analytics" in str(c.get("hub_contract_json", {}).get("info", {}).get("name", "")) for c in results)
+        )
+
     def test_list_contracts_sorting_by_created_at(self):
         """Test sorting contracts by created_at"""
         # Create another contract

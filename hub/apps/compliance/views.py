@@ -59,7 +59,7 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
             role_names = [ur.role.name for ur in request.user.user_roles.all()]
             if "AUDITOR" in role_names:
                 # AUDITOR can only read, not write
-                if view_action in ["create", "update", "partial_update", "destroy"]:
+                if view_action in ["create", "update", "partial_update", "destroy", "cancel"]:
                     from rest_framework.exceptions import PermissionDenied
 
                     raise PermissionDenied(
@@ -322,6 +322,66 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         """Delete compliance run"""
         self.check_auditor_permissions(request, "destroy")
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, id=None):
+        """
+        Cancel a compliance run by cancelling its underlying job.
+
+        POST /compliance/runs/{id}/cancel/
+
+        Only PENDING or RUNNING runs can be cancelled.
+        """
+        self.check_auditor_permissions(request, "cancel")
+        compliance_run = self.get_object()
+
+        if compliance_run.status not in (ComplianceRunStatus.PENDING, ComplianceRunStatus.RUNNING):
+            return api_error_response(
+                f"Cannot cancel compliance run (current status: {compliance_run.status})",
+                code="INVALID_STATUS",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        job = compliance_run.job
+        if job.status not in (JobStatus.PENDING, JobStatus.RUNNING):
+            return api_error_response(
+                f"Cannot cancel: underlying job status is {job.status}",
+                code="JOB_NOT_CANCELLABLE",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        previous_job_status = job.status
+        job.mark_cancelled()
+        if previous_job_status == JobStatus.RUNNING and job.tenant:
+            from hub.apps.jobs.utils import decrement_tenant_job_counter
+            decrement_tenant_job_counter(str(job.tenant.id), "running")
+
+        compliance_run.status = ComplianceRunStatus.FAILED
+        compliance_run.allowed_to_store = False
+        compliance_run.regulation_mapping_json = {
+            **(compliance_run.regulation_mapping_json or {}),
+            "error": "Cancelled by user",
+            "cancelled": True,
+        }
+        compliance_run.completed_at = timezone.now()
+        compliance_run.save(
+            update_fields=["status", "allowed_to_store", "regulation_mapping_json", "completed_at"]
+        )
+
+        create_audit_event(
+            resource_type="COMPLIANCE_RUN",
+            action="COMPLIANCE_RUN_CANCELLED",
+            actor_user=request.user,
+            tenant=compliance_run.tenant,
+            resource_id=str(compliance_run.id),
+            details={"job_id": str(job.id)},
+            request=request,
+        )
+
+        return Response(
+            ComplianceRunSerializer(compliance_run).data,
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(
         operation_id="get_compliance_run_results",

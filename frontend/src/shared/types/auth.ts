@@ -61,6 +61,17 @@ export interface User {
   tenant_id: string;
   tenant_name?: string;
   is_active: boolean;
+  avatar?: string | null;
+  preferences?: Record<string, unknown>;
+  /** When false, tenant switch UI and X-Tenant-Id are disabled (FEATURE_TENANT_SWITCH_ENABLED). Default true. */
+  feature_tenant_switch_enabled?: boolean;
+}
+
+/** PATCH /auth/me/ — partial profile update */
+export interface ProfileUpdateRequest {
+  display_name?: string | null;
+  avatar?: string | null;
+  preferences?: Record<string, unknown>;
 }
 
 export interface AuthState {

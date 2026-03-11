@@ -103,7 +103,7 @@ class SendGridEmailService(BaseService, EmailService):
             raise EmailServiceError("SENDGRID_API_KEY not configured in settings")
         self.client = sendgrid.SendGridAPIClient(api_key=api_key)
         self.from_email = getattr(settings, 'SENDGRID_FROM_EMAIL', None)
-        self.from_name = getattr(settings, 'SENDGRID_FROM_NAME', 'Data Interoperability Hub')
+        self.from_name = getattr(settings, 'SENDGRID_FROM_NAME', getattr(settings, 'APP_NAME', 'Meshant'))
 
     def send_email(
         self,
@@ -224,7 +224,7 @@ class SESEmailService(BaseService, EmailService):
             aws_secret_access_key=getattr(settings, 'AWS_SECRET_ACCESS_KEY', None)
         )
         self.from_email = getattr(settings, 'AWS_SES_FROM_EMAIL', None)
-        self.from_name = getattr(settings, 'AWS_SES_FROM_NAME', 'Data Interoperability Hub')
+        self.from_name = getattr(settings, 'AWS_SES_FROM_NAME', getattr(settings, 'APP_NAME', 'Meshant'))
 
     def send_email(
         self,
@@ -361,7 +361,7 @@ class SMTPEmailService(BaseService, EmailService):
         self.use_tls = getattr(settings, 'SMTP_USE_TLS', True)
         self.use_ssl = getattr(settings, 'SMTP_USE_SSL', False)
         self.from_email = getattr(settings, 'SMTP_FROM_EMAIL', None)
-        self.from_name = getattr(settings, 'SMTP_FROM_NAME', 'Data Interoperability Hub')
+        self.from_name = getattr(settings, 'SMTP_FROM_NAME', getattr(settings, 'APP_NAME', 'Meshant'))
 
     def _get_connection(self):
         """Get SMTP connection"""

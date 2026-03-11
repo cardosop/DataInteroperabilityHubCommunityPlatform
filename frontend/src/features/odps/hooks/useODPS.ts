@@ -89,7 +89,13 @@ export function useUnlinkODPS() {
 export function useODPSLinks(contractId: string | null) {
   return useQuery({
     queryKey: ['odps', 'links', contractId],
-    queryFn: () => odpsService.getLinks(contractId!),
+    queryFn: async () => {
+      const data = await odpsService.getLinks(contractId!);
+      if (data === undefined) {
+        return { odps_link: null, odcs_link: null };
+      }
+      return data;
+    },
     enabled: !!contractId,
   });
 }

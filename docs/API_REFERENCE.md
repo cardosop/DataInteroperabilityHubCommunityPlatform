@@ -165,6 +165,7 @@ All REST endpoints follow consistent standards:
 #### Assets
 - `GET /api/v1/assets/` - List assets
 - `POST /api/v1/assets/` - Create asset
+- `POST /api/v1/assets/data-first/` - Create asset, dataset, and contract from uploaded file (data-first flow)
 - `GET /api/v1/assets/{id}/` - Get asset
 - `PUT /api/v1/assets/{id}/` - Update asset
 - `DELETE /api/v1/assets/{id}/` - Delete asset
@@ -172,12 +173,66 @@ All REST endpoints follow consistent standards:
 - `POST /api/v1/assets/{id}/contracts/` - Attach contract
 - `POST /api/v1/assets/{id}/activate/` - Activate asset
 
+##### Data-First Asset Creation
+
+**Endpoint**: `POST /api/v1/assets/data-first/`
+
+**Description**: Create asset, dataset, and contract from an uploaded file in one call. Infers schema from file, generates ODCS contract, runs AssetCreationWorkflow.
+
+**Request body**:
+```json
+{
+  "file_id": "uuid",
+  "key": "my-asset-key",
+  "name": "My Asset Name",
+  "description": "Optional",
+  "domain": "sales",
+  "visibility": "INTERNAL"
+}
+```
+
+**Required**: `file_id`, `key`, `name`. **Optional**: `description`, `domain`, `visibility`.
+
+**Response (201)**:
+```json
+{
+  "asset_id": "uuid",
+  "dataset_id": "uuid",
+  "contract_id": "uuid"
+}
+```
+
+**Errors**: 400 (missing/invalid fields), 401 (unauthenticated), 404 (file not found or cross-tenant).
+
+**Runbook**: [docs/runbooks/DATA_FIRST_ASSET_CREATION.md](runbooks/DATA_FIRST_ASSET_CREATION.md)
+
 #### Datasets
 - `GET /api/v1/datasets/` - List datasets
 - `POST /api/v1/datasets/` - Create dataset
 - `GET /api/v1/datasets/{id}/` - Get dataset
-- `PUT /api/v1/datasets/{id}/` - Update dataset
+- `PUT /api/v1/datasets/{id}/` - Update dataset (full update)
+- `PATCH /api/v1/datasets/{id}/` - Update dataset (partial update; supports `asset` for linking)
 - `DELETE /api/v1/datasets/{id}/` - Delete dataset
+
+**Dataset Update (PATCH/PUT) — Asset linking**: To link a dataset to an asset, send `asset` (UUID) in the request body. To unlink, send `asset: null`. Response includes `asset_id` and `asset_name` when linked. Writable fields: `asset`, `format`.
+
+##### Dataset Update — Asset/Asset ID
+
+**Endpoint**: `PATCH /api/v1/datasets/{id}/` or `PUT /api/v1/datasets/{id}/`
+
+**Request body** (partial update via PATCH):
+```json
+{
+  "asset": "uuid-of-asset-to-link",
+  "format": "CSV"
+}
+```
+
+To **unlink** dataset from asset: `{"asset": null}`.
+
+**Response**: Same as GET dataset; includes `asset_id` and `asset_name` when linked.
+
+**Validation**: `asset` must be a valid UUID of an asset in the same tenant, or `null`. 400 if invalid.
 
 #### Data Quality
 - `GET /api/v1/dq/runs/` - List DQ runs
@@ -223,6 +278,12 @@ Internal marketplace (Hub catalog, orders, entitlements): `/api/v1/marketplace/`
 - `POST /api/v1/governance/access-requests/{id}/approve/` - Approve request
 - `POST /api/v1/governance/access-requests/{id}/reject/` - Reject request
 
+#### Files
+- `GET /api/v1/files/` - List files
+- `POST /api/v1/files/init/` - Initiate multipart upload
+- `POST /api/v1/files/{id}/complete/` - Complete multipart upload
+- `GET /api/v1/files/{id}/download/` - Download file
+
 #### Jobs
 - `GET /api/v1/jobs/` - List jobs
 - `POST /api/v1/jobs/` - Create job
@@ -235,23 +296,83 @@ Internal marketplace (Hub catalog, orders, entitlements): `/api/v1/marketplace/`
 - `GET /api/v1/search/assets/` - Search assets
 
 #### Authentication
+- `GET /api/v1/auth/me/` - Get current user (id, email, name, tenant_id, roles, permissions, avatar, preferences, feature_tenant_switch_enabled)
+- `PATCH /api/v1/auth/me/` - Update profile (display_name, avatar, preferences); see [User Profile](#user-profile)
+- `GET /api/v1/auth/me/tenants/` - List tenants the user has membership in (tenant switch); see [Tenant Switch](#tenant-switch)
+- `POST /api/v1/auth/switch-tenant/` - Switch active tenant context; see [Tenant Switch](#tenant-switch)
+- `POST /api/v1/auth/register/` - Register new user (see [User Registration](#user-registration))
 - `POST /api/v1/auth/login/` - Login (get JWT token)
 - `POST /api/v1/auth/logout/` - Logout
 - `POST /api/v1/auth/refresh/` - Refresh JWT token
 - `POST /api/v1/auth/password-reset/` - Request password reset
 - `POST /api/v1/auth/password-reset/confirm/` - Confirm password reset
 
+**User Profile** (`GET` / `PATCH /api/v1/auth/me/`)
+
+**GET** returns current user: `id`, `email`, `name`, `tenant_id`, `roles`, `permissions`, `created_at`, `last_login_at`, `avatar`, `preferences`, `feature_tenant_switch_enabled` (boolean; when false, tenant switch UI and X-Tenant-Id are disabled).
+
+**PATCH** (partial update) request body:
+```json
+{
+  "display_name": "Display Name",
+  "avatar": "https://example.com/avatar.png",
+  "preferences": {"theme": "dark", "language": "en"}
+}
+```
+All fields optional. `preferences` must be a JSON object (max 10KB serialized). Requires authentication.
+
+**User Registration** (`POST /api/v1/auth/register/`)
+
+When `tenant_id` is **omitted**, the system creates a **personal tenant** for the user and assigns `DATA_PROVIDER` and `DATA_CONSUMER` roles. The user can immediately create assets, consume data, and access marketplace listings within their personal tenant.
+
+**Request Body**:
+```json
+{
+  "email": "user@example.com",
+  "password": "SecurePass123",
+  "name": "Display Name",
+  "tenant_id": "optional-tenant-uuid"
+}
+```
+
+**Response** (201 Created): `id`, `email`, `name`, `tenant_id` (personal tenant UUID when created)
+
+**When `tenant_id` provided**: User is associated with that tenant (unchanged behavior). **When `tenant_id` omitted**: Personal tenant created and returned; user receives `DATA_PROVIDER` and `DATA_CONSUMER` roles. See [ONBOARDING.md](ONBOARDING.md#personal-tenant-self-service-registration) and [Personal tenant creation failures](RUNBOOKS.md#personal-tenant-creation-failures) runbook.
+
+**Tenant Switch** (`GET /api/v1/auth/me/tenants/`, `POST /api/v1/auth/switch-tenant/`)
+
+Users with multiple tenants (e.g. personal + org via invitation) can switch active tenant context without re-login.
+
+- **GET /api/v1/auth/me/tenants/** — Returns list of tenants the user has membership in: `[{ id, name, slug }]`. Requires authentication. Returns 403 when `FEATURE_TENANT_SWITCH_ENABLED` is false.
+- **POST /api/v1/auth/switch-tenant/** — Request body: `{ "tenant_id": "uuid" }`. Validates membership; returns 200 with updated me summary (tenant_id overridden). Requires authentication. Returns 403 when feature disabled or user has no membership in target tenant.
+- **X-Tenant-Id header** — When feature enabled, clients send `X-Tenant-Id: <uuid>` to scope requests to a switched tenant. Backend validates membership; 403 if invalid or feature disabled.
+
+See [TENANT_SWITCH_PLAN.md](TENANT_SWITCH_PLAN.md) for migration and rollback.
+
 #### Tenants
 - `GET /api/v1/tenants/` - List tenants
 - `POST /api/v1/tenants/` - Create tenant
 - `GET /api/v1/tenants/{id}/` - Get tenant
 - `PUT /api/v1/tenants/{id}/` - Update tenant
+- `GET /api/v1/tenants/me/usage/` - Get current tenant usage (storage, API calls, limits); TENANT_ADMIN or PLATFORM_ADMIN
+- `GET /api/v1/tenants/me/config/` - Get tenant configuration; TENANT_ADMIN or PLATFORM_ADMIN
+- `PATCH /api/v1/tenants/me/config/` - Update tenant configuration (trust signals, versioning, workflows, etc.); TENANT_ADMIN or PLATFORM_ADMIN
+
+#### Billing (useronboardfix Phase 9, 17)
+- `GET /api/v1/billing/subscription/current/` - Get current subscription (plan, status, limits)
+- `POST /api/v1/billing/subscription/current/change-plan/` - Change subscription plan; TENANT_ADMIN or PLATFORM_ADMIN; body: `{"plan_slug": "pro"}`
+- `GET /api/v1/billing/plans/` - List available plans for subscription change
+- `GET /api/v1/billing/invoices/` - List invoices for tenant
+- `GET /api/v1/billing/invoices/{id}/` - Get invoice detail
+- `GET /api/v1/billing/invoices/{id}/download/` - Redirect to invoice PDF or hosted URL
+
+See [BILLING.md](BILLING.md) for full billing documentation. Runbook: [Subscription plan change failures](RUNBOOKS.md#subscription-plan-change-failures).
 
 #### Users
 - `GET /api/v1/users/` - List users
 - `POST /api/v1/users/` - Create user
 - `GET /api/v1/users/{id}/` - Get user
-- `PUT /api/v1/users/{id}/` - Update user
+- `PUT /api/v1/users/{id}/` - Update user (roles, status); TENANT_ADMIN or PLATFORM_ADMIN
 
 ### Complete Endpoint Reference
 
@@ -588,6 +709,25 @@ GET /api/v1/contracts/?owner_email=user@example.com&status=ACTIVE
 ```
 
 See [API Standards](API_STANDARDS.md#filtering) for filtering syntax.
+
+## List API Query Parameters (Resource Pickers)
+
+List endpoints used by resource pickers (AssetPicker, ContractPicker, DatasetPicker, FilePicker) support the following params. See [RESOURCE_PICKER_LINKING_PLAN.md](../openspec/changes/useronboardfix/RESOURCE_PICKER_LINKING_PLAN.md) for picker integration.
+
+| Endpoint | search | filter | ordering | page_size |
+|----------|--------|--------|----------|-----------|
+| GET /api/v1/assets/ | name, key, description | domain, status, visibility | name, key, created_at, updated_at | 50 default, max 100 |
+| GET /api/v1/contracts/ | info.name, info.title | status, spec_type (ODPS/ODCS), owner_email, tag, etc. | created_at, updated_at, quality_score | 50 default, max 100 |
+| GET /api/v1/datasets/ | file name, format | asset_id, dataset_format | created_at, updated_at, format | 50 default, max 100 |
+| GET /api/v1/files/ | name | status | name, created_at, updated_at | 50 default, max 100 |
+
+**Examples:**
+```bash
+GET /api/v1/assets/?search=report&status=ACTIVE
+GET /api/v1/datasets/?asset_id=<uuid>&dataset_format=CSV&search=report
+GET /api/v1/files/?search=report&status=ACTIVE
+GET /api/v1/contracts/?spec_type=ODPS&status=ACTIVE
+```
 
 ## Sorting
 

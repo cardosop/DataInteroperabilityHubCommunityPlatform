@@ -12,10 +12,10 @@
 
 import { expect, test } from '@playwright/test';
 import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { waitForAppMainReady } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DC-015: Purchase ODPS Product (Marketplace)', () => {
-  test.setTimeout(120000);
+  test.setTimeout(300000);
 
   test.describe('Success', () => {
     test('marketplace loads (ODPS products discoverable)', async ({ page }) => {
@@ -23,9 +23,10 @@ test.describe('JOURNEY-DC-015: Purchase ODPS Product (Marketplace)', () => {
       await loginUser(page, consumer);
       await page.goto('/marketplace');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.listing-list-page, .empty-state, .error-display, #email', {
-        timeout: 65000,
-      });
+      await page.waitForSelector(
+        '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 65000 }
+      );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
@@ -38,10 +39,17 @@ test.describe('JOURNEY-DC-015: Purchase ODPS Product (Marketplace)', () => {
       await loginUser(page, consumer);
       await page.goto('/marketplace/orders');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
-        return;
+      try {
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          contentSelector: '.order-list-page, .empty-state, .error-display, .loading-spinner-container',
+        });
+      } catch (_err) {
+        if (page.url().includes('/login')) {
+          expect(page.url()).toContain('/login');
+          return;
+        }
+        throw _err;
       }
       expect(page.url()).toContain('/marketplace/orders');
     });
@@ -66,15 +74,20 @@ test.describe('JOURNEY-DC-015: Purchase ODPS Product (Marketplace)', () => {
   test.describe('Edge', () => {
     test('marketplace and orders accessible', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginAndNavigateToRoute(page, consumer, '/marketplace', {
-        timeout: 60000,
-        contentSelector: '.listing-list-page, .empty-state, .error-display',
-      });
+      await loginUser(page, consumer);
+      await page.goto('/marketplace');
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForSelector(
+        '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
       expect(page.url()).toContain('/marketplace');
-      await loginAndNavigateToRoute(page, consumer, '/marketplace/orders', {
-        timeout: 60000,
-        contentSelector: '.order-list-page, .empty-state, .error-display',
-      });
+      await page.goto('/marketplace/orders');
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForSelector(
+        '.order-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
       expect(page.url()).toContain('/marketplace/orders');
     });
   });

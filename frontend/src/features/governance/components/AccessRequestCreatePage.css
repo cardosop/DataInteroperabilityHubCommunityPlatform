@@ -42,7 +42,7 @@
   width: 100%;
   padding: var(--spacing-md);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-base);
   font-family: inherit;
 }
@@ -59,7 +59,7 @@
 }
 
 .governance-create-form .form-error {
-  color: #c62828;
+  color: var(--color-error-700);
   font-size: var(--font-size-sm);
   margin-bottom: var(--spacing-md);
 }

@@ -36,8 +36,8 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
       await page.goto('/virtualization');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.virtual-dataset-list-page, .error-display, .empty-state, #email',
-        { timeout: 65000 }
+        '.virtual-dataset-list-page, .error-display, .empty-state, .loading-spinner-container, .app-main, #email',
+        { timeout: 90000 }
       );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');

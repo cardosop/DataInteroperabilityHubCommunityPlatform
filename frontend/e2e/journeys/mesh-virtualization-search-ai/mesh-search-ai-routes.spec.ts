@@ -71,6 +71,7 @@ test.describe('Mesh, Virtualization, Search, AI routes', () => {
         return;
       }
       expect(page.url()).toContain('/search');
+      await expect(page.locator('.search-page')).toBeVisible({ timeout: 10000 });
     });
   });
 

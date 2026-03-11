@@ -41,7 +41,7 @@
 
 .baas-tab:hover {
   color: var(--color-text-primary);
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
 }
 
 .baas-tab.active {
@@ -65,7 +65,7 @@
   padding: var(--spacing-lg);
   background: var(--color-success-light);
   border: 2px solid var(--color-success);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   margin-bottom: var(--spacing-lg);
 }
 
@@ -76,9 +76,9 @@
 
 .api-key-value {
   padding: var(--spacing-md);
-  background: var(--color-bg-primary);
+  background: var(--color-background-primary);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-family: monospace;
   font-size: var(--font-size-sm);
   word-break: break-all;
@@ -87,8 +87,8 @@
 
 .create-api-key-form {
   padding: var(--spacing-lg);
-  background: var(--color-bg-secondary);
-  border-radius: var(--border-radius);
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
   margin-bottom: var(--spacing-lg);
 }
 
@@ -111,7 +111,7 @@
   width: 100%;
   padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-base);
 }
 
@@ -132,9 +132,9 @@
   justify-content: space-between;
   align-items: center;
   padding: var(--spacing-lg);
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
 }
 
 .api-key-info h3 {
@@ -152,7 +152,7 @@
 
 .tier-badge {
   padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
 }
@@ -191,9 +191,9 @@
 .btn-danger {
   padding: var(--spacing-sm) var(--spacing-md);
   background: var(--color-error);
-  color: white;
+  color: var(--color-background-primary);
   border: none;
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   cursor: pointer;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
@@ -212,9 +212,9 @@
 
 .stat-card {
   padding: var(--spacing-lg);
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   text-align: center;
 }
 
@@ -243,13 +243,13 @@
 .usage-table {
   width: 100%;
   border-collapse: collapse;
-  background: var(--color-bg-secondary);
-  border-radius: var(--border-radius);
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
   overflow: hidden;
 }
 
 .usage-table thead {
-  background: var(--color-bg-primary);
+  background: var(--color-background-primary);
 }
 
 .usage-table th,

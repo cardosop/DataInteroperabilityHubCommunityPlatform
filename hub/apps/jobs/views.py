@@ -3,11 +3,12 @@ Job Views
 
 REST API views for job management.
 """
+from django.db import transaction
+from django.utils import timezone
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError, NotFound
-from django.db import transaction
 from rest_framework.filters import OrderingFilter, SearchFilter
 
 from hub.apps.tenants.request_tenant import get_request_tenant_id
@@ -159,6 +160,37 @@ class JobViewSet(viewsets.ModelViewSet):
         if previous_status == JobStatus.RUNNING and job.tenant:
             from hub.apps.jobs.utils import decrement_tenant_job_counter
             decrement_tenant_job_counter(str(job.tenant.id), "running")
+
+        # Sync ComplianceRun when COMPLIANCE_RUN job is cancelled
+        if job.type == JobType.COMPLIANCE_RUN:
+            try:
+                from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
+                compliance_run = ComplianceRun.objects.filter(job=job).first()
+                if compliance_run:
+                    compliance_run.status = ComplianceRunStatus.FAILED
+                    compliance_run.allowed_to_store = False
+                    compliance_run.regulation_mapping_json = {
+                        **(compliance_run.regulation_mapping_json or {}),
+                        "error": "Cancelled by user",
+                        "cancelled": True,
+                    }
+                    compliance_run.completed_at = timezone.now()
+                    compliance_run.save(
+                        update_fields=[
+                            "status",
+                            "allowed_to_store",
+                            "regulation_mapping_json",
+                            "completed_at",
+                        ]
+                    )
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    "Failed to sync compliance run status after job cancellation: %s",
+                    e,
+                    exc_info=True,
+                )
 
         # Sync execution status if this is a virtual query execution job
         if job.type == JobType.VIRTUAL_QUERY_EXECUTION:

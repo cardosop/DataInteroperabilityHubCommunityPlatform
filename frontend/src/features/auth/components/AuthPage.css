@@ -7,7 +7,7 @@
 }
 
 .auth-container {
-  background: white;
+  background: var(--color-background-primary);
   padding: var(--spacing-2xl);
   border-radius: var(--border-radius-lg);
   box-shadow: var(--shadow-xl);
@@ -71,7 +71,7 @@
 .auth-button {
   padding: var(--spacing-md);
   background-color: var(--color-primary-700);
-  color: white;
+  color: var(--color-text-on-primary);
   border: none;
   border-radius: var(--border-radius-md);
   font-size: var(--font-size-base);

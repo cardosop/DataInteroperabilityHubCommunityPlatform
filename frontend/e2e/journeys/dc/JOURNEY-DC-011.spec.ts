@@ -11,10 +11,9 @@
 
 import { expect, test } from '@playwright/test';
 import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DC-011: Purchase Asset with Usage-Based Pricing', () => {
-  test.setTimeout(120000);
+  test.setTimeout(300000);
 
   test.describe('Success', () => {
     test('marketplace listing shows pricing', async ({ page }) => {
@@ -22,9 +21,10 @@ test.describe('JOURNEY-DC-011: Purchase Asset with Usage-Based Pricing', () => {
       await loginUser(page, consumer);
       await page.goto('/marketplace');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.listing-list-page, .empty-state, .error-display, #email', {
-        timeout: 65000,
-      });
+      await page.waitForSelector(
+        '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 90000 }
+      );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
@@ -46,7 +46,10 @@ test.describe('JOURNEY-DC-011: Purchase Asset with Usage-Based Pricing', () => {
       await loginUser(page, consumer);
       await page.goto('/marketplace/listings/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      await page.waitForSelector(
+        '.listing-detail-main, .error-display, .loading-spinner-container, #email',
+        { timeout: 30000 }
+      );
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
@@ -59,15 +62,19 @@ test.describe('JOURNEY-DC-011: Purchase Asset with Usage-Based Pricing', () => {
   test.describe('Edge', () => {
     test('marketplace and orders accessible', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginAndNavigateToRoute(page, consumer, '/marketplace', {
-        timeout: 60000,
-        contentSelector: '.listing-list-page, .empty-state, .error-display',
-      });
+      await loginUser(page, consumer);
+      await page.goto('/marketplace');
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForSelector(
+        '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 90000 }
+      );
       expect(page.url()).toContain('/marketplace');
-      await loginAndNavigateToRoute(page, consumer, '/marketplace/orders', {
-        timeout: 60000,
-        contentSelector: '.order-list-page, .empty-state, .error-display',
-      });
+      await page.goto('/marketplace/orders');
+      await page.waitForSelector(
+        '.order-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 60000 }
+      );
       expect(page.url()).toContain('/marketplace/orders');
     });
   });

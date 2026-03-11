@@ -1,7 +1,7 @@
 # Test Coverage Matrix
 
-**Document Version**: 1.4.0
-**Last Updated**: 2026-02-22
+**Document Version**: 1.5.0
+**Last Updated**: 2026-03-06
 **Status**: ✅ Active
 **Task**: Phase 1.2 - Test Coverage Matrix Documentation; Phase 6 Gap Remediation (traceability and supporting capabilities); gapfix1 Phase 2.5 (traceability and gapfix1 section); Task 6.8.2 UC/journey/persona coverage status
 
@@ -89,6 +89,12 @@ This document provides comprehensive test coverage matrices for the Data Interop
 - **Partial Coverage**: 2 features (7%)
 - **Missing Coverage**: 0 features (0%)
 
+### Resource Pickers (UX)
+
+**Coverage**: Searchable pickers (AssetPicker, ContractPicker, DatasetPicker, FilePicker) for selecting assets, contracts, datasets, files. Unit: 102 (pickers + picker-using pages). Backend list API: 51 tests. Integration: `picker-form-api.integration.test.ts`. E2E: `odps-asset-link`, `asset-attach-contract-dataset`, `dq-compliance-access-request`, `scheduled-export-retention-odps-link`, `dataset-edit`, `picker-a11y`. **Run**: `./scripts/run_resource_picker_tests.sh`. See [TEST_TRACEABILITY.md — Resource Pickers](TEST_TRACEABILITY.md#resource-pickers-ux).
+
+---
+
 ### Supporting Capabilities (Traceability)
 
 Supporting capabilities (Notifications, Billing, Platform, Tenants, Users, Analytics, Events) are documented in [FEATURES.md](FEATURES.md#supporting-capabilities). They are not standalone product features; coverage is via the features that use them (Auth, BaaS, Marketplace, Governance, Audit, Webhooks, etc.). See [TEST_TRACEABILITY.md](TEST_TRACEABILITY.md#supporting-capabilities) for the mapping. **Platform app** (`hub/apps/platform/`): dedicated minimal unit tests in `hub/apps/platform/tests/test_views.py` (permission enforcement for platform tenant and user endpoints; Gap #2, task 1.5). No tests-by-design exemption; the app contains view-layer logic and delegates to tenants/gdpr services.
@@ -118,6 +124,20 @@ Gap Remediation Plan phases (see [openspec/changes/testreview1/GAP_REMEDIATION_P
 - **Features covered by full test run** (appear in test summary report by feature/category): **(1) Scheduled Export** (feature #26; [FEATURES.md](FEATURES.md#scheduled-export); UC-EXPORT-001–004, JOURNEY-EXPORT-001–002). **(2) Trust signals config API** (Marketplace Phase 4; planned or implemented). **(3) §11→Phase 16** (GR-7 / 16.1–16.3: full run, report, sign-off).
 
 **Scheduled Export and trust signals**: Scheduled Export (feature row 26) and trust signals config API (Marketplace, Phase 4) are fully traced in [TEST_TRACEABILITY.md](TEST_TRACEABILITY.md) (Feature → Test, Use Case, User Journey). See [Scheduled Export](#26-scheduled-export--complete) below and [TEST_TRACEABILITY.md — Scheduled Export](TEST_TRACEABILITY.md#scheduled-export), [Marketplace / trust signals](TEST_TRACEABILITY.md#marketplace).
+
+**Phase 28.2 — Phases 10–19 (P1/P2) Test Coverage** (Task 28.2.2):
+
+| Phase | Feature | Unit | Integration | E2E | Run Script |
+|-------|---------|------|-------------|-----|------------|
+| 10 | Admin user edit | `hub/apps/users/tests/test_views.py`, `test_admin_user_edit.py` (PUT/PATCH /api/v1/users/{id}/) | — | `JOURNEY-TA-002.spec.ts` (Manage Users; /admin), `admin-audit-settings-routes.spec.ts` (/admin; PA-009 Manage System Users) | `run_phase10_tests.sh` |
+| 11 | Trust signals config | `test_tenant_me_views`, `test_services` | `test_trust_signals_config_api_comprehensive` | `JOURNEY-TA-TENANT-SETTINGS` (Phase 11) | `run_phase11_tests.sh` |
+| 12 | Versioning config | `test_tenant_me_views`, `test_services`, `test_views` (datasets) | — | `JOURNEY-TA-TENANT-SETTINGS` (Phase 12) | `run_phase12_tests.sh` |
+| 13 | GDPR export/erasure | `test_gdpr_views`, `test_gdpr_services` | `test_erasure_workflow_integration` | `JOURNEY-AUTH-PRIVACY` | `run_phase13_tests.sh` |
+| 14 | Workflows config | `test_tenant_me_views`, `test_services`, `test_tenant_config_serializers`, `test_workflows_api_integration` | — | `JOURNEY-TA-TENANT-SETTINGS` (Phase 14) | `run_phase14_tests.sh` |
+| 15 | Platform admin | `hub/apps/platform/tests/test_views`, `hub/apps/tenants/tests/test_views` | — | `JOURNEY-PA-015` | `run_phase15_tests.sh` |
+| 16–19 | Tenant onboarding, change plan, cost tracking, gap docs | Per phase scripts | Per phase | Per phase | `run_phase16_tests.sh`, etc. |
+
+**Unified run**: `./scripts/run_phase28_2_tests.sh` (Phases 11–15 backend + E2E). See [TEST_TRACEABILITY.md — useronboardfix Gap Coverage](TEST_TRACEABILITY.md#useronboardfix-gap-coverage-phases-7-17) (Phase 28.2 table).
 
 Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceability](TEST_TRACEABILITY.md#gap-remediation-traceability).
 
@@ -203,6 +223,7 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 
 **Unit Tests**:
 - `hub/apps/assets/tests/test_asset_crud.py` - Asset CRUD
+- `hub/apps/assets/tests/test_data_first_asset_api.py` - Data-first API (POST /assets/data-first/)
 - `hub/apps/assets/tests/test_services.py` - Asset services
 - `hub/apps/assets/tests/test_asset_relationships.py` - Relationships
 - `hub/apps/assets/tests/test_health_score.py` - Health score
@@ -211,14 +232,17 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 - `tests/integration/test_asset_apis_comprehensive.py` - Asset API endpoints
 - `tests/integration/test_asset_management_original_use_cases_comprehensive.py` - Asset workflows
 - `tests/integration/test_cross_service_integration_comprehensive.py` - Service interactions
+- `tests/integration/test_data_first_asset_flow.py` - Data-first flow (asset+dataset+contract)
 
 **E2E Tests**:
 - `tests/e2e/test_data_first_comprehensive.py` - Data-first flow
-- `frontend/e2e/journeys/dpo/asset-creation-flow.spec.ts` - Asset creation
+- `frontend/e2e/journeys/dpo/asset-creation-flow.spec.ts` - Asset creation, "I have data" redirect
 - `frontend/e2e/journeys/dpo/asset-activation-flow.spec.ts` - Asset activation
+- `frontend/e2e/journeys/dpo/dataset-creation-flow.spec.ts` - Dataset creation (data-first create_new)
 
 **Security Tests**:
 - `tests/security/test_security_features.py` - Asset security
+- `tests/security/test_data_first_asset_idor.py` - Data-first IDOR (cross-tenant file_id)
 
 **Performance Tests**:
 - `tests/performance/locust_api_endpoints_availability.py` - Asset endpoints
@@ -235,7 +259,9 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 
 **E2E Tests**:
 - `tests/e2e/test_data_first_comprehensive.py` - Data-first flow
-- `frontend/e2e/journeys/dpo/dataset-creation-flow.spec.ts` - Dataset creation
+- `frontend/e2e/journeys/dpo/dataset-creation-flow.spec.ts` - Dataset creation (data-first create_new)
+- `frontend/e2e/use-cases/ux/dataset-edit.spec.ts` - Dataset edit, link to asset (Phase 29.66.15)
+- `frontend/e2e/use-cases/ux/asset-dataset-flow.spec.ts` - Asset → dataset → DQ flow (Phase 29.66.15)
 
 **Security Tests**:
 - `tests/security/test_security_features.py` - Dataset security
@@ -490,6 +516,7 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 **E2E Tests**:
 - `tests/e2e/test_data_first_comprehensive.py` - File upload in data-first flow
 - `frontend/e2e/journeys/dpo/file-upload-flow.spec.ts` - File upload flow
+- `frontend/e2e/use-cases/ux/files-upload.spec.ts` - Files page upload (Phase 29.66.15)
 
 **Security Tests**:
 - `tests/security/test_security_features.py` - File security
@@ -564,6 +591,13 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 
 **E2E Tests**:
 - `tests/e2e/test_complete_user_journeys.py` - Social in journeys
+- `frontend/e2e/features/social.spec.ts` - Communities route, /social redirect to /communities, asset Community section (Phase 27.1–27.3)
+- `frontend/e2e/journeys/dc/JOURNEY-DC-008.spec.ts`, `JOURNEY-DC-009.spec.ts` - Rate/review on asset page
+- `frontend/e2e/journeys/dpo/JOURNEY-DPO-009.spec.ts`, `JOURNEY-DPO-011.spec.ts`, `JOURNEY-DPO-012.spec.ts` - Asset Community section, data stewards, join community
+- `frontend/e2e/journeys/cm/JOURNEY-CM-001.spec.ts` through `JOURNEY-CM-004.spec.ts` - Community Manager journeys
+- `frontend/e2e/journeys/admin-audit-settings/admin-audit-settings-routes.spec.ts` - /communities route
+
+**Social embed (Phase 27)**: /social redirects to /communities; ratings, reviews, Community section on asset detail page (`/assets/:id`). Run: `./scripts/run_phase28_5_tests.sh`.
 
 **Security Tests**:
 - ⏳ Missing security tests for social
@@ -594,15 +628,20 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 
 **Unit Tests**:
 - `hub/apps/virtualization/tests/test_views.py` - Virtualization views
-- `hub/apps/virtualization/tests/test_services.py` - Virtualization services
+- `hub/apps/virtualization/tests/test_services.py` - Virtualization services (incl. VirtualizationServiceODBCTest: host_only, database_only, connection_string_empty config validation)
 - `hub/apps/virtualization/tests/test_execute_query.py` - Query execution
 
 **Integration Tests**:
 - `hub/apps/virtualization/tests/test_execute_query_integration.py` - Query integration
+- `hub/apps/virtualization/tests/test_real_source_integration.py` - Real PostgreSQL, ODBC (host+database, connection_string), REST, SPARQL (Phase 20, 28.4.1)
+- `hub/apps/virtualization/tests/test_virtualization_real_federated_e2e.py` - Federated E2E (Phase 21)
 
 **E2E Tests**:
 - `tests/e2e/test_complete_user_journeys.py` - Virtualization in journeys
 - `frontend/e2e/journeys/mesh-virtualization-search-ai/mesh-search-ai-routes.spec.ts` - Virtualization routes
+- `frontend/e2e/phase6-mesh-virtualization.spec.ts` - ODBC create via UI form (Host+Database), execute query (Phase 28.4.2)
+
+**ODBC (Phase 28.4)**: Unit (config validation), integration (test_odbc_execute_against_hub_postgresql, test_odbc_execute_connection_string_mode), E2E (phase6-mesh-virtualization.spec.ts). Run: `./scripts/run_phase25_odbc_tests.sh`; E2E: `./scripts/e2e-detect-api.sh e2e/phase6-mesh-virtualization.spec.ts -g "ODBC"`.
 
 **Security Tests**:
 - `hub/apps/virtualization/tests/test_security.py` - Virtualization security
@@ -768,11 +807,12 @@ Full phase-to-test mapping: [TEST_TRACEABILITY.md — Gap Remediation Traceabili
 | UC-AUTH-002 | User Logs In | ✅ | ✅ | ✅ | ✅ Complete |
 | UC-AUTH-003 | User Resets Password | ✅ | ✅ | ✅ | ✅ Complete |
 | UC-AUTH-004 | Unauthenticated User Accesses Public Resources | ✅ | ✅ | ✅ | ✅ Complete |
+| UC-AUTH-005 | User Switches Active Tenant | ✅ | ✅ | ✅ | ✅ Complete |
 
 **Test Files**:
 - Unit: `hub/apps/auth/tests/test_register_me.py`, `hub/apps/auth/tests/test_authentication.py`, `hub/apps/auth/tests/test_authorization.py`, `hub/apps/auth/tests/test_sessions.py`, `hub/apps/auth/tests/test_middleware.py`
-- Integration: `tests/integration/test_auth_apis_comprehensive.py`, `tests/integration/test_api_endpoints_comprehensive.py`, `tests/integration/test_tenant_isolation.py`
-- E2E: `tests/e2e/test_multi_tenant_isolation.py`, `frontend/e2e/journeys/auth/JOURNEY-AUTH-001.spec.ts` through `JOURNEY-AUTH-004.spec.ts`
+- Integration: `tests/integration/test_auth_apis_comprehensive.py`, `tests/integration/test_api_endpoints_comprehensive.py`, `tests/integration/test_tenant_isolation.py`, `tests/integration/test_tenant_switch_integration.py`
+- E2E: `tests/e2e/test_multi_tenant_isolation.py`, `frontend/e2e/journeys/auth/JOURNEY-AUTH-001.spec.ts` through `JOURNEY-AUTH-004.spec.ts`, `frontend/e2e/use-cases/auth/tenant-switch.spec.ts`
 
 #### Asset Management Use Cases ✅ Complete
 
@@ -1001,7 +1041,7 @@ Use case IDs and titles aligned with [USE_CASES.md](USE_CASES.md#category-schedu
 - `frontend/e2e/journeys/dpo/JOURNEY-DPO-002.spec.ts` - Contract-first
 - `frontend/e2e/journeys/dpo/asset-creation-flow.spec.ts` - Asset creation
 - `frontend/e2e/journeys/dpo/contract-creation-flow.spec.ts` - Contract creation
-- `frontend/e2e/journeys/dpo/dataset-creation-flow.spec.ts` - Dataset creation
+- `frontend/e2e/journeys/dpo/dataset-creation-flow.spec.ts` - Dataset creation (data-first create_new)
 - `frontend/e2e/journeys/dpo/file-upload-flow.spec.ts` - File upload
 - `frontend/e2e/journeys/dpo/asset-activation-flow.spec.ts` - Asset activation
 
@@ -1472,8 +1512,8 @@ Backend E2E tests with `uc_journey_persona` marker form a canonical subset for U
 | Dimension | Coverage | Status |
 |-----------|----------|--------|
 | **Test files** | 17 backend E2E files | ✅ Complete |
-| **Use cases** | UC-AUTH-001…004, UC-AM-001, UC-CM-001, UC-MKT-001, UC-MKT-002, UC-DC-001, UC-DQ-001, UC-COMP-001 | ✅ Covered |
-| **Journeys** | JOURNEY-AUTH-001…004, JOURNEY-DPO-001…017, JOURNEY-DE-001…014, JOURNEY-CPO-001…010, JOURNEY-DC-001…015, JOURNEY-TA-001…008, JOURNEY-PA-001, JOURNEY-MPA-001…009, JOURNEY-DEV-001…009, JOURNEY-AUD-001…006, JOURNEY-ODPS-001…005 | ✅ Covered |
+| **Use cases** | UC-AUTH-001…005, UC-AM-001, UC-CM-001, UC-MKT-001, UC-MKT-002, UC-DC-001, UC-DQ-001, UC-COMP-001 | ✅ Covered |
+| **Journeys** | JOURNEY-AUTH-001…005, JOURNEY-DPO-001…017, JOURNEY-DE-001…014, JOURNEY-CPO-001…010, JOURNEY-DC-001…015, JOURNEY-TA-001…008, JOURNEY-PA-001, JOURNEY-MPA-001…009, JOURNEY-DEV-001…009, JOURNEY-AUD-001…006, JOURNEY-ODPS-001…005 | ✅ Covered |
 | **Personas** | Visitor, Data Product Owner, Data Engineer, Compliance Officer, Data Consumer, Tenant Admin, Platform Admin, Marketplace Platform Admin, External Developer, Auditor | ✅ Covered |
 | **Phase 12A** | 12A.1.3b in `run_phase_12a_backend_suites.sh`; artifacts in `test_reports_comprehensive/{date}/uc_journey_persona/` | ✅ Integrated |
 | **Report** | `generate_test_summary_report.py` includes uc_journey_persona category | ✅ Integrated |

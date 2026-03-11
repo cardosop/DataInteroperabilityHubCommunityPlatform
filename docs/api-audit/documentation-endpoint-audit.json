@@ -116,7 +116,7 @@
           "source_line": 9,
           "method": null,
           "documentation_type": "api_reference",
-          "context": "The Data Interoperability Hub provides multiple API interfaces:\n\n- **REST API** (`/api/v1/`) - Prima"
+          "context": "The Meshant platform provides multiple API interfaces:\n\n- **REST API** (`/api/v1/`) - Prima"
         },
         {
           "source_file": "docs/API_REFERENCE.md",

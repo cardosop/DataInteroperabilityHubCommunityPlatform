@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import { authService } from '../services/authService';
 import { useAuthStore } from '../store/authStore';
 import './AuthPage.css';
@@ -51,7 +52,7 @@ export function RegisterPage() {
         },
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      setError(normalizeError(err).error.message || 'Registration failed');
     } finally {
       setIsSubmitting(false);
     }
@@ -108,7 +109,7 @@ export function RegisterPage() {
 
           <div className="form-group">
             <label htmlFor="tenant_id">
-              Tenant ID <span style={{ color: 'var(--color-neutral-500)' }}>(optional)</span>
+              Tenant ID <span style={{ color: 'var(--color-neutral-700)' }}>(optional)</span>
             </label>
             <input
               id="tenant_id"

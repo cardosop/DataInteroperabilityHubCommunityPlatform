@@ -19,7 +19,7 @@
 .odps-empty-state {
   text-align: center;
   padding: 4rem 2rem;
-  background: white;
+  background: var(--color-background-primary);
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -31,7 +31,7 @@
 }
 
 .odps-list {
-  background: white;
+  background: var(--color-background-primary);
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   overflow: hidden;
@@ -43,7 +43,7 @@
 }
 
 .odps-table thead {
-  background: #f5f5f5;
+  background: var(--color-neutral-100);
 }
 
 .odps-table th {
@@ -60,13 +60,13 @@
 }
 
 .odps-table tbody tr:hover {
-  background: #f9f9f9;
+  background: var(--color-background-secondary);
 }
 
 .contract-id {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.9rem;
-  background: #f0f0f0;
+  background: var(--color-neutral-100);
   padding: 0.25rem 0.5rem;
   border-radius: 3px;
 }
@@ -80,23 +80,23 @@
 }
 
 .status-normalized-ok {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--color-success-50);
+  color: var(--color-success-700);
 }
 
 .status-normalized-with-warnings {
-  background: #fff3e0;
-  color: #e65100;
+  background: var(--color-warning-50);
+  color: var(--color-warning-700);
 }
 
 .status-normalization-failed {
-  background: #ffebee;
-  color: #c62828;
+  background: var(--color-error-50);
+  color: var(--color-error-700);
 }
 
 .status-not-normalized {
-  background: #f5f5f5;
-  color: #616161;
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-600);
 }
 
 .action-buttons {
@@ -107,7 +107,7 @@
 .btn-link {
   background: none;
   border: none;
-  color: #0066cc;
+  color: var(--color-info);
   text-decoration: underline;
   cursor: pointer;
   font-size: 0.9rem;
@@ -115,5 +115,5 @@
 }
 
 .btn-link:hover {
-  color: #0052a3;
+  color: var(--color-info-dark);
 }

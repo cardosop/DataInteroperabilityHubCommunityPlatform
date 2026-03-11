@@ -2,6 +2,16 @@
 Pytest configuration for E2E tests.
 """
 
+# CRITICAL: Load tests/conftest patches when running E2E with -c tests/e2e/pytest.ini.
+# When -c points to a subdirectory config, pytest sets rootdir to tests/e2e, so
+# tests/conftest.py is NOT discovered (it's above rootdir). Without it, create_test_db,
+# sync_apps, create_contenttypes patches are missing -> hangs, IntegrityError.
+# Must run before any Django imports/setup.
+try:
+    import tests.conftest  # noqa: F401
+except ImportError:
+    pass  # tests package not on path (e.g. minimal env)
+
 import os
 import sys
 from typing import Dict, Optional

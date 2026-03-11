@@ -143,6 +143,9 @@ class TenantConfigSerializerTest(TestCase):
         self.assertIn("max_file_size_bytes", data)
         self.assertIn("max_job_concurrency", data)
         self.assertIn("max_queued_jobs", data)
+        self.assertIn("trust_signals_enabled", data)
+        self.assertIn("versioning_enabled", data)
+        self.assertIn("workflows_enabled", data)
         self.assertIn("created_at", data)
         self.assertIn("updated_at", data)
         
@@ -411,4 +414,21 @@ class TenantConfigUpdateSerializerTest(TestCase):
         serializer = TenantConfigUpdateSerializer(self.config, data=data, partial=True)
         self.assertFalse(serializer.is_valid())
         self.assertIn("default_compliance_regimes", serializer.errors)
+
+    def test_partial_update_workflows_enabled(self):
+        """Phase 14: Partial update workflows_enabled persists."""
+        data = {"workflows_enabled": False}
+        serializer = TenantConfigUpdateSerializer(self.config, data=data, partial=True)
+        self.assertTrue(serializer.is_valid(), f"Serializer errors: {serializer.errors}")
+        serializer.save()
+
+        self.config.refresh_from_db()
+        self.assertIs(self.config.workflows_enabled, False)
+
+        data2 = {"workflows_enabled": True}
+        serializer2 = TenantConfigUpdateSerializer(self.config, data=data2, partial=True)
+        self.assertTrue(serializer2.is_valid(), f"Serializer errors: {serializer2.errors}")
+        serializer2.save()
+        self.config.refresh_from_db()
+        self.assertIs(self.config.workflows_enabled, True)
 

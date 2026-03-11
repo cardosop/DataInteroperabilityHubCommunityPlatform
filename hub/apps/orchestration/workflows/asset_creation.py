@@ -1036,11 +1036,26 @@ class AssetCreationWorkflow:
                         "dq_run_id": str(dq_run.id)
                     }
         except Exception as e:
+            error_str = str(e)
+            # When DQ service is unavailable (e.g. in tests without dq-service-test),
+            # skip DQ checks instead of failing the workflow (matches scheduled_ingestion behavior)
+            if "DQ service is unavailable" in error_str or "Connection refused" in error_str:
+                logger.warning(
+                    "DQ service unavailable, skipping DQ checks",
+                    workflow_instance_id=str(instance.id),
+                    asset_id=str(asset.id),
+                    error=error_str
+                )
+                asset.dq_status = DQStatus.UNKNOWN
+                asset.save(update_fields=['dq_status'])
+                instance.state_data["dq_status"] = asset.dq_status
+                instance.save(update_fields=['state_data'])
+                return {"skipped": True, "reason": "DQ service unavailable", "dq_status": asset.dq_status}
             logger.error(
                 "Failed to run DQ checks",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
-                error=str(e)
+                error=error_str
             )
             # Set DQ status to UNKNOWN on failure
             asset.dq_status = DQStatus.UNKNOWN

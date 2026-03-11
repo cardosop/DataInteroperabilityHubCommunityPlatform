@@ -25,6 +25,7 @@ run_batch() {
   local description="$2"
   shift 2
   echo "=== E2E Batch $batch_num ($description) ==="
+  echo "Detecting backend and starting tests..."
   exec bash scripts/e2e-detect-api.sh "${PROJECT_ARGS[@]}" --timeout="$TIMEOUT" "$@"
 }
 
@@ -36,24 +37,31 @@ case "${1:-}" in
       e2e/features/auth.spec.ts \
       e2e/cross-cutting/ \
       e2e/setup/ \
-      e2e/a11y/
+      e2e/a11y/ \
+      e2e/use-cases/auth/
     ;;
   2)
+    # Note: alternate-flows-failure.spec.ts is already included via batch 1's cross-cutting/ glob;
+    # removing the duplicate here prevents it running 4× per full suite.
     run_batch 2 "routes" \
+      e2e/journeys/core-data-routes/ \
       e2e/journeys/contracts-odps/ \
       e2e/journeys/marketplace-dc/ \
       e2e/journeys/dq-compliance-governance/ \
       e2e/journeys/mesh-virtualization-search-ai/ \
       e2e/journeys/integrations-jobs-webhooks/ \
-      e2e/journeys/admin-audit-settings/ \
-      e2e/cross-cutting/alternate-flows-failure.spec.ts
+      e2e/journeys/admin-audit-settings/
     ;;
   3)
+    # DPO batch: reduce workers to 2 to ease backend load (ECONNRESET, auth flakiness under 4 workers)
     run_batch 3 "DPO journeys" \
+      --workers=2 \
       e2e/journeys/dpo/
     ;;
   4)
+    # Reduce workers to 2 to ease backend load (consumer login connection errors under 4 workers)
     run_batch 4 "auth, DC, DE journeys" \
+      --workers=2 \
       e2e/journeys/auth/ \
       e2e/journeys/dc/ \
       e2e/journeys/de/
@@ -86,22 +94,28 @@ case "${1:-}" in
       e2e/journeys/scheduled-export/ \
       e2e/journeys/scheduled-ingestion/
     ;;
+  8)
+    run_batch 8 "UX (asset-dataset, dataset-edit, files-upload)" \
+      e2e/use-cases/ux/
+    ;;
   list)
     echo "E2E Batches (run with: npm run test:e2e:batchN or bash scripts/e2e-batches.sh N)"
-    echo "  1: auth, setup, cross-cutting (79 tests)"
-    echo "  2: routes - contracts, marketplace, dq, mesh, integrations, admin (121 tests)"
+    echo "  1: auth, setup, cross-cutting, use-cases/auth (~90 tests)"
+    echo "  2: routes - contracts, marketplace, dq, mesh, integrations, admin (~115 tests)"
     echo "  3: DPO journeys (253 tests)"
     echo "  4: auth, DC, DE journeys (376 tests)"
     echo "  5: TA, PA, Dev, Aud journeys (352 tests)"
     echo "  6: CPO, DS, DMO, DA, CM, Marketplace journeys (364 tests)"
     echo "  7: features, phase specs, governance, scheduled (400 tests)"
+    echo "  8: UX - asset-dataset flow, dataset edit, files upload (~7 tests)"
     echo ""
     echo "Total: ~1945 tests in 7 batches (same as npm run test:e2e)"
     echo ""
     echo "Faster iteration: E2E_PROJECT=chromium npm run test:e2e:batch1  (runs ~27 tests)"
+    echo "Skip API restart (avoids socket hang up): E2E_SKIP_API_RESTART=1 npm run test:e2e:batch3"
     ;;
   *)
-    echo "Usage: $0 <1|2|3|4|5|6|7|list>"
+    echo "Usage: $0 <1|2|3|4|5|6|7|8|list>"
     echo "  Run batch N for iterate-and-fix cycles. Use 'list' to see batch definitions."
     exit 1
     ;;

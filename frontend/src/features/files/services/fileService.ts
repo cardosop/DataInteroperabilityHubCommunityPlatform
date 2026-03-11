@@ -194,6 +194,7 @@ export const fileService = {
 
   /**
    * List files
+   * Supports search (name), ordering (name, created_at, updated_at) per LIST_API_PICKER_AUDIT.
    */
   async list(
     filters: {
@@ -201,6 +202,8 @@ export const fileService = {
       page_size?: number;
       asset_id?: string;
       dataset_id?: string;
+      search?: string;
+      ordering?: string;
     } = {}
   ): Promise<PaginatedResponse<File>> {
     const params = new URLSearchParams();
@@ -209,6 +212,8 @@ export const fileService = {
     if (filters.page_size) params.append('page_size', filters.page_size.toString());
     if (filters.asset_id) params.append('asset_id', filters.asset_id);
     if (filters.dataset_id) params.append('dataset_id', filters.dataset_id);
+    if (filters.search) params.append('search', filters.search);
+    if (filters.ordering) params.append('ordering', filters.ordering);
 
     const url = params.toString()
       ? `${FILES_BASE_PATH}/?${params.toString()}`

@@ -15,15 +15,16 @@ except ImportError:
 
 async def main() -> int:
     url = "postgresql://prefect:prefect@prefect-db-test:5432/prefect"
-    for attempt in range(90):
+    for attempt in range(150):
         try:
             conn = await asyncpg.connect(url)
             await conn.close()
             return 0
         except Exception as e:
             if attempt < 3 or attempt % 10 == 0:
-                print(f"Waiting for prefect-db ({attempt + 1}/90): {e}", flush=True)
+                print(f"Waiting for prefect-db ({attempt + 1}/150): {e}", flush=True)
             await asyncio.sleep(2)
+    print("Timeout waiting for prefect-db after 150 attempts", flush=True)
     return 1
 
 

@@ -36,12 +36,14 @@ vi.mock('axios', () => {
 
 import { apiClient } from '../../../shared/api/client';
 
+const VALID_ASSET_UUID = '550e8400-e29b-41d4-a716-446655440000';
+
 const mockPolicy: RetentionPolicy = {
   id: 'policy-1',
   tenant: 'tenant-1',
   name: 'Test Policy',
   description: 'Test description',
-  asset: 'asset-1',
+  asset: VALID_ASSET_UUID,
   dataset: null,
   file: null,
   policy_type: RetentionPolicyType.TIME_BASED,

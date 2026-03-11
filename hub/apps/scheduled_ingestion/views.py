@@ -81,6 +81,8 @@ def _sync_deployment_via_prefect_integration_service(
     payload = {
         "scheduled_ingestion_id": str(scheduled_ingestion.id),
         "tenant_id": str(tenant.id),
+        "schedule_type": scheduled_ingestion.schedule_type,
+        "schedule_config": scheduled_ingestion.schedule_config or {},
     }
     try:
         import requests
@@ -221,15 +223,17 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
             return handle_service_exception(e)
         # Prefect sync: prefer prefect-integration-service (has flow + connectors); fallback to in-process
         # Note: Prefect sync is non-blocking - creation succeeds even if sync fails
-        sync_ok = _sync_deployment_via_prefect_integration_service(
-            scheduled_ingestion, tenant, timeout_seconds=15
-        )
-        # Only run in-process DeploymentSyncService when the integration service URL is
-        # not configured (avoids slow/heavy import of Prefect/SQLAlchemy in request path
-        # when the service exists but returned an error, e.g. 500).
         import os as _os
 
         base_url = _os.getenv("PREFECT_INTEGRATION_SERVICE_URL", "").rstrip("/")
+        if base_url:
+            # Pass schedule_type/schedule_config so prefect-integration skips DB fetch (avoids 404
+            # when test runs with django_db(transaction=True) and data is uncommitted).
+            sync_ok = _sync_deployment_via_prefect_integration_service(
+                scheduled_ingestion, tenant, timeout_seconds=15
+            )
+        else:
+            sync_ok = False
         if not sync_ok and not base_url:
             try:
                 import os
@@ -544,6 +548,26 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                     completed_at=None,
                 )
 
+                # Create Job synchronously for UI/audit; Prefect flow will use it (idempotent)
+                from hub.apps.jobs.models import JobType
+                from hub.apps.jobs.utils import create_job
+
+                job = create_job(
+                    tenant=scheduled_ingestion.tenant,
+                    user=None,
+                    job_type=JobType.SCHEDULED_INGESTION,
+                    resource_type="SCHEDULED_INGESTION",
+                    resource_id=str(scheduled_ingestion.id),
+                    details_json={
+                        "executed_by_prefect": True,
+                        "prefect_flow_run_id": flow_run_id,
+                        "scheduled_ingestion_run_id": str(run.id),
+                    },
+                    executed_by_prefect=True,
+                )
+                run.job_id = job.id
+                run.save(update_fields=["job_id", "updated_at"])
+
                 create_audit_event(
                     resource_type="SCHEDULED_INGESTION",
                     action="TRIGGERED",
@@ -558,7 +582,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                         "run_id": str(run.id),
                         "scheduled_ingestion_run_id": str(run.id),
                         "flow_run_id": flow_run_id,
-                        "job_id": str(run.id),
+                        "job_id": str(job.id),
                         "status": "success",
                         "message": f"Scheduled ingestion {scheduled_ingestion.name} triggered successfully",
                     },

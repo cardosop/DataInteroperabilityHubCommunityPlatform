@@ -305,6 +305,33 @@ class TenantConfig(models.Model):
         help_text="ODPS $ref resolver configuration (URL allowlist/denylist overrides)",
     )
 
+    # Trust Signals (Phase 11)
+    # When True, tenant can use trust signals (badges, quality SLAs) in marketplace listings.
+    trust_signals_enabled = models.BooleanField(
+        default=True,
+        null=True,
+        blank=True,
+        help_text="Enable trust signals (badges, quality SLAs) for marketplace listings",
+    )
+
+    # Versioning (Phase 12)
+    # When True, tenant can use dataset versioning (semantic versions, version history).
+    versioning_enabled = models.BooleanField(
+        default=True,
+        null=True,
+        blank=True,
+        help_text="Enable dataset versioning (semantic versions, version history) for this tenant",
+    )
+
+    # Workflows (Phase 14)
+    # When True, tenant can create and run workflows (orchestration).
+    workflows_enabled = models.BooleanField(
+        default=True,
+        null=True,
+        blank=True,
+        help_text="Enable workflow orchestration for this tenant",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

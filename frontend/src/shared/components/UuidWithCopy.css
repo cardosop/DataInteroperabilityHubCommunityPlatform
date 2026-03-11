@@ -1,0 +1,42 @@
+.uuid-with-copy {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--spacing-xs, 4px);
+}
+
+.uuid-label {
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.uuid-value-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm, 8px);
+}
+
+.uuid-value {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-sm, 0.875rem);
+  background: var(--color-background-secondary);
+  padding: var(--spacing-xs, 4px) var(--spacing-sm, 8px);
+  border-radius: var(--border-radius-sm);
+  word-break: break-all;
+}
+
+.uuid-copy-btn {
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  padding: var(--spacing-xs, 4px) var(--spacing-sm, 8px);
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  flex-shrink: 0;
+}
+
+.uuid-copy-btn:hover,
+.uuid-copy-btn:focus {
+  background: var(--color-background-tertiary);
+  border-color: var(--color-primary);
+}

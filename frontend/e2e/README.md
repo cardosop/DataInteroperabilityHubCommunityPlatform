@@ -148,6 +148,19 @@ Role-gated journeys require `ensure_e2e_user_roles` to be run before E2E. The co
 
 **Validation**: `e2e/setup/persona-login-validation.spec.ts` validates all persona users can log in via API.
 
+## Validation (Task 29.7)
+
+**29.7.1 Full E2E suite**: Target <30 min; no flaky tests. Run:
+- Unified: `./scripts/run_validation_29_7.sh --e2e` (backend + frontend; requires test stack up)
+- Backend only: `./scripts/run_validation_29_7.sh --e2e-backend-only` or `pytest tests/e2e/` (from repo root)
+- Frontend only: `npm run test:e2e` (from frontend/; requires backend on 8000 or 8001)
+
+**29.7.2 Security suite**: Target <10 min. See [docs/RUNBOOKS.md — Security suite](../../docs/RUNBOOKS.md#security-suite-phase-12a3) and [docs/SECURITY_TEST_COVERAGE.md](../../docs/SECURITY_TEST_COVERAGE.md).
+
+**29.7.3 CI**: Both E2E and security suites run in CI; artifacts uploaded (JUnit XML, coverage). See [.github/workflows/ci.yml](../../.github/workflows/ci.yml) — `test` job (E2E), `test-security`, `test-odps-ref-resolver-security` jobs.
+
+**Related**: [docs/TEST_TRACEABILITY.md](../../docs/TEST_TRACEABILITY.md), [docs/SECURITY_TEST_COVERAGE.md](../../docs/SECURITY_TEST_COVERAGE.md), [docs/RUNBOOKS.md](../../docs/RUNBOOKS.md).
+
 ## Notes
 
 - Tests use real backend (no mocks/stubs)

@@ -5,10 +5,11 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter, Outlet } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 // Critical routes - eagerly loaded (login, public pages)
 import { AcceptInvitationPage } from '../../features/auth/components/AcceptInvitationPage';
 import { LoginPage } from '../../features/auth/components/LoginPage';
+import { OrgOnboardingPage } from '../../features/tenants/components/OrgOnboardingPage';
 import { PasswordResetConfirmPage } from '../../features/auth/components/PasswordResetConfirmPage';
 import { PasswordResetPage } from '../../features/auth/components/PasswordResetPage';
 import { PublicResourcesPage } from '../../features/auth/components/PublicResourcesPage';
@@ -59,9 +60,34 @@ const AuthAPIKeyListPage = lazy(() =>
     default: m.AuthAPIKeyListPage,
   }))
 );
+const SubscriptionPage = lazy(() =>
+  import('../../features/billing/components/SubscriptionPage').then((m) => ({
+    default: m.SubscriptionPage,
+  }))
+);
+const CostPage = lazy(() =>
+  import('../../features/cost/components/CostPage').then((m) => ({
+    default: m.CostPage,
+  }))
+);
 const SessionListPage = lazy(() =>
   import('../../features/auth/components/SessionListPage').then((m) => ({
     default: m.SessionListPage,
+  }))
+);
+const ProfilePage = lazy(() =>
+  import('../../features/auth/components/ProfilePage').then((m) => ({
+    default: m.ProfilePage,
+  }))
+);
+const PrivacyPage = lazy(() =>
+  import('../../features/gdpr/components/PrivacyPage').then((m) => ({
+    default: m.PrivacyPage,
+  }))
+);
+const TenantSettingsPage = lazy(() =>
+  import('../../features/tenants/components/TenantSettingsPage').then((m) => ({
+    default: m.TenantSettingsPage,
   }))
 );
 const BaaSPage = lazy(() =>
@@ -261,8 +287,25 @@ const SemanticPage = lazy(() =>
     default: m.SemanticPage,
   }))
 );
-const SocialPage = lazy(() =>
-  import('../../features/social/components/SocialPage').then((m) => ({ default: m.SocialPage }))
+const CommunitiesPage = lazy(() =>
+  import('../../features/social/components/CommunitiesPage').then((m) => ({
+    default: m.CommunitiesPage,
+  }))
+);
+const TransformationPipelineListPage = lazy(() =>
+  import('../../features/transformation/components/TransformationPipelineListPage').then((m) => ({
+    default: m.TransformationPipelineListPage,
+  }))
+);
+const TransformationPipelineDetailPage = lazy(() =>
+  import('../../features/transformation/components/TransformationPipelineDetailPage').then((m) => ({
+    default: m.TransformationPipelineDetailPage,
+  }))
+);
+const TransformationPipelineCreatePage = lazy(() =>
+  import('../../features/transformation/components/TransformationPipelineCreatePage').then((m) => ({
+    default: m.TransformationPipelineCreatePage,
+  }))
 );
 const VirtualDatasetCreatePage = lazy(() =>
   import('../../features/virtualization/components/VirtualDatasetCreatePage').then((m) => ({
@@ -387,6 +430,11 @@ const AdminPage = lazy(() =>
     default: m.AdminPage,
   }))
 );
+const UserEditPage = lazy(() =>
+  import('../../features/admin/components/UserEditPage').then((m) => ({
+    default: m.UserEditPage,
+  }))
+);
 const HomePage = lazy(() =>
   import('../pages/HomePage').then((m) => ({
     default: m.HomePage,
@@ -417,6 +465,10 @@ export const router = createBrowserRouter([
         <RegisterPage />
       </RegistrationRoute>
     ),
+  },
+  {
+    path: '/onboard-org',
+    element: <OrgOnboardingPage />,
   },
   {
     path: '/password-reset',
@@ -734,10 +786,38 @@ export const router = createBrowserRouter([
         path: 'mesh',
         element: <MeshPage />,
         children: [
-          { index: true, element: <MeshDomainListPage /> },
-          { path: 'topology', element: <TopologyVisualization /> },
-          { path: 'create', element: <MeshDomainCreatePage /> },
-          { path: ':id', element: <MeshDomainDetailPage /> },
+          {
+            index: true,
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading mesh domains..." />}>
+                <MeshDomainListPage />
+              </Suspense>
+            ),
+          },
+          {
+            path: 'topology',
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading topology..." />}>
+                <TopologyVisualization />
+              </Suspense>
+            ),
+          },
+          {
+            path: 'create',
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading create form..." />}>
+                <MeshDomainCreatePage />
+              </Suspense>
+            ),
+          },
+          {
+            path: ':id',
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading domain..." />}>
+                <MeshDomainDetailPage />
+              </Suspense>
+            ),
+          },
         ],
       },
       {
@@ -780,9 +860,13 @@ export const router = createBrowserRouter([
       },
       {
         path: 'social',
+        element: <Navigate to="/communities" replace />,
+      },
+      {
+        path: 'communities',
         element: (
-          <CapabilityRoute capability="social.ratings">
-            <SocialPage />
+          <CapabilityRoute capability="social.communities">
+            <CommunitiesPage />
           </CapabilityRoute>
         ),
       },
@@ -812,7 +896,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'observability',
-        element: <ObservabilityPage />,
+        element: (
+          <Suspense fallback={<LoadingSpinner message="Loading observability..." />}>
+            <ObservabilityPage />
+          </Suspense>
+        ),
       },
       {
         path: 'jobs',
@@ -825,6 +913,21 @@ export const router = createBrowserRouter([
             path: ':id',
             element: <JobDetailPage />,
           },
+        ],
+      },
+      {
+        path: 'transformation',
+        element: (
+          <CapabilityRoute capability="transformation">
+            <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+              <Outlet />
+            </Suspense>
+          </CapabilityRoute>
+        ),
+        children: [
+          { index: true, element: <TransformationPipelineListPage /> },
+          { path: 'create', element: <TransformationPipelineCreatePage /> },
+          { path: 'pipelines/:id', element: <TransformationPipelineDetailPage /> },
         ],
       },
       {
@@ -956,10 +1059,80 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'admin/users/:id/edit',
+        element: (
+          <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+            <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+              <UserEditPage />
+            </Suspense>
+          </ProtectedRoute>
+        ),
+      },
+      {
         path: 'settings',
         children: [
-          { path: 'sessions', element: <SessionListPage /> },
-          { path: 'api-keys', element: <AuthAPIKeyListPage /> },
+          {
+            path: 'profile',
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading profile..." />}>
+                <ProfilePage />
+              </Suspense>
+            ),
+          },
+          {
+            path: 'sessions',
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading sessions..." />}>
+                <SessionListPage />
+              </Suspense>
+            ),
+          },
+          {
+            path: 'privacy',
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading privacy..." />}>
+                <PrivacyPage />
+              </Suspense>
+            ),
+          },
+          {
+            path: 'api-keys',
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading API keys..." />}>
+                <AuthAPIKeyListPage />
+              </Suspense>
+            ),
+          },
+          {
+            path: 'tenant',
+            element: (
+              <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <Suspense fallback={<LoadingSpinner message="Loading tenant settings..." />}>
+                  <TenantSettingsPage />
+                </Suspense>
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: 'subscription',
+            element: (
+              <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <Suspense fallback={<LoadingSpinner message="Loading subscription..." />}>
+                  <SubscriptionPage />
+                </Suspense>
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: 'cost',
+            element: (
+              <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <Suspense fallback={<LoadingSpinner message="Loading cost tracking..." />}>
+                  <CostPage />
+                </Suspense>
+              </ProtectedRoute>
+            ),
+          },
         ],
       },
     ],

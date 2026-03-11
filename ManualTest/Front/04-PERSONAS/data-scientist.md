@@ -12,15 +12,22 @@ Uses natural language search, AI schema matching, ML anomaly detection, recommen
 
 ---
 
+## Before You Start
+
+1. Complete [00-PREREQUISITES.md](../00-PREREQUISITES.md)
+2. **Note**: AI/ML capabilities (NL search, schema matching) may not be enabled in all deployments. Document "Capability not available" if skipped.
+
+---
+
 ## Journeys Covered
 
-| Journey | Title | Docs | E2E Spec | Est. |
-|---------|-------|------|----------|------|
-| JOURNEY-DS-001 | Use Natural Language Search | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-ds-001-use-natural-language-search) | `journeys/ds/JOURNEY-DS-001.spec.ts` | 5 min |
-| JOURNEY-DS-002 | Use AI Schema Matching | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-ds-002-use-ai-schema-matching) | `journeys/ds/JOURNEY-DS-002.spec.ts` | 5 min |
-| JOURNEY-DS-003 | Configure ML-Based Anomaly Detection | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-ds-003-configure-ml-based-anomaly-detection) | `journeys/ds/JOURNEY-DS-003.spec.ts` | 10 min |
-| JOURNEY-DS-004 | Tune Recommendation Engine | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-ds-004-tune-recommendation-engine) | `journeys/ds/JOURNEY-DS-004.spec.ts` | 5 min |
-| JOURNEY-DS-005 | Review Auto-Classification Results | [USER_JOURNEYS](../../docs/USER_JOURNEYS.md#journey-ds-005-review-auto-classification-results) | `journeys/ds/JOURNEY-DS-005.spec.ts` | 5 min |
+| Journey | Title | Step-by-Step Script | E2E Spec | Est. |
+|---------|-------|---------------------|----------|------|
+| JOURNEY-DS-001 | Use Natural Language Search | [ds/JOURNEY-DS-001.md](../03-USER-JOURNEYS/ds/JOURNEY-DS-001.md) | `journeys/ds/JOURNEY-DS-001.spec.ts` | 5 min |
+| JOURNEY-DS-002 | Use AI Schema Matching | [ds/JOURNEY-DS-002.md](../03-USER-JOURNEYS/ds/JOURNEY-DS-002.md) | `journeys/ds/JOURNEY-DS-002.spec.ts` | 5 min |
+| JOURNEY-DS-003 | Configure ML-Based Anomaly Detection | [ds/JOURNEY-DS-003.md](../03-USER-JOURNEYS/ds/JOURNEY-DS-003.md) | `journeys/ds/JOURNEY-DS-003.spec.ts` | 10 min |
+| JOURNEY-DS-004 | Tune Recommendation Engine | [ds/JOURNEY-DS-004.md](../03-USER-JOURNEYS/ds/JOURNEY-DS-004.md) | `journeys/ds/JOURNEY-DS-004.spec.ts` | 5 min |
+| JOURNEY-DS-005 | Review Auto-Classification Results | [ds/JOURNEY-DS-005.md](../03-USER-JOURNEYS/ds/JOURNEY-DS-005.md) | `journeys/ds/JOURNEY-DS-005.spec.ts` | 5 min |
 
 **Total Estimated Duration**: ~30 min
 
@@ -44,10 +51,6 @@ Uses natural language search, AI schema matching, ML anomaly detection, recommen
 - `/dq` (anomaly detection, quality runs)
 
 ---
-
-## Prerequisites
-
-- Capabilities: ai.natural-language-search, ai.schema-matching, ml.models (as applicable)
 
 ---
 

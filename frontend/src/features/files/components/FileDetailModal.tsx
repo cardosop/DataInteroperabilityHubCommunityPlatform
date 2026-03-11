@@ -3,7 +3,9 @@
  * Shows file metadata; used from FileListPage (view details).
  */
 
+import { Link } from 'react-router-dom';
 import type { File as FileType } from '../../../shared/types/files';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import './FileDetailModal.css';
 
 interface FileDetailModalProps {
@@ -59,24 +61,28 @@ export function FileDetailModal({ file, onClose }: FileDetailModalProps) {
             <dt>Updated</dt>
             <dd>{new Date(file.updated_at).toLocaleString()}</dd>
             <dt>ID</dt>
-            <dd className="file-detail-id">{file.id}</dd>
+            <dd className="file-detail-id">
+              <UuidWithCopy value={file.id} label="File ID" />
+            </dd>
             {'asset_id' in file && file.asset_id && (
               <>
                 <dt>Asset</dt>
-                <dd>
-                  <a href={`/assets/${file.asset_id}`} className="file-detail-link">
-                    {file.asset_id}
-                  </a>
+                <dd className="file-detail-id-ref">
+                  <UuidWithCopy value={file.asset_id} label="Asset ID" />
+                  <Link to={`/assets/${file.asset_id}`} className="file-detail-link">
+                    View asset
+                  </Link>
                 </dd>
               </>
             )}
             {'dataset_id' in file && file.dataset_id && (
               <>
                 <dt>Dataset</dt>
-                <dd>
-                  <a href={`/datasets/${file.dataset_id}`} className="file-detail-link">
-                    {file.dataset_id}
-                  </a>
+                <dd className="file-detail-id-ref">
+                  <UuidWithCopy value={file.dataset_id} label="Dataset ID" />
+                  <Link to={`/datasets/${file.dataset_id}`} className="file-detail-link">
+                    View dataset
+                  </Link>
                 </dd>
               </>
             )}

@@ -473,7 +473,9 @@ class CKANConnector(DataMarketplaceConnector):
 
     def _package_to_listing(self, package_data: Dict[str, Any]) -> MarketplaceListing:
         """Convert CKAN package data to MarketplaceListing."""
-        package_id = package_data.get('id') or package_data.get('name', '')
+        # Prefer 'name' (slug, e.g. annakarenina) over 'id' (UUID) for marketplace_id.
+        # The name is the stable, user-facing identifier used in URLs and lookups.
+        package_id = package_data.get('name') or package_data.get('id', '')
         title = package_data.get('title', package_data.get('name', 'Untitled'))
         description = package_data.get('notes') or package_data.get('description', '')
 

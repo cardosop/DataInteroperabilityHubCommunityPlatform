@@ -11,10 +11,10 @@
 
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { assertNonExistentIdShowsError } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-006: Monitor Data Pipeline Health', () => {
-  test.setTimeout(180000); // 3 min: visible/slowMo; jobs API may return 500 → error-display still valid
+  test.setTimeout(360000); // 4 min: visible/slowMo; jobs API may return 500 → error-display still valid
 
   test.describe('Success', () => {
     test('jobs list loads', async ({ page }) => {
@@ -22,14 +22,13 @@ test.describe('JOURNEY-DE-006: Monitor Data Pipeline Health', () => {
       await loginUser(page, testUser);
       await page.goto('/jobs');
       await page.waitForLoadState('domcontentloaded');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
-          return;
-        }
-        throw _err;
+      await page.waitForSelector(
+        '.job-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
+      if (page.url().includes('/login')) {
+        expect(page.url()).toContain('/login');
+        return;
       }
       expect(page.url()).toContain('/jobs');
     });
@@ -51,10 +50,13 @@ test.describe('JOURNEY-DE-006: Monitor Data Pipeline Health', () => {
   test.describe('Edge', () => {
     test('jobs route accessible', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/jobs', {
-        timeout: 60000,
-        contentSelector: '.job-list-page, .empty-state, .error-display',
-      });
+      await loginUser(page, testUser);
+      await page.goto('/jobs');
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForSelector(
+        '.job-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
       expect(page.url()).toContain('/jobs');
     });
   });

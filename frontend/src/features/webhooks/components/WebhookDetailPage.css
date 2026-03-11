@@ -121,7 +121,7 @@
 .btn-danger {
   padding: var(--spacing-sm) var(--spacing-md);
   background: var(--color-error);
-  color: white;
+  color: var(--color-background-primary);
   border: none;
   border-radius: var(--border-radius-md);
   cursor: pointer;

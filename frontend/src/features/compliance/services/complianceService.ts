@@ -63,4 +63,21 @@ export const complianceService = {
     );
     return response.data;
   },
+
+  /**
+   * Cancel a compliance run (PENDING or RUNNING only)
+   */
+  async cancel(id: string): Promise<ComplianceRun> {
+    const response = await apiClient.getClient().post<ComplianceRun>(
+      `${COMPLIANCE_BASE_PATH}/${id}/cancel/`
+    );
+    return response.data;
+  },
+
+  /**
+   * Delete a compliance run
+   */
+  async delete(id: string): Promise<void> {
+    await apiClient.getClient().delete(`${COMPLIANCE_BASE_PATH}/${id}/`);
+  },
 };

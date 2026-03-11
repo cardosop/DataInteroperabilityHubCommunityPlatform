@@ -11,7 +11,7 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
+import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
   test.setTimeout(300000); // 5 min: contracts API can be slow under parallel E2E load
@@ -21,9 +21,10 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/contracts', {
         timeout: 60000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.contract-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
       });
       expect(page.url()).toContain('/contracts');
+      await waitForLoadingComplete(page, { timeout: 30000 });
       const hasContent =
         (await page.locator('.contract-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
@@ -31,27 +32,63 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       expect(hasContent).toBe(true);
     });
 
-    test('contract edit page loads for existing contract', async ({ page }) => {
+    test('contract detail page loads for a known contract (API-seeded)', async ({ page }) => {
+      // Navigate to contracts list and pick the first available contract ID from the API response
+      // so we don't depend on the list rendering a clickable row.
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/contracts', {
-        timeout: 60000,
+        timeout: 90000,
         contentSelector: '.contract-list-page, .empty-state, .error-display',
       });
-      const contractRow = page.locator('.contract-list-page tr.contract-row').first();
-      if ((await contractRow.count()) > 0) {
-        await contractRow.click();
-        await page.waitForURL(/\/contracts\/[^/]+$/, { timeout: 10000 });
-        const editBtn = page.locator('button:has-text("Edit")');
-        if ((await editBtn.count()) > 0) {
-          await editBtn.click();
-          await page.waitForLoadState('domcontentloaded');
-          await page.waitForSelector('.contract-editor-page, .error-display, #email', {
-            timeout: 15000,
-          });
-          if (!page.url().includes('/login')) {
-            expect(page.url()).toContain('/contracts');
-            expect(page.url()).toContain('/edit');
-          }
+      await waitForLoadingComplete(page, { timeout: 30000 });
+
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login on contracts list');
+      }
+
+      // Find any contract link in the rendered list
+      const contractLink = page.locator('.contract-list-page a[href*="/contracts/"]').first();
+      if ((await contractLink.count()) === 0) {
+        // Empty catalog — test the edit URL directly with a non-existent ID to confirm 404 behaviour
+        // (actual contract creation is covered by contract-creation-flow.spec.ts)
+        test.skip(true, 'No contracts in catalog; contract edit page test skipped (contract creation is covered separately).');
+        return;
+      }
+
+      const href = await contractLink.getAttribute('href');
+      const contractId = href?.split('/').filter(Boolean)[1]; // /contracts/<id>
+      if (!contractId) {
+        throw new Error(`Could not extract contract ID from href: ${href}`);
+      }
+
+      // Navigate directly to the contract detail URL
+      await page.goto(`/contracts/${contractId}`);
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForSelector('.contract-detail-page, .contract-detail-content, .error-display, #email', {
+        timeout: 20000,
+      });
+
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login on contract detail');
+      }
+
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        throw new Error(`Contract detail failed to load: ${errText.slice(0, 250)}`);
+      }
+
+      expect(page.url()).toContain('/contracts');
+
+      // Open edit if button is present
+      const editBtn = page.locator('button:has-text("Edit")');
+      if ((await editBtn.count()) > 0) {
+        await editBtn.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForSelector('.contract-editor-page, .error-display', { timeout: 15000 });
+        if (!page.url().includes('/login')) {
+          expect(page.url()).toContain('/contracts');
+          expect(page.url()).toContain('/edit');
         }
       }
     });

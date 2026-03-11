@@ -68,12 +68,15 @@ All API endpoints return errors in a consistent format:
 9. [Workflows](#workflows)
 10. [Marketplace (listings and data preview)](#marketplace-listings-and-data-preview)
 11. [Authentication](#authentication)
-12. [BaaS Platform Endpoints](#baas-platform-endpoints)
-13. [ODH Integration Endpoints](#odh-integration-endpoints)
-14. [Scheduled Ingestion](#scheduled-ingestion)
-15. [Scheduled Ingestion Internal Worker API](#scheduled-ingestion-internal-worker-api)
-16. [Scheduled Export](#scheduled-export)
-17. [Scheduled Export Internal Worker API](#scheduled-export-internal-worker-api)
+12. [Tenants (useronboardfix)](#tenants-useronboardfix)
+13. [Billing (useronboardfix)](#billing-useronboardfix)
+14. [Users (useronboardfix)](#users-useronboardfix)
+15. [BaaS Platform Endpoints](#baas-platform-endpoints)
+16. [ODH Integration Endpoints](#odh-integration-endpoints)
+17. [Scheduled Ingestion](#scheduled-ingestion)
+18. [Scheduled Ingestion Internal Worker API](#scheduled-ingestion-internal-worker-api)
+19. [Scheduled Export](#scheduled-export)
+20. [Scheduled Export Internal Worker API](#scheduled-export-internal-worker-api)
 
 ---
 
@@ -1619,6 +1622,114 @@ Refresh access token using refresh token.
   "expires_in": 3600
 }
 ```
+
+### Get Current User / Update Profile (useronboardfix Phase 7)
+
+**GET** `/api/v1/auth/me/` — Returns current user: `id`, `email`, `name`, `tenant_id`, `roles`, `permissions`, `avatar`, `preferences`, `feature_tenant_switch_enabled`.
+
+**PATCH** `/api/v1/auth/me/` — Partial update. Request body: `{"display_name": "…", "avatar": "…", "preferences": {"theme": "dark"}}`. All fields optional. Requires authentication.
+
+See [API_REFERENCE.md](API_REFERENCE.md#user-profile) for full details.
+
+### List My Tenants (Tenant Switch)
+
+**GET** `/api/v1/auth/me/tenants/`
+
+Returns list of tenants the current user has membership in (from UserTenantMembership). Used for tenant switcher UI.
+
+**Authentication**: Required (JWT token or session)
+
+**Response (200 OK):**
+```json
+[
+  { "id": "uuid", "name": "Tenant A", "slug": "tenant-a" },
+  { "id": "uuid", "name": "Tenant B", "slug": "tenant-b" }
+]
+```
+
+**Response (403 Forbidden):** Feature disabled (`FEATURE_TENANT_SWITCH_ENABLED=false`) or user not authenticated.
+
+### Switch Tenant
+
+**POST** `/api/v1/auth/switch-tenant/`
+
+Switch active tenant context. Validates user has membership in target tenant; returns updated me summary with `tenant_id` overridden.
+
+**Authentication**: Required (JWT token or session)
+
+**Request Body:**
+```json
+{
+  "tenant_id": "uuid-of-target-tenant"
+}
+```
+
+**Response (200 OK):** Same shape as GET /auth/me/ with `tenant_id` set to the switched tenant.
+
+**Response (400 Bad Request):** Missing or invalid `tenant_id` (not a valid UUID).
+
+**Response (403 Forbidden):** Feature disabled, or user has no membership in target tenant.
+
+**Response (404 Not Found):** Tenant not found.
+
+**Note:** After switching, clients should send `X-Tenant-Id: <tenant_id>` on subsequent requests to scope operations to the switched tenant. See [TENANT_SWITCH_PLAN.md](TENANT_SWITCH_PLAN.md).
+
+---
+
+## Tenants (useronboardfix)
+
+### Get Tenant Usage
+
+**GET** `/api/v1/tenants/me/usage/`
+
+Returns current tenant usage (storage, API calls, limits). Requires TENANT_ADMIN or PLATFORM_ADMIN.
+
+**Response (200 OK):**
+```json
+{
+  "storage_bytes": 1073741824,
+  "api_calls_count": 1500,
+  "limits": {"storage_bytes": 5368709120, "api_calls_per_month": 10000}
+}
+```
+
+### Get / Update Tenant Config
+
+**GET** `/api/v1/tenants/me/config/` — Returns tenant configuration (trust signals, versioning, workflows, default_dq_profile, etc.).
+
+**PATCH** `/api/v1/tenants/me/config/` — Update tenant configuration. Request body: partial config object. Requires TENANT_ADMIN or PLATFORM_ADMIN.
+
+---
+
+## Billing (useronboardfix)
+
+### Get Current Subscription
+
+**GET** `/api/v1/billing/subscription/current/` — Returns current subscription (plan, status, limits). See [BILLING.md](BILLING.md).
+
+### Change Subscription Plan
+
+**POST** `/api/v1/billing/subscription/current/change-plan/` — Body: `{"plan_slug": "pro"}`. Requires TENANT_ADMIN or PLATFORM_ADMIN. Runbook: [Subscription plan change failures](RUNBOOKS.md#subscription-plan-change-failures).
+
+### List Plans / Invoices
+
+**GET** `/api/v1/billing/plans/` — List available plans for subscription change.
+
+**GET** `/api/v1/billing/invoices/` — List invoices for tenant.
+
+**GET** `/api/v1/billing/invoices/{id}/` — Get invoice detail.
+
+**GET** `/api/v1/billing/invoices/{id}/download/` — Redirect to invoice PDF or hosted URL.
+
+See [BILLING.md](BILLING.md) for full documentation.
+
+---
+
+## Users (useronboardfix)
+
+### Update User (Admin Edit)
+
+**PUT** `/api/v1/users/{id}/` — Update user (roles, status). Requires TENANT_ADMIN or PLATFORM_ADMIN. Tenant-scoped: tenant admin can only edit users in their tenant.
 
 ---
 

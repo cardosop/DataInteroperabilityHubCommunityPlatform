@@ -11,10 +11,10 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
-import { hasLoginPrompt, loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { hasLoginPrompt, waitForAppMainReady } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
-  test.setTimeout(120000);
+  test.setTimeout(300000);
 
   test.describe('Success', () => {
     test('integrations connections list loads', async ({ page }) => {
@@ -48,12 +48,14 @@ test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
     test('mappings list loads', async ({ page }) => {
       const testUser = await getTestUser();
       await loginUser(page, testUser);
-      await page.goto('/mappings');
+      await page.goto('/integrations/mappings');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      const onMappings = page.url().includes('/mappings');
-      const onLogin = page.url().includes('/login');
-      expect(onMappings || onLogin).toBe(true);
+      await page.waitForSelector(
+        '.mapping-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
+      if (page.url().includes('/login')) return;
+      expect(page.url()).toContain('/integrations');
     });
   });
 
@@ -74,10 +76,13 @@ test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
   test.describe('Edge', () => {
     test('integrations routes accessible', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/integrations/connections', {
-        timeout: 60000,
-        contentSelector: '.connection-list-page, .empty-state, .error-display',
-      });
+      await loginUser(page, testUser);
+      await page.goto('/integrations/connections');
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForSelector(
+        '.connection-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+        { timeout: 120000 }
+      );
       expect(page.url()).toContain('/integrations');
     });
   });

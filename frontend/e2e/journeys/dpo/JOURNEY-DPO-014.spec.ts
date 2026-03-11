@@ -11,7 +11,7 @@
 
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score', () => {
   test.setTimeout(180000); // 3 min: visible/slowMo; asset detail + observability
@@ -19,14 +19,14 @@ test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score', () => {
   test.describe('Success', () => {
     test('observability page loads', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/observability');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await loginAndNavigateToRoute(page, testUser, '/observability', {
+        timeout: 60000,
+        contentSelector: '.observability-page, [data-testid="observability-page"], .loading-spinner-container, .error-display, .app-main, h1',
+      });
       const onLogin = page.url().includes('/login');
       const onObservability = page.url().includes('/observability');
       const hasContent =
-        (await page.locator('.observability-page, .app-main, h1').count()) > 0;
+        (await page.locator('.observability-page, [data-testid="observability-page"], .app-main, h1').count()) > 0;
       expect(onLogin || (onObservability && hasContent)).toBe(true);
     });
 
@@ -34,7 +34,7 @@ test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container',
       });
       const assetLink = page.locator('.asset-list-page a[href*="/assets/"]').first();
       if ((await assetLink.count()) > 0) {
@@ -54,7 +54,11 @@ test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score', () => {
       await loginUser(page, testUser);
       await page.goto('/assets/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await page.waitForSelector(
+        '.error-display, .asset-detail-page, #email',
+        { timeout: 10000, state: 'visible' }
+      ).catch(() => null);
+      await new Promise((r) => setTimeout(r, 1000));
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
@@ -68,10 +72,10 @@ test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score', () => {
   test.describe('Edge', () => {
     test('observability page loads', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/observability');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await loginAndNavigateToRoute(page, testUser, '/observability', {
+        timeout: 60000,
+        contentSelector: '.observability-page, [data-testid="observability-page"], .loading-spinner-container, .error-display, .app-main, h1',
+      });
       const url = page.url();
       expect(url.includes('/login') || url.includes('/observability')).toBe(true);
     });

@@ -32,7 +32,7 @@
   margin-top: var(--spacing-lg);
   padding: var(--spacing-md) var(--spacing-lg);
   background-color: var(--color-primary-500);
-  color: white;
+  color: var(--color-text-on-primary);
   text-decoration: none;
   border-radius: var(--border-radius-md);
   transition: background-color 0.2s;

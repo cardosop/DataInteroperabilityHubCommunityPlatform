@@ -14,6 +14,8 @@ First run: session-scoped DB create+migrate runs during first test's setup
 accommodates that one-time setup; use --reuse-db so reruns complete in under a minute.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -850,3 +852,83 @@ class TenantIsolationTest(TestCase):
             queryset,
             "Should not see tenant1 query executions when request.tenant_id=tenant2",
         )
+
+
+class PersonalTenantIsolationTest(TestCase):
+    """User with personal tenant cannot access another tenant's resources (useronboardfix 2.1.2)."""
+
+    def setUp(self):
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.disconnect(contract_saved, sender=Contract)
+            post_save.disconnect(asset_saved, sender=Asset)
+        except (ImportError, AttributeError):
+            pass
+
+        from django.core.management import call_command
+
+        call_command("seed_default_plans")
+
+        self.client = APIClient()
+        uid = uuid.uuid4().hex[:8]
+        self.other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {uid}",
+            slug=f"other-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+
+    def tearDown(self):
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.connect(contract_saved, sender=Contract, weak=False)
+            post_save.connect(asset_saved, sender=Asset, weak=False)
+        except (ImportError, AttributeError):
+            pass
+        super().tearDown()
+
+    def test_personal_tenant_user_cannot_access_other_tenant_resources(self):
+        """User created via registration (personal tenant) cannot access another tenant's asset."""
+        from hub.apps.assets.models import Asset
+
+        email = f"personal-{uuid.uuid4().hex[:8]}@example.com"
+        password = "SecurePass123"
+        name = "Personal User"
+
+        reg = self.client.post(
+            "/api/v1/auth/register/",
+            {"email": email, "password": password, "name": name},
+            format="json",
+        )
+        self.assertEqual(reg.status_code, status.HTTP_201_CREATED)
+        self.assertIsNotNone(reg.data.get("tenant_id"))
+
+        login = self.client.post(
+            "/api/v1/auth/login/",
+            {"email": email, "password": password},
+            format="json",
+        )
+        self.assertEqual(login.status_code, status.HTTP_200_OK)
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {login.data['access_token']}"
+        )
+
+        other_asset = Asset.objects.create(
+            tenant=self.other_tenant,
+            key="other-tenant-asset",
+            name="Other Tenant Asset",
+            domain="test",
+        )
+
+        resp = self.client.get(f"/api/v1/assets/{other_asset.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)

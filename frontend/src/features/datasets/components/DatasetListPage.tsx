@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
@@ -13,40 +13,103 @@ import './DatasetListPage.css';
 export function DatasetListPage() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
-  const { data, isLoading, error, refetch } = useDatasets({
+  const [assetIdFilter, setAssetIdFilter] = useState('');
+  const filters = {
     page,
     page_size: 50,
     ordering: '-created_at',
-  });
+    asset_id: assetIdFilter.trim() || undefined,
+  };
+  const { data, isLoading, error, refetch } = useDatasets(filters);
 
   if (isLoading) return <LoadingSpinner message="Loading datasets..." />;
   if (error)
     return <ErrorDisplay error={error} title="Failed to load datasets" onRetry={() => refetch()} />;
   const handleCreateDataset = () => navigate('/datasets/create');
 
+  const hasFilters = !!assetIdFilter.trim();
+
   if (!data || data.results.length === 0) {
     return (
-      <EmptyState
-        title="No datasets found"
-        message="Get started by creating your first dataset."
-        action={{ label: 'Create Dataset', onClick: handleCreateDataset }}
-      />
+      <div className="dataset-list-page" data-testid="dataset-list-page">
+        <div className="dataset-list-header">
+          <h1>Datasets</h1>
+          <button className="btn-primary" onClick={handleCreateDataset} type="button">
+            Create Dataset
+          </button>
+        </div>
+        <div className="dataset-list-filters" data-testid="dataset-list-filters">
+          <label htmlFor="dataset-asset-id-filter" className="sr-only">
+            Filter by Asset ID
+          </label>
+          <input
+            id="dataset-asset-id-filter"
+            type="text"
+            placeholder="Asset ID (optional)"
+            value={assetIdFilter}
+            onChange={(e) => {
+              setAssetIdFilter(e.target.value);
+              setPage(1);
+            }}
+            className="dataset-list-filter-input"
+            aria-label="Filter by Asset ID"
+          />
+        </div>
+        <EmptyState
+          data-testid="dataset-list-empty-state"
+          title="No datasets found"
+          message={
+            hasFilters
+              ? 'No datasets match the current filter. Try adjusting or clear the filter.'
+              : 'Get started by creating your first dataset.'
+          }
+          action={
+            hasFilters
+              ? {
+                  label: 'Clear filter',
+                  onClick: () => {
+                    setAssetIdFilter('');
+                    setPage(1);
+                  },
+                }
+              : { label: 'Create Dataset', onClick: handleCreateDataset }
+          }
+        />
+      </div>
     );
   }
 
   return (
-    <div className="dataset-list-page">
+    <div className="dataset-list-page" data-testid="dataset-list-page">
       <div className="dataset-list-header">
         <h1>Datasets</h1>
         <button className="btn-primary" onClick={handleCreateDataset} type="button">
           Create Dataset
         </button>
       </div>
+      <div className="dataset-list-filters" data-testid="dataset-list-filters">
+        <label htmlFor="dataset-asset-id-filter" className="sr-only">
+          Filter by Asset ID
+        </label>
+        <input
+          id="dataset-asset-id-filter"
+          type="text"
+          placeholder="Asset ID (optional)"
+          value={assetIdFilter}
+          onChange={(e) => {
+            setAssetIdFilter(e.target.value);
+            setPage(1);
+          }}
+          className="dataset-list-filter-input"
+          aria-label="Filter by Asset ID"
+        />
+      </div>
       <div className="dataset-list-table">
         <table role="table" aria-label="Datasets list">
           <thead>
             <tr>
               <th scope="col">Name</th>
+              <th scope="col">Asset</th>
               <th scope="col">Format</th>
               <th scope="col">Size</th>
               <th scope="col">Rows</th>
@@ -54,30 +117,46 @@ export function DatasetListPage() {
             </tr>
           </thead>
           <tbody>
-            {data.results.map((dataset) => (
-              <tr
-                key={dataset.id}
-                onClick={() => navigate(`/datasets/${dataset.id}`)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    navigate(`/datasets/${dataset.id}`);
-                  }
-                }}
-                className="dataset-row"
-                role="row"
-                tabIndex={0}
-                aria-label={`Dataset ${dataset.name}`}
-              >
-                <td>
-                  <strong>{dataset.name}</strong>
-                </td>
-                <td>{dataset.format}</td>
-                <td>{(dataset.size_bytes / 1024).toFixed(2)} KB</td>
-                <td>{dataset.row_count?.toLocaleString() || '-'}</td>
-                <td>{new Date(dataset.created_at).toLocaleDateString()}</td>
-              </tr>
-            ))}
+            {data.results.map((dataset) => {
+              const assetId = dataset.asset_id ?? dataset.asset;
+              return (
+                <tr
+                  key={dataset.id}
+                  onClick={() => navigate(`/datasets/${dataset.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate(`/datasets/${dataset.id}`);
+                    }
+                  }}
+                  className="dataset-row"
+                  role="row"
+                  tabIndex={0}
+                  aria-label={`Dataset ${dataset.name}`}
+                >
+                  <td>
+                    <strong>{dataset.name}</strong>
+                  </td>
+                  <td>
+                    {assetId ? (
+                      <Link
+                        to={`/assets/${assetId}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="dataset-list-asset-link"
+                      >
+                        {dataset.asset_name ?? 'View asset'}
+                      </Link>
+                    ) : (
+                      <span className="dataset-list-no-asset">—</span>
+                    )}
+                  </td>
+                  <td>{dataset.format}</td>
+                  <td>{(dataset.size_bytes / 1024).toFixed(2)} KB</td>
+                  <td>{dataset.row_count?.toLocaleString() || '-'}</td>
+                  <td>{new Date(dataset.created_at).toLocaleDateString()}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

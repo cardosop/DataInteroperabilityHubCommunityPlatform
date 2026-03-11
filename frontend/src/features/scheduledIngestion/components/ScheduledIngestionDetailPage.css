@@ -26,9 +26,9 @@
 }
 
 .scheduled-ingestion-detail-section {
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
   padding: var(--spacing-lg);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   box-shadow: var(--shadow-sm);
 }
 
@@ -58,30 +58,30 @@
 }
 
 .scheduled-ingestion-detail-list .error-message {
-  color: #c62828;
+  color: var(--color-error-700);
 }
 
 .scheduled-ingestion-status-badge {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
 }
 
 .scheduled-ingestion-status-badge.active {
-  background: var(--color-success-light, #e8f5e9);
-  color: var(--color-success, #2e7d32);
+  background: var(--color-success-50);
+  color: var(--color-success-700);
 }
 
 .scheduled-ingestion-status-badge.paused {
-  background: var(--color-warning-light, #fff3e0);
-  color: var(--color-warning, #ed6c02);
+  background: var(--color-warning-50);
+  color: var(--color-warning-700);
 }
 
 .scheduled-ingestion-status-badge.error {
-  background: #ffebee;
-  color: #c62828;
+  background: var(--color-error-50);
+  color: var(--color-error-700);
 }
 
 .scheduled-ingestion-runs-table {
@@ -98,7 +98,7 @@
 }
 
 .scheduled-ingestion-runs-table th {
-  background: var(--color-bg-primary);
+  background: var(--color-background-primary);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
@@ -106,33 +106,33 @@
 .run-status-badge {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
 }
 
 .run-status-badge.pending {
-  background: var(--color-warning-light, #fff3e0);
-  color: var(--color-warning, #ed6c02);
+  background: var(--color-warning-50);
+  color: var(--color-warning-700);
 }
 
 .run-status-badge.running {
-  background: var(--color-info-light, #e3f2fd);
-  color: var(--color-info, #1976d2);
+  background: var(--color-info-light);
+  color: var(--color-info);
 }
 
 .run-status-badge.completed {
-  background: var(--color-success-light, #e8f5e9);
-  color: var(--color-success, #2e7d32);
+  background: var(--color-success-50);
+  color: var(--color-success-700);
 }
 
 .run-status-badge.failed {
-  background: #ffebee;
-  color: #c62828;
+  background: var(--color-error-50);
+  color: var(--color-error-700);
 }
 
 .run-status-badge.cancelled {
-  background: var(--color-bg-secondary);
+  background: var(--color-background-secondary);
   color: var(--color-text-secondary);
 }
 
@@ -147,15 +147,15 @@
 .execution-badge.execution-prefect {
   display: inline-block;
   padding: 2px 6px;
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
-  background: var(--color-info-light, #e3f2fd);
-  color: var(--color-info, #1976d2);
+  background: var(--color-info-light);
+  color: var(--color-info);
 }
 
 .link-prefect {
-  color: var(--color-info, #1976d2);
+  color: var(--color-info);
   text-decoration: none;
 }
 

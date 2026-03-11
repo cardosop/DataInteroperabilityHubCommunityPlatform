@@ -8,6 +8,8 @@ import { useContract } from '../../contracts/hooks/useContracts';
 import { useODPSLinks, useExportODPS, useDownloadODPS } from '../hooks/useODPS';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { useState } from 'react';
 import './ODPSDetailPage.css';
 
@@ -94,14 +96,20 @@ export function ODPSDetailPage() {
       </div>
 
       <div className="odps-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'ODPS', href: '/odps' },
+            { label: contract.name || 'Contract' },
+          ]}
+        />
         <div className="odps-detail-main">
           <h1>{contract.name || 'Unnamed ODPS Contract'}</h1>
           {contract.description && <p className="odps-description">{contract.description}</p>}
 
           <div className="odps-detail-metadata">
             <div className="metadata-item">
-              <label>Contract ID</label>
-              <code>{contract.id}</code>
+              <UuidWithCopy value={contract.id} label="Contract ID" />
             </div>
             <div className="metadata-item">
               <label>Format</label>
@@ -139,16 +147,16 @@ export function ODPSDetailPage() {
               {links.odcs_link && (
                 <div className="linked-contract">
                   <h3>Linked ODCS Contract</h3>
-                  <p>
-                    <strong>ID:</strong>{' '}
+                  <div className="linked-contract-id">
+                    <UuidWithCopy value={links.odcs_link.id} label="ODCS Contract ID" />
                     <button
                       onClick={() => navigate(`/contracts/${links.odcs_link!.id}`)}
                       className="btn-link"
                       type="button"
                     >
-                      {links.odcs_link.id}
+                      View
                     </button>
-                  </p>
+                  </div>
                   <p>
                     <strong>Name:</strong> {links.odcs_link.name || 'Unnamed'}
                   </p>
@@ -160,16 +168,16 @@ export function ODPSDetailPage() {
               {links.odps_link && (
                 <div className="linked-contract">
                   <h3>Linked ODPS Contract</h3>
-                  <p>
-                    <strong>ID:</strong>{' '}
+                  <div className="linked-contract-id">
+                    <UuidWithCopy value={links.odps_link.id} label="ODPS Contract ID" />
                     <button
                       onClick={() => navigate(`/odps/${links.odps_link!.id}`)}
                       className="btn-link"
                       type="button"
                     >
-                      {links.odps_link.id}
+                      View
                     </button>
-                  </p>
+                  </div>
                   <p>
                     <strong>Name:</strong> {links.odps_link.name || 'Unnamed'}
                   </p>

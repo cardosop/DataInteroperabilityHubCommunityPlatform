@@ -3,11 +3,12 @@
  * Form for creating new virtual datasets
  */
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCreateVirtualDataset } from '../hooks/useVirtualization';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { VirtualDatasetStatus, QueryType } from '../../../shared/types/virtualization';
+import { VirtualDatasetSourceBuilder, type SourceEntry } from './VirtualDatasetSourceBuilder';
 import './VirtualDatasetCreatePage.css';
 
 export function VirtualDatasetCreatePage() {
@@ -31,6 +32,13 @@ export function VirtualDatasetCreatePage() {
     status: VirtualDatasetStatus.DRAFT,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleSourcesChange = useCallback((sources: SourceEntry[]) => {
+    setFormData((prev) => ({
+      ...prev,
+      sources: JSON.stringify(sources, null, 2),
+    }));
+  }, []);
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -185,16 +193,17 @@ export function VirtualDatasetCreatePage() {
         </div>
 
         <div className="form-group">
-          <label htmlFor="sources">Sources (JSON Array)</label>
-          <textarea
-            id="sources"
-            value={formData.sources}
-            onChange={(e) => setFormData({ ...formData, sources: e.target.value })}
-            className={errors.sources ? 'error' : ''}
-            rows={5}
-            placeholder='[{"type": "database", "connection": "..."}]'
+          <VirtualDatasetSourceBuilder
+            sources={(() => {
+              try {
+                return JSON.parse(formData.sources || '[]') as SourceEntry[];
+              } catch {
+                return [];
+              }
+            })()}
+            onChange={handleSourcesChange}
+            errors={errors}
           />
-          {errors.sources && <span className="error-message">{errors.sources}</span>}
         </div>
 
         <div className="form-group">

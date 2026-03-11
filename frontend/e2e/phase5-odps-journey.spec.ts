@@ -10,19 +10,10 @@
 import { expect, test } from '@playwright/test';
 import * as fs from 'fs';
 import { getTestUser, loginAsPersona, loginUser } from './fixtures/auth';
+import { isBenignConsoleError } from './fixtures/console-utils';
 import { loginAndNavigateToRoute } from './fixtures/helpers';
 
 const getApiBaseUrl = () => process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
-
-/** Skip logging known benign browser errors (navigation aborts, WS unavailable). */
-function isBenignConsoleError(text: string): boolean {
-  const t = text.toLowerCase();
-  return (
-    t.includes('err_socket_not_connected') ||
-    t.includes('err_aborted') ||
-    (t.includes('failed to load resource') && (t.includes('ws://') || t.includes('websocket')))
-  );
-}
 
 // Helper to create a valid ODCS contract via API
 async function createODCSContractViaAPI(page: any): Promise<string | null> {

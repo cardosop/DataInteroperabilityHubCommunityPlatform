@@ -8,8 +8,19 @@ import { Page } from '@playwright/test';
 import type { TestUser } from '../setup/create-test-user';
 import { clearAuthStorage, loginUser } from './auth';
 
-const API_BASE_URL = process.env.E2E_API_BASE_URL || process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+// Node fetch needs absolute URL; align with auth.ts (VITE_API_BASE_URL can be relative)
+const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
+const API_BASE_URL =
+  process.env.E2E_API_BASE_URL ||
+  (process.env.VITE_PROXY_TARGET
+    ? `${String(process.env.VITE_PROXY_TARGET).replace(/\/$/, '')}/api/v1`
+    : null) ||
+  (process.env.VITE_API_BASE_URL?.startsWith?.('http') ? process.env.VITE_API_BASE_URL : null) ||
+  `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 const MAILHOG_BASE_URL = process.env.MAILHOG_URL || 'http://localhost:8025';
+
+const REGISTER_RETRIES = 4;
+const REGISTER_RETRY_DELAYS_MS = [2000, 4000, 6000];
 
 export function uniqueEmail(prefix = 'e2e_visitor'): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}@example.com`;
@@ -19,21 +30,41 @@ export function strongPassword(): string {
   return `TestPass${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
+function isRetryableRegisterError(err: unknown): boolean {
+  const msg = String((err as Error)?.message ?? (err as { cause?: Error })?.cause?.message ?? '');
+  return /ECONNRESET|ECONNREFUSED|fetch failed|socket hang up|network/i.test(msg);
+}
+
 export async function registerViaApi(user: {
   email: string;
   password: string;
   name: string;
   tenant_id?: string | null;
 }): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/auth/register/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(user),
-  });
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    throw new Error(`Register API failed: ${response.status} ${body}`);
+  let lastErr: unknown;
+  for (let i = 0; i < REGISTER_RETRIES; i++) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/register/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(user),
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(`Register API failed: ${response.status} ${body}`);
+      }
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (i < REGISTER_RETRIES - 1 && isRetryableRegisterError(err)) {
+        const delay = REGISTER_RETRY_DELAYS_MS[i] ?? 8000;
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
   }
+  throw lastErr;
 }
 
 export async function requestPasswordResetViaApi(email: string): Promise<void> {
@@ -197,6 +228,31 @@ export async function waitForRegisterPageReady(page: Page, timeoutMs = 35_000): 
   }
 }
 
+/**
+ * Assert that the currently logged-in user (from page localStorage) has a personal tenant.
+ * Fetches /auth/me/ with Bearer token and asserts tenant_id is present (useronboardfix 4.1.1).
+ */
+export async function assertUserHasPersonalTenant(page: Page): Promise<void> {
+  const token = await page.evaluate(() => localStorage.getItem('access_token'));
+  if (!token) {
+    throw new Error('assertUserHasPersonalTenant: No access_token in localStorage');
+  }
+  const res = await fetch(`${API_BASE_URL}/auth/me/`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`assertUserHasPersonalTenant: /auth/me/ failed: ${res.status} ${body}`);
+  }
+  const me = (await res.json()) as { tenant_id?: string | null; [k: string]: unknown };
+  if (!me.tenant_id) {
+    throw new Error(
+      `assertUserHasPersonalTenant: Expected tenant_id in /auth/me/ (personal tenant). Got: ${JSON.stringify(me)}`
+    );
+  }
+}
+
 /** Run JOURNEY-AUTH-001 success: register via UI then login */
 export async function runJOURNEY_AUTH_001_Success(page: Page): Promise<void> {
   const email = uniqueEmail('e2e_register');
@@ -221,8 +277,9 @@ export async function runJOURNEY_AUTH_001_Success(page: Page): Promise<void> {
   await page.fill('input#email', email);
   await page.fill('input#password', password);
   await page.click('button[type="submit"]');
-  await page.waitForURL((url) => url.pathname === '/login', { timeout: 20_000 });
-  await page.locator('.success-message').waitFor({ state: 'visible', timeout: 10_000 });
+  // Registration navigates to /login with state; allow up to 60s for slow API under E2E load
+  await page.waitForURL((url) => url.pathname === '/login', { timeout: 60_000 });
+  await page.locator('.success-message').waitFor({ state: 'visible', timeout: 15_000 });
   const successText = await page.locator('.success-message').textContent();
   if (!successText?.includes('Account created')) {
     throw new Error('Expected "Account created" success message');
@@ -230,6 +287,7 @@ export async function runJOURNEY_AUTH_001_Success(page: Page): Promise<void> {
   const user: TestUser = { email, password, name };
   await loginUser(page, user);
   await page.locator('.app-header').waitFor({ state: 'visible', timeout: 10_000 });
+  await assertUserHasPersonalTenant(page);
 }
 
 /** Run JOURNEY-AUTH-003 success: password reset request + confirm via email (requires MailHog) */
@@ -271,7 +329,7 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   await page.click('button[type="submit"]');
   // Wait for either success or error (backend may return error if password reset not enabled)
   const successOrError = page.locator('.success-message, .error-message').first();
-  await successOrError.waitFor({ state: 'visible', timeout: 15_000 });
+  await successOrError.waitFor({ state: 'visible', timeout: 25_000 });
   if (await page.locator('.error-message').isVisible()) {
     const errText = await page.locator('.error-message').textContent();
     throw new Error(
@@ -280,7 +338,7 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
     );
   }
   // UI submit already triggered password reset and enqueued send_password_reset_email (job_low)
-  const resetLink = await waitForPasswordResetEmail(email, 90_000);
+  const resetLink = await waitForPasswordResetEmail(email, 120_000);
   const url = new URL(resetLink);
   const token = url.searchParams.get('token') ?? '';
   const pathAndSearch = `/password-reset/confirm?token=${encodeURIComponent(token)}`;

@@ -8,6 +8,7 @@ examples, and metadata for all endpoints.
 from typing import Any, Dict
 
 import structlog
+from django.conf import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -51,11 +52,12 @@ class OpenAPISpecEnhancer:
         info = spec["info"]
 
         # Set comprehensive title and description
-        info["title"] = info.get("title", "Data Interoperability Hub API")
+        app_name = getattr(settings, "APP_NAME", "Meshant")
+        info["title"] = info.get("title", f"{app_name} API")
         info[
             "description"
-        ] = """
-# Data Interoperability Hub API
+        ] = f"""
+# {app_name} API
 
 Complete REST API for managing data contracts, assets, datasets, compliance, data quality, and marketplace operations.
 

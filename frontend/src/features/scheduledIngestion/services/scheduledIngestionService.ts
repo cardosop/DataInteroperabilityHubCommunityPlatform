@@ -29,7 +29,11 @@ export const scheduledIngestionService = {
     const qs = params.toString();
     const url = qs ? `${SCHEDULED_INGESTIONS_PATH}/?${qs}` : `${SCHEDULED_INGESTIONS_PATH}/`;
     const response = await apiClient.getClient().get<ScheduledIngestionListResponse>(url);
-    return response.data;
+    const data = response.data;
+    if (data == null) {
+      return { results: [], count: 0, next: null, previous: null };
+    }
+    return data;
   },
 
   /**

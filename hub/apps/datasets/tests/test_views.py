@@ -26,7 +26,7 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.tests.test_base import DatasetsAPITestBase
 from hub.apps.files.models import File, FileStatus
-from hub.apps.tenants.models import Tenant
+from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -39,17 +39,18 @@ class DatasetViewSetTest(DatasetsAPITestBase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
+        uid = str(uuid.uuid4())[:8]
 
         # Create another tenant and user for isolation tests
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {uid}",
+            slug=f"other-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
 
         self.other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uid}@example.com",
             password="testpass123",
             tenant=self.other_tenant,
             status="ACTIVE",
@@ -153,6 +154,98 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         dataset_ids = [d["id"] for d in results]
         self.assertIn(str(dataset_with_asset.id), dataset_ids)
 
+    def test_list_datasets_filtering_by_invalid_asset_id_returns_empty(self):
+        """Test invalid asset_id returns 200 with empty results, not 500 (29.69.2)."""
+        response = self.client.get("/api/v1/datasets/?asset_id=not-a-valid-uuid")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data.get("results", [])), 0)
+
+    def test_list_datasets_asset_id_filter_tenant_isolation(self):
+        """Test asset_id filter enforces tenant isolation (IDOR prevention).
+        User from tenant B filtering by asset_id from tenant A must get empty results."""
+        # Create asset in other tenant
+        other_asset = Asset.objects.create(
+            tenant=self.other_tenant,
+            key="other-asset",
+            name="Other Asset",
+            created_by=self.other_user,
+        )
+        # Create dataset in other tenant linked to that asset
+        other_file = File.objects.create(
+            tenant=self.other_tenant,
+            name="other.csv",
+            content_type="text/csv",
+            size=100,
+            status=FileStatus.ACTIVE,
+            storage_path=f"{self.other_tenant.id}/other.csv",
+            created_by=self.other_user,
+        )
+        Dataset.objects.create(
+            tenant=self.other_tenant,
+            file=other_file,
+            asset=other_asset,
+            format="CSV",
+            schema_json={"fields": []},
+            created_by=self.other_user,
+        )
+        # User from other_tenant requests datasets filtered by their asset
+        self.client.force_authenticate(user=self.other_user)
+        response = self.client.get(f"/api/v1/datasets/?asset_id={other_asset.id}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Should see their own dataset
+        results = response.data.get("results", [])
+        self.assertGreaterEqual(len(results), 1)
+        # User from our tenant requests datasets filtered by other_tenant's asset (IDOR attempt)
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(f"/api/v1/datasets/?asset_id={other_asset.id}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Must get empty - cannot see other tenant's data via asset_id filter
+        self.assertEqual(len(response.data.get("results", [])), 0)
+
+    def test_list_datasets_filtering_by_format(self):
+        """Test filtering datasets by format (29.69.2). Uses dataset_format to avoid DRF ?format= conflict."""
+        Dataset.objects.create(
+            tenant=self.tenant,
+            file=self.file,
+            format="JSON",
+            schema_json={"fields": []},
+            created_by=self.user,
+        )
+        response = self.client.get("/api/v1/datasets/?dataset_format=JSON")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        for d in response.data.get("results", []):
+            self.assertEqual(d["format"], "JSON")
+
+    def test_list_datasets_search_by_file_name(self):
+        """Test searching datasets by file name (29.69.2)."""
+        file_searchable = File.objects.create(
+            tenant=self.tenant,
+            name="searchable-report.csv",
+            content_type="text/csv",
+            size=100,
+            status=FileStatus.ACTIVE,
+            storage_path=f"{self.tenant.id}/searchable.csv",
+            created_by=self.user,
+        )
+        Dataset.objects.create(
+            tenant=self.tenant,
+            file=file_searchable,
+            format="CSV",
+            schema_json={"fields": []},
+            created_by=self.user,
+        )
+        response = self.client.get("/api/v1/datasets/?search=searchable")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = [d.get("name", "") for d in response.data.get("results", [])]
+        self.assertTrue(any("searchable" in n for n in names))
+
+    def test_list_datasets_ordering(self):
+        """Test ordering datasets (29.69.2)."""
+        response = self.client.get("/api/v1/datasets/?ordering=created_at")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        response_desc = self.client.get("/api/v1/datasets/?ordering=-created_at")
+        self.assertEqual(response_desc.status_code, status.HTTP_200_OK)
+
     def test_list_datasets_pagination_returns_200(self):
         """Test pagination returns 200 status code"""
         # Create multiple datasets
@@ -223,6 +316,24 @@ class DatasetViewSetTest(DatasetsAPITestBase):
 
         self.assertEqual(response.data["id"], str(self.dataset.id))
         self.assertIn("schema_json", response.data)
+
+    def test_retrieve_dataset_includes_asset_id_and_asset_name_when_linked(self):
+        """Test GET dataset returns asset_id and asset_name when dataset has linked asset (29.66.12)"""
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="linked-asset",
+            name="My Linked Asset",
+            created_by=self.user,
+        )
+        self.dataset.asset = asset
+        self.dataset.save()
+
+        response = self.client.get(f"/api/v1/datasets/{self.dataset.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["asset_id"], str(asset.id))
+        self.assertEqual(response.data["asset_name"], "My Linked Asset")
+        self.assertEqual(response.data["asset"], str(asset.id))
 
     def test_retrieve_dataset_not_found(self):
         """Test retrieving non-existent dataset"""
@@ -361,6 +472,70 @@ class DatasetViewSetTest(DatasetsAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_update_dataset_accepts_asset(self):
+        """Test DatasetSerializer/update accepts asset; linking dataset to asset via PATCH"""
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset-link",
+            name="Test Asset for Link",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user,
+        )
+        self.assertIsNone(self.dataset.asset_id)
+
+        response = self.client.patch(
+            f"/api/v1/datasets/{self.dataset.id}/",
+            {"asset": str(asset.id)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.dataset.refresh_from_db()
+        self.assertEqual(self.dataset.asset_id, asset.id)
+        self.assertEqual(response.data.get("asset"), str(asset.id))
+
+    def test_update_dataset_unlink_asset(self):
+        """Test dataset update can unlink asset by setting asset to null"""
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset-unlink",
+            name="Test Asset for Unlink",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user,
+        )
+        self.dataset.asset = asset
+        self.dataset.save()
+        self.assertEqual(self.dataset.asset_id, asset.id)
+
+        response = self.client.patch(
+            f"/api/v1/datasets/{self.dataset.id}/",
+            {"asset": None},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.dataset.refresh_from_db()
+        self.assertIsNone(self.dataset.asset_id)
+
+    def test_update_dataset_invalid_asset_uuid_returns_400(self):
+        """Test PATCH with invalid asset UUID returns 400"""
+        response = self.client.patch(
+            f"/api/v1/datasets/{self.dataset.id}/",
+            {"asset": "not-a-valid-uuid"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_update_dataset_nonexistent_asset_returns_400(self):
+        """Test PATCH with valid UUID format but non-existent asset returns 400"""
+        fake_asset_id = str(uuid.uuid4())
+        response = self.client.patch(
+            f"/api/v1/datasets/{self.dataset.id}/",
+            {"asset": fake_asset_id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     # ========== DESTROY ENDPOINT TESTS ==========
 
     def test_destroy_dataset_success(self):
@@ -420,6 +595,22 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         if response.status_code == status.HTTP_201_CREATED:
             self.assertIn("id", response.data)
             self.assertEqual(response.data["semantic_version"], "1.1.0")
+
+    def test_create_version_rejected_when_versioning_disabled(self):
+        """Phase 12: Creating a version returns 403 when versioning_enabled=False."""
+        TenantConfig.objects.update_or_create(
+            tenant=self.tenant,
+            defaults={"versioning_enabled": False},
+        )
+        data = {"semantic_version": "1.1.0"}
+
+        response = self.client.post(
+            f"/api/v1/datasets/{self.dataset.id}/versions/", data, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("code"), "VERSIONING_DISABLED")
+        self.assertIn("disabled", (response.data.get("detail") or "").lower())
 
     def test_create_version_missing_data(self):
         """Test creating version with missing data (error handling)"""

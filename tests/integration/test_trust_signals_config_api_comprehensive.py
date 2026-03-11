@@ -17,7 +17,7 @@ from django.test import TransactionTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.tenants.models import Tenant, TenantStatus
+from hub.apps.tenants.models import Tenant, TenantConfig, TenantStatus
 from hub.apps.users.models import User, UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
@@ -370,3 +370,99 @@ class TrustSignalsConfigAPIsComprehensiveTest(TransactionTestCase):
         self.assertEqual(response.data.get("code"), "DUPLICATE_NAME")
         other.refresh_from_db()
         self.assertEqual(other.name, "other")
+
+    def test_trust_signals_disabled_list_returns_empty(self):
+        """Phase 11: When trust_signals_enabled=False, list returns 200 with empty results."""
+        from hub.apps.marketplace.models import TrustSignalConfig
+
+        TrustSignalConfig.objects.create(
+            tenant=self.tenant1,
+            name="existing_badge",
+            kind="badge",
+            config={},
+        )
+        TenantConfig.objects.create(tenant=self.tenant1, trust_signals_enabled=False)
+
+        self.client.force_authenticate(user=self.user1)
+        response = self.client.get(self._url_list())
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.data
+        items = data.get("results", data) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        self.assertEqual(len(items), 0)
+
+    def test_trust_signals_disabled_create_returns_403(self):
+        """Phase 11: When trust_signals_enabled=False, create returns 403 with TRUST_SIGNALS_DISABLED."""
+        TenantConfig.objects.create(tenant=self.tenant1, trust_signals_enabled=False)
+
+        self.client.force_authenticate(user=self.user1)
+        response = self.client.post(
+            self._url_list(),
+            {"name": "blocked", "kind": "badge", "config": {}},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("code"), "TRUST_SIGNALS_DISABLED")
+        self.assertIn("Trust signals are disabled", response.data.get("error", ""))
+
+    def test_trust_signals_disabled_retrieve_returns_403(self):
+        """Phase 11: When trust_signals_enabled=False, retrieve returns 403 with TRUST_SIGNALS_DISABLED."""
+        from hub.apps.marketplace.models import TrustSignalConfig
+
+        config = TrustSignalConfig.objects.create(
+            tenant=self.tenant1,
+            name="retrieve_blocked",
+            kind="badge",
+            config={},
+        )
+        TenantConfig.objects.create(tenant=self.tenant1, trust_signals_enabled=False)
+
+        self.client.force_authenticate(user=self.user1)
+        response = self.client.get(self._url_detail(config.id))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("code"), "TRUST_SIGNALS_DISABLED")
+
+    def test_trust_signals_disabled_update_returns_403(self):
+        """Phase 11: When trust_signals_enabled=False, update returns 403 with TRUST_SIGNALS_DISABLED."""
+        from hub.apps.marketplace.models import TrustSignalConfig
+
+        config = TrustSignalConfig.objects.create(
+            tenant=self.tenant1,
+            name="update_blocked",
+            kind="badge",
+            config={},
+        )
+        TenantConfig.objects.create(tenant=self.tenant1, trust_signals_enabled=False)
+
+        self.client.force_authenticate(user=self.user1)
+        response = self.client.patch(
+            self._url_detail(config.id),
+            {"config": {"new": True}},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("code"), "TRUST_SIGNALS_DISABLED")
+        config.refresh_from_db()
+        self.assertEqual(config.config, {})
+
+    def test_trust_signals_disabled_delete_returns_403(self):
+        """Phase 11: When trust_signals_enabled=False, delete returns 403 with TRUST_SIGNALS_DISABLED."""
+        from hub.apps.marketplace.models import TrustSignalConfig
+
+        config = TrustSignalConfig.objects.create(
+            tenant=self.tenant1,
+            name="delete_blocked",
+            kind="badge",
+            config={},
+        )
+        TenantConfig.objects.create(tenant=self.tenant1, trust_signals_enabled=False)
+
+        self.client.force_authenticate(user=self.user1)
+        response = self.client.delete(self._url_detail(config.id))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data.get("code"), "TRUST_SIGNALS_DISABLED")
+        self.assertTrue(TrustSignalConfig.objects.filter(id=config.id).exists())

@@ -58,6 +58,7 @@ def _sync_deployment_via_prefect_integration_service(scheduled_export, tenant, t
     payload = {
         "scheduled_export_id": str(scheduled_export.id),
         "tenant_id": str(tenant.id),
+        "schedule_config": scheduled_export.schedule_config or {},
     }
     try:
         import requests
@@ -236,12 +237,10 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
 
         # Create Prefect deployment via prefect-integration-service HTTP API
         # This is optional - if Prefect is not available, scheduled export is still created
-        # Use HTTP API approach (like scheduled ingestion) to avoid requiring prefect in api-service
-        # Use on_commit to ensure sync happens after transaction commits (so prefect-integration-service can find the export)
-        transaction.on_commit(
-            lambda: _sync_deployment_via_prefect_integration_service(
-                scheduled_export, tenant, timeout_seconds=15
-            )
+        # Run sync synchronously: we pass schedule_config in the request so prefect-integration
+        # does not need to fetch from DB; on_commit would not run in test transactions (never commit)
+        _sync_deployment_via_prefect_integration_service(
+            scheduled_export, tenant, timeout_seconds=15
         )
 
         create_audit_event(

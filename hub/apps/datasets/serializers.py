@@ -6,7 +6,13 @@ from .models import Dataset, SchemaVersion
 
 
 class DatasetSerializer(serializers.ModelSerializer):
-    """Serializer for Dataset model. UUID FKs are serialized as strings for JSON consistency."""
+    """
+    Serializer for Dataset model. UUID FKs are serialized as strings for JSON consistency.
+
+    Writable fields on update: asset, format (others are read-only).
+    name: Read-only, computed from instance.file.name (not persisted).
+    description: Not supported; Dataset model has no description field (not persisted).
+    """
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -17,6 +23,13 @@ class DatasetSerializer(serializers.ModelSerializer):
         # Add computed name and size_bytes for frontend (Dataset has no name field)
         data["name"] = instance.file.name if instance.file else str(instance)
         data["size_bytes"] = instance.file.size if instance.file else 0
+        # Add asset_id and asset_name for frontend (asset is FK UUID; asset_name for list UX)
+        if instance.asset_id:
+            data["asset_id"] = str(instance.asset_id)
+            try:
+                data["asset_name"] = instance.asset.name
+            except Exception:
+                data["asset_name"] = None
         return data
 
     class Meta:

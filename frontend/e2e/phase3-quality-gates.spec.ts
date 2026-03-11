@@ -142,6 +142,7 @@ test.describe('Phase 3 Quality Gates', () => {
     });
     console.log('Dataset create page loaded');
 
+    const phase3FileBase = `test-p3-qg-${Date.now()}`;
     // Find file upload dropzone
     console.log('Looking for file upload...');
     const dropzone = page.locator('.file-upload-dropzone');
@@ -153,9 +154,8 @@ test.describe('Phase 3 Quality Gates', () => {
       const datasetFileInput = page.locator('input[type="file"]');
       if ((await datasetFileInput.count()) > 0) {
         console.log('File input found, uploading file...');
-        // Create a simple CSV file with PII data for compliance testing
         await datasetFileInput.setInputFiles({
-          name: 'test.csv',
+          name: `${phase3FileBase}.csv`,
           mimeType: 'text/csv',
           buffer: Buffer.from(
             'name,email,age\nJohn Doe,john@example.com,30\nJane Smith,jane@example.com,25'
@@ -262,13 +262,20 @@ test.describe('Phase 3 Quality Gates', () => {
     // But first, check if asset already has a dataset_id
     const assetDatasetLink = page.locator('a[href*="/datasets/"]');
     if ((await assetDatasetLink.count()) === 0 && datasetId) {
-      console.log('Dataset not linked to asset, attempting to attach...');
-      // Look for attach dataset input - be specific to avoid matching Contract ID input
+      console.log('Dataset not linked to asset, attempting to attach via DatasetPicker...');
       const datasetSection = page.locator('.linked-section:has-text("Linked Dataset")');
       if ((await datasetSection.count()) > 0) {
-        const attachDatasetInput = datasetSection.locator('input.attach-input');
-        if ((await attachDatasetInput.count()) > 0) {
-          await attachDatasetInput.fill(datasetId);
+        const datasetPicker = datasetSection.locator('[data-testid="asset-attach-dataset-picker"]');
+        if ((await datasetPicker.count()) > 0) {
+          const pickerInput = datasetPicker.locator('input[aria-label="Select dataset"]');
+          await pickerInput.click();
+          await page.waitForTimeout(500);
+          await pickerInput.fill(phase3FileBase);
+          await page.waitForTimeout(1200);
+          const option = page.locator(`[id="dataset-picker-option-${datasetId}"]`);
+          await option.waitFor({ state: 'visible', timeout: 15000 });
+          await option.click();
+          await page.waitForTimeout(300);
           // Find the attach button in the same section
           const attachButton = datasetSection.locator('button:has-text("Attach")');
           if ((await attachButton.count()) > 0) {
@@ -346,7 +353,7 @@ test.describe('Phase 3 Quality Gates', () => {
             console.log('Attach button not found');
           }
         } else {
-          console.log('Dataset attach input not found in dataset section');
+          console.log('DatasetPicker not found in dataset section');
         }
       } else {
         console.log('Dataset section not found');

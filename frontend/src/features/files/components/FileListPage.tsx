@@ -1,16 +1,21 @@
 /**
  * File List Page
  * Global file list with table, filters (asset_id, dataset_id if API supports), pagination,
- * view details (modal), delete with confirmation. Uses fileService.list(), getById(), delete().
+ * view details (modal), delete with confirmation, upload. Uses fileService.list(), getById(), delete().
  */
 
 import { useState } from 'react';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { Modal } from '../../../shared/components/Modal';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
 import type { File as FileType } from '../../../shared/types/files';
 import { useDeleteFile, useFiles } from '../hooks/useFiles';
 import { FileDetailModal } from './FileDetailModal';
+import { FileUpload } from './FileUpload';
 import './FileListPage.css';
 
 function formatBytes(bytes: number): string {
@@ -26,7 +31,9 @@ export function FileListPage() {
   const [datasetIdFilter, setDatasetIdFilter] = useState('');
   const [detailFile, setDetailFile] = useState<FileType | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FileType | null>(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
+  const toast = useToast();
   const filters = {
     page,
     page_size: pageSize,
@@ -46,19 +53,29 @@ export function FileListPage() {
     setDeleteTarget(file);
   };
 
-  const handleConfirmDelete = async () => {
+  const handleCancelDelete = () => setDeleteTarget(null);
+
+  const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    setDeleteTarget(null);
     try {
-      await deleteMutation.mutateAsync(deleteTarget.id);
-      setDeleteTarget(null);
+      await deleteMutation.mutateAsync(id);
+      toast.success('File deleted.');
       refetch();
-    } catch {
-      // Error handled by mutation
+    } catch (err) {
+      toast.error(normalizeError(err).error.message || 'Failed to delete file');
     }
   };
 
-  const handleCancelDelete = () => {
-    setDeleteTarget(null);
+  const handleUploadComplete = (file: FileType) => {
+    refetch();
+    toast.success(`File "${file.name}" uploaded successfully.`);
+    setShowUploadModal(false);
+  };
+
+  const handleUploadError = (err: unknown) => {
+    toast.error(normalizeError(err).error.message || 'Upload failed');
   };
 
   if (isLoading) {
@@ -75,11 +92,19 @@ export function FileListPage() {
 
   if (!data || results.length === 0) {
     return (
-      <div className="file-list-page">
-        <div className="file-list-header">
+      <div className="file-list-page" data-testid="file-list-page">
+        <div className="file-list-header" data-testid="file-list-header">
           <h1>Files</h1>
+          <button
+            type="button"
+            className="btn-primary file-list-upload-btn"
+            onClick={() => setShowUploadModal(true)}
+            data-testid="btn-upload-file"
+          >
+            Upload File
+          </button>
         </div>
-        <div className="file-list-filters">
+        <div className="file-list-filters" data-testid="file-list-filters">
           <input
             type="text"
             placeholder="Asset ID (optional)"
@@ -102,25 +127,62 @@ export function FileListPage() {
           />
         </div>
         <EmptyState
+          data-testid="file-list-empty-state"
           title="No files found"
           message={
             hasFilters
-              ? 'Try adjusting filters.'
-              : 'Upload a file from an asset or dataset to see it here.'
+              ? 'Try adjusting filters or clear them to see all files.'
+              : 'Upload a file using the button above, or from an asset or dataset.'
+          }
+          action={
+            hasFilters
+              ? {
+                  label: 'Clear filters',
+                  onClick: () => {
+                    setAssetIdFilter('');
+                    setDatasetIdFilter('');
+                    setPage(1);
+                  },
+                }
+              : { label: 'Upload File', onClick: () => setShowUploadModal(true) }
           }
         />
         {detailFile && <FileDetailModal file={detailFile} onClose={() => setDetailFile(null)} />}
+        {showUploadModal && (
+          <Modal
+            isOpen={showUploadModal}
+            onClose={() => setShowUploadModal(false)}
+            title="Upload File"
+            aria-describedby="file-upload-description"
+          >
+            <div id="file-upload-description">
+              <FileUpload
+                onUploadComplete={handleUploadComplete}
+                onUploadError={handleUploadError}
+                accept=".csv,.json,.parquet"
+              />
+            </div>
+          </Modal>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="file-list-page">
-      <div className="file-list-header">
+    <div className="file-list-page" data-testid="file-list-page">
+      <div className="file-list-header" data-testid="file-list-header">
         <h1>Files</h1>
+        <button
+          type="button"
+          className="btn-primary file-list-upload-btn"
+          onClick={() => setShowUploadModal(true)}
+          data-testid="btn-upload-file"
+        >
+          Upload File
+        </button>
       </div>
 
-      <div className="file-list-filters">
+      <div className="file-list-filters" data-testid="file-list-filters">
         <input
           type="text"
           placeholder="Asset ID (optional)"
@@ -143,8 +205,8 @@ export function FileListPage() {
         />
       </div>
 
-      <div className="file-list-table-wrapper">
-        <table className="file-list-table">
+      <div className="file-list-table-wrapper" data-testid="file-list-table-wrapper">
+        <table className="file-list-table" data-testid="file-list-table">
           <thead>
             <tr>
               <th>Name</th>
@@ -223,35 +285,44 @@ export function FileListPage() {
 
       {detailFile && <FileDetailModal file={detailFile} onClose={() => setDetailFile(null)} />}
 
-      {deleteTarget && (
-        <div
-          className="file-list-delete-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-dialog-title"
+      {showUploadModal && (
+        <Modal
+          isOpen={showUploadModal}
+          onClose={() => setShowUploadModal(false)}
+          title="Upload File"
+          aria-describedby="file-upload-description"
         >
-          <div className="file-list-delete-dialog">
-            <h3 id="delete-dialog-title">Delete file?</h3>
-            <p>
-              Are you sure you want to delete <strong>{deleteTarget.name}</strong>? This cannot be
-              undone.
-            </p>
-            <div className="file-list-delete-actions">
-              <button type="button" className="file-list-cancel-btn" onClick={handleCancelDelete}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="file-list-confirm-delete-btn"
-                onClick={handleConfirmDelete}
-                disabled={deleteMutation.isPending}
-              >
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
+          <div id="file-upload-description">
+            <FileUpload
+              onUploadComplete={handleUploadComplete}
+              onUploadError={handleUploadError}
+              accept=".csv,.json,.parquet"
+            />
           </div>
-        </div>
+        </Modal>
       )}
+
+      {deleteMutation.isError && (
+        <ErrorDisplay
+          error={deleteMutation.error}
+          title="Failed to delete file"
+          onRetry={() => deleteMutation.reset()}
+        />
+      )}
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        onClose={handleCancelDelete}
+        onConfirm={handleDeleteConfirm}
+        title="Delete file"
+        message={
+          deleteTarget
+            ? `Are you sure you want to delete "${deleteTarget.name}"? This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

@@ -6,11 +6,14 @@ All create/update/destroy/version creation delegate to DatasetService,
 which invokes DatasetsBusinessRules before mutations.
 """
 
+import uuid
+
 from django.db import transaction
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
@@ -46,22 +49,43 @@ class DatasetViewSet(viewsets.ModelViewSet):
     ViewSet for dataset management.
 
     Tenant-scoped: users can only see/manage datasets in their tenant.
+    List supports: search (file name, format), filter (asset_id, dataset_format), ordering.
+    Uses dataset_format (not format) to avoid conflict with DRF's reserved ?format= for content negotiation.
     """
 
     queryset = Dataset.objects.all()
     serializer_class = DatasetSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ["file__name", "format"]
+    ordering_fields = ["created_at", "updated_at", "format"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
-        """Filter queryset based on user permissions (Phase 16: central helper)."""
+        """Filter queryset based on user permissions and query params (29.69.2)."""
         user = self.request.user
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            return Dataset.objects.all()
-        tenant_id_str = get_request_tenant_id(self.request)
-        if not tenant_id_str:
-            return Dataset.objects.none()
-        return Dataset.objects.filter(tenant_id=tenant_id_str)
+            qs = Dataset.objects.all()
+        else:
+            tenant_id_str = get_request_tenant_id(self.request)
+            if not tenant_id_str:
+                return Dataset.objects.none()
+            qs = Dataset.objects.filter(tenant_id=tenant_id_str)
+        # Apply asset_id filter (picker support); validate UUID to avoid 500 on invalid input
+        asset_id = self.request.query_params.get("asset_id")
+        if asset_id:
+            try:
+                uuid.UUID(str(asset_id))
+                qs = qs.filter(asset_id=asset_id)
+            except (ValueError, TypeError, AttributeError):
+                return Dataset.objects.none()
+        # Apply format filter (?dataset_format=CSV/JSON; avoid ?format= which DRF reserves for content negotiation)
+        format_val = self.request.query_params.get("dataset_format")
+        if format_val:
+            qs = qs.filter(format=format_val)
+        # Avoid N+1: serializer uses asset.name and file for name/size_bytes
+        return qs.select_related("asset", "file")
 
     @transaction.atomic
     def create(self, request):
@@ -115,7 +139,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         List datasets (tenant-scoped) with caching.
 
         GET /api/v1/datasets/
-        Query params: page, page_size, ordering, search, asset_id, format, etc.
+        Query params: page, page_size, ordering, search, asset_id, dataset_format, etc.
         """
         # Get tenant ID for cache key
         tenant_id = get_tenant_id_from_request(request)

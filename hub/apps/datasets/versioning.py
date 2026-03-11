@@ -12,6 +12,9 @@ from django.db.models import Q, F
 from django.utils import timezone
 from datetime import datetime
 
+from hub.apps.core.services.base import ValidationError
+from hub.apps.tenants.services import get_tenant_config_value
+
 from .models import Dataset
 
 
@@ -60,7 +63,24 @@ class VersionHistoryManager:
         
         Returns:
             Updated Dataset instance with version history fields
+
+        Raises:
+            ValidationError: If versioning is disabled for the tenant (when creating
+                a subsequent version, i.e. parent_version is not None).
         """
+        # Enforce versioning_enabled when creating a subsequent version (parent_version set).
+        # First version (parent_version=None) is always allowed for dataset creation.
+        if parent_version is not None:
+            versioning_enabled = get_tenant_config_value(
+                dataset.tenant, "versioning_enabled", default=True
+            )
+            if not versioning_enabled:
+                raise ValidationError(
+                    "Versioning is disabled for this tenant.",
+                    code="VERSIONING_DISABLED",
+                    http_status=403,
+                )
+
         # Calculate version hash
         version_hash = VersionHistoryManager.calculate_version_hash(dataset)
         

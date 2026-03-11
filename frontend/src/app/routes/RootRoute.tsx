@@ -20,7 +20,7 @@ export function RootRoute() {
   if (isLoading) {
     return (
       <div className="root-route-loading">
-        <LoadingSpinner message="Loading..." />
+        <LoadingSpinner message="Checking authentication…" />
       </div>
     );
   }

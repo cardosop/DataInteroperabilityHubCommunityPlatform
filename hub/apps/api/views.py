@@ -15,6 +15,8 @@ from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from django.conf import settings
+
 
 class OpenAPISchemaView(SpectacularAPIView):
     """
@@ -66,7 +68,7 @@ class OpenAPISchemaView(SpectacularAPIView):
             # Return minimal schema so capabilities/register/password-reset can load
             schema = {
                 "openapi": "3.0.0",
-                "info": {"title": "Data Interoperability Hub", "version": "1.0"},
+                "info": {"title": getattr(settings, "APP_NAME", "Meshant"), "version": "1.0"},
                 "paths": {
                     "/api/v1/auth/register/": {"post": {"operationId": "auth_register_create"}},
                     "/api/v1/auth/password-reset/": {"post": {"operationId": "auth_password_reset_create"}},
@@ -132,7 +134,7 @@ class OpenAPIYAMLView(SpectacularAPIView):
             logger.warning("openapi_schema_generation_failed", error=str(e), exc_info=True)
             schema = {
                 "openapi": "3.0.0",
-                "info": {"title": "Data Interoperability Hub", "version": "1.0"},
+                "info": {"title": getattr(settings, "APP_NAME", "Meshant"), "version": "1.0"},
                 "paths": {
                     "/api/v1/auth/register/": {"post": {"operationId": "auth_register_create"}},
                     "/api/v1/auth/password-reset/": {"post": {"operationId": "auth_password_reset_create"}},
@@ -295,6 +297,43 @@ E2E_EMAILS = (
 @extend_schema(exclude=True, tags=["API"])
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+def ensure_e2e_invitation_token(request):
+    """
+    E2E-only: Create an invited user and return invitation token for accept-invitation E2E.
+
+    POST /api/v1/test/ensure-e2e-invitation-token/
+    Only when ENVIRONMENT=test or DEBUG. For E2E test users. Returns {"token": "uuid"}.
+    No mocks; real DB writes.
+    """
+    import uuid
+    from datetime import timedelta
+    from django.utils import timezone
+
+    from hub.apps.users.models import User, UserStatus
+
+    if not (getattr(settings, "ENVIRONMENT", "") == "test" or settings.DEBUG):
+        raise NotFound("Resource not found")
+    if request.user.email not in E2E_EMAILS:
+        raise NotFound("Resource not found")
+    tenant = getattr(request.user, "tenant", None)
+    if not tenant:
+        return Response({"error": "no tenant"}, status=400)
+
+    email = f"e2e-invited-{uuid.uuid4().hex[:8]}@example.com"
+    token = uuid.uuid4()
+    User.objects.create_user(
+        email=email,
+        tenant=tenant,
+        status=UserStatus.INVITED,
+        invitation_token=token,
+        invitation_token_expires_at=timezone.now() + timedelta(days=7),
+    )
+    return Response({"token": str(token)}, status=200)
+
+
+@extend_schema(exclude=True, tags=["API"])
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def ensure_e2e_subscription(request):
     """
     Ensure E2E test user's tenant has active subscription and VERIFIED KYC.
@@ -314,3 +353,60 @@ def ensure_e2e_subscription(request):
 
     ensure_e2e_tenant_ready(request.user.tenant)
     return Response({"ok": True})
+
+
+@extend_schema(exclude=True, tags=["API"])
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def ensure_e2e_tenant_switch_setup(request):
+    """
+    E2E-only: Add current user to a second tenant for tenant-switch E2E.
+
+    POST /api/v1/test/ensure-e2e-tenant-switch-setup/
+    Creates a second tenant and UserTenantMembership. Returns {tenant_ids, secondary_tenant_id}.
+    Only when ENVIRONMENT=test or DEBUG. For E2E test users.
+    """
+    import uuid
+
+    from hub.apps.tenants.models import Tenant
+    from hub.apps.users.models import UserTenantMembership
+    from hub.apps.users.services import UserTenantMembershipService
+
+    if not (getattr(settings, "ENVIRONMENT", "") == "test" or settings.DEBUG):
+        raise NotFound("Resource not found")
+    if request.user.email not in E2E_EMAILS:
+        raise NotFound("Resource not found")
+    if not request.user.tenant_id:
+        return Response({"error": "no tenant"}, status=400)
+
+    primary = request.user.tenant
+    # Ensure primary tenant membership exists (E2E users may have tenant_id but no UserTenantMembership)
+    UserTenantMembershipService().add_membership(request.user, primary)
+    memberships = list(
+        UserTenantMembership.objects.filter(user=request.user)
+        .values_list("tenant_id", flat=True)
+        .order_by("created_at")
+    )
+    if len(memberships) >= 2:
+        secondary_id = next((t for t in memberships if str(t) != str(primary.id)), memberships[1])
+        return Response(
+            {
+                "tenant_ids": [str(primary.id), str(secondary_id)],
+                "secondary_tenant_id": str(secondary_id),
+            },
+            status=200,
+        )
+
+    uid = uuid.uuid4().hex[:8]
+    secondary = Tenant.objects.create(
+        name=f"E2E Switch Tenant {uid}",
+        slug=f"e2e-switch-{uid}",
+    )
+    UserTenantMembershipService().add_membership(request.user, secondary)
+    return Response(
+        {
+            "tenant_ids": [str(primary.id), str(secondary.id)],
+            "secondary_tenant_id": str(secondary.id),
+        },
+        status=200,
+    )

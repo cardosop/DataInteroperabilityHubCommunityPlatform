@@ -3,6 +3,9 @@ Marketplace Connector Test Utilities Module
 
 Provides centralized test utilities for marketplace connector tests (supports both CKAN and Swagger connectors).
 """
+from hub.apps.integrations.tests.utils.marketplace_fixtures import (
+    get_or_create_demo_ckan_federated_asset,
+)
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
     get_test_marketplace_config,
     create_test_connector,
@@ -17,6 +20,7 @@ from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
 )
 
 __all__ = [
+    "get_or_create_demo_ckan_federated_asset",
     "get_test_marketplace_config",
     "create_test_connector",
     "verify_marketplace_connection",

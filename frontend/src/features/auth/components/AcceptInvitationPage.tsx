@@ -56,8 +56,8 @@ export function AcceptInvitationPage() {
   };
 
   return (
-    <div className="accept-invitation-page">
-      <div className="accept-invitation-card">
+    <div className="accept-invitation-page" data-testid="accept-invitation-page">
+      <div className="accept-invitation-card" data-testid="accept-invitation-card">
         <h1>Accept Invitation</h1>
         <p className="accept-invitation-description">Set your password to activate your account.</p>
 
@@ -80,7 +80,7 @@ export function AcceptInvitationPage() {
                 {validationError}
               </p>
             )}
-            <form onSubmit={handleSubmit} className="accept-invitation-form">
+            <form onSubmit={handleSubmit} className="accept-invitation-form" data-testid="accept-invitation-form">
               <input type="hidden" name="token" value={tokenFromQuery} />
               <div className="form-group">
                 <label htmlFor="password">

@@ -41,13 +41,19 @@ class UserViewSetTest(TestCase):
             is_platform_admin=True
         )
         
-        # Create tenant admin user
+        # Create tenant admin user with TENANT_ADMIN role
         self.tenant_admin = User.objects.create_user(
             email="tenant_admin@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+        tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.create(user=self.tenant_admin, role=tenant_admin_role)
         
         # Create regular user
         self.regular_user = User.objects.create_user(
@@ -104,7 +110,7 @@ class UserViewSetTest(TestCase):
         self.assertEqual(response.data["email"], "user@example.com")
     
     def test_update_user(self):
-        """Test user update"""
+        """Test user update (TENANT_ADMIN can update)"""
         self.client.force_authenticate(user=self.tenant_admin)
         
         data = {
@@ -122,6 +128,77 @@ class UserViewSetTest(TestCase):
         # Verify update
         self.regular_user.refresh_from_db()
         self.assertEqual(self.regular_user.display_name, "Updated Name")
+
+    def test_update_user_requires_tenant_admin(self):
+        """Test regular user cannot update (403)"""
+        self.client.force_authenticate(user=self.regular_user)
+        
+        response = self.client.patch(
+            f"/api/v1/users/{self.tenant_admin.id}/",
+            {"display_name": "Hacked"},
+            format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn("error", response.data)
+
+    def test_update_user_with_roles(self):
+        """Test user update with role assignment"""
+        data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        self.client.force_authenticate(user=self.tenant_admin)
+        
+        response = self.client.put(
+            f"/api/v1/users/{self.regular_user.id}/",
+            {
+                "display_name": "Provider User",
+                "status": "ACTIVE",
+                "role_ids": [str(data_provider_role.id)],
+            },
+            format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("DATA_PROVIDER", response.data["roles"])
+        
+        self.regular_user.refresh_from_db()
+        role_names = [ur.role.name for ur in UserRole.objects.filter(user=self.regular_user)]
+        self.assertIn("DATA_PROVIDER", role_names)
+
+    def test_update_user_platform_admin_can_update(self):
+        """Test platform admin can update user (cross-tenant)"""
+        self.client.force_authenticate(user=self.platform_admin)
+
+        response = self.client.patch(
+            f"/api/v1/users/{self.regular_user.id}/",
+            {"display_name": "Updated by Platform Admin"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["display_name"], "Updated by Platform Admin")
+
+        self.regular_user.refresh_from_db()
+        self.assertEqual(self.regular_user.display_name, "Updated by Platform Admin")
+
+    def test_update_user_audit(self):
+        """Test user update creates audit event"""
+        from hub.apps.audit.models import AuditEvent
+
+        self.client.force_authenticate(user=self.tenant_admin)
+        
+        self.client.patch(
+            f"/api/v1/users/{self.regular_user.id}/",
+            {"display_name": "Audited Name"},
+            format="json"
+        )
+        
+        events = AuditEvent.objects.filter(
+            resource_type="USER",
+            resource_id=self.regular_user.id,
+        ).order_by("-timestamp")
+        self.assertGreaterEqual(events.count(), 1)
+        self.assertEqual(events.first().action, "USER_UPDATED")
     
     def test_delete_user_no_resources(self):
         """Test user deletion when user has no resources (hard delete)"""
@@ -152,26 +229,101 @@ class UserViewSetTest(TestCase):
         pass
     
     def test_invite_user(self):
-        """Test user invitation"""
+        """Test user invitation (new user creates user + membership)"""
         self.client.force_authenticate(user=self.tenant_admin)
-        
+
         data = {
             "email": "invited@example.com",
             "display_name": "Invited User"
         }
-        
+
         response = self.client.post("/api/v1/users/invite/", data, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["email"], "invited@example.com")
         self.assertEqual(response.data["status"], "INVITED")
-        
-        # Verify invitation token was created
+
+        # Verify user was created with invitation token
         user = User.objects.get(email="invited@example.com")
         self.assertIsNotNone(user.invitation_token)
         self.assertIsNotNone(user.invitation_token_expires_at)
         self.assertGreater(
             user.invitation_token_expires_at,
             timezone.now() + timedelta(days=6)
+        )
+
+        # Verify UserTenantMembership was created (29.65.4)
+        from hub.apps.users.models import UserTenantMembership
+        self.assertTrue(
+            UserTenantMembership.objects.filter(
+                user=user, tenant=self.tenant
+            ).exists(),
+            "Invite new user must create UserTenantMembership",
+        )
+
+    def test_invite_existing_user_adds_membership(self):
+        """Invite existing user (same email) adds UserTenantMembership instead of failing."""
+        uid = str(uuid.uuid4())[:8]
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {uid}",
+            slug=f"other-tenant-invite-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        existing_user = User.objects.create_user(
+            email="existing@example.com",
+            password="testpass123",
+            tenant=other_tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+        self.client.force_authenticate(user=self.tenant_admin)
+        response = self.client.post(
+            "/api/v1/users/invite/",
+            {"email": "existing@example.com", "display_name": "Existing User"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["email"], "existing@example.com")
+
+        from hub.apps.users.models import UserTenantMembership
+        self.assertTrue(
+            UserTenantMembership.objects.filter(
+                user=existing_user, tenant=self.tenant
+            ).exists(),
+            "Invite existing user must add UserTenantMembership",
+        )
+        existing_user.refresh_from_db()
+        self.assertEqual(existing_user.tenant_id, other_tenant.id, "Primary tenant unchanged")
+
+    def test_invite_new_user_creates_user_and_membership(self):
+        """Invite new user creates User + UserTenantMembership."""
+        data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        self.client.force_authenticate(user=self.tenant_admin)
+        response = self.client.post(
+            "/api/v1/users/invite/",
+            {
+                "email": "brandnew@example.com",
+                "display_name": "Brand New User",
+                "role_ids": [str(data_provider_role.id)],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        user = User.objects.get(email="brandnew@example.com")
+        self.assertEqual(user.status, UserStatus.INVITED)
+        self.assertEqual(user.tenant_id, self.tenant.id)
+
+        from hub.apps.users.models import UserTenantMembership
+        self.assertTrue(
+            UserTenantMembership.objects.filter(
+                user=user, tenant=self.tenant
+            ).exists(),
+            "Invite new user must create UserTenantMembership",
         )
     
     def test_tenant_scoping(self):

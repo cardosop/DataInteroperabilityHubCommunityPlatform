@@ -22,15 +22,15 @@
   max-width: 400px;
   padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-base);
 }
 
 .ratings-summary {
   margin-bottom: var(--spacing-lg);
   padding: var(--spacing-lg);
-  background: var(--color-bg-secondary);
-  border-radius: var(--border-radius);
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
 }
 
 .average-rating {
@@ -67,8 +67,8 @@
 .rating-form {
   margin-bottom: var(--spacing-lg);
   padding: var(--spacing-lg);
-  background: var(--color-bg-secondary);
-  border-radius: var(--border-radius);
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
 }
 
 .rating-form h3 {
@@ -104,7 +104,7 @@
   width: 100%;
   padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-base);
   font-family: inherit;
   margin-bottom: var(--spacing-md);
@@ -124,8 +124,8 @@
 
 .rating-item {
   padding: var(--spacing-md);
-  background: var(--color-bg-secondary);
-  border-radius: var(--border-radius);
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
   border: 1px solid var(--color-border);
 }
 
