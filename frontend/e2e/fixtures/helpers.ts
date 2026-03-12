@@ -1666,9 +1666,29 @@ export async function waitForAssetDropdownOptions(
 }
 
 /**
- * Assert that navigating to a detail page with non-existent ID shows appropriate error handling.
- * Accepts: error display, "not found" text, login redirect, 403, forbidden page, empty state,
- * no detail content (page loaded but no data), or still loading (slow API).
+ * Assert that navigating to a detail page with a non-existent ID shows a 404-style error.
+ *
+ * Valid outcomes:
+ *   1. `.error-display` is visible AND `.error-display-message` contains "not found" text  ← PRIMARY
+ *   2. Redirected to `/login` (user not authenticated)
+ *   3. Redirected to `/403` or forbidden page (user lacks permission)
+ *
+ * Invalid outcomes (will throw — these were previously accepted as false positives):
+ *   ❌ `noDetailContent` — ALWAYS true for nil UUID (detail never renders on 404), making the
+ *      original assertion trivially true regardless of what the page shows. REMOVED.
+ *   ❌ `stillLoading` — a stuck spinner means the API never responded; NOT a 404 boundary. REMOVED.
+ *   ❌ `hasEmptyState` — empty state means the resource type works but has no data; NOT a 404. REMOVED.
+ *   ❌ Generic `.error-display` without "not found" text — network errors and 500s must NOT pass. REMOVED.
+ *
+ * @param detailContentSelector  CSS selector(s) for the expected success content
+ *   (e.g. '.asset-detail-page'). Included in the initial waitForSelector ONLY as a timing aid
+ *   to let the page settle — it is NOT used as a fallback passing condition.
+ * @param waitAfterLoad  Extra ms after the page settles, to allow error UI to finish rendering.
+ * @param selectorTimeout  Timeout (ms) for the initial waitForSelector to reach any terminal state.
+ * @param apiUrlPattern  Optional substring of the API URL for the nil UUID resource
+ *   (e.g. '/assets/00000000-0000-0000-0000-000000000000'). When provided, the helper intercepts
+ *   the matching response and asserts its HTTP status is 404. Non-404 responses (500, network
+ *   error with no response) cause an explicit failure so infrastructure problems do not pass.
  */
 export async function assertNonExistentIdShowsError(
   page: Page,
@@ -1676,32 +1696,137 @@ export async function assertNonExistentIdShowsError(
     detailContentSelector?: string;
     waitAfterLoad?: number;
     selectorTimeout?: number;
+    apiUrlPattern?: string;
   } = {}
 ): Promise<void> {
-  const { detailContentSelector, waitAfterLoad = 8000, selectorTimeout = 60000 } = options;
-  await page.waitForSelector(
-    '.error-display, .loading-spinner, .loading-spinner-container, .empty-state, #email, [data-testid="forbidden-page"]' +
-      (detailContentSelector ? `, ${detailContentSelector}` : ''),
-    { timeout: selectorTimeout }
-  );
+  const { detailContentSelector, waitAfterLoad = 5000, selectorTimeout = 30000, apiUrlPattern } = options;
+
+  // If the caller provided the API URL pattern, intercept responses so we can verify
+  // the HTTP status at the network layer — not just by looking at DOM text.
+  let apiResponseStatus: number | null = null;
+  if (apiUrlPattern) {
+    page.on('response', (resp) => {
+      if (resp.url().includes(apiUrlPattern)) {
+        apiResponseStatus = resp.status();
+      }
+    });
+  }
+
+  // Wait for the page to reach a terminal state: error display, login redirect, or detail content.
+  // The detail content selector is included only to avoid a blank-page timeout situation —
+  // if the page somehow rendered the content we do NOT accept it as passing (see below).
+  const waitSelector =
+    '.error-display, .error-display-title, #email, [data-testid="forbidden-page"]' +
+    (detailContentSelector ? `, ${detailContentSelector}` : '');
+
+  await page.waitForSelector(waitSelector, { timeout: selectorTimeout }).catch(() => {
+    throw new Error(
+      `assertNonExistentIdShowsError: page did not reach a terminal state within ${selectorTimeout}ms.\n` +
+        `Expected .error-display, a login redirect, or detail content.\n` +
+        `URL: ${page.url()}\n` +
+        `Selector waited for: ${waitSelector}`
+    );
+  });
+
+  // Allow the error UI to finish rendering (e.g. async error message population).
   await page.waitForTimeout(waitAfterLoad);
 
-  const hasError =
-    (await page.locator('.error-display').count()) > 0 ||
-    (await page.locator('text=/not found|could not be found|failed to load|404|status code 404|No .* matches the given query|Request failed/i').count()) > 0;
-  const onLogin = page.url().includes('/login');
-  const on403 = page.url().includes('/403');
+  const url = page.url();
+  const onLogin = url.includes('/login');
+  const on403 = url.includes('/403');
   const onForbidden = (await page.locator('[data-testid="forbidden-page"]').count()) > 0;
-  const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
-  const stillLoading =
-    (await page.locator('.loading-spinner, .loading-spinner-container').count()) > 0;
-  const noDetailContent = detailContentSelector
-    ? (await page.locator(detailContentSelector).count()) === 0
-    : true;
 
-  expect(
-    hasError || onLogin || on403 || onForbidden || hasEmptyState || stillLoading || noDetailContent
-  ).toBe(true);
+  // Login and 403/forbidden redirects are acceptable outcomes for role-gated access.
+  if (onLogin || on403 || onForbidden) return;
+
+  // ── Check what the page actually rendered ────────────────────────────────
+
+  const hasErrorDisplay =
+    (await page.locator('.error-display').count()) > 0 ||
+    (await page.locator('.error-display-title').count()) > 0;
+
+  // Scope to .error-display-message (the <p> under the title) — NOT the full page.
+  // "failed to load" intentionally omitted: it appears in the hardcoded <h3> title for
+  // EVERY error type (404, 500, network down), making it useless as a discriminator.
+  // Only the message element contains text that is specific to 404 responses.
+  const hasNotFoundText =
+    (await page
+      .locator('.error-display-message')
+      .filter({
+        hasText: /not found|could not be found|does not exist|404|No .* matches the given query|Request failed with status 404/i,
+      })
+      .count()) > 0;
+
+  // ── Specific diagnostic messages for each failure mode ────────────────────
+
+  if (!hasErrorDisplay) {
+    // Check what IS on the page to give an actionable error
+    const hasStillLoading =
+      (await page.locator('.loading-spinner, .loading-spinner-container').count()) > 0;
+    const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
+    const hasDetailContent = detailContentSelector
+      ? (await page.locator(detailContentSelector).count()) > 0
+      : false;
+
+    if (hasDetailContent) {
+      throw new Error(
+        `assertNonExistentIdShowsError: the detail page rendered SUCCESSFULLY for a nil UUID.\n` +
+          `This means the backend returned data for a non-existent resource — a data integrity bug.\n` +
+          `URL: ${url}\n` +
+          `Detail selector matched: ${detailContentSelector}`
+      );
+    }
+    if (hasStillLoading) {
+      throw new Error(
+        `assertNonExistentIdShowsError: page is still loading (spinner visible) after ${waitAfterLoad}ms.\n` +
+          `The API never responded or is hanging. A stuck spinner is NOT a passing 404 test.\n` +
+          `URL: ${url}`
+      );
+    }
+    if (hasEmptyState) {
+      throw new Error(
+        `assertNonExistentIdShowsError: page shows empty state for nil UUID.\n` +
+          `Empty state means the resource type works but has no data — NOT a 404 error boundary.\n` +
+          `URL: ${url}`
+      );
+    }
+    throw new Error(
+      `assertNonExistentIdShowsError: no .error-display visible for nil UUID.\n` +
+        `Expected a "not found" error to be shown.\n` +
+        `URL: ${url}`
+    );
+  }
+
+  // Error display IS shown — verify it is a "not found" type, not a network/500 error.
+  // A network error or 500 server error would also show .error-display, but those indicate
+  // infrastructure problems, not a correctly handled 404. They must NOT make this test pass.
+  if (!hasNotFoundText) {
+    const errorText = await page
+      .locator('.error-display, .error-display-title')
+      .first()
+      .textContent()
+      .catch(() => '');
+    throw new Error(
+      `assertNonExistentIdShowsError: .error-display is visible but the error text does NOT indicate "not found".\n` +
+        `Actual error: "${errorText?.slice(0, 300) ?? 'N/A'}"\n` +
+        `This may be a network error, 500 server error, or auth failure — NOT a valid 404 boundary.\n` +
+        `URL: ${url}`
+    );
+  }
+
+  // Network-layer verification: if the caller provided an apiUrlPattern and we captured
+  // a response, assert it was actually a 404. Non-404 statuses (500, 503, etc.) mean the
+  // test passed only because of UI text — not because the API correctly returned "not found".
+  if (apiUrlPattern && apiResponseStatus !== null && apiResponseStatus !== 404) {
+    throw new Error(
+      `assertNonExistentIdShowsError: API returned HTTP ${apiResponseStatus} (expected 404) for nil UUID.\n` +
+        `Status ${apiResponseStatus} indicates ${apiResponseStatus >= 500 ? 'a server error' : 'an unexpected response'}, ` +
+        `not a correctly handled 404 boundary.\n` +
+        `URL: ${url}`
+    );
+  }
+
+  // ✅ Both conditions met: error display is shown AND it contains "not found" text.
 }
 
 /**
@@ -1837,6 +1962,146 @@ export async function ensureAssetActivationPrerequisites(
  * Test dimension: Edge case helper
  * Verifies boundary conditions
  */
+// ─── Route-smoke assertion helpers ───────────────────────────────────────────
+// Used by batch-2 route specs to eliminate false positives.
+
+/**
+ * Assert that a list page loaded successfully.
+ *
+ * - Throws if `.error-display` is visible — a broken/errored page is NEVER a success.
+ * - Waits for the specific list-page component or `.empty-state` to become visible.
+ *   An empty state is a valid success: the backend returned 2xx with zero results.
+ *
+ * NOTE: Do NOT include `.error-display` in `listPageSelector`. If you need to allow
+ * error states, use `assertSuccessfulLoad` with `rejectErrorDisplay: false` instead.
+ *
+ * @param listPageSelector Comma-separated CSS selectors for the list page + empty state.
+ *   Example: '.order-list-page, .empty-state'
+ */
+export async function assertListPageLoads(
+  page: Page,
+  listPageSelector: string,
+  options: { timeout?: number } = {}
+): Promise<void> {
+  const { timeout = 15000 } = options;
+
+  // Race-based detection: wait for EITHER the expected success content OR an error to appear.
+  // This eliminates the previous 800ms static window where a slow-responding API error
+  // would be missed by an early check, then produce a misleading "element not found" timeout.
+  //
+  // By racing both selectors together, the waitFor resolves as soon as the page reaches
+  // any terminal state — whether that's a valid list/empty-state or an error display.
+  const errorSelector = '.error-display, .error-display-title';
+  const combinedSelector = `${listPageSelector}, ${errorSelector}`;
+
+  await page
+    .locator(combinedSelector)
+    .first()
+    .waitFor({ state: 'visible', timeout })
+    .catch(() => {
+      // Neither success content nor error appeared within the timeout.
+      // This typically means the page is still loading (spinner only) or rendered nothing.
+      throw new Error(
+        `assertListPageLoads: neither success content nor an error display appeared within ${timeout}ms.\n` +
+          `Expected one of: ${listPageSelector}\n` +
+          `URL: ${page.url()}\n` +
+          `Possible cause: API is unresponsive, route is missing, or CSS class name changed.`
+      );
+    });
+
+  // Check which branch won the race: error state or success state?
+  const errorCount =
+    (await page.locator('.error-display').count()) +
+    (await page.locator('.error-display-title').count());
+  if (errorCount > 0) {
+    const errText = await page
+      .locator('.error-display, .error-display-title')
+      .first()
+      .textContent()
+      .catch(() => '');
+    throw new Error(
+      `assertListPageLoads: page shows error state — NOT an acceptable success outcome.\n` +
+        `Error content: "${errText?.slice(0, 300) ?? 'N/A'}"\n` +
+        `URL: ${page.url()}`
+    );
+  }
+
+  // Success branch: the list/empty-state is already visible (we just raced it).
+  // Final explicit assertion keeps Playwright's built-in retry and produces a clean pass.
+  await expect(page.locator(listPageSelector).first()).toBeVisible({ timeout: 3000 });
+}
+
+/**
+ * Assert that a capability-gated or role-gated page loaded correctly.
+ *
+ * Valid outcomes:
+ *   1. The specific feature page rendered (capability enabled, user has role)
+ *   2. `.unavailable-page` rendered (capability disabled)
+ *   3. URL redirected to `/403` or `/login`
+ *
+ * Invalid outcomes (will throw):
+ *   - `.error-display` is visible — this is a service crash, not a gating outcome
+ *   - `.app-main` alone — the generic app shell tells us nothing about page content
+ *
+ * @param featurePageSelector Comma-separated selectors for the feature page component.
+ *   Do NOT include `.app-main` or `.error-display`.
+ *   Example: '.developer-page, .unavailable-page'
+ */
+export async function assertCapabilityGatedPageLoads(
+  page: Page,
+  featurePageSelector: string,
+  options: { timeout?: number } = {}
+): Promise<void> {
+  const { timeout = 15000 } = options;
+  const url = page.url();
+
+  // Redirect to login or 403 is always an acceptable outcome for gated/role-gated routes
+  if (url.includes('/login') || url.includes('/403')) return;
+
+  // Race-based detection: wait for EITHER the expected feature content OR an error to appear.
+  // Eliminates the previous static 800ms window that missed slow-responding API errors and
+  // produced misleading "element not found" timeouts instead of actionable error messages.
+  //
+  // The featurePageSelector passed by callers must include '.unavailable-page' so that
+  // capability-disabled redirects (CapabilityRoute → /unavailable) are also captured.
+  const errorSelector = '.error-display, .error-display-title';
+  const combinedSelector = `${featurePageSelector}, ${errorSelector}`;
+
+  await page
+    .locator(combinedSelector)
+    .first()
+    .waitFor({ state: 'visible', timeout })
+    .catch(() => {
+      throw new Error(
+        `assertCapabilityGatedPageLoads: no expected content appeared within ${timeout}ms.\n` +
+          `Expected one of: ${featurePageSelector}\n` +
+          `URL: ${page.url()}\n` +
+          `Possible cause: capability is loading indefinitely, route is missing, or CSS class name changed.`
+      );
+    });
+
+  // Check which branch won the race: crash/error state or valid feature/gating state?
+  const errorCount =
+    (await page.locator('.error-display').count()) +
+    (await page.locator('.error-display-title').count());
+  if (errorCount > 0) {
+    const errText = await page
+      .locator('.error-display, .error-display-title')
+      .first()
+      .textContent()
+      .catch(() => '');
+    throw new Error(
+      `assertCapabilityGatedPageLoads: page shows error state (service crash, NOT a gating outcome).\n` +
+        `Error content: "${errText?.slice(0, 300) ?? 'N/A'}"\n` +
+        `URL: ${page.url()}`
+    );
+  }
+
+  // Success branch: the feature page or unavailable page is already visible.
+  // Final explicit assertion for a clean pass record in the Playwright report.
+  await expect(page.locator(featurePageSelector).first()).toBeVisible({ timeout: 3000 });
+}
+
 export async function verifyEdgeCase(
   page: Page,
   testCase: {
@@ -1853,4 +2118,498 @@ export async function verifyEdgeCase(
   await testCase.verify();
 
   console.log(`✅ Edge case passed: ${testCase.name}`);
+}
+
+// ─── UI Workflow Interaction Helpers ────────────────────────────────────────
+// These helpers perform real UI interactions (clicks, form fills, navigation)
+// and return observable outcomes. They do NOT mock or stub any backend calls.
+
+/**
+ * Click the tenant switcher button in the header and select a tenant by name.
+ * Sets up a request listener to capture the X-Tenant-Id header sent by subsequent requests.
+ * Returns the new tenant name displayed in the header after the switch.
+ *
+ * Throws if the tenant switcher button is not visible or the requested tenant is not in the list.
+ */
+export async function switchTenantViaUI(
+  page: Page,
+  tenantName: string
+): Promise<{ newTenantName: string; switchRequestUrl: string }> {
+  // Find the tenant switcher button in the header
+  const switcherButton = page.locator(
+    '[data-testid="tenant-switcher"], .tenant-button, button[aria-label="Switch tenant"]'
+  );
+  await expect(switcherButton.first()).toBeVisible({ timeout: 10000 });
+
+  // Open the dropdown
+  await switcherButton.first().click();
+
+  // Wait for the dropdown to open
+  const dropdown = page.locator(
+    '.tenant-dropdown, [data-testid="tenant-dropdown"], [role="menu"]'
+  );
+  await expect(dropdown.first()).toBeVisible({ timeout: 8000 });
+
+  // Wait for tenant list to load
+  await page.waitForFunction(
+    (name) => {
+      const menu = document.querySelector('.tenant-dropdown, [data-testid="tenant-dropdown"], [role="menu"]');
+      return menu && menu.textContent?.includes(name);
+    },
+    tenantName,
+    { timeout: 15000 }
+  );
+
+  // Click the target tenant option
+  const tenantOption = dropdown.first().locator(
+    `button:has-text("${tenantName}"), [role="menuitem"]:has-text("${tenantName}")`
+  );
+  await expect(tenantOption.first()).toBeVisible({ timeout: 5000 });
+
+  // Capture the switch-tenant request URL
+  let switchRequestUrl = '';
+  const switchResponse = page.waitForResponse(
+    (resp) => resp.url().includes('/auth/switch-tenant/') && resp.request().method() === 'POST',
+    { timeout: 15000 }
+  );
+  await tenantOption.first().click();
+
+  const switchResp = await switchResponse;
+  switchRequestUrl = switchResp.url();
+  expect(switchResp.status()).toBe(200);
+
+  // Wait for header to reflect the new tenant name
+  await page.waitForFunction(
+    (name) => {
+      const switcher = document.querySelector(
+        '[data-testid="tenant-switcher"], .tenant-button, .tenant-static'
+      );
+      return switcher && switcher.textContent?.includes(name);
+    },
+    tenantName,
+    { timeout: 10000 }
+  ).catch(() => null); // non-fatal — some UIs refresh the page instead
+
+  // Read the displayed tenant name
+  const displayedName =
+    (await page.locator('[data-testid="tenant-switcher"], .tenant-button, .tenant-static')
+      .first()
+      .textContent()
+      .catch(() => tenantName)) ?? tenantName;
+
+  return { newTenantName: displayedName.trim(), switchRequestUrl };
+}
+
+/**
+ * Trigger a DQ run via the modal on the /dq list page.
+ *
+ * The DQ create form lives in a modal dialog opened by the "Create DQ run" button on the
+ * DQRunListPage — there is no /dq/runs/new route. This helper:
+ *   1. Navigates to /dq and waits for the list page to fully render
+ *   2. Clicks the modal trigger button (.dq-create-run-btn or [data-testid="btn-create-dq-run"])
+ *   3. Selects the asset via the AssetPicker (data-testid="dq-create-asset-picker")
+ *      NOTE: Only asset is set; dataset picker is intentionally skipped because:
+ *        a) DQ run only requires at least one of asset/dataset/file
+ *        b) After asset selection the dataset picker's form group shows a loading spinner
+ *           and a "Browse assets" overlay link that intercepts clicks until settled
+ *   4. Submits and intercepts POST /dq/runs/
+ *   5. Returns { runId, httpStatus }
+ *
+ * Throws on any failure — callers decide whether to surface or annotate.
+ * Does NOT wait for the run to complete — use waitForDQRunViaApi for that.
+ */
+export async function triggerDQRunViaUI(
+  page: Page,
+  assetId: string,
+  options?: { datasetId?: string }
+): Promise<{ runId: string; httpStatus: number }> {
+  await page.goto('/dq');
+  await page.waitForLoadState('domcontentloaded');
+
+  if (page.url().includes('/login')) {
+    throw new Error('triggerDQRunViaUI: redirected to login — user is not authenticated');
+  }
+  if (page.url().includes('/403')) {
+    throw new Error('triggerDQRunViaUI: user does not have permission to access DQ runs');
+  }
+
+  // Wait for the list page to settle (loading spinner → list or empty state)
+  await page.waitForSelector(
+    '.dq-run-list-page, .loading-spinner-container',
+    { timeout: 30000 }
+  );
+  await page.waitForSelector(
+    '.dq-run-list-page',
+    { timeout: 30000 }
+  );
+
+  // Click the "Create DQ run" modal trigger button (stable data-testid preferred)
+  const triggerBtn = page
+    .locator('[data-testid="btn-create-dq-run"], button.dq-create-run-btn')
+    .first();
+  await triggerBtn.waitFor({ state: 'visible', timeout: 10000 });
+  await triggerBtn.click();
+
+  // Wait for modal dialog
+  const modal = page.locator('[role="dialog"][aria-labelledby="dq-create-modal-title"]');
+  await modal.waitFor({ state: 'visible', timeout: 10000 });
+
+  // Select asset via AssetPicker (data-testid="dq-create-asset-picker")
+  const assetPickerContainer = page.locator('[data-testid="dq-create-asset-picker"]');
+  await assetPickerContainer.waitFor({ state: 'visible', timeout: 10000 });
+
+  // Wait for any spinner inside the asset picker form group to disappear before clicking
+  await page
+    .locator('[data-testid="dq-create-asset-picker"] .loading-spinner')
+    .first()
+    .waitFor({ state: 'detached', timeout: 10000 })
+    .catch(() => null);
+
+  // Type the first 8 chars of the asset id to filter picker results.
+  // Then wait for the listbox to appear and click the first suggestion.
+  // We click the FIRST available option regardless of text match — we only care that
+  // an asset is selected (any asset satisfies the DQ run requirement).
+  const assetPickerInput = assetPickerContainer.locator('input').first();
+  if ((await assetPickerInput.count()) > 0) {
+    await assetPickerInput.click();
+    await assetPickerInput.fill(assetId.slice(0, 8));
+    // Wait for the listbox to appear (debounce + API fetch)
+    const listbox = page.locator('[role="listbox"]').first();
+    await listbox.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+    // Click the first option in the listbox
+    const firstOption = page.locator('[role="listbox"] [role="option"]').first();
+    if ((await firstOption.count()) > 0) {
+      await firstOption.click();
+    } else {
+      // Fallback: close dropdown and try the picker without search text
+      await assetPickerInput.fill('');
+      await page.waitForTimeout(600);
+      const anyOption = page.locator('[role="listbox"] [role="option"]').first();
+      if ((await anyOption.count()) > 0) {
+        await anyOption.click();
+      }
+    }
+    // After selecting, wait for the AssetPicker to settle before submitting
+    await page.waitForTimeout(300);
+  }
+
+  // NOTE: Dataset picker is intentionally not filled here.
+  // The asset picker's "Browse assets" link overlaps the dataset picker form group and
+  // intercepts pointer events after asset selection until the next render cycle.
+  // A DQ run only requires at least one of asset/dataset/file, so asset alone is sufficient.
+  // The `options?.datasetId` parameter is kept for API compatibility but not used in UI flow.
+
+  // Intercept POST /dq/runs/ before clicking submit.
+  // Increased to 60s: modal submit + backend DQ run creation can be slow under parallel load.
+  const responsePromise = page.waitForResponse(
+    (resp) =>
+      resp.url().includes('/dq/runs/') && resp.request().method() === 'POST',
+    { timeout: 60000 }
+  );
+
+  // Submit the modal form; wait for button to be enabled (form validation passes)
+  const submitBtn = modal.locator('button[type="submit"]').first();
+  await submitBtn.waitFor({ state: 'visible', timeout: 5000 });
+  // Verify the button is enabled (form requires at least one of asset/dataset/file)
+  const isDisabled = await submitBtn.isDisabled().catch(() => false);
+  if (isDisabled) {
+    throw new Error(
+      'triggerDQRunViaUI: submit button is disabled — asset selection may have failed. ' +
+      'Ensure the asset picker listbox appeared and an option was clicked.'
+    );
+  }
+  await submitBtn.click();
+
+  const resp = await responsePromise;
+  const data = (await resp.json().catch(() => ({}))) as { id?: string; run_id?: string };
+  const runId = data.id || data.run_id;
+  if (!runId) {
+    const body = JSON.stringify(data).slice(0, 200);
+    throw new Error(`triggerDQRunViaUI: POST /dq/runs/ response missing run id. Body: ${body}`);
+  }
+  return { runId, httpStatus: resp.status() };
+}
+
+/**
+ * Trigger a compliance scan via the modal on the /compliance list page.
+ *
+ * The compliance create form is a modal dialog opened by the "Create compliance run" button
+ * on the ComplianceRunListPage — there is no /compliance/runs/new route. This helper:
+ *   1. Navigates to /compliance
+ *   2. Clicks the modal trigger button (.compliance-create-run-btn)
+ *   3. Selects the asset via AssetPicker (data-testid="compliance-create-asset-picker")
+ *   4. Optionally selects a dataset/file
+ *   5. Submits and intercepts POST /compliance/runs/
+ *   6. Returns { runId, httpStatus }
+ *
+ * Throws on any failure — callers decide whether to surface or annotate.
+ */
+export async function triggerComplianceScanViaUI(
+  page: Page,
+  assetId: string,
+  options?: { datasetId?: string; fileId?: string }
+): Promise<{ runId: string; httpStatus: number }> {
+  await page.goto('/compliance');
+  await page.waitForLoadState('domcontentloaded');
+
+  if (page.url().includes('/login')) {
+    throw new Error('triggerComplianceScanViaUI: redirected to login — user is not authenticated');
+  }
+  if (page.url().includes('/403')) {
+    throw new Error('triggerComplianceScanViaUI: user does not have permission to access compliance runs');
+  }
+
+  // Wait for list page to settle
+  await page.waitForSelector(
+    '.compliance-run-list-page, .loading-spinner-container',
+    { timeout: 30000 }
+  );
+  await page.waitForSelector(
+    '.compliance-run-list-page',
+    { timeout: 30000 }
+  );
+
+  // Click the modal trigger (stable data-testid preferred)
+  const triggerBtn = page
+    .locator('[data-testid="btn-create-compliance-run"], button.compliance-create-run-btn')
+    .first();
+  await triggerBtn.waitFor({ state: 'visible', timeout: 10000 });
+  await triggerBtn.click();
+
+  // Wait for modal dialog
+  const modal = page.locator('[role="dialog"][aria-labelledby="compliance-create-modal-title"]');
+  await modal.waitFor({ state: 'visible', timeout: 10000 });
+
+  // Select asset via AssetPicker (data-testid="compliance-create-asset-picker").
+  // Same pattern as DQ: wait for listbox to appear, click first option.
+  // Dataset picker intentionally skipped (same overlay interception issue as DQ modal).
+  const assetPickerContainer = page.locator('[data-testid="compliance-create-asset-picker"]');
+  await assetPickerContainer.waitFor({ state: 'visible', timeout: 10000 });
+
+  const assetPickerInput = assetPickerContainer.locator('input').first();
+  if ((await assetPickerInput.count()) > 0) {
+    await assetPickerInput.click();
+    await assetPickerInput.fill(assetId.slice(0, 8));
+    // Wait for the listbox to appear (debounce + API fetch)
+    const listbox = page.locator('[role="listbox"]').first();
+    await listbox.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+    // Click the first option in the listbox
+    const firstOption = page.locator('[role="listbox"] [role="option"]').first();
+    if ((await firstOption.count()) > 0) {
+      await firstOption.click();
+    } else {
+      // Fallback: clear input and try without search text
+      await assetPickerInput.fill('');
+      await page.waitForTimeout(600);
+      const anyOption = page.locator('[role="listbox"] [role="option"]').first();
+      if ((await anyOption.count()) > 0) {
+        await anyOption.click();
+      }
+    }
+    await page.waitForTimeout(300);
+  }
+
+  // NOTE: Dataset picker skipped — same overlay interception issue as DQ modal.
+  // Compliance run only requires at least one of asset/dataset/file.
+
+  // Intercept POST /compliance/runs/ before clicking submit.
+  // Increased to 60s for backend load tolerance.
+  const responsePromise = page.waitForResponse(
+    (resp) =>
+      resp.url().includes('/compliance/runs/') && resp.request().method() === 'POST',
+    { timeout: 60000 }
+  );
+
+  const submitBtn = modal.locator('button[type="submit"]').first();
+  await submitBtn.waitFor({ state: 'visible', timeout: 5000 });
+  const isDisabled = await submitBtn.isDisabled().catch(() => false);
+  if (isDisabled) {
+    throw new Error(
+      'triggerComplianceScanViaUI: submit button is disabled — asset selection may have failed.'
+    );
+  }
+  await submitBtn.click();
+
+  const resp = await responsePromise;
+  const data = (await resp.json().catch(() => ({}))) as { id?: string; run_id?: string };
+  const runId = data.id || data.run_id;
+  if (!runId) {
+    const body = JSON.stringify(data).slice(0, 200);
+    throw new Error(`triggerComplianceScanViaUI: POST /compliance/runs/ response missing run id. Body: ${body}`);
+  }
+  return { runId, httpStatus: resp.status() };
+}
+
+/**
+ * Navigate to the ODPS upload page, upload a JSON file at filePath, and submit.
+ * Intercepts POST /contracts/ and returns { contractId }.
+ * Throws if the HTTP response status is not 2xx.
+ */
+export async function uploadODPSContractViaUI(
+  page: Page,
+  filePath: string
+): Promise<{ contractId: string }> {
+  const routes = ['/odps/upload', '/contracts/odps-upload', '/odps/new'];
+
+  for (const route of routes) {
+    await page.goto(route);
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(1500);
+
+    if (page.url().includes('/403') || page.url().includes('/login')) {
+      throw new Error('uploadODPSContractViaUI: permission denied');
+    }
+
+    const fileInput = page.locator('input[type="file"]');
+    if ((await fileInput.count()) === 0) continue;
+
+    await fileInput.first().setInputFiles(filePath);
+    await page.waitForTimeout(1000); // allow form to process the file
+
+    const responsePromise = page.waitForResponse(
+      (resp) =>
+        (resp.url().includes('/contracts/') || resp.url().includes('/odps/')) &&
+        resp.request().method() === 'POST',
+      { timeout: 30000 }
+    );
+
+    const submitBtn = page.locator(
+      'button[type="submit"]:has-text("Create"), button:has-text("Upload"), button:has-text("Create ODPS")'
+    );
+    if ((await submitBtn.count()) === 0) continue;
+
+    await submitBtn.first().click();
+    const resp = await responsePromise;
+
+    if (resp.status() < 200 || resp.status() >= 300) {
+      const body = await resp.text().catch(() => '');
+      throw new Error(`uploadODPSContractViaUI: POST failed with ${resp.status()}: ${body}`);
+    }
+
+    const data = (await resp.json().catch(() => ({}))) as { id?: string };
+    if (!data.id) throw new Error('uploadODPSContractViaUI: response missing contract id');
+    return { contractId: data.id };
+  }
+
+  throw new Error('uploadODPSContractViaUI: could not find ODPS upload form at any known route');
+}
+
+/**
+ * Navigate to an admin user edit page, change role checkboxes, and save.
+ * Intercepts PATCH /admin/users/{userId}/ and returns { httpStatus, responseBody }.
+ */
+export async function changeUserRolesViaAdminUI(
+  page: Page,
+  userId: string,
+  rolesToAdd: string[],
+  rolesToRemove: string[]
+): Promise<{ httpStatus: number; responseBody: Record<string, unknown> }> {
+  await page.goto(`/admin/users/${userId}/edit`);
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForTimeout(1500);
+
+  if (page.url().includes('/403') || page.url().includes('/login')) {
+    throw new Error('changeUserRolesViaAdminUI: permission denied');
+  }
+
+  await page.waitForSelector('.user-edit-page, .user-edit-form, form', { timeout: 15000 });
+
+  // Add roles
+  for (const role of rolesToAdd) {
+    const checkbox = page.locator(
+      `input[type="checkbox"][value="${role}"], input[type="checkbox"][name*="${role}"]`
+    );
+    if ((await checkbox.count()) > 0 && !(await checkbox.first().isChecked())) {
+      await checkbox.first().check();
+    }
+  }
+
+  // Remove roles
+  for (const role of rolesToRemove) {
+    const checkbox = page.locator(
+      `input[type="checkbox"][value="${role}"], input[type="checkbox"][name*="${role}"]`
+    );
+    if ((await checkbox.count()) > 0 && (await checkbox.first().isChecked())) {
+      await checkbox.first().uncheck();
+    }
+  }
+
+  const responsePromise = page.waitForResponse(
+    (resp) =>
+      (resp.url().includes(`/admin/users/${userId}`) || resp.url().includes(`/users/${userId}`)) &&
+      (resp.request().method() === 'PATCH' || resp.request().method() === 'PUT'),
+    { timeout: 30000 }
+  );
+
+  const saveBtn = page.locator(
+    'button[type="submit"]:has-text("Save"), button:has-text("Update"), button:has-text("Save changes")'
+  );
+  await expect(saveBtn.first()).toBeVisible({ timeout: 10000 });
+  await saveBtn.first().click();
+
+  const resp = await responsePromise;
+  const responseBody = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
+  return { httpStatus: resp.status(), responseBody };
+}
+
+/**
+ * Navigate to governance access requests page, find a pending request, and click Approve.
+ * Intercepts the approval PATCH/POST and returns { requestId, httpStatus }.
+ * Returns null (and does NOT throw) if no pending request is found.
+ */
+export async function approveAccessRequestViaUI(
+  page: Page
+): Promise<{ requestId: string; httpStatus: number } | null> {
+  await page.goto('/governance/access-requests');
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForTimeout(2000);
+
+  if (page.url().includes('/403') || page.url().includes('/login')) {
+    return null; // Permission-gated — caller should decide whether to skip
+  }
+
+  await page.waitForSelector(
+    '.governance-access-requests-page, .access-requests-list, .empty-state, .error-display',
+    { timeout: 15000 }
+  );
+
+  // Find a pending request row
+  const pendingRow = page.locator(
+    'tr:has-text("PENDING"), tr:has-text("Pending"), [data-status="PENDING"]'
+  ).first();
+  if ((await pendingRow.count()) === 0) return null;
+
+  // Extract the request ID from the row's data attribute or link
+  const rowLink = pendingRow.locator('a[href*="/governance/access-requests/"]').first();
+  let requestId = '';
+  if ((await rowLink.count()) > 0) {
+    const href = (await rowLink.getAttribute('href')) ?? '';
+    requestId = href.split('/').filter(Boolean).pop() ?? '';
+  }
+
+  const approveBtn = pendingRow.locator(
+    'button:has-text("Approve"), [data-action="approve"]'
+  ).first();
+  if ((await approveBtn.count()) === 0) return null;
+
+  const responsePromise = page.waitForResponse(
+    (resp) =>
+      resp.url().includes('/governance/access-requests/') &&
+      (resp.request().method() === 'PATCH' || resp.request().method() === 'POST'),
+    { timeout: 15000 }
+  );
+
+  await approveBtn.click();
+
+  // Handle confirmation dialog
+  const confirmDialog = page.locator('[role="dialog"], .confirm-dialog');
+  if ((await confirmDialog.count()) > 0) {
+    const confirmBtn = confirmDialog.first().locator(
+      'button:has-text("Confirm"), button:has-text("Yes"), button:has-text("Approve")'
+    );
+    if ((await confirmBtn.count()) > 0) await confirmBtn.first().click();
+  }
+
+  const resp = await responsePromise;
+  return { requestId, httpStatus: resp.status() };
 }

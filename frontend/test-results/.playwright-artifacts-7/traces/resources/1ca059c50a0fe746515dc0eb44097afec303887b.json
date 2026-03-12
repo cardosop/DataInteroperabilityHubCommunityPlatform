@@ -1,1 +1,0 @@
-{"error":{"code":"NOT_FOUND","message":"No Contract matches the given query.","http_status":404,"request_id":"871ba502-7a4c-4038-82af-235e25296a37","timestamp":"2026-03-11T14:59:05.489215+00:00","details":{"field_errors":[{"field":"detail","message":"No Contract matches the given query.","code":"VALIDATION_ERROR"}]}}}

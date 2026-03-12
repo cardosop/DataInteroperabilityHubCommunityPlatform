@@ -64,20 +64,31 @@ test.describe('JOURNEY-DE-010: Configure Connector for Data Source', () => {
   });
 
   test.describe('Edge', () => {
-    test('integrations connections list loads', async ({ page }) => {
+    test('connection create page renders form fields or unavailable state', async ({ page }) => {
+      // The Success test verifies the connections list and the create page load.
+      // This Edge test verifies that the create form renders the expected input fields
+      // (connector type selector, name field) when the page loads successfully, distinguishing
+      // it from a bare page-load smoke test.
       const testUser = await getTestUser();
       await loginUser(page, testUser);
-      await page.goto('/integrations/connections');
+      await page.goto('/integrations/connections/create');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.connection-list-page, .marketplace-connection-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 120000 }
+        '.marketplace-connection-create-page, .connection-create-page, .loading-spinner-container, .error-display, #email',
+        { timeout: 45000 }
       );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
       }
-      expect(page.url()).toContain('/integrations/connections');
+      expect(page.url()).toContain('/integrations/connections/create');
+
+      // Verify at least one form input or connector-type selector exists on the create page
+      const hasFormFields =
+        (await page.locator('input, select, [role="combobox"]').count()) > 0 ||
+        (await page.locator('.marketplace-connection-create-form').count()) > 0 ||
+        (await page.locator('.error-display').count()) > 0; // API unavailable is also valid
+      expect(hasFormFields).toBe(true);
     });
   });
 });

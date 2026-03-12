@@ -172,12 +172,15 @@ test.describe('Asset Activation Flow', () => {
       );
     }
 
-    // Match activate API: /api/v1/assets/{id}/activate/ (may be proxied)
+    // Match activate API: /api/v1/assets/{id}/activate/ (may be proxied).
+    // Increased timeout to 180s: visible project (slowMo=400ms) + parallel backend load
+    // caused the previous 120s budget to expire before the activation response arrived.
     const activateUrlMatch = (url: string) =>
       url.includes('/assets/') && url.includes('/activate/');
+    const activateTimeoutMs = 240000; // 4 min: backend activation (DQ, compliance, etc.) under parallel E2E load
     const responsePromise = page.waitForResponse(
       (resp) => activateUrlMatch(resp.url()),
-      { timeout: 120000 }
+      { timeout: activateTimeoutMs }
     );
     await activateButton.first().click();
 
@@ -193,7 +196,7 @@ test.describe('Asset Activation Flow', () => {
         ) ?? false;
       const hasError = (await page.locator('.error-display').count()) > 0;
       throw new Error(
-        `Activate API did not respond within 120s. UI: ${stillDraft ? 'DRAFT' : 'unknown'}, errorDisplay: ${hasError}. ` +
+        `Activate API did not respond within ${activateTimeoutMs / 1000}s. UI: ${stillDraft ? 'DRAFT' : 'unknown'}, errorDisplay: ${hasError}. ` +
           `Ensure backend is reachable and activation logic completes.`
       );
     }

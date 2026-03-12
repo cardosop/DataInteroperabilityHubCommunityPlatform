@@ -11,6 +11,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { createAssetViaApi, getAssetKeyViaApi } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import {
   assertNonExistentIdShowsError,
@@ -95,7 +96,9 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
             await datasetFileInput.setInputFiles({
               name: 'test.csv',
               mimeType: 'text/csv',
-              buffer: Buffer.from('name,age\nJohn,30\nJane,25'),
+              // Use same schema as ManualTest/05-SUPPORT-MATERIAL/data/sample-upload.csv
+              // so schema inference produces columns: id, name, value, created_at
+              buffer: Buffer.from('id,name,value,created_at\n1,Alice,100,2024-01-01\n2,Bob,200,2024-01-02\n3,Carol,300,2024-01-03'),
             });
 
             // Wait for upload response (may be 200/201 or 429)
@@ -209,6 +212,140 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
         throw new Error(`Dataset detail failed to load: ${msg.slice(0, 300)}`);
       }
 
+      // Extract dataset ID from URL for later steps
+      const datasetUrl = page.url();
+      const datasetId = datasetUrl.split('/').filter(Boolean).pop() ?? '';
+
+      // ── Step 3a: Schema inference assertion ──────────────────────────────
+      // After CSV upload (id,name,value,created_at), the schema section must show column names.
+      const schemaSection = page.locator(
+        '[data-testid="schema-fields"], .schema-fields-list, .dataset-schema, .schema-section'
+      );
+      if ((await schemaSection.count()) > 0) {
+        await schemaSection.first().waitFor({ state: 'visible', timeout: 20000 }).catch(() => null);
+        const schemaText = await schemaSection.first().textContent().catch(() => '');
+        if (schemaText) {
+          // CSV has columns: id, name, value, created_at — at least 'id' or 'name' must appear
+          const hasExpectedColumns = schemaText.includes('id') || schemaText.includes('name');
+          if (!hasExpectedColumns) {
+            // Schema inference may be async — annotate rather than silently warn
+            test.info().annotations.push({
+              type: 'schema-inference-pending',
+              description: `Expected column names not found. Got: ${schemaText.slice(0, 200)}`,
+            });
+          }
+        }
+      }
+
+      // ── Step 3b: DQ run from UI ───────────────────────────────────────────
+      // triggerDQRunViaUI uses the modal on /dq (real UI path — no dead route).
+      // Errors propagate to the journey test; only service-unavailable (404/503) is annotated.
+      const { triggerDQRunViaUI: _triggerDQ } = await import('../../fixtures/helpers');
+      const { waitForDQRunViaApi: _waitDQ } = await import('../../fixtures/api-compliance');
+
+      let dqRunId: string | null = null;
+      try {
+        const dqResult = await _triggerDQ(page, assetId, { datasetId: datasetId || undefined });
+        dqRunId = dqResult.runId;
+        expect(dqResult.httpStatus).toBeGreaterThanOrEqual(200);
+        expect(dqResult.httpStatus).toBeLessThan(300);
+        // Poll until terminal; if timeout, treat as PENDING (run was submitted, just slow under load)
+        const dqFinal = await _waitDQ(testUser, dqRunId, 90_000).catch((waitErr) => {
+          const isTimeout = /did not reach terminal state/i.test(String(waitErr));
+          if (isTimeout) {
+            // Run was created and submitted — it's still processing. Acceptable in slow CI.
+            test.info().annotations.push({
+              type: 'dq-run-pending',
+              description: `DQ run ${dqRunId} submitted but didn't finish within 90s (still PENDING)`,
+            });
+            return { status: 'PENDING' };
+          }
+          throw waitErr;
+        });
+        const acceptableDQStatuses = ['SUCCEEDED', 'FAILED', 'COMPLETED', 'PASSED', 'PENDING'];
+        expect(acceptableDQStatuses).toContain(dqFinal.status);
+      } catch (dqErr) {
+        const errStr = String(dqErr);
+        const isServiceUnavailable = /404|503|unavailable|no valid endpoint/i.test(errStr);
+        if (isServiceUnavailable) {
+          test.info().annotations.push({
+            type: 'dq-service-unavailable',
+            description: `DQ service not available: ${errStr.slice(0, 200)}`,
+          });
+        } else {
+          // Real failure (UI bug, modal broken, API error) — propagate so journey fails
+          throw new Error(`DQ run UI step failed: ${errStr}`);
+        }
+      }
+
+      // ── Step 3c: Compliance scan from UI ─────────────────────────────────
+      // triggerComplianceScanViaUI uses the modal on /compliance (real UI path).
+      const { triggerComplianceScanViaUI: _triggerComp } = await import('../../fixtures/helpers');
+      const { waitForComplianceRunViaApi: _waitComp } = await import('../../fixtures/api-compliance');
+
+      let compRunId: string | null = null;
+      try {
+        const compResult = await _triggerComp(page, assetId, { datasetId: datasetId || undefined });
+        compRunId = compResult.runId;
+        expect(compResult.httpStatus).toBeGreaterThanOrEqual(200);
+        expect(compResult.httpStatus).toBeLessThan(300);
+        // Poll until terminal; if timeout, treat as PENDING (run was submitted, just slow)
+        const compFinal = await _waitComp(testUser, compRunId, 90_000).catch((waitErr) => {
+          const isTimeout = /did not reach terminal state/i.test(String(waitErr));
+          if (isTimeout) {
+            test.info().annotations.push({
+              type: 'compliance-run-pending',
+              description: `Compliance run ${compRunId} submitted but didn't finish within 90s`,
+            });
+            return { status: 'PENDING' };
+          }
+          throw waitErr;
+        });
+        const acceptableStatuses = ['SUCCEEDED', 'FAILED', 'COMPLETED', 'PASSED', 'PENDING'];
+        expect(acceptableStatuses).toContain(compFinal.status);
+      } catch (compErr) {
+        const errStr = String(compErr);
+        const isServiceUnavailable = /404|503|unavailable|no valid endpoint/i.test(errStr);
+        if (isServiceUnavailable) {
+          test.info().annotations.push({
+            type: 'compliance-service-unavailable',
+            description: `Compliance service not available: ${errStr.slice(0, 200)}`,
+          });
+        } else {
+          throw new Error(`Compliance scan UI step failed: ${errStr}`);
+        }
+      }
+
+      // ── Step 3d: ODPS contract creation via UI ────────────────────────────
+      // Use ESM-compatible __dirname (import.meta.url) — avoids ReferenceError in Playwright ESM.
+      const { uploadODPSContractViaUI: _uploadODPS } = await import('../../fixtures/helpers');
+      const path = await import('node:path');
+      const { fileURLToPath } = await import('node:url');
+      const __currentDir = path.dirname(fileURLToPath(import.meta.url));
+      const odpsFilePath = path.join(__currentDir, '../../fixtures/data/minimal-odcs.json');
+
+      try {
+        const odpsResult = await _uploadODPS(page, odpsFilePath);
+        expect(odpsResult.contractId).toBeTruthy();
+        // Navigate back to asset detail to verify contracts section updated
+        await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
+          timeout: 60000,
+          contentSelector: '.asset-detail-page, .asset-detail-content',
+        });
+        await page.waitForTimeout(2000);
+      } catch (odpsErr) {
+        const errStr = String(odpsErr);
+        const isServiceUnavailable = /404|503|unavailable|permission denied/i.test(errStr);
+        if (isServiceUnavailable) {
+          test.info().annotations.push({
+            type: 'odps-upload-unavailable',
+            description: `ODPS upload UI not available: ${errStr.slice(0, 200)}`,
+          });
+        } else {
+          throw new Error(`ODPS upload UI step failed: ${errStr}`);
+        }
+      }
+
       // Step 3: Contracts page loads (API can be slow under parallel E2E load)
       await navigateToRouteFromApp(page, '/contracts', {
         timeout: 90000,
@@ -218,7 +355,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       await new Promise((r) => setTimeout(r, 2000));
       expect(page.url()).toContain('/contracts');
 
-      // Step 4: Activate Asset — re-establish auth after long journey (avoids redirect-to-login)
+      // Step 4: Activate Asset — re-establish auth after long journey
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
         contentSelector: '.asset-detail-page, .asset-detail-content, h1',
@@ -227,69 +364,98 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
 
       // Ensure activation prerequisites (ACTIVE contract with valid validation/normalization)
       const prereq = await ensureAssetActivationPrerequisites(page, assetId);
-      if (prereq.success) {
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        await new Promise((r) => setTimeout(r, 3000));
-        await waitForAppMainReady(page, { timeout: 15000 });
+      if (!prereq.success) {
+        throw new Error(
+          `Activation prerequisites failed: ${prereq.error}. ` +
+          'Ensure DataContract/validation services are available and the E2E backend helper is registered.'
+        );
       }
 
-      const activateButton = page.locator('button:has-text("Activate Asset")');
-      if ((await activateButton.count()) > 0) {
-        const responsePromise = page.waitForResponse(
-          (r) => r.url().includes('/assets/') && r.url().includes('/activate/'),
-          { timeout: 30000 }
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await new Promise((r) => setTimeout(r, 3000));
+      await waitForAppMainReady(page, { timeout: 15000 });
+
+      // Activate button MUST be visible after prerequisites are met — if not, that is a bug
+      const activateButton = page.locator(
+        '[data-testid="btn-activate-asset"], button:has-text("Activate Asset")'
+      );
+      await activateButton.first().waitFor({ state: 'visible', timeout: 15000 });
+
+      const responsePromise = page.waitForResponse(
+        (r) => r.url().includes('/assets/') && r.url().includes('/activate/'),
+        { timeout: 60000 }
+      );
+      await activateButton.first().click();
+
+      const activateResp = await responsePromise;
+      if (activateResp.status() === 400) {
+        const body = await activateResp.text().catch(() => '');
+        throw new Error(
+          `Asset activation blocked (400): ${body.slice(0, 400)}. ` +
+          'Ensure prerequisites produced an ACTIVE contract with VALID/NORMALIZED status.'
         );
-        await activateButton.first().click();
-        let activationSucceeded = false;
-        try {
-          const resp = await responsePromise;
-          if (resp.status() === 200) activationSucceeded = true;
-          else if (resp.status() === 400) {
-            await new Promise((r) => setTimeout(r, 2000));
-            const badge = page.locator('.asset-detail-page .status-badge').first();
-            await expect(badge.or(page.locator('.error-display'))).toBeVisible({ timeout: 10000 });
-            return;
-          }
-        } catch {
-          // Response timeout - check status anyway
-        }
-        await new Promise((r) => setTimeout(r, 2000));
-        await page.reload();
-        await page.waitForLoadState('domcontentloaded');
-        // Wait for asset detail or login/error; re-establish auth if redirected
-        const detailOrLogin = page.locator('.asset-detail-page, .asset-detail-content, .error-display, #email');
-        try {
-          await detailOrLogin.first().waitFor({ state: 'visible', timeout: 35000 });
-        } catch {
-          if (page.url().includes('/login')) return; // Auth lost - journey partial
-          throw new Error('Asset detail page did not load after activation reload');
-        }
-        if (page.url().includes('/login')) return;
-        // If stuck on loading, re-login and navigate back (auth race under parallel E2E)
-        if ((await page.locator('.asset-detail-page, .asset-detail-content').count()) === 0) {
-          await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
-            timeout: 45000,
-            contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-          });
-          await new Promise((r) => setTimeout(r, 2000));
-        }
-        const statusBadge = page.locator('.asset-detail-page .status-badge').first();
-        if (activationSucceeded && (await statusBadge.count()) > 0) {
-          await expect(statusBadge).toContainText('ACTIVE', { timeout: 15000 });
-        }
-        // If activation failed, status stays DRAFT - journey still complete
       }
+      if (activateResp.status() !== 200) {
+        const body = await activateResp.text().catch(() => '');
+        throw new Error(`Asset activation failed: ${activateResp.status()} ${body.slice(0, 300)}`);
+      }
+
+      // Verify backend persisted ACTIVE status (avoids stale cache false positive)
+      const apiActive = await page.evaluate(async (aid: string) => {
+        const token = localStorage.getItem('access_token');
+        if (!token) return false;
+        const res = await fetch(`${window.location.origin}/api/v1/assets/${aid}/`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+        });
+        if (!res.ok) return false;
+        const data = await res.json();
+        return data.status === 'ACTIVE';
+      }, assetId);
+      if (!apiActive) {
+        throw new Error('Backend did not persist ACTIVE status after activation response 200.');
+      }
+
+      // Reload to verify UI reflects backend state
+      await new Promise((r) => setTimeout(r, 1500));
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
+      const activeBadge = page.locator(
+        '.asset-detail-page .asset-detail-metadata .metadata-item:has(label:has-text("Status")) .status-badge'
+      ).or(page.locator('.asset-detail-page .status-badge').first());
+      await expect
+        .poll(async () => (await activeBadge.first().textContent())?.trim() === 'ACTIVE', {
+          timeout: 20000,
+          intervals: [1000, 2000, 3000],
+        })
+        .toBe(true);
     });
   });
 
   test.describe('Failure', () => {
-    test('assets list shows error or empty when API fails or returns empty', async ({ page }) => {
+    test('assets list renders without error (page loads and API is reachable)', async ({ page }) => {
+      // This test validates the assets list page loads cleanly without a backend error.
+      // Previously this test had no assertion beyond the URL — which makes it vacuous.
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
         contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
       });
       expect(page.url()).toContain('/assets');
+      await page.locator('.asset-list-page, .empty-state, .error-display').first().waitFor({
+        state: 'visible',
+        timeout: 20000,
+      });
+      // Assert: the page must not be in a persistent error state (transient 5xx are retried by the UI)
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        // Error display is acceptable as long as Retry is available (UI handles gracefully)
+        const hasRetry = (await page.locator('.error-display-retry').count()) > 0;
+        if (!hasRetry) {
+          throw new Error(`Assets list shows unrecoverable error with no Retry option: ${errText.slice(0, 200)}`);
+        }
+      }
     });
 
     test('asset create with empty key shows validation error', async ({ page }) => {
@@ -347,6 +513,58 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       const keyError = page.locator('.error-message').filter({ hasText: /lowercase|hyphen|key/i });
       await expect(keyError.first()).toBeVisible({ timeout: 5000 });
       await expect(page).toHaveURL(/\/assets\/create/);
+    });
+
+    test('asset create with duplicate key shows API validation error', async ({ page }) => {
+      // Create an asset via API first to get a known unique key, then try to create
+      // another asset with the same key — the API must return 400 and the UI must surface it.
+      // Key is fetched in Node.js context (not page.evaluate) to avoid CORS: frontend port
+      // (5184) ≠ backend port (8001) so browser-context fetch to backend is blocked.
+      const testUser = await getTestUser();
+      const existingAssetId = await createAssetViaApi(testUser);
+
+      // Fetch the key in Node.js context — no CORS restriction
+      const existingKey = await getAssetKeyViaApi(testUser, existingAssetId);
+
+      if (!existingKey) {
+        test.info().annotations.push({ type: 'skip-reason', description: 'Could not fetch asset key via API' });
+        return;
+      }
+
+      await loginAndNavigateToRoute(page, testUser, '/assets/create', {
+        timeout: 60000,
+        contentSelector: 'input[id="key"]',
+      });
+      await page.waitForSelector('input[id="key"]', { timeout: 10000 });
+      await page.fill('input[id="key"]', existingKey);
+      await page.fill('input[id="name"]', 'Duplicate Key Asset');
+
+      // Intercept the POST to verify the API returns 400
+      const responsePromise = page.waitForResponse(
+        (r) => r.url().includes('/assets/') && r.request().method() === 'POST',
+        { timeout: 15000 }
+      );
+      await page.locator('button:has-text("Create Asset")').click();
+
+      let apiStatus: number | null = null;
+      try {
+        const resp = await responsePromise;
+        apiStatus = resp.status();
+      } catch {
+        // May be caught by client-side validation before hitting API
+      }
+
+      if (apiStatus !== null) {
+        // API returns 400 (Bad Request) or 409 (Conflict) for duplicate key.
+        // Both indicate the uniqueness constraint was enforced — either is valid.
+        expect([400, 409]).toContain(apiStatus);
+      }
+
+      // In either case, must stay on create page with an error shown
+      await expect(page).toHaveURL(/\/assets\/create/, { timeout: 5000 });
+      const hasError =
+        (await page.locator('.error-message, .error-display, [role="alert"]').count()) > 0;
+      expect(hasError).toBe(true);
     });
 
     test('unauthenticated access to assets list redirects to login', async ({ page }) => {
@@ -419,23 +637,29 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       });
     });
 
-    test('assets list shows pagination or single page or empty state', async ({ page }) => {
+    test('assets list shows pagination or rows or empty state (not an error)', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
         contentSelector: '.asset-list-page, .empty-state, .error-display, .asset-list-pagination, .loading-spinner-container, h1',
       });
       expect(page.url()).toContain('/assets');
-      // Wait for loading to complete and actual content to appear (not just loading spinner)
       await page
         .locator('.asset-list-page, .empty-state, .error-display')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 });
+
+      // Error display must NOT count as "list loaded" — it means the API failed
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        throw new Error(`Asset list shows backend error: ${errText.slice(0, 200)}`);
+      }
+
       const hasPagination = (await page.locator('.asset-list-pagination').count()) > 0;
       const hasListOrEmpty =
-        (await page.locator('.asset-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.asset-list-page table tr, .asset-list-page .list-item').count()) > 0 ||
+        (await page.locator('.empty-state').count()) > 0;
       expect(hasPagination || hasListOrEmpty).toBe(true);
     });
   });

@@ -258,9 +258,10 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
       // Error should be sanitized (ErrorDisplay component handles this)
       expect(errorCount).toBeGreaterThan(0);
     } else {
-      // No error displayed (page redirected or handled differently) - this is acceptable
-      // Error sanitization is verified in ErrorDisplay component implementation
-      expect(true).toBe(true);
+      // No error displayed — page may have redirected (acceptable: 404 redirected to list)
+      // Verify the page at least loaded without a 500 server error
+      const has500 = (await page.locator('text=/500|Internal Server Error/i').count()) > 0;
+      expect(has500).toBe(false);
     }
   });
 
@@ -412,9 +413,9 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
         // Wait a bit for potential navigation
         await page.waitForTimeout(1000);
 
-        // Row should be keyboard accessible (Enter/Space handlers are implemented)
-        // Navigation may or may not occur depending on implementation
-        expect(true).toBe(true);
+        // Row should be keyboard accessible — verify focus was received (not a crash)
+        const focusedElement = await page.evaluate(() => document.activeElement?.tagName);
+        expect(focusedElement).toBeTruthy();
       } else {
         // Rows exist but may not have tabIndex yet - check they have role="row"
         const rowsWithRole = table.locator('tbody tr[role="row"]');

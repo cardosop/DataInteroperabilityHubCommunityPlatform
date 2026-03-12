@@ -105,7 +105,9 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
   });
 
   test.describe('Edge', () => {
-    test('reset not enabled: UI shows contact admin or 501', async ({ page }) => {
+    test('password-reset page renders a meaningful heading (not a blank page)', async ({ page }) => {
+      // Edge: verify the page renders a recognisable heading regardless of whether password-reset
+      // is enabled or disabled. A blank/empty render (no heading) is the regression being guarded.
       await clearAuthStorage(page);
       await page.goto('/password-reset', { waitUntil: 'domcontentloaded' });
       if (page.url().includes('/login')) {
@@ -124,6 +126,11 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
         );
       }
       expect(page.url()).toContain('password-reset');
+      // Verify the heading text is non-empty (not a blank render)
+      const headingText = await resetOrUnavailable.first().textContent();
+      expect((headingText ?? '').trim().length).toBeGreaterThan(0);
+      // The form must have an email input — a blank-page regression would omit it
+      await expect(page.locator('input#email')).toBeVisible({ timeout: 5000 });
     });
 
     test('password reset form with empty email stays on page or shows validation', async ({

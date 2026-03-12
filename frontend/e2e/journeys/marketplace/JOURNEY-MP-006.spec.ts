@@ -49,15 +49,13 @@ test.describe('JOURNEY-MP-006: Manage Marketplace Mappings', () => {
       await page.waitForLoadState('domcontentloaded');
       // Wait for error/404 or allow 30s for page to settle (API 500 can delay)
       await page
-        .waitForSelector('.error-display, text=/404|not found|Page Not Found|failed to load/i', {
+        .waitForSelector('.error-display, .error-display-title', {
           timeout: 30000,
         })
         .catch(() => page.waitForTimeout(5000));
       const has404 =
-        (await page.locator('text=/404|not found|Page Not Found/i').count()) > 0;
-      const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('text=/failed to load|404/i').count()) > 0;
+        (await page.locator('.error-display-message').filter({ hasText: /404|not found/i }).count()) > 0;
+      const hasError = (await page.locator('.error-display').count()) > 0;
       const onLogin = page.url().includes('/login');
       expect(has404 || hasError || onLogin).toBe(true);
     });

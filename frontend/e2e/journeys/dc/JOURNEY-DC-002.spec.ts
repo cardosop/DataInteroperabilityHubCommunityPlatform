@@ -17,7 +17,7 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
   test.setTimeout(180000); // 3 min: visible/slowMo adds latency; login + marketplace + search nav
 
   test.describe('Success', () => {
-    test('marketplace list loads with search', async ({ page }) => {
+    test('marketplace search input filters results or shows empty state', async ({ page }) => {
       const consumer = await getConsumerTestUser();
       await loginUser(page, consumer);
       await page.goto('/marketplace');
@@ -31,6 +31,26 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
         return;
       }
       expect(page.url()).toContain('/marketplace');
+
+      // Fill the search input and verify the result container updates (debounce ~500ms)
+      const searchInput = page.locator(
+        '.listing-list-filters input[type="text"], .listing-list-filters input, input[placeholder*="Search"]'
+      ).first();
+      if ((await searchInput.count()) > 0) {
+        await searchInput.fill('xyznonexistent_e2e');
+        // Wait for results to update — either empty state or results list
+        await page
+          .locator('.empty-state, .listing-list-page, .listing-list-grid, .error-display')
+          .first()
+          .waitFor({ state: 'visible', timeout: 10000 })
+          .catch(() => null);
+        // The result container must render something (no blank-screen regression)
+        const hasTerminalState =
+          (await page.locator('.empty-state').count()) > 0 ||
+          (await page.locator('.listing-list-page, .listing-list-grid').count()) > 0 ||
+          (await page.locator('.error-display').count()) > 0;
+        expect(hasTerminalState).toBe(true);
+      }
     });
 
     test('search page loads', async ({ page }) => {

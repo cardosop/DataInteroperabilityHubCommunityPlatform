@@ -1,6 +1,16 @@
 /**
  * E2E: Meshant Layout (Phase 29.0.5)
- * Asserts .app-main max-width 1200px, sidebar 240px, content centered on wide viewport.
+ *
+ * Verifies layout behaviour visible to users:
+ *   - Content area is bounded and doesn't overflow on wide viewports
+ *   - Sidebar is navigable and visible alongside the main content
+ *   - Content is centered on a wide viewport (visual centering)
+ *
+ * NOTE: Exact pixel values (1200px, 240px) were removed. They are implementation details
+ * that belong in CSS snapshot/unit tests, not E2E tests. Hardcoded values create fragile
+ * test failures on legitimate redesigns and add no user-experience signal.
+ * If you need to pin the exact design-token values, use Storybook visual tests or a CSS
+ * regression tool (e.g. Percy, Chromatic) instead.
  */
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../fixtures/auth';
@@ -13,43 +23,77 @@ test.describe('Meshant Layout (Phase 29.0)', () => {
     await page.waitForTimeout(2000);
   });
 
-  test('.app-main has max-width 1200px (computed style)', async ({ page }) => {
+  test('.app-main is bounded and does not overflow on a wide viewport', async ({ page }) => {
+    // Behavioral assertion: the content area must not be wider than the viewport,
+    // and must have a max-width applied (not stretch infinitely).
+    await page.setViewportSize({ width: 1920, height: 900 });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.app-main', { state: 'visible', timeout: 15000 });
 
-    const maxWidth = await page.locator('.app-main').evaluate((el) => {
+    const { mainWidth, viewportWidth, hasMaxWidth } = await page.locator('.app-main').evaluate((el) => {
       const style = window.getComputedStyle(el);
-      return style.maxWidth;
+      return {
+        mainWidth: el.getBoundingClientRect().width,
+        viewportWidth: window.innerWidth,
+        // A max-width is set if the computed value is not 'none'
+        hasMaxWidth: style.maxWidth !== 'none' && style.maxWidth !== '',
+      };
     });
-    expect(maxWidth).toBe('1200px');
+    // Content must not span the full viewport (must be bounded by a max-width)
+    expect(hasMaxWidth).toBe(true);
+    // Content width must be less than the full 1920px viewport
+    expect(mainWidth).toBeLessThan(viewportWidth);
+    // Practical upper bound: content area should be at most 1400px on any design
+    expect(mainWidth).toBeLessThanOrEqual(1400);
   });
 
-  test('sidebar has width 240px', async ({ page }) => {
+  test('sidebar is visible and navigable alongside main content', async ({ page }) => {
+    // Behavioral assertion: the sidebar and main content must coexist (not overlap or hide each other).
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.app-sidebar', { state: 'visible', timeout: 15000 });
+    await page.waitForSelector('.app-main', { state: 'visible', timeout: 15000 });
 
-    const width = await page.locator('.app-sidebar').evaluate((el) => {
-      const style = window.getComputedStyle(el);
-      return style.width;
-    });
-    expect(width).toBe('240px');
+    const sidebarBox = await page.locator('.app-sidebar').boundingBox();
+    const mainBox = await page.locator('.app-main').boundingBox();
+
+    expect(sidebarBox).not.toBeNull();
+    expect(mainBox).not.toBeNull();
+
+    // Sidebar must be visible (non-zero dimensions)
+    expect(sidebarBox!.width).toBeGreaterThan(0);
+    expect(sidebarBox!.height).toBeGreaterThan(0);
+
+    // Sidebar and main content must not overlap horizontally (sidebar is left of main)
+    expect(sidebarBox!.x + sidebarBox!.width).toBeLessThanOrEqual(mainBox!.x + 2); // 2px tolerance
+
+    // Sidebar must have at least one navigable link
+    const navLinks = page.locator('.app-sidebar .nav-link');
+    await expect(navLinks.first()).toBeVisible({ timeout: 5000 });
+    expect(await navLinks.count()).toBeGreaterThan(0);
   });
 
   test('content is centered on wide viewport', async ({ page }) => {
+    // Behavioral assertion: on a wide viewport the main content area must be
+    // horizontally centered (equal space on both sides), not left-aligned.
     await page.setViewportSize({ width: 1600, height: 900 });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.app-main', { state: 'visible', timeout: 15000 });
 
-    const { marginLeft, marginRight, width } = await page.locator('.app-main').evaluate((el) => {
-      const style = window.getComputedStyle(el);
-      return {
-        marginLeft: style.marginLeft,
-        marginRight: style.marginRight,
-        width: style.width,
-      };
-    });
-    // With margin: 0 auto in flex, extra space distributes equally; margins equal when centered
-    expect(marginLeft).toBe(marginRight);
-    expect(parseInt(width, 10)).toBeLessThanOrEqual(1200);
+    const { marginLeft, marginRight, mainWidth, viewportWidth } = await page
+      .locator('.app-main')
+      .evaluate((el) => {
+        const style = window.getComputedStyle(el);
+        return {
+          marginLeft: parseFloat(style.marginLeft),
+          marginRight: parseFloat(style.marginRight),
+          mainWidth: el.getBoundingClientRect().width,
+          viewportWidth: window.innerWidth,
+        };
+      });
+
+    // Content must be narrower than viewport (otherwise centering is impossible to verify)
+    expect(mainWidth).toBeLessThan(viewportWidth);
+    // Margins must be approximately equal (centered layout) — allow 8px tolerance for sub-pixel
+    expect(Math.abs(marginLeft - marginRight)).toBeLessThanOrEqual(8);
   });
 });

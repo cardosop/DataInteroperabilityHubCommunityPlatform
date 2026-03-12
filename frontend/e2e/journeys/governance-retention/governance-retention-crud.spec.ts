@@ -12,7 +12,11 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTenantAdminUser } from '../../fixtures/auth';
+import { createAssetViaApi, createRetentionPolicyViaApi } from '../../fixtures/api-assets';
 import { loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+
+// Intentional nil UUID — used only to assert the 404 error boundary works.
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 
 test.describe('Governance Retention Policy CRUD', () => {
   test.setTimeout(300000); // 5 min: persona login + CRUD under parallel E2E load
@@ -29,92 +33,94 @@ test.describe('Governance Retention Policy CRUD', () => {
         url.includes('/login') || url.includes('/403') || url.includes('/governance')
       ).toBe(true);
     });
+
+    test('non-existent retention policy shows error (nil UUID)', async ({ page }) => {
+      const user = await getTenantAdminUser();
+      await loginAndNavigateToRoute(page, user, `/governance/retention/${NIL_UUID}`, {
+        timeout: 60000,
+        contentSelector:
+          '.error-display, .not-found-page, .governance-retention-policy-detail-page, [data-testid="not-found"]',
+      });
+      if (page.url().includes('/403') || page.url().includes('/login')) {
+        return; // Role-gated — acceptable outcome
+      }
+      // The nil UUID must show an error, not a valid detail page
+      const hasError =
+        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('[data-testid="not-found"]').count()) > 0 ||
+        (await page.locator('text=/not found|does not exist|404/i').count()) > 0 ||
+        !page.url().includes(NIL_UUID);
+      expect(hasError).toBe(true);
+    });
   });
 
   test.beforeEach(async ({ page }) => {
     const user = await getTenantAdminUser();
     await loginAndNavigateToRoute(page, user, '/governance/retention', {
       timeout: 90000,
-      contentSelector: '.governance-retention-policy-list-page, .empty-state, .error-display, [data-testid="forbidden-page"]',
+      contentSelector:
+        '.governance-retention-policy-list-page, .empty-state, .error-display, [data-testid="forbidden-page"]',
     });
   });
 
   test.describe('List Page', () => {
-    test('retention policies list page loads', async ({ page }) => {
+    test('retention policies list loads and shows existing policy', async ({ page }) => {
+      const user = await getTenantAdminUser();
+      // Pre-condition: ensure at least one policy exists via API
+      await createRetentionPolicyViaApi(user);
+
       await page.goto('/governance/retention');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(2000);
 
       const url = page.url();
-      const onRetention = url.includes('/governance/retention');
-      const on403 = url.includes('/403');
-      const onLogin = url.includes('/login');
-
-      // Handle role-based access - user might not have TENANT_ADMIN/PLATFORM_ADMIN
-      if (on403 || onLogin) {
-        expect(on403 || onLogin).toBe(true);
-        return;
+      if (url.includes('/403') || url.includes('/login')) {
+        return; // Role-gated — acceptable outcome
       }
 
-      // If we're on the retention page, wait for content
-      if (onRetention) {
-        try {
-          await waitForAppMainReady(page, { timeout: 30000 });
-        } catch (_err) {
-          // Page might still be loading or have errors
-          const hasContent =
-            (await page.locator('h1:has-text("Retention Policies")').count()) > 0 ||
-            (await page.locator('.governance-retention-policy-list-page').count()) > 0 ||
-            (await page.locator('.empty-state').count()) > 0 ||
-            (await page.locator('.governance-retention-policy-table').count()) > 0 ||
-            (await page.locator('.error-display').count()) > 0;
-          expect(hasContent).toBe(true);
-          return;
-        }
-
-        // Check for list page elements
-        const hasContent =
-          (await page.locator('h1:has-text("Retention Policies")').count()) > 0 ||
-          (await page.locator('.governance-retention-policy-list-page').count()) > 0 ||
-          (await page.locator('.empty-state').count()) > 0 ||
-          (await page.locator('.governance-retention-policy-table').count()) > 0;
-        expect(hasContent).toBe(true);
-      } else {
-        // Unexpected state
-        expect(onRetention || on403 || onLogin).toBe(true);
+      await waitForAppMainReady(page, { timeout: 30000 });
+      const hasContent =
+        (await page.locator('h1:has-text("Retention Policies")').count()) > 0 ||
+        (await page.locator('.governance-retention-policy-list-page').count()) > 0 ||
+        (await page.locator('.governance-retention-policy-table').count()) > 0 ||
+        (await page.locator('.empty-state').count()) > 0;
+      // Crucially: error-display is NOT accepted as success here
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        throw new Error(`Retention policies list shows error: ${errText}`);
       }
+      expect(hasContent).toBe(true);
     });
 
     test('create button navigates to create page', async ({ page }) => {
       await page.goto('/governance/retention');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-
-      const url = page.url();
-      if (url.includes('/403') || url.includes('/login')) {
-        return; // User doesn't have access
+      await page.waitForTimeout(2000);
+      if (page.url().includes('/403') || page.url().includes('/login')) {
+        return;
       }
+      await waitForAppMainReady(page, { timeout: 30000 });
 
-      try {
-        await waitForAppMainReady(page, { timeout: 30000 });
-      } catch (_err) {
-        // Page might have errors or be loading
-      }
-
-      // Click create button if it exists
       const createButton = page.locator(
-        'button:has-text("Create retention policy"), a:has-text("Create retention policy")'
+        'button:has-text("Create retention policy"), a:has-text("Create retention policy"), ' +
+        'button:has-text("New Policy"), a:has-text("Create Policy")'
       );
-      const buttonCount = await createButton.count();
-
-      if (buttonCount > 0) {
-        await createButton.first().click();
-        await page.waitForLoadState('domcontentloaded');
-        await page.waitForTimeout(2000);
-
-        const newUrl = page.url();
-        expect(newUrl).toMatch(/\/governance\/retention\/new/);
+      if ((await createButton.count()) === 0) {
+        // Empty state may have a different CTA
+        const emptyCta = page.locator('.empty-state a, .empty-state button').first();
+        if ((await emptyCta.count()) > 0) {
+          await emptyCta.click();
+          await page.waitForURL(/\/governance\/retention\/new/, { timeout: 10000 });
+          expect(page.url()).toContain('/governance/retention/new');
+          return;
+        }
+        // No create button visible — acceptable if user has no policies yet and UI uses header button
+        return;
       }
+      await createButton.first().click();
+      await page.waitForURL(/\/governance\/retention\/new/, { timeout: 10000 });
+      expect(page.url()).toContain('/governance/retention/new');
     });
   });
 
@@ -122,22 +128,12 @@ test.describe('Governance Retention Policy CRUD', () => {
     test('create page loads with form fields', async ({ page }) => {
       await page.goto('/governance/retention/new');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-
-      const url = page.url();
-      if (url.includes('/403') || url.includes('/login')) {
-        return; // User doesn't have access
+      await page.waitForTimeout(2000);
+      if (page.url().includes('/403') || page.url().includes('/login')) {
+        return;
       }
-
-      try {
-        await waitForAppMainReady(page, { timeout: 30000 });
-      } catch (_err) {
-        // Page might have errors or be loading
-      }
-
-      expect(url).toContain('/governance/retention/new');
-
-      // Check for form fields
+      await waitForAppMainReady(page, { timeout: 30000 });
+      expect(page.url()).toContain('/governance/retention/new');
       const hasForm =
         (await page.locator('input[name="name"], label:has-text("Name")').count()) > 0 ||
         (await page.locator('.governance-retention-policy-create-page').count()) > 0 ||
@@ -145,421 +141,444 @@ test.describe('Governance Retention Policy CRUD', () => {
       expect(hasForm).toBe(true);
     });
 
-    test('create form validation works', async ({ page }) => {
+    test('create form validation: empty submit stays on create page', async ({ page }) => {
       await page.goto('/governance/retention/new');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(1000);
       if (page.url().includes('/403') || page.url().includes('/login')) {
-        return; // User doesn't have governance access
+        return;
       }
-      await waitForAppMainReady(page, { timeout: 60000 });
+      await waitForAppMainReady(page, { timeout: 30000 });
 
-      // Try to submit without filling required fields
       const submitButton = page.locator(
         'button[type="submit"]:has-text("Create"), button:has-text("Create retention policy")'
       );
-      const submitCount = await submitButton.count();
+      if ((await submitButton.count()) === 0) return;
 
-      if (submitCount > 0) {
-        await submitButton.first().click();
-        await page.waitForTimeout(2000);
+      await submitButton.first().click();
+      await page.waitForTimeout(1500);
 
-        // Check for validation error
-        const hasError =
-          (await page.locator('.error-display').count()) > 0 ||
-          (await page.locator('text=/name is required|required/i').count()) > 0 ||
-          (await page.locator('text=/at least one of asset id/i').count()) > 0;
-
-        // Form might show HTML5 validation or custom validation
-        expect(hasError || page.url().includes('/governance/retention/new')).toBe(true);
-      }
+      // Must stay on create page — must NOT navigate away to list or detail
+      expect(page.url()).toContain('/governance/retention/new');
     });
 
-    test('create form can be filled and submitted', async ({ page }) => {
+    test('create form: fill with AssetPicker and verify policy appears in list', async ({
+      page,
+    }) => {
+      const user = await getTenantAdminUser();
+      // Pre-condition: ensure at least one asset exists for the AssetPicker
+      await createAssetViaApi(user);
+
       await page.goto('/governance/retention/new');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(1500);
       if (page.url().includes('/403') || page.url().includes('/login')) {
-        return; // User doesn't have governance access
+        return;
       }
-      await waitForAppMainReady(page, { timeout: 60000 });
+      await waitForAppMainReady(page, { timeout: 30000 });
 
-      // Fill in form fields
-      const nameInput = page.locator(
-        'input[name="name"], input#name, label:has-text("Name") + input'
+      const policyName = `e2e-rp-${Date.now()}`;
+
+      // Fill name
+      const nameInput = page.locator('input[name="name"], input#name');
+      if ((await nameInput.count()) === 0) {
+        test.skip(true, 'Name input not found — update selector for current UI');
+        return;
+      }
+      await nameInput.first().fill(policyName);
+
+      // Interact with AssetPicker if present; otherwise fill the asset ID directly
+      const assetPickerButton = page.locator(
+        '[data-testid="asset-picker-button"], button:has-text("Select Asset"), .asset-picker-trigger'
       );
-      const nameCount = await nameInput.count();
-
-      if (nameCount > 0) {
-        await nameInput.first().fill('Test Retention Policy');
-
-        // Fill asset ID if field exists
-        const assetInput = page.locator('input[placeholder*="Asset ID"], input[name="asset_id"]');
-        const assetCount = await assetInput.count();
-        if (assetCount > 0) {
-          await assetInput.first().fill('test-asset-123');
-        }
-
-        // Fill retention period if field exists
-        const retentionInput = page.locator(
-          'input[name="retention_period_days"], input#retention_period_days'
+      if ((await assetPickerButton.count()) > 0) {
+        await assetPickerButton.first().click();
+        const pickerDialog = page.locator(
+          '[data-testid="asset-picker-dialog"], .picker-dialog, .resource-picker, [role="dialog"]'
         );
-        const retentionCount = await retentionInput.count();
-        if (retentionCount > 0) {
-          await retentionInput.first().fill('30');
+        await pickerDialog.first().waitFor({ timeout: 10000 });
+        const firstOption = pickerDialog
+          .first()
+          .locator('tr:first-child button, .picker-item:first-child, [role="option"]:first-child');
+        if ((await firstOption.count()) > 0) {
+          await firstOption.first().click();
+          await pickerDialog
+            .first()
+            .waitFor({ state: 'hidden', timeout: 5000 })
+            .catch(() => null);
         }
-
-        // Submit form
-        const submitButton = page.locator(
-          'button[type="submit"]:has-text("Create"), button:has-text("Create retention policy")'
-        );
-        const submitCount = await submitButton.count();
-
-        if (submitCount > 0) {
-          // Wait for API response
-          const responsePromise = page.waitForResponse(
-            (resp) =>
-              resp.url().includes('/governance/retention') &&
-              (resp.request().method() === 'POST' || resp.request().method() === 'PUT'),
-            { timeout: 30000 }
-          );
-
-          await submitButton.first().click();
-
-          try {
-            await responsePromise;
-            await page.waitForTimeout(3000);
-
-            // Should navigate to detail page or show success
-            const url = page.url();
-            const isDetailPage = url.match(/\/governance\/retention\/[^/]+$/);
-            const hasSuccess =
-              (await page.locator('.success-message, .alert-success').count()) > 0 ||
-              (await page.locator('text=/created|success/i').count()) > 0;
-
-            expect(isDetailPage || hasSuccess || url.includes('/governance/retention')).toBe(true);
-          } catch (_err) {
-            // Form might show validation errors or API errors
-            const hasError =
-              (await page.locator('.error-display').count()) > 0 ||
-              (await page.locator('text=/error|failed/i').count()) > 0;
-            expect(hasError || page.url().includes('/governance/retention')).toBe(true);
-          }
+      } else {
+        // Direct asset ID input (fallback for simpler UI)
+        const assetIdInput = page.locator('input[name="asset_id"], input[placeholder*="Asset"]');
+        if ((await assetIdInput.count()) > 0) {
+          const assetId = await createAssetViaApi(user);
+          await assetIdInput.first().fill(assetId);
         }
       }
+
+      // Fill retention period
+      const periodInput = page.locator(
+        'input[name="retention_period_days"], input#retention_period_days'
+      );
+      if ((await periodInput.count()) > 0) {
+        await periodInput.first().fill('30');
+      }
+
+      // Intercept POST before submitting
+      const createResponsePromise = page.waitForResponse(
+        (resp) =>
+          resp.url().includes('/governance/retention') &&
+          resp.request().method() === 'POST',
+        { timeout: 30000 }
+      );
+
+      const submitButton = page.locator(
+        'button[type="submit"]:has-text("Create"), button:has-text("Create retention policy")'
+      );
+      if ((await submitButton.count()) === 0) {
+        test.skip(true, 'Submit button not found — update selector');
+        return;
+      }
+      await submitButton.first().click();
+
+      const createResp = await createResponsePromise;
+      expect(createResp.status()).toBeGreaterThanOrEqual(200);
+      expect(createResp.status()).toBeLessThan(300);
+
+      // Should navigate to detail page
+      await page.waitForURL(/\/governance\/retention\/[^/]+$/, { timeout: 15000 });
+      expect(page.url()).toMatch(/\/governance\/retention\/[^/]+$/);
+
+      // Navigate to list and confirm policy name appears
+      await page.goto('/governance/retention');
+      await page.waitForSelector(
+        '.governance-retention-policy-list-page, .governance-retention-policy-table, .empty-state',
+        { timeout: 15000 }
+      );
+      await expect(page.locator(`text="${policyName}"`)).toBeVisible({ timeout: 10000 });
     });
   });
 
   test.describe('Detail Page', () => {
-    test('detail page loads for existing policy', async ({ page }) => {
-      const testId = '00000000-0000-0000-0000-000000000000';
-      await page.goto(`/governance/retention/${testId}`);
+    test('detail page shows edit and delete buttons for a real policy', async ({ page }) => {
+      const user = await getTenantAdminUser();
+      // Use a real policy ID — not a hardcoded nil UUID
+      const policyId = await createRetentionPolicyViaApi(user);
+
+      await page.goto(`/governance/retention/${policyId}`);
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(2000);
       if (page.url().includes('/403') || page.url().includes('/login')) {
         return;
       }
-      await waitForAppMainReady(page, { timeout: 60000 });
+      await waitForAppMainReady(page, { timeout: 30000 });
 
-      const url = page.url();
-      const isDetailPage = url.includes(`/governance/retention/${testId}`);
-      const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
+      // Assert real buttons are visible — not expect(true).toBe(true)
+      await expect(
+        page.locator('button:has-text("Edit"), a:has-text("Edit"), [data-testid="edit-button"]')
+      ).toBeVisible({ timeout: 10000 });
+      await expect(
+        page.locator('button:has-text("Delete"), [data-testid="delete-button"]')
+      ).toBeVisible({ timeout: 10000 });
+    });
+
+    test('detail page loads existing policy with correct content', async ({ page }) => {
+      const user = await getTenantAdminUser();
+      const policyId = await createRetentionPolicyViaApi(user);
+
+      await page.goto(`/governance/retention/${policyId}`);
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      if (page.url().includes('/403') || page.url().includes('/login')) {
+        return;
+      }
+      await waitForAppMainReady(page, { timeout: 30000 });
+
+      // No error on a real policy
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        throw new Error(`Policy detail shows error for real policy ${policyId}: ${errText}`);
+      }
+      // Detail page content
       const hasContent =
         (await page.locator('.governance-retention-policy-detail-page').count()) > 0 ||
         (await page.locator('h1').count()) > 0;
-
-      expect(isDetailPage && (hasError || hasContent)).toBe(true);
-    });
-
-    test('detail page shows edit and delete buttons', async ({ page }) => {
-      const testId = '00000000-0000-0000-0000-000000000000';
-      await page.goto(`/governance/retention/${testId}`);
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
-      if (page.url().includes('/403') || page.url().includes('/login')) {
-        return;
-      }
-      await waitForAppMainReady(page, { timeout: 60000 });
-
-      // Check for action buttons (might not exist if policy doesn't exist)
-      const hasButtons =
-        (await page.locator('button:has-text("Edit"), button:has-text("Delete")').count()) > 0 ||
-        (await page.locator('.governance-detail-actions').count()) > 0;
-
-      // Buttons might not exist if policy doesn't exist, so this is optional
-      expect(true).toBe(true);
+      expect(hasContent).toBe(true);
     });
   });
 
   test.describe('Edit Page', () => {
-    test('edit page loads for existing policy', async ({ page }) => {
-      const testId = '00000000-0000-0000-0000-000000000000';
-      await page.goto(`/governance/retention/${testId}/edit`);
+    test('edit form: update policy name and verify via detail page', async ({ page }) => {
+      const user = await getTenantAdminUser();
+      const policyId = await createRetentionPolicyViaApi(user);
+
+      await page.goto(`/governance/retention/${policyId}/edit`);
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(2000);
       if (page.url().includes('/403') || page.url().includes('/login')) {
         return;
       }
-      await waitForAppMainReady(page, { timeout: 60000 });
+      await waitForAppMainReady(page, { timeout: 30000 });
 
-      const url = page.url();
-      const isEditPage = url.includes(`/governance/retention/${testId}/edit`);
-      const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
-      const hasForm =
-        (await page.locator('.governance-retention-policy-edit-page').count()) > 0 ||
-        (await page.locator('form').count()) > 0;
-
-      expect(isEditPage && (hasError || hasForm)).toBe(true);
-    });
-
-    test('edit form can be updated and submitted', async ({ page }) => {
-      const testId = '00000000-0000-0000-0000-000000000000';
-      await page.goto(`/governance/retention/${testId}/edit`);
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
-      if (page.url().includes('/403') || page.url().includes('/login')) {
-        return;
-      }
-      await waitForAppMainReady(page, { timeout: 60000 });
-
-      // Check if form exists (might not if policy doesn't exist)
       const nameInput = page.locator('input[name="name"], input#name');
-      const nameCount = await nameInput.count();
-
-      if (nameCount > 0) {
-        // Update name field
-        await nameInput.first().fill('Updated Retention Policy');
-
-        // Submit form
-        const submitButton = page.locator(
-          'button[type="submit"]:has-text("Update"), button:has-text("Update retention policy")'
-        );
-        const submitCount = await submitButton.count();
-
-        if (submitCount > 0) {
-          // Wait for API response
-          const responsePromise = page.waitForResponse(
-            (resp) =>
-              resp.url().includes(`/governance/retention/${testId}`) &&
-              (resp.request().method() === 'PUT' || resp.request().method() === 'PATCH'),
-            { timeout: 30000 }
-          );
-
-          await submitButton.first().click();
-
-          try {
-            await responsePromise;
-            await page.waitForTimeout(3000);
-
-            // Should navigate to detail page or show success
-            const url = page.url();
-            const isDetailPage = url.includes(`/governance/retention/${testId}`);
-            const hasSuccess =
-              (await page.locator('.success-message, .alert-success').count()) > 0 ||
-              (await page.locator('text=/updated|success/i').count()) > 0;
-
-            expect(isDetailPage || hasSuccess || url.includes('/governance/retention')).toBe(true);
-          } catch (_err) {
-            // Form might show validation errors or API errors
-            const hasError =
-              (await page.locator('.error-display').count()) > 0 ||
-              (await page.locator('text=/error|failed/i').count()) > 0;
-            expect(hasError || page.url().includes('/governance/retention')).toBe(true);
-          }
-        }
+      if ((await nameInput.count()) === 0) {
+        test.skip(true, 'Edit form name input not found — update selector');
+        return;
       }
+
+      const updatedName = `e2e-rp-updated-${Date.now()}`;
+      await nameInput.first().clear();
+      await nameInput.first().fill(updatedName);
+
+      const patchResponsePromise = page.waitForResponse(
+        (resp) =>
+          resp.url().includes(`/governance/retention`) &&
+          (resp.request().method() === 'PUT' || resp.request().method() === 'PATCH'),
+        { timeout: 30000 }
+      );
+
+      const submitButton = page.locator(
+        'button[type="submit"]:has-text("Update"), button:has-text("Update retention policy"), button[type="submit"]:has-text("Save")'
+      );
+      if ((await submitButton.count()) === 0) {
+        test.skip(true, 'Update/Save button not found — update selector');
+        return;
+      }
+      await submitButton.first().click();
+
+      const patchResp = await patchResponsePromise;
+      expect(patchResp.status()).toBeGreaterThanOrEqual(200);
+      expect(patchResp.status()).toBeLessThan(300);
+
+      // Navigate to detail and confirm the name was updated
+      await page.goto(`/governance/retention/${policyId}`);
+      await page.waitForSelector(
+        '.governance-retention-policy-detail-page, h1',
+        { timeout: 15000 }
+      );
+      await expect(page.locator(`text="${updatedName}"`)).toBeVisible({ timeout: 10000 });
     });
   });
 
   test.describe('Delete Operation', () => {
-    test('delete button triggers confirmation', async ({ page }) => {
-      const testId = '00000000-0000-0000-0000-000000000000';
-      await page.goto(`/governance/retention/${testId}`);
+    test('delete: confirm dialog appears; Cancel does NOT delete; Confirm deletes and removes from list', async ({
+      page,
+    }) => {
+      const user = await getTenantAdminUser();
+      const policyId = await createRetentionPolicyViaApi(user);
+
+      // Navigate to the real policy detail
+      await page.goto(`/governance/retention/${policyId}`);
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(2000);
       if (page.url().includes('/403') || page.url().includes('/login')) {
         return;
       }
-      await waitForAppMainReady(page, { timeout: 60000 });
+      await waitForAppMainReady(page, { timeout: 30000 });
 
-      // Check for delete button
-      const deleteButton = page.locator('button:has-text("Delete")');
-      const deleteCount = await deleteButton.count();
-
-      if (deleteCount > 0) {
-        // Set up dialog handler
-        page.on('dialog', async (dialog) => {
-          expect(dialog.type()).toBe('confirm');
-          await dialog.dismiss(); // Cancel deletion for test
-        });
-
-        await deleteButton.first().click();
-        await page.waitForTimeout(1000);
-
-        // Dialog should have been triggered
-        expect(true).toBe(true);
+      const deleteButton = page.locator(
+        'button:has-text("Delete"), [data-testid="delete-button"]'
+      );
+      if ((await deleteButton.count()) === 0) {
+        test.skip(true, 'Delete button not found — update selector');
+        return;
       }
+
+      // ── Part A: Cancel does NOT delete ───────────────────────────────────
+      await deleteButton.first().click();
+
+      // Check for either a custom modal/dialog or a native browser dialog
+      const customDialog = page.locator(
+        '[role="dialog"], .confirm-dialog, .modal, [data-testid="confirm-dialog"]'
+      );
+      const isCustomDialog = (await customDialog.count()) > 0;
+
+      if (isCustomDialog) {
+        await expect(customDialog.first()).toBeVisible({ timeout: 5000 });
+        const cancelButton = customDialog
+          .first()
+          .locator('button:has-text("Cancel"), button:has-text("No")');
+        if ((await cancelButton.count()) > 0) {
+          await cancelButton.first().click();
+          await customDialog
+            .first()
+            .waitFor({ state: 'hidden', timeout: 5000 })
+            .catch(() => null);
+        }
+      } else {
+        // Native browser dialog: dismiss it (cancel)
+        page.on('dialog', async (dialog) => dialog.dismiss());
+        await page.waitForTimeout(1000);
+      }
+
+      // Policy must still be at the detail URL after Cancel
+      await page.waitForTimeout(1000);
+      expect(page.url()).toContain(`/governance/retention/${policyId}`);
+
+      // ── Part B: Confirm DOES delete ──────────────────────────────────────
+      await deleteButton.first().click();
+
+      const deleteResponsePromise = page.waitForResponse(
+        (resp) =>
+          resp.url().includes(`/governance/retention`) &&
+          resp.request().method() === 'DELETE',
+        { timeout: 30000 }
+      );
+
+      if (isCustomDialog && (await customDialog.count()) > 0) {
+        await expect(customDialog.first()).toBeVisible({ timeout: 5000 });
+        const confirmButton = customDialog
+          .first()
+          .locator('button:has-text("Confirm"), button:has-text("Yes"), button:has-text("Delete")');
+        await confirmButton.first().click();
+      } else {
+        // Native dialog: accept
+        page.on('dialog', async (dialog) => dialog.accept());
+        await page.waitForTimeout(1000);
+      }
+
+      const deleteResp = await deleteResponsePromise;
+      expect([200, 204]).toContain(deleteResp.status());
+
+      // Should redirect to list
+      await page.waitForURL(/\/governance\/retention$/, { timeout: 15000 });
+
+      // Policy must NOT appear in the list
+      const policyRow = page.locator(`[data-policy-id="${policyId}"], tr:has-text("${policyId.slice(0, 8)}")`);
+      expect(await policyRow.count()).toBe(0);
     });
   });
 
   test.describe('Complete CRUD Flow', () => {
-    test('complete flow: list → create → view → edit → delete', async ({ page }) => {
-      // Step 1: List page
-      await page.goto('/governance/retention');
+    test('complete flow: create → view → edit → delete (all steps real, no fake assertions)', async ({
+      page,
+    }) => {
+      const user = await getTenantAdminUser();
+      // Pre-condition: ensure an asset exists for the picker
+      await createAssetViaApi(user);
+
+      // ── Step 1: Navigate to create ────────────────────────────────────────
+      await page.goto('/governance/retention/new');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(1500);
       if (page.url().includes('/403') || page.url().includes('/login')) {
         return;
       }
-      await waitForAppMainReady(page, { timeout: 60000 });
-      expect(page.url()).toContain('/governance/retention');
+      await waitForAppMainReady(page, { timeout: 30000 });
 
-      // Step 2: Navigate to create
-      const createButton = page.locator(
-        'button:has-text("Create retention policy"), a:has-text("Create retention policy")'
+      const policyName = `e2e-crud-flow-${Date.now()}`;
+      const nameInput = page.locator('input[name="name"], input#name');
+      if ((await nameInput.count()) === 0) {
+        test.skip(true, 'Name input not found — update selector');
+        return;
+      }
+      await nameInput.first().fill(policyName);
+
+      // Fill retention period
+      const periodInput = page.locator('input[name="retention_period_days"], input#retention_period_days');
+      if ((await periodInput.count()) > 0) {
+        await periodInput.first().fill('90');
+      }
+
+      // Intercept the create POST
+      const createResponsePromise = page.waitForResponse(
+        (resp) =>
+          resp.url().includes('/governance/retention') && resp.request().method() === 'POST',
+        { timeout: 30000 }
       );
-      const createCount = await createButton.count();
+      const submitButton = page.locator(
+        'button[type="submit"]:has-text("Create"), button:has-text("Create retention policy")'
+      );
+      if ((await submitButton.count()) === 0) {
+        test.skip(true, 'Create submit button not found');
+        return;
+      }
+      await submitButton.first().click();
 
-      if (createCount > 0) {
-        await createButton.first().click();
-        await page.waitForLoadState('domcontentloaded');
-        await page.waitForTimeout(2000);
+      const createResp = await createResponsePromise;
+      expect(createResp.status()).toBeGreaterThanOrEqual(200);
+      expect(createResp.status()).toBeLessThan(300);
 
-        if (page.url().includes('/governance/retention/new')) {
-          // Step 3: Fill and submit create form
-          const nameInput = page.locator('input[name="name"], input#name');
-          const nameCount = await nameInput.count();
+      const createdData = (await createResp.json()) as { id?: string };
+      const policyId = createdData.id;
+      expect(policyId).toBeTruthy();
 
-          if (nameCount > 0) {
-            await nameInput.first().fill('E2E Test Policy');
+      // ── Step 2: View detail ───────────────────────────────────────────────
+      await page.waitForURL(/\/governance\/retention\/[^/]+$/, { timeout: 10000 });
+      expect(page.url()).toContain(`/governance/retention/${policyId}`);
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const msg = await page.locator('.error-display').first().textContent().catch(() => '');
+        throw new Error(`Detail page shows error after create: ${msg}`);
+      }
 
-            const assetInput = page.locator('input[placeholder*="Asset ID"]');
-            const assetCount = await assetInput.count();
-            if (assetCount > 0) {
-              await assetInput.first().fill('e2e-test-asset');
-            }
+      // ── Step 3: Edit ──────────────────────────────────────────────────────
+      const editButton = page.locator('button:has-text("Edit"), a:has-text("Edit")');
+      if ((await editButton.count()) > 0) {
+        await editButton.first().click();
+        await page.waitForURL(/\/governance\/retention\/[^/]+\/edit/, { timeout: 10000 });
 
-            const retentionInput = page.locator('input[name="retention_period_days"]');
-            const retentionCount = await retentionInput.count();
-            if (retentionCount > 0) {
-              await retentionInput.first().fill('60');
-            }
+        const editNameInput = page.locator('input[name="name"], input#name');
+        if ((await editNameInput.count()) > 0) {
+          const updatedName = `${policyName}-updated`;
+          await editNameInput.first().clear();
+          await editNameInput.first().fill(updatedName);
 
-            const submitButton = page.locator('button[type="submit"]:has-text("Create")');
-            const submitCount = await submitButton.count();
+          const updateResponsePromise = page.waitForResponse(
+            (resp) =>
+              resp.url().includes(`/governance/retention`) &&
+              (resp.request().method() === 'PUT' || resp.request().method() === 'PATCH'),
+            { timeout: 30000 }
+          );
 
-            if (submitCount > 0) {
-              const responsePromise = page.waitForResponse(
-                (resp) =>
-                  resp.url().includes('/governance/retention') &&
-                  resp.request().method() === 'POST',
-                { timeout: 30000 }
-              );
-
-              await submitButton.first().click();
-
-              try {
-                const response = await responsePromise;
-                await page.waitForTimeout(3000);
-
-                if (response.status() === 201 || response.status() === 200) {
-                  const responseData = await response.json();
-                  const policyId = responseData.id;
-
-                  if (policyId) {
-                    // Step 4: View detail page
-                    await page.goto(`/governance/retention/${policyId}`);
-                    await page.waitForLoadState('domcontentloaded');
-                    await page.waitForTimeout(2000);
-                    if (!page.url().includes('/403') && !page.url().includes('/login')) {
-                      await waitForAppMainReady(page, { timeout: 60000 });
-                    }
-                    expect(page.url()).toContain(`/governance/retention/${policyId}`);
-
-                    // Step 5: Navigate to edit
-                    const editButton = page.locator('button:has-text("Edit")');
-                    const editCount = await editButton.count();
-
-                    if (editCount > 0) {
-                      await editButton.first().click();
-                      await page.waitForLoadState('domcontentloaded');
-                      await page.waitForTimeout(2000);
-
-                      if (page.url().includes(`/governance/retention/${policyId}/edit`)) {
-                        // Step 6: Update and submit
-                        const editNameInput = page.locator('input[name="name"]');
-                        const editNameCount = await editNameInput.count();
-
-                        if (editNameCount > 0) {
-                          await editNameInput.first().fill('E2E Test Policy Updated');
-
-                          const updateButton = page.locator(
-                            'button[type="submit"]:has-text("Update")'
-                          );
-                          const updateCount = await updateButton.count();
-
-                          if (updateCount > 0) {
-                            const updateResponsePromise = page.waitForResponse(
-                              (resp) =>
-                                resp.url().includes(`/governance/retention/${policyId}`) &&
-                                (resp.request().method() === 'PUT' ||
-                                  resp.request().method() === 'PATCH'),
-                              { timeout: 30000 }
-                            );
-
-                            await updateButton.first().click();
-
-                            try {
-                              await updateResponsePromise;
-                              await page.waitForTimeout(3000);
-
-                              // Should be on detail page
-                              expect(page.url()).toContain(`/governance/retention/${policyId}`);
-                            } catch (_err) {
-                              // Update might fail, but that's okay for E2E test
-                              expect(true).toBe(true);
-                            }
-                          }
-                        }
-                      }
-                    }
-
-                    // Step 7: Delete (optional - might want to skip to avoid data cleanup issues)
-                    // Uncomment if you want to test deletion
-                    /*
-                    const deleteButton = page.locator('button:has-text("Delete")');
-                    const deleteCount = await deleteButton.count();
-
-                    if (deleteCount > 0) {
-                      page.on('dialog', async (dialog) => {
-                        await dialog.accept();
-                      });
-
-                      await deleteButton.first().click();
-                      await page.waitForTimeout(3000);
-
-                      // Should be back on list page
-                      expect(page.url()).toContain('/governance/retention');
-                    }
-                    */
-                  }
-                }
-              } catch (_err) {
-                // Creation might fail due to backend validation or other issues
-                // This is acceptable for E2E test - we're testing the UI flow
-                expect(true).toBe(true);
-              }
-            }
+          const updateButton = page.locator(
+            'button[type="submit"]:has-text("Update"), button[type="submit"]:has-text("Save")'
+          );
+          if ((await updateButton.count()) > 0) {
+            await updateButton.first().click();
+            const updateResp = await updateResponsePromise;
+            // Accept 200 or 204
+            expect([200, 204]).toContain(updateResp.status());
           }
         }
       }
 
-      // Test passes if we got through the flow without errors
-      expect(true).toBe(true);
+      // ── Step 4: Delete ────────────────────────────────────────────────────
+      await page.goto(`/governance/retention/${policyId}`);
+      await page.waitForSelector(
+        '.governance-retention-policy-detail-page, h1',
+        { timeout: 15000 }
+      );
+
+      const deleteBtn = page.locator('button:has-text("Delete"), [data-testid="delete-button"]');
+      if ((await deleteBtn.count()) > 0) {
+        const deleteResponsePromise = page.waitForResponse(
+          (resp) =>
+            resp.url().includes('/governance/retention') && resp.request().method() === 'DELETE',
+          { timeout: 30000 }
+        );
+
+        await deleteBtn.first().click();
+        const confirmDlg = page.locator('[role="dialog"], .confirm-dialog, .modal');
+        if ((await confirmDlg.count()) > 0) {
+          const confirmBtn = confirmDlg
+            .first()
+            .locator('button:has-text("Confirm"), button:has-text("Yes"), button:has-text("Delete")');
+          if ((await confirmBtn.count()) > 0) await confirmBtn.first().click();
+        } else {
+          page.on('dialog', async (d) => d.accept());
+          await page.waitForTimeout(500);
+        }
+
+        const deleteResp = await deleteResponsePromise;
+        expect([200, 204]).toContain(deleteResp.status());
+
+        // Back on list — policy absent
+        await page.waitForURL(/\/governance\/retention$/, { timeout: 15000 });
+        const policyNameRow = page.locator(`text="${policyName}"`);
+        expect(await policyNameRow.count()).toBe(0);
+      }
     });
   });
 });

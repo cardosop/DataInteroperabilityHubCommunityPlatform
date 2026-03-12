@@ -176,6 +176,7 @@ export function ComplianceRunListPage() {
           <button
             type="button"
             className="btn-primary compliance-create-run-btn"
+            data-testid="btn-create-compliance-run"
             onClick={() => setCreateModalOpen(true)}
           >
             Create compliance run
@@ -198,6 +199,7 @@ export function ComplianceRunListPage() {
           <button
             type="button"
             className="btn-primary compliance-create-run-btn"
+            data-testid="btn-create-compliance-run"
             onClick={() => setCreateModalOpen(true)}
           >
             Create compliance run

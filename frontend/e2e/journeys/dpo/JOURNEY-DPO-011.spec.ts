@@ -26,60 +26,107 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
   test.setTimeout(180000); // 3 min: avoid interrupted/timeout
 
   test.describe('Success', () => {
-    test('communities page loads (steward assignment)', async ({ page }) => {
+    test('governance page loads for steward assignment (access requests list or empty state)', async ({
+      page,
+    }) => {
+      // Data steward assignment lives in the governance/access-requests area, not communities.
+      // This test validates that the governance route loads for an authenticated DPO.
       const testUser = await getSocialTestUser();
-      await loginUser(page, testUser);
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2500);
-      await loginAndNavigateToRoute(page, testUser, '/communities', {
+      await loginAndNavigateToRoute(page, testUser, '/governance', {
         timeout: 60000,
-        contentSelector: '.communities-page, .communities-tab, .app-main, .unavailable-page, .loading-spinner-container, h1',
+        contentSelector:
+          '.access-request-list-page, .governance-page, .empty-state, .error-display, .app-main, .unavailable-page, h1',
+        acceptRedirectToLogin: true,
       });
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(2000);
+
       const url = page.url();
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
       const onUnavailable = url.includes('/unavailable');
-      const onCommunities = url.includes('/communities');
+      const onGovernance = url.includes('/governance');
+
+      if (onLogin) {
+        throw new Error('Unexpected redirect to login on governance page; auth may have failed.');
+      }
+
       const hasContent =
-        (await page.locator('.communities-page, .communities-tab, .app-main, .unavailable-page, .loading-spinner-container, .error-display').count()) > 0;
-      expect(onLogin || on403 || onUnavailable || (onCommunities && hasContent)).toBe(true);
+        (await page
+          .locator(
+            '.access-request-list-page, .governance-page, .empty-state, .error-display, .app-main'
+          )
+          .count()) > 0;
+      expect(on403 || onUnavailable || (onGovernance && hasContent)).toBe(true);
     });
   });
 
   test.describe('Failure', () => {
-    test('governance without role shows 403 or redirect', async ({ page }) => {
+    test('governance DPO user cannot write (create/approve) governance records', async ({ page }) => {
+      // DPO user (DATA_PROVIDER role) should not be able to create governance records directly.
+      // Either: redirected to /403, sees an error when submitting, or governance write actions
+      // are not exposed in the UI for this role.
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/governance', {
         timeout: 60000,
         contentSelector:
           '.app-main, .governance-access-request-list-page, .governance-create-page, .error-display, .loading-spinner-container, h1',
-        acceptRedirectToLogin: true, // Test expects onGov || on403 || onLogin
+        acceptRedirectToLogin: true,
       });
       await page.waitForTimeout(3000);
-      const onGov = page.url().includes('/governance');
+
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login for governance failure test');
+      }
+
       const on403 = page.url().includes('/403');
-      const onLogin = page.url().includes('/login');
-      const hasContent =
-        (await page.locator('.app-main').count()) > 0 &&
-        ((await page.locator('.governance-access-request-list-page, .governance-create-page, .error-display, h1').count()) > 0 ||
-          (await page.locator('text=/access|request|403|forbidden/i').count()) > 0);
-      expect(onGov || on403 || onLogin).toBe(true);
-      expect(hasContent || onGov || on403 || onLogin).toBe(true);
+      if (on403) {
+        // Correctly blocked — pass
+        return;
+      }
+
+      // If governance page is accessible, verify no create/approve buttons are exposed to DPO
+      const onGov = page.url().includes('/governance');
+      expect(onGov).toBe(true);
+
+      const hasCreateBtn = (await page.locator('button:has-text("Create"), button:has-text("Approve"), button:has-text("Grant")').count()) > 0;
+      if (hasCreateBtn) {
+        // If create is shown, clicking must result in a 403 or error (role boundary enforced at API)
+        const responsePromise = page.waitForResponse(
+          r => r.request().method() === 'POST' && r.url().includes('/governance'),
+          { timeout: 10000 }
+        ).catch(() => null);
+        await page.locator('button:has-text("Create"), button:has-text("Approve"), button:has-text("Grant")').first().click();
+        const resp = await responsePromise;
+        if (resp) {
+          expect(resp.status()).toBeGreaterThanOrEqual(400);
+        }
+      }
     });
   });
 
   test.describe('Edge', () => {
-    test('communities page loads or redirects', async ({ page }) => {
+    test('communities page renders content or capability-unavailable state (no crash)', async ({ page }) => {
       const testUser = await getTestUser();
       await loginUser(page, testUser);
       await page.goto('/communities', { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
-      const url = page.url();
-      expect(
-        url.includes('/login') || url.includes('/403') || url.includes('/unavailable') || url.includes('/communities')
-      ).toBe(true);
+
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login on /communities edge test');
+      }
+
+      // CapabilityRoute shows a loading spinner while capabilities are fetched.
+      // Wait until either the communities page or the /unavailable redirect renders.
+      await page.waitForSelector(
+        '.communities-page, .communities-tab, .unavailable-page',
+        { timeout: 30000 }
+      ).catch(() => null);
+
+      // Must render something meaningful — not a blank or crash
+      const hasContent =
+        (await page.locator('.communities-page, .communities-tab, .unavailable-page').count()) > 0 ||
+        page.url().includes('/403');
+      expect(hasContent).toBe(true);
     });
   });
 });

@@ -38,12 +38,23 @@ test.describe('Feature: Auth', () => {
     });
 
     test('public page accessible without auth', async ({ page }) => {
+      // The /public route must be accessible without authentication — it must NOT redirect
+      // to /login. Accepting a login redirect here would be a false positive (the test name
+      // says "accessible without auth" but a redirect means "not accessible without auth").
       await page.goto('/public');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      const onPublic = page.url().includes('/public');
-      const onLogin = page.url().includes('/login');
-      expect(onPublic || onLogin).toBe(true);
+      // Wait for the page to settle — /public should render content, not redirect
+      await page
+        .locator('h1, .public-page, [data-testid="public-page"], main')
+        .first()
+        .waitFor({ state: 'visible', timeout: 15000 })
+        .catch(() => null);
+      // Must stay on /public — redirect to /login is a failure for this scenario
+      await expect(page).toHaveURL(/\/public/);
+      // Must render visible content (not a blank page or error state)
+      const hasContent =
+        (await page.locator('h1, .public-page, main').count()) > 0;
+      expect(hasContent).toBe(true);
     });
   });
 
@@ -58,14 +69,18 @@ test.describe('Feature: Auth', () => {
     });
 
     test('invalid path redirects or shows 404', async ({ page }) => {
-      await page.goto('/login');
-      await page.waitForLoadState('domcontentloaded');
+      // The `onApp = url does not include '/nonexistent'` branch was trivially true
+      // after any redirect (e.g. redirect to home, login, etc.) and provided no signal.
+      // Removed. Only accept: 404 content on page OR redirect to /login for protected routes.
       await page.goto('/nonexistent-auth-route-xyz');
-      await page.waitForTimeout(3000);
-      const on404 = await page.locator('text=/not found|404/i').count() > 0;
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      const on404 =
+        (await page.locator('text=/not found|404/i').count()) > 0 ||
+        page.url().includes('/404');
       const onLogin = page.url().includes('/login');
-      const onApp = page.url().includes('/nonexistent') === false;
-      expect(on404 || onLogin || onApp).toBe(true);
+      // Must show 404 feedback or redirect to login — NOT silently land on a valid page
+      expect(on404 || onLogin).toBe(true);
     });
   });
 
@@ -170,7 +185,7 @@ test.describe('Feature: Auth', () => {
       await page.locator('input#name').fill('Duplicate User');
       await page.locator('input#email').fill('e2e_test@example.com');
       await page.locator('input#password').fill('SecurePass123');
-      // Wait for API response — registration with duplicate email returns 400
+      // Wait for API response — registration with duplicate email must return 4xx
       const [response] = await Promise.all([
         page
           .waitForResponse(
@@ -183,11 +198,18 @@ test.describe('Feature: Auth', () => {
         page.click('button[type="submit"]'),
       ]);
       await page.waitForTimeout(2000);
-      // If registration is enabled, server should return 4xx for duplicate email
+      // A 201 here means the backend accepted a duplicate email registration — this is a
+      // hard backend integrity violation (broken unique constraint), not a test flakiness.
+      // Silently passing with console.warn was hiding real bugs. Fail explicitly instead.
       if (response && response.status() === 201) {
-        // Backend unexpectedly allowed the duplicate — flag as a known backend issue
-        // but don't fail the test (the form navigated to /login)
-        console.warn('WARNING: Backend allowed registration with duplicate email e2e_test@example.com');
+        throw new Error(
+          'Backend returned 201 for duplicate email e2e_test@example.com. ' +
+          'The unique constraint on email is violated — this is a backend integrity bug, not a test issue.'
+        );
+      }
+      // With 503 (registration disabled/unavailable) the form may stay or navigate away
+      if (response && response.status() === 503) {
+        // Registration service unavailable — acceptable, cannot test duplicate email scenario
         return;
       }
       const hasError =

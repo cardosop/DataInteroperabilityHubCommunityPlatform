@@ -143,10 +143,10 @@ elif curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1;
     echo "Logs:  docker compose -f docker-compose.test.yml logs api-service-test"
     exit 1
   fi
-  # Settle time: frontend proxy may have stale connections after API restart; reduces ECONNRESET
+  # Settle time: frontend proxy may have stale connections after API restart; reduces ECONNRESET/socket hang up
   if [[ "${E2E_SKIP_API_RESTART:-0}" != "1" ]]; then
-    echo "Waiting 5s for proxy connections to settle after API restart..."
-    sleep 5
+    echo "Waiting 10s for proxy connections to settle after API restart..."
+    sleep 10
   fi
   # Reset auth rate limits so setup and tests can log in (avoids 429 after many runs)
   docker exec hub-test-api python hub/manage.py reset_e2e_auth_rate_limits 2>/dev/null || true

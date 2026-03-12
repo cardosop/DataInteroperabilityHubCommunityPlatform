@@ -52,17 +52,28 @@ test.describe('JOURNEY-AUTH-004: Unauthenticated User Accesses Public Resources'
       });
     });
 
-    test('unauthenticated user visiting protected route redirects to login', async ({ page }) => {
+    test('unauthenticated user visiting protected route sees no authenticated content', async ({
+      page,
+    }) => {
+      // Verify that protected content (.app-sidebar, user-specific data) is NOT rendered —
+      // distinct from the Failure test which only checks the URL redirect target.
       await clearAuthStorage(page);
       await page.goto('/assets', { waitUntil: 'domcontentloaded' });
       await page.waitForURL(/\/(login|assets)/, { timeout: 20_000 });
+      // Authenticated shell must not be visible to unauthenticated visitors
+      const appSidebar = page.locator('.app-sidebar');
+      const appHeader = page.locator('.app-header');
+      const sidebarVisible = await appSidebar.isVisible().catch(() => false);
+      const headerVisible = await appHeader.isVisible().catch(() => false);
+      // When redirected to /login the shell is not rendered; when on /assets the shell should
+      // also not render because auth guard clears it before login prompt is shown.
       const url = page.url();
-      const onLogin = url.includes('/login');
-      const onAssetsWithLoginPrompt =
-        url.includes('/assets') &&
-        ((await page.locator('input#email, [href*="/login"]').count()) > 0 ||
-          (await page.locator('text=Sign in').count()) > 0);
-      expect(onLogin || onAssetsWithLoginPrompt).toBe(true);
+      if (url.includes('/login')) {
+        expect(sidebarVisible).toBe(false);
+      } else {
+        // Still on /assets with a login prompt embedded — authenticated shell should not exist
+        expect(sidebarVisible || headerVisible).toBe(false);
+      }
     });
   });
 });

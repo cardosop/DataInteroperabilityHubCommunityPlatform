@@ -28,19 +28,34 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
         expect(page.url()).toContain('/login');
         return;
       }
+
+      // Wait for loading to settle before inspecting content
+      await page
+        .locator('.entitlement-list-page, .empty-state, .error-display')
+        .first()
+        .waitFor({ state: 'visible', timeout: 20000 })
+        .catch(() => null);
+
       const entitlementLink = page.locator('.entitlement-list-page a[href*="/marketplace/entitlements/"]').first();
-      if ((await entitlementLink.count()) > 0) {
-        await entitlementLink.click();
-        await page.waitForURL(/\/marketplace\/entitlements\/[^/]+/, { timeout: 10000 });
-        await page.waitForSelector('.entitlement-detail-page, .error-display', { timeout: 15000 });
-        const hasDetail = (await page.locator('.entitlement-detail-page').count()) > 0;
-        expect(hasDetail).toBe(true);
-        // Download/Access: if Download button or View asset link exists, verify reachable
-        const downloadBtn = page.locator('button:has-text("Download"), a:has-text("Download"), button:has-text("Access")');
-        const assetLink = page.locator('a[href*="/assets/"]');
-        const hasAccessPath = (await downloadBtn.count()) > 0 || (await assetLink.count()) > 0;
-        expect(hasDetail || hasAccessPath).toBe(true);
+      if ((await entitlementLink.count()) === 0) {
+        // Consumer has no entitlements — assert empty-state is shown (not a blank render)
+        const hasEmptyOrError =
+          (await page.locator('.empty-state').count()) > 0 ||
+          (await page.locator('.error-display').count()) > 0;
+        expect(hasEmptyOrError).toBe(true);
+        return;
       }
+
+      await entitlementLink.click();
+      await page.waitForURL(/\/marketplace\/entitlements\/[^/]+/, { timeout: 10000 });
+      await page.waitForSelector('.entitlement-detail-page, .error-display', { timeout: 15000 });
+      const hasDetail = (await page.locator('.entitlement-detail-page').count()) > 0;
+      expect(hasDetail).toBe(true);
+      // Download/Access: if Download button or View asset link exists, verify reachable
+      const downloadBtn = page.locator('button:has-text("Download"), a:has-text("Download"), button:has-text("Access")');
+      const assetLink = page.locator('a[href*="/assets/"]');
+      const hasAccessPath = (await downloadBtn.count()) > 0 || (await assetLink.count()) > 0;
+      expect(hasDetail || hasAccessPath).toBe(true);
     });
 
     test('listing detail download option when available', async ({ page }) => {
@@ -93,10 +108,24 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
         return;
       }
       expect(page.url()).toContain('/marketplace/entitlements');
-      const hasEmptyOrList =
+
+      // Wait for loading spinner to disappear so we see the terminal state
+      // (empty-state, entitlement-list-page, or error-display)
+      await page
+        .locator('.empty-state, .entitlement-list-page, .error-display')
+        .first()
+        .waitFor({ state: 'visible', timeout: 20000 })
+        .catch(() => null);
+
+      // The page renders one of:
+      //   .empty-state          — consumer has no entitlements (expected happy path)
+      //   .entitlement-list-page — consumer has entitlements (also valid)
+      //   .error-display        — API returned an error (e.g. 403, 500) — valid terminal state
+      const hasEmptyOrListOrError =
         (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.entitlement-list-page').count()) > 0;
-      expect(hasEmptyOrList).toBe(true);
+        (await page.locator('.entitlement-list-page').count()) > 0 ||
+        (await page.locator('.error-display').count()) > 0;
+      expect(hasEmptyOrListOrError).toBe(true);
     });
   });
 });

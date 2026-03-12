@@ -7,7 +7,11 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { waitForAppMainReady, waitForLoadingComplete } from '../../fixtures/helpers';
+import {
+  assertListPageLoads,
+  waitForAppMainReady,
+  waitForLoadingComplete,
+} from '../../fixtures/helpers';
 
 test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => {
   test.setTimeout(120000);
@@ -24,6 +28,8 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         return;
       }
       expect(page.url()).toContain('/integrations/connections');
+      // URL check alone is not sufficient — verify actual content; reject error-display
+      await assertListPageLoads(page, '.connection-list-page, .empty-state');
     });
 
     test('integrations sync-jobs list loads', async ({ page }) => {
@@ -37,12 +43,13 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         }
         throw _err;
       }
+      if (page.url().includes('/login')) {
+        expect(page.url()).toContain('/login');
+        return;
+      }
       expect(page.url()).toContain('/integrations/sync-jobs');
-      const hasContent =
-        (await page.locator('.sync-job-list-page').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      // error-display is not an acceptable success outcome for the sync-jobs list
+      await assertListPageLoads(page, '.sync-job-list-page, .empty-state');
     });
 
     test('integrations mappings list loads', async ({ page }) => {
@@ -56,12 +63,13 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         }
         throw _err;
       }
+      if (page.url().includes('/login')) {
+        expect(page.url()).toContain('/login');
+        return;
+      }
       expect(page.url()).toContain('/integrations/mappings');
-      const hasContent =
-        (await page.locator('.mapping-list-page').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      // error-display is not an acceptable success outcome for the mappings list
+      await assertListPageLoads(page, '.mapping-list-page, .empty-state');
     });
 
     test('jobs list loads', async ({ page }) => {
@@ -75,6 +83,8 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         return;
       }
       expect(page.url()).toContain('/jobs');
+      // URL check alone is not sufficient — verify actual content; reject error-display
+      await assertListPageLoads(page, '.job-list-page, .empty-state');
     });
 
     test('webhooks list loads', async ({ page }) => {
@@ -88,31 +98,46 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         }
         throw _err;
       }
+      if (page.url().includes('/login')) {
+        expect(page.url()).toContain('/login');
+        return;
+      }
       expect(page.url()).toContain('/webhooks');
-      const hasContent =
-        (await page.locator('.webhook-list-page').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      // error-display is not an acceptable success outcome for the webhooks list
+      await assertListPageLoads(page, '.webhook-list-page, .empty-state');
     });
   });
 
   test.describe('Failure', () => {
     test('job detail with non-existent id shows error', async ({ page }) => {
-      await page.goto('/jobs/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
-      await page
+      const nonExistentId = '00000000-0000-0000-0000-000000000000';
+      // Fixed: use the full UUID path instead of partial includes('/jobs/') && includes('00000000')
+      // which could match unrelated requests. Only 404 is valid; no status filter was previously set.
+      const responsePromise = page
         .waitForResponse(
-          (resp) => resp.url().includes('/jobs/') && resp.url().includes('00000000'),
+          (resp) =>
+            resp.url().includes(`/jobs/${nonExistentId}`) &&
+            resp.status() === 404,
           { timeout: 15000 }
         )
         .catch(() => null);
-      await page.waitForTimeout(2000);
-      const hasError =
-        (await page.locator('.error-display, .error-display-title').count()) > 0 ||
-        (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
-      const noSuccess = (await page.locator('.job-detail-main, .job-detail-page').count()) === 0;
-      expect(hasError || noSuccess).toBe(true);
+      await page.goto(`/jobs/${nonExistentId}`);
+      await page.waitForLoadState('domcontentloaded');
+      await responsePromise;
+
+      await page.locator('.error-display, .error-display-title, .job-detail-page')
+        .first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+
+      const onLogin = page.url().includes('/login');
+      if (onLogin) return;
+
+      const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+      if (hasErrorDisplay && !hasNotFoundText) {
+        const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        throw new Error(`Job detail shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);
+      }
+      expect(hasErrorDisplay && hasNotFoundText).toBe(true);
     });
   });
 
@@ -137,9 +162,10 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
       const hasError = (await page.locator('.error-display').count()) > 0;
       const has403 = (await page.locator('text=/403|forbidden/i').count()) > 0;
       const hasUnavailable = (await page.locator('.unavailable-page').count()) > 0;
+      const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
       expect(onScheduled || onLogin || on403).toBe(true);
-      // Terminal states only: list, error, 403 text, unavailable page, or redirect (no loading spinner)
-      expect(hasList || hasError || has403 || hasUnavailable || onLogin || on403).toBe(true);
+      // Terminal states only: list, empty state, error, 403 text, unavailable, or redirect
+      expect(hasList || hasEmptyState || hasError || has403 || hasUnavailable || onLogin || on403).toBe(true);
     });
   });
 });

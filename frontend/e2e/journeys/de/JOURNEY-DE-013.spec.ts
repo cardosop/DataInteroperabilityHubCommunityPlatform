@@ -24,7 +24,7 @@ test.describe('JOURNEY-DE-013: Configure Data Mesh Domain', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
         '.mesh-domain-list-page, .mesh-domain-list-header, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 120000 }
+        { timeout: 45000 }
       );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -80,7 +80,7 @@ test.describe('JOURNEY-DE-013: Configure Data Mesh Domain', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
         '.mesh-domain-list-page, .mesh-domain-list-header, .empty-state, .error-display, .loading-spinner-container, .app-main, h1, #email',
-        { timeout: 120000 }
+        { timeout: 45000 }
       );
       expect(page.url()).toContain('/mesh');
     });

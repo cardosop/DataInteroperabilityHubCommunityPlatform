@@ -1,1 +1,0 @@
-{"error":{"code":"NOT_FOUND","message":"No Entitlement matches the given query.","http_status":404,"request_id":"6b519554-702a-42cc-bb8d-0710e8d4a771","timestamp":"2026-03-11T14:55:11.129272+00:00","details":{"field_errors":[{"field":"detail","message":"No Entitlement matches the given query.","code":"VALIDATION_ERROR"}]}}}

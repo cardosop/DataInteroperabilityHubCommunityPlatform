@@ -1,1 +1,0 @@
-{"status": "unhealthy", "database": "error: could not translate host name \"postgres-test\" to address: System error\n", "redis": {"cache": "connected", "queue": "connected", "events": "connected", "channels": "connected"}}

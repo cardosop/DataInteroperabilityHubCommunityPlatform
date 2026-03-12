@@ -54,9 +54,7 @@ test.describe('JOURNEY-MP-007: Monitor Sync Jobs', () => {
         acceptRedirectToLogin: true,
       });
       await page.waitForTimeout(3000);
-      const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
+      const hasError = (await page.locator('.error-display').count()) > 0;
       const onLogin = page.url().includes('/login');
       expect(hasError || onLogin).toBe(true);
     });

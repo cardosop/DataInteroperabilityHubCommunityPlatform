@@ -50,7 +50,12 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
       });
       await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
       if ((await page.locator('.error-display').count()) > 0) {
-        test.skip(true, 'Asset load failed; cannot assert Community section');
+        const errText =
+          (await page.locator('.error-display').first().textContent().catch(() => '')) ?? '';
+        throw new Error(
+          `Asset detail failed to load (required for Community section test). ` +
+            `Backend error: ${errText.slice(0, 200)}`
+        );
       }
       const socialSection = page.locator('[data-testid="asset-social-section"]');
       await socialSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);

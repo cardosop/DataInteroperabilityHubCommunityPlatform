@@ -17,7 +17,7 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
   test.setTimeout(300000); // 5 min: contracts API can be slow under parallel E2E load
 
   test.describe('Success', () => {
-    test('contracts list loads', async ({ page }) => {
+    test('contracts list loads without backend error', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/contracts', {
         timeout: 60000,
@@ -25,10 +25,17 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       });
       expect(page.url()).toContain('/contracts');
       await waitForLoadingComplete(page, { timeout: 30000 });
+
+      // Error display must NOT count as "contracts list loaded" — it means the API failed
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        throw new Error(`Contracts list shows backend error: ${errText.slice(0, 200)}`);
+      }
+
       const hasContent =
         (await page.locator('.contract-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.empty-state').count()) > 0;
       expect(hasContent).toBe(true);
     });
 
@@ -138,7 +145,7 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       expect(page.url()).toContain('/contracts');
     });
 
-    test('contracts list shows pagination or single page or empty state', async ({ page }) => {
+    test('contracts list shows data rows, pagination, or empty state (not an error)', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/contracts', {
         timeout: 90000,
@@ -148,14 +155,20 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
         throw new Error('Contracts list redirected to login; auth may have failed under parallel load.');
       }
       expect(page.url()).toContain('/contracts');
-      // Wait for loading to complete and actual content to appear (not just loading spinner)
       await page
         .locator('.contract-list-page, .empty-state, .error-display')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 });
+
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        throw new Error(`Contracts list shows backend error: ${errText.slice(0, 200)}`);
+      }
+
       const hasPagination = (await page.locator('.contract-list-pagination').count()) > 0;
       const hasListOrEmpty =
-        (await page.locator('.contract-list-page').count()) > 0 ||
+        (await page.locator('.contract-list-page table tr, .contract-list-page .list-item, .contract-list-page a[href*="/contracts/"]').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
       expect(hasPagination || hasListOrEmpty).toBe(true);
     });

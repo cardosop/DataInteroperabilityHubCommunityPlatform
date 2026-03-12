@@ -389,10 +389,12 @@ def ensure_e2e_tenant_switch_setup(request):
     )
     if len(memberships) >= 2:
         secondary_id = next((t for t in memberships if str(t) != str(primary.id)), memberships[1])
+        secondary_tenant = Tenant.objects.get(id=secondary_id)
         return Response(
             {
                 "tenant_ids": [str(primary.id), str(secondary_id)],
                 "secondary_tenant_id": str(secondary_id),
+                "secondary_tenant_name": secondary_tenant.name,
             },
             status=200,
         )
@@ -407,6 +409,7 @@ def ensure_e2e_tenant_switch_setup(request):
         {
             "tenant_ids": [str(primary.id), str(secondary.id)],
             "secondary_tenant_id": str(secondary.id),
+            "secondary_tenant_name": secondary.name,
         },
         status=200,
     )

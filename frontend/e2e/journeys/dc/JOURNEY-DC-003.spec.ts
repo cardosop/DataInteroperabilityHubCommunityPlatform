@@ -43,7 +43,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
       expect(hasContent).toBe(true);
     });
 
-    test('filters in marketplace apply and show filtered results', async ({ page }) => {
+    test('filters in marketplace apply and result container updates', async ({ page }) => {
       const consumer = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 90000,
@@ -57,7 +57,17 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
       const filterSelect = page.locator('.filter-select').first();
       if ((await filterSelect.count()) > 0) {
         await filterSelect.selectOption({ index: 1 });
-        await page.waitForTimeout(1000);
+        // Wait for the filter to take effect — result container must render a terminal state
+        await page
+          .locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display')
+          .first()
+          .waitFor({ state: 'visible', timeout: 10000 })
+          .catch(() => null);
+        const hasTerminalState =
+          (await page.locator('.listing-list-page, .listing-list-grid').count()) > 0 ||
+          (await page.locator('.empty-state').count()) > 0 ||
+          (await page.locator('.error-display').count()) > 0;
+        expect(hasTerminalState).toBe(true);
       }
       expect(page.url()).toContain('/marketplace');
     });
@@ -80,7 +90,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
   });
 
   test.describe('Edge', () => {
-    test('clear filters restores full list or empty state', async ({ page }) => {
+    test('clearing search input restores list or empty state (no blank render)', async ({ page }) => {
       const consumer = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 90000,
@@ -93,9 +103,27 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
       const searchInput = page.locator('.listing-list-filters input, input[placeholder*="Search"]').first();
       if ((await searchInput.count()) > 0) {
         await searchInput.fill('xyznonexistent');
-        await page.waitForTimeout(1000);
+        // After filter applied — wait for results to settle
+        await page
+          .locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display')
+          .first()
+          .waitFor({ state: 'visible', timeout: 8000 })
+          .catch(() => null);
+
+        // Clear the search — results must return to the unfiltered state
         await searchInput.fill('');
-        await page.waitForTimeout(1000);
+        await page
+          .locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display')
+          .first()
+          .waitFor({ state: 'visible', timeout: 8000 })
+          .catch(() => null);
+
+        // After clearing, a terminal state must be visible (not blank)
+        const hasTerminalState =
+          (await page.locator('.listing-list-page, .listing-list-grid').count()) > 0 ||
+          (await page.locator('.empty-state').count()) > 0 ||
+          (await page.locator('.error-display').count()) > 0;
+        expect(hasTerminalState).toBe(true);
       }
       expect(page.url()).toContain('/marketplace');
     });

@@ -36,9 +36,7 @@ test.describe('Feature: Assets', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(5000);
       const onLogin = page.url().includes('/login');
-      const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('text=/not found|404|failed to load/i').count()) > 0;
+      const hasError = (await page.locator('.error-display').count()) > 0;
       const noDetail = (await page.locator('.asset-detail-page').count()) === 0;
       expect(onLogin || hasError || noDetail).toBe(true);
     });

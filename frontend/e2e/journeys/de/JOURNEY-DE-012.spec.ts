@@ -23,7 +23,7 @@ test.describe('JOURNEY-DE-012: Create Custom Plugin', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
         '.developer-portal-page, .app-main, .unavailable-page, .loading-spinner-container, .loading-spinner, #email',
-        { timeout: 120000 }
+        { timeout: 45000 }
       );
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
@@ -43,7 +43,7 @@ test.describe('JOURNEY-DE-012: Create Custom Plugin', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
         '.developer-portal-page, .unavailable-page, .error-display, .loading-spinner-container, .app-main, #email',
-        { timeout: 120000 }
+        { timeout: 45000 }
       );
       const on403 = page.url().includes('/403');
       const onUnavailable =

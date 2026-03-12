@@ -79,6 +79,40 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
         { timeout: 30000 }
       );
       expect(page.url()).not.toContain('/marketplace/publish');
+
+      // ── DRAFT → PUBLISHED two-step ─────────────────────────────────────
+      // If we landed on a listing detail page, check its status badge.
+      // If DRAFT: click Publish, intercept the publish API call, assert badge changes.
+      if (/\/marketplace\/listings\/[^/]+/.test(new URL(page.url()).pathname)) {
+        await page.waitForSelector('.listing-detail-page, .listing-status-badge, h1', {
+          timeout: 10000,
+        });
+        const statusBadge = page.locator('.listing-status-badge, [data-testid="listing-status"]');
+        const isDraft =
+          (await statusBadge.count()) > 0 &&
+          (await statusBadge.first().textContent())?.toUpperCase().includes('DRAFT');
+
+        if (isDraft) {
+          const publishBtn = page.locator(
+            'button:has-text("Publish"), [data-testid="publish-listing-btn"]'
+          );
+          if ((await publishBtn.count()) > 0) {
+            const publishResponsePromise = page.waitForResponse(
+              (r) =>
+                (r.url().includes('/marketplace/listings/') &&
+                  (r.request().method() === 'PATCH' || r.request().method() === 'POST')) ||
+                r.url().includes('/publish/'),
+              { timeout: 20000 }
+            );
+            await publishBtn.first().click();
+            const publishResp = await publishResponsePromise;
+            expect(publishResp.status()).toBeGreaterThanOrEqual(200);
+            expect(publishResp.status()).toBeLessThan(300);
+            // Badge must change from DRAFT to PUBLISHED
+            await expect(statusBadge.first()).toContainText('PUBLISHED', { timeout: 10000 });
+          }
+        }
+      }
     });
   });
 

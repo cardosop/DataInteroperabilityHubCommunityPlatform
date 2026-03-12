@@ -50,9 +50,7 @@ test.describe('JOURNEY-DC-011: Purchase Asset with Usage-Based Pricing', () => {
         '.listing-detail-main, .error-display, .loading-spinner-container, #email',
         { timeout: 30000 }
       );
-      const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
+      const hasError = (await page.locator('.error-display').count()) > 0;
       const noSuccessContent = (await page.locator('.listing-detail-main').count()) === 0;
       const onLogin = page.url().includes('/login');
       expect(hasError || noSuccessContent || onLogin).toBe(true);

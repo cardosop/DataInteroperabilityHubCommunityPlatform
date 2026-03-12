@@ -327,9 +327,11 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   await resetHeading.waitFor({ state: 'visible', timeout: 35_000 });
   await page.fill('input#email', email);
   await page.click('button[type="submit"]');
-  // Wait for either success or error (backend may return error if password reset not enabled)
+  // Wait for either success or error (backend may return error if password reset not enabled).
+  // Timeout raised from 25s to 45s: the API can take up to ~20s to restart during parallel
+  // E2E load, causing the form-submit response to arrive late but still within the window.
   const successOrError = page.locator('.success-message, .error-message').first();
-  await successOrError.waitFor({ state: 'visible', timeout: 25_000 });
+  await successOrError.waitFor({ state: 'visible', timeout: 45_000 });
   if (await page.locator('.error-message').isVisible()) {
     const errText = await page.locator('.error-message').textContent();
     throw new Error(

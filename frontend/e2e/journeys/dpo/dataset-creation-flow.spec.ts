@@ -126,8 +126,15 @@ test.describe('Dataset Creation Flow', () => {
             }
 
             if (retries < maxRetries - 1) {
-              console.log(`File upload attempt ${retries + 1} failed, retrying...`);
-              await new Promise((r) => setTimeout(r, 2000));
+              const isNetworkError =
+                /ECONNRESET|socket hang up|connection reset|ETIMEDOUT|network error/i.test(
+                  String(error)
+                );
+              const delay = isNetworkError ? 6000 : 2000;
+              console.log(
+                `File upload attempt ${retries + 1} failed${isNetworkError ? ' (connection error)' : ''}, retrying in ${delay / 1000}s...`
+              );
+              await new Promise((r) => setTimeout(r, delay));
               retries++;
             } else {
               throw error;
@@ -151,11 +158,13 @@ test.describe('Dataset Creation Flow', () => {
 
     // Wait for redirect to detail page
     await expect(page).toHaveURL(/\/datasets\/[^/]+$/, { timeout: 15000 });
-    // API can be slow under Docker/parallel load; wait for loading to finish then detail
-    await waitForLoadingComplete(page, { timeout: 35000 });
+    // API can be slow under Docker/parallel load; wait for loading to finish then detail.
+    // Increased timeout: file upload retry + dataset creation under parallel E2E load can
+    // leave the backend processing the dataset record for 30-40s before the detail renders.
+    await waitForLoadingComplete(page, { timeout: 45000 });
     await page.waitForSelector(
       '.dataset-detail-page, .dataset-detail-content, .dataset-detail-metadata, .error-display, .empty-state',
-      { timeout: 25000 }
+      { timeout: 40000 }
     );
     const hasError = (await page.locator('.error-display').count()) > 0;
     if (hasError) {

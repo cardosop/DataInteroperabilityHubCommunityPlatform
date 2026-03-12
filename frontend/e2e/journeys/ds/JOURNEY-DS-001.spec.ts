@@ -56,17 +56,40 @@ test.describe('JOURNEY-DS-001: Use Natural Language Search', () => {
   });
 
   test.describe('Failure', () => {
-    test('AI search without capability shows 403 or unavailable', async ({ page }) => {
+    test('AI search without capability shows 403 or unavailable (not the working feature)', async ({
+      page,
+    }) => {
       const testUser = await getTestUser();
       await loginUser(page, testUser);
       await page.goto('/ai/search');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
+
       const on403 = page.url().includes('/403');
-      const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
-      const onAISearch = page.url().includes('/ai/search');
+      const onUnavailable =
+        (await page.locator('.unavailable-page').count()) > 0 ||
+        (await page.locator('[data-testid="unavailable-page"]').count()) > 0;
       const onLogin = page.url().includes('/login');
-      expect(on403 || onUnavailable || onAISearch || onLogin).toBe(true);
+
+      // Detect whether the feature is actually enabled (working AI search page with content)
+      const aiSearchFullyWorking =
+        page.url().includes('/ai/search') &&
+        (await page.locator('.ai-search-page').count()) > 0 &&
+        (await page.locator('.unavailable-page').count()) === 0 &&
+        (await page.locator('.error-display').count()) === 0;
+
+      if (aiSearchFullyWorking) {
+        // The capability is enabled in this environment — we cannot test the "gated" path.
+        // Skip with an explicit reason rather than pass with a misleading assertion.
+        test.skip(
+          true,
+          'AI search capability is enabled in this environment; this test requires the capability to be gated (disabled). Set the capability flag to false and re-run.'
+        );
+        return;
+      }
+
+      // Capability is gated — must show 403, unavailable page, or redirect to login
+      expect(on403 || onUnavailable || onLogin).toBe(true);
     });
   });
 

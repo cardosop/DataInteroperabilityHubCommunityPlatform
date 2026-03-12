@@ -157,6 +157,7 @@ export function DQRunListPage() {
           <button
             type="button"
             className="btn-primary dq-create-run-btn"
+            data-testid="btn-create-dq-run"
             onClick={() => setCreateModalOpen(true)}
           >
             Create DQ run
@@ -179,6 +180,7 @@ export function DQRunListPage() {
           <button
             type="button"
             className="btn-primary dq-create-run-btn"
+            data-testid="btn-create-dq-run"
             onClick={() => setCreateModalOpen(true)}
           >
             Create DQ run

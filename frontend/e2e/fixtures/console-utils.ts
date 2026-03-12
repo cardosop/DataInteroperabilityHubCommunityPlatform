@@ -27,10 +27,12 @@ export function isBenignConsoleError(text: string): boolean {
     // Transient under parallel E2E load: auth race, token refresh, backend overload
     (t.includes('failed to load resource') && (t.includes('401') || t.includes('500') || t.includes('400'))) ||
     // Role/permission checks (403) expected in: accept-invitation failure tests (invalid token returns
-    // 403 Forbidden), capability-gated route tests, and unauthenticated redirect tests.
+    // 403 Forbidden), capability-gated route tests, unauthenticated redirect tests, and mesh domain
+    // creation when the test user lacks TENANT_ADMIN role.
     (t.includes('failed to load resource') && t.includes('403')) ||
     (t.includes('[error report]') && t.includes('status code 403')) ||
     (t.includes('[error report]') && t.includes('request failed with status code 403')) ||
+    (t.includes('[error report]') && t.includes('you do not have permission')) ||
     // [Error Report] 500 when API under load or proxy socket hang up
     (t.includes('[error report]') && t.includes('status code 500')) ||
     // Postgres connection pool exhausted under parallel E2E load (transient)
@@ -63,6 +65,10 @@ export function isBenignConsoleError(text: string): boolean {
     (t.includes('[error report]') && t.includes('odps') && t.includes('required')) ||
     (t.includes('[error report]') && t.includes('product.dataschema')) ||
     (t.includes('[error report]') && t.includes('dataschema') && t.includes('field is required')) ||
+    // File upload: MinIO presigned-URL timeouts during parallel E2E load cause upload failures
+    // that are retried by the test. The [FileUpload] console.error is expected during retry cycles.
+    (t.includes('[fileupload]') && t.includes('upload failed')) ||
+    (t.startsWith('[fileupload]') && t.includes('error:')) ||
     // Failure-scenario tests: intentional route abort (page.route → abort) produces ERR_FAILED and
     // a Network Error report — these are expected for the "network error" failure scenario test
     (t.includes('failed to load resource') && t.includes('err_failed')) ||

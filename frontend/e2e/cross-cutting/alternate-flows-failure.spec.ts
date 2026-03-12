@@ -12,7 +12,11 @@ test.describe('Alternate flows — failure (USE_CASES A1–An)', () => {
   test.setTimeout(120000);
 
   test('asset create with duplicate key shows API error (A2-style)', async ({ page }) => {
-    const key = `e2e-dup-${Date.now()}`;
+    // Date.now() alone causes parallel key collisions: all 3 projects generate the key
+    // within milliseconds of each other, so the 2nd project tries to create the same key
+    // as the 1st but gets a 409 on the *first* create, meaning the "second create with the
+    // same key" scenario is never reached. Fix: include Math.random() for uniqueness.
+    const key = `e2e-dup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     await page.goto('/assets/create');
     try {
       await waitForAppMainReady(page, { contentSelector: '.asset-create-page', timeout: 60000 });

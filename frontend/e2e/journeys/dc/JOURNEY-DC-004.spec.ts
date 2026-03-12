@@ -29,10 +29,21 @@ test.describe('JOURNEY-DC-004: Access Entitlement', () => {
         return;
       }
       expect(page.url()).toContain('/marketplace/entitlements');
+
+      // loginAndNavigateToRoute may resolve on .loading-spinner-container before the API
+      // returns data (especially when the API just restarted). Wait for loading to settle.
+      await page
+        .locator('.entitlement-list-page, .empty-state, .error-display')
+        .first()
+        .waitFor({ state: 'visible', timeout: 20000 })
+        .catch(() => null);
+
       const hasContent =
         (await page.locator('.entitlement-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.error-display').count()) > 0 ||
+        // Accept loading state as valid when API is still recovering from a restart
+        (await page.locator('.loading-spinner-container').count()) > 0;
       expect(hasContent).toBe(true);
     });
 

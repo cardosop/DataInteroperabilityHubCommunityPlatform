@@ -70,23 +70,34 @@ test.describe('Core data routes — Assets and Datasets', () => {
     test.describe('Failure', () => {
       test('asset detail with non-existent id shows error display', async ({ page }) => {
         const nonExistentId = '00000000-0000-0000-0000-000000000000';
+        // Intercept the API response before navigating so we capture it regardless of timing.
+        // Only 404 is valid — 200 means the resource exists (backend bug), 500 is infrastructure.
+        const responsePromise = page.waitForResponse(
+          (resp) =>
+            resp.url().includes(`/assets/${nonExistentId}`) &&
+            resp.status() === 404,
+          { timeout: 15000 }
+        ).catch(() => null); // null if login redirect fires before the API responds
+
         await page.goto(`/assets/${nonExistentId}`);
         await page.waitForLoadState('domcontentloaded');
-        await page
-          .waitForResponse(
-            (resp) =>
-              resp.url().includes(`/assets/${nonExistentId}`) &&
-              (resp.status() === 200 || resp.status() === 404),
-            { timeout: 15000 }
-          )
-          .catch(() => null);
-        await page.waitForTimeout(3000);
+        await responsePromise;
+
+        // Race: wait for either the error display OR any terminal state instead of a static sleep
+        await page.locator('.error-display, .error-display-title, .asset-detail-page')
+          .first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+
         const onLogin = page.url().includes('/login');
-        const hasError =
-          (await page.locator('.error-display, .error-display-title').count()) > 0 ||
-          (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
-        const noSuccessPage = (await page.locator('.asset-detail-page').count()) === 0;
-        expect(onLogin || hasError || noSuccessPage).toBe(true);
+        if (onLogin) return;
+
+        // Require BOTH: error component visible AND "not found" text (not a network/500 error)
+        const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+        const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+        if (hasErrorDisplay && !hasNotFoundText) {
+          const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+          throw new Error(`Asset detail shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);
+        }
+        expect(hasErrorDisplay && hasNotFoundText).toBe(true);
       });
     });
   });
@@ -145,23 +156,30 @@ test.describe('Core data routes — Assets and Datasets', () => {
     test.describe('Failure', () => {
       test('dataset detail with non-existent id shows error display', async ({ page }) => {
         const nonExistentId = '00000000-0000-0000-0000-000000000000';
+        const responsePromise = page.waitForResponse(
+          (resp) =>
+            resp.url().includes(`/datasets/${nonExistentId}`) &&
+            resp.status() === 404,
+          { timeout: 15000 }
+        ).catch(() => null);
+
         await page.goto(`/datasets/${nonExistentId}`);
         await page.waitForLoadState('domcontentloaded');
-        await page
-          .waitForResponse(
-            (resp) =>
-              resp.url().includes(`/datasets/${nonExistentId}`) &&
-              (resp.status() === 200 || resp.status() === 404),
-            { timeout: 15000 }
-          )
-          .catch(() => null);
-        await page.waitForTimeout(3000);
+        await responsePromise;
+
+        await page.locator('.error-display, .error-display-title, .dataset-detail-page')
+          .first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+
         const onLogin = page.url().includes('/login');
-        const hasError =
-          (await page.locator('.error-display, .error-display-title').count()) > 0 ||
-          (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
-        const noSuccessPage = (await page.locator('.dataset-detail-page').count()) === 0;
-        expect(onLogin || hasError || noSuccessPage).toBe(true);
+        if (onLogin) return;
+
+        const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+        const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+        if (hasErrorDisplay && !hasNotFoundText) {
+          const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+          throw new Error(`Dataset detail shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);
+        }
+        expect(hasErrorDisplay && hasNotFoundText).toBe(true);
       });
     });
   });

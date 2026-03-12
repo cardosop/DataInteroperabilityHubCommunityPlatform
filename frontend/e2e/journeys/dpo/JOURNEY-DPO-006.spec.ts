@@ -1,15 +1,19 @@
 /**
  * E2E Test: JOURNEY-DPO-006 — Manage Marketplace Listings
  *
- * Journey: Manage Marketplace Listings
+ * Journey: Manage Marketplace Listings (view, edit, manage orders for existing listings)
  * Persona: Data Product Owner
  * Reference: docs/USER_JOURNEYS.md
  *
- * Success/Failure/Edge per JOURNEY-DPO-001 pattern. Routes: /marketplace, /marketplace/publish, /marketplace/listings/:id.
+ * Distinct from DPO-002 (which creates listings). This journey manages EXISTING listings:
+ * viewing listing detail, navigating to orders, and verifying manage actions are accessible.
+ *
+ * Success/Failure/Edge per JOURNEY-DPO-001 pattern. Routes: /marketplace, /marketplace/listings/:id.
  * Real backend only; no mocks.
  */
 
 import { expect, test } from '@playwright/test';
+import { createAssetViaApi } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
@@ -42,23 +46,110 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
     });
   });
 
+  test.describe('Success', () => {
+    test('marketplace listing detail page loads for an existing listing (API-seeded)', async ({
+      page,
+    }) => {
+      // Navigate to the marketplace and pick the first available listing so the test verifies
+      // the full detail page, not just the list URL.
+      const testUser = await getTestUser();
+      // Ensure at least one ACTIVE asset exists (prerequisite for listings)
+      await createAssetViaApi(testUser, { ensureActivated: true }).catch(() => null);
+
+      await loginAndNavigateToRoute(page, testUser, '/marketplace', {
+        timeout: 90000,
+        contentSelector: '.listing-list-page, .listing-list-grid, .empty-state, .error-display, h1',
+      });
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login on marketplace list');
+      }
+
+      const listingLink = page
+        .locator('.listing-list-page a[href*="/marketplace/listings/"], .listing-list-grid a[href*="/marketplace/listings/"]')
+        .first();
+
+      if ((await listingLink.count()) === 0) {
+        test.skip(true, 'No listings in marketplace; listing detail test skipped (DPO-002 creates listings).');
+        return;
+      }
+
+      await listingLink.click();
+      await page.waitForURL(/\/marketplace\/listings\/[^/]+/, { timeout: 10000 });
+      await page.waitForSelector('.listing-detail-main, .listing-detail-page, .error-display', {
+        timeout: 20000,
+      });
+
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        throw new Error(`Listing detail failed to load: ${errText.slice(0, 250)}`);
+      }
+
+      await expect(
+        page.locator('.listing-detail-main, .listing-detail-page').first()
+      ).toBeVisible({ timeout: 10000 });
+
+      // Manage actions (edit / unpublish) should be accessible to the listing owner
+      const manageBtn = page.locator(
+        'button:has-text("Edit"), button:has-text("Manage"), button:has-text("Unpublish"), [data-testid="listing-manage-btn"]'
+      );
+      const hasManageAction = (await manageBtn.count()) > 0;
+      // Not all listings may be owned by the test user — acceptable if no manage action present
+      if (hasManageAction) {
+        await expect(manageBtn.first()).toBeVisible({ timeout: 5000 });
+      }
+    });
+  });
+
   test.describe('Failure', () => {
-    test('marketplace listing detail with non-existent id shows error', async ({ page }) => {
+    test('marketplace listing detail with non-existent id shows explicit error', async ({
+      page,
+    }) => {
+      // D1: Fix triple-OR pattern — when authenticated and navigating to a non-existent listing,
+      // the UI MUST show an error. Do not accept "no success content" as a passing condition
+      // since that evaluates to true on any page that doesn't have .listing-detail-main.
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/', {
         timeout: 60000,
         contentSelector: '[data-testid="home-page"], .home-page, main',
       });
+      if (page.url().includes('/login')) {
+        throw new Error('Could not log in for listing detail failure test');
+      }
+
+      const responsePromise = page.waitForResponse(
+        (resp) =>
+          resp.url().includes(`/marketplace/listings/${nonExistentId}`) &&
+          resp.status() === 404,  // Only 404 is valid — 200 means the listing exists
+        { timeout: 20000 }
+      ).catch(() => null);
+
       await page.goto(`/marketplace/listings/${nonExistentId}`);
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
-      const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
-      const noSuccessContent = (await page.locator('.listing-detail-main').count()) === 0;
+      await responsePromise;
+
       const onLogin = page.url().includes('/login');
-      expect(hasError || noSuccessContent || onLogin).toBe(true);
+      if (onLogin) {
+        throw new Error('Unexpected redirect to login when navigating to non-existent listing');
+      }
+
+      // Wait for React Query to finish loading (spinner disappears, error state renders).
+      // A fixed 3s wait is insufficient under visible/slowMo — wait for the loading spinner
+      // to disappear OR for the error display to appear (whichever comes first).
+      await page.waitForSelector(
+        '.error-display, .listing-detail-main',
+        { timeout: 20000 }
+      ).catch(() => null);
+
+      // When authenticated, navigating to a non-existent listing MUST produce a visible error.
+      // The UI must not silently show a blank/loading state — an explicit error or not-found
+      // message is required so the user understands the resource does not exist.
+      const hasExplicitError =
+        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('[role="alert"]').count()) > 0 ||
+        (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+      expect(hasExplicitError).toBe(true);
     });
 
     test('unauthenticated access to marketplace list redirects to login', async ({ page }) => {

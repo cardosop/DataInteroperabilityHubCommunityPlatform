@@ -165,6 +165,7 @@ export function AssetDetailPage() {
               disabled={activateMutation.isPending}
               className="btn-primary"
               type="button"
+              data-testid="btn-activate-asset"
             >
               {activateMutation.isPending ? 'Activating...' : 'Activate Asset'}
             </button>

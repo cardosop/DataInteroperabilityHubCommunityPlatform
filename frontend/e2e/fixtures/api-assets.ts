@@ -105,6 +105,23 @@ async function loginViaApi(user: TestUser): Promise<string> {
 }
 
 /**
+ * Fetch the `key` field of an existing asset by id via Node.js API call.
+ * Returns null when the asset cannot be fetched (not a fatal error — caller decides).
+ * Used by the duplicate-key test to retrieve a known key without a browser-context fetch
+ * (which would fail due to CORS: frontend origin ≠ backend origin in E2E).
+ */
+export async function getAssetKeyViaApi(user: TestUser, assetId: string): Promise<string | null> {
+  const token = await loginViaApi(user);
+  const res = await fetch(`${API_BASE_URL}/assets/${assetId}/`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  } as RequestInit).catch(() => null);
+  if (!res || !res.ok) return null;
+  const data = (await res.json()) as { key?: string };
+  return data.key ?? null;
+}
+
+/**
  * Get or create one asset via API for the given user (same tenant). Returns the asset id.
  * Tries to use an existing asset first to avoid plan limit issues.
  * Use before tests that need at least one asset (e.g. marketplace publish, scheduled export).
@@ -510,6 +527,123 @@ export async function createDatasetViaApi(user: TestUser): Promise<string> {
 async function sha256Hex(text: string): Promise<string> {
   const { createHash } = await import('node:crypto');
   return createHash('sha256').update(text, 'utf-8').digest('hex');
+}
+
+/**
+ * Create or get one ODPS product via API for the given user.
+ * Tries to reuse an existing ODPS contract (original_spec_type=ODPS) first.
+ * Creates a minimal but valid ODPS product with an embedded ODCS contract if none found.
+ * Returns the contract id of the ODPS product.
+ *
+ * Use before tests that need at least one ODPS product (e.g. JOURNEY-DPO-017 export).
+ */
+export async function createODPSProductViaApi(user: TestUser): Promise<string> {
+  const token = await loginViaApi(user);
+
+  // Try to reuse an existing ODPS contract
+  const listRes = await fetch(`${API_BASE_URL}/contracts/?page_size=20`, {
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  });
+  if (listRes.ok) {
+    const listData = (await listRes.json()) as { results?: Array<{ id?: string; original_spec_type?: string }> };
+    const existing = (listData.results ?? []).find(
+      (c) => c.original_spec_type === 'ODPS' && c.id
+    );
+    if (existing?.id) return existing.id;
+  }
+
+  // Create a minimal valid ODPS product with embedded ODCS contract
+  const productId = `e2e-odps-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const odcsId = `e2e-odcs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const odpsPayload = {
+    schema: 'https://opendataproducts.org/schema/v4.1',
+    version: '4.1',
+    product: {
+      details: {
+        en: {
+          productID: productId,
+          name: 'E2E ODPS Product',
+          description: 'Minimal ODPS product created by E2E API fixture for export tests',
+          productVersion: '1.0.0',
+        },
+      },
+      dataSchema: {
+        fields: [
+          { name: 'id', type: 'string' },
+          { name: 'value', type: 'number' },
+        ],
+      },
+      contract: {
+        spec: {
+          apiVersion: 'odcs.io/v3.0.2',
+          kind: 'DataContract',
+          id: odcsId,
+          name: 'E2E ODCS Contract (embedded in ODPS)',
+          version: '1.0.0',
+          description: 'Embedded ODCS contract for E2E ODPS export test',
+          schema: {
+            fields: [
+              { name: 'id', type: 'string', nullable: false, description: 'ID' },
+              { name: 'value', type: 'number', nullable: true, description: 'Value' },
+            ],
+          },
+        },
+      },
+    },
+  };
+
+  const response = await fetch(`${API_BASE_URL}/contracts/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      original_raw: JSON.stringify(odpsPayload),
+      original_format: 'JSON',
+      original_spec_type: 'ODPS',
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`createODPSProductViaApi failed: ${response.status} ${body}`);
+  }
+
+  // The ODPS upload flow creates a workflow; poll for the contract id
+  const createData = (await response.json()) as {
+    id?: string;
+    workflow_instance_id?: string;
+    odps_contract?: { id?: string };
+  };
+
+  // Direct create returns contract id
+  if (createData.id) return createData.id;
+
+  // Workflow-based create: poll workflow status for the ODPS contract id
+  if (createData.workflow_instance_id) {
+    const workflowId = createData.workflow_instance_id;
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const statusRes = await fetch(
+        `${API_BASE_URL}/contracts/odps/workflow-status/${workflowId}/`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (statusRes.ok) {
+        const statusData = (await statusRes.json()) as {
+          status?: string;
+          odps_contract?: { id?: string };
+        };
+        if (statusData.status === 'COMPLETED' && statusData.odps_contract?.id) {
+          return statusData.odps_contract.id;
+        }
+        if (statusData.status === 'FAILED') {
+          throw new Error(`createODPSProductViaApi: workflow failed`);
+        }
+      }
+    }
+    throw new Error(`createODPSProductViaApi: workflow did not complete within 60s`);
+  }
+
+  throw new Error('createODPSProductViaApi: response missing id and workflow_instance_id');
 }
 
 /**

@@ -42,10 +42,7 @@ test.describe('JOURNEY-DE-003: Configure Data Quality Checks', () => {
       await page.goto(`/dq/runs/${nonExistentId}`);
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(5000);
-      const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('text=/not found|failed to load|404|Failed to load DQ run/i').count()) >
-          0;
+      const hasError = (await page.locator('.error-display').count()) > 0;
       const noSuccessContent = (await page.locator('.dq-run-detail-main').count()) === 0;
       const onLogin = page.url().includes('/login');
       expect(hasError || noSuccessContent || onLogin).toBe(true);

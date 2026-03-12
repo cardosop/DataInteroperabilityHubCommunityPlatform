@@ -23,61 +23,93 @@ test.describe('Contracts and ODPS routes', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
       const url = page.url();
-      const onLinkOdps = url.includes('/link-odps');
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('text=/not found|failed to load|403|forbidden/i').count()) > 0;
-      expect(onLinkOdps || hasError || onLogin || on403).toBe(true);
+        (await page.locator('.error-display-title').count()) > 0;
+
+      // Redirect to login or 403 is always acceptable
+      if (onLogin || on403) return;
+
+      // If still on the link-odps path, the page must show an error boundary.
+      // A nil contract ID should produce a 404/error, NOT a working form.
+      // Previously, onLinkOdps (= url.includes('/link-odps')) was included in the OR —
+      // but that was trivially always-true since we navigated there, making the assertion meaningless.
+      const onLinkOdps = url.includes('/link-odps');
+      if (onLinkOdps) {
+        expect(hasError).toBe(true);
+        return;
+      }
+
+      // Redirected to another route — fail with context if unexpected
+      expect(url).toMatch(/\/(contracts|login|403)/);
     });
   });
 
   test.describe('Failure', () => {
     test('contract edit with non-existent id shows error', async ({ page }) => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
+      // Only 404 is valid — 200 means the resource exists (backend bug).
       const responsePromise = page
         .waitForResponse(
           (resp) =>
             resp.url().includes(`/contracts/${nonExistentId}`) &&
-            (resp.status() === 200 || resp.status() === 404),
+            resp.status() === 404,
           { timeout: 15000 }
         )
         .catch(() => null);
       await page.goto(`/contracts/${nonExistentId}/edit`);
       await page.waitForLoadState('domcontentloaded');
       await responsePromise;
-      await page.waitForTimeout(3000);
-      const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0 ||
-        (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
+
+      // Race: wait for error or editor content rather than sleeping
+      await page.locator('.error-display, .error-display-title, .contract-editor-page')
+        .first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+
       const onLogin = page.url().includes('/login');
-      const noSuccessContent = (await page.locator('.contract-editor-page').count()) === 0;
-      expect(hasError || onLogin || noSuccessContent).toBe(true);
+      if (onLogin) return;
+
+      const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+      if (hasErrorDisplay && !hasNotFoundText) {
+        const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        throw new Error(`Contract edit shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);
+      }
+      expect(hasErrorDisplay && hasNotFoundText).toBe(true);
     });
 
     test('odps detail with non-existent id shows error', async ({ page }) => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
+      // ODPS products are stored as contracts internally. The ODPS detail page may call either
+      // /api/v1/odps/{id}/ or /api/v1/contracts/{id}/. Watch for both to be robust against
+      // future endpoint changes, and reject 200 (resource exists) as invalid.
       const responsePromise = page
         .waitForResponse(
           (resp) =>
-            resp.url().includes(`/contracts/${nonExistentId}`) &&
-            (resp.status() === 200 || resp.status() === 404),
+            (resp.url().includes(`/odps/${nonExistentId}`) ||
+              resp.url().includes(`/contracts/${nonExistentId}`)) &&
+            resp.status() === 404,
           { timeout: 15000 }
         )
         .catch(() => null);
       await page.goto(`/odps/${nonExistentId}`);
       await page.waitForLoadState('domcontentloaded');
       await responsePromise;
-      await page.waitForTimeout(3000);
+
+      await page.locator('.error-display, .error-display-title, .odps-detail-page, .odps-detail-main')
+        .first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+
       const onLogin = page.url().includes('/login');
-      const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0 ||
-        (await page.locator('text=/not found|failed to load|404/i').count()) > 0;
-      const noSuccessContent = (await page.locator('.odps-detail-main').count()) === 0;
-      expect(onLogin || hasError || noSuccessContent).toBe(true);
+      if (onLogin) return;
+
+      const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+      if (hasErrorDisplay && !hasNotFoundText) {
+        const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        throw new Error(`ODPS detail shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);
+      }
+      expect(hasErrorDisplay && hasNotFoundText).toBe(true);
     });
   });
 

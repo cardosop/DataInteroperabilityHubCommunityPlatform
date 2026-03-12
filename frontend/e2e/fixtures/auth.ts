@@ -298,7 +298,9 @@ export async function loginViaApi(
 export async function clearAuthStorage(page: Page): Promise<void> {
   try {
     try {
-      await page.goto('/login', { waitUntil: 'domcontentloaded', timeout: 15000 });
+      // Use 45s timeout: the visible/slowMo project (400ms per action) can cause the previous
+      // page to be slow, making domcontentloaded take longer than the old 15s budget.
+      await page.goto('/login', { waitUntil: 'domcontentloaded', timeout: 45000 });
     } catch (navErr) {
       if (isPageClosedError(navErr)) {
         return; // Page/context closed (test timeout); absorb to avoid cascading

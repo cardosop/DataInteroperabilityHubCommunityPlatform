@@ -40,6 +40,9 @@ export default defineConfig({
       '/api': {
         target: getProxyTarget(),
         changeOrigin: true,
+        // Increase timeouts for file uploads and long-running API calls (avoids ECONNRESET under load)
+        timeout: 60000,
+        proxyTimeout: 60000,
       },
       '/api-docs': {
         target: getProxyTarget(),

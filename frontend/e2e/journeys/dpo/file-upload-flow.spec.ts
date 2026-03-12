@@ -117,8 +117,15 @@ test.describe('File Upload Flow', () => {
           retries < maxRetries - 1 &&
           !String(error).includes('Target page, context or browser has been closed')
         ) {
-          console.log(`File upload attempt ${retries + 1} failed, retrying...`);
-          await page.waitForTimeout(3000);
+          const isNetworkError =
+            /ECONNRESET|socket hang up|connection reset|ETIMEDOUT|network error/i.test(
+              String(error)
+            );
+          const delay = isNetworkError ? 6000 : 3000; // 6s for proxy/connection errors
+          console.log(
+            `File upload attempt ${retries + 1} failed${isNetworkError ? ' (connection error)' : ''}, retrying in ${delay / 1000}s...`
+          );
+          await page.waitForTimeout(delay);
           retries++;
         } else {
           throw error;

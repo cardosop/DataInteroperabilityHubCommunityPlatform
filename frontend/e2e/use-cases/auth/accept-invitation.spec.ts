@@ -67,12 +67,22 @@ test.describe('Accept Invitation (JOURNEY-TA-001)', () => {
           successContentSelector: '[data-testid="home-page"], .home-page, .app-sidebar, [data-testid="landing-page"]',
         });
       } else if (submitResponse && submitResponse.status() >= 400) {
-        // Token was already consumed or invalid — this is acceptable in parallel test runs.
-        // The form correctly shows an error; verify it's visible.
-        expect(hasError || (await page.locator('text=/invalid|expired|forbidden|error/i').count()) > 0).toBe(true);
+        // Token was already consumed by a parallel project (3 projects run simultaneously).
+        // Instead of silently passing both remaining projects as "success", skip them so the
+        // report clearly shows only ONE project ran the happy path.
+        // Previously this was accepted as a pass, meaning 2/3 projects validated the error
+        // path instead of the success path, while all reported "passing".
+        test.skip(
+          true,
+          `Invitation token was already consumed (HTTP ${submitResponse.status()}) by a parallel project. ` +
+          'Only one project can exercise the success path per token. ' +
+          'Backend fix: ensure-e2e-invitation-token should issue a fresh per-call token.'
+        );
       } else {
-        // Fallback: page should show either success content or error
-        expect(navigatedAway || hasError).toBe(true);
+        // Unexpected state — no response and page still on /accept-invitation
+        const hasContent =
+          (await page.locator('.error-display, .error-message, [data-testid="accept-invitation-form"]').count()) > 0;
+        expect(navigatedAway || hasContent).toBe(true);
       }
     });
   });
@@ -82,38 +92,50 @@ test.describe('Accept Invitation (JOURNEY-TA-001)', () => {
       await clearAuthStorage(page);
       await page.goto('/accept-invitation?token=00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      // Wait for the page to settle — may show "no token" message or the form
+      await page
+        .locator('.accept-invitation-missing-token, [data-testid="accept-invitation-form"], text=/no invitation token|invalid|expired/i')
+        .first()
+        .waitFor({ state: 'visible', timeout: 10000 })
+        .catch(() => null);
       const hasMissingToken =
         (await page.locator('.accept-invitation-missing-token').count()) > 0 ||
         (await page.locator('text=/no invitation token|invalid|expired/i').count()) > 0;
       const hasForm = (await page.locator('[data-testid="accept-invitation-form"]').count()) > 0;
+      // At minimum the page must show SOMETHING — either the "no token" message or the form
       expect(hasMissingToken || hasForm).toBe(true);
-      if (hasForm) {
-        await page.fill('#password', 'NewPass123!');
-        await page.fill('#confirmPassword', 'NewPass123!');
-        // Capture the API response so we can assert on the actual status code
-        const [submitResponse] = await Promise.all([
-          page
-            .waitForResponse(
-              (resp) => resp.url().includes('/auth/accept-invitation/'),
-              { timeout: 15000 }
-            )
-            .catch(() => null),
-          page.locator('button[type="submit"]').click(),
-        ]);
-        await page.waitForTimeout(2000);
-        // Backend returns 4xx for invalid/expired tokens (400, 403, 404).
-        // The UI should show an error element OR the API returned a non-2xx status.
-        const apiRejected = submitResponse != null && submitResponse.status() >= 400;
-        const hasError =
-          (await page
-            .locator('.error-display, .error-message, .accept-invitation-validation-error, [role="alert"]')
-            .count()) > 0 ||
-          (await page
-            .locator('text=/invalid|expired|forbidden|unauthorized|not found|error|failed/i')
-            .count()) > 0;
-        expect(apiRejected || hasError).toBe(true);
+
+      if (hasMissingToken && !hasForm) {
+        // Page showed the "missing/invalid token" message without rendering the form — test complete
+        return;
       }
+
+      // Form is shown — must submit and verify the invalid token is rejected.
+      // Previously this block was conditional, so the test could pass without ever
+      // exercising the "submit invalid token → rejection" scenario.
+      expect(hasForm).toBe(true);
+      await page.fill('#password', 'NewPass123!');
+      await page.fill('#confirmPassword', 'NewPass123!');
+      const [submitResponse] = await Promise.all([
+        page
+          .waitForResponse(
+            (resp) => resp.url().includes('/auth/accept-invitation/'),
+            { timeout: 15000 }
+          )
+          .catch(() => null),
+        page.locator('button[type="submit"]').click(),
+      ]);
+      await page.waitForTimeout(2000);
+      // Backend must reject the invalid token (4xx) AND/OR the UI must show an error element.
+      const apiRejected = submitResponse != null && submitResponse.status() >= 400;
+      const hasError =
+        (await page
+          .locator('.error-display, .error-message, .accept-invitation-validation-error, [role="alert"]')
+          .count()) > 0 ||
+        (await page
+          .locator('text=/invalid|expired|forbidden|unauthorized|not found|error|failed/i')
+          .count()) > 0;
+      expect(apiRejected || hasError).toBe(true);
     });
 
     test('no token: redirects or shows missing-token message', async ({ page }) => {

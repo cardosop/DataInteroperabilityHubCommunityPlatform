@@ -10,20 +10,38 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
+import { getTestUser, loginViaApi } from '../../fixtures/auth';
+
+/** Inject API tokens into the page to bypass slow UI login (avoids slowMo=400ms overhead). */
+async function loginViaApiAndInject(page: import('@playwright/test').Page): Promise<void> {
+  const testUser = await getTestUser();
+  const auth = await loginViaApi(testUser.email, testUser.password);
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(
+    ({ accessToken, refreshToken, user }) => {
+      localStorage.setItem('access_token', accessToken);
+      localStorage.setItem('refresh_token', refreshToken);
+      localStorage.setItem('user', JSON.stringify(user));
+    },
+    { accessToken: auth.access_token, refreshToken: auth.refresh_token, user: auth.user }
+  );
+}
 
 test.describe('JOURNEY-DE-008: Integrate AI Schema Matching into Workflow', () => {
-  test.setTimeout(360000); // 6 min: visible/slowMo; capability-gated route
+  // 6 min: capability-gated route; uses token injection to avoid slowMo login overhead
+  test.setTimeout(360000);
 
   test.describe('Success', () => {
     test('schema matching page loads', async ({ page }) => {
-      const testUser = await getTestUser();
-      await loginUser(page, testUser);
+      // Use API token injection instead of UI loginUser to avoid the slowMo=400ms-per-action
+      // penalty on login, which caused the visible project to exceed the 360s budget when
+      // the API was restarting and connection retries stacked up.
+      await loginViaApiAndInject(page);
       await page.goto('/ai/schema-matching');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
         '.schema-matching-page, .app-main, .unavailable-page, .loading-spinner-container, #email',
-        { timeout: 120000 }
+        { timeout: 30000 }
       );
       const url = page.url();
       const onLogin = url.includes('/login');
@@ -39,13 +57,12 @@ test.describe('JOURNEY-DE-008: Integrate AI Schema Matching into Workflow', () =
 
   test.describe('Failure', () => {
     test('schema matching without capability shows 403 or unavailable', async ({ page }) => {
-      const testUser = await getTestUser();
-      await loginUser(page, testUser);
+      await loginViaApiAndInject(page);
       await page.goto('/ai/schema-matching');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
         '.schema-matching-page, .unavailable-page, .error-display, .loading-spinner-container, #email',
-        { timeout: 90000 }
+        { timeout: 30000 }
       );
       const on403 = page.url().includes('/403');
       const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
@@ -57,13 +74,12 @@ test.describe('JOURNEY-DE-008: Integrate AI Schema Matching into Workflow', () =
 
   test.describe('Edge', () => {
     test('schema matching page loads or redirects', async ({ page }) => {
-      const testUser = await getTestUser();
-      await loginUser(page, testUser);
+      await loginViaApiAndInject(page);
       await page.goto('/ai/schema-matching');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
         '.schema-matching-page, .unavailable-page, .loading-spinner-container, #email',
-        { timeout: 90000 }
+        { timeout: 30000 }
       );
       const url = page.url();
       expect(url.includes('/login') || url.includes('/403') || url.includes('/ai/schema-matching')).toBe(true);

@@ -7,7 +7,11 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage } from '../../fixtures/auth';
-import { waitForAppMainReady } from '../../fixtures/helpers';
+import {
+  assertCapabilityGatedPageLoads,
+  assertListPageLoads,
+  waitForAppMainReady,
+} from '../../fixtures/helpers';
 
 test.describe('Mesh, Virtualization, Search, AI routes', () => {
   test.setTimeout(120000);
@@ -16,9 +20,12 @@ test.describe('Mesh, Virtualization, Search, AI routes', () => {
     test('unauthenticated access to mesh route redirects to login or 403', async ({ page }) => {
       await clearAuthStorage(page);
       await page.goto('/mesh', { waitUntil: 'domcontentloaded' });
-      await page.waitForURL(/\/(login|mesh|403)/, { timeout: 20_000 });
+      // Only /login or /403 are valid redirect destinations for unauthenticated access.
+      // If the URL still contains /mesh it means the auth guard is missing — that is the
+      // security bug this test exists to catch, and it must FAIL the test.
+      await page.waitForURL(/\/(login|403)/, { timeout: 20_000 });
       const url = page.url();
-      expect(url.includes('/login') || url.includes('/403') || url.includes('/mesh')).toBe(true);
+      expect(url.includes('/login') || url.includes('/403')).toBe(true);
     });
   });
 
@@ -34,6 +41,8 @@ test.describe('Mesh, Virtualization, Search, AI routes', () => {
         return;
       }
       expect(page.url()).toContain('/mesh');
+      // URL check alone is not sufficient — verify actual content is visible and no error shown
+      await assertListPageLoads(page, '.mesh-domain-list-page, .empty-state');
     });
 
     test('virtualization list loads (virtual datasets or empty)', async ({ page }) => {
@@ -48,11 +57,8 @@ test.describe('Mesh, Virtualization, Search, AI routes', () => {
         return;
       }
       expect(page.url()).toContain('/virtualization');
-      const hasContent =
-        (await page.locator('.virtual-dataset-list-page').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      // error-display is not an acceptable success outcome for the virtualization list
+      await assertListPageLoads(page, '.virtual-dataset-list-page, .empty-state');
     });
 
     test('search page loads', async ({ page }) => {
@@ -80,40 +86,29 @@ test.describe('Mesh, Virtualization, Search, AI routes', () => {
       await page.goto('/ai/search');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.app-main, .ai-search-page, .app-shell, .unavailable-page, .loading-spinner, .loading-spinner-container, #email',
+        '.ai-search-page, .unavailable-page, .loading-spinner, .loading-spinner-container, #email',
         { timeout: 15000 }
       );
       await page.waitForTimeout(3000); // Capabilities can take time; AI page may load slowly
       const url = page.url();
-      const onAiSearch = url.includes('/ai/search');
-      const onUnavailable = url.includes('/unavailable');
-      const onLogin = url.includes('/login');
-      const on403 = url.includes('/403');
-      const hasContent =
-        (await page.locator('.app-main, .ai-search-page, .app-shell, .unavailable-page').count()) > 0 ||
-        (await page.locator('.loading-spinner, .loading-spinner-container').count()) > 0;
-      expect(onAiSearch || onUnavailable || onLogin || on403).toBe(true);
-      expect(hasContent || onUnavailable || onLogin || on403).toBe(true);
+      if (url.includes('/login') || url.includes('/403')) return;
+      // Valid outcomes: AI search page OR unavailable page (capability disabled).
+      // app-main alone tells us nothing; error-display is never acceptable.
+      await assertCapabilityGatedPageLoads(page, '.ai-search-page, .unavailable-page');
     });
 
     test('ai/schema-matching loads or shows unavailable', async ({ page }) => {
       await page.goto('/ai/schema-matching');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.app-main, .schema-matching-page, .app-shell, .unavailable-page, .loading-spinner, .loading-spinner-container, #email',
+        '.schema-matching-page, .unavailable-page, .loading-spinner, .loading-spinner-container, #email',
         { timeout: 15000 }
       );
       await page.waitForTimeout(3000);
       const url = page.url();
-      const onSchema = url.includes('/ai/schema-matching');
-      const onUnavailable = url.includes('/unavailable');
-      const onLogin = url.includes('/login');
-      const on403 = url.includes('/403');
-      const hasContent =
-        (await page.locator('.app-main, .schema-matching-page, .app-shell, .unavailable-page').count()) > 0 ||
-        (await page.locator('.loading-spinner, .loading-spinner-container').count()) > 0;
-      expect(onSchema || onUnavailable || onLogin || on403).toBe(true);
-      expect(hasContent || onUnavailable || onLogin || on403).toBe(true);
+      if (url.includes('/login') || url.includes('/403')) return;
+      // Valid outcomes: schema-matching page OR unavailable page (capability disabled).
+      await assertCapabilityGatedPageLoads(page, '.schema-matching-page, .unavailable-page');
     });
   });
 });

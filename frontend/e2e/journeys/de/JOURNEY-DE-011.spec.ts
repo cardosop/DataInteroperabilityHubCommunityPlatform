@@ -24,7 +24,7 @@ test.describe('JOURNEY-DE-011: Set Up Reverse ETL', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
         '.connection-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 120000 }
+        { timeout: 45000 }
       );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -40,7 +40,7 @@ test.describe('JOURNEY-DE-011: Set Up Reverse ETL', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
         '.job-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 120000 }
+        { timeout: 45000 }
       );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -71,14 +71,14 @@ test.describe('JOURNEY-DE-011: Set Up Reverse ETL', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
         '.connection-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 120000 }
+        { timeout: 45000 }
       );
       expect(page.url()).toContain('/integrations/connections');
       await page.goto('/jobs');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
         '.job-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 120000 }
+        { timeout: 45000 }
       );
       expect(page.url()).toContain('/jobs');
     });

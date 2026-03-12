@@ -24,7 +24,7 @@ test.describe('JOURNEY-DE-009: Set Up Data Virtualization', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
         '.virtual-dataset-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 120000 }
+        { timeout: 45000 }
       );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -78,7 +78,7 @@ test.describe('JOURNEY-DE-009: Set Up Data Virtualization', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
         '.virtual-dataset-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 120000 }
+        { timeout: 45000 }
       );
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');

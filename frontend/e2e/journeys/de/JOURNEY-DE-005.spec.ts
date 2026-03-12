@@ -39,10 +39,22 @@ test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
       await loginUser(page, testUser);
       await page.goto('/sync-jobs');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      // Wait for a terminal render state instead of a fixed sleep
+      await page
+        .locator('.sync-job-list-page, .empty-state, .error-display, .loading-spinner-container, #email')
+        .first()
+        .waitFor({ state: 'visible', timeout: 45000 })
+        .catch(() => null);
       const onSyncJobs = page.url().includes('/sync-jobs');
       const onLogin = page.url().includes('/login');
       expect(onSyncJobs || onLogin).toBe(true);
+      if (onSyncJobs) {
+        const hasContent =
+          (await page.locator('.sync-job-list-page').count()) > 0 ||
+          (await page.locator('.empty-state').count()) > 0 ||
+          (await page.locator('.error-display').count()) > 0;
+        expect(hasContent).toBe(true);
+      }
     });
 
     test('mappings list loads', async ({ page }) => {

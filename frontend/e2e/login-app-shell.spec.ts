@@ -115,26 +115,34 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
     await expect(page.locator('.app-header')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('.app-sidebar')).toBeVisible({ timeout: 10000 });
 
-    // Navigate to different routes using sidebar links (more realistic)
+    // Navigate to different routes using sidebar links.
+    // Previously silently skipped to a weaker assertion when the Datasets link wasn't present.
+    // Fix: use the first available nav link (always present after login) so navigation is
+    // always exercised — then fall back to a known-stable route if no link renders.
     const sidebar = page.locator('.app-sidebar');
+    const allNavLinks = sidebar.locator('.nav-link');
+    const navLinkCount = await allNavLinks.count();
 
-    // Try to click on "Datasets" link if available
-    const datasetsLink = sidebar.locator('.nav-link').filter({ hasText: 'Datasets' });
-    const linkCount = await datasetsLink.count();
+    if (navLinkCount > 0) {
+      // Prefer Datasets; fall back to the first available nav link
+      const datasetsLink = sidebar.locator('.nav-link').filter({ hasText: 'Datasets' });
+      const linkToClick =
+        (await datasetsLink.count()) > 0 ? datasetsLink.first() : allNavLinks.first();
 
-    if (linkCount > 0) {
-      await datasetsLink.first().click();
-      await page.waitForTimeout(1000); // Wait for navigation
+      await linkToClick.click();
+      await page.waitForTimeout(1000);
 
-      // Verify shell is still visible
+      // Navigation must have happened AND shell must still be visible
       await expect(page.locator('.app-header')).toBeVisible({ timeout: 10000 });
       await expect(page.locator('.app-sidebar')).toBeVisible({ timeout: 10000 });
       await expect(page.locator('.app-main')).toBeVisible({ timeout: 10000 });
     } else {
-      // If datasets link not available, just verify shell is stable
-      await page.waitForTimeout(2000);
+      // No nav links rendered at all — navigate via URL to a known protected route
+      await page.goto('/assets', { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(1000);
       await expect(page.locator('.app-header')).toBeVisible({ timeout: 10000 });
       await expect(page.locator('.app-sidebar')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('.app-main')).toBeVisible({ timeout: 10000 });
     }
   });
 

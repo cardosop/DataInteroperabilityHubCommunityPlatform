@@ -12,9 +12,9 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { createAssetViaApi } from '../../fixtures/api-assets';
 import { getTestUser, loginUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
-import { createAssetViaApi } from '../../fixtures/api-assets';
 
 test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
   test.setTimeout(180000); // 3 min: visible/slowMo; communities page nav
@@ -36,27 +36,69 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
       expect(onLogin || on403 || onUnavailable || (onCommunities && hasContent)).toBe(true);
     });
 
-    test('asset page shows Community section for ratings/reviews (Phase 27.1)', async ({ page }) => {
+    test('asset detail page shows Community / ratings section or empty state (Phase 27.1)', async ({
+      page,
+    }) => {
+      // Use API-created asset so the test never vacuously skips due to empty catalog.
       const testUser = await getTestUser();
       const assetId = await createAssetViaApi(testUser);
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section, .error-display, .loading-spinner-container',
+        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
       });
-      await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
-      if ((await page.locator('.error-display').count()) > 0) {
-        test.skip(true, 'Asset load failed; cannot assert Community section');
+
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login on asset detail');
       }
+
+      await page.waitForSelector('.asset-detail-page, .asset-detail-content, .error-display', {
+        timeout: 15000,
+      });
+
+      // If asset fails to load, fail the test with context (not a silent skip)
+      const hasLoadError = (await page.locator('.error-display').count()) > 0;
+      if (hasLoadError) {
+        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        throw new Error(`Asset detail failed to load (required for Community section test): ${errText.slice(0, 250)}`);
+      }
+
+      // The Community / social section is capability-gated (social.ratings, social.reviews).
+      // Accept three valid states:
+      //   1. Section is visible with a "Community" heading
+      //   2. Feature-unavailable indicator (capability off)
+      //   3. Empty state for the social section (no ratings yet)
       const socialSection = page.locator('[data-testid="asset-social-section"]');
-      await socialSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
-      if ((await socialSection.count()) > 0 && (await socialSection.isVisible())) {
-        await expect(socialSection.locator('h2')).toContainText(/Community/i);
+      const socialHeading = page.locator(
+        '[data-testid="asset-social-section"] h2, .asset-social h2, [data-testid="ratings-section"] h2'
+      );
+      // Note: text= selectors cannot be mixed with CSS selectors in a comma-separated string;
+      // use separate locators combined with .or() to avoid CSS parse errors.
+      const unavailableIndicator = page
+        .locator('.social-unavailable, [data-testid="social-unavailable"]')
+        .or(page.getByText(/ratings.*not available|community.*disabled/i));
+
+      const hasSocialSection = (await socialSection.count()) > 0 && (await socialSection.isVisible().catch(() => false));
+      const hasUnavailable = (await unavailableIndicator.count()) > 0;
+      const hasDetailPage = (await page.locator('.asset-detail-page, .asset-detail-content').count()) > 0;
+
+      // Asset detail must always be present
+      expect(hasDetailPage).toBe(true);
+
+      if (hasSocialSection) {
+        // Section rendered — validate it has a community heading
+        await expect(socialHeading.first()).toBeVisible({ timeout: 5000 });
+      } else if (hasUnavailable) {
+        // Capability disabled — acceptable
+        await expect(unavailableIndicator.first()).toBeVisible({ timeout: 5000 });
       }
+      // else: section not rendered but detail page loaded — capability gated out silently
     });
   });
 
   test.describe('Failure', () => {
-    test('communities page without capability shows 403 or unavailable', async ({ page }) => {
+    test('communities page without capability shows 403 or unavailable (not a crash)', async ({ page }) => {
+      // When social.communities capability is disabled, visiting /communities must show an
+      // unavailable indicator or redirect to /403 — it must NOT silently show the page.
       const testUser = await getTestUser();
       await loginUser(page, testUser);
       await page.goto('/communities');
@@ -66,16 +108,36 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
         { timeout: 15000, state: 'visible' }
       ).catch(() => null);
       await new Promise((r) => setTimeout(r, 1000));
-      const on403 = page.url().includes('/403');
-      const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
-      const onCommunities = page.url().includes('/communities');
-      const onLogin = page.url().includes('/login');
-      expect(on403 || onUnavailable || onCommunities || onLogin).toBe(true);
+
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login on /communities failure test');
+      }
+
+      const capabilityEnabled =
+        page.url().includes('/communities') &&
+        (await page.locator('.communities-page, .communities-tab').count()) > 0 &&
+        (await page.locator('.unavailable-page').count()) === 0;
+
+      if (capabilityEnabled) {
+        // Capability is on in this environment — failure scenario not applicable; skip softly
+        test.info().annotations.push({
+          type: 'capability-enabled',
+          description: 'social.communities capability is on; 403/unavailable failure path not triggered',
+        });
+        return;
+      }
+
+      // Capability disabled: must show unavailable or 403 — not a blank/crash render
+      const capabilityDisabled =
+        (await page.locator('.unavailable-page, .error-display').count()) > 0 ||
+        page.url().includes('/unavailable') ||
+        page.url().includes('/403');
+      expect(capabilityDisabled).toBe(true);
     });
   });
 
   test.describe('Edge', () => {
-    test('communities page loads or redirects', async ({ page }) => {
+    test('communities page renders content or capability-unavailable state (no crash)', async ({ page }) => {
       const testUser = await getTestUser();
       await loginUser(page, testUser);
       await page.goto('/communities');
@@ -85,10 +147,16 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
         { timeout: 15000, state: 'visible' }
       ).catch(() => null);
       await new Promise((r) => setTimeout(r, 1000));
-      const url = page.url();
-      expect(
-        url.includes('/login') || url.includes('/403') || url.includes('/unavailable') || url.includes('/communities')
-      ).toBe(true);
+
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login on /communities edge test');
+      }
+
+      // Page must render something meaningful — not a blank screen or JS crash
+      const hasPageContent =
+        (await page.locator('.communities-page, .communities-tab, .unavailable-page').count()) > 0 ||
+        page.url().includes('/403');
+      expect(hasPageContent).toBe(true);
     });
   });
 });

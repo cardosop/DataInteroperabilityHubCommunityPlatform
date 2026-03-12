@@ -1,1 +1,0 @@
-{"id":"42f460e4-2998-41aa-8773-a29ea595f0b8","email":"e2e_consumer@example.com","name":"E2E Consumer User","tenant_id":"98547636-bffc-48cb-b014-a17511729ffd","roles":["DATA_CONSUMER"],"permissions":["read:assets","read:contracts","read:marketplace"],"created_at":"2026-03-11T04:44:57.818825Z","last_login_at":null,"avatar":null,"preferences":{},"feature_tenant_switch_enabled":true}

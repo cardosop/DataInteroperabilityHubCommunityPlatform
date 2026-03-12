@@ -16,7 +16,7 @@ import './ODPSDetailPage.css';
 export function ODPSDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data: contract, isLoading, error, refetch } = useContract(id || null);
+  const { data: contract, isLoading, isError, error, refetch, isFetched } = useContract(id || null);
   const { data: links } = useODPSLinks(id || null);
   const exportMutation = useExportODPS();
   const downloadMutation = useDownloadODPS();
@@ -72,10 +72,17 @@ export function ODPSDetailPage() {
     }
   };
 
-  if (isLoading) return <LoadingSpinner message="Loading ODPS contract..." />;
-  if (error || !contract) {
-    return <ErrorDisplay error={error || new Error('ODPS contract not found')} title="Failed to load ODPS contract" onRetry={() => refetch()} />;
+  // Show error when fetch failed (404, network error) or completed with no data
+  if (isError || (isFetched && !contract)) {
+    return (
+      <ErrorDisplay
+        error={error || new Error('ODPS contract not found')}
+        title="Failed to load ODPS contract"
+        onRetry={() => refetch()}
+      />
+    );
   }
+  if (isLoading) return <LoadingSpinner message="Loading ODPS contract..." />;
 
   // Verify contract is ODPS
   const isODPS = contract.original_spec_type?.toUpperCase() === 'ODPS';

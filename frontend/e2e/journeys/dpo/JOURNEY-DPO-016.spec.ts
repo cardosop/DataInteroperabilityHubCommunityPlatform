@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginAsPersona } from '../../fixtures/auth';
+import { getTestUser, loginAsPersona, loginUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow)', () => {
@@ -71,18 +71,34 @@ test.describe('JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow
   });
 
   test.describe('Failure', () => {
-    test('link-odps with non-existent contract id shows error or redirect', async ({ page }) => {
+    test('link-odps with non-existent contract id shows explicit error when authenticated', async ({ page }) => {
+      // Test authenticated behavior — visiting a non-existent contract's link-odps page must
+      // show an explicit error, not a blank page. Running unauthenticated would trivially pass
+      // via the /login redirect and not test the actual error handling.
+      const testUser = await getTestUser();
+      await loginUser(page, testUser);
+
       await page.goto('/contracts/00000000-0000-0000-0000-000000000000/link-odps');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      const url = page.url();
-      const onLinkOdps = url.includes('/link-odps');
-      const onLogin = url.includes('/login');
-      const on403 = url.includes('/403');
-      const hasError =
+
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login; auth may have failed');
+      }
+
+      // Wait for React Query to finish loading (spinner disappears, error state renders).
+      // A fixed 3s wait is not enough in visible/slowMo — wait for error display OR
+      // the link-odps page content to appear (whichever settles first).
+      await page.waitForSelector(
+        '.error-display, .odps-link-page, [role="alert"]',
+        { timeout: 20000 }
+      ).catch(() => null);
+
+      // Must show an explicit error — not a blank or loading state
+      const hasExplicitError =
         (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('text=/not found|failed to load|403|forbidden/i').count()) > 0;
-      expect(onLinkOdps || hasError || onLogin || on403).toBe(true);
+        (await page.locator('[role="alert"]').count()) > 0;
+      const on403 = page.url().includes('/403');
+      expect(hasExplicitError || on403).toBe(true);
     });
   });
 

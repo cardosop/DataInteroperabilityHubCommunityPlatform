@@ -1,0 +1,1 @@
+{"error":{"code":"VALIDATION_ERROR","message":"{'email': ErrorDetail(string='Invalid email or password', code='invalid')}","http_status":400,"request_id":"05e9ddd3-de92-480d-a7f3-b84a8e13052e","timestamp":"2026-03-12T03:08:11.048015+00:00","details":{"email":"Invalid email or password"}},"email":"Invalid email or password"}
