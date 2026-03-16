@@ -84,3 +84,7 @@ core
 *.tfstate.backup
 terraform.tfvars
 .terraform.lock.hcl
+
+# Playwright test artifacts
+frontend/test-results/
+frontend/playwright-report/

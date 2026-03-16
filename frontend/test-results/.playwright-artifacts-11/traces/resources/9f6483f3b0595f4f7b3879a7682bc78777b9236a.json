@@ -1,1 +1,0 @@
-{"error":{"code":"VALIDATION_ERROR","message":"{'email': [ErrorDetail(string='Email address is already registered', code='invalid')]}","http_status":400,"request_id":"c99de489-481b-43da-bb63-b934b456f2b7","timestamp":"2026-03-12T03:08:22.467048+00:00","details":{"email":["Email address is already registered"]}},"email":"Email address is already registered"}

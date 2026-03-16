@@ -1,1 +1,0 @@
-{"status": "healthy", "database": "connected", "redis": {"cache": "connected", "queue": "connected", "events": "connected", "channels": "connected"}}
