@@ -2,7 +2,8 @@
  * Phase 4 E2E Test — DEPRECATED (journey-aligned)
  *
  * Content maps to: JOURNEY-DPO-002 (Publish Asset to Marketplace), JOURNEY-DC-001 (Discover and Purchase).
- * Prefer journey specs under journeys/dpo/, journeys/dc/. Kept for backward compatibility.
+ * EXCLUDED FROM CI: removed from batch 7 (2026-03-14). Run manually via: bash scripts/e2e-batches.sh 9
+ * Prefer journey specs under journeys/dpo/, journeys/dc/. Deletion target: after sign-off.
  *
  * Tests complete marketplace journey: browse listing → purchase → entitlement visible
  */
@@ -10,6 +11,7 @@
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getConsumerTestUser, getTestUser, loginAsPersona } from './fixtures/auth';
 import { loginAndNavigateToRoute, navigateToRouteFromApp, waitForAppMainReady } from './fixtures/helpers';
+import { isBenignConsoleError } from './fixtures/console-utils';
 
 const getApiBaseUrl = () => process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 

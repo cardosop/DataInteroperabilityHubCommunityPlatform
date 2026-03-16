@@ -18,6 +18,18 @@ function getInitialIsLoading(): boolean {
   }
 }
 
+const ACTIVE_TENANT_STORAGE_KEY = 'active_tenant_id';
+
+/** Read persisted active tenant from localStorage at store startup. */
+function getInitialActiveTenantId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(ACTIVE_TENANT_STORAGE_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 interface AuthState {
   user: User | null;
   /** Active tenant for X-Tenant-Id header; when set, overrides user.tenant_id */
@@ -49,7 +61,7 @@ function syncTenantIdGetter(get: () => AuthState): void {
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  active_tenant_id: null,
+  active_tenant_id: getInitialActiveTenantId(),
   isAuthenticated: false,
   isLoading: getInitialIsLoading(),
   error: null,
@@ -85,6 +97,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error) {
       console.warn('Logout error:', error);
     } finally {
+      try { localStorage.removeItem(ACTIVE_TENANT_STORAGE_KEY); } catch { /* ignore */ }
       set({
         user: null,
         active_tenant_id: null,
@@ -115,6 +128,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const clearAuthState = () => {
       authService.clearAuth();
       apiClient.setTenantIdGetter(null);
+      try { localStorage.removeItem(ACTIVE_TENANT_STORAGE_KEY); } catch { /* ignore */ }
       set({
         user: null,
         active_tenant_id: null,
@@ -250,11 +264,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   setActiveTenant: (tenant_id) => {
+    try {
+      if (tenant_id) {
+        localStorage.setItem(ACTIVE_TENANT_STORAGE_KEY, tenant_id);
+      } else {
+        localStorage.removeItem(ACTIVE_TENANT_STORAGE_KEY);
+      }
+    } catch { /* ignore storage errors */ }
     set({ active_tenant_id: tenant_id });
     syncTenantIdGetter(get);
   },
 
   clearActiveTenant: () => {
+    try { localStorage.removeItem(ACTIVE_TENANT_STORAGE_KEY); } catch { /* ignore */ }
     set({ active_tenant_id: null });
     syncTenantIdGetter(get);
   },

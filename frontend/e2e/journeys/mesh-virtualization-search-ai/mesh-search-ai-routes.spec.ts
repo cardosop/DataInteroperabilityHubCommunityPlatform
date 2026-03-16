@@ -85,30 +85,36 @@ test.describe('Mesh, Virtualization, Search, AI routes', () => {
     test('ai/search loads or shows unavailable', async ({ page }) => {
       await page.goto('/ai/search');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.ai-search-page, .unavailable-page, .loading-spinner, .loading-spinner-container, #email',
-        { timeout: 15000 }
-      );
-      await page.waitForTimeout(3000); // Capabilities can take time; AI page may load slowly
+      // CapabilityRoute shows LoadingSpinner while capabilities load; do NOT include spinner in
+      // the wait selector (it resolves immediately but the page isn't terminal yet). Wait for
+      // the actual page or unavailable state — use 45s to cover slow-backend capability fetches.
+      await page
+        .locator('.ai-search-page, .unavailable-page, #email')
+        .first()
+        .waitFor({ state: 'visible', timeout: 45000 })
+        .catch(() => null);
       const url = page.url();
       if (url.includes('/login') || url.includes('/403')) return;
       // Valid outcomes: AI search page OR unavailable page (capability disabled).
       // app-main alone tells us nothing; error-display is never acceptable.
-      await assertCapabilityGatedPageLoads(page, '.ai-search-page, .unavailable-page');
+      await assertCapabilityGatedPageLoads(page, '.ai-search-page, .unavailable-page', { timeout: 30000 });
     });
 
     test('ai/schema-matching loads or shows unavailable', async ({ page }) => {
       await page.goto('/ai/schema-matching');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.schema-matching-page, .unavailable-page, .loading-spinner, .loading-spinner-container, #email',
-        { timeout: 15000 }
-      );
-      await page.waitForTimeout(3000);
+      // CapabilityRoute shows LoadingSpinner while capabilities load; do NOT include spinner in
+      // the wait selector (it resolves immediately but the page isn't terminal yet). Wait for the
+      // actual page or unavailable state — use 45s to cover slow-backend capability fetches.
+      await page
+        .locator('.schema-matching-page, .unavailable-page, #email')
+        .first()
+        .waitFor({ state: 'visible', timeout: 45000 })
+        .catch(() => null);
       const url = page.url();
       if (url.includes('/login') || url.includes('/403')) return;
       // Valid outcomes: schema-matching page OR unavailable page (capability disabled).
-      await assertCapabilityGatedPageLoads(page, '.schema-matching-page, .unavailable-page');
+      await assertCapabilityGatedPageLoads(page, '.schema-matching-page, .unavailable-page', { timeout: 30000 });
     });
   });
 });

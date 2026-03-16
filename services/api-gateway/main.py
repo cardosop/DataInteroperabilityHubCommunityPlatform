@@ -17,6 +17,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 import structlog
 
+# Import shared middleware
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from shared.middleware import RequestSizeLimitMiddleware
+
 # Setup Django before importing models (for API key manager)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hub.settings')
@@ -62,11 +66,31 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
+from contextlib import asynccontextmanager
+import httpx as _httpx
+
+
+@asynccontextmanager
+async def lifespan(app):
+    """Manage shared HTTP client lifecycle."""
+    app.state.http_client = _httpx.AsyncClient(
+        timeout=_httpx.Timeout(connect=5.0, read=30.0, write=30.0, pool=5.0),
+        limits=_httpx.Limits(
+            max_connections=200,
+            max_keepalive_connections=50,
+            keepalive_expiry=30,
+        ),
+    )
+    yield
+    await app.state.http_client.aclose()
+
+
 # Create FastAPI app
 app = FastAPI(
     title="API Gateway Service",
     version="1.0.0",
-    description="API Gateway with authentication, rate limiting, and request routing"
+    description="API Gateway with authentication, rate limiting, and request routing",
+    lifespan=lifespan,
 )
 
 SERVICE_NAME = "api-gateway"
@@ -80,14 +104,21 @@ if tracer:
     except ImportError:
         logger.warning("OpenTelemetry FastAPI instrumentation not available")
 
-# CORS middleware
+# CORS middleware — explicit origins only; never wildcard with credentials
+_cors_origins = [
+    o.strip() for o in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()
+] or ["http://localhost:3000", "http://localhost:5173"]  # dev fallback only
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Request size limit middleware (50 MiB default)
+app.add_middleware(RequestSizeLimitMiddleware)
 
 # Initialize rate limiter and API key manager
 rate_limiter = RateLimiter()
@@ -124,44 +155,46 @@ async def health_check():
 
 
 @app.get("/api/v1/health")
-async def aggregate_health_check():
+async def aggregate_health_check(request: Request):
     """
-    Aggregate health check endpoint that checks all backend services.
+    Aggregate health check: polls all backend /health URLs.
 
-    Uses the same health URL per backend as defined in routing (default path /health).
-    Returns health status of all backend services configured in routing.
+    Re-uses the lifespan-managed httpx connection pool stored on
+    app.state.http_client — no per-request client creation.
     """
-    import httpx
-
-    health_status = {
+    health_status: dict = {
         "status": "healthy",
         "service": SERVICE_NAME,
         "version": "1.0.0",
-        "backend_services": {}
+        "backend_services": {},
     }
 
-    # Get unique backends with their health URLs (single, documented path per backend)
     backends = get_unique_backends_with_health_urls()
 
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        for service_name, health_url in backends:
-            base_url = health_url.rsplit("/", 1)[0] if "/" in health_url.rstrip("/") else health_url
-            try:
-                response = await client.get(health_url)
-                health_status["backend_services"][service_name] = {
-                    "status": "healthy" if response.status_code == 200 else "unhealthy",
-                    "status_code": response.status_code,
-                    "url": base_url,
-                    "health_url": health_url,
-                }
-            except Exception as e:
-                health_status["backend_services"][service_name] = {
-                    "status": "unhealthy",
-                    "error": str(e),
-                    "url": base_url,
-                    "health_url": health_url,
-                }
-                health_status["status"] = "degraded"
+    # Lifespan-managed pool — never create per-request clients.
+    client = request.app.state.http_client
+    for service_name, health_url in backends:
+        base_url = (
+            health_url.rsplit("/", 1)[0]
+            if "/" in health_url.rstrip("/")
+            else health_url
+        )
+        try:
+            resp = await client.get(health_url, timeout=5.0)
+            health_status["backend_services"][service_name] = {
+                "status": "healthy" if resp.status_code == 200 else "unhealthy",
+                "status_code": resp.status_code,
+                "url": base_url,
+                "health_url": health_url,
+            }
+        except Exception as e:
+            health_status["backend_services"][service_name] = {
+                "status": "unhealthy",
+                "error": str(e),
+                "url": base_url,
+                "health_url": health_url,
+            }
+            health_status["status"] = "degraded"
 
     # Determine overall status
     unhealthy_count = sum(

@@ -56,19 +56,12 @@ test.describe('JOURNEY-DE-008: Integrate AI Schema Matching into Workflow', () =
   });
 
   test.describe('Failure', () => {
-    test('schema matching without capability shows 403 or unavailable', async ({ page }) => {
-      await loginViaApiAndInject(page);
-      await page.goto('/ai/schema-matching');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.schema-matching-page, .unavailable-page, .error-display, .loading-spinner-container, #email',
-        { timeout: 30000 }
-      );
-      const on403 = page.url().includes('/403');
-      const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
-      const onSchemaMatching = page.url().includes('/ai/schema-matching');
-      const onLogin = page.url().includes('/login');
-      expect(on403 || onUnavailable || onSchemaMatching || onLogin).toBe(true);
+    test('unauthenticated access to /ai/schema-matching redirects to login', async ({ page }) => {
+      const { clearAuthStorage } = await import('../../fixtures/auth');
+      await clearAuthStorage(page);
+      await page.goto('/ai/schema-matching', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|403)/, { timeout: 20000 }).catch(() => null);
+      expect(page.url().includes('/login') || page.url().includes('/403')).toBe(true);
     });
   });
 

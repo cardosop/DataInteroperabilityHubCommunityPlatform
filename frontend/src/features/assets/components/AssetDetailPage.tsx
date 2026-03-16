@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useAuthStore } from '../../auth/store/authStore';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
@@ -22,6 +23,7 @@ import {
   useAttachContract,
   useAttachDataset,
   useRecalculateHealthScore,
+  useRetireAsset,
 } from '../hooks/useAssets';
 import { ContractPicker, DatasetPicker } from '../../../shared/components/pickers';
 import { useToast } from '../../../shared/components/Toast';
@@ -33,7 +35,11 @@ export function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: asset, isLoading, error, refetch } = useAsset(id || null);
+  const activeTenantId = useAuthStore((s) => s.active_tenant_id);
+  const userTenantId = useAuthStore((s) => s.user?.tenant_id);
+  const effectiveTenantId = activeTenantId ?? userTenantId;
   const activateMutation = useActivateAsset();
+  const retireMutation = useRetireAsset();
   const attachContractMutation = useAttachContract();
   const attachDatasetMutation = useAttachDataset();
   const createDatasetMutation = useCreateDataset();
@@ -64,6 +70,17 @@ export function AssetDetailPage() {
       refetch();
     } catch (err) {
       // Error handled by mutation
+    }
+  };
+
+  const handleRetire = async () => {
+    if (!id || !asset) return;
+    try {
+      await retireMutation.mutateAsync({ id, version: asset.version });
+      refetch();
+      toast.success('Asset retired successfully.');
+    } catch (err) {
+      toast.error(normalizeError(err).error.message || 'Failed to retire asset');
     }
   };
 
@@ -150,7 +167,24 @@ export function AssetDetailPage() {
     );
   }
 
+  // Tenant isolation: non-PUBLIC assets belonging to another tenant must not be rendered.
+  // This guards against cross-tenant cache leaks and direct URL access in a switched-tenant session.
+  if (
+    effectiveTenantId &&
+    asset.tenant &&
+    asset.tenant !== effectiveTenantId &&
+    asset.visibility !== 'PUBLIC'
+  ) {
+    return (
+      <ErrorDisplay
+        error={new Error('Asset not found')}
+        title="Asset not found"
+      />
+    );
+  }
+
   const canActivate = asset.status === 'DRAFT';
+  const canRetire = asset.status === 'ACTIVE';
 
   return (
     <div className="asset-detail-page">
@@ -168,6 +202,17 @@ export function AssetDetailPage() {
               data-testid="btn-activate-asset"
             >
               {activateMutation.isPending ? 'Activating...' : 'Activate Asset'}
+            </button>
+          )}
+          {canRetire && (
+            <button
+              onClick={handleRetire}
+              disabled={retireMutation.isPending}
+              className="btn-secondary"
+              type="button"
+              data-testid="btn-retire-asset"
+            >
+              {retireMutation.isPending ? 'Retiring...' : 'Retire Asset'}
             </button>
           )}
         </div>

@@ -377,6 +377,8 @@ services:
       ENVIRONMENT: test
       DEBUG: "True"
       LOG_LEVEL: DEBUG
+      # Cap JVM heap to match the Docker memory limit (4G limit, 3.5G heap leaves headroom for JVM overhead)
+      JVM_ARGS: "-Xmx3500m -Xms512m"
     ports:
       - "${FUSEKI_TEST_PORT:-3031}:3030"
     volumes:
@@ -389,6 +391,13 @@ services:
       start_period: 120s
     networks:
       - hub-test-net
+    # Fuseki was unbounded and grew to 3+ GiB, triggering OOM kills during E2E batch runs
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 512M
 
   # Jaeger (all-in-one) for Testing
   jaeger-test:
@@ -570,7 +579,11 @@ services:
     container_name: hub-test-api
     init: true  # Reap zombies and forward signals; avoids "PID is zombie and can not be killed" on restart
     restart: on-failure
-    command: ["sh", "-c", "exec python hub/manage.py runserver 0.0.0.0:8000 --noreload"]
+    # gunicorn + UvicornWorker: GUNICORN_WORKERS=5 workers handle concurrent E2E batch load (each batch
+    # now runs with --workers=2, giving max 6 concurrent requests at once). Reduced from 9 to 5 to cut
+    # idle RSS by ~1.2GiB and prevent OOM kills between tests 150-200 during batch5 runs.
+    # 5 workers = 2 CPUs × 2 + 1; sufficient for batches that each use --workers=2.
+    command: ["gunicorn", "hub.asgi:application", "--config", "gunicorn.conf.py"]
     volumes:
       - .:/app
     ports:
@@ -580,7 +593,7 @@ services:
       POSTGRES_PORT: "5432"
       POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
       POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
-      # Use hub_test_test_shared so runserver sees same data as pytest (TEST_DB_SUFFIX=shared)
+      # Use hub_test_test_shared so gunicorn sees same data as pytest (TEST_DB_SUFFIX=shared)
       # and Prefect worker API calls (get_export_config, patch_export_run) update the same run the test polls
       POSTGRES_DB: hub_test_test_shared
       EMAIL_BACKEND: ${EMAIL_BACKEND:-smtp}
@@ -644,6 +657,10 @@ services:
       ALLOWED_HOSTS: localhost,127.0.0.1,api-service,api-service-test,testserver
       # E2E: relax auth rate limit for parallel Playwright workers (no mocks)
       RATE_LIMIT_E2E_RELAX: ${RATE_LIMIT_E2E_RELAX:-true}
+      # Reduced from 9→5: each batch now uses --workers=2 (max 6 concurrent requests); 5 workers
+      # avoids ~1.2GiB excess RSS that caused OOM kills during batch5 runs on a 61GiB host.
+      # Override via env if running multiple batches in parallel: GUNICORN_WORKERS=9 docker compose up
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-5}
       # Optional: set STRIPE_SECRET_KEY (e.g. sk_test_...) to run billing Stripe-dependent tests (no mocks)
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       # Optional: set STRIPE_WEBHOOK_SECRET (e.g. whsec_...) so webhook signature test runs (test_stripe_webhook_invalid_signature)
@@ -694,21 +711,24 @@ services:
       hub-test-net:
         aliases:
           - api-service
-    # Liveness: /health/live/ always 200 if process is up; /health/ checks DB+Redis and can 503 under load
-    # Migrations run in migrate-test-db; api starts runserver only. start_period 120s: under full-stack load
-    # Django startup + many deps can take 60s+; retries 15 gives ~4min after start_period.
+    # Liveness: /health/live/ always 200 if process is up; /health/ checks DB+Redis and can 503 under load.
+    # gunicorn spawns GUNICORN_WORKERS=5 worker processes; each worker starts Django app + loads settings,
+    # so startup is slower than runserver but the liveness endpoint is served by whichever worker is free.
+    # start_period 180s: gunicorn with 5 UvicornWorkers under full-stack load needs ~60–90s for all workers
+    # to finish Django app loading. retries 20 × interval 15s = 5min grace after start_period.
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live/', timeout=20).read()\" || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live/', timeout=10).read()\" || exit 1"]
       interval: 15s
-      timeout: 25s
-      retries: 15
-      start_period: 120s
-    # 2.5G limit: runserver + pytest with large batches (e.g. scheduled_ingestion) need headroom; --no-cov used for heaviest batches to avoid OOM
+      timeout: 15s
+      retries: 20
+      start_period: 180s
+    # 8G limit: parallel E2E batch runs (batches 1+3+4 simultaneously) exhaust 4G under load.
+    # Host has 61GiB RAM; 8G is safe. Increased CPUs from 2→4 to handle concurrent requests.
     deploy:
       resources:
         limits:
-          cpus: "2"
-          memory: 4G
+          cpus: "4"
+          memory: 8G
         reservations:
           cpus: "0.5"
           memory: 512M

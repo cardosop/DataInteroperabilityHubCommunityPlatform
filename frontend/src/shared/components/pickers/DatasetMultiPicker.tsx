@@ -185,7 +185,6 @@ export function DatasetMultiPicker({
               : undefined
           }
           role="combobox"
-          aria-multiselectable="true"
         />
       </div>
 

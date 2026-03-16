@@ -37,15 +37,21 @@ test.describe('Unavailable and 403 pages', () => {
   });
 
   test.describe('Edge', () => {
-    test('capability-gated route redirects to /unavailable when capability off', async ({
+    test('capability-gated /register renders valid page (unavailable or register form)', async ({
       page,
     }) => {
       await clearAuthStorage(page);
       await page.goto('/register', { waitUntil: 'domcontentloaded' });
-      await page.waitForURL(/\/(register|unavailable)/, { timeout: 15_000 });
-      const onUnavailable = page.url().includes('/unavailable');
-      const onRegister = page.url().includes('/register');
-      expect(onUnavailable || onRegister).toBe(true);
+      await page.waitForURL(/\/(register|unavailable|login)/, { timeout: 15_000 }).catch(() => null);
+      const url = page.url();
+      // If registration is disabled → /unavailable. If enabled → /register.
+      // Either is valid; what must NOT happen is a crash or blank page.
+      expect(url.includes('/unavailable') || url.includes('/register') || url.includes('/login')).toBe(true);
+      // Verify a heading is rendered (not a blank page regression).
+      // 35s timeout: in visible/slowMo mode the capability API call (to check if registration
+      // is enabled) can take several seconds before the page resolves to its final state.
+      const heading = page.locator('h1, h2').first();
+      await expect(heading).toBeVisible({ timeout: 35000 });
     });
   });
 });

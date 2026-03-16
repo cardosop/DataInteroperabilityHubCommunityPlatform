@@ -12,8 +12,8 @@ import { clearAuthStorage, getTestUser } from '../fixtures/auth';
 import { loginAndNavigateToRoute } from '../fixtures/helpers';
 
 test.describe('Failure Scenarios (real tests)', () => {
-  // 200s: loginAndNavigateToRoute (~45s) + Phase 1 up to 65s + Phase 2 up to 30s + overhead
-  test.setTimeout(200000);
+  // 300s: loginAndNavigateToRoute (~60s) + Phase 1 up to 65s + Phase 2 up to 90s + overhead (~30s) = 245s
+  test.setTimeout(300000);
 
   test('session expiry: unauthenticated access to protected route redirects to login', async ({
     page,
@@ -102,15 +102,35 @@ test.describe('Failure Scenarios (real tests)', () => {
   });
 
   test('error display shown when API returns error', async ({ page }) => {
-    // Root cause: same timing issue as the non-existent-resource test.  Phase 1 (45s) can
-    // expire while the auth-store safety timeout (60s) is still running, leaving the page in
-    // an auth-loading state with no error display and no /login redirect → assertion fails.
-    // Fix: extend Phase 1 to 65s and Phase 2 to 30s.
+    // Root cause fix (applied):
+    //   1. ContractEditorPage was lazy-loaded without a <Suspense> wrapper in routes.tsx.
+    //      React.lazy() requires a Suspense boundary; without one, the Suspense signal
+    //      propagates to RouterProvider's internal null-fallback Suspense, causing an
+    //      indefinite "Loading..." state that never transitions to the error display.
+    //      Fix: Added <Suspense fallback={<LoadingSpinner message="Loading contract editor..." />}>
+    //      in routes.tsx — the chunk now has a defined loading state and terminates correctly.
+    //   2. Phase 2 now uses page.waitForResponse() to wait for the actual API response
+    //      (deterministic signal) instead of a fixed timeout (which is environment-sensitive).
+    //      This handles: slow backends (30s Axios timeout × 2 React Query attempts = 60s),
+    //      auth token refresh (401 → refresh POST → contract retry), and Vite chunk load time.
     const user = await getTestUser();
     await loginAndNavigateToRoute(page, user, '/', {
       timeout: 60000,
       contentSelector: '[data-testid="home-page"], .home-page, main',
     });
+
+    // Set up the API response waiter BEFORE navigation so we don't miss the response.
+    // Timeout: 150s covers Phase 1 (≤65s) + chunk download (≤10s) + worst-case API path
+    // (auth refresh 30s + Axios timeout 30s × 2 React Query attempts = 60s) + buffer.
+    // Skip 401 responses — the interceptor will refresh and retry; we want the final response.
+    const contractApiDone = page.waitForResponse(
+      (r) =>
+        r.url().includes('/api/v1/contracts/') &&
+        r.url().includes('00000000') &&
+        r.status() !== 401,
+      { timeout: 150_000 }
+    );
+
     await page.goto('/contracts/00000000-0000-0000-0000-000000000000/edit');
     await page.waitForLoadState('domcontentloaded');
 
@@ -120,11 +140,15 @@ test.describe('Failure Scenarios (real tests)', () => {
     await page.waitForSelector('.app-main', { timeout: 65000 }).catch(() => null);
     if (page.url().includes('/login')) return;
 
-    // Phase 2: Auth done — wait for the contract 404 error to render.
+    // Phase 2: Wait for the contract API response — this is the deterministic signal that
+    // the request completed (404 or other error). Once received, React re-renders quickly.
+    await contractApiDone.catch(() => null);
+
+    // Phase 3: Brief wait for React to process the error response and render ErrorDisplay.
     await page
       .locator('.error-display, text=/not found|failed|404|403/i')
       .first()
-      .waitFor({ state: 'visible', timeout: 30000 })
+      .waitFor({ state: 'visible', timeout: 15000 })
       .catch(() => null);
     const hasError =
       (await page.locator('.error-display').count()) > 0 ||
@@ -134,41 +158,77 @@ test.describe('Failure Scenarios (real tests)', () => {
     expect(hasError || onLogin).toBe(true);
   });
 
-  test('network error: aborted API request shows error or retry', async ({ page }) => {
-    // When all asset list requests are aborted, the app must surface an error.
+  test('network error: failed API request shows error or retry', async ({ page }) => {
+    // When all asset list requests fail with 503, the app must surface an error display.
     //
-    // Root cause of failures: Phase 1 waited 45s for .app-main, but the auth-store safety
-    // timeout (INIT_MAX_MS=60s) can fire between 45s and 60s.  In that window, auth is still
-    // loading, .app-main has not appeared, and the URL is still /assets (not /login), so
-    // hasError=false and onLogin=false causes the assertion to fail.
-    //
-    // Fix: extend Phase 1 to 65s (> INIT_MAX_MS) so we always see either .app-main or the
-    // /login redirect.  Extend Phase 2 to 30s to cover Axios retries (2×) + RQ retry (1×)
-    // totalling ~7s under ideal conditions, with buffer for parallel-load delays.
+    // Root cause analysis:
+    //   1. AssetListPage is lazy-loaded with <Suspense> in routes.tsx — Suspense boundary
+    //      terminates correctly when the chunk loads.
+    //   2. route.fulfill(503) bypasses Axios's network-retry interceptor (only ERR_NETWORK
+    //      errors trigger it). React Query retries once (failureCount < 1 → retry config)
+    //      then sets error state. Total: 2 intercepted 503s before status='error'.
+    //   3. Phase 2 must wait for BOTH 503 responses (initial + React Query retry). Only
+    //      after the second 503 does React Query set status='error' and render ErrorDisplay.
+    //      Waiting for only the FIRST 503 leaves a 1s retry-delay window where the component
+    //      shows EmptyState (data=undefined, error=null), and the subsequent 20s Phase 3 may
+    //      miss the brief ErrorDisplay render if auth re-init overlaps (StrictMode double-mount
+    //      calls initialize() twice, briefly making isLoading=true and unmounting AppShell).
     const user = await getTestUser();
     await loginAndNavigateToRoute(page, user, '/', {
       timeout: 60000,
       contentSelector: '[data-testid="home-page"], .home-page, main',
     });
-    await page.route('**/api/v1/assets/**', (route) => route.abort('failed'));
+
+    // Count intercepted 503s. React Query's retry policy (failureCount < 1) retries once,
+    // so EXACTLY 2 GET /assets/ requests will be made before status='error' is set.
+    // Set up the counter BEFORE route interception and navigation so no response is missed.
+    // Timeout: 120s = auth-store INIT_MAX_MS (60s) + Suspense chunk load (≤10s) +
+    //          first 503 (immediate) + 1s retry delay + second 503 (immediate) + buffer.
+    let assetsResponseCount = 0;
+    const bothAssetsResponsesDone = page.waitForResponse(
+      (r) => {
+        if (
+          r.url().includes('/api/v1/assets/') &&
+          r.request().method() === 'GET' &&
+          r.status() !== 401
+        ) {
+          assetsResponseCount++;
+          return assetsResponseCount >= 2;
+        }
+        return false;
+      },
+      { timeout: 120000 }
+    );
+
+    // route.fulfill(503): immediate HTTP error, bypasses Axios network-retry interceptor.
+    await page.route(/\/api\/v1\/assets\//, (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Service Unavailable' }),
+      })
+    );
     await page.goto('/assets', { waitUntil: 'domcontentloaded' });
 
-    // Phase 1: Wait for auth init to complete.  65s matches the auth-store safety timeout
-    // (INIT_MAX_MS=60s) so we either see .app-main or catch the /login redirect.
+    // Phase 1: Wait for auth init to complete. 65s covers the auth-store safety timeout
+    // (INIT_MAX_MS=60s); either .app-main appears or /login redirect is caught.
     await page.waitForSelector('.app-main', { timeout: 65000 }).catch(() => null);
     if (page.url().includes('/login')) return;
 
-    // Phase 2: Auth done — wait for the error display.
-    // Timing: Axios retries 2× (1s+2s=3s) + React Query retry (1s delay) + 2nd Axios chain (3s) ≈ 7s.
-    // Under parallel E2E load, allow 30s to absorb longer retry chains.
+    // Phase 2: Wait for BOTH intercepted 503 responses. After the second, React Query has
+    // definitively set status='error' and AssetListPage renders ErrorDisplay synchronously.
+    await bothAssetsResponsesDone.catch(() => null);
+
+    // Phase 3: ErrorDisplay renders in the next React commit after Phase 2 resolves.
+    // 15s provides headroom for any auth re-init remount that briefly hides AppShell.
     await page
-      .locator('.error-display, text=/failed|error|retry|network/i')
+      .locator('.error-display, text=/failed|error|retry|service unavailable/i')
       .first()
-      .waitFor({ state: 'visible', timeout: 30000 })
+      .waitFor({ state: 'visible', timeout: 15000 })
       .catch(() => null);
     const hasError =
       (await page.locator('.error-display').count()) > 0 ||
-      (await page.locator('text=/failed|error|retry|network/i').count()) > 0;
+      (await page.locator('text=/failed|error|retry|service unavailable/i').count()) > 0;
     const onLogin = page.url().includes('/login');
     // Must show a real error (not a stuck loading spinner) OR redirect to login if auth failed
     expect(hasError || onLogin).toBe(true);

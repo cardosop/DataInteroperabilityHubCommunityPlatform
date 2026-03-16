@@ -34,13 +34,21 @@ test.describe('JOURNEY-AUD-004: Review Data Mesh Governance / Monitor Audit Logs
       const auditorUser = await getAuditorUser();
       await loginAndNavigateToRoute(page, auditorUser, '/mesh', { timeout: 60000 });
       await page.waitForTimeout(2000);
-      const onMesh = page.url().includes('/mesh');
-      const on403 = page.url().includes('/403');
-      const onLogin = page.url().includes('/login');
+      const url = page.url();
+      const onMesh = url.includes('/mesh');
+      const on403 = url.includes('/403');
+      const onLogin = url.includes('/login');
+      if (on403 || onLogin) {
+        // Accepted: mesh may be gated for auditor role in this env
+        expect(url).toMatch(/\/403|\/login/);
+        return;
+      }
+      expect(onMesh).toBe(true);
+      // On mesh page: must show content (not error-display)
       const hasContent =
-        (await page.locator('.mesh-domain-list-page, .app-main, .error-display').count()) > 0;
-      expect(onMesh || on403 || onLogin).toBe(true);
-      expect(hasContent || on403 || onLogin).toBe(true);
+        (await page.locator('.mesh-domain-list-page, .app-main').count()) > 0 ||
+        (await page.locator('.empty-state').count()) > 0;
+      expect(hasContent).toBe(true);
     });
   });
 
@@ -57,7 +65,7 @@ test.describe('JOURNEY-AUD-004: Review Data Mesh Governance / Monitor Audit Logs
   });
 
   test.describe('Edge', () => {
-    test('audit and mesh routes accessible', async ({ page }) => {
+    test('audit and mesh routes accessible for authenticated auditor', async ({ page }) => {
       const auditorUser = await getAuditorUser();
       await loginAndNavigateToRoute(page, auditorUser, '/audit', { timeout: 60000 });
       if (page.url().includes('/login') || page.url().includes('/403')) {
@@ -68,7 +76,15 @@ test.describe('JOURNEY-AUD-004: Review Data Mesh Governance / Monitor Audit Logs
       await page.goto('/mesh');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(2000);
-      expect(page.url().includes('/mesh') || page.url().includes('/403') || page.url().includes('/login')).toBe(true);
+      const meshUrl = page.url();
+      // Auditor IS authenticated: /login should not appear; /mesh or /403 are valid
+      expect(meshUrl.includes('/mesh') || meshUrl.includes('/403')).toBe(true);
+      if (meshUrl.includes('/mesh')) {
+        const hasContent =
+          (await page.locator('.mesh-domain-list-page, .app-main').count()) > 0 ||
+          (await page.locator('.empty-state').count()) > 0;
+        expect(hasContent).toBe(true);
+      }
     });
   });
 });

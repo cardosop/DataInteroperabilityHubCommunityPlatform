@@ -27,12 +27,30 @@ test.describe('Feature: Integrations', () => {
   });
 
   test.describe('Failure', () => {
-    test('integrations sync-jobs loads or redirects', async ({ page }) => {
+    test('integrations sync-jobs loads content or shows gated/error state', async ({ page }) => {
       await page.goto('/integrations/sync-jobs');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(5000);
       const url = page.url();
-      expect(url).toMatch(/\/integrations|\/login|\/403/);
+      // URL check alone is trivially true here (navigating to /integrations/sync-jobs and
+      // staying there always matches /integrations). Assert page-level content instead.
+      if (url.includes('/login') || url.includes('/403')) {
+        // Redirected — acceptable for role-gated route
+        expect(url).toMatch(/\/login|\/403/);
+        return;
+      }
+      // Must render actual page state — not just a URL match
+      const hasContent =
+        (await page
+          .locator(
+            '.integration-sync-jobs-page, .sync-jobs-page, .empty-state, .unavailable-page, h1'
+          )
+          .count()) > 0;
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      expect(
+        hasContent || hasError,
+        'Expected page content (.sync-jobs-page, .empty-state, .unavailable-page, h1, or .error-display)'
+      ).toBe(true);
     });
   });
 });

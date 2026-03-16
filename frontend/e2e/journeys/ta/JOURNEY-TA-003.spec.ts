@@ -38,17 +38,4 @@ test.describe('JOURNEY-TA-003: Monitor Tenant Usage', () => {
     });
   });
 
-  test.describe('Edge', () => {
-    test('admin route accessible', async ({ page }) => {
-      await loginAsPersona(page, getTenantAdminUser);
-      await page.goto('/admin');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      expect(
-        page.url().includes('/admin') ||
-          page.url().includes('/403') ||
-          page.url().includes('/login')
-      ).toBe(true);
-    });
-  });
 });

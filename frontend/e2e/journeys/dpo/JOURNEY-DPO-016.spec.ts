@@ -10,6 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { createODCSContractViaApi } from '../../fixtures/api-assets';
 import { getTestUser, loginAsPersona, loginUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
@@ -20,39 +21,14 @@ test.describe('JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow
     test('contract link-odps page loads for existing contract (API-seeded lookup)', async ({
       page,
     }) => {
-      // Fetch the first available contract ID from the API so the test never depends on
-      // the rendered list having a clickable row (avoids vacuous pass when catalog is empty).
-      await loginAsPersona(page, getTestUser);
+      // Seed a contract via API and navigate directly — avoids relying on list link structure.
       const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/contracts', {
+      const contractId = await createODCSContractViaApi(testUser);
+
+      await loginAndNavigateToRoute(page, testUser, `/contracts/${contractId}/link-odps`, {
         timeout: 60000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display',
+        contentSelector: '.odps-link-page, .error-display, .app-main, #email',
       });
-
-      if (page.url().includes('/login')) {
-        throw new Error('Unexpected redirect to login on contracts list');
-      }
-
-      // Try to find a contract link from the rendered list
-      const contractLink = page.locator('.contract-list-page a[href*="/contracts/"]').first();
-      if ((await contractLink.count()) === 0) {
-        test.skip(
-          true,
-          'No contracts in catalog; link-odps test requires at least one contract. ' +
-            'Run contract-creation-flow first or seed the catalog.'
-        );
-        return;
-      }
-
-      const href = await contractLink.getAttribute('href');
-      // Extract the UUID: /contracts/<uuid>  (path segment after /contracts/)
-      const match = href?.match(/\/contracts\/([0-9a-f-]{36})/i);
-      const contractId = match?.[1];
-      if (!contractId) {
-        throw new Error(`Could not extract contract UUID from href: "${href}"`);
-      }
-
-      await page.goto(`/contracts/${contractId}/link-odps`);
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
 

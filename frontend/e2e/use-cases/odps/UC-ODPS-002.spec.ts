@@ -47,9 +47,15 @@ test.describe('UC-ODPS-002: Link ODPS to Contract', () => {
       });
       await page.goto('/contracts/00000000-0000-0000-0000-000000000000/link-odps');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      // Wait for the error display to appear — do NOT include .odps-link-page here as it
+      // renders before the 404 API response resolves, causing a false-ready return.
+      await page.waitForSelector(
+        '.error-display, [role="alert"]',
+        { timeout: 30000 }
+      ).catch(() => null);
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('[role="alert"]').count()) > 0 ||
         (await page.locator('text=/not found|failed|403/i').count()) > 0;
       expect(page.url().includes('/login') || page.url().includes('/403') || hasError).toBe(true);
     });

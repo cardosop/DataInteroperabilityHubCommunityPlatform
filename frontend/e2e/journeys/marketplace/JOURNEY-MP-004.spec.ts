@@ -10,8 +10,8 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute, navigateToRouteFromApp } from '../../fixtures/helpers';
+import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-MP-004: Sync Assets Bidirectionally', () => {
   test.setTimeout(180000); // 3 min; client-side nav to sync-jobs avoids full-reload auth race
@@ -63,6 +63,13 @@ test.describe('JOURNEY-MP-004: Sync Assets Bidirectionally', () => {
       const onLogin = page.url().includes('/login');
       expect(hasError || onLogin).toBe(true);
     });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/integrations/sync-jobs');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
+    });
   });
 
   test.describe('Edge', () => {
@@ -73,11 +80,10 @@ test.describe('JOURNEY-MP-004: Sync Assets Bidirectionally', () => {
         contentSelector: '.sync-job-list-page, .empty-state, .error-display',
       });
       expect(page.url()).toContain('/integrations/sync-jobs');
-      // Already authenticated; use client-side nav to avoid redundant login (prevents timeout)
-      await navigateToRouteFromApp(page, '/integrations/connections', {
-        timeout: 90000,
-        contentSelector: '.connection-list-page, .empty-state, .error-display',
-      });
+      // Use direct goto — already authenticated, avoids UI nav slowMo accumulation in visible project
+      await page.goto('/integrations/connections', { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(2000);
+      if (page.url().includes('/login')) return;
       expect(page.url()).toContain('/integrations/connections');
     });
   });

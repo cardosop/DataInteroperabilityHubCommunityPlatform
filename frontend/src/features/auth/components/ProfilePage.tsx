@@ -81,7 +81,9 @@ export function ProfilePage() {
       };
       const updated = await authService.updateProfile(payload);
       setUser(updated);
-      await refreshUser();
+      // Pass the PATCH response directly to avoid a redundant GET /auth/me/ that can race
+      // with parallel E2E workers modifying the same user's profile concurrently.
+      await refreshUser(updated);
       setSuccessMessage('Profile updated successfully.');
     } catch (err) {
       setError(normalizeError(err));

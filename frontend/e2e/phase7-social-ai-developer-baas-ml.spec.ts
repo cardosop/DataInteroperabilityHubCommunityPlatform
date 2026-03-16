@@ -1,9 +1,10 @@
 /**
  * E2E Test: Phase 7 — Social + AI + Developer/BaaS + ML (capability-gated) — DEPRECATED (journey-aligned)
  *
+ * EXCLUDED FROM CI: removed from batch 7 (2026-03-14). Run manually via: bash scripts/e2e-batches.sh 9
  * Content maps to: JOURNEY-DC-008, JOURNEY-DPO-009, JOURNEY-DC-006, JOURNEY-DPO-007, JOURNEY-DEV-001/009,
  * BaaS, JOURNEY-DS-003. Prefer journey specs under journeys/dc/, journeys/dpo/, journeys/dev/, etc.
- * Backend-not-implemented (e.g. UC-SOCIAL-005): assert /unavailable or skip per USE_CASES.md.
+ * Deletion target: after sign-off. Backend-not-implemented (e.g. UC-SOCIAL-005): assert /unavailable.
  */
 
 import { expect, test } from '@playwright/test';
@@ -153,9 +154,37 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
       (await baasLink.count()) > 0 ||
       (await mlLink.count()) > 0;
 
-    // Sidebar should have multiple nav items; Phase 7 items are optional (gated)
+    // Sidebar must have meaningful navigation (not just 1 link)
     const allNavLinks = sidebar.locator('.nav-link');
     const navCount = await allNavLinks.count();
-    expect(navCount).toBeGreaterThan(0);
+    expect(navCount, 'Sidebar must have more than 3 nav links after login').toBeGreaterThan(3);
+
+    if (hasAnyPhase7Link) {
+      // At least one Phase 7 link is present — verify it navigates without crashing
+      const firstPhase7Link =
+        (await communitiesLink.count()) > 0
+          ? communitiesLink.first()
+          : (await aiLink.count()) > 0
+            ? aiLink.first()
+            : (await devLink.count()) > 0
+              ? devLink.first()
+              : (await baasLink.count()) > 0
+                ? baasLink.first()
+                : mlLink.first();
+
+      await firstPhase7Link.click();
+      await page.waitForLoadState('domcontentloaded');
+
+      // Must navigate away from /assets — Phase 7 route must be reachable
+      const newUrl = page.url();
+      expect(newUrl).not.toMatch(/\/assets$/);
+
+      // Page must render some handled state (not a blank screen)
+      const hasHandledState =
+        (await page
+          .locator('.communities-page, .ai-search-page, .developer-portal-page, .baas-page, .ml-page, .unavailable-page, .error-display, h1')
+          .count()) > 0;
+      expect(hasHandledState, 'Phase 7 route must render a handled UI state').toBe(true);
+    }
   });
 });

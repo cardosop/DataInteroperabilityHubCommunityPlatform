@@ -11,7 +11,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getComplianceOfficerUser, loginAsPersona } from '../../fixtures/auth';
+import { clearAuthStorage, getComplianceOfficerUser, loginAsPersona } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, waitForAppMainReady } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-CPO-006: Configure Automated Compliance', () => {
@@ -44,6 +44,13 @@ test.describe('JOURNEY-CPO-006: Configure Automated Compliance', () => {
         detailContentSelector: '.compliance-run-detail-page, .compliance-run-detail',
         waitAfterLoad: 8000,
       });
+    });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/compliance');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     });
   });
 

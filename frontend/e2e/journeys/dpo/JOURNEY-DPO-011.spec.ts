@@ -11,7 +11,7 @@
 
 import { expect, test } from '@playwright/test';
 import { getTenantAdminUser, getTestUser, loginUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute } from '../../fixtures/helpers';
+import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 /** Get tenant admin or fallback to DPO when tenant admin unavailable (e.g. under parallel load). */
 async function getSocialTestUser() {
@@ -70,7 +70,6 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
         timeout: 60000,
         contentSelector:
           '.app-main, .governance-access-request-list-page, .governance-create-page, .error-display, .loading-spinner-container, h1',
-        acceptRedirectToLogin: true,
       });
       await page.waitForTimeout(3000);
 
@@ -121,6 +120,8 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
         '.communities-page, .communities-tab, .unavailable-page',
         { timeout: 30000 }
       ).catch(() => null);
+      // Ensure loading spinner has cleared so capability state is fully resolved
+      await waitForLoadingComplete(page, { timeout: 30000 });
 
       // Must render something meaningful — not a blank or crash
       const hasContent =

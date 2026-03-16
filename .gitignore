@@ -88,3 +88,10 @@ terraform.tfvars
 # Playwright test artifacts
 frontend/test-results/
 frontend/playwright-report/
+
+# AWS CLI installer artifacts
+awscliv2.zip
+aws/
+
+# Pip version specifier artifact
+=3.8

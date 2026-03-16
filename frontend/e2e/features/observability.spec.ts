@@ -25,9 +25,17 @@ test.describe('Feature: Observability', () => {
       await page.goto('/observability');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(5000);
+      // body.count() > 0 is always true — assert meaningful page content instead
       const hasContent =
-        (await page.locator('body').count()) > 0;
-      expect(hasContent).toBe(true);
+        (await page
+          .locator(
+            '.observability-page, .monitoring-page, .unavailable-page, .error-display, h1'
+          )
+          .count()) > 0;
+      expect(
+        hasContent,
+        'Expected .observability-page, .monitoring-page, .unavailable-page, .error-display, or h1 to be present'
+      ).toBe(true);
     });
   });
 });

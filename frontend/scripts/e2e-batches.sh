@@ -81,7 +81,10 @@ case "${1:-}" in
     ;;
   5)
     # TA, PA, Dev, Aud journeys + cross-persona value-chain and isolation tests + webhook use cases
+    # Reduce workers to 2: PA/TA admin ops + cross-persona isolation tests are RAM-heavy (12 Chrome
+    # instances at 4 workers cause OOM kills between test 150-200 on a 61GiB host with Fuseki+API load)
     run_batch 5 "TA, PA, Dev, Aud, cross-persona journeys + webhook use cases" \
+      --workers=2 \
       e2e/journeys/ta/ \
       e2e/journeys/pa/ \
       e2e/journeys/dev/ \
@@ -91,7 +94,9 @@ case "${1:-}" in
     ;;
   6)
     # CPO, DS, DMO, DA, CM, Marketplace journeys + compliance/DQ/marketplace use cases
+    # Reduce workers to 2: ~390 tests × 3 projects; same OOM risk as batch5 at 4 workers
     run_batch 6 "CPO, DS, DMO, DA, CM, Marketplace journeys + compliance/DQ/marketplace use cases" \
+      --workers=2 \
       e2e/journeys/cpo/ \
       e2e/journeys/ds/ \
       e2e/journeys/dmo/ \
@@ -103,20 +108,29 @@ case "${1:-}" in
       e2e/use-cases/marketplace/
     ;;
   7)
-    # Feature smoke tests + all phase specs (including phase3/4/5 previously missing) + governance + scheduled
-    run_batch 7 "features, all phase specs, governance, scheduled" \
+    # Feature smoke tests + phase7.5/phase8 + governance + scheduled journeys.
+    # phase2–phase7 removed: superseded by journey specs in batches 3–6.
+    # They remain on disk (run manually via batch 9) until deletion sign-off.
+    # Reduce workers to 2: ~220 tests × 3 projects; same OOM risk as batch5 at 4 workers
+    run_batch 7 "features, phase7.5, phase8, governance, scheduled" \
+      --workers=2 \
       e2e/features/ \
+      e2e/phase7.5-features-gap-closure.spec.ts \
+      e2e/phase8-hardening.spec.ts \
+      e2e/journeys/governance-retention/ \
+      e2e/journeys/scheduled-export/ \
+      e2e/journeys/scheduled-ingestion/
+    ;;
+  9)
+    # Deprecated phase specs (manual regression only — not in CI).
+    # These are superseded by journey specs in batches 3–6. Run before deleting.
+    run_batch 9 "deprecated phase specs (manual regression)" \
       e2e/phase2-catalog-journey.spec.ts \
       e2e/phase3-quality-gates.spec.ts \
       e2e/phase4-marketplace-journey.spec.ts \
       e2e/phase5-odps-journey.spec.ts \
       e2e/phase6-mesh-virtualization.spec.ts \
-      e2e/phase7.5-features-gap-closure.spec.ts \
-      e2e/phase7-social-ai-developer-baas-ml.spec.ts \
-      e2e/phase8-hardening.spec.ts \
-      e2e/journeys/governance-retention/ \
-      e2e/journeys/scheduled-export/ \
-      e2e/journeys/scheduled-ingestion/
+      e2e/phase7-social-ai-developer-baas-ml.spec.ts
     ;;
   8)
     # UX flows: resource pickers, asset-dataset flows, files upload, dataset edit, ODPS link
@@ -131,21 +145,23 @@ case "${1:-}" in
     echo "  4: auth, DC, DE journeys + integrations use cases (~385 tests)"
     echo "  5: TA, PA, Dev, Aud, cross-persona journeys + webhook use cases (~375 tests)"
     echo "  6: CPO, DS, DMO, DA, CM, Marketplace journeys + compliance/DQ/marketplace use cases (~390 tests)"
-    echo "  7: features, all phase specs, governance, scheduled (~430 tests)"
+    echo "  7: features, phase7.5, phase8, governance, scheduled (~220 tests)"
     echo "  8: UX - pickers, asset-dataset flow, dataset edit, files upload, ODPS link (~25 tests)"
+    echo "  9: deprecated phase specs — manual regression only, not in CI (~210 tests)"
     echo ""
     echo "Intentionally excluded (testIgnored in playwright.config.ts — run manually):"
     echo "  e2e/dimensions/  — network-failure/rate-limit/timeout/concurrent tests (flaky by design)"
     echo "  e2e/personas/    — full persona journey suites (very long-running)"
     echo ""
-    echo "Total: ~2095 tests across 8 batches"
+    echo "Total: ~1885 tests across 8 CI batches (batch 9 is manual-only)"
     echo ""
     echo "Faster iteration: E2E_PROJECT=chromium npm run test:e2e:batch1  (runs ~34 tests)"
     echo "Skip API restart (avoids socket hang up): E2E_SKIP_API_RESTART=1 npm run test:e2e:batch3"
     ;;
   *)
-    echo "Usage: $0 <1|2|3|4|5|6|7|8|list>"
+    echo "Usage: $0 <1|2|3|4|5|6|7|8|9|list>"
     echo "  Run batch N for iterate-and-fix cycles. Use 'list' to see batch definitions."
+    echo "  Batch 9 = deprecated phase specs (manual regression only, not in CI)."
     exit 1
     ;;
 esac

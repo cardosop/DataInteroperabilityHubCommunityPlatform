@@ -268,21 +268,37 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
   test('10.4.1 — Observability: ErrorBoundary catches React errors gracefully', async ({
     page,
   }) => {
-    await navigateToRouteFromApp(page, '/', {
-      timeout: 60000,
-      contentSelector: 'main, .app-main, [data-testid="home-page"], .home-page',
-    });
+    const testUser = await getTestUser();
+    // Navigate to a guaranteed-invalid asset UUID — this exercises the ErrorBoundary
+    // path when a component encounters an unrecoverable data error.
+    await loginAndNavigateToRoute(
+      page,
+      testUser,
+      '/assets/00000000-0000-0000-0000-000000000000',
+      {
+        timeout: 60000,
+        contentSelector: '.error-display, .asset-detail-page, .unavailable-page, h1',
+        acceptRedirectToLogin: true,
+      }
+    );
+    if (page.url().includes('/login')) return;
 
-    // Check that page loads without crashing
-    const body = page.locator('body');
-    await expect(body).toBeVisible({ timeout: 10000 });
+    // The app must NOT show a blank white screen or an unhandled JS crash notice
+    const hasBlankBody = (await page.locator('body:empty').count()) > 0;
+    expect(hasBlankBody, 'Page body must not be empty (white screen of death)').toBe(false);
 
-    // Check for main content (error boundary would show error display if error occurred)
-    const mainContent = page.locator('main, .app-main, [data-testid="home-page"]');
-    const hasContent = (await mainContent.count()) > 0;
+    const hasUnhandledCrash =
+      (await page.locator('text=/Something went wrong.*refresh/i').count()) > 0 &&
+      (await page.locator('.error-display').count()) === 0;
+    expect(
+      hasUnhandledCrash,
+      'Unhandled crash message shown without ErrorBoundary wrapping'
+    ).toBe(false);
 
-    // Page should load successfully (error boundary is integrated in App.tsx)
-    expect(hasContent).toBe(true);
+    // Page must render something meaningful — error display, redirect, or content
+    const hasHandledState =
+      (await page.locator('.error-display, .unavailable-page, .asset-detail-page, h1').count()) > 0;
+    expect(hasHandledState, 'Expected a handled UI state (error-display, unavailable, or content)').toBe(true);
   });
 
   test('10.4.2 — Observability: Correlation IDs are displayed in error messages', async ({
@@ -312,10 +328,15 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
         errorText?.includes('request_id') ||
         errorText?.includes('correlation');
 
-      // Correlation ID may or may not be displayed depending on error type
-      // Check console for error reports (which include correlation IDs)
-      // The important thing is errors are handled gracefully
-      expect(errorCount).toBeGreaterThan(0);
+      if (!hasRequestId) {
+        // Correlation ID is expected but may not be present for all error types — warn, don't fail
+        console.warn(
+          '⚠️ 10.4.2: .error-display found but no correlation/request ID in error text. ' +
+          'ErrorDisplay component should include request_id for debuggability.'
+        );
+      }
+      // The error must be handled (ErrorDisplay rendered) — that's the contract
+      expect(errorCount, 'Expected .error-display to be visible for an invalid asset').toBeGreaterThan(0);
     } else {
       // No error displayed (page redirected or handled differently) - this is acceptable
       const hasContent =
@@ -332,18 +353,29 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
       contentSelector: 'main, .app-main, [data-testid="home-page"], .home-page',
     });
 
-    // Check that page loads successfully (performance metrics service is initialized in AppProviders)
-    const body = page.locator('body');
-    await expect(body).toBeVisible({ timeout: 10000 });
+    // Wait for the app to fully initialise so PerformanceObserver has time to fire
+    await page.waitForSelector('main, .app-main, [data-testid="home-page"]', {
+      state: 'visible',
+      timeout: 15000,
+    });
 
-    // Check for main content
-    const mainContent = page.locator('main, .app-main, [data-testid="home-page"]');
-    const hasContent = (await mainContent.count()) > 0;
-    expect(hasContent).toBe(true);
+    // Verify the PerformanceObserver / Web Vitals infrastructure is actually wired up.
+    // The app bootstraps PerformanceMetricsService in AppProviders; we check the browser
+    // API is available and that at least one navigation-timing entry was recorded.
+    const vitalsResult = await page.evaluate(() => {
+      // PerformanceObserver must exist (modern browsers + jsdom polyfill in test env)
+      if (typeof PerformanceObserver === 'undefined') {
+        return { supported: false, entries: 0 };
+      }
+      const navEntries = performance.getEntriesByType('navigation');
+      return { supported: true, entries: navEntries.length };
+    });
 
-    // Performance metrics are collected in the background via PerformanceMetricsService
-    // We verify they're working by checking page loads successfully
-    // (Actual Web Vitals collection happens via PerformanceObserver API)
+    expect(vitalsResult.supported, 'PerformanceObserver API must be available').toBe(true);
+    expect(
+      vitalsResult.entries,
+      'At least one navigation timing entry must be recorded after page load'
+    ).toBeGreaterThan(0);
   });
 
   test('10.1.2 — Performance: Lists use pagination efficiently', async ({ page }) => {

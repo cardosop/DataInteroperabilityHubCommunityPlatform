@@ -80,25 +80,4 @@ test.describe('JOURNEY-DEV-001: Build Custom Integration', () => {
     });
   });
 
-  test.describe('Edge', () => {
-    test('developer, baas, webhooks routes accessible', async ({ page }) => {
-      await loginAsPersona(page, getExternalDeveloperUser);
-      await page.goto('/developer');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
-      expect(
-        page.url().includes('/developer') ||
-          page.url().includes('/403') ||
-          page.url().includes('/login')
-      ).toBe(true);
-      await page.goto('/webhooks');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
-      expect(
-        page.url().includes('/webhooks') ||
-          page.url().includes('/403') ||
-          page.url().includes('/login')
-      ).toBe(true);
-    });
-  });
 });

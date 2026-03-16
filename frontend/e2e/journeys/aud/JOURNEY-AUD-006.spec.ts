@@ -30,9 +30,10 @@ test.describe('JOURNEY-AUD-006: Review Social Feature Activity / Analyze Audit T
       expect(page.url()).toContain('/audit');
       const hasContent =
         (await page.locator('.audit-event-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.empty-state').count()) > 0;
       expect(hasContent).toBe(true);
+      const hasServerError = await page.locator('text=/500|internal server error/i').count();
+      expect(hasServerError).toBe(0);
     });
 
     test('audit export buttons visible', async ({ page }) => {

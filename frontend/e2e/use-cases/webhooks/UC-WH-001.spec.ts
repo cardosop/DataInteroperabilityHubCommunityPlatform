@@ -40,7 +40,14 @@ test.describe('UC-WH-001: Create/Manage Webhook', () => {
         expect(page.url()).toMatch(/\/login|\/403/);
         return;
       }
-      expect(page.url()).toContain('/webhooks');
+      // Must be on the create page specifically, not just any webhooks URL
+      expect(page.url()).toContain('/webhooks/create');
+      // The create form must be present with fillable inputs
+      await page.waitForSelector('.webhook-create-page, form', { timeout: 15000 });
+      const hasForm = (await page.locator('.webhook-create-page, form').count()) > 0;
+      const hasInputs = (await page.locator('input[name], textarea[name], input[type="url"]').count()) > 0;
+      expect(hasForm).toBe(true);
+      expect(hasInputs).toBe(true);
     });
   });
 
@@ -55,7 +62,9 @@ test.describe('UC-WH-001: Create/Manage Webhook', () => {
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.webhook-detail-page, .error-display',
-        waitAfterLoad: 8000,
+        waitAfterLoad: 5000,
+        selectorTimeout: 20000,
+        apiUrlPattern: '/webhooks/00000000-0000-0000-0000-000000000000',
       });
     });
 

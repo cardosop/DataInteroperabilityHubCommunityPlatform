@@ -27,11 +27,12 @@ from .utils import (
     decrement_tenant_job_counter,
     get_job_wait_time,
     get_queue_for_job_type,
-    increment_reserved_slots_usage,
     increment_shared_slots_usage,
     increment_tenant_job_counter,
     retry_job,
     should_elevate_job,
+    try_acquire_reserved_slot,
+    try_acquire_shared_slot,
 )
 
 logger = structlog.get_logger(__name__)
@@ -61,59 +62,64 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
     is_elevated = should_elevate_job(job_id, queue_name)
     wait_time = get_job_wait_time(job_id)
 
-    # Track slot usage based on priority and elevation
+    # Slot type determined after job is fetched; also captures tenant_id for
+    # the finally block so we avoid a redundant DB query there.
     slot_type = None
+    _tenant_id: str | None = None
     try:
-        # Get job
-        job_obj = Job.objects.get(id=job_id)
+        # Eagerly load FK relations used in audit events throughout this function.
+        job_obj = Job.objects.select_related("created_by", "tenant").get(
+            id=job_id
+        )
+        # Capture tenant_id now so the finally block doesn't need to re-query.
+        _tenant_id = str(job_obj.tenant.id) if job_obj.tenant else None
 
         # Check if job was cancelled before processing
         if job_obj.status == JobStatus.CANCELLED:
             logger.info(
                 "job_cancelled_before_processing",
                 job_id=job_id,
-                message=f"Job {job_id} was cancelled before processing started",
+                message=(
+                    f"Job {job_id} was cancelled before processing started"
+                ),
             )
             return
 
-        # Determine slot type based on queue and elevation
-        if queue_name == "job_critical" or (queue_name == "job_default" and is_elevated):
-            # HIGH priority or elevated: try reserved slot first, then shared
-            from .utils import can_use_reserved_slot, can_use_shared_slot
-
-            if can_use_reserved_slot():
-                increment_reserved_slots_usage()
+        # Determine slot type based on queue and elevation.
+        # try_acquire_*_slot() performs the check-and-increment atomically via
+        # a Lua script, eliminating the TOCTOU race of the old
+        # can_use_*_slot() + increment_*_slots_usage() two-step pattern.
+        if queue_name == "job_critical" or (
+            queue_name == "job_default" and is_elevated
+        ):
+            # HIGH priority or elevated: reserved slot first, shared as fallback
+            if try_acquire_reserved_slot():
                 slot_type = "reserved"
-            elif can_use_shared_slot():
-                increment_shared_slots_usage()
+            elif try_acquire_shared_slot():
                 slot_type = "shared"
             else:
-                # No slots available - this shouldn't happen as django-rq already picked the job
+                # No slots – django-rq already pulled the job so we must run it
                 logger.warning(
                     "job_no_slots_available",
                     job_id=job_id,
                     queue_name=queue_name,
                     is_elevated=is_elevated,
-                    message="Job picked but no slots available (should not happen)",
+                    message="Job picked but no slots available",
                 )
-                slot_type = "shared"  # Fallback to shared
+                slot_type = "shared"
                 increment_shared_slots_usage()
         else:
-            # NORMAL or LOW priority: use shared slot
-            from .utils import can_use_shared_slot
-
-            if can_use_shared_slot():
-                increment_shared_slots_usage()
+            # NORMAL or LOW priority: shared slot only
+            if try_acquire_shared_slot():
                 slot_type = "shared"
             else:
-                # No slots available - this shouldn't happen as django-rq already picked the job
                 logger.warning(
                     "job_no_slots_available",
                     job_id=job_id,
                     queue_name=queue_name,
-                    message="Job picked but no slots available (should not happen)",
+                    message="Job picked but no slots available",
                 )
-                slot_type = "shared"  # Fallback to shared
+                slot_type = "shared"
                 increment_shared_slots_usage()
 
         # Increment tenant job counter
@@ -380,12 +386,11 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
         elif slot_type == "shared":
             decrement_shared_slots_usage()
 
-        # Decrement tenant job counter
-        try:
-            job_obj = Job.objects.get(id=job_id)
-            decrement_tenant_job_counter(job_obj.tenant_id)
-        except Job.DoesNotExist:
-            pass
+        # Decrement tenant job counter.
+        # _tenant_id was captured right after the initial Job.objects.get()
+        # call, so no second DB query is needed here.
+        if _tenant_id:
+            decrement_tenant_job_counter(_tenant_id)
 
 
 def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
@@ -501,7 +506,14 @@ def check_job_timeouts():
     default_timeout_seconds = 86400  # 24 hours
     now = timezone.now()
 
-    running_jobs = Job.objects.filter(status=JobStatus.RUNNING).exclude(started_at__isnull=True)
+    # select_related pre-fetches created_by and tenant so that the
+    # create_audit_event() call inside the loop doesn't issue an extra
+    # SELECT per job (N+1 elimination).
+    running_jobs = (
+        Job.objects.filter(status=JobStatus.RUNNING)
+        .exclude(started_at__isnull=True)
+        .select_related("created_by", "tenant")
+    )
 
     for job_obj in running_jobs:
         timeout_seconds = job_obj.timeout_seconds if job_obj.timeout_seconds is not None else default_timeout_seconds

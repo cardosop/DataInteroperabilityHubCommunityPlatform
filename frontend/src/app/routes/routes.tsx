@@ -532,15 +532,27 @@ export const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <AssetListPage />,
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading assets..." />}>
+                <AssetListPage />
+              </Suspense>
+            ),
           },
           {
             path: 'create',
-            element: <AssetCreatePage />,
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <AssetCreatePage />
+              </Suspense>
+            ),
           },
           {
             path: ':id',
-            element: <AssetDetailPage />,
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading asset..." />}>
+                <AssetDetailPage />
+              </Suspense>
+            ),
           },
         ],
       },
@@ -549,19 +561,35 @@ export const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <DatasetListPage />,
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading datasets..." />}>
+                <DatasetListPage />
+              </Suspense>
+            ),
           },
           {
             path: 'create',
-            element: <DatasetCreatePage />,
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <DatasetCreatePage />
+              </Suspense>
+            ),
           },
           {
             path: ':id',
-            element: <DatasetDetailPage />,
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading dataset..." />}>
+                <DatasetDetailPage />
+              </Suspense>
+            ),
           },
           {
             path: ':id/versions',
-            element: <DatasetVersionsPage />,
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading versions..." />}>
+                <DatasetVersionsPage />
+              </Suspense>
+            ),
           },
         ],
       },
@@ -570,7 +598,11 @@ export const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <FileListPage />,
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading files..." />}>
+                <FileListPage />
+              </Suspense>
+            ),
           },
         ],
       },
@@ -579,19 +611,35 @@ export const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <ContractListPage />,
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading contracts..." />}>
+                <ContractListPage />
+              </Suspense>
+            ),
           },
           {
             path: ':id',
-            element: <ContractDetailPage />,
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading contract..." />}>
+                <ContractDetailPage />
+              </Suspense>
+            ),
           },
           {
             path: ':id/edit',
-            element: <ContractEditorPage />,
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading contract editor..." />}>
+                <ContractEditorPage />
+              </Suspense>
+            ),
           },
           {
             path: ':id/link-odps',
-            element: <ODPSLinkPage />,
+            element: (
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <ODPSLinkPage />
+              </Suspense>
+            ),
           },
         ],
       },
@@ -735,6 +783,12 @@ export const router = createBrowserRouter([
                   </Suspense>
                 ),
               },
+              {
+                // No mapping detail page exists yet — redirect unknown IDs to the list
+                // so users see a sensible page instead of a blank outlet.
+                path: ':id',
+                element: <Navigate to="/integrations/mappings" replace />,
+              },
             ],
           },
         ],
@@ -857,6 +911,11 @@ export const router = createBrowserRouter([
             <SchemaMatchingPage />
           </CapabilityRoute>
         ),
+      },
+      {
+        // Convenience alias: /sync-jobs → /integrations/sync-jobs (route is nested under integrations)
+        path: 'sync-jobs',
+        element: <Navigate to="/integrations/sync-jobs" replace />,
       },
       {
         path: 'social',

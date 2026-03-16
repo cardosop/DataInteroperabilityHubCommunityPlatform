@@ -41,24 +41,15 @@ test.describe('JOURNEY-DEV-008: Use Plugin System', () => {
         contentSelector:
           '.developer-portal-page, .developer-page, .app-main, .unavailable-page, .error-display, .loading-spinner-container',
       });
-      const on403 = page.url().includes('/403');
-      const onLogin = page.url().includes('/login');
-      const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
-      const onDeveloper = page.url().includes('/developer');
-      expect(on403 || onLogin || onUnavailable || onDeveloper).toBe(true);
-    });
-  });
-
-  test.describe('Edge', () => {
-    test('developer page loads or redirects', async ({ page }) => {
-      const devUser = await getExternalDeveloperUser();
-      await loginAndNavigateToRoute(page, devUser, '/developer', {
-        timeout: 90000,
-        contentSelector:
-          '.developer-portal-page, .developer-page, .app-main, .unavailable-page, .loading-spinner-container',
-      });
       const url = page.url();
-      expect(url.includes('/login') || url.includes('/403') || url.includes('/developer')).toBe(true);
+      const isGated = url.includes('/403') || url.includes('/login');
+      const isOpen = url.includes('/developer');
+      expect(isGated || isOpen).toBe(true);
+      if (isOpen) {
+        // Capability is enabled — content must actually be present (not just URL match)
+        const hasContent = (await page.locator('.developer-portal-page, .plugin-list, main').count()) > 0;
+        expect(hasContent).toBe(true);
+      }
     });
   });
 });

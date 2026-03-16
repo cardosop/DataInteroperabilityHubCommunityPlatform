@@ -170,11 +170,16 @@ class DQService(BaseService):
             from django_rq import get_queue
 
             queue = get_queue("default")
-            queue.enqueue(
-                process_job,
-                str(job.id),
-                job_type=JobType.DQ_RUN,
-                timeout=get_job_timeout(JobType.DQ_RUN),
+            _job_id = str(job.id)
+            _queue = queue
+            _timeout = get_job_timeout(JobType.DQ_RUN)
+            transaction.on_commit(
+                lambda: _queue.enqueue(
+                    process_job,
+                    _job_id,
+                    job_type=JobType.DQ_RUN,
+                    timeout=_timeout,
+                )
             )
         except Exception:
             pass

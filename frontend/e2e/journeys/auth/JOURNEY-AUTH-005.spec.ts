@@ -41,9 +41,11 @@ test.describe('JOURNEY-AUTH-005: User Switches Active Tenant', () => {
       if (hasSwitcher) {
         await expect(tenantSwitcher.first()).toBeVisible({ timeout: 5000 });
       } else {
-        // Tenant context may be displayed as plain text (single-tenant users)
-        const headerContent = await page.locator('.app-header').textContent();
-        expect(headerContent).toBeTruthy();
+        // Single-tenant: verify the header renders and the user is on a logged-in page
+        expect(page.url()).not.toContain('/login');
+        await expect(page.locator('.app-header')).toBeVisible({ timeout: 5000 });
+        // Log switcher state for observability
+        console.log(`Tenant switcher present: ${hasSwitcher}`);
       }
     });
 

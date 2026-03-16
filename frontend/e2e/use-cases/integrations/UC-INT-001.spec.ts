@@ -14,7 +14,7 @@ import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('UC-INT-001: Install Pre-built Connector', () => {
-  test.setTimeout(120000);
+  test.setTimeout(300000); // 5 min: login retries can take ~80s under parallel E2E load
 
   test.describe('Success', () => {
     test('integrations page loads', async ({ page }) => {
@@ -36,8 +36,9 @@ test.describe('UC-INT-001: Install Pre-built Connector', () => {
       const { clearAuthStorage } = await import('../../fixtures/auth');
       await clearAuthStorage(page);
       await page.goto('/integrations', { waitUntil: 'domcontentloaded' });
-      await page.waitForURL(/\/(login|integrations|403)/, { timeout: 20_000 });
-      expect(page.url().includes('/login') || page.url().includes('/403') || page.url().includes('/integrations')).toBe(true);
+      await page.waitForURL(/\/(login|403)/, { timeout: 20_000 }).catch(() => null);
+      // Unauthenticated access must redirect — still on /integrations means auth guard is not working
+      expect(page.url().includes('/login') || page.url().includes('/403')).toBe(true);
     });
   });
 

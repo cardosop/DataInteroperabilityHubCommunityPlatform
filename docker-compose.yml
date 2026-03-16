@@ -323,7 +323,10 @@ services:
       context: .
       dockerfile: services/api/Dockerfile
     container_name: hub-api
-    command: sh -c "python hub/manage.py migrate --noinput && python hub/manage.py seed_default_plans && exec python hub/manage.py runserver 0.0.0.0:8000"
+    command: >
+      sh -c "python hub/manage.py migrate --noinput &&
+             python hub/manage.py seed_default_plans &&
+             exec uvicorn hub.asgi:application --host 0.0.0.0 --port 8000 --reload"
     volumes:
       - .:/app
     ports:
@@ -395,6 +398,8 @@ services:
       - BAAS_REDIS_URL=${BAAS_REDIS_URL:-}
       # Prefect Integration Service URL (for scheduled ingestion/export deployment sync and trigger)
       - PREFECT_INTEGRATION_SERVICE_URL=${PREFECT_INTEGRATION_SERVICE_URL:-http://prefect-integration-service:8084}
+      # Compliance Service URL (explicit so api-service can reach compliance-service by Docker network hostname)
+      - COMPLIANCE_SERVICE_URL=http://compliance-service:8082
       # E2E: set RATE_LIMIT_E2E_RELAX=true when running Playwright E2E against this API
       # so auth rate limit uses 20/min (platform max) instead of 5/min
       - RATE_LIMIT_E2E_RELAX=${RATE_LIMIT_E2E_RELAX:-false}
@@ -460,6 +465,10 @@ services:
       - "${FRONTEND_PORT:-3000}:80"
     environment:
       - VITE_ENV=${ENV:-development}
+      # Passed to envsubst in nginx template so the CSP connect-src can include
+      # an external API origin when the API is not co-hosted by this nginx.
+      # Leave empty (default) for the standard deployment where /api is proxied.
+      - API_HOST=${API_HOST:-}
     networks:
       - hub-net
     depends_on:
@@ -533,6 +542,8 @@ services:
       - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE:-}
       # Mock server for testing marketplace connectors
       - MOCK_SERVER_URL=${MOCK_SERVER_URL:-http://mock-server:8080}
+      # Compliance Service URL (explicit so worker can reach compliance-service by Docker network hostname)
+      - COMPLIANCE_SERVICE_URL=http://compliance-service:8082
     container_name: hub-worker
     # Process all priority queues: job_critical (HIGH) → job_default (NORMAL) → job_low (LOW)
     # Worker polls queues in priority order with reserved slots for HIGH priority
@@ -557,6 +568,8 @@ services:
       redis-channels:
         condition: service_healthy
       jaeger:
+        condition: service_healthy
+      compliance-service:
         condition: service_healthy
       # Test marketplace instances (optional - mock-server has no healthcheck)
       mock-server:

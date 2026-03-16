@@ -393,6 +393,8 @@ def ensure_e2e_tenant_switch_setup(request):
         return Response(
             {
                 "tenant_ids": [str(primary.id), str(secondary_id)],
+                "primary_tenant_id": str(primary.id),
+                "primary_tenant_name": primary.name,
                 "secondary_tenant_id": str(secondary_id),
                 "secondary_tenant_name": secondary_tenant.name,
             },
@@ -408,6 +410,8 @@ def ensure_e2e_tenant_switch_setup(request):
     return Response(
         {
             "tenant_ids": [str(primary.id), str(secondary.id)],
+            "primary_tenant_id": str(primary.id),
+            "primary_tenant_name": primary.name,
             "secondary_tenant_id": str(secondary.id),
             "secondary_tenant_name": secondary.name,
         },

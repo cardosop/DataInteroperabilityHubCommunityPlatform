@@ -21,6 +21,8 @@ export interface ErrorReport {
 class ErrorReportingService {
   private errorQueue: ErrorReport[] = [];
   private maxQueueSize = 50;
+  // Deduplication: track recently reported keys with timestamp to prevent triple-firing
+  private recentReports = new Map<string, number>();
 
   /**
    * Report an error
@@ -80,6 +82,11 @@ class ErrorReportingService {
       return;
     }
 
+    // Skip reporting 409 Conflict — expected for duplicate-resource scenarios (UI already shows the error)
+    if (errorReport.httpStatus === 409) {
+      return;
+    }
+
     // Skip reporting 401 "Authentication credentials were not provided" — transient during E2E
     // when protected routes mount before auth hydration completes (page.goto full-reload race).
     if (errorReport.httpStatus === 401 && /authentication credentials were not provided/i.test(String(errorReport.message))) {
@@ -102,14 +109,34 @@ class ErrorReportingService {
       return;
     }
 
+    // Deduplicate: same correlationId or same message+type within 500ms window
+    const dedupeKey = errorReport.correlationId
+      ? `corr:${errorReport.correlationId}`
+      : `msg:${errorReport.message.slice(0, 100)}:${errorReport.errorType}`;
+    const now = Date.now();
+    const lastSeen = this.recentReports.get(dedupeKey);
+    if (lastSeen !== undefined && now - lastSeen < 500) {
+      return;
+    }
+    this.recentReports.set(dedupeKey, now);
+    // Prune old entries to avoid unbounded growth
+    if (this.recentReports.size > 100) {
+      const cutoff = now - 5000;
+      for (const [k, t] of this.recentReports) {
+        if (t < cutoff) this.recentReports.delete(k);
+      }
+    }
+
     // Add to queue
     this.errorQueue.push(errorReport);
     if (this.errorQueue.length > this.maxQueueSize) {
       this.errorQueue.shift(); // Remove oldest
     }
 
-    // Log to console (sanitized) — skip in test to avoid stderr noise from expected error scenarios.
-    if (import.meta.env.MODE !== 'test') {
+    // Log to console (sanitized) — skip in unit-test mode and in E2E runs (Vite dev server
+    // passes VITE_E2E_TEST=true via playwright.config.ts) to avoid noise from intentional
+    // error-handling test scenarios (e.g. 503 injection tests).
+    if (import.meta.env.MODE !== 'test' && import.meta.env.VITE_E2E_TEST !== 'true') {
       console.error('[Error Report]', {
         message: errorReport.message,
         correlationId: errorReport.correlationId,

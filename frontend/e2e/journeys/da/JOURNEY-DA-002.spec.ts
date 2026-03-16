@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
+import { clearAuthStorage, getConsumerTestUser, loginUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DA-002: Wrangle Data Interactively', () => {
@@ -51,6 +51,13 @@ test.describe('JOURNEY-DA-002: Wrangle Data Interactively', () => {
         detailContentSelector: '.dataset-detail-page',
         waitAfterLoad: 8000,
       });
+    });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/datasets');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     });
   });
 

@@ -36,22 +36,12 @@ test.describe('JOURNEY-DE-012: Create Custom Plugin', () => {
   });
 
   test.describe('Failure', () => {
-    test('developer page without capability shows 403 or unavailable', async ({ page }) => {
-      const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/developer');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.developer-portal-page, .unavailable-page, .error-display, .loading-spinner-container, .app-main, #email',
-        { timeout: 45000 }
-      );
-      const on403 = page.url().includes('/403');
-      const onUnavailable =
-        page.url().includes('/unavailable') ||
-        (await page.locator('.unavailable-page, .error-display').count()) > 0;
-      const onDeveloper = page.url().includes('/developer');
-      const onLogin = page.url().includes('/login');
-      expect(on403 || onUnavailable || onDeveloper || onLogin).toBe(true);
+    test('unauthenticated access to /developer redirects to login', async ({ page }) => {
+      const { clearAuthStorage } = await import('../../fixtures/auth');
+      await clearAuthStorage(page);
+      await page.goto('/developer', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|403)/, { timeout: 20000 }).catch(() => null);
+      expect(page.url().includes('/login') || page.url().includes('/403')).toBe(true);
     });
   });
 

@@ -85,10 +85,16 @@ class JWTTokenGenerator:
         # Token version for invalidation
         payload['authz_version'] = user.token_version
         
-        # Sign and encode token
+        # Sign and encode token.
+        # RS256: use the private key (api-service); HS256: use the shared secret.
+        _sign_key = (
+            settings.JWT_PRIVATE_KEY
+            if settings.JWT_ALGORITHM == "RS256"
+            else settings.JWT_SECRET_KEY
+        )
         token = jwt.encode(
             payload,
-            settings.JWT_SECRET_KEY,
+            _sign_key,
             algorithm=settings.JWT_ALGORITHM
         )
         
@@ -106,9 +112,15 @@ class JWTTokenGenerator:
             Decoded payload dict if valid, None otherwise
         """
         try:
+            # RS256: verify with the public key; HS256: verify with the shared secret.
+            _verify_key = (
+                settings.JWT_PUBLIC_KEY
+                if settings.JWT_ALGORITHM == "RS256"
+                else settings.JWT_SECRET_KEY
+            )
             payload = jwt.decode(
                 token,
-                settings.JWT_SECRET_KEY,
+                _verify_key,
                 algorithms=[settings.JWT_ALGORITHM],
                 audience="idh-api-v1",
             )

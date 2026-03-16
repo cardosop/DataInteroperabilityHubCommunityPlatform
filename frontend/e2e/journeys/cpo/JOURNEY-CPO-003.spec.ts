@@ -15,6 +15,7 @@ import {
   assertNonExistentIdShowsError,
   hasLoginPrompt,
   loginAndNavigateToRoute,
+  waitForLoadingComplete,
 } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-CPO-003: Review Access Request', () => {
@@ -25,18 +26,20 @@ test.describe('JOURNEY-CPO-003: Review Access Request', () => {
       const cpoUser = await getComplianceOfficerUser();
       await loginAndNavigateToRoute(page, cpoUser, '/governance', {
         timeout: 60000,
+        // .error-display excluded: an error is not a valid success state for a CPO user
         contentSelector:
-          '.governance-access-request-list-page, .access-request-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+          '.governance-access-request-list-page, .access-request-list-page, .empty-state, .loading-spinner-container, #email',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
-        expect(page.url()).toMatch(/\/login|\/403/);
-        return;
+        throw new Error(`Unexpected redirect to ${page.url()} — verify CPO user has governance access`);
       }
+      await waitForLoadingComplete(page, { timeout: 15000 });
+      // Error-display is NOT acceptable on the success path
+      await expect(page.locator('.error-display')).not.toBeVisible();
       expect(page.url()).toContain('/governance');
       const hasContent =
         (await page.locator('.governance-access-request-list-page, .access-request-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.empty-state').count()) > 0;
       expect(hasContent).toBe(true);
     });
 
@@ -44,26 +47,49 @@ test.describe('JOURNEY-CPO-003: Review Access Request', () => {
       const cpoUser = await getComplianceOfficerUser();
       await loginAndNavigateToRoute(page, cpoUser, '/governance', {
         timeout: 60000,
+        // .error-display excluded: an error is not a valid success state for a CPO user
         contentSelector:
-          '.governance-access-request-list-page, .access-request-list-page, .empty-state, .error-display, #email',
+          '.governance-access-request-list-page, .access-request-list-page, .empty-state, #email',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
-        expect(page.url()).toMatch(/\/login|\/403/);
-        return;
+        throw new Error(`Unexpected redirect to ${page.url()} — verify CPO user has governance access`);
       }
       const requestRow = page.locator('.governance-access-request-table tr.row-link').first();
       if ((await requestRow.count()) > 0) {
         await requestRow.click();
         await page.waitForURL(/\/governance\/access-requests\/[^/]+$/, { timeout: 10000 });
-        await page.waitForSelector(
-          '.governance-access-request-detail-page, .error-display, .governance-status-badge',
-          { timeout: 15000 }
-        );
-        const hasDetail =
-          (await page.locator('.governance-access-request-detail-page').count()) > 0 ||
-          (await page.locator('.governance-status-badge').count()) > 0;
-        expect(hasDetail || page.url().includes('/governance/access-requests/')).toBe(true);
+        // Detail page must be visible — the URL fallback was trivially true so removed
+        await expect(
+          page.locator('.governance-access-request-detail-page, .governance-status-badge')
+        ).toBeVisible({ timeout: 15000 });
+        // No generic error on the detail page
+        await expect(page.locator('.error-display')).not.toBeVisible();
       }
+    });
+
+    test('CPO can navigate to access request detail and see status badge', async ({ page }) => {
+      const cpoUser = await getComplianceOfficerUser();
+      await loginAndNavigateToRoute(page, cpoUser, '/governance', {
+        timeout: 60000,
+        contentSelector:
+          '.governance-access-request-list-page, .access-request-list-page, .empty-state, #email',
+      });
+      if (page.url().includes('/login') || page.url().includes('/403')) return;
+      if (!(await page.locator('.governance-access-request-list-page, .access-request-list-page').isVisible())) return;
+
+      const pendingRow = page.locator('.governance-access-request-table tr.row-link').first();
+      if ((await pendingRow.count()) === 0) {
+        test.info().annotations.push({
+          type: 'note',
+          description: 'No access requests in list — skipping detail interaction',
+        });
+        return;
+      }
+      await pendingRow.click();
+      await page.waitForURL(/\/governance\/access-requests\/[^/]+$/, { timeout: 10000 });
+      await expect(page.locator('.governance-access-request-detail-page')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.governance-status-badge')).toBeVisible();
     });
   });
 

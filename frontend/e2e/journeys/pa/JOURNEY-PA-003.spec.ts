@@ -12,59 +12,53 @@ test.describe('JOURNEY-PA-003: Configure Platform Settings', () => {
   test.setTimeout(180000);
 
   test.describe('Success', () => {
-    test('platform admin can navigate to platform settings and save a change', async ({ page }) => {
+    test('platform admin can navigate to tenant settings and save a change', async ({ page }) => {
       const paUser = await getPlatformAdminUser();
-      const settingsRoutes = ['/admin/settings', '/admin/platform-settings', '/admin'];
-      let landed = false;
 
-      for (const route of settingsRoutes) {
-        await loginAndNavigateToRoute(page, paUser, route, {
-          timeout: 60000,
-          contentSelector: '.admin-page, .platform-settings-page, .settings-page',
-        });
-        if (page.url().includes('/403') || page.url().includes('/login')) continue;
-        const hasSettings =
-          (await page.locator('.platform-settings-page, .settings-page').count()) > 0 ||
-          (await page.locator('h1:has-text("Settings"), h1:has-text("Platform")').count()) > 0;
-        if (hasSettings) { landed = true; break; }
-      }
+      // The actual settings page is TenantSettingsPage at /settings/tenant
+      await loginAndNavigateToRoute(page, paUser, '/settings/tenant', {
+        timeout: 60000,
+        contentSelector: '.tenant-settings-page, [data-testid="forbidden-page"]',
+      }).catch(() => null);
 
-      if (!landed) {
-        test.skip(true, 'Platform settings page not found at any known route');
+      if (page.url().includes('/403') || page.url().includes('/login')) {
+        test.skip(true, 'Platform admin user does not have settings access in this environment');
         return;
       }
 
-      // Find any boolean toggle or text field to change
-      const toggle = page.locator('input[type="checkbox"], input[type="toggle"]').first();
-      const textField = page.locator('input[type="text"]:not([readonly])').first();
-
-      let madeChange = false;
-      if ((await toggle.count()) > 0) {
-        await toggle.click();
-        madeChange = true;
-      } else if ((await textField.count()) > 0) {
-        const currentVal = await textField.inputValue();
-        await textField.fill(currentVal + ' ');
-        madeChange = true;
-      }
-
-      if (!madeChange) {
-        test.skip(true, 'No editable field found on platform settings page');
+      const hasSettings = (await page.locator('.tenant-settings-page').count()) > 0;
+      if (!hasSettings) {
+        test.skip(true, 'Tenant settings page not found');
         return;
       }
 
-      const saveBtn = page.locator(
-        'button[type="submit"]:has-text("Save"), button:has-text("Save Settings")'
-      );
+      // Navigate to the Configuration tab (TenantSettingsPage has config tab)
+      const configTab = page.locator('button.tenant-settings-tab:has-text("Configuration")');
+      if ((await configTab.count()) > 0) {
+        await configTab.first().click();
+        await page.waitForTimeout(1000);
+      }
+
+      // Toggle a boolean checkbox (trust_signals_enabled, versioning_enabled, workflows_enabled)
+      const toggle = page.locator('input[type="checkbox"]').first();
+      if ((await toggle.count()) === 0) {
+        test.skip(true, 'No checkbox found on tenant settings configuration tab');
+        return;
+      }
+      await toggle.click();
+
+      // Save button: <button type="submit" className="btn-save">Save</button>
+      const saveBtn = page.locator('button[type="submit"].btn-save, button[type="submit"]:has-text("Save")');
       if ((await saveBtn.count()) === 0) {
-        test.skip(true, 'Save button not found on platform settings page');
+        test.skip(true, 'Save button not found on tenant settings page');
         return;
       }
 
+      // Actual save API: PATCH /tenants/me/config/ (tenantService.patchMeConfig)
       const saveResponse = page.waitForResponse(
         (r) =>
-          (r.url().includes('/admin/settings') || r.url().includes('/platform-settings')) &&
-          (r.request().method() === 'PATCH' || r.request().method() === 'PUT' || r.request().method() === 'POST'),
+          r.url().includes('/tenants/me/config') &&
+          r.request().method() === 'PATCH',
         { timeout: 20000 }
       );
       await saveBtn.first().click();

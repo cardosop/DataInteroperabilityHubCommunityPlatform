@@ -91,7 +91,7 @@ test.describe('Marketplace and Data Consumer routes', () => {
       if (onLogin) return;
 
       const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
-      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404|matches the given query/i }).count()) > 0;
       if (hasErrorDisplay && !hasNotFoundText) {
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`Marketplace listing shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);
@@ -107,21 +107,35 @@ test.describe('Marketplace and Data Consumer routes', () => {
       // Navigate to a listing URL with a well-formed but non-existent purchase flow path
       await page.goto('/marketplace/listings/00000000-0000-0000-0000-000000000000/purchase');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      // Wait for network to idle: React Router may partial-match listings/:id, causing
+      // ListingDetailPage to mount and fetch the non-existent listing. TanStack Query
+      // retries 3x (exponential: ~1s,2s,4s) before settling into error state.
+      // networkidle guarantees all retries are complete before we inspect the DOM.
+      await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => null);
       const url = page.url();
 
       // Redirect to login is always acceptable
       if (url.includes('/login')) return;
 
-      // If still on the purchase path, the app must show an error boundary —
-      // silently rendering a broken form is not acceptable
+      // If still on the purchase path, the app must NOT show a working purchase form.
+      // TanStack Query does NOT retry 404s (AppProviders: `if (status === 404) return false`),
+      // so after networkidle the listing fetch is settled: either ErrorDisplay or 404 page.
       const onPurchasePath = url.includes('/marketplace/listings/');
+      // Wait for ErrorDisplay to appear — it renders immediately after the single 404 response
+      await page
+        .locator('.error-display, .error-display-title, text=Page Not Found')
+        .first()
+        .waitFor({ state: 'visible', timeout: 10000 })
+        .catch(() => null);
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0;
+        (await page.locator('.error-display-title').count()) > 0 ||
+        // Router catch-all 404 page when /purchase suffix matches no route
+        (await page.locator('text=404').count()) > 0 ||
+        (await page.locator('text=Page Not Found').count()) > 0;
 
       if (onPurchasePath) {
-        // Stayed on the purchase path — must show an error, not a working purchase form
+        // Stayed on the purchase path — must show an error or 404 page, not a working purchase form
         expect(hasError).toBe(true);
         return;
       }

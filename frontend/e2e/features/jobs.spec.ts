@@ -23,6 +23,13 @@ test.describe('Feature: Jobs', () => {
         throw _err;
       }
       expect(page.url()).toContain('/jobs');
+      const hasContent =
+        (await page.locator('.job-list-page, .empty-state, h1').count()) > 0;
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      expect(
+        hasContent || hasError,
+        'Expected .job-list-page, .empty-state, h1, or .error-display on /jobs'
+      ).toBe(true);
     });
   });
 

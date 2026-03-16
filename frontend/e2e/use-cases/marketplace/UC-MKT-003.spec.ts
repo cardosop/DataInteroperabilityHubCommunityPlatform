@@ -65,8 +65,7 @@ test.describe('UC-MKT-003: Purchase Asset from Marketplace', () => {
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('text=/not found|failed|404/i').count()) > 0;
-      const noDetail = (await page.locator('.listing-detail-main').count()) === 0;
-      expect(hasError || noDetail).toBe(true);
+      expect(hasError).toBe(true);
     });
   });
 

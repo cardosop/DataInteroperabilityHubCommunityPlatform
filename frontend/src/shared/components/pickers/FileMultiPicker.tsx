@@ -188,7 +188,6 @@ export function FileMultiPicker({
               : undefined
           }
           role="combobox"
-          aria-multiselectable="true"
         />
       </div>
 

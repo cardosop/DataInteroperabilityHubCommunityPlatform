@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional, Tuple
 import structlog
 from django.conf import settings
 from django.core.cache import cache
+from django.db import transaction
 from django.utils import timezone
 from django_rq import get_queue
 from rest_framework.exceptions import ValidationError
@@ -401,25 +402,33 @@ def increment_tenant_job_counter(tenant_id: str, counter_type: str = "queued") -
     """
     Increment tenant job counter in Redis and update Prometheus metrics.
 
+    Uses cache.add() (atomic SETNX) to initialise the key when absent, then
+    cache.incr() for the actual increment.  The return value of incr() is
+    reused directly for metrics, avoiding the extra cache.get() round-trip
+    that the previous implementation required.
+
     Args:
         tenant_id: Tenant UUID as string
         counter_type: "running" or "queued"
     """
     key = f"job:tenant:{tenant_id}:{counter_type}"
     try:
-        # Use get_or_set to ensure key exists, then increment
-        # This handles both Redis and LocMemCache backends
-        current = cache.get_or_set(key, 0, timeout=86400)
-        cache.incr(key)
-        # Ensure expiration is set (24 hours) - refresh it after increment
-        if hasattr(cache, "expire"):
-            cache.expire(key, 86400)
+        # Initialise key atomically if absent, then increment.
+        # cache.add() maps to SETNX in Redis (no-op if key already exists).
+        # cache.incr() returns the post-increment value, so no second GET needed.
+        cache.add(key, 0, timeout=86400)
+        new_count = cache.incr(key)
+        # Refresh TTL so active counters never expire mid-day.
+        # expire() is a django-redis extension not present on BaseCache.
+        try:
+            cache.expire(key, 86400)  # type: ignore[attr-defined]
+        except AttributeError:
+            pass  # LocMemCache doesn't expose expire – safe to skip in tests
 
-        # Update Prometheus metrics
+        # Update Prometheus metrics using the value already returned by incr()
         try:
             from hub.apps.observability.otel_metrics import tenant_queued_jobs, tenant_running_jobs
 
-            new_count = cache.get(key, 0)
             if counter_type == "running":
                 tenant_running_jobs.labels(tenant_id=tenant_id).set(new_count)
             elif counter_type == "queued":
@@ -440,6 +449,9 @@ def decrement_tenant_job_counter(tenant_id: str, counter_type: str = "running") 
     """
     Decrement tenant job counter in Redis and update Prometheus metrics.
 
+    The return value of decr() is reused directly for metrics, avoiding the
+    extra cache.get() call that the previous implementation made.
+
     Args:
         tenant_id: Tenant UUID as string
         counter_type: "running" or "queued"
@@ -447,17 +459,17 @@ def decrement_tenant_job_counter(tenant_id: str, counter_type: str = "running") 
     key = f"job:tenant:{tenant_id}:{counter_type}"
     try:
         current = cache.get(key, 0)
-        if current > 0:
-            cache.decr(key)
-        # Ensure expiration is set (24 hours)
-        if hasattr(cache, "expire"):
-            cache.expire(key, 86400)
+        new_count = cache.decr(key) if current > 0 else 0
+        # Refresh TTL
+        try:
+            cache.expire(key, 86400)  # type: ignore[attr-defined]
+        except AttributeError:
+            pass  # LocMemCache doesn't expose expire – safe to skip in tests
 
-        # Update Prometheus metrics
+        # Update Prometheus metrics using the value already returned by decr()
         try:
             from hub.apps.observability.otel_metrics import tenant_queued_jobs, tenant_running_jobs
 
-            new_count = cache.get(key, 0)
             if counter_type == "running":
                 tenant_running_jobs.labels(tenant_id=tenant_id).set(new_count)
             elif counter_type == "queued":
@@ -651,7 +663,13 @@ def create_job(
         queue = get_queue(queue_name)
         from .tasks import process_job  # Import here to avoid circular imports
 
-        queue.enqueue(process_job, str(job.id), job_type=job_type, timeout=timeout_seconds)
+        _job_id = str(job.id)
+        _job_type = job_type
+        _timeout = timeout_seconds
+        _queue = queue
+        transaction.on_commit(
+            lambda: _queue.enqueue(process_job, _job_id, job_type=_job_type, timeout=_timeout)
+        )
 
         # Track priority metrics
         try:
@@ -759,6 +777,83 @@ def should_elevate_job(job_id: str, queue_name: str) -> bool:
         return False
 
     return wait_time > WORKER_STARVATION_THRESHOLD_SECONDS
+
+
+# ---------------------------------------------------------------------------
+# Lua script: atomically increment a counter if it is below a limit.
+#
+# Returns the new counter value (>= 1) on success, or -1 if the limit has
+# already been reached.  Running inside a single EVAL call gives us the
+# read-modify-write atomicity that the previous get_or_set()+incr() pattern
+# lacked (TOCTOU race under concurrent workers).
+# ---------------------------------------------------------------------------
+_LUA_TRY_ACQUIRE_SLOT = """
+local current = tonumber(redis.call('GET', KEYS[1])) or 0
+if current < tonumber(ARGV[1]) then
+    local new_val = redis.call('INCR', KEYS[1])
+    redis.call('EXPIRE', KEYS[1], 86400)
+    return new_val
+end
+return -1
+"""
+
+
+def _try_acquire_slot(key: str, limit: int) -> bool:
+    """
+    Atomically check-and-increment a slot counter against *limit*.
+
+    Uses a Lua script executed on the cache Redis instance so the check and
+    the increment happen in a single round-trip with no race window.
+
+    Falls back to an optimistic increment-then-rollback strategy when the
+    cache backend does not support eval (e.g. LocMemCache in tests).  The
+    fallback is not perfectly atomic but is correct under the low-concurrency
+    conditions present in tests.
+
+    Returns:
+        True  – slot acquired (counter was below limit and was incremented)
+        False – limit already reached (counter unchanged)
+    """
+    try:
+        from hub.apps.core.redis_pools import get_redis_cache_client
+
+        r = get_redis_cache_client()
+        result = r.eval(_LUA_TRY_ACQUIRE_SLOT, 1, key, limit)
+        return int(result) != -1
+    except Exception:
+        # Non-Redis backend or Redis unreachable: optimistic increment with rollback.
+        cache.add(key, 0, timeout=86400)  # SETNX – initialise if absent
+        new_count = cache.incr(key)
+        if new_count > limit:
+            cache.decr(key)
+            return False
+        return True
+
+
+def try_acquire_reserved_slot() -> bool:
+    """
+    Atomically check and acquire a reserved slot for HIGH-priority jobs.
+
+    Replaces the non-atomic can_use_reserved_slot() + increment_reserved_slots_usage()
+    call pair that was vulnerable to a TOCTOU race under concurrent workers.
+
+    Returns:
+        True if a reserved slot was acquired, False if the limit is reached.
+    """
+    return _try_acquire_slot("worker:reserved_slots_usage", WORKER_RESERVED_SLOTS)
+
+
+def try_acquire_shared_slot() -> bool:
+    """
+    Atomically check and acquire a shared slot (any priority).
+
+    Replaces the non-atomic can_use_shared_slot() + increment_shared_slots_usage()
+    call pair.
+
+    Returns:
+        True if a shared slot was acquired, False if the limit is reached.
+    """
+    return _try_acquire_slot("worker:shared_slots_usage", WORKER_SHARED_SLOTS)
 
 
 def get_reserved_slots_usage() -> int:

@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
+import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-CM-003: Assign Data Stewards', () => {
@@ -54,6 +54,13 @@ test.describe('JOURNEY-CM-003: Assign Data Stewards', () => {
         detailContentSelector: '.asset-detail-page',
         waitAfterLoad: 8000,
       });
+    });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/assets');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     });
   });
 

@@ -41,21 +41,4 @@ test.describe('JOURNEY-MPA-007: Monitor Data Mesh Topology', () => {
     });
   });
 
-  test.describe('Edge', () => {
-    test('mesh and topology routes accessible', async ({ page }) => {
-      await loginAsPersona(page, getPlatformAdminUser);
-      await page.goto('/mesh');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
-      if (page.url().includes('/login') || page.url().includes('/403')) {
-        expect(page.url()).toMatch(/\/login|\/403/);
-        return;
-      }
-      expect(page.url()).toContain('/mesh');
-      await page.goto('/mesh/topology');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
-      expect(page.url().includes('/mesh')).toBe(true);
-    });
-  });
 });

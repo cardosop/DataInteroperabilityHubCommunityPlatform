@@ -107,13 +107,19 @@ class DataContractCLIClient:
         url = f"{self.base_url}{endpoint}"
         timeout = timeout or self.timeout
 
+        # Build request headers — include internal API key for service-to-service auth
+        request_headers: Dict[str, str] = {}
+        internal_key = getattr(settings, "INTERNAL_API_KEY", "")
+        if internal_key:
+            request_headers["X-Internal-Api-Key"] = internal_key
+
         # Retry logic with exponential backoff
         backoff_delays = [1, 3]  # 1s, 3s
 
         for attempt in range(max_retries + 1):
             try:
                 with httpx.Client(timeout=timeout) as client:
-                    response = client.post(url, json=data)
+                    response = client.post(url, json=data, headers=request_headers)
                     response.raise_for_status()
                     return response.json()
             except httpx.TimeoutException as e:

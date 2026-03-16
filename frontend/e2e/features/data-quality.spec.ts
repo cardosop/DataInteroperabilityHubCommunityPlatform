@@ -14,7 +14,10 @@ test.describe('Feature: Data Quality', () => {
     test('DQ list loads or redirects to login', async ({ page }) => {
       await page.goto('/dq');
       try {
-        await waitForAppMainReady(page, { timeout: 60000 });
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          contentSelector: '.dq-run-list-page, .empty-state, .error-display, h1',
+        });
       } catch (_err) {
         if (page.url().includes('/login')) {
           expect(page.url()).toContain('/login');
@@ -23,6 +26,14 @@ test.describe('Feature: Data Quality', () => {
         throw _err;
       }
       expect(page.url()).toContain('/dq');
+      // URL check must be accompanied by a content assertion — URL alone doesn't prove the page rendered
+      const hasContent =
+        (await page.locator('.dq-run-list-page, .empty-state, h1').count()) > 0;
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      expect(
+        hasContent || hasError,
+        'Expected .dq-run-list-page, .empty-state, h1, or .error-display on /dq'
+      ).toBe(true);
     });
   });
 

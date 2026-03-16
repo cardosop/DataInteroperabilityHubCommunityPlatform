@@ -12,10 +12,15 @@
 import { expect, test } from '@playwright/test';
 import { createAssetViaApi } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
+import {
+  assertNonExistentIdShowsError,
+  ensureAssetActivationPrerequisites,
+  loginAndNavigateToRoute,
+  waitForLoadingComplete,
+} from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
-  test.setTimeout(180000); // 3 min: visible/slowMo; assets list + detail + filter
+  test.setTimeout(480000); // 8 min: visible/slowMo (400ms/action) + UI activation + retirement flow
 
   test.describe('Success', () => {
     test('assets list loads with lifecycle status', async ({ page }) => {
@@ -56,18 +61,13 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
     });
 
     test('asset can be retired: ACTIVE → RETIRED lifecycle transition', async ({ page }) => {
-      // Requires an ACTIVE asset (ensureActivated:true uses the E2E activation helper)
+      // Requires an ACTIVE asset. Always create a FRESH asset (forceNew:true) — never reuse
+      // an existing ACTIVE asset. Reusing a shared asset causes a race condition when chromium
+      // and visible workers run in parallel: both grab the same ACTIVE asset and one retires it
+      // before the other reaches the retire step (chromium skip / visible 409 conflict error).
       const testUser = await getTestUser();
-      let assetId: string;
-      try {
-        assetId = await createAssetViaApi(testUser, { ensureActivated: true });
-      } catch (err) {
-        test.skip(
-          true,
-          `Cannot ensure ACTIVE asset (${String(err).slice(0, 120)}). Skipping retirement test.`
-        );
-        return;
-      }
+      // forceNew:true guarantees a unique DRAFT asset for this test run.
+      const assetId = await createAssetViaApi(testUser, { forceNew: true });
 
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
@@ -77,13 +77,49 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
         throw new Error('Unexpected redirect to login on asset detail');
       }
 
-      // Verify the asset is ACTIVE before attempting retirement
+      // Check the asset's current status
       const statusBadge = page.locator('.asset-detail-page .status-badge, .status-badge').first();
       await expect(statusBadge).toBeVisible({ timeout: 15000 });
       const statusText = (await statusBadge.textContent()) ?? '';
+
+      // If asset is DRAFT (API activation didn't work), try activating via UI
       if (!statusText.includes('ACTIVE')) {
-        test.skip(true, `Asset is not ACTIVE (status: "${statusText.trim()}"): retirement requires ACTIVE.`);
-        return;
+        await ensureAssetActivationPrerequisites(page, assetId);
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await waitForLoadingComplete(page, { timeout: 30000 });
+        await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
+
+        const activateBtn = page.locator(
+          'button:has-text("Activate"), button:has-text("Activate Asset")'
+        );
+        if ((await activateBtn.count()) === 0) {
+          test.skip(true, `Asset is ${statusText.trim()} and no Activate button found: retirement requires ACTIVE.`);
+          return;
+        }
+        const actRespPromise = page.waitForResponse(
+          (resp) => resp.url().includes('/assets/') && resp.url().includes('/activate/'),
+          { timeout: 60000 }
+        );
+        await activateBtn.first().click();
+        const actResp = await actRespPromise.catch(() => null);
+        if (!actResp || actResp.status() !== 200) {
+          test.skip(
+            true,
+            `UI activation returned ${actResp?.status() ?? 'timeout'}: retirement requires ACTIVE.`
+          );
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await waitForLoadingComplete(page, { timeout: 30000 });
+        await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
+
+        const activatedBadge = page.locator('.asset-detail-page .status-badge, .status-badge').first();
+        const activatedStatus = (await activatedBadge.textContent().catch(() => '')) ?? '';
+        if (!activatedStatus.includes('ACTIVE')) {
+          test.skip(true, `Asset still not ACTIVE after UI activation attempt (status: "${activatedStatus.trim()}").`);
+          return;
+        }
       }
 
       // Click the Retire button (may be in a dropdown or status select)
@@ -93,9 +129,11 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
       const statusSelect = page.locator('select[id="status"], select[name="status"]').first();
 
       if ((await retireBtn.count()) > 0) {
+        // Narrow filter to this specific asset's URL so background PATCHes (React Query refetches,
+        // other mutations) don't resolve the promise before the retire PATCH fires (chromium fast mode).
         const retireResponsePromise = page.waitForResponse(
           (resp) =>
-            resp.url().includes('/assets/') &&
+            resp.url().includes(`/assets/${assetId}/`) &&
             (resp.url().includes('/retire/') || resp.request().method() === 'PATCH'),
           { timeout: 20000 }
         );
@@ -103,7 +141,30 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
         const retireResp = await retireResponsePromise.catch(() => null);
         if (retireResp && retireResp.status() >= 400) {
           const body = await retireResp.text().catch(() => '');
-          throw new Error(`Retire API returned ${retireResp.status()}: ${body.slice(0, 200)}`);
+          // 400 often means version conflict — reload and retry once with the page's fresh version
+          if (retireResp.status() === 400) {
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 15000 });
+            const retireBtn2 = page
+              .locator('button:has-text("Retire"), button:has-text("Retire Asset")')
+              .first();
+            if ((await retireBtn2.count()) > 0) {
+              const retireResponsePromise2 = page.waitForResponse(
+                (resp) =>
+                  resp.url().includes(`/assets/${assetId}/`) &&
+                  (resp.url().includes('/retire/') || resp.request().method() === 'PATCH'),
+                { timeout: 20000 }
+              );
+              await retireBtn2.click();
+              const retireResp2 = await retireResponsePromise2.catch(() => null);
+              if (retireResp2 && retireResp2.status() >= 400) {
+                const body2 = await retireResp2.text().catch(() => '');
+                throw new Error(`Retire API returned ${retireResp2.status()} on retry: ${body2.slice(0, 200)}`);
+              }
+            }
+          } else {
+            throw new Error(`Retire API returned ${retireResp.status()}: ${body.slice(0, 200)}`);
+          }
         }
       } else if ((await statusSelect.count()) > 0) {
         await statusSelect.selectOption('RETIRED');
@@ -137,6 +198,7 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.asset-detail-page',
         waitAfterLoad: 8000,
+        selectorTimeout: 60000,
       });
     });
 

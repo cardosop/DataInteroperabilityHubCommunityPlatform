@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser } from '../../fixtures/auth';
+import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, navigateToRouteFromApp } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-MP-007: Monitor Sync Jobs', () => {
@@ -57,6 +57,13 @@ test.describe('JOURNEY-MP-007: Monitor Sync Jobs', () => {
       const hasError = (await page.locator('.error-display').count()) > 0;
       const onLogin = page.url().includes('/login');
       expect(hasError || onLogin).toBe(true);
+    });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/integrations/sync-jobs');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     });
   });
 

@@ -305,13 +305,25 @@ export async function clearAuthStorage(page: Page): Promise<void> {
       if (isPageClosedError(navErr)) {
         return; // Page/context closed (test timeout); absorb to avoid cascading
       }
-      throw navErr;
+      const navMsg = String(navErr);
+      if (
+        /interrupted by another navigation/i.test(navMsg) ||
+        /ERR_ABORTED/i.test(navMsg) ||
+        /net::ERR_/i.test(navMsg)
+      ) {
+        // Navigation was interrupted because the app simultaneously redirected to /login.
+        // The page should already be on /login — wait for it to settle, then continue.
+        await page.waitForLoadState('domcontentloaded').catch(() => {});
+      } else {
+        throw navErr;
+      }
     }
     await page.waitForLoadState('domcontentloaded');
     await page.evaluate(() => {
       localStorage.removeItem('access_token');
       localStorage.removeItem('user');
       localStorage.removeItem('refresh_token');
+      localStorage.removeItem('active_tenant_id');
       sessionStorage.clear();
     }).catch((e) => {
       const msg = String(e);

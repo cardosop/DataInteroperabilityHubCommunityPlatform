@@ -125,7 +125,7 @@ test.describe('DQ, Compliance, Governance routes', () => {
       if (onLogin) return;
 
       const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
-      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404|matches the given query/i }).count()) > 0;
       if (hasErrorDisplay && !hasNotFoundText) {
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`DQ run detail shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);
@@ -155,7 +155,7 @@ test.describe('DQ, Compliance, Governance routes', () => {
       if (onLogin) return;
 
       const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
-      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404|matches the given query/i }).count()) > 0;
       if (hasErrorDisplay && !hasNotFoundText) {
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`Compliance run detail shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);

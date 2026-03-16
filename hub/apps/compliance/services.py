@@ -186,11 +186,16 @@ class ComplianceService(BaseService):
 
             queue_name = get_queue_for_job_type(JobType.COMPLIANCE_RUN)
             queue = get_queue(queue_name)
-            queue.enqueue(
-                process_job,
-                str(job.id),
-                job_type=JobType.COMPLIANCE_RUN,
-                timeout=get_job_timeout(JobType.COMPLIANCE_RUN),
+            _job_id = str(job.id)
+            _queue = queue
+            _timeout = get_job_timeout(JobType.COMPLIANCE_RUN)
+            transaction.on_commit(
+                lambda: _queue.enqueue(
+                    process_job,
+                    _job_id,
+                    job_type=JobType.COMPLIANCE_RUN,
+                    timeout=_timeout,
+                )
             )
         except Exception as e:
             import logging

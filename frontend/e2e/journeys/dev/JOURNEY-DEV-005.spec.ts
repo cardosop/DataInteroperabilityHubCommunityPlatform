@@ -51,11 +51,19 @@ test.describe('JOURNEY-DEV-005: Use Natural Language Search API', () => {
         timeout: 45000,
         acceptRedirectToLogin: true,
       });
-      const on403 = page.url().includes('/403');
-      const onLogin = page.url().includes('/login');
-      const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
-      const onAISearch = page.url().includes('/ai/search');
-      expect(on403 || onLogin || onUnavailable || onAISearch).toBe(true);
+      const url = page.url();
+      if (url.includes('/login')) {
+        test.skip(true, 'AI Search not accessible in this env — login redirect indicates missing user/token');
+        return;
+      }
+      // Must be either capability-gated (403 or /unavailable) or the page loaded (capability enabled).
+      // CapabilityRoute redirects to /unavailable when the capability flag is off.
+      expect(url.includes('/403') || url.includes('/ai/search') || url.includes('/unavailable')).toBe(true);
+      if (url.includes('/ai/search')) {
+        // If capability is enabled, page content must be present
+        const hasContent = (await page.locator('.ai-search-page, .unavailable-page, .app-main').count()) > 0;
+        expect(hasContent).toBe(true);
+      }
     });
   });
 

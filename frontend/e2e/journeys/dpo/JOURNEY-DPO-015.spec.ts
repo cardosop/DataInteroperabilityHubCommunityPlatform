@@ -11,7 +11,7 @@
 
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../../fixtures/auth';
-import { waitForAppMainReady } from '../../fixtures/helpers';
+import { waitForAppMainReady, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow)', () => {
   test.setTimeout(180000); // 3 min: visible/slowMo; ODPS list + upload + publish
@@ -104,6 +104,8 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow)', () =>
       await page.waitForSelector('.odps-upload-page, .error-display, .loading-spinner-container, #email', {
         timeout: 30000,
       });
+      // Wait for loading spinner to clear before checking if the upload page rendered
+      await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on ODPS upload page');

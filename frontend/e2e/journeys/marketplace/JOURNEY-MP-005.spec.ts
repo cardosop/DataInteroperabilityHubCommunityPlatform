@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
+import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-MP-005: Schedule Automatic Sync', () => {
@@ -37,6 +37,13 @@ test.describe('JOURNEY-MP-005: Schedule Automatic Sync', () => {
         detailContentSelector: '.job-detail-page .job-detail-content',
         waitAfterLoad: 8000,
       });
+    });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/integrations/sync-jobs');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     });
   });
 

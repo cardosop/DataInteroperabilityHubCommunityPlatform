@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getDataMeshDomainOwnerUser } from '../../fixtures/auth';
+import { clearAuthStorage, getDataMeshDomainOwnerUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DMO-005: Monitor Domain Health', () => {
@@ -61,6 +61,13 @@ test.describe('JOURNEY-DMO-005: Monitor Domain Health', () => {
         detailContentSelector: '.mesh-domain-detail-page .mesh-domain-detail-content',
         waitAfterLoad: 8000,
       });
+    });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/observability');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     });
   });
 

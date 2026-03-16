@@ -1,32 +1,87 @@
+# =============================================================================
+# .github/dependabot.yml
+#
+# Dependabot configuration for automated dependency updates.
+#
+# Supply-chain attack mitigation strategy for GitHub Actions
+# ----------------------------------------------------------
+# Mutable action tags (e.g. @v4) can be silently redirected to malicious code
+# via a force-push to the tag.  The defence is to pin actions to immutable
+# full-length commit SHAs (e.g. @b4ffde65f46336ab88eb53be808477a3936bae11).
+#
+# Workflow:
+#   1. In each workflow file, use SHA-pinned references for external actions:
+#      uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.7
+#   2. Dependabot detects the SHA, looks up the latest release, and opens a
+#      PR to update the SHA when a new version is released.
+#   3. Engineers review the PR diff (SHA change + release notes) before merge.
+#
+# This gives us both:
+#   - Immutability  (SHA refs cannot be redirected)
+#   - Freshness     (Dependabot keeps SHAs current with security patches)
+#
+# Action version inventory (current SHA refs used in deploy.yml):
+# See comments in each workflow file for the exact pinned SHAs.
+#
+# =============================================================================
 version: 2
+
 updates:
-  # Python dependencies
+
+  # ---------------------------------------------------------------------------
+  # Python dependencies — weekly updates, ignore major version bumps
+  # ---------------------------------------------------------------------------
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "UTC"
     open-pull-requests-limit: 10
-    reviewers:
-      - "data-interoperability-hub-maintainers"
+
     labels:
       - "dependencies"
       - "python"
     commit-message:
-      prefix: "deps"
+      prefix: "deps(python)"
       include: "scope"
     ignore:
-      # Ignore major version updates (require manual review)
+      # Major version updates require manual review (breaking changes likely)
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+    groups:
+      # Bundle Django and DRF updates together (always co-compatible)
+      django:
+        patterns:
+          - "django*"
+          - "djangorestframework*"
+          - "dj-rest-auth"
+          - "django-cors-headers"
+          - "django-filter"
+      # Bundle OpenTelemetry packages (they must stay in sync)
+      opentelemetry:
+        patterns:
+          - "opentelemetry-*"
+      # Bundle testing packages
+      testing:
+        patterns:
+          - "pytest*"
+          - "factory-boy"
+          - "faker"
 
-  # Docker dependencies
+  # ---------------------------------------------------------------------------
+  # Docker base images — weekly updates
+  # ---------------------------------------------------------------------------
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "UTC"
     open-pull-requests-limit: 5
-    reviewers:
-      - "data-interoperability-hub-maintainers"
+
     labels:
       - "dependencies"
       - "docker"
@@ -34,18 +89,49 @@ updates:
       prefix: "docker"
       include: "scope"
 
-  # GitHub Actions
+  # ---------------------------------------------------------------------------
+  # GitHub Actions — weekly SHA-ref updates (supply-chain attack prevention)
+  #
+  # Dependabot will:
+  #   - Detect the current commit SHA pinned in each workflow
+  #   - Look up whether the tag pointed to by that SHA has a newer release
+  #   - Open a PR updating the SHA to the latest release SHA
+  #
+  # This is the primary supply-chain defence for the CI/CD pipeline.
+  # PRs are auto-labelled "ci" + "security" so they can be prioritised.
+  # ---------------------------------------------------------------------------
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "data-interoperability-hub-maintainers"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+
     labels:
       - "dependencies"
       - "github-actions"
+      - "security"
     commit-message:
-      prefix: "ci"
+      prefix: "ci(actions)"
       include: "scope"
-
+    groups:
+      # Bundle all docker/* actions (login, build-push, metadata, setup-buildx)
+      docker-actions:
+        patterns:
+          - "docker/*"
+      # Bundle all actions/* (official GitHub actions)
+      github-official:
+        patterns:
+          - "actions/*"
+      # Bundle sigstore tooling (cosign-installer + sbom-action)
+      sigstore:
+        patterns:
+          - "sigstore/*"
+          - "anchore/sbom-action*"
+      # Security scanning
+      security-scanning:
+        patterns:
+          - "aquasecurity/trivy-action"
+          - "github/codeql-action*"

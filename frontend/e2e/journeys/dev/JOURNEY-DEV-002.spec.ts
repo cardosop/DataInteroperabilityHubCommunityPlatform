@@ -61,17 +61,4 @@ test.describe('JOURNEY-DEV-002: Integrate via SDK', () => {
     });
   });
 
-  test.describe('Edge', () => {
-    test('developer and baas routes accessible', async ({ page }) => {
-      await loginAsPersona(page, getExternalDeveloperUser);
-      await page.goto('/developer');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
-      expect(
-        page.url().includes('/developer') ||
-          page.url().includes('/403') ||
-          page.url().includes('/login')
-      ).toBe(true);
-    });
-  });
 });

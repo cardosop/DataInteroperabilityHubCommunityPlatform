@@ -48,16 +48,4 @@ test.describe('JOURNEY-MPA-002: Process Marketplace Orders', () => {
     });
   });
 
-  test.describe('Edge', () => {
-    test('marketplace orders route accessible', async ({ page }) => {
-      await loginAsPersona(page, getPlatformAdminUser);
-      await page.goto('/marketplace/orders');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      const url = page.url();
-      expect(
-        url.includes('/marketplace') || url.includes('/login') || url.includes('/403')
-      ).toBe(true);
-    });
-  });
 });

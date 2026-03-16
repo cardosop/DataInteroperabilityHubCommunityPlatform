@@ -11,7 +11,7 @@
 
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute } from '../../fixtures/helpers';
+import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-003: Configure Data Quality Checks', () => {
   test.setTimeout(180000);
@@ -38,14 +38,12 @@ test.describe('JOURNEY-DE-003: Configure Data Quality Checks', () => {
     test('dq run detail with non-existent id shows error', async ({ page }) => {
       const testUser = await getTestUser();
       await loginUser(page, testUser);
-      const nonExistentId = '00000000-0000-0000-0000-000000000000';
-      await page.goto(`/dq/runs/${nonExistentId}`);
+      await page.goto('/dq/runs/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
-      const hasError = (await page.locator('.error-display').count()) > 0;
-      const noSuccessContent = (await page.locator('.dq-run-detail-main').count()) === 0;
-      const onLogin = page.url().includes('/login');
-      expect(hasError || noSuccessContent || onLogin).toBe(true);
+      await assertNonExistentIdShowsError(page, {
+        detailContentSelector: '.dq-run-detail-main, .error-display',
+        waitAfterLoad: 12000,
+      });
     });
   });
 

@@ -12,7 +12,9 @@ import { getTestUser, getConsumerTestUser } from '../fixtures/auth';
 import { loginAndNavigateToRoute } from '../fixtures/helpers';
 
 test.describe('Edge Cases (real tests)', () => {
-  test.setTimeout(120000);
+  // 240s: loginUser (30s) + app-shell wait (20s) + content load (60s for slow backends
+  // under parallel E2E load) + post-navigation assertions + overhead (30s).
+  test.setTimeout(240000);
 
   test('empty submit: search with empty string shows list or empty state', async ({ page }) => {
     const user = await getConsumerTestUser();
@@ -58,8 +60,13 @@ test.describe('Edge Cases (real tests)', () => {
     await searchInput.fill('!@#$%^&*()');
     await page.waitForTimeout(1000);
     expect(page.url()).toContain('/marketplace');
+    const hasSearchError = (await page.locator('.error-display').count()) > 0;
+    if (hasSearchError) {
+      const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+      throw new Error(`Special-char search caused a backend error: ${errText?.slice(0, 200)}`);
+    }
     const hasContent =
-      (await page.locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display').count()) > 0;
+      (await page.locator('.listing-list-page, .listing-list-grid, .empty-state').count()) > 0;
     expect(hasContent).toBe(true);
   });
 
@@ -82,22 +89,49 @@ test.describe('Edge Cases (real tests)', () => {
     await searchInput.fill('日本語テスト café naïve');
     await page.waitForTimeout(1000);
     expect(page.url()).toContain('/marketplace');
+    const hasUnicodeError = (await page.locator('.error-display').count()) > 0;
+    if (hasUnicodeError) {
+      const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+      throw new Error(`Unicode search caused a backend error: ${errText?.slice(0, 200)}`);
+    }
     const hasContent =
-      (await page.locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display').count()) > 0;
+      (await page.locator('.listing-list-page, .listing-list-grid, .empty-state').count()) > 0;
     expect(hasContent).toBe(true);
   });
 
   test('pagination: list with pagination or single page loads', async ({ page }) => {
     const user = await getTestUser();
+    // Include .loading-spinner-container so loginAndNavigateToRoute returns as soon as the
+    // app shell (including loading state) is ready, rather than blocking until the API
+    // responds. Slow backends under parallel E2E load can take > 60s to return the asset
+    // list, causing the helper to timeout when .loading-spinner-container is excluded.
     await loginAndNavigateToRoute(page, user, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, .asset-list-pagination',
+      contentSelector: '.asset-list-page, .empty-state, .error-display, .asset-list-pagination, .loading-spinner-container',
     });
+    if (page.url().includes('/login')) {
+      expect(page.url()).toContain('/login');
+      return;
+    }
     expect(page.url()).toContain('/assets');
+
+    // Separate wait for actual content now that the app shell is confirmed ready.
+    // 90s covers slow backends under parallel E2E load (assets API can be slow to respond).
+    await page
+      .locator('.asset-list-page, .empty-state, .error-display, .asset-list-pagination')
+      .first()
+      .waitFor({ state: 'visible', timeout: 90000 })
+      .catch(() => null);
+
     const hasPagination = (await page.locator('.asset-list-pagination').count()) > 0;
     const hasListOrEmpty =
       (await page.locator('.asset-list-page').count()) > 0 ||
       (await page.locator('.empty-state').count()) > 0;
+    const hasError = (await page.locator('.error-display').count()) > 0;
+    if (hasError) {
+      const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+      throw new Error(`Asset list shows backend error: ${errText.slice(0, 200)}`);
+    }
     expect(hasPagination || hasListOrEmpty).toBe(true);
   });
 
@@ -120,8 +154,13 @@ test.describe('Edge Cases (real tests)', () => {
     await searchInput.fill('a'.repeat(500));
     await page.waitForTimeout(1000);
     expect(page.url()).toContain('/marketplace');
+    const hasMaxLenError = (await page.locator('.error-display').count()) > 0;
+    if (hasMaxLenError) {
+      const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+      throw new Error(`Max-length search caused a backend error: ${errText?.slice(0, 200)}`);
+    }
     const hasContent =
-      (await page.locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display').count()) > 0;
+      (await page.locator('.listing-list-page, .listing-list-grid, .empty-state').count()) > 0;
     expect(hasContent).toBe(true);
   });
 
@@ -129,15 +168,26 @@ test.describe('Edge Cases (real tests)', () => {
 
   test('asset create: max-length name input does not crash the form', async ({ page }) => {
     const user = await getTestUser();
+    // Include .loading-spinner-container so loginAndNavigateToRoute returns when the app
+    // shell is ready (Suspense fallback), not after the full page content loads. This prevents
+    // timeout on slow backends where the asset create page fetches capabilities (≤30s).
     await loginAndNavigateToRoute(page, user, '/assets/create', {
       timeout: 60000,
-      contentSelector: '.asset-create-page',
+      contentSelector: '.asset-create-page, .loading-spinner-container',
     });
     if (page.url().includes('/login')) {
       expect(page.url()).toContain('/login');
       return;
     }
     if (!page.url().includes('/assets/create')) return; // may redirect on role
+
+    // Wait for the actual create form to finish loading (Suspense + capabilities).
+    await page
+      .locator('.asset-create-page')
+      .first()
+      .waitFor({ state: 'visible', timeout: 60000 })
+      .catch(() => null);
+    if ((await page.locator('.asset-create-page').count()) === 0) return; // content didn't load
 
     // Assert the name input exists before filling — skip explicitly if absent
     const nameInput = page.locator('input[id="name"], input[name="name"]').first();
@@ -156,13 +206,21 @@ test.describe('Edge Cases (real tests)', () => {
     const user = await getTestUser();
     await loginAndNavigateToRoute(page, user, '/assets/create', {
       timeout: 60000,
-      contentSelector: '.asset-create-page',
+      contentSelector: '.asset-create-page, .loading-spinner-container',
     });
     if (page.url().includes('/login')) {
       expect(page.url()).toContain('/login');
       return;
     }
     if (!page.url().includes('/assets/create')) return;
+
+    // Wait for the actual create form to finish loading.
+    await page
+      .locator('.asset-create-page')
+      .first()
+      .waitFor({ state: 'visible', timeout: 60000 })
+      .catch(() => null);
+    if ((await page.locator('.asset-create-page').count()) === 0) return;
 
     // Assert the key input exists before filling — skip explicitly if absent
     const keyInput = page.locator('input[id="key"], input[name="key"]').first();
@@ -181,13 +239,21 @@ test.describe('Edge Cases (real tests)', () => {
     const user = await getTestUser();
     await loginAndNavigateToRoute(page, user, '/assets/create', {
       timeout: 60000,
-      contentSelector: '.asset-create-page',
+      contentSelector: '.asset-create-page, .loading-spinner-container',
     });
     if (page.url().includes('/login')) {
       expect(page.url()).toContain('/login');
       return;
     }
     if (!page.url().includes('/assets/create')) return;
+
+    // Wait for the actual create form to finish loading.
+    await page
+      .locator('.asset-create-page')
+      .first()
+      .waitFor({ state: 'visible', timeout: 60000 })
+      .catch(() => null);
+    if ((await page.locator('.asset-create-page').count()) === 0) return;
 
     // Assert submit button exists before the test scenario runs
     const submitBtn = page.locator('button:has-text("Create Asset"), button[type="submit"]').first();

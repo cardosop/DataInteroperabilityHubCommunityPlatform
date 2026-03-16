@@ -6,10 +6,23 @@
  * and the assets list page for WCAG 2 AA compliance.
  *
  * Depends on: setup-auth project (playwright.config.ts storageState).
+ * When stored auth has expired the tests fall back to a fresh UI login so they always run
+ * against an authenticated session rather than silently skipping.
  */
 import { AxeBuilder } from '@axe-core/playwright';
 import { expect } from '@playwright/test';
 import { test } from '@playwright/test';
+import { getTestUser, loginUser } from '../fixtures/auth';
+
+/** Ensure the page is authenticated, re-logging in if the stored session has expired. */
+async function ensureAuthenticated(page: import('@playwright/test').Page): Promise<void> {
+  // The storageState injected by setup-auth may have expired.  If the initial navigation
+  // landed on /login, perform a fresh UI login and then navigate back to the intended URL.
+  if (page.url().includes('/login')) {
+    const testUser = await getTestUser();
+    await loginUser(page, testUser);
+  }
+}
 
 test.describe('Resource Picker Accessibility (axe) — authenticated', () => {
   test.setTimeout(90000);
@@ -19,17 +32,31 @@ test.describe('Resource Picker Accessibility (axe) — authenticated', () => {
   }) => {
     await page.goto('/datasets/create?linkMode=existing');
     await page.waitForLoadState('domcontentloaded');
-    // Wait for either the create form or a redirect (when storedAuth is present the form renders)
+    // Wait for either the create form or the login page — whichever appears first.
     await page
       .locator('.dataset-create-page, .app-main, #email')
       .first()
       .waitFor({ state: 'visible', timeout: 30000 })
       .catch(() => null);
 
+    // If stored auth expired, re-login and navigate to the target page.
+    await ensureAuthenticated(page);
     if (page.url().includes('/login')) {
-      // storedState auth expired — skip rather than reporting false violations on login page
-      test.skip(true, 'Stored auth redirected to login; re-run after setup-auth completes');
+      // Login itself failed (backend unreachable) — skip rather than reporting
+      // false violations against the login page.
+      test.skip(true, 'Could not authenticate — backend may be unreachable');
       return;
+    }
+
+    // After login we may be on the dashboard; navigate to the target page.
+    if (!page.url().includes('/datasets/create')) {
+      await page.goto('/datasets/create?linkMode=existing');
+      await page.waitForLoadState('domcontentloaded');
+      await page
+        .locator('.dataset-create-page, .app-main')
+        .first()
+        .waitFor({ state: 'visible', timeout: 20000 })
+        .catch(() => null);
     }
 
     const results = await new AxeBuilder({ page })
@@ -47,9 +74,22 @@ test.describe('Resource Picker Accessibility (axe) — authenticated', () => {
       .waitFor({ state: 'visible', timeout: 30000 })
       .catch(() => null);
 
+    // If stored auth expired, re-login and navigate to the target page.
+    await ensureAuthenticated(page);
     if (page.url().includes('/login')) {
-      test.skip(true, 'Stored auth redirected to login; re-run after setup-auth completes');
+      test.skip(true, 'Could not authenticate — backend may be unreachable');
       return;
+    }
+
+    // After login we may be on the dashboard; navigate to the assets page.
+    if (!page.url().includes('/assets')) {
+      await page.goto('/assets');
+      await page.waitForLoadState('domcontentloaded');
+      await page
+        .locator('.asset-list-page, .empty-state, .app-main')
+        .first()
+        .waitFor({ state: 'visible', timeout: 20000 })
+        .catch(() => null);
     }
 
     const results = await new AxeBuilder({ page })

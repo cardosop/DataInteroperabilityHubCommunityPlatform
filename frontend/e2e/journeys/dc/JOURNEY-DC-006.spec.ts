@@ -55,20 +55,12 @@ test.describe('JOURNEY-DC-006: Use Natural Language Search', () => {
   });
 
   test.describe('Failure', () => {
-    test('AI search without capability shows 403 or unavailable', async ({ page }) => {
-      const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/ai/search');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.ai-search-page, .unavailable-page, .error-display, .loading-spinner-container, #email',
-        { timeout: 60000 }
-      );
-      const on403 = page.url().includes('/403');
-      const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
-      const onAISearch = page.url().includes('/ai/search');
-      const onLogin = page.url().includes('/login');
-      expect(on403 || onUnavailable || onAISearch || onLogin).toBe(true);
+    test('unauthenticated access to /ai/search redirects to login', async ({ page }) => {
+      const { clearAuthStorage } = await import('../../fixtures/auth');
+      await clearAuthStorage(page);
+      await page.goto('/ai/search', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|403)/, { timeout: 20000 }).catch(() => null);
+      expect(page.url().includes('/login') || page.url().includes('/403')).toBe(true);
     });
   });
 

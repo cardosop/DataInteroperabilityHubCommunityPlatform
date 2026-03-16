@@ -31,11 +31,17 @@ test.describe('JOURNEY-DC-010: Query Virtual Dataset', () => {
         return;
       }
       expect(page.url()).toContain('/virtualization');
+      // Phase 2: wait for loading spinner to resolve into a terminal state (spinner is transient)
+      await page
+        .locator('.virtual-dataset-list-page, .empty-state, .error-display')
+        .first()
+        .waitFor({ state: 'visible', timeout: 20000 })
+        .catch(() => null);
+      // Spinner excluded: it is a transient loading indicator, not a valid terminal state
       const hasContent =
         (await page.locator('.virtual-dataset-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.loading-spinner-container').count()) > 0;
+        (await page.locator('.error-display').count()) > 0;
       expect(hasContent).toBe(true);
     });
   });

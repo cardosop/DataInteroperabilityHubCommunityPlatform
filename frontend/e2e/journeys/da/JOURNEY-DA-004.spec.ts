@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
+import { clearAuthStorage, getConsumerTestUser, loginUser } from '../../fixtures/auth';
 
 test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
   test.setTimeout(120000);
@@ -59,6 +59,13 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
       const onSemantic = page.url().includes('/semantic');
       const onLogin = page.url().includes('/login');
       expect(on403 || onUnavailable || onSemantic || onLogin).toBe(true);
+    });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/semantic');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     });
   });
 

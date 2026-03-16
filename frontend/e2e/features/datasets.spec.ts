@@ -23,6 +23,13 @@ test.describe('Feature: Datasets', () => {
         throw _err;
       }
       expect(page.url()).toContain('/datasets');
+      const hasContent =
+        (await page.locator('.dataset-list-page, .empty-state, h1').count()) > 0;
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      expect(
+        hasContent || hasError,
+        'Expected .dataset-list-page, .empty-state, h1, or .error-display on /datasets'
+      ).toBe(true);
     });
   });
 

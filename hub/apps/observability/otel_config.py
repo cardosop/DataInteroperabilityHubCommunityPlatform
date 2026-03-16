@@ -75,17 +75,25 @@ def get_service_version() -> str:
     Get service version from environment or settings.
 
     Returns:
-        Service version (default: from settings.APP_VERSION or '1.0.0')
+        Service version — from OTEL_SERVICE_VERSION env var, then
+        settings.OTEL_SERVICE_VERSION (populated from GIT_SHA build arg),
+        then settings.APP_VERSION legacy fallback, then '1.0.0'.
     """
     return os.getenv(
         'OTEL_SERVICE_VERSION',
-        getattr(settings, 'APP_VERSION', '1.0.0')
+        getattr(settings, 'OTEL_SERVICE_VERSION',
+                getattr(settings, 'APP_VERSION', '1.0.0'))
     )
 
 
 def get_environment() -> str:
     """
-    Determine environment name from DEBUG setting or environment variable.
+    Determine environment name.
+
+    Priority:
+      1. OTEL_ENVIRONMENT env var (explicit override)
+      2. settings.ENVIRONMENT (Django canonical environment, set by Phase 1 guard)
+      3. DEBUG flag heuristic (development fallback)
 
     Returns:
         Environment name: 'development', 'staging', or 'production'
@@ -94,15 +102,14 @@ def get_environment() -> str:
     if env_name in ('development', 'staging', 'production'):
         return env_name
 
-    # Determine from DEBUG setting
-    if getattr(settings, 'DEBUG', False):
-        return 'development'
+    # Use the Django ENVIRONMENT setting as the canonical source
+    # (set in settings.py from the ENVIRONMENT env var, e.g. 'production')
+    django_env = getattr(settings, 'ENVIRONMENT', '').lower()
+    if django_env in ('development', 'staging', 'production'):
+        return django_env
 
-    # Check for staging indicators
-    if 'staging' in getattr(settings, 'ALLOWED_HOSTS', []):
-        return 'staging'
-
-    return 'production'
+    # Final heuristic fallback
+    return 'development' if getattr(settings, 'DEBUG', False) else 'production'
 
 
 def get_sampling_config() -> tuple:
@@ -142,27 +149,39 @@ def create_resource() -> Optional["Resource"]:
     """
     Create OpenTelemetry resource with service attributes.
 
+    settings.OTEL_RESOURCE_ATTRIBUTES is the single source of truth —
+    it is populated in settings.py from OTEL_SERVICE_NAME, OTEL_SERVICE_NAMESPACE,
+    OTEL_SERVICE_VERSION, and ENVIRONMENT.  Any key present there takes
+    precedence; missing keys are filled from individual helpers for
+    backward compatibility with deployments that set env vars directly.
+
     Returns:
         Resource instance or None if OpenTelemetry not available
     """
     if not OPENTELEMETRY_AVAILABLE:
         return None
 
-    service_name = get_service_name()
-    service_version = get_service_version()
-    environment = get_environment()
+    # Base: OTEL_RESOURCE_ATTRIBUTES from settings (Phase 4.7)
+    resource_attributes: Dict[str, str] = dict(
+        getattr(settings, 'OTEL_RESOURCE_ATTRIBUTES', {})
+    )
 
-    resource_attributes = {
-        "service.name": service_name,
-        "service.version": service_version,
-        "service.namespace": "data-interoperability-hub",
-        "deployment.environment": environment,
-    }
+    # Backward-compatibility fill-ins for keys that may not be in the dict
+    # (e.g. older deployments without the new settings block)
+    if "service.name" not in resource_attributes:
+        resource_attributes["service.name"] = get_service_name()
+    if "service.version" not in resource_attributes:
+        resource_attributes["service.version"] = get_service_version()
+    if "deployment.environment" not in resource_attributes:
+        resource_attributes["deployment.environment"] = get_environment()
+    if "service.namespace" not in resource_attributes:
+        resource_attributes["service.namespace"] = getattr(
+            settings, 'OTEL_SERVICE_NAMESPACE', 'hub'
+        )
 
-    # Add additional attributes from settings if available
+    # Optional deployment-specific attributes (set via Django settings or Vault)
     if hasattr(settings, 'DEPLOYMENT_REGION'):
         resource_attributes["deployment.region"] = settings.DEPLOYMENT_REGION
-
     if hasattr(settings, 'INSTANCE_ID'):
         resource_attributes["service.instance.id"] = settings.INSTANCE_ID
 
@@ -184,7 +203,7 @@ def create_otlp_exporter():
 
         endpoint = os.getenv(
             'OTEL_EXPORTER_OTLP_ENDPOINT',
-            'http://localhost:4317'
+            getattr(settings, 'OTEL_EXPORTER_OTLP_ENDPOINT', 'http://otel-collector:4317')
         )
 
         # Support both gRPC and HTTP/protobuf protocols

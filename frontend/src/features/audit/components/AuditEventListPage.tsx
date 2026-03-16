@@ -127,7 +127,7 @@ export function AuditEventListPage() {
             className="btn-secondary"
             onClick={() => handleExport('csv')}
             disabled={isExporting || count === 0}
-            aria-label="Export as CSV"
+            aria-label="Export CSV"
           >
             {isExporting ? 'Exporting...' : 'Export CSV'}
           </button>
@@ -136,7 +136,7 @@ export function AuditEventListPage() {
             className="btn-secondary"
             onClick={() => handleExport('json')}
             disabled={isExporting || count === 0}
-            aria-label="Export as JSON"
+            aria-label="Export JSON"
           >
             {isExporting ? 'Exporting...' : 'Export JSON'}
           </button>

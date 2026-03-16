@@ -23,6 +23,13 @@ test.describe('Feature: Webhooks', () => {
         throw _err;
       }
       expect(page.url()).toContain('/webhooks');
+      const hasContent =
+        (await page.locator('.webhook-list-page, .empty-state, h1').count()) > 0;
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      expect(
+        hasContent || hasError,
+        'Expected .webhook-list-page, .empty-state, h1, or .error-display on /webhooks'
+      ).toBe(true);
     });
   });
 

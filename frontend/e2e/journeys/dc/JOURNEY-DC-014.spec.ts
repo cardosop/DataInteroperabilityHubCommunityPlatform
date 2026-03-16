@@ -14,7 +14,7 @@ import { expect, test } from '@playwright/test';
 import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
 
 test.describe('JOURNEY-DC-014: Discover ODPS Products (Semantic Search)', () => {
-  test.setTimeout(120000);
+  test.setTimeout(300000); // 5 min: login retries can take ~80s under parallel E2E load
 
   test.describe('Success', () => {
     test('semantic page loads', async ({ page }) => {
@@ -22,7 +22,10 @@ test.describe('JOURNEY-DC-014: Discover ODPS Products (Semantic Search)', () => 
       await loginUser(page, consumer);
       await page.goto('/semantic');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      await page.waitForSelector(
+        '.semantic-page, .app-main, .unavailable-page, .loading-spinner-container, #email',
+        { timeout: 45000 }
+      );
       const url = page.url();
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
@@ -36,17 +39,12 @@ test.describe('JOURNEY-DC-014: Discover ODPS Products (Semantic Search)', () => 
   });
 
   test.describe('Failure', () => {
-    test('semantic page without capability shows 403 or unavailable', async ({ page }) => {
-      const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/semantic');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      const on403 = page.url().includes('/403');
-      const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
-      const onSemantic = page.url().includes('/semantic');
-      const onLogin = page.url().includes('/login');
-      expect(on403 || onUnavailable || onSemantic || onLogin).toBe(true);
+    test('unauthenticated access to /semantic redirects to login', async ({ page }) => {
+      const { clearAuthStorage } = await import('../../fixtures/auth');
+      await clearAuthStorage(page);
+      await page.goto('/semantic', { waitUntil: 'domcontentloaded' });
+      await page.waitForURL(/\/(login|403)/, { timeout: 20000 }).catch(() => null);
+      expect(page.url().includes('/login') || page.url().includes('/403')).toBe(true);
     });
   });
 
@@ -56,7 +54,10 @@ test.describe('JOURNEY-DC-014: Discover ODPS Products (Semantic Search)', () => 
       await loginUser(page, consumer);
       await page.goto('/semantic');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await page.waitForSelector(
+        '.semantic-page, .app-main, .unavailable-page, .loading-spinner-container, #email',
+        { timeout: 45000 }
+      );
       const url = page.url();
       expect(url.includes('/login') || url.includes('/403') || url.includes('/semantic')).toBe(true);
     });

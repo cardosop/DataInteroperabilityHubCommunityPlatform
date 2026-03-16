@@ -21,13 +21,13 @@ test.describe('JOURNEY-MP-001: Connect to External Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/connections', {
         timeout: 65000,
-        contentSelector: '.connection-list-page, .empty-state, .error-display',
+        contentSelector: '.connection-list-page, .empty-state',
         acceptRedirectToLogin: true,
       });
-      if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
-        return;
+      if (page.url().includes('/login') || page.url().includes('/403')) {
+        throw new Error(`Unexpected redirect to ${page.url()} — verify test user has integrations access`);
       }
+      await expect(page.locator('.error-display')).not.toBeVisible();
       expect(page.url()).toContain('/integrations/connections');
     });
 
@@ -65,7 +65,7 @@ test.describe('JOURNEY-MP-001: Connect to External Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/connections', {
         timeout: 60000,
-        contentSelector: '.connection-list-page, .empty-state, .error-display',
+        contentSelector: '.connection-list-page, .empty-state',
       });
       expect(page.url()).toContain('/integrations/connections');
       await loginAndNavigateToRoute(page, testUser, '/integrations/connections/create', {

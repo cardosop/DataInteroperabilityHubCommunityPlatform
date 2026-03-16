@@ -169,7 +169,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       await page.waitForLoadState('domcontentloaded');
       await page
         .locator(
-          '.observability-page, [data-testid="observability-page"], .unavailable-page, .error-display, .app-main, #email'
+          '.observability-page, [data-testid="observability-page"], .unavailable-page, .error-display, #email'
         )
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
@@ -238,7 +238,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       await page.goto('/settings/cost');
       await page.waitForLoadState('domcontentloaded');
       await page
-        .locator('.cost-page, .cost-tracking-page, .app-main, #email')
+        .locator('.cost-page, .cost-tracking-page, .unavailable-page, .error-display, #email')
         .first()
         .waitFor({ state: 'visible', timeout: 15000 })
         .catch(() => null);
@@ -266,7 +266,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       await page.goto('/settings/tenant');
       await page.waitForLoadState('domcontentloaded');
       await page
-        .locator('.tenant-settings-page, .app-main, #email')
+        .locator('.tenant-settings-page, .unavailable-page, .error-display, #email')
         .first()
         .waitFor({ state: 'visible', timeout: 15000 })
         .catch(() => null);
@@ -352,7 +352,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       if (onLogin) return;
 
       const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
-      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404|matches the given query/i }).count()) > 0;
       if (hasErrorDisplay && !hasNotFoundText) {
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`Webhook detail shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);
@@ -384,7 +384,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       if (onLogin || on403) return;
 
       const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
-      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404|matches the given query/i }).count()) > 0;
       if (hasErrorDisplay && !hasNotFoundText) {
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`Audit event detail shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);
@@ -416,7 +416,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       if (onLogin) return;
 
       const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
-      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404|matches the given query/i }).count()) > 0;
       if (hasErrorDisplay && !hasNotFoundText) {
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`Integration connection detail shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);
@@ -458,27 +458,30 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
     test('ml page loads or shows unavailable', async ({ page }) => {
       await page.goto('/ml');
       await page.waitForLoadState('domcontentloaded');
+      // CapabilityRoute shows a LoadingSpinner while useCapabilities() resolves; on slower backends
+      // this can exceed 15s. Use 45s to cover the full capability-load + page-render window.
       await page
         .locator('.ml-page, .unavailable-page, #email')
         .first()
-        .waitFor({ state: 'visible', timeout: 15000 })
+        .waitFor({ state: 'visible', timeout: 45000 })
         .catch(() => null);
       const url = page.url();
       if (url.includes('/login') || url.includes('/403')) return;
-      await assertCapabilityGatedPageLoads(page, '.ml-page, .unavailable-page');
+      await assertCapabilityGatedPageLoads(page, '.ml-page, .unavailable-page', { timeout: 30000 });
     });
 
     test('communities page loads or shows unavailable', async ({ page }) => {
       await page.goto('/communities');
       await page.waitForLoadState('domcontentloaded');
+      // Same CapabilityRoute loading concern as /ml — use extended timeout.
       await page
         .locator('.communities-page, .communities-tab, .unavailable-page, #email')
         .first()
-        .waitFor({ state: 'visible', timeout: 15000 })
+        .waitFor({ state: 'visible', timeout: 45000 })
         .catch(() => null);
       const url = page.url();
       if (url.includes('/login') || url.includes('/403')) return;
-      await assertCapabilityGatedPageLoads(page, '.communities-page, .communities-tab, .unavailable-page');
+      await assertCapabilityGatedPageLoads(page, '.communities-page, .communities-tab, .unavailable-page', { timeout: 30000 });
     });
   });
 });

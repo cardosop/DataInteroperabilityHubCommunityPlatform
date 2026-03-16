@@ -26,7 +26,10 @@ test.describe('Admin User Edit UI', () => {
       const usersTab = page.locator('button:has-text("Users")');
       if ((await usersTab.count()) > 0) {
         await usersTab.first().click();
-        await page.waitForTimeout(1500);
+        // Wait for users API response and React render — 1500ms is too short under load
+        await page
+          .waitForSelector('.admin-table tbody tr, .empty-state', { timeout: 15000 })
+          .catch(() => null);
       }
 
       // Find first Edit link (admin-user-edit-link or link to /admin/users/.../edit)
@@ -44,12 +47,12 @@ test.describe('Admin User Edit UI', () => {
       await editLink.click();
       await page.waitForURL(/\/admin\/users\/[^/]+\/edit/, { timeout: 10000 });
 
-      // Assert edit page loaded
+      // Assert edit page loaded — increase timeout for visible project (400ms slowMo) and lazy bundles
       const editPage = page.locator('[data-testid="admin-user-edit-page"]');
-      await expect(editPage).toBeVisible({ timeout: 5000 });
+      await expect(editPage).toBeVisible({ timeout: 20000 });
 
       const displayNameInput = page.locator('#display_name');
-      await expect(displayNameInput).toBeVisible({ timeout: 3000 });
+      await expect(displayNameInput).toBeVisible({ timeout: 10000 });
 
       // Change display name (append E2E suffix to avoid conflicts)
       const originalValue = (await displayNameInput.inputValue()) || '';
@@ -75,9 +78,9 @@ test.describe('Admin User Edit UI', () => {
       });
       await page.waitForTimeout(3000);
       const url = page.url();
-      // Must not remain on edit page; must redirect to login, 403, or admin (which shows login)
+      // Unauthenticated access must redirect to login or 403 — must NOT remain on any admin page
       expect(url).not.toContain('/edit');
-      expect(url.includes('/login') || url.includes('/403') || url.includes('/admin')).toBe(true);
+      expect(url.includes('/login') || url.includes('/403')).toBe(true);
     });
   });
 });

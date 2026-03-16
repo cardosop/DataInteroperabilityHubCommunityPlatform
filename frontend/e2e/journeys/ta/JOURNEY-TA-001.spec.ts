@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTenantAdminUser, loginAsPersona } from '../../fixtures/auth';
+import { getConsumerTestUser, getTenantAdminUser, loginAsPersona } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-TA-001: Onboard New User', () => {
@@ -70,14 +70,21 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
     });
   });
 
-  test.describe('Edge', () => {
-    test('admin page loads or redirects', async ({ page }) => {
-      await loginAsPersona(page, getTenantAdminUser);
+  test.describe('RBAC', () => {
+    test('non-admin user is refused access to admin panel', async ({ page }) => {
+      // getConsumerTestUser() is DATA_CONSUMER role — must not be able to access /admin
+      await loginAsPersona(page, getConsumerTestUser);
       await page.goto('/admin');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      // Give the SPA auth guard time to check roles and complete the redirect to /403 or /login.
+      // React Router's ProtectedRoute redirect is synchronous but auth store init is async;
+      // waitForURL waits until the URL actually changes to the expected destination.
+      await page.waitForURL(/\/(403|login)(\?|$)/, { timeout: 15000 }).catch(() => null);
       const url = page.url();
-      expect(url.includes('/login') || url.includes('/403') || url.includes('/admin')).toBe(true);
+      // Consumer must be refused — /admin is Tenant Admin only
+      expect(url.includes('/403') || url.includes('/login')).toBe(true);
+      // Must NOT be on /admin itself (that would be an RBAC bypass)
+      expect(url.includes('/admin') && !url.includes('/403')).toBe(false);
     });
   });
 });

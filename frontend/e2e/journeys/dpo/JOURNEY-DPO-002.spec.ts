@@ -26,7 +26,12 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       page,
     }) => {
       const testUser = await getTestUser();
-      const assetId = await createAssetViaApi(testUser, { ensureActivated: true });
+      // forceNew: true — always create a fresh ACTIVE asset for each test run.
+      // The publish form dropdown only shows assets not already listed.
+      // Reusing the first ACTIVE asset fails once that asset accumulates a listing
+      // across runs: selectOption finds the <select> but the specific value is absent,
+      // causing an 8-minute timeout instead of a clear error.
+      const assetId = await createAssetViaApi(testUser, { forceNew: true, ensureActivated: true });
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
         contentSelector: '.listing-publish-page, h1',
@@ -137,7 +142,9 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
 
     test('publish without title shows validation error', async ({ page }) => {
       const testUser = await getTestUser();
-      const assetId = await createAssetViaApi(testUser, { ensureActivated: true });
+      // forceNew: true — same reason as Success test: the shared ACTIVE asset may already
+      // have a listing and be absent from the dropdown, causing an 8-minute timeout.
+      const assetId = await createAssetViaApi(testUser, { forceNew: true, ensureActivated: true });
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
         contentSelector: '.listing-publish-page',

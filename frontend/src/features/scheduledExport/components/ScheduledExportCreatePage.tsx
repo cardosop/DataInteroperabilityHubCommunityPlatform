@@ -134,6 +134,7 @@ export function ScheduledExportCreatePage() {
           </label>
           <input
             id="cron"
+            name="cron"
             type="text"
             value={cronExpression}
             onChange={(e) => setCronExpression(e.target.value)}

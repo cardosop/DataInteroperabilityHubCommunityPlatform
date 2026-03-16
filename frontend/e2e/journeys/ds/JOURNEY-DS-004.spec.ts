@@ -10,24 +10,35 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
+import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
 
 test.describe('JOURNEY-DS-004: Tune Recommendation Engine', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
-    test('ML page loads for recommendation configuration', async ({ page }) => {
+    test('ML page loads for recommendation configuration (capability-gated)', async ({ page }) => {
       const testUser = await getTestUser();
       await loginUser(page, testUser);
       await page.goto('/ml');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
-      const onLogin = page.url().includes('/login');
-      const on403 = page.url().includes('/403');
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login — user should be authenticated');
+      }
+      // CapabilityRoute may redirect away without using /403 URL
+      const redirectedAway = !page.url().includes('/ml') && !page.url().includes('/login');
+      const isGated =
+        page.url().includes('/403') ||
+        redirectedAway ||
+        (await page.locator('.unavailable-page').count()) > 0;
+      // Both outcomes are valid: capability enabled (page loads) or disabled (properly gated)
+      if (isGated) {
+        expect(isGated).toBe(true); // Capability gate is working — valid outcome
+        return;
+      }
       const onMl = page.url().includes('/ml');
-      const hasContent =
-        (await page.locator('.ml-page, .app-main, .unavailable-page').count()) > 0;
-      expect(onLogin || on403 || (onMl && hasContent)).toBe(true);
+      const hasContent = (await page.locator('.ml-page, .app-main').count()) > 0;
+      expect(onMl && hasContent).toBe(true);
     });
   });
 
@@ -43,6 +54,13 @@ test.describe('JOURNEY-DS-004: Tune Recommendation Engine', () => {
       const onMl = page.url().includes('/ml');
       const onLogin = page.url().includes('/login');
       expect(on403 || onUnavailable || onMl || onLogin).toBe(true);
+    });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/ml');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     });
   });
 

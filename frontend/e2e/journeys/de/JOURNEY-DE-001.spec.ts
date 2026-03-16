@@ -94,7 +94,11 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
       await loginUser(page, testUser);
       await page.goto('/contracts/00000000-0000-0000-0000-000000000000/link-odps');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await page
+        .locator('.error-display, .contract-detail-page, #email')
+        .first()
+        .waitFor({ state: 'visible', timeout: 20000 })
+        .catch(() => null);
       const url = page.url();
       const onLinkOdps = url.includes('/link-odps');
       const onLogin = url.includes('/login');

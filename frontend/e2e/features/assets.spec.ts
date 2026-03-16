@@ -37,8 +37,12 @@ test.describe('Feature: Assets', () => {
       await page.waitForTimeout(5000);
       const onLogin = page.url().includes('/login');
       const hasError = (await page.locator('.error-display').count()) > 0;
-      const noDetail = (await page.locator('.asset-detail-page').count()) === 0;
-      expect(onLogin || hasError || noDetail).toBe(true);
+      // `noDetail` was trivially true after any redirect (page doesn't have .asset-detail-page
+      // when redirected to login or when not yet loaded). Removed — only assert real error signals.
+      expect(
+        onLogin || hasError,
+        'Expected .error-display or login redirect for a nil-UUID asset detail'
+      ).toBe(true);
     });
   });
 
@@ -51,7 +55,16 @@ test.describe('Feature: Assets', () => {
       const onCreate = page.url().includes('/assets/create');
       const hasForm =
         (await page.locator('form').count()) > 0 || (await page.locator('.asset-form').count()) > 0;
-      expect(onLogin || (onCreate && hasForm) || onCreate).toBe(true);
+      // `onCreate` alone was trivially true (we navigated there and staying counts as a pass).
+      // If on create route, must also show a form — otherwise the route rendered something broken.
+      if (onLogin) {
+        expect(onLogin).toBe(true);
+        return;
+      }
+      expect(
+        onCreate && hasForm,
+        'Expected a form (.asset-form or <form>) to be present when on /assets/create'
+      ).toBe(true);
     });
   });
 });

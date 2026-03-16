@@ -45,8 +45,19 @@ RUN apk add --no-cache wget
 # Copy built files
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy nginx configuration as a template.
+# The official nginx:alpine image runs envsubst on files in /etc/nginx/templates/
+# at container startup (/docker-entrypoint.d/20-envsubst-on-templates.sh),
+# outputting the rendered file to /etc/nginx/conf.d/default.conf.
+# This allows runtime substitution of ${API_HOST} in the CSP header without
+# rebuilding the image.
+COPY nginx.conf /etc/nginx/templates/default.conf.template
+
+# API host included in the CSP connect-src directive.
+# Default is empty (same-origin only), which is correct when /api is proxied
+# through this nginx instance.  Override at docker run / docker-compose level:
+#   API_HOST=https://api.example.com
+ENV API_HOST=""
 
 # Expose port
 EXPOSE 80

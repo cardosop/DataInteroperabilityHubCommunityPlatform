@@ -96,13 +96,16 @@ class DQServiceClient:
         # Add trace headers if available
         from hub.apps.api.middleware.trace_propagation import get_trace_headers
 
-        trace_headers = get_trace_headers()
-        if trace_headers:
-            # Merge trace headers into existing headers
-            if "headers" in kwargs:
-                kwargs["headers"].update(trace_headers)
-            else:
-                kwargs["headers"] = trace_headers
+        trace_headers = get_trace_headers() or {}
+
+        # Add internal API key for service-to-service authentication
+        internal_key = getattr(settings, "INTERNAL_API_KEY", "")
+        if internal_key:
+            trace_headers["X-Internal-Api-Key"] = internal_key
+
+        # Merge: caller-supplied headers take precedence over trace/auth headers
+        caller_headers = kwargs.get("headers") or {}
+        kwargs["headers"] = {**trace_headers, **caller_headers}
 
         for attempt in range(self.max_retries + 1):
             try:

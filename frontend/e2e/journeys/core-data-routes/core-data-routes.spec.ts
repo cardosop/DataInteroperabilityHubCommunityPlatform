@@ -92,7 +92,7 @@ test.describe('Core data routes — Assets and Datasets', () => {
 
         // Require BOTH: error component visible AND "not found" text (not a network/500 error)
         const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
-        const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+        const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404|matches the given query/i }).count()) > 0;
         if (hasErrorDisplay && !hasNotFoundText) {
           const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
           throw new Error(`Asset detail shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);
@@ -174,7 +174,7 @@ test.describe('Core data routes — Assets and Datasets', () => {
         if (onLogin) return;
 
         const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
-        const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+        const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404|matches the given query/i }).count()) > 0;
         if (hasErrorDisplay && !hasNotFoundText) {
           const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
           throw new Error(`Dataset detail shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);

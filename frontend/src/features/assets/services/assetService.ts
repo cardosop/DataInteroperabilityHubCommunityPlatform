@@ -86,6 +86,16 @@ export const assetService = {
   },
 
   /**
+   * Retire an asset (ACTIVE → RETIRED lifecycle transition)
+   */
+  async retire(id: string, version: number): Promise<Asset> {
+    const response = await apiClient
+      .getClient()
+      .patch<Asset>(`${ASSETS_BASE_PATH}/${id}/`, { status: 'RETIRED', version });
+    return response.data;
+  },
+
+  /**
    * Attach a contract to an asset
    */
   async attachContract(id: string, data: AttachContractRequest): Promise<Asset> {

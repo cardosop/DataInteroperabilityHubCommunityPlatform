@@ -1908,7 +1908,7 @@ export async function ensureAssetActivationPrerequisites(
       }
 
       const pollInterval = 2000;
-      const maxAttempts = 25;
+      const maxAttempts = 60; // 60 × 2s = 120s: backend contract validation can be slow under parallel load
       let contractData: { validation_status?: string; normalization_status?: string; version?: number } | null = null;
       for (let i = 0; i < maxAttempts; i++) {
         await new Promise((r) => setTimeout(r, pollInterval));
@@ -1951,6 +1951,8 @@ export async function ensureAssetActivationPrerequisites(
         const err = await patchRes.text();
         return { success: false, error: `Contract ACTIVE: ${patchRes.status} ${err}` };
       }
+      // Allow backend to propagate ACTIVE status before asset activation (avoid race condition)
+      await new Promise((r) => setTimeout(r, 3000));
       return { success: true };
     },
     assetId
@@ -2150,14 +2152,16 @@ export async function switchTenantViaUI(
   );
   await expect(dropdown.first()).toBeVisible({ timeout: 8000 });
 
-  // Wait for tenant list to load
+  // Wait for tenant list to load.
+  // Timeout raised from 15s to 30s: the dropdown fetches /auth/me/tenants/ to populate
+  // the list. Under parallel E2E load, this API call can take 15-25s to respond.
   await page.waitForFunction(
     (name) => {
       const menu = document.querySelector('.tenant-dropdown, [data-testid="tenant-dropdown"], [role="menu"]');
       return menu && menu.textContent?.includes(name);
     },
     tenantName,
-    { timeout: 15000 }
+    { timeout: 30000 }
   );
 
   // Click the target tenant option
@@ -2265,25 +2269,42 @@ export async function triggerDQRunViaUI(
     .waitFor({ state: 'detached', timeout: 10000 })
     .catch(() => null);
 
-  // Type the first 8 chars of the asset id to filter picker results.
-  // Then wait for the listbox to appear and click the first suggestion.
-  // We click the FIRST available option regardless of text match — we only care that
-  // an asset is selected (any asset satisfies the DQ run requirement).
+  // AssetPicker searches by asset NAME (not UUID). Open with an empty query so the API
+  // returns assets ordered by -created_at. The most recently created asset appears first.
+  // We click the FIRST available option — any asset satisfies the DQ run requirement.
+  // A newly created asset may not be visible immediately; retry up to 3 times.
   const assetPickerInput = assetPickerContainer.locator('input').first();
   if ((await assetPickerInput.count()) > 0) {
-    await assetPickerInput.click();
-    await assetPickerInput.fill(assetId.slice(0, 8));
-    // Wait for the listbox to appear (debounce + API fetch)
-    const listbox = page.locator('[role="listbox"]').first();
-    await listbox.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
-    // Click the first option in the listbox
-    const firstOption = page.locator('[role="listbox"] [role="option"]').first();
-    if ((await firstOption.count()) > 0) {
-      await firstOption.click();
-    } else {
-      // Fallback: close dropdown and try the picker without search text
+    let pickerOptionSelected = false;
+    for (let pickerAttempt = 0; pickerAttempt < 3; pickerAttempt++) {
+      if (pickerAttempt > 0) {
+        await page.waitForTimeout(3000);
+      }
+      // Open with empty query → loads most-recent assets by -created_at
+      await assetPickerInput.click();
       await assetPickerInput.fill('');
+      const listbox = page.locator('[role="listbox"]').first();
+      await listbox.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+      const firstOption = page.locator('[role="listbox"] [role="option"]').first();
+      if ((await firstOption.count()) > 0) {
+        await firstOption.click();
+        pickerOptionSelected = true;
+        break;
+      }
+      // Retry with name-prefix search on subsequent attempts
+      await assetPickerInput.fill('E2E Publish');
       await page.waitForTimeout(600);
+      const namedOption = page.locator('[role="listbox"] [role="option"]').first();
+      if ((await namedOption.count()) > 0) {
+        await namedOption.click();
+        pickerOptionSelected = true;
+        break;
+      }
+    }
+    if (!pickerOptionSelected) {
+      // Last-resort fallback: search by 'e2e' prefix
+      await assetPickerInput.fill('e2e');
+      await page.waitForTimeout(1000);
       const anyOption = page.locator('[role="listbox"] [role="option"]').first();
       if ((await anyOption.count()) > 0) {
         await anyOption.click();
@@ -2347,7 +2368,7 @@ export async function triggerDQRunViaUI(
 export async function triggerComplianceScanViaUI(
   page: Page,
   assetId: string,
-  options?: { datasetId?: string; fileId?: string }
+  options?: { datasetId?: string; fileId?: string; assetName?: string }
 ): Promise<{ runId: string; httpStatus: number }> {
   await page.goto('/compliance');
   await page.waitForLoadState('domcontentloaded');
@@ -2386,25 +2407,41 @@ export async function triggerComplianceScanViaUI(
   const assetPickerContainer = page.locator('[data-testid="compliance-create-asset-picker"]');
   await assetPickerContainer.waitFor({ state: 'visible', timeout: 10000 });
 
+  // AssetPicker searches by asset NAME (not UUID).
+  // If assetName is provided, search by that exact name so we select the right asset.
+  // Otherwise fall back to empty-query (first by -created_at).
   const assetPickerInput = assetPickerContainer.locator('input').first();
   if ((await assetPickerInput.count()) > 0) {
-    await assetPickerInput.click();
-    await assetPickerInput.fill(assetId.slice(0, 8));
-    // Wait for the listbox to appear (debounce + API fetch)
-    const listbox = page.locator('[role="listbox"]').first();
-    await listbox.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
-    // Click the first option in the listbox
-    const firstOption = page.locator('[role="listbox"] [role="option"]').first();
-    if ((await firstOption.count()) > 0) {
-      await firstOption.click();
-    } else {
-      // Fallback: clear input and try without search text
-      await assetPickerInput.fill('');
-      await page.waitForTimeout(600);
-      const anyOption = page.locator('[role="listbox"] [role="option"]').first();
-      if ((await anyOption.count()) > 0) {
-        await anyOption.click();
+    let pickerOptionSelected = false;
+    const searchTerms = options?.assetName
+      ? [options.assetName, options.assetName.split(' ')[0], 'e2e']
+      : ['', 'E2E Publish', 'e2e'];
+
+    for (let pickerAttempt = 0; pickerAttempt < searchTerms.length; pickerAttempt++) {
+      if (pickerAttempt > 0) {
+        await page.waitForTimeout(2000);
       }
+      await assetPickerInput.click();
+      await assetPickerInput.fill(searchTerms[pickerAttempt]);
+      await page.waitForTimeout(600);
+      const listbox = page.locator('[role="listbox"]').first();
+      await listbox.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+
+      // If searching by name, find the option that matches exactly; else take first
+      let targetOption = page.locator('[role="listbox"] [role="option"]').first();
+      if (options?.assetName && pickerAttempt === 0) {
+        const exactMatch = page.locator(`[role="listbox"] [role="option"]:has-text("${options.assetName}")`).first();
+        if ((await exactMatch.count()) > 0) targetOption = exactMatch;
+      }
+
+      if ((await targetOption.count()) > 0) {
+        await targetOption.click();
+        pickerOptionSelected = true;
+        break;
+      }
+    }
+    if (!pickerOptionSelected) {
+      throw new Error('triggerComplianceScanViaUI: could not select any asset in the picker');
     }
     await page.waitForTimeout(300);
   }
@@ -2470,11 +2507,11 @@ export async function uploadODPSContractViaUI(
       (resp) =>
         (resp.url().includes('/contracts/') || resp.url().includes('/odps/')) &&
         resp.request().method() === 'POST',
-      { timeout: 30000 }
+      { timeout: 120000 } // 120s: ODPS creation can be slow under parallel E2E load
     );
 
     const submitBtn = page.locator(
-      'button[type="submit"]:has-text("Create"), button:has-text("Upload"), button:has-text("Create ODPS")'
+      'button[type="submit"]:has-text("Create"), button:has-text("Upload"), button:has-text("Create ODPS"), button[type="submit"]:has-text("Submit"), button:has-text("Submit ODPS")'
     );
     if ((await submitBtn.count()) === 0) continue;
 
@@ -2514,23 +2551,34 @@ export async function changeUserRolesViaAdminUI(
 
   await page.waitForSelector('.user-edit-page, .user-edit-form, form', { timeout: 15000 });
 
-  // Add roles
+  // Add roles — checkboxes are inside <label class="user-edit-role-checkbox"> with a role name span;
+  // no value/id/name on the <input> itself, so we locate by label text.
   for (const role of rolesToAdd) {
-    const checkbox = page.locator(
+    const checkbox = page
+      .locator('.user-edit-role-checkbox')
+      .filter({ hasText: new RegExp(role.replace('_', '[ _]'), 'i') })
+      .locator('input[type="checkbox"]');
+    const fallback = page.locator(
       `input[type="checkbox"][value="${role}"], input[type="checkbox"][name*="${role}"]`
     );
-    if ((await checkbox.count()) > 0 && !(await checkbox.first().isChecked())) {
-      await checkbox.first().check();
+    const cb = (await checkbox.count()) > 0 ? checkbox : fallback;
+    if ((await cb.count()) > 0 && !(await cb.first().isChecked())) {
+      await cb.first().check();
     }
   }
 
   // Remove roles
   for (const role of rolesToRemove) {
-    const checkbox = page.locator(
+    const checkbox = page
+      .locator('.user-edit-role-checkbox')
+      .filter({ hasText: new RegExp(role.replace('_', '[ _]'), 'i') })
+      .locator('input[type="checkbox"]');
+    const fallback = page.locator(
       `input[type="checkbox"][value="${role}"], input[type="checkbox"][name*="${role}"]`
     );
-    if ((await checkbox.count()) > 0 && (await checkbox.first().isChecked())) {
-      await checkbox.first().uncheck();
+    const cb = (await checkbox.count()) > 0 ? checkbox : fallback;
+    if ((await cb.count()) > 0 && (await cb.first().isChecked())) {
+      await cb.first().uncheck();
     }
   }
 

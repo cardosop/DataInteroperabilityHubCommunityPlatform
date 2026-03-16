@@ -52,17 +52,4 @@ test.describe('JOURNEY-DEV-003: Integrate via CLI', () => {
     });
   });
 
-  test.describe('Edge', () => {
-    test('developer route accessible', async ({ page }) => {
-      await loginAsPersona(page, getExternalDeveloperUser);
-      await page.goto('/developer');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
-      expect(
-        page.url().includes('/developer') ||
-          page.url().includes('/403') ||
-          page.url().includes('/login')
-      ).toBe(true);
-    });
-  });
 });

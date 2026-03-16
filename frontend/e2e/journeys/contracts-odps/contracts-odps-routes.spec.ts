@@ -21,7 +21,14 @@ test.describe('Contracts and ODPS routes', () => {
     }) => {
       await page.goto('/contracts/00000000-0000-0000-0000-000000000000/link-odps');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      // Wait for page to leave loading state: ODPSLinkPage shows a LoadingSpinner while
+      // useContract + useODPSLinks are both pending (TanStack Query retries on 404 can take >3s).
+      // Terminal states: error-display (contract not found), odps-link-page (success form), or login.
+      await page
+        .locator('.error-display, .odps-link-page, #email')
+        .first()
+        .waitFor({ state: 'visible', timeout: 20000 })
+        .catch(() => null);
       const url = page.url();
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
@@ -71,7 +78,7 @@ test.describe('Contracts and ODPS routes', () => {
       if (onLogin) return;
 
       const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
-      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404|matches the given query/i }).count()) > 0;
       if (hasErrorDisplay && !hasNotFoundText) {
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`Contract edit shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);
@@ -104,7 +111,7 @@ test.describe('Contracts and ODPS routes', () => {
       if (onLogin) return;
 
       const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
-      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404/i }).count()) > 0;
+      const hasNotFoundText = (await page.locator('.error-display-message').filter({ hasText: /not found|could not be found|404|matches the given query/i }).count()) > 0;
       if (hasErrorDisplay && !hasNotFoundText) {
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`ODPS detail shows non-404 error for nil UUID: "${errText?.slice(0, 200)}". Expected "not found".`);
@@ -147,8 +154,11 @@ test.describe('Contracts and ODPS routes', () => {
     });
 
     test('odps list loads (empty or with data)', async ({ page }) => {
+      // ODPS internally uses /contracts endpoint OR a dedicated /odps endpoint depending on version
       const apiPromise = page.waitForResponse(
-        (r) => r.url().includes('/contracts') && r.request().method() === 'GET',
+        (r) =>
+          (r.url().includes('/contracts') || r.url().includes('/odps')) &&
+          r.request().method() === 'GET',
         { timeout: 65000 }
       );
       await page.goto('/odps');

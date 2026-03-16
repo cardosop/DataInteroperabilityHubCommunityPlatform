@@ -1,5 +1,10 @@
 FROM python:3.12-slim
 
+# Build-time arguments — injected by deploy.yml via --build-arg
+# Docker silently ignores unknown build args, so ARG must be declared here
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+
 WORKDIR /app
 
 # Install system dependencies
@@ -17,6 +22,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
+
+# Expose build metadata as runtime env vars for OpenTelemetry service version
+# and OCI image labels for traceability (matches services/api/Dockerfile)
+ENV OTEL_SERVICE_VERSION=${GIT_SHA} \
+    GIT_SHA=${GIT_SHA}
+
+LABEL org.opencontainers.image.revision="${GIT_SHA}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.source="https://github.com/DataInteroperabilityHub/DataInteroperabilityHub"
 
 # Default command: process all priority queues (job_critical, job_default, job_low)
 # Uses services/worker/main.py which includes health check HTTP server

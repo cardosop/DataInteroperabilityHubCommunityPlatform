@@ -21,7 +21,7 @@ test.describe('UC-COMP-001: Run Compliance Scan', () => {
       const user = await getComplianceOfficerUser();
       await loginAndNavigateToRoute(page, user, '/compliance', {
         timeout: 60000,
-        contentSelector: '.compliance-run-list-page, .empty-state, .error-display, .loading-spinner-container',
+        contentSelector: '.compliance-run-list-page, .empty-state, .loading-spinner-container',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
@@ -29,6 +29,12 @@ test.describe('UC-COMP-001: Run Compliance Scan', () => {
       }
       expect(page.url()).toContain('/compliance');
       await waitForLoadingComplete(page, { timeout: 15000 });
+      // error-display is NOT acceptable — compliance service must be reachable
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        throw new Error(`Compliance list shows error (service may be down): "${errText?.slice(0, 300)}"`);
+      }
       const hasContent =
         (await page.locator('.compliance-run-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
@@ -55,13 +61,24 @@ test.describe('UC-COMP-001: Run Compliance Scan', () => {
       const user = await getComplianceOfficerUser();
       await loginAndNavigateToRoute(page, user, '/compliance', {
         timeout: 60000,
-        contentSelector: '.compliance-run-list-page, .empty-state, .error-display',
+        contentSelector: '.compliance-run-list-page, .empty-state, .loading-spinner-container',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
         return;
       }
       expect(page.url()).toContain('/compliance');
+      await waitForLoadingComplete(page, { timeout: 15000 });
+      // error-display is NOT acceptable — compliance service must be reachable
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        throw new Error(`Compliance list shows error in edge test: "${errText?.slice(0, 300)}"`);
+      }
+      const hasContent =
+        (await page.locator('.compliance-run-list-page').count()) > 0 ||
+        (await page.locator('.empty-state').count()) > 0;
+      expect(hasContent).toBe(true);
     });
   });
 });

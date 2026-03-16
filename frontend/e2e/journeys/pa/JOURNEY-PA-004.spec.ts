@@ -21,16 +21,16 @@ test.describe('JOURNEY-PA-004: Review Platform Analytics', () => {
   test.describe('Success', () => {
     test('platform admin sees analytics with non-zero metric values', async ({ page }) => {
       const paUser = await getPlatformAdminUser();
-      const analyticsRoutes = [
-        '/admin/analytics', '/admin/usage', '/admin',
-      ];
+      // Start with /admin (guaranteed to exist); probe non-existent sub-routes with short timeout
+      const analyticsRoutes = ['/admin', '/admin/analytics', '/admin/usage'];
 
       let landed = false;
       for (const route of analyticsRoutes) {
+        const routeTimeout = route === '/admin' ? 60000 : 15000;
         await loginAndNavigateToRoute(page, paUser, route, {
-          timeout: 60000,
+          timeout: routeTimeout,
           contentSelector: '.admin-page, .analytics-page, .usage-page',
-        });
+        }).catch(() => null);
         if (page.url().includes('/403') || page.url().includes('/login')) continue;
         const hasAnalytics =
           (await page.locator('.analytics-page, .usage-page').count()) > 0 ||
@@ -60,8 +60,11 @@ test.describe('JOURNEY-PA-004: Review Platform Analytics', () => {
         }
       }
 
-      // UI: page shows some metric (number visible in the page)
-      const hasMetric = (await page.locator('text=/[1-9][0-9]*/').count()) > 0;
+      // UI: metrics must appear within the analytics/admin page containers specifically
+      // (not just any number on the page — dates and IDs are excluded this way)
+      const hasMetric =
+        (await page.locator('.analytics-page, .usage-page, .admin-page').locator('text=/[1-9][0-9]*/').count()) > 0 ||
+        (await page.locator('.metric-card, .stat-card, .kpi-card, [data-testid*="metric"]').count()) > 0;
       expect(hasMetric).toBe(true);
     });
   });
@@ -70,8 +73,9 @@ test.describe('JOURNEY-PA-004: Review Platform Analytics', () => {
     test('unauthenticated access redirects', async ({ page }) => {
       await clearAuthStorage(page);
       await page.goto('/admin', { waitUntil: 'domcontentloaded' });
-      await page.waitForURL(/\/(login|admin|403)/, { timeout: 20_000 });
-      expect(page.url()).toMatch(/\/login|\/403|\/admin/);
+      await page.waitForURL(/\/(login|403)/, { timeout: 20_000 });
+      // Unauthenticated users must be redirected — never allowed to stay on /admin
+      expect(page.url()).toMatch(/\/login|\/403/);
     });
   });
 
@@ -82,7 +86,8 @@ test.describe('JOURNEY-PA-004: Review Platform Analytics', () => {
         timeout: 60000,
         contentSelector: '.admin-page, [data-testid="forbidden-page"]',
       });
-      expect(page.url()).toMatch(/\/admin|\/403|\/login/);
+      // Authenticated PA user: /login should not appear; /admin or /403 (role not assigned) are valid
+      expect(page.url()).toMatch(/\/admin|\/403/);
     });
   });
 });

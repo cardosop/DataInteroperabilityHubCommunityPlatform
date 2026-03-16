@@ -27,15 +27,27 @@ environ.Env.read_env(os.path.join(BASE_DIR, ".env.dev"))
 # Environment: production, staging, development. Used for secrets and CORS enforcement.
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").strip().lower()
 
+# ---------------------------------------------------------------------------
+# Vault Integration (Phase 2)
+# Must run BEFORE any secret consumption so downstream settings read the
+# injected env vars.  Controlled by VAULT_ENABLED env var (default: false).
+# ---------------------------------------------------------------------------
+_VAULT_ENABLED = os.environ.get("VAULT_ENABLED", "false").strip().lower() == "true"
+if _VAULT_ENABLED:
+    from hub.vault_loader import load_from_vault  # noqa: E402
+
+    load_from_vault()
+
 # Dev-only default secrets; production MUST set SECRET_KEY and JWT_SECRET_KEY via env (see validation below).
 _DEV_SECRET_KEY = "dev-secret-key-not-for-production"
 _DEV_JWT_SECRET_KEY = "dev-jwt-secret-key-not-for-production"
+_DEV_ENCRYPTION_KEY = "dev-encryption-key-not-for-production"
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env("SECRET_KEY", default=_DEV_SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env("DEBUG", default=True)
+DEBUG = env.bool("DEBUG", default=False)
 
 # Add testserver for Django test client (always in dev/test environments)
 default_hosts = [
@@ -112,6 +124,7 @@ INSTALLED_APPS = [
     "hub.apps.integrations",  # Marketplace connectors and integrations
     "hub.apps.baas",  # BaaS Platform (API Gateway, usage tracking, developer portal)
     "hub.apps.versioning",  # Versioning API (list/get/compare versions for contracts and datasets)
+    "hub.apps.security",   # CSP violation reporting + security metrics
 ]
 
 # Conditionally add graphene_django and graphql_graphene app if available
@@ -143,21 +156,26 @@ except ImportError:
     pass
 
 MIDDLEWARE = [
-    # django-prometheus middleware removed: Not compatible with Django 6.0
-    # Migrated to OpenTelemetry metrics with Prometheus exporter
-    "hub.apps.observability.middleware.MetricsMiddleware",  # Custom metrics middleware (from middleware package)
+    # 0 — Must be first: sets security headers (HSTS, nosniff, XSS, SSL redirect)
+    "django.middleware.security.SecurityMiddleware",
+    # 1 — Must be second (before SessionMiddleware): handles CORS preflight responses
+    "corsheaders.middleware.CorsMiddleware",
+    # 2 — Content Security Policy headers
+    "csp.middleware.CSPMiddleware",
+    # Custom hub observability / tracing middlewares (before session/auth so spans cover everything)
+    "hub.apps.observability.middleware.MetricsMiddleware",  # Custom metrics middleware
     "django_structlog.middlewares.request.RequestMiddleware",
     "hub.apps.api.middleware.RequestIDMiddleware",  # Request ID generation
     "hub.apps.api.middleware.tracing.TraceIDMiddleware",  # Trace ID extraction and propagation
     "hub.apps.observability.middleware.span_middleware.SpanMiddleware",  # OpenTelemetry span instrumentation
-    "hub.apps.api.standards.validation_middleware.APIValidationMiddleware",  # API validation middleware
-    "django.middleware.security.SecurityMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
+    # Standard Django middlewares
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "hub.apps.api.middleware.csrf_exempt.APIEndpointCSRFExemptMiddleware",  # CSRF exemption for API endpoints
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # API validation MUST come after AuthenticationMiddleware so request.user is populated
+    "hub.apps.api.standards.validation_middleware.APIValidationMiddleware",
     "hub.apps.auth.middleware.TenantScopingMiddleware",  # Tenant scoping after authentication
     "hub.apps.tenants.middleware.TenantSuspensionMiddleware",  # Tenant suspension enforcement
     "hub.apps.api.versioning.APIVersionMiddleware",  # API versioning and deprecation warnings
@@ -169,8 +187,6 @@ MIDDLEWARE = [
     "hub.apps.governance.middleware.AccessLoggingMiddleware",  # Access logging for analytics
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    # django-prometheus middleware removed: Not compatible with Django 6.0
-    # Migrated to OpenTelemetry metrics with Prometheus exporter
 ]
 
 ROOT_URLCONF = "hub.urls"
@@ -262,23 +278,6 @@ def _detect_staging_for_tests():
     # This prevents production from accidentally using staging ports
     return False
 
-
-# Fix threading issue: Disable Django's thread validation for tests
-# Root cause: pytest-django creates database connections in one thread,
-# but Django's TestCase uses them in another thread.
-# This is safe because pytest-django properly manages connection lifecycle
-if "test" in sys.argv or "pytest" in sys.modules:
-    import django.db.backends.base.base
-
-    _original_validate = django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing
-
-    def _noop_validate_thread_sharing(self):
-        """Disable thread validation for tests - safe because pytest-django manages connections"""
-        pass
-
-    django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing = (
-        _noop_validate_thread_sharing
-    )
 
 if "test" in sys.argv or "pytest" in sys.modules:
     # REQUIRED: Use PostgreSQL for tests (no SQLite fallback)
@@ -579,30 +578,30 @@ if "test" in sys.argv or "pytest" in sys.modules:
     # When SKIP_TEST_MIGRATIONS=1, use custom runner that does not run migrate (reuse existing DB as-is)
     if os.getenv("SKIP_TEST_MIGRATIONS", "").strip().lower() in ("1", "true", "yes"):
         TEST_RUNNER = "hub.test_runner.NoMigrateTestRunner"
-
-    # Disable database connection thread validation for tests
-    # pytest-django creates connections in one thread but TestCase uses them in another
-    # This is safe because pytest-django manages the connection lifecycle properly
-    import django.db.backends.base.base
-
-    original_validate_thread_sharing = (
-        django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing
-    )
-
-    def noop_validate_thread_sharing(self):
-        """Disable thread validation for tests"""
-        pass
-
-    django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing = (
-        noop_validate_thread_sharing
-    )
+    # NOTE: validate_thread_sharing is patched in hub/tests/conftest.py via a
+    # session-scoped autouse fixture so it does not pollute settings.py.
 else:
     # Database connection pooling configuration
     # CONN_MAX_AGE: Maximum age of database connections in seconds
-    # - 0: Disable connection pooling (each request gets a new connection)
-    # - 600: Reuse connections for 10 minutes (recommended for production)
+    # - 0: Required when PgBouncer is active (transaction mode is incompatible with persistent connections)
+    # - 600: Reuse connections for 10 minutes (direct Postgres without PgBouncer)
     # - None: Keep connections open indefinitely (not recommended)
-    conn_max_age = env.int("DB_CONN_MAX_AGE", default=600)
+    _pgbouncer_enabled = env.bool("PGBOUNCER_ENABLED", default=False)
+    conn_max_age = 0 if _pgbouncer_enabled else env.int("DB_CONN_MAX_AGE", default=600)
+
+    _db_options: dict = {
+        "connect_timeout": 60,  # Increased for TransactionTestCase database setup (migrations can take time)
+        # Connection keepalive settings (via psycopg2)
+        "keepalives": 1,  # Send keepalive packets
+        "keepalives_idle": 30,  # Start sending keepalives after 30 seconds of inactivity
+        "keepalives_interval": 10,  # Interval between keepalive packets
+        "keepalives_count": 5,  # Number of keepalive packets before considering connection dead
+    }
+    if ENVIRONMENT == "production":
+        # Enforce TLS for all PostgreSQL connections in production.
+        # When using AWS RDS or GCP Cloud SQL, the CA cert is provided by the managed service;
+        # for self-hosted Postgres use infrastructure/postgres/ssl-setup.sh to generate certs.
+        _db_options["sslmode"] = "require"
 
     DATABASES = {
         "default": {
@@ -614,16 +613,8 @@ else:
                 "POSTGRES_HOST", default="localhost"
             ),  # Use 'localhost' for local dev, 'postgres' for Docker
             "PORT": env("POSTGRES_PORT", default="5432"),
-            "CONN_MAX_AGE": conn_max_age,  # Connection pooling for production
-            "OPTIONS": {
-                "connect_timeout": 60,  # Increased for TransactionTestCase database setup (migrations can take time)
-                # Connection pool settings (via psycopg2)
-                # These are applied at the psycopg2 level
-                "keepalives": 1,  # Send keepalive packets every 1 second
-                "keepalives_idle": 30,  # Start sending keepalives after 30 seconds of inactivity
-                "keepalives_interval": 10,  # Interval between keepalive packets
-                "keepalives_count": 5,  # Number of keepalive packets before considering connection dead
-            },
+            "CONN_MAX_AGE": conn_max_age,
+            "OPTIONS": _db_options,
         }
     }
 
@@ -640,7 +631,11 @@ if BAAS_USAGE_STORAGE_BACKEND not in ("postgres", "redis"):
 if BAAS_DATABASE_URL:
     _baas_db_config = env.db_url_config(BAAS_DATABASE_URL)
     _baas_db_config.setdefault("OPTIONS", {})
-    _baas_db_config.setdefault("CONN_MAX_AGE", 60)
+    # PgBouncer transaction mode requires CONN_MAX_AGE=0 (same rule as main DB).
+    _baas_db_config["CONN_MAX_AGE"] = 0 if _pgbouncer_enabled else _baas_db_config.get("CONN_MAX_AGE", 60)
+    if ENVIRONMENT == "production":
+        # Enforce TLS for BaaS database in production — same policy as main DB.
+        _baas_db_config["OPTIONS"]["sslmode"] = "require"
     DATABASES["baas"] = _baas_db_config
     DATABASE_ROUTERS = ["hub.apps.baas.db_router.BaaSDBRouter"]
 
@@ -733,6 +728,44 @@ if REDIS_CHANNELS_URL is None:
             REDIS_CHANNELS_URL = "redis://localhost:6382/0"
     else:
         REDIS_CHANNELS_URL = "redis://localhost:6382/0"
+
+# Production: all Redis URLs MUST include authentication credentials with a non-empty password.
+# Format: redis://:password@host:port/db  (note the empty username before the colon)
+# Rejected: missing '@' (unauthenticated) OR ':@' pattern (empty password — equally insecure).
+if ENVIRONMENT == "production":
+    _redis_urls_to_validate = {
+        "REDIS_URL": REDIS_URL,
+        "REDIS_CACHE_URL": REDIS_CACHE_URL,
+        "REDIS_QUEUE_URL": REDIS_QUEUE_URL,
+        "REDIS_EVENTS_URL": REDIS_EVENTS_URL,
+        "REDIS_CHANNELS_URL": REDIS_CHANNELS_URL,
+    }
+    # Include optional BaaS Redis URL if configured (same auth policy applies).
+    if BAAS_REDIS_URL:
+        _redis_urls_to_validate["BAAS_REDIS_URL"] = BAAS_REDIS_URL
+    for _redis_var, _redis_url in _redis_urls_to_validate.items():
+        if not _redis_url:
+            continue
+        if "@" not in _redis_url:
+            raise ImproperlyConfigured(
+                f"In production, {_redis_var} must include authentication credentials "
+                f"(format: redis://:password@host:port/db). "
+                f"Current value has no '@' — unauthenticated Redis is not permitted. "
+                f"See docs/SECURITY.md."
+            )
+        # Reject empty passwords: redis://:@host is structurally valid but insecure.
+        # Extract the credentials segment (everything before the last '@').
+        _creds_segment = _redis_url.rsplit("@", 1)[0]
+        # creds_segment is either "redis://" (no user:pass) or "redis://:pass" or "redis://user:pass"
+        # An empty password means the segment ends with ':'  e.g. "redis://:".
+        if _creds_segment.endswith(":"):
+            raise ImproperlyConfigured(
+                f"In production, {_redis_var} has an empty password "
+                f"(detected pattern: '...:<empty>@'). "
+                f"Set a strong password: redis://:strongpassword@host:port/db. "
+                f"See docs/SECURITY.md."
+            )
+
 # RQ Queue Configuration
 # Priority queues: job_critical (HIGH), job_default (NORMAL), job_low (LOW)
 # See design.md Decision 3 for priority queue implementation details
@@ -1075,7 +1108,13 @@ if USE_S3:
     else:
         # Use defaults (regular MinIO credentials)
         AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="minio")
-        AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="minio123")
+        AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
+
+    if ENVIRONMENT == "production" and not AWS_SECRET_ACCESS_KEY:
+        raise ImproperlyConfigured(
+            "In production with USE_S3=True, AWS_SECRET_ACCESS_KEY must be "
+            "set via environment. See docs/SECURITY.md."
+        )
 
     AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="hub-files")
     # Environment variable always takes precedence (set by Docker Compose)
@@ -1188,11 +1227,6 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/4.2/howto/static-files/
-STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
-
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -1258,17 +1292,21 @@ SPECTACULAR_SETTINGS = {
 }
 
 # CORS Configuration
-CORS_ALLOWED_ORIGINS = env.list(
-    "CORS_ALLOWED_ORIGINS",
-    default=[
-        "http://localhost:3000",  # docker-compose frontend (default port)
-        "http://localhost:3010",  # docker-compose.test.yml frontend
-        "http://localhost:3011",  # grafana / alternate test frontend port
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:5184",  # Vite dev server (alternate port)
-        "http://localhost:8000",
-    ],
-)
+# In production the list MUST be supplied explicitly via the env var.
+# Localhost origins are never allowed in production.
+_cors_defaults = [] if ENVIRONMENT == "production" else [
+    "http://localhost:3000",   # docker-compose frontend (default port)
+    "http://localhost:3010",   # docker-compose.test.yml frontend
+    "http://localhost:5173",   # Vite dev server
+    "http://localhost:5184",   # Vite dev server (alternate port)
+    "http://localhost:8000",
+]
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=_cors_defaults)  # type: ignore[arg-type]
+
+if ENVIRONMENT == "production" and not CORS_ALLOWED_ORIGINS:
+    raise ImproperlyConfigured(
+        "CORS_ALLOWED_ORIGINS must be set in production."
+    )
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     "accept",
@@ -1290,20 +1328,42 @@ CORS_ALLOW_HEADERS = [
 
 # JWT Configuration
 JWT_SECRET_KEY = env("JWT_SECRET_KEY", default=_DEV_JWT_SECRET_KEY)
-JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")
+JWT_ALGORITHM = env("JWT_ALGORITHM", default="RS256")
+JWT_PRIVATE_KEY = env("JWT_PRIVATE_KEY", default="")  # RS256 signing (api-service only)
+JWT_PUBLIC_KEY = env("JWT_PUBLIC_KEY", default="")    # RS256 verification (all services)
 
-# Production: SECRET_KEY and JWT_SECRET_KEY MUST be set via env and must not be dev defaults.
+# Encryption key — defined here so the unified production guard below can check it.
+ENCRYPTION_KEY = env("ENCRYPTION_KEY", default=_DEV_ENCRYPTION_KEY)
+
+# Production: all secret keys MUST be set via env and must not be dev defaults.
 if ENVIRONMENT == "production":
-    if not SECRET_KEY or SECRET_KEY == _DEV_SECRET_KEY:
-        raise ImproperlyConfigured(
-            "In production, SECRET_KEY must be set via environment and must not be the dev default. "
-            "Set SECRET_KEY in env or use a secret manager. See docs/SECURITY.md."
-        )
-    if not JWT_SECRET_KEY or JWT_SECRET_KEY == _DEV_JWT_SECRET_KEY:
-        raise ImproperlyConfigured(
-            "In production, JWT_SECRET_KEY must be set via environment and must not be the dev default. "
-            "Set JWT_SECRET_KEY in env or use a secret manager. See docs/SECURITY.md."
-        )
+    _secret_guards = [
+        (
+            SECRET_KEY,
+            _DEV_SECRET_KEY,
+            "SECRET_KEY",
+            "Set SECRET_KEY in env or use a secret manager. See docs/SECURITY.md.",
+        ),
+        (
+            JWT_SECRET_KEY,
+            _DEV_JWT_SECRET_KEY,
+            "JWT_SECRET_KEY",
+            "Set JWT_SECRET_KEY in env or use a secret manager. See docs/SECURITY.md.",
+        ),
+        (
+            ENCRYPTION_KEY,
+            _DEV_ENCRYPTION_KEY,
+            "ENCRYPTION_KEY",
+            "Set ENCRYPTION_KEY to a cryptographically random "
+            "32-byte base64 value. See docs/SECURITY.md.",
+        ),
+    ]
+    for _val, _dev_default, _name, _hint in _secret_guards:
+        if not _val or _val == _dev_default:
+            raise ImproperlyConfigured(
+                f"In production, {_name} must be set via environment "
+                f"and must not be the dev default. {_hint}"
+            )
 JWT_ACCESS_TOKEN_EXPIRY = env.int("JWT_ACCESS_TOKEN_EXPIRY", default=3600)  # 1 hour
 JWT_REFRESH_TOKEN_EXPIRY = env.int("JWT_REFRESH_TOKEN_EXPIRY", default=86400)  # 24 hours
 JWT_ISSUER = env("JWT_ISSUER", default="hub")
@@ -1368,32 +1428,83 @@ from hub.apps.observability.logging import configure_structlog
 
 configure_structlog()
 
-# OpenTelemetry Metrics Configuration
-# Migrated from django-prometheus (not compatible with Django 6.0) to OpenTelemetry metrics
+# =============================================================================
+# OpenTelemetry Configuration
+# Phase 4 — Observability Stack
+#
+# Architecture:
+#   Django app  --OTLP gRPC-->  OTel Collector  --OTLP-->  Tempo  (traces)
+#                                               --pull-->  Prometheus  (metrics)
+#   Docker logs  --Promtail-->  Loki  (logs)
+#
+# In production set VAULT_ENABLED=true; Vault injects OTEL_* env vars.
+# In development the defaults below target a local OTel Collector (4317).
+# =============================================================================
+
+# --- Metrics -----------------------------------------------------------------
+# Migrated from django-prometheus (not compatible with Django 6.0) to
+# OpenTelemetry metrics exported via OTLP push to the OTel Collector.
 OPENTELEMETRY_METRICS_ENABLED = env.bool("OPENTELEMETRY_METRICS_ENABLED", default=True)
 OPENTELEMETRY_METRICS_EXPORT_INTERVAL_MS = env.int(
     "OPENTELEMETRY_METRICS_EXPORT_INTERVAL_MS", default=10000
 )  # 10 seconds
 
-# OpenTelemetry Tracing Configuration
-# Use the new unified configuration module
+# --- Tracing -----------------------------------------------------------------
+# OPENTELEMETRY_ENABLED defaults to False in development to avoid requiring
+# a running OTel Collector.  Set OPENTELEMETRY_ENABLED=true in production.
 OPENTELEMETRY_ENABLED = env.bool("OPENTELEMETRY_ENABLED", default=False)
-OPENTELEMETRY_EXPORTER = env.str("OPENTELEMETRY_EXPORTER", default="otlp")  # 'otlp' or 'jaeger'
+OPENTELEMETRY_EXPORTER = env.str("OPENTELEMETRY_EXPORTER", default="otlp")  # 'otlp' only
+
+# --- Service identity --------------------------------------------------------
+# OTEL_SERVICE_NAME: the logical service name shown in Tempo / dashboards.
 OTEL_SERVICE_NAME = env.str("OTEL_SERVICE_NAME", default="data-interoperability-hub-api")
+
+# OTEL_SERVICE_NAMESPACE: groups services belonging to the same product.
+OTEL_SERVICE_NAMESPACE = env.str("OTEL_SERVICE_NAMESPACE", default="hub")
+
+# OTEL_SERVICE_VERSION: populated from the GIT_SHA build arg or env var.
+# Correlates traces with the deployed code revision.
+OTEL_SERVICE_VERSION = env.str("OTEL_SERVICE_VERSION", default="unknown")
+
+# --- OTLP exporter -----------------------------------------------------------
+# Default targets the OTel Collector service inside the Docker Compose network.
+# Override with OTEL_EXPORTER_OTLP_ENDPOINT in .env.production if the
+# Collector runs on a different host or port.
 OTEL_EXPORTER_OTLP_ENDPOINT = env.str(
-    "OTEL_EXPORTER_OTLP_ENDPOINT", default="http://localhost:4317"
+    "OTEL_EXPORTER_OTLP_ENDPOINT", default="http://otel-collector:4317"
 )
 OTEL_EXPORTER_OTLP_PROTOCOL = env.str(
     "OTEL_EXPORTER_OTLP_PROTOCOL", default="grpc"
 )  # 'grpc' or 'http/protobuf'
 
-# Database query instrumentation threshold (milliseconds)
+# --- Resource attributes -----------------------------------------------------
+# OTEL resource attributes are key=value pairs that describe the entity
+# producing telemetry.  They are attached to every span, metric, and log
+# record and appear in Tempo / Grafana for filtering and correlation.
+#
+# Standard OTEL semantic convention keys used here:
+#   service.name        — logical service name (also OTEL_SERVICE_NAME above)
+#   service.namespace   — product namespace (hub)
+#   service.version     — deployed code version (git SHA or semver tag)
+#   deployment.environment — production / staging / development
+#
+# These are consumed by hub/apps/observability/otel_config.py when
+# building the TracerProvider Resource.
+OTEL_RESOURCE_ATTRIBUTES: dict[str, str] = {
+    "service.name": OTEL_SERVICE_NAME,
+    "service.namespace": OTEL_SERVICE_NAMESPACE,
+    "service.version": OTEL_SERVICE_VERSION,
+    "deployment.environment": ENVIRONMENT,
+}
+
+# --- Database query instrumentation ------------------------------------------
 OTEL_DB_SLOW_QUERY_THRESHOLD_MS = env.float("OTEL_DB_SLOW_QUERY_THRESHOLD_MS", default=100.0)
 
-# Trace Sampling Configuration
-# Base sampling rate for successful requests (default: 10% = 0.1)
-# Errors are always sampled (100%) via middleware
-# Critical endpoints are always sampled (100%) via adaptive sampler
+# --- Trace sampling ----------------------------------------------------------
+# Base sampling rate for successful requests (default: 10 % = 0.1).
+# Errors are always sampled (100 %) via SpanMiddleware.
+# Critical endpoints (DQ runs, contract validation) are always sampled.
+# The OTel Collector's tail_sampling policy further refines this server-side.
 OTEL_TRACES_SAMPLER_ARG = env.float(
     "OTEL_TRACES_SAMPLER_ARG", default=0.1
 )  # 10% for successful requests
@@ -1403,8 +1514,9 @@ if OPENTELEMETRY_ENABLED:
 
     setup_opentelemetry_tracing()
 
-# OpenTelemetry Metrics Setup (will be initialized in hub/apps/observability/otel_metrics.py)
-# Metrics are exported to Prometheus format via /metrics endpoint
+# OpenTelemetry Metrics Setup (initialised in hub/apps/observability/otel_metrics.py)
+# Metrics are pushed via OTLP to the OTel Collector, which exposes them
+# on a Prometheus pull endpoint (:8889) for Prometheus to scrape.
 
 # File Upload Limits
 MAX_BROWSER_UPLOAD_SIZE_BYTES = env.int("MAX_BROWSER_UPLOAD_SIZE_BYTES", default=1073741824)  # 1 GB
@@ -1430,19 +1542,12 @@ else:
     EVENT_BUS_FORCE_SYNC_PERSISTENCE = env.bool("EVENT_BUS_FORCE_SYNC_PERSISTENCE", default=False)
 
 if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
-    # Try to detect staging vs default by checking port availability
-    try:
-        import httpx
-
-        # Check if staging port is accessible
-        response = httpx.get("http://localhost:8092/health", timeout=1)
-        if response.status_code == 200:
-            _default_datacontract_url = "http://localhost:8092"
-        else:
-            _default_datacontract_url = "http://localhost:8080"
-    except Exception:
-        # Default to standard port if detection fails
-        _default_datacontract_url = "http://localhost:8080"
+    # Use localhost with port from env, or the standard test port as default.
+    # Network I/O at settings import time is not permitted; override via
+    # DATACONTRACT_CLI_SERVICE_URL env var when pointing at the staging service.
+    _default_datacontract_url = os.getenv(
+        "DATACONTRACT_CLI_SERVICE_URL_DEFAULT", "http://localhost:8080"
+    )
 
 DATACONTRACT_CLI_SERVICE_URL = env(
     "DATACONTRACT_CLI_SERVICE_URL", default=_default_datacontract_url
@@ -1500,6 +1605,12 @@ else:
     )  # 15 seconds for production (fail-fast when service unavailable)
 HUB_DOMAIN = env("HUB_DOMAIN", default="hub.example.com")
 
+# Internal API key shared between hub (Django) and FastAPI microservices.
+# All hub → microservice calls include this as the X-Internal-Api-Key header.
+# Must match INTERNAL_API_KEY env var set in each FastAPI service container.
+# Generate: openssl rand -hex 32
+INTERNAL_API_KEY = env("INTERNAL_API_KEY", default="")
+
 # SPARQL Endpoint Configuration
 SPARQL_MAX_TIMEOUT = env.int("SPARQL_MAX_TIMEOUT", default=30)  # 30 seconds
 SPARQL_RESULT_LIMIT = env.int("SPARQL_RESULT_LIMIT", default=10000)  # 10,000 rows
@@ -1555,7 +1666,9 @@ SEARCH_QUERY_MIN_LENGTH = env.int("SEARCH_QUERY_MIN_LENGTH", default=1)  # Minim
 GRAPHQL_QUERY_COMPLEXITY_LIMIT = env.int("GRAPHQL_QUERY_COMPLEXITY_LIMIT", default=1000)
 
 # Security
-ENCRYPTION_KEY = env("ENCRYPTION_KEY", default="dev-encryption-key-not-for-production")
+# ENCRYPTION_KEY is defined near JWT_SECRET_KEY above; production guard is
+# enforced in the unified _secret_guards loop alongside SECRET_KEY and
+# JWT_SECRET_KEY.
 PII_REDACTION_ENABLED = env.bool("PII_REDACTION_ENABLED", default=True)
 
 # ============================================================================
@@ -1575,6 +1688,16 @@ SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=False)
 SECURE_COOKIES = env.bool("SECURE_COOKIES", default=False)
 SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
 CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=False)
+
+# Production: enforce secure cookies and HSTS unconditionally.
+# These settings MUST NOT be forced True outside the production block so that
+# local development and tests work without HTTPS.
+if ENVIRONMENT == "production":
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 63072000          # 2 years
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
 # Content Security Policy (CSP) - Django 6 Enhancement
 # For advanced CSP, consider using django-csp package

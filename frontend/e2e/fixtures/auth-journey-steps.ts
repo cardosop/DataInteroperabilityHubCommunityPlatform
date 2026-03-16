@@ -347,11 +347,14 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   await page.goto(pathAndSearch, { waitUntil: 'domcontentloaded' });
   await page.waitForLoadState('domcontentloaded');
   const setPwHeading = page.getByRole('heading', { name: /Set a new password/i });
-  // Wait for form or error (invalid/expired token); increase timeout for slow MailHog/backend
+  // Wait for form or error (invalid/expired token).
+  // Timeout raised from 25s to 45s: CapabilityRoute on /password-reset/confirm fetches
+  // capabilities from the backend. Under parallel E2E load, capability fetch can take up
+  // to ~20s to restart, pushing total wait beyond 25s. 45s provides safe headroom.
   const formOrError = await Promise.race([
-    setPwHeading.waitFor({ state: 'visible', timeout: 25_000 }).then(() => 'form'),
+    setPwHeading.waitFor({ state: 'visible', timeout: 45_000 }).then(() => 'form'),
     page.locator('.error-message, .error-display').filter({ hasText: /invalid|expired/i }).first()
-      .waitFor({ state: 'visible', timeout: 25_000 }).then(() => 'error'),
+      .waitFor({ state: 'visible', timeout: 45_000 }).then(() => 'error'),
   ]).catch(() => 'timeout' as const);
   if (formOrError === 'error') {
     const errText = await page.locator('.error-message, .error-display').first().textContent().catch(() => '');
@@ -361,7 +364,7 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   }
   if (formOrError === 'timeout') {
     throw new Error(
-      'Set new password form not visible within 25s. Token may be invalid or page structure changed.'
+      'Set new password form not visible within 45s. Token may be invalid or page structure changed.'
     );
   }
   await page.fill('input#new_password', newPassword);

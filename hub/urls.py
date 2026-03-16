@@ -8,6 +8,7 @@ from django.contrib import admin
 from django.urls import include, path
 
 from hub.apps.api.views import OpenAPISchemaView, ReDocView, SwaggerUIView
+from hub.apps.security.views import csp_report_view
 
 
 def _is_graphene_django_available() -> bool:
@@ -52,10 +53,24 @@ urlpatterns.extend([
     # Metrics at /metrics and /metrics/ for Prometheus (no trailing slash) and tools
     path("metrics", include("hub.apps.observability.urls")),
     path("metrics/", include("hub.apps.observability.urls")),
+    # CSP violation reports — unauthenticated; browsers send before scripts run.
+    path("api/csp-report/", csp_report_view, name="csp-report"),
     # API Documentation
-    path("api-docs/openapi.json", OpenAPISchemaView.as_view(), name="openapi-schema"),
-    path("api-docs/", SwaggerUIView.as_view(url_name="openapi-schema"), name="swagger-ui"),
-    path("api-docs/redoc/", ReDocView.as_view(url_name="openapi-schema"), name="redoc"),
+    path(
+        "api-docs/openapi.json",
+        OpenAPISchemaView.as_view(),
+        name="openapi-schema",
+    ),
+    path(
+        "api-docs/",
+        SwaggerUIView.as_view(url_name="openapi-schema"),
+        name="swagger-ui",
+    ),
+    path(
+        "api-docs/redoc/",
+        ReDocView.as_view(url_name="openapi-schema"),
+        name="redoc",
+    ),
 ])
 
 # Serve media files in development

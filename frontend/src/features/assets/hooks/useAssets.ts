@@ -87,6 +87,19 @@ export function useActivateAsset() {
   });
 }
 
+export function useRetireAsset() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, version }: { id: string; version: number }) =>
+      assetService.retire(id, version),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({ queryKey: ['assets', 'detail', variables.id] });
+    },
+  });
+}
+
 export function useAttachContract() {
   const queryClient = useQueryClient();
 

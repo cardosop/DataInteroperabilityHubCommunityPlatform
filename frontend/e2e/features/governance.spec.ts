@@ -55,11 +55,20 @@ test.describe('Feature: Governance', () => {
         } catch (_err) {
           // May have content already
         }
-        const hasContent =
+        // .error-display alone is NOT a success state — the page must render meaningful content
+        const hasMeaningfulContent =
           (await page.locator('.governance-retention-policy-list-page').count()) > 0 ||
-          (await page.locator('.empty-state').count()) > 0 ||
-          (await page.locator('.error-display').count()) > 0;
-        expect(hasContent || true).toBe(true);
+          (await page.locator('.empty-state').count()) > 0;
+        const hasError = (await page.locator('.error-display').count()) > 0;
+
+        if (hasError && !hasMeaningfulContent) {
+          const errorText = await page.locator('.error-display').first().textContent();
+          throw new Error(`Governance retention page rendered only an error: ${errorText}`);
+        }
+        expect(
+          hasMeaningfulContent,
+          'Expected .governance-retention-policy-list-page or .empty-state'
+        ).toBe(true);
       }
     });
   });

@@ -23,17 +23,16 @@ test.describe('JOURNEY-DA-003: Query Virtual Dataset', () => {
       await page.goto('/virtualization');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.virtual-dataset-list-page, .error-display, .empty-state, #email',
+        '.virtual-dataset-list-page, .empty-state, #email',
         { timeout: 65000 }
       );
-      if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
-        return;
+      if (page.url().includes('/login') || page.url().includes('/403')) {
+        throw new Error(`Unexpected redirect to ${page.url()} — verify DA user has virtualization access`);
       }
       expect(page.url()).toContain('/virtualization');
+      await expect(page.locator('.error-display')).not.toBeVisible();
       const hasContent =
         (await page.locator('.virtual-dataset-list-page').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
       expect(hasContent).toBe(true);
     });

@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getDataMeshDomainOwnerUser } from '../../fixtures/auth';
+import { clearAuthStorage, getDataMeshDomainOwnerUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DMO-004: Transfer Asset Ownership', () => {
@@ -57,6 +57,13 @@ test.describe('JOURNEY-DMO-004: Transfer Asset Ownership', () => {
         detailContentSelector: '.asset-detail-page .asset-detail-content',
         waitAfterLoad: 8000,
       });
+    });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/assets');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     });
   });
 

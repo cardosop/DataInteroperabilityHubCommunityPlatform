@@ -21,32 +21,30 @@ test.describe('JOURNEY-DMO-002: Configure Federated Governance', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .error-display, .empty-state, .loading-spinner-container, .app-main',
+        contentSelector: '.mesh-domain-list-page, .empty-state, .loading-spinner-container, .app-main',
       });
-      if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
-        return;
+      if (page.url().includes('/login') || page.url().includes('/403')) {
+        throw new Error(`Unexpected redirect to ${page.url()} — verify DMO user has mesh access`);
       }
       expect(page.url()).toContain('/mesh');
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
 
     test('governance page loads or 403 when role missing', async ({ page }) => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/governance', {
         timeout: 90000,
-        contentSelector: '.governance-access-request-list-page, .access-request-list-page, .app-main, .error-display, .empty-state, .loading-spinner-container',
+        contentSelector: '.governance-access-request-list-page, .access-request-list-page, .app-main, .empty-state, .loading-spinner-container',
       });
       await page.waitForTimeout(3000);
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login — DMO user should be authenticated');
+      }
       const url = page.url();
       const onGov = url.includes('/governance');
       const on403 = url.includes('/403');
-      const onLogin = url.includes('/login');
-      const hasContent =
-        (await page.locator('.app-main').count()) > 0 ||
-        (await page.locator('.error-display, .governance-access-request-list-page, .access-request-list-page, .empty-state, h1').count()) > 0 ||
-        (await page.locator('text=/403|forbidden|Access|Request/i').count()) > 0;
-      expect(onGov || on403 || onLogin).toBe(true);
-      expect(hasContent || onGov || on403 || onLogin).toBe(true);
+      // DMO may or may not have governance access — both /governance and /403 are valid outcomes
+      expect(onGov || on403).toBe(true);
     });
   });
 

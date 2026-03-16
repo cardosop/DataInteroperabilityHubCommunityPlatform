@@ -42,8 +42,13 @@ test.describe('Feature: Semantic', () => {
       const user = await getTestUser();
       await loginUser(page, user);
       await page.goto('/semantic');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      // Wait for the app to fully initialize (lazy bundles + auth check) rather than a fixed sleep.
+      // waitForAppMainReady handles the visible/slowMo project's slower rendering correctly.
+      try {
+        await waitForAppMainReady(page, { timeout: 30000, acceptRedirectToLogin: true });
+      } catch {
+        // Ignore if the route is gated or login redirect fires
+      }
       const url = page.url();
       const onSemantic = url.includes('/semantic');
       const onUnavailable = url.includes('/unavailable');
@@ -51,6 +56,12 @@ test.describe('Feature: Semantic', () => {
       const on403 = url.includes('/403');
       expect(onSemantic || onUnavailable || onLogin || on403).toBe(true);
       if (onSemantic) {
+        // Wait for the page content to become visible — lazy bundle may still be loading
+        await page
+          .locator('[data-testid="semantic-page"], .semantic-page, .unavailable-page')
+          .first()
+          .waitFor({ state: 'visible', timeout: 15000 })
+          .catch(() => {});
         const hasContent =
           (await page.locator('[data-testid="semantic-page"], .semantic-page, .unavailable-page').count()) > 0;
         expect(hasContent).toBe(true);

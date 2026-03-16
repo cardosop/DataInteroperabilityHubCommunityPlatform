@@ -183,7 +183,6 @@ export function AssetMultiPicker({
               : undefined
           }
           role="combobox"
-          aria-multiselectable="true"
         />
       </div>
 

@@ -11,7 +11,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getComplianceOfficerUser, loginAsPersona } from '../../fixtures/auth';
+import { clearAuthStorage, getComplianceOfficerUser, loginAsPersona } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-CPO-008: Manage Consent Tracking', () => {
@@ -32,6 +32,16 @@ test.describe('JOURNEY-CPO-008: Manage Consent Tracking', () => {
         throw _err;
       }
       expect(page.url()).toContain('/compliance');
+      // error-display is NOT acceptable — compliance service must be reachable
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        throw new Error(`Compliance page shows error for CPO user: "${errText?.slice(0, 300)}"`);
+      }
+      const hasContent =
+        (await page.locator('.compliance-run-list-page').count()) > 0 ||
+        (await page.locator('.empty-state').count()) > 0;
+      expect(hasContent).toBe(true);
     });
   });
 
@@ -44,6 +54,13 @@ test.describe('JOURNEY-CPO-008: Manage Consent Tracking', () => {
         detailContentSelector: '.compliance-run-detail-page',
         waitAfterLoad: 8000,
       });
+    });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/compliance');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     });
   });
 

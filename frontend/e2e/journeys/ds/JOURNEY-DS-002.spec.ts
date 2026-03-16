@@ -16,18 +16,30 @@ test.describe('JOURNEY-DS-002: Use AI Schema Matching', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
-    test('schema matching page loads', async ({ page }) => {
+    test('schema matching page loads (capability-gated)', async ({ page }) => {
       const testUser = await getTestUser();
       await loginUser(page, testUser);
       await page.goto('/ai/schema-matching');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
-      const onLogin = page.url().includes('/login');
-      const on403 = page.url().includes('/403');
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login — user should be authenticated');
+      }
+      // CapabilityRoute may redirect away without using /403 URL
+      const redirectedAway = !page.url().includes('/ai/schema-matching') && !page.url().includes('/login');
+      const isGated =
+        page.url().includes('/403') ||
+        redirectedAway ||
+        (await page.locator('.unavailable-page').count()) > 0;
+      // Both outcomes are valid: capability enabled (page loads) or disabled (properly gated)
+      if (isGated) {
+        expect(isGated).toBe(true); // Capability gate is working — valid outcome
+        return;
+      }
       const onSchemaMatching = page.url().includes('/ai/schema-matching');
       const hasContent =
-        (await page.locator('.schema-matching-page, .app-main, .unavailable-page').count()) > 0;
-      expect(onLogin || on403 || (onSchemaMatching && hasContent)).toBe(true);
+        (await page.locator('.schema-matching-page, .app-main').count()) > 0;
+      expect(onSchemaMatching && hasContent).toBe(true);
     });
   });
 

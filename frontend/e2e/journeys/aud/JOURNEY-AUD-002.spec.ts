@@ -11,7 +11,7 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getAuditorUser, loginAsPersona } from '../../fixtures/auth';
-import { hasLoginPrompt, loginAndNavigateToRoute } from '../../fixtures/helpers';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-AUD-002: Generate Audit Reports', () => {
   test.setTimeout(120000);
@@ -27,9 +27,10 @@ test.describe('JOURNEY-AUD-002: Generate Audit Reports', () => {
       expect(page.url()).toContain('/audit');
       const hasContent =
         (await page.locator('.audit-event-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.empty-state').count()) > 0;
       expect(hasContent).toBe(true);
+      const hasServerError = await page.locator('text=/500|internal server error/i').count();
+      expect(hasServerError).toBe(0);
     });
   });
 
@@ -37,26 +38,28 @@ test.describe('JOURNEY-AUD-002: Generate Audit Reports', () => {
     test('unauthenticated access to audit route redirects to login or 403', async ({ page }) => {
       await clearAuthStorage(page);
       await page.goto('/audit', { waitUntil: 'domcontentloaded' });
-      await page.waitForURL(/\/(login|audit|403)/, { timeout: 20_000 });
+      await page.waitForURL(/\/(login|403)/, { timeout: 20_000 });
       const url = page.url();
-      expect(url.includes('/login') || url.includes('/403') || url.includes('/audit')).toBe(true);
-      if (url.includes('/audit')) {
-        expect(await hasLoginPrompt(page)).toBe(true);
-      }
+      // Unauthenticated users must be redirected — never allowed to stay on /audit
+      expect(url.includes('/login') || url.includes('/403')).toBe(true);
     });
   });
 
   test.describe('Edge', () => {
-    test('audit route accessible', async ({ page }) => {
+    test('audit route accessible for authenticated auditor', async ({ page }) => {
       await loginAsPersona(page, getAuditorUser);
       await page.goto('/audit');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
-      expect(
-        page.url().includes('/audit') ||
-          page.url().includes('/403') ||
-          page.url().includes('/login')
-      ).toBe(true);
+      const url = page.url();
+      // Auditor IS authenticated: /login should never appear; valid outcomes are /audit or /403 (role not assigned)
+      expect(url.includes('/audit') || url.includes('/403')).toBe(true);
+      if (url.includes('/audit')) {
+        const hasContent =
+          (await page.locator('.audit-event-list-page').count()) > 0 ||
+          (await page.locator('.empty-state').count()) > 0;
+        expect(hasContent).toBe(true);
+      }
     });
   });
 });

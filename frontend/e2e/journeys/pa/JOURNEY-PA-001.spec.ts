@@ -11,7 +11,7 @@
 
 import { expect, test } from '@playwright/test';
 import { getPlatformAdminUser, loginAsPersona } from '../../fixtures/auth';
-import { loginAndNavigateToRoute } from '../../fixtures/helpers';
+import { loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-PA-001: Onboard New Tenant', () => {
   test.setTimeout(120000);
@@ -55,7 +55,11 @@ test.describe('JOURNEY-PA-001: Onboard New Tenant', () => {
       await loginAsPersona(page, getPlatformAdminUser);
       await page.goto('/admin');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await waitForAppMainReady(page, {
+        timeout: 30000,
+        contentSelector: '.admin-page, .admin-no-permission, [data-testid="forbidden-page"]',
+        acceptRedirectToLogin: true,
+      }).catch(() => null);
       const onAdmin = page.url().includes('/admin');
       const on403 = page.url().includes('/403');
       const onLogin = page.url().includes('/login');
@@ -73,7 +77,11 @@ test.describe('JOURNEY-PA-001: Onboard New Tenant', () => {
       await loginAsPersona(page, getPlatformAdminUser);
       await page.goto('/admin');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      await waitForAppMainReady(page, {
+        timeout: 30000,
+        contentSelector: '.admin-page, .admin-no-permission, [data-testid="forbidden-page"]',
+        acceptRedirectToLogin: true,
+      }).catch(() => null);
       const url = page.url();
       expect(url.includes('/login') || url.includes('/403') || url.includes('/admin')).toBe(true);
     });

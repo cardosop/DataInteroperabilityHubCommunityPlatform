@@ -58,7 +58,8 @@ class APIGatewayMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.rate_limiter = rate_limiter
         self.api_key_manager = api_key_manager
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        # http_client is managed by the FastAPI lifespan (app.state.http_client).
+        # Do NOT create a client here — it would leak connections and bypass pool limits.
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """
@@ -191,7 +192,9 @@ class APIGatewayMiddleware(BaseHTTPMiddleware):
                 except (ValueError, TypeError):
                     pass
 
-            backend_response = await self.http_client.request(
+            # Use the shared pool-managed client from app.state (set up in lifespan)
+            http_client = request.app.state.http_client
+            backend_response = await http_client.request(
                 method=method,
                 url=backend_url,
                 headers=headers,

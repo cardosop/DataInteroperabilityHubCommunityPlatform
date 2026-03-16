@@ -50,6 +50,7 @@ test.describe('UC-CM-002: Validate Contract / Link ODPS', () => {
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.contract-editor-page, .contract-detail-page',
         waitAfterLoad: 8000,
+        selectorTimeout: 60000,
       });
     });
   });
@@ -63,10 +64,13 @@ test.describe('UC-CM-002: Validate Contract / Link ODPS', () => {
       });
       await page.goto('/contracts/00000000-0000-0000-0000-000000000000/link-odps');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      await page.waitForSelector('.error-display, [role="alert"], .odps-link-page', {
+        timeout: 30000,
+      }).catch(() => null);
       const url = page.url();
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('[role="alert"]').count()) > 0 ||
         (await page.locator('text=/not found|failed|403/i').count()) > 0;
       expect(url.includes('/login') || url.includes('/403') || hasError).toBe(true);
     });

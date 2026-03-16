@@ -61,11 +61,17 @@ test.describe('JOURNEY-DC-015: Purchase ODPS Product (Marketplace)', () => {
       await loginUser(page, consumer);
       await page.goto('/marketplace/listings/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      await page
+        .locator('.error-display, .listing-detail-main, #email')
+        .first()
+        .waitFor({ state: 'visible', timeout: 30000 })
+        .catch(() => null);
       const hasError = (await page.locator('.error-display').count()) > 0;
-      const noSuccessContent = (await page.locator('.listing-detail-main').count()) === 0;
       const onLogin = page.url().includes('/login');
-      expect(hasError || noSuccessContent || onLogin).toBe(true);
+      if (onLogin) {
+        throw new Error(`Unexpected redirect to login when navigating to non-existent listing`);
+      }
+      expect(hasError).toBe(true);
     });
   });
 

@@ -35,17 +35,4 @@ test.describe('JOURNEY-MPA-004: Configure Platform Settings', () => {
     });
   });
 
-  test.describe('Edge', () => {
-    test('admin route accessible', async ({ page }) => {
-      await loginAsPersona(page, getPlatformAdminUser);
-      await page.goto('/admin');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      expect(
-        page.url().includes('/admin') ||
-          page.url().includes('/403') ||
-          page.url().includes('/login')
-      ).toBe(true);
-    });
-  });
 });

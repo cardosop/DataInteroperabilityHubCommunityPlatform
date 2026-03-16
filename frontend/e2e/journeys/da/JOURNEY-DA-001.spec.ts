@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
+import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DA-001: Create Transformation Pipeline', () => {
@@ -25,10 +25,14 @@ test.describe('JOURNEY-DA-001: Create Transformation Pipeline', () => {
           '.transformation-pipeline-list-page, .empty-state, .error-display, .transformation-list-error-wrapper',
       });
       expect(page.url()).toContain('/transformation');
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const msg = await page.locator('.error-display').first().textContent().catch(() => '');
+        throw new Error(`Transformation pipelines list shows error instead of content: "${msg?.slice(0, 300)}"`);
+      }
       const hasContent =
         (await page.locator('.transformation-pipeline-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('.transformation-list-error-wrapper').count()) > 0;
       expect(hasContent).toBe(true);
     });
@@ -44,6 +48,13 @@ test.describe('JOURNEY-DA-001: Create Transformation Pipeline', () => {
         detailContentSelector: '.transformation-detail-page',
         waitAfterLoad: 8000,
       });
+    });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/transformation');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     });
   });
 

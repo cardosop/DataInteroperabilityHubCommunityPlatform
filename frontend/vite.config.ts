@@ -57,6 +57,9 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Source maps expose original source to the browser — never ship them in production.
+    // Set GENERATE_SOURCEMAPS=true only for staging/debug builds or when uploading to
+    // a source map service (e.g. Sentry) that strips them before CDN delivery.
+    sourcemap: process.env.GENERATE_SOURCEMAPS === 'true',
   },
 });

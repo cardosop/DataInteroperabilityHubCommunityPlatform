@@ -56,8 +56,9 @@ test.describe('JOURNEY-PA-006: Monitor Marketplace Health', () => {
     test('unauthenticated access to observability redirects', async ({ page }) => {
       await clearAuthStorage(page);
       await page.goto('/observability', { waitUntil: 'domcontentloaded' });
-      await page.waitForURL(/\/(login|observability|403)/, { timeout: 20_000 });
-      expect(page.url()).toMatch(/\/login|\/403|\/observability/);
+      await page.waitForURL(/\/(login|403)/, { timeout: 20_000 });
+      // Unauthenticated users must be redirected — never allowed to stay on /observability
+      expect(page.url()).toMatch(/\/login|\/403/);
     });
   });
 
@@ -68,7 +69,8 @@ test.describe('JOURNEY-PA-006: Monitor Marketplace Health', () => {
         timeout: 60000,
         contentSelector: '.observability-page, .empty-state, .error-display, [data-testid="forbidden-page"]',
       });
-      expect(page.url()).toMatch(/\/observability|\/403|\/login/);
+      // Authenticated PA user: /login should not appear; /observability or /403 are valid
+      expect(page.url()).toMatch(/\/observability|\/403/);
     });
   });
 });

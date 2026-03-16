@@ -38,42 +38,24 @@ test.describe('Dataset Edit with Asset Link (UX)', () => {
 
   test('dataset detail shows Edit and Link to Asset when no asset', async ({ page }) => {
     const testUser = await getTestUser();
-    await loginAndNavigateToRoute(page, testUser, '/datasets', {
+    // forceNew: true — always create a brand-new dataset with no asset linked.
+    // Without forceNew, createDatasetViaApi reuses the first existing dataset which may already
+    // have asset_id set, causing btn-link-to-asset to never render.
+    const datasetId = await createDatasetViaApi(testUser, { forceNew: true });
+    await loginAndNavigateToRoute(page, testUser, `/datasets/${datasetId}`, {
       timeout: 60000,
-      contentSelector: '[data-testid="dataset-list-page"], .empty-state, .error-display',
+      contentSelector: '.dataset-detail-page, .error-display, .loading-spinner-container',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
-    const tableRows = page.locator('.dataset-list-table tbody tr');
-    const hasDatasets = (await tableRows.count()) > 0;
-    if (hasDatasets) {
-      await tableRows.first().click();
-      await waitForLoadingComplete(page, { timeout: 30000 });
-      const hasLinkToAsset = (await page.locator('[data-testid="btn-link-to-asset"]').count()) > 0;
-      const hasEdit = (await page.locator('button:has-text("Edit")').count()) > 0;
-      expect(hasLinkToAsset || hasEdit).toBe(true);
-      return;
-    }
-
-    const createBtn = page
-      .locator('button:has-text("Create Dataset")')
-      .or(page.locator('.empty-state-action:has-text("Create Dataset")'))
-      .first();
-    if ((await createBtn.count()) === 0) {
-      test.skip();
-      return;
-    }
-    await createBtn.click();
-    await expect(page).toHaveURL(/\/datasets\/create/, { timeout: 10000 });
-    await waitForLoadingComplete(page);
-
-    const uploadHint = page.locator('.file-upload-hint, .file-upload-content');
-    await expect(uploadHint.first()).toBeVisible({ timeout: 10000 });
+    // A dataset with no linked asset must show both Edit and Link to Asset.
+    await expect(page.locator('button:has-text("Edit")')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="btn-link-to-asset"]')).toBeVisible({ timeout: 5000 });
   });
 
   test('Link to Asset opens edit form with AssetPicker', async ({ page }) => {
     const testUser = await getTestUser();
-    const datasetId = await createDatasetViaApi(testUser);
+    const datasetId = await createDatasetViaApi(testUser, { forceNew: true });
     await loginAndNavigateToRoute(page, testUser, `/datasets/${datasetId}`, {
       timeout: 60000,
       contentSelector: '.dataset-detail-page, .error-display, .loading-spinner-container',
@@ -102,22 +84,11 @@ test.describe('Dataset Edit with Asset Link (UX)', () => {
 
   test('dataset detail page shows Edit button', async ({ page }) => {
     const testUser = await getTestUser();
-    await loginAndNavigateToRoute(page, testUser, '/datasets', {
+    const datasetId = await createDatasetViaApi(testUser, { forceNew: true });
+    await loginAndNavigateToRoute(page, testUser, `/datasets/${datasetId}`, {
       timeout: 60000,
-      contentSelector: '[data-testid="dataset-list-page"], .empty-state, .error-display',
+      contentSelector: '.dataset-detail-page, .error-display, .loading-spinner-container',
     });
-    await waitForLoadingComplete(page, { timeout: 30000 });
-
-    const table = page.locator('.dataset-list-table tbody tr');
-    const hasTable = (await table.count()) > 0;
-    if (!hasTable) {
-      const emptyState = page.locator('[data-testid="dataset-list-empty-state"]');
-      await expect(emptyState).toBeVisible({ timeout: 5000 });
-      return;
-    }
-
-    const firstRow = page.locator('.dataset-list-table tbody tr').first();
-    await firstRow.click();
     await waitForLoadingComplete(page, { timeout: 30000 });
 
     const editBtn = page.locator('button:has-text("Edit")');

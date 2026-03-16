@@ -11,7 +11,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getComplianceOfficerUser, loginAsPersona } from '../../fixtures/auth';
+import { clearAuthStorage, getComplianceOfficerUser, loginAsPersona } from '../../fixtures/auth';
 import {
   assertNonExistentIdShowsError,
   loginAndNavigateToRoute,
@@ -37,10 +37,18 @@ test.describe('JOURNEY-CPO-010: Review AI Auto-Classification Results / View Aud
       const onAudit = page.url().includes('/audit');
       const on403 = page.url().includes('/403');
       const onLogin = page.url().includes('/login');
-      const hasContent =
-        (await page.locator('.audit-event-list-page, .app-main, .error-display').count()) > 0;
       expect(onAudit || on403 || onLogin).toBe(true);
-      expect(hasContent || on403 || onLogin).toBe(true);
+      if (on403 || onLogin) return;
+      // error-display is NOT acceptable for audit page — means backend is down
+      const hasAuditError = (await page.locator('.error-display').count()) > 0;
+      if (hasAuditError) {
+        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        throw new Error(`Audit page shows error for CPO user: "${errText?.slice(0, 300)}"`);
+      }
+      const hasContent =
+        (await page.locator('.audit-event-list-page').count()) > 0 ||
+        (await page.locator('.app-main').count()) > 0;
+      expect(hasContent).toBe(true);
     });
   });
 
@@ -53,6 +61,13 @@ test.describe('JOURNEY-CPO-010: Review AI Auto-Classification Results / View Aud
         detailContentSelector: '[data-testid="audit-event-detail-page"]',
         waitAfterLoad: 8000,
       });
+    });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/compliance');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     });
   });
 

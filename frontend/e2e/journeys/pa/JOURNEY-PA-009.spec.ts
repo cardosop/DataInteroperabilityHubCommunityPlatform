@@ -28,10 +28,11 @@ test.describe('JOURNEY-PA-009: Manage Federated Assets', () => {
 
       let landed = false;
       for (const route of routes) {
+        const routeTimeout = ['/mesh', '/mesh/topology'].includes(route) ? 60000 : 15000;
         await loginAndNavigateToRoute(page, paUser, route, {
-          timeout: 60000,
-          contentSelector: '.mesh-list-page, .topology-page, .federated-assets-page, .empty-state, .unavailable-page',
-        });
+          timeout: routeTimeout,
+          contentSelector: '.mesh-domain-list-page, .topology-page, .federated-assets-page, .empty-state, .unavailable-page',
+        }).catch(() => null);
         if (page.url().includes('/403') || page.url().includes('/login')) continue;
         landed = true;
         break;
@@ -56,7 +57,7 @@ test.describe('JOURNEY-PA-009: Manage Federated Assets', () => {
       }
 
       const hasContent =
-        (await page.locator('.mesh-list-page, .topology-page').count()) > 0 ||
+        (await page.locator('.mesh-domain-list-page, .topology-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
         (await page.locator('.unavailable-page').count()) > 0; // capability may be gated
       expect(hasContent).toBe(true);
@@ -67,8 +68,9 @@ test.describe('JOURNEY-PA-009: Manage Federated Assets', () => {
     test('unauthenticated access redirects', async ({ page }) => {
       await clearAuthStorage(page);
       await page.goto('/mesh', { waitUntil: 'domcontentloaded' });
-      await page.waitForURL(/\/(login|mesh|403)/, { timeout: 20_000 });
-      expect(page.url()).toMatch(/\/login|\/403|\/mesh/);
+      await page.waitForURL(/\/(login|403)/, { timeout: 20_000 });
+      // Unauthenticated users must be redirected — never allowed to stay on /mesh
+      expect(page.url()).toMatch(/\/login|\/403/);
     });
   });
 
@@ -77,9 +79,11 @@ test.describe('JOURNEY-PA-009: Manage Federated Assets', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/mesh', {
         timeout: 60000,
-        contentSelector: '.mesh-list-page, .empty-state, .unavailable-page, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, .unavailable-page, .error-display',
       });
-      expect(page.url()).toMatch(/\/mesh|\/403|\/login/);
+      // Authenticated PA user: /login should not appear; /mesh, /403, or /unavailable are valid.
+      // /unavailable is shown when the data-mesh capability is disabled for this tenant.
+      expect(page.url()).toMatch(/\/mesh|\/403|\/unavailable/);
     });
   });
 });

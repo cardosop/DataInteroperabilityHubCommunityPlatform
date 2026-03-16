@@ -73,8 +73,10 @@ test.describe('JOURNEY-DE-010: Configure Connector for Data Source', () => {
       await loginUser(page, testUser);
       await page.goto('/integrations/connections/create');
       await page.waitForLoadState('domcontentloaded');
+      // Exclude .loading-spinner-container: returning on the Suspense spinner would cause the
+      // form-field check below to run before the lazy component finishes rendering (race condition).
       await page.waitForSelector(
-        '.marketplace-connection-create-page, .connection-create-page, .loading-spinner-container, .error-display, #email',
+        '.marketplace-connection-create-page, .connection-create-page, .error-display, #email',
         { timeout: 45000 }
       );
       if (page.url().includes('/login')) {

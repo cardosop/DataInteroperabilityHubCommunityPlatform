@@ -15,7 +15,7 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { loginAndNavigateToRoute, waitForAppMainReady, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () => {
   test.setTimeout(120000);
@@ -154,7 +154,8 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () =>
         '.transformation-detail-page, .unavailable-page, .error-display',
         { timeout: 30000 }
       ).catch(() => null);
-      await page.waitForTimeout(500);
+      // Ensure loading spinner has cleared so error display has time to render
+      await waitForLoadingComplete(page, { timeout: 30000 });
 
       const capabilityDisabled =
         (await page.locator('.unavailable-page').count()) > 0 ||
@@ -196,6 +197,8 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () =>
         .first()
         .waitFor({ state: 'visible', timeout: 10000 })
         .catch(() => null);
+      // Ensure loading spinner has cleared so capability state is fully resolved
+      await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on /transformation edge test');

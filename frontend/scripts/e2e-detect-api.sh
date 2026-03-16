@@ -145,8 +145,8 @@ elif curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1;
   fi
   # Settle time: frontend proxy may have stale connections after API restart; reduces ECONNRESET/socket hang up
   if [[ "${E2E_SKIP_API_RESTART:-0}" != "1" ]]; then
-    echo "Waiting 10s for proxy connections to settle after API restart..."
-    sleep 10
+    echo "Waiting 30s for gunicorn workers and proxy connections to settle after API restart..."
+    sleep 30
   fi
   # Reset auth rate limits so setup and tests can log in (avoids 429 after many runs)
   docker exec hub-test-api python hub/manage.py reset_e2e_auth_rate_limits 2>/dev/null || true
@@ -162,7 +162,7 @@ elif curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1;
   FRONTEND_STARTED=false
   if ! curl -sf --connect-timeout 5 "http://localhost:${E2E_WEB_PORT}/" > /dev/null 2>&1; then
     echo "Starting frontend dev server on port ${E2E_WEB_PORT}..."
-    VITE_WS_ENABLED=false npm run dev -- --port "${E2E_WEB_PORT}" --strictPort &
+    VITE_WS_ENABLED=false VITE_E2E_TEST=true npm run dev -- --port "${E2E_WEB_PORT}" --strictPort &
     FRONTEND_PID=$!
     FRONTEND_STARTED=true
     trap "kill $FRONTEND_PID 2>/dev/null || true" EXIT

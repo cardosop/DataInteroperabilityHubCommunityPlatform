@@ -60,9 +60,9 @@ test.describe('JOURNEY-AUTH-PRIVACY: GDPR Privacy & Data', () => {
     await expect(exportBtn).toBeVisible();
     await exportBtn.click();
 
-    // Wait for request to complete — replace fixed sleep with element wait
-    const successOrError = page.locator('.privacy-success, .error-display, .privacy-table');
-    await expect(successOrError.first()).toBeVisible({ timeout: 15000 });
+    // Export request must succeed — not error
+    await expect(page.locator('.privacy-success')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.error-display')).not.toBeVisible();
   });
   }); // end Success
 

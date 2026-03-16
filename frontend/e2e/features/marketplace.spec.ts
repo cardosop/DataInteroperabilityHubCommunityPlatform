@@ -54,7 +54,7 @@ test.describe('Feature: Marketplace', () => {
         throw _err;
       }
       await assertSuccessLoad(page, {
-        successContentSelector: '.order-list-page, .empty-state, .error-display',
+        successContentSelector: '.order-list-page, .empty-state',
       });
     });
   });

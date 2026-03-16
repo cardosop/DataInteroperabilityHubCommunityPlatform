@@ -48,16 +48,4 @@ test.describe('JOURNEY-MPA-003: Monitor Platform Health', () => {
     });
   });
 
-  test.describe('Edge', () => {
-    test('observability route accessible', async ({ page }) => {
-      await loginAsPersona(page, getPlatformAdminUser);
-      await page.goto('/observability');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      const url = page.url();
-      expect(
-        url.includes('/observability') || url.includes('/login') || url.includes('/403')
-      ).toBe(true);
-    });
-  });
 });

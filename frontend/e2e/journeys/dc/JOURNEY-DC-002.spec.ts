@@ -58,7 +58,10 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
       await loginUser(page, consumer);
       await page.goto('/search');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      await page.waitForSelector(
+        '.search-page, .unavailable-page, .app-main, #email',
+        { timeout: 45000 }
+      );
       const url = page.url();
       const onLogin = url.includes('/login');
       const onUnavailable = url.includes('/unavailable');
@@ -77,13 +80,18 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
         contentSelector:
           '.search-page, .empty-state, .error-display, .loading-spinner-container, .unavailable-page',
       });
+      // If the search feature is unavailable for this tenant, accept gracefully.
+      if (page.url().includes('/unavailable')) {
+        return;
+      }
       const searchInput = page.locator(
         'input[type="search"], input[placeholder*="Search"], input[placeholder*="query"]'
       );
-      await expect(searchInput.first()).toBeVisible({ timeout: 5000 });
+      // Allow extra time: visible/slowMo mode and parallel-batch backend load can delay rendering.
+      await expect(searchInput.first()).toBeVisible({ timeout: 30000 });
       await searchInput.first().fill('xyznonexistent123');
       const searchBtn = page.getByRole('button', { name: /Search/i });
-      await expect(searchBtn).toBeVisible({ timeout: 5000 });
+      await expect(searchBtn).toBeVisible({ timeout: 10000 });
       await searchBtn.click();
       // Results, empty state, or error (search API can be slow or return 503)
       await Promise.race([

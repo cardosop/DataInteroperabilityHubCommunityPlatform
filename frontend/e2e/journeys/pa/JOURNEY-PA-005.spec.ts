@@ -16,17 +16,16 @@ test.describe('JOURNEY-PA-005: Manage Marketplace Configuration', () => {
       page,
     }) => {
       const paUser = await getPlatformAdminUser();
-      const routes = [
-        '/admin/marketplace', '/admin/marketplace-config',
-        '/marketplace/admin', '/admin',
-      ];
+      // Start with /admin (guaranteed to exist); probe non-existent sub-routes with short timeout
+      const routes = ['/admin', '/admin/marketplace', '/admin/marketplace-config', '/marketplace/admin'];
 
       let landed = false;
       for (const route of routes) {
+        const routeTimeout = route === '/admin' ? 60000 : 15000;
         await loginAndNavigateToRoute(page, paUser, route, {
-          timeout: 60000,
+          timeout: routeTimeout,
           contentSelector: '.admin-page, .marketplace-config-page',
-        });
+        }).catch(() => null);
         if (page.url().includes('/403') || page.url().includes('/login')) continue;
         const hasConfig =
           (await page.locator('.marketplace-config-page').count()) > 0 ||
@@ -67,7 +66,7 @@ test.describe('JOURNEY-PA-005: Manage Marketplace Configuration', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/marketplace', {
         timeout: 60000,
-        contentSelector: '.marketplace-list-page, .empty-state, .error-display',
+        contentSelector: '.listing-list-page, .listing-list-grid, .empty-state, .error-display',
       });
       expect(page.url()).toMatch(/\/marketplace|\/403|\/login/);
     });

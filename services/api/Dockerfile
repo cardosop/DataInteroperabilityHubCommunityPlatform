@@ -1,5 +1,11 @@
 FROM python:3.12-slim
 
+# Build-time arguments injected by CI (docker build --build-arg GIT_SHA=...)
+# GIT_SHA is exposed as OTEL_SERVICE_VERSION so TracerProvider picks it up via
+# settings.OTEL_SERVICE_VERSION without any runtime env var override.
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+
 WORKDIR /app
 
 # Install system dependencies (unixodbc + PostgreSQL ODBC driver for virtualization ODBC sources)
@@ -16,19 +22,35 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt requirements-dev.txt ./
 
 # Install Python dependencies (production + development for testing)
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -r requirements-dev.txt
+# --timeout=120 --retries=10: resilient against transient PyPI/DNS failures during long builds
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --timeout=120 --retries=10 -r requirements.txt && \
+    pip install --timeout=120 --retries=10 -r requirements-dev.txt
 
 # Copy application code
 COPY . .
 
 # Install CLI and SDK packages for comprehensive testing
-RUN cd /app/cli && pip install --no-cache-dir -e . && \
-    cd /app/sdk/python && pip install --no-cache-dir -e .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    cd /app/cli && pip install --timeout=120 --retries=10 -e . && \
+    cd /app/sdk/python && pip install --timeout=120 --retries=10 -e .
 
 # Expose port
+# Expose build args as runtime environment variables.
+# OTEL_SERVICE_VERSION: consumed by hub/apps/observability/otel_config.py
+#   get_service_version() → settings.OTEL_SERVICE_VERSION → this value.
+# OCI standard labels for registry UX (visible in GHCR, Docker Hub, etc.)
+ENV OTEL_SERVICE_VERSION=${GIT_SHA} \
+    GIT_SHA=${GIT_SHA}
+
+LABEL org.opencontainers.image.revision="${GIT_SHA}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.source="https://github.com/DataInteroperabilityHub/DataInteroperabilityHub"
+
 EXPOSE 8000
 
-# Default command (can be overridden in docker-compose)
-CMD ["python", "hub/manage.py", "runserver", "0.0.0.0:8000"]
+# Default command: gunicorn with ASGI app + uvicorn workers (handles HTTP + WebSocket).
+# gunicorn.conf.py at WORKDIR sets worker count from GUNICORN_WORKERS env var (default: cpu_count*2+1).
+# Development overrides this with `uvicorn --reload` in docker-compose.yml.
+CMD ["gunicorn", "hub.asgi:application", "--config", "gunicorn.conf.py"]
 

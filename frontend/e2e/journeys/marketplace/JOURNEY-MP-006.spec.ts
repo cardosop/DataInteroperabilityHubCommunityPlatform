@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
+import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-MP-006: Manage Marketplace Mappings', () => {
@@ -38,26 +38,37 @@ test.describe('JOURNEY-MP-006: Manage Marketplace Mappings', () => {
   });
 
   test.describe('Failure', () => {
-    test('non-existent mappings subpath shows 404 or error', async ({ page }) => {
+    test('non-existent mappings subpath redirects to mappings list', async ({ page }) => {
       const testUser = await getTestUser();
-      // Use loginUser + page.goto (not loginAndNavigateToRoute) so we don't wait for .app-main
-      // ready; non-existent route may show loading/error; API 500 under load can delay
       await loginUser(page, testUser);
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(2000);
+      // Navigate to a mapping ID that does not exist.
+      // The router has no :id child route under /integrations/mappings — unknown IDs
+      // redirect to the list via <Navigate to="/integrations/mappings" replace />.
       await page.goto('/integrations/mappings/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
-      // Wait for error/404 or allow 30s for page to settle (API 500 can delay)
+      // Wait for redirect to the list page (or login/403 if auth expired)
       await page
-        .waitForSelector('.error-display, .error-display-title', {
-          timeout: 30000,
-        })
-        .catch(() => page.waitForTimeout(5000));
-      const has404 =
-        (await page.locator('.error-display-message').filter({ hasText: /404|not found/i }).count()) > 0;
-      const hasError = (await page.locator('.error-display').count()) > 0;
+        .waitForURL(
+          (url) =>
+            !url.pathname.includes('00000000-0000-0000-0000-000000000000'),
+          { timeout: 10000 }
+        )
+        .catch(() => null); // accept if URL doesn't change (unexpected — caught by assertion below)
       const onLogin = page.url().includes('/login');
-      expect(has404 || hasError || onLogin).toBe(true);
+      const onMappingsList =
+        page.url().includes('/integrations/mappings') &&
+        !page.url().includes('00000000-0000-0000-0000-000000000000');
+      const on403 = page.url().includes('/403');
+      expect(onMappingsList || onLogin || on403).toBe(true);
+    });
+
+    test('unauthenticated access redirects to login', async ({ page }) => {
+      await clearAuthStorage(page);
+      await page.goto('/integrations/mappings');
+      await page.waitForURL(/\/(login)/, { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     });
   });
 

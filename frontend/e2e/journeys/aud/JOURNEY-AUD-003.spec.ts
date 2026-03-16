@@ -44,16 +44,20 @@ test.describe('JOURNEY-AUD-003: Export Audit Data', () => {
   });
 
   test.describe('Edge', () => {
-    test('audit route accessible', async ({ page }) => {
+    test('audit route accessible for authenticated auditor', async ({ page }) => {
       await loginAsPersona(page, getAuditorUser);
       await page.goto('/audit');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
-      expect(
-        page.url().includes('/audit') ||
-          page.url().includes('/403') ||
-          page.url().includes('/login')
-      ).toBe(true);
+      const url = page.url();
+      // Auditor IS authenticated: /login should never appear; valid outcomes are /audit or /403 (role not assigned)
+      expect(url.includes('/audit') || url.includes('/403')).toBe(true);
+      if (url.includes('/audit')) {
+        const hasContent =
+          (await page.locator('.audit-event-list-page').count()) > 0 ||
+          (await page.locator('.empty-state').count()) > 0;
+        expect(hasContent).toBe(true);
+      }
     });
   });
 });

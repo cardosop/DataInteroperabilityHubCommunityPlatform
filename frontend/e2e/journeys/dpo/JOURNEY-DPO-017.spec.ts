@@ -62,7 +62,12 @@ test.describe('JOURNEY-DPO-017: Export ODPS Product', () => {
       await loginUser(page, testUser);
       await page.goto('/odps/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      // Wait for the error to appear: the ODPS page loads async (auth store init + API 404 response).
+      // A fixed 3s wait is insufficient under parallel load — use a selector wait instead.
+      // The ODPS error display uses role="alert" (e.g. "Failed to load ODPS contract").
+      await page
+        .waitForSelector('[role="alert"], .error-display, #email', { timeout: 30000 })
+        .catch(() => null);
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login when navigating to non-existent ODPS detail');
       }

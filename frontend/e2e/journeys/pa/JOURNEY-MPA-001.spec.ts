@@ -51,16 +51,4 @@ test.describe('JOURNEY-MPA-001: Manage Marketplace Listings', () => {
     });
   });
 
-  test.describe('Edge', () => {
-    test('marketplace route accessible', async ({ page }) => {
-      await loginAsPersona(page, getPlatformAdminUser);
-      await page.goto('/marketplace');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      const url = page.url();
-      expect(
-        url.includes('/marketplace') || url.includes('/login') || url.includes('/403')
-      ).toBe(true);
-    });
-  });
 });

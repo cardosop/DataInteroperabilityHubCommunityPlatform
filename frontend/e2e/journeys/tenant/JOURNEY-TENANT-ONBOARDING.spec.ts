@@ -68,7 +68,9 @@ test.describe('Phase 16: Self-Service Organization Onboarding', () => {
     await page.fill('[data-testid="org-onboarding-email"]', email);
     await page.fill('[data-testid="org-onboarding-password"]', 'SecurePass123!');
 
-    // Capture the create response to check for errors
+    // Capture the create response to check for errors.
+    // Timeout raised from 15s to 30s: org creation involves tenant provisioning on the
+    // backend which can take 15-25s under parallel E2E load.
     const [createResponse] = await Promise.all([
       page
         .waitForResponse(
@@ -77,13 +79,16 @@ test.describe('Phase 16: Self-Service Organization Onboarding', () => {
               resp.url().includes('/tenants/') ||
               resp.url().includes('/organizations/')) &&
             resp.request().method() === 'POST',
-          { timeout: 15000 }
+          { timeout: 30000 }
         )
         .catch(() => null),
       page.click('[data-testid="org-onboarding-submit"]'),
     ]);
 
-    await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
+    // Timeout raised from 15s to 30s: after successful creation the backend sends a
+    // redirect response. The frontend then navigates to /login. Under parallel E2E
+    // load, the navigation can be delayed by slow JS parsing or backend round-trips.
+    await expect(page).toHaveURL(/\/login/, { timeout: 30000 });
 
     // Best-effort cleanup: delete the test tenant so it doesn't accumulate across CI runs.
     // Use the newly-created admin credentials to authenticate and then call the cleanup endpoint.

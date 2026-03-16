@@ -23,6 +23,16 @@ test.describe('Feature: Compliance', () => {
         throw _err;
       }
       expect(page.url()).toContain('/compliance');
+      // error-display is NOT an acceptable success outcome — it means the compliance service is down
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        throw new Error(`Compliance list shows error (compliance service may be down): "${errText?.slice(0, 300)}"`);
+      }
+      const hasContent =
+        (await page.locator('.compliance-run-list-page').count()) > 0 ||
+        (await page.locator('.empty-state').count()) > 0;
+      expect(hasContent).toBe(true);
     });
   });
 
@@ -33,11 +43,15 @@ test.describe('Feature: Compliance', () => {
       await page.waitForTimeout(5000);
       const url = page.url();
       const onLogin = url.includes('/login');
-      const onCompliance = url.includes('/compliance');
+      // `onCompliance` was trivially true (we navigated to /compliance/runs/...) — removed.
+      // The test must assert an actual error state, not just "the URL still contains /compliance".
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('text=/not found|404/i').count()) > 0;
-      expect(onLogin || onCompliance || hasError).toBe(true);
+      expect(
+        onLogin || hasError,
+        'Expected .error-display or not-found text for a nil-UUID compliance run'
+      ).toBe(true);
     });
   });
 });

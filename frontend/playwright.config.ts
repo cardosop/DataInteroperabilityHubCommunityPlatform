@@ -1,6 +1,34 @@
 import { defineConfig, devices } from '@playwright/test';
+import type { Project } from '@playwright/test';
 
 const isVisibleRun = process.env.E2E_VISIBLE === '1';
+
+// visible project always runs to keep test counts stable across the full suite;
+// when E2E_VISIBLE=1 it switches to headed+slowMo for interactive debugging.
+const visibleProjects: Project[] = [
+  {
+    name: 'visible',
+    timeout: 300000, // 5 min: slowMo (400ms/action) + login; apiWait fix reduces sync-jobs/mappings latency
+    use: {
+      ...devices['Desktop Chrome'],
+      headless: !isVisibleRun,
+      ...(isVisibleRun
+        ? {
+            launchOptions: { slowMo: 400 },
+            video: 'retain-on-failure' as const,
+            trace: 'retain-on-failure' as const,
+          }
+        : {}),
+      storageState: 'e2e/.auth/user.json',
+    },
+    dependencies: ['setup-auth'],
+    testIgnore: [
+      '**/setup/auth-storage.spec.ts',
+      '**/dimensions/*.spec.ts',
+      '**/personas/*.spec.ts',
+    ],
+  },
+];
 
 /**
  * Playwright E2E Test Configuration
@@ -49,24 +77,7 @@ export default defineConfig({
         '**/personas/*.spec.ts',
       ],
     },
-    {
-      name: 'visible',
-      use: {
-        ...devices['Desktop Chrome'],
-        headless: false,
-        launchOptions: { slowMo: 400 },
-        video: 'retain-on-failure',
-        trace: 'retain-on-failure',
-        storageState: 'e2e/.auth/user.json',
-        timeout: 300000, // 5 min: slowMo (400ms/action) + login; apiWait fix reduces sync-jobs/mappings latency
-      },
-      dependencies: ['setup-auth'],
-      testIgnore: [
-        '**/setup/auth-storage.spec.ts',
-        '**/dimensions/*.spec.ts',
-        '**/personas/*.spec.ts',
-      ],
-    },
+    ...visibleProjects,
     {
       name: 'chromium-routes',
       timeout: 300000, // 5 min: apiWait on tab click; DPO/marketplace tests need headroom under parallel load
@@ -106,6 +117,7 @@ export default defineConfig({
         (process.env.VITE_API_BASE_URL?.startsWith('http') ? process.env.VITE_API_BASE_URL : undefined) ??
         'http://localhost:8000/api/v1',
       VITE_WS_ENABLED: 'false', // API in Docker often HTTP-only; avoid WS 404 noise in E2E
+      VITE_E2E_TEST: 'true', // Suppress expected error-reporting console logs during E2E runs
     },
   },
 });

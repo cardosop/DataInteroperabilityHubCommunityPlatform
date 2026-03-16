@@ -11,31 +11,32 @@
 
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute } from '../../fixtures/helpers';
+import { waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () => {
   test.setTimeout(180000); // 3 min: visible/slowMo
 
   test.describe('Success', () => {
     test('schema matching page loads or shows unavailable when capability is off', async ({ page }) => {
+      // Use direct navigation (not loginAndNavigateToRoute) to avoid waitForAppMainReady timing
+      // out while CapabilityRoute shows its loading spinner under backend load.
       const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
-        timeout: 60000,
-        // Wait past the CapabilityRoute loading spinner — don't stop at .loading-spinner-container
-        contentSelector:
-          '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, .error-display, #email',
-      });
+      await loginUser(page, testUser);
+      await page.goto('/ai/schema-matching');
+      await page.waitForLoadState('domcontentloaded');
+
+      // CapabilityRoute shows a loading spinner while capabilities are fetched.
+      // Wait until either the feature page or the unavailable page renders.
+      await page.waitForSelector(
+        '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, .error-display, #email',
+        { timeout: 30000 }
+      ).catch(() => null);
+      // Ensure loading spinner has cleared before asserting capability state
+      await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on AI schema-matching page');
       }
-
-      // CapabilityRoute shows a loading spinner while capabilities are fetched.
-      // Wait until either the feature page or the unavailable page (capability disabled → /unavailable redirect) renders.
-      await page.waitForSelector(
-        '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page',
-        { timeout: 30000 }
-      ).catch(() => null);
 
       const capabilityEnabled =
         page.url().includes('/ai/schema-matching') &&
@@ -79,6 +80,8 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
         '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, .error-display, #email',
         { timeout: 30000 }
       ).catch(() => null);
+      // Ensure loading spinner has cleared before asserting capability state
+      await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on AI schema-matching page');

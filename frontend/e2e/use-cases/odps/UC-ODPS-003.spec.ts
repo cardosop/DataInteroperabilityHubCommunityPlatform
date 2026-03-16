@@ -14,13 +14,13 @@ import { getTestUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('UC-ODPS-003: Export ODPS Product', () => {
-  test.setTimeout(120000);
+  test.setTimeout(180000);
 
   test.describe('Success', () => {
     test('ODPS detail loads when product exists', async ({ page }) => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/odps', {
-        timeout: 60000,
+        timeout: 90000,
         contentSelector: '.odps-list-page, .odps-empty-state, .odps-list, .error-display',
       });
       if (page.url().includes('/login')) {
@@ -54,6 +54,7 @@ test.describe('UC-ODPS-003: Export ODPS Product', () => {
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.odps-detail-page, .odps-detail',
         waitAfterLoad: 8000,
+        selectorTimeout: 60000,
       });
     });
   });
@@ -62,7 +63,7 @@ test.describe('UC-ODPS-003: Export ODPS Product', () => {
     test('ODPS list with empty state loads', async ({ page }) => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/odps', {
-        timeout: 60000,
+        timeout: 90000,
         contentSelector: '.odps-list-page, .empty-state, .error-display',
       });
       expect(page.url()).toContain('/odps');
