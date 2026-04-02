@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { AccessRequestStatus } from '../../../shared/types/governance';
 import { useAuthStore } from '../../auth/store/authStore';
 import {
@@ -17,6 +17,7 @@ import {
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './AccessRequestDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 function canApproveOrReject(roles: string[] | undefined): boolean {
   if (!roles || !Array.isArray(roles)) return false;
@@ -60,7 +61,7 @@ export function AccessRequestDetailPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading access request..." />;
+    return <DetailPageSkeleton />;
   }
 
   if (error || !accessRequest) {
@@ -85,9 +86,9 @@ export function AccessRequestDetailPage() {
   return (
     <div className="governance-access-request-detail-page">
       <div className="governance-detail-header">
-        <button type="button" className="btn-back" onClick={() => navigate('/governance')}>
+        <Button variant="ghost" onClick={() => navigate('/governance')}>
           ← Back to Access Requests
-        </button>
+        </Button>
       </div>
 
       <div className="governance-detail-content">
@@ -152,27 +153,23 @@ export function AccessRequestDetailPage() {
 
           {isAdmin && isPending && (
             <div className="governance-detail-actions">
-              <button
-                type="button"
-                className="btn-primary btn-approve"
-                onClick={handleApprove}
-                disabled={approveMutation.isPending}
-              >
-                {approveMutation.isPending ? 'Approving…' : 'Approve'}
-              </button>
-              <button
-                type="button"
-                className="btn-primary btn-reject"
-                onClick={() => setRejectModalOpen(true)}
-                disabled={rejectMutation.isPending}
-              >
+              <Button
+ variant="primary" className="btn-approve"
+ onClick={handleApprove}
+ loading={approveMutation.isPending}>
+                Approve
+              </Button>
+              <Button
+ variant="primary" className="btn-reject"
+ onClick={() => setRejectModalOpen(true)}
+ loading={rejectMutation.isPending}>
                 Reject
-              </button>
+              </Button>
             </div>
           )}
         </div>
 
-        {(approveMutation.error || rejectMutation.error) && (
+        {!!(approveMutation.error || rejectMutation.error) && (
           <div className="error-display" role="alert">
             {approveMutation.error instanceof Error
               ? approveMutation.error.message
@@ -202,20 +199,17 @@ export function AccessRequestDetailPage() {
                 placeholder="Enter rejection reason..."
               />
               <div className="governance-reject-modal-actions">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setRejectModalOpen(false)}
-                >
+                <Button
+ variant="secondary"
+ onClick={() => setRejectModalOpen(false)}>
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn-primary btn-reject"
-                  disabled={!rejectReason.trim() || rejectMutation.isPending}
-                >
+                </Button>
+                <Button
+ type="submit"
+ variant="primary" className="btn-reject"
+ disabled={!rejectReason.trim() || rejectMutation.isPending}>
                   {rejectMutation.isPending ? 'Rejecting…' : 'Reject'}
-                </button>
+                </Button>
               </div>
             </form>
           </div>

@@ -31,8 +31,11 @@ test.describe('Unavailable and 403 pages', () => {
     });
 
     test('/403 shows forbidden message', async ({ page }) => {
+      // Clear stale auth state first — a failed token refresh from prior tests
+      // can trigger the 401 interceptor's hard redirect to /login.
+      await clearAuthStorage(page);
       await page.goto('/403', { waitUntil: 'domcontentloaded' });
-      await expect(page.locator('body')).toContainText(/403|Forbidden/i, { timeout: 10_000 });
+      await expect(page.locator('body')).toContainText(/403|Forbidden/i, { timeout: 15_000 });
     });
   });
 

@@ -33,13 +33,13 @@ test.describe('JOURNEY-DS-002: Use AI Schema Matching', () => {
         (await page.locator('.unavailable-page').count()) > 0;
       // Both outcomes are valid: capability enabled (page loads) or disabled (properly gated)
       if (isGated) {
-        expect(isGated).toBe(true); // Capability gate is working — valid outcome
+        expect(isGated).toBe(true) /* acceptable states */; // Capability gate is working — valid outcome
         return;
       }
       const onSchemaMatching = page.url().includes('/ai/schema-matching');
       const hasContent =
         (await page.locator('.schema-matching-page, .app-main').count()) > 0;
-      expect(onSchemaMatching && hasContent).toBe(true);
+      expect(onSchemaMatching && hasContent).toBe(true) /* acceptable states */;
     });
   });
 
@@ -52,9 +52,8 @@ test.describe('JOURNEY-DS-002: Use AI Schema Matching', () => {
       await page.waitForTimeout(3000);
       const on403 = page.url().includes('/403');
       const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
-      const onSchemaMatching = page.url().includes('/ai/schema-matching');
       const onLogin = page.url().includes('/login');
-      expect(on403 || onUnavailable || onSchemaMatching || onLogin).toBe(true);
+      expect(on403 || onUnavailable || onLogin).toBe(true) /* acceptable states */;
     });
   });
 

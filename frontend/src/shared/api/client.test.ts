@@ -7,9 +7,6 @@ import type { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axio
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiError } from '../types/api';
 
-// Create mock instance that will be reused
-let mockAxiosInstance: AxiosInstance;
-
 // Mock axios before importing client
 vi.mock('axios', () => {
   const mockInstance = {

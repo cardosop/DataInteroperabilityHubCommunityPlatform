@@ -20,16 +20,19 @@ import {
 } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
-  test.setTimeout(480000); // 8 min: visible/slowMo (400ms/action) + UI activation + retirement flow
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('assets list loads with lifecycle status', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+        contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
       });
       expect(page.url()).toContain('/assets');
+      // Content assertion: verify the asset list page or empty state rendered (not just URL)
+      const assetListOrEmpty = page.locator('.asset-list-page, .empty-state');
+      await expect(assetListOrEmpty.first()).toBeVisible({ timeout: 15000 });
     });
 
     test('asset detail loads and shows DRAFT status badge (API-seeded)', async ({ page }) => {
@@ -58,6 +61,12 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
       // the test verifies the detail page loads with a valid lifecycle status badge.
       const badgeText = (await statusBadge.textContent()) ?? '';
       expect(['DRAFT', 'ACTIVE', 'RETIRED', 'DEPRECATED'].some((s) => badgeText.includes(s))).toBe(true);
+      if (!badgeText.includes('DRAFT')) {
+        test.info().annotations.push({
+          type: 'status-not-draft',
+          description: `Expected DRAFT but asset has status "${badgeText.trim()}". createAssetViaApi reused an existing asset.`,
+        });
+      }
     });
 
     test('asset can be retired: ACTIVE → RETIRED lifecycle transition', async ({ page }) => {
@@ -85,9 +94,12 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
       // If asset is DRAFT (API activation didn't work), try activating via UI
       if (!statusText.includes('ACTIVE')) {
         await ensureAssetActivationPrerequisites(page, assetId);
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        await waitForLoadingComplete(page, { timeout: 30000 });
-        await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
+        // Re-navigate via loginAndNavigateToRoute to ensure auth tokens survive the reload.
+        // A plain page.reload() loses in-memory tokens if the auth store hasn't reinitialized.
+        await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
+          timeout: 60000,
+          contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        });
 
         const activateBtn = page.locator(
           'button:has-text("Activate"), button:has-text("Activate Asset")'
@@ -109,10 +121,11 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
           );
           return;
         }
-        await new Promise((r) => setTimeout(r, 2000));
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        await waitForLoadingComplete(page, { timeout: 30000 });
-        await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
+        await page.waitForTimeout(2000);
+        await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
+          timeout: 60000,
+          contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        });
 
         const activatedBadge = page.locator('.asset-detail-page .status-badge, .status-badge').first();
         const activatedStatus = (await activatedBadge.textContent().catch(() => '')) ?? '';
@@ -138,8 +151,8 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
           { timeout: 20000 }
         );
         await retireBtn.click();
-        const retireResp = await retireResponsePromise.catch(() => null);
-        if (retireResp && retireResp.status() >= 400) {
+        const retireResp = await retireResponsePromise;
+        if (retireResp.status() >= 400) {
           const body = await retireResp.text().catch(() => '');
           // 400 often means version conflict — reload and retry once with the page's fresh version
           if (retireResp.status() === 400) {
@@ -177,9 +190,11 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
 
       await page.waitForTimeout(2000);
 
-      // Verify RETIRED status in UI (reload to get fresh state from backend)
-      await page.reload({ waitUntil: 'domcontentloaded' });
-      await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
+      // Re-navigate to get fresh state from backend (loginAndNavigateToRoute preserves auth)
+      await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
+        timeout: 60000,
+        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+      });
       const updatedBadge = page.locator('.asset-detail-page .status-badge, .status-badge').first();
       await expect(updatedBadge).toBeVisible({ timeout: 10000 });
       await expect(updatedBadge).toContainText(/RETIRED|DEPRECATED/, { timeout: 10000 });
@@ -191,7 +206,7 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+        contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
       });
       await page.goto('/assets/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
@@ -212,7 +227,7 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
         url.includes('/assets') &&
         ((await page.locator('input#email, [href*="/login"]').count()) > 0 ||
           (await page.locator('text=Sign in').count()) > 0);
-      expect(onLogin || onAssetsWithLoginPrompt).toBe(true);
+      expect(onLogin || onAssetsWithLoginPrompt).toBe(true) /* acceptable states */;
     });
   });
 
@@ -221,12 +236,23 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container',
+        contentSelector: '.asset-list-page, .empty-state, .error-display',
       });
-      const statusSelect = page.locator('select').filter({ hasText: /Draft|Active|Retired/ }).first();
-      if ((await statusSelect.count()) > 0) {
-        await statusSelect.selectOption({ index: 1 });
-        await page.waitForTimeout(500);
+      // Use the actual element id from AssetListPage.tsx — more reliable than text-based filter
+      const statusSelect = page.locator('#asset-status-filter, select[aria-label="Filter by status"]').first();
+      if ((await statusSelect.count()) === 0) {
+        test.skip(true, 'No status filter select (#asset-status-filter) found on assets list page');
+        return;
+      }
+      await statusSelect.selectOption({ index: 1 });
+      await page.waitForTimeout(500);
+      // After applying filter, verify list or empty state is shown (no error)
+      const afterFilterContent = page.locator('.asset-list-page, .empty-state');
+      await expect(afterFilterContent.first()).toBeVisible({ timeout: 15000 });
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        throw new Error(`Status filter caused an error: ${errText.slice(0, 200)}`);
       }
       expect(page.url()).toContain('/assets');
     });
@@ -235,7 +261,7 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container',
+        contentSelector: '.asset-list-page, .empty-state, .error-display',
       });
       expect(page.url()).toContain('/assets');
       // Wait for loading to complete before interacting
@@ -243,6 +269,12 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
         .locator('.asset-list-page, .empty-state, .error-display')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 });
+      // Error display means backend failure — not acceptable for a simple empty-string search
+      const hasError = (await page.locator('.error-display').count()) > 0;
+      if (hasError) {
+        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        throw new Error(`Asset list shows backend error before search: ${errText.slice(0, 200)}`);
+      }
       const searchInput = page.getByRole('textbox', { name: 'Search assets' });
       if ((await searchInput.count()) > 0) {
         await searchInput.fill('');
@@ -250,8 +282,7 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
       }
       const hasContent =
         (await page.locator('.asset-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.empty-state').count()) > 0;
       expect(hasContent).toBe(true);
     });
   });

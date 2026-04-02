@@ -35,22 +35,6 @@ export function DatasetPicker({
   assetId,
   'data-testid': dataTestId = 'dataset-picker',
 }: DatasetPickerProps) {
-  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
-    return (
-      <div className="dataset-picker resource-picker" data-testid={dataTestId}>
-        <input
-          type="text"
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value.trim() || null)}
-          placeholder="Enter dataset ID (UUID)"
-          disabled={disabled}
-          className="resource-picker-input"
-          aria-label="Dataset ID"
-        />
-      </div>
-    );
-  }
-
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
   const [isOpen, setIsOpen] = useState(false);
@@ -66,7 +50,7 @@ export function DatasetPicker({
     asset_id: assetId,
   };
 
-  const { data, isLoading, error, refetch } = useDatasets(filters, { enabled: isOpen });
+  const { data, isLoading, error, refetch } = useDatasets(filters, { enabled: isOpen && FEATURE_RESOURCE_PICKERS_ENABLED });
 
   const results = data?.results ?? [];
   const maxIndex = results.length - 1;
@@ -89,7 +73,7 @@ export function DatasetPicker({
   }, [onChange]);
 
   const selectedFromList = value ? results.find((d: Dataset) => d.id === value) : null;
-  const { data: selectedDatasetData } = useDataset(value);
+  const { data: selectedDatasetData } = useDataset(FEATURE_RESOURCE_PICKERS_ENABLED ? value : null);
   const selectedDataset =
     selectedFromList ?? (value && selectedDatasetData ? selectedDatasetData : null);
 
@@ -137,6 +121,22 @@ export function DatasetPicker({
         break;
     }
   };
+
+  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
+    return (
+      <div className="dataset-picker resource-picker" data-testid={dataTestId}>
+        <input
+          type="text"
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value.trim() || null)}
+          placeholder="Enter dataset ID (UUID)"
+          disabled={disabled}
+          className="resource-picker-input"
+          aria-label="Dataset ID"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="resource-picker" data-testid={dataTestId}>

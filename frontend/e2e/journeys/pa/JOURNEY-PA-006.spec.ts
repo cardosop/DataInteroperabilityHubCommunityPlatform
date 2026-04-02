@@ -16,7 +16,7 @@ const API_BASE =
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
 test.describe('JOURNEY-PA-006: Monitor Marketplace Health', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('platform admin can view marketplace health metrics', async ({ page }) => {

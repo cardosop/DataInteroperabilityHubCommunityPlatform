@@ -7,13 +7,14 @@ import { useDataset, useUpdateDataset, useDeleteDataset } from '../hooks/useData
 import { AssetPicker } from '../../../shared/components/pickers';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { useState } from 'react';
 import './DatasetDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function DatasetDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -69,7 +70,7 @@ export function DatasetDetailPage() {
     }
   };
 
-  if (isLoading) return <LoadingSpinner message="Loading dataset..." />;
+  if (isLoading) return <DetailPageSkeleton />;
   if (error || !dataset) {
     return <ErrorDisplay error={error || new Error('Dataset not found')} title="Failed to load dataset" onRetry={() => refetch()} />;
   }
@@ -77,33 +78,31 @@ export function DatasetDetailPage() {
   return (
     <div className="dataset-detail-page">
       <div className="dataset-detail-header">
-        <button onClick={() => navigate('/datasets')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/datasets')} variant="ghost">
           ← Back to Datasets
-        </button>
+        </Button>
         <div className="dataset-detail-actions">
           {!isEditing ? (
             <>
-              <button onClick={handleEdit} className="btn-secondary" type="button">Edit</button>
+              <Button onClick={handleEdit} variant="secondary">Edit</Button>
               {!(dataset.asset_id || dataset.asset) && (
-                <button
-                  onClick={handleEdit}
-                  className="btn-primary"
-                  type="button"
-                  data-testid="btn-link-to-asset"
-                >
+                <Button
+ onClick={handleEdit}
+ variant="primary"
+ data-testid="btn-link-to-asset">
                   Link to Asset
-                </button>
+                </Button>
               )}
-              <button onClick={handleDeleteClick} className="btn-danger" disabled={deleteMutation.isPending} type="button">
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-              </button>
+              <Button onClick={handleDeleteClick} variant="danger" loading={deleteMutation.isPending}>
+                Delete
+              </Button>
             </>
           ) : (
             <>
-              <button onClick={() => setIsEditing(false)} className="btn-secondary" type="button">Cancel</button>
-              <button onClick={handleSave} className="btn-primary" disabled={updateMutation.isPending} type="button">
-                {updateMutation.isPending ? 'Saving...' : 'Save'}
-              </button>
+              <Button onClick={() => setIsEditing(false)} variant="secondary">Cancel</Button>
+              <Button onClick={handleSave} variant="primary" loading={updateMutation.isPending}>
+                Save
+              </Button>
             </>
           )}
         </div>

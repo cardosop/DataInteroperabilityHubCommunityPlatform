@@ -17,18 +17,19 @@ test.describe('Feature: Datasets', () => {
         await waitForAppMainReady(page, { timeout: 60000 });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
+          test.skip(true, 'Redirected to login — auth may have expired');
           return;
         }
         throw _err;
       }
       expect(page.url()).toContain('/datasets');
+      // Success test must NOT accept .error-display
+      await expect(page.locator('.error-display')).not.toBeVisible();
       const hasContent =
         (await page.locator('.dataset-list-page, .empty-state, h1').count()) > 0;
-      const hasError = (await page.locator('.error-display').count()) > 0;
       expect(
-        hasContent || hasError,
-        'Expected .dataset-list-page, .empty-state, h1, or .error-display on /datasets'
+        hasContent,
+        'Expected .dataset-list-page, .empty-state, or h1 on /datasets'
       ).toBe(true);
     });
   });
@@ -42,7 +43,7 @@ test.describe('Feature: Datasets', () => {
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('text=/not found|404/i').count()) > 0;
-      expect(onLogin || hasError).toBe(true);
+      expect(onLogin || hasError).toBe(true) /* acceptable states */;
     });
   });
 });

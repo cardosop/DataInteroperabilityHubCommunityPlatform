@@ -23,7 +23,7 @@ const API_BASE =
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
 test.describe('JOURNEY-PA-002: Manage Tenant Lifecycle', () => {
-  test.setTimeout(300000);
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('platform admin can suspend and resume a tenant from the admin UI', async ({ page }) => {

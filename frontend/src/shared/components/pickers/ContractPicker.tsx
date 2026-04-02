@@ -41,22 +41,6 @@ export function ContractPicker({
   specType,
   'data-testid': dataTestId = 'contract-picker',
 }: ContractPickerProps) {
-  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
-    return (
-      <div className="contract-picker resource-picker" data-testid={dataTestId}>
-        <input
-          type="text"
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value.trim() || null)}
-          placeholder="Enter contract ID (UUID)"
-          disabled={disabled}
-          className="resource-picker-input"
-          aria-label="Contract ID"
-        />
-      </div>
-    );
-  }
-
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
   const [isOpen, setIsOpen] = useState(false);
@@ -72,7 +56,7 @@ export function ContractPicker({
     spec_type: specType,
   };
 
-  const { data, isLoading, error, refetch } = useContracts(filters, { enabled: isOpen });
+  const { data, isLoading, error, refetch } = useContracts(filters, { enabled: isOpen && FEATURE_RESOURCE_PICKERS_ENABLED });
 
   const results = data?.results ?? [];
   const maxIndex = results.length - 1;
@@ -95,7 +79,7 @@ export function ContractPicker({
   }, [onChange]);
 
   const selectedFromList = value ? results.find((c: Contract) => c.id === value) : null;
-  const { data: selectedContractData } = useContract(value);
+  const { data: selectedContractData } = useContract(FEATURE_RESOURCE_PICKERS_ENABLED ? value : null);
   const selectedContract =
     selectedFromList ?? (value && selectedContractData ? selectedContractData : null);
 
@@ -143,6 +127,22 @@ export function ContractPicker({
         break;
     }
   };
+
+  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
+    return (
+      <div className="contract-picker resource-picker" data-testid={dataTestId}>
+        <input
+          type="text"
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value.trim() || null)}
+          placeholder="Enter contract ID (UUID)"
+          disabled={disabled}
+          className="resource-picker-input"
+          aria-label="Contract ID"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="resource-picker" data-testid={dataTestId}>

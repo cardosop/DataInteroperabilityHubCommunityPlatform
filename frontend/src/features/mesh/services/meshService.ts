@@ -119,7 +119,7 @@ export const meshService = {
   /**
    * Get mesh health metrics
    */
-  async getMeshHealth(): Promise<any> {
+  async getMeshHealth(): Promise<unknown> {
     const response = await apiClient.getClient().get(`${MESH_BASE_PATH}/topology/health/`);
     return response.data;
   },
@@ -127,7 +127,7 @@ export const meshService = {
   /**
    * Get domain relationships
    */
-  async getDomainRelationships(): Promise<any> {
+  async getDomainRelationships(): Promise<unknown> {
     const response = await apiClient.getClient().get(`${MESH_BASE_PATH}/topology/relationships/`);
     return response.data;
   },

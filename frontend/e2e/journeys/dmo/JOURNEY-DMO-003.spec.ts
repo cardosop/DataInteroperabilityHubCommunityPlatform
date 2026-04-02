@@ -14,7 +14,7 @@ import { clearAuthStorage, getDataMeshDomainOwnerUser } from '../../fixtures/aut
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DMO-003: Manage Domain Topology', () => {
-  test.setTimeout(300000); // 5 min: persona login + mesh under parallel E2E load
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('mesh list loads for topology management', async ({ page }) => {
@@ -24,24 +24,31 @@ test.describe('JOURNEY-DMO-003: Manage Domain Topology', () => {
         contentSelector: '.mesh-domain-list-page, .error-display, .empty-state',
       });
       if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
+        test.skip(true, 'Auth gated — skipping success assertion');
         return;
       }
       expect(page.url()).toContain('/mesh');
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
 
     test('mesh topology page loads', async ({ page }) => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh/topology', {
         timeout: 90000,
-        contentSelector: '.topology-visualization, .app-main, .error-display, .loading-spinner',
+        contentSelector: '.react-flow, .app-main, .error-display, .loading-spinner',
       });
       const onMeshTopology = page.url().includes('/mesh/topology');
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onMeshTopology).toBe(true);
       const hasContent =
-        (await page.locator('.topology-visualization, .app-main, .error-display, .loading-spinner').count()) > 0;
-      expect(onLogin || on403 || (onMeshTopology && hasContent)).toBe(true);
+        (await page.locator('.react-flow, .app-main').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 
@@ -57,7 +64,7 @@ test.describe('JOURNEY-DMO-003: Manage Domain Topology', () => {
           (await page.locator('input#email').count()) > 0 ||
           (await page.locator('[href*="/login"]').count()) > 0 ||
           (await page.getByText('Sign in').count()) > 0;
-        expect(hasLoginPrompt).toBe(true);
+        expect(hasLoginPrompt).toBe(true) /* acceptable states */;
       }
     });
   });

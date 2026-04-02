@@ -39,7 +39,7 @@ test.describe('JOURNEY-AUTH-004: Unauthenticated User Accesses Public Resources'
         url.includes('/assets') &&
         ((await page.locator('input#email, [href*="/login"]').count()) > 0 ||
           (await page.locator('text=Sign in').count()) > 0);
-      expect(onLogin || onAssetsWithLoginPrompt).toBe(true);
+      expect(onLogin || onAssetsWithLoginPrompt).toBe(true) /* acceptable states */;
     });
   });
 

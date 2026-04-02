@@ -8,11 +8,14 @@ import { apiClient } from '../../../shared/api/client';
 import type { LoginRequest, User } from '../../../shared/types/auth';
 import { authService } from '../services/authService';
 
-/** When tokens exist in storage, start with isLoading: true so ProtectedRoute shows Loading instead of redirecting to login before initialize() runs. */
+/** When a prior session exists in storage, start with isLoading: true so ProtectedRoute shows Loading instead of redirecting to login before initialize() runs. */
 function getInitialIsLoading(): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    return !!(localStorage.getItem('access_token') && localStorage.getItem('user'));
+    // Phase 11.1: access_token is no longer stored in localStorage.
+    // Check for user profile only — its presence indicates a prior session that
+    // may be resumable via refresh_token cookie or in-memory token.
+    return !!localStorage.getItem('user');
   } catch {
     return false;
   }
@@ -115,7 +118,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       setTimeout(() => reject(new Error('Auth initialization timeout')), INIT_MAX_MS)
     );
 
-    const fetchUserWithRetry = async (_retries = 1): Promise<void> => {
+    const fetchUserWithRetry = async (): Promise<void> => {
       const freshUser = await authService.fetchUser();
       set({
         user: freshUser,
@@ -183,6 +186,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       set({ isLoading: true });
       authService.initializeAuth();
+
+      // Phase 11.1: after page reload, access_token is lost (in-memory only).
+      // If we have a refresh_token but no access_token, proactively refresh
+      // to obtain a new access_token BEFORE calling /auth/me/. Retry on
+      // transient failures (429 rate-limit, network errors) which are common
+      // under E2E parallel load where multiple browser tabs hit /auth/refresh/
+      // simultaneously after page reloads.
+      if (!authService.getAccessToken() && authService.getRefreshToken()) {
+        let refreshed = false;
+        for (let attempt = 0; attempt < 3 && !refreshed; attempt++) {
+          try {
+            await authService.refreshAccessToken();
+            refreshed = true;
+          } catch (refreshErr) {
+            const status = (refreshErr as { response?: { status?: number } })?.response?.status;
+            const isRetryable = status === 429 || status === 503 || !status; // 429, 503, or network error
+            if (isRetryable && attempt < 2) {
+              await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+              continue;
+            }
+            // Permanent failure (401 invalid token, etc.) — clear auth and show login
+            clearAuthState();
+            return;
+          }
+        }
+      }
 
       if (authService.isAuthenticated()) {
         const user = authService.getUser();

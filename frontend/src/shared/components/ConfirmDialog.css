@@ -14,14 +14,3 @@
   justify-content: flex-end;
 }
 
-.confirm-dialog-danger .confirm-dialog-actions .btn-primary,
-.confirm-dialog-actions .btn-danger {
-  background: var(--color-error-500);
-  border-color: var(--color-error-500);
-}
-
-.confirm-dialog-danger .confirm-dialog-actions .btn-primary:hover,
-.confirm-dialog-actions .btn-danger:hover {
-  background: var(--color-danger-dark, #c82333);
-  border-color: var(--color-danger-dark, #c82333);
-}

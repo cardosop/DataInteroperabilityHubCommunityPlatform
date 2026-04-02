@@ -9,7 +9,7 @@ import { clearAuthStorage, getPlatformAdminUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-PA-008: Configure External Marketplace Connections', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('platform admin can access external marketplace connections page', async ({ page }) => {

@@ -46,7 +46,7 @@ import { apiClient } from '../../../shared/api/client';
 import { scheduledExportService } from './scheduledExportService';
 
 // Get the mock instance from axios.create
-const mockAxiosCreate = vi.mocked(axios.create);
+vi.mocked(axios.create);
 
 describe('scheduledExportService', () => {
   let mockAxiosInstance: AxiosInstance;
@@ -108,7 +108,7 @@ describe('scheduledExportService', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockResponse,
-      } as any);
+      } as never);
 
       const filters: ScheduledExportListFilters = {
         page: 1,
@@ -136,7 +136,7 @@ describe('scheduledExportService', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockResponse,
-      } as any);
+      } as never);
 
       const result = await scheduledExportService.list();
 
@@ -167,7 +167,7 @@ describe('scheduledExportService', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockExport,
-      } as any);
+      } as never);
 
       const result = await scheduledExportService.getById('export-1');
 
@@ -206,7 +206,7 @@ describe('scheduledExportService', () => {
 
       vi.mocked(mockAxiosInstance.post).mockResolvedValue({
         data: mockCreatedExport,
-      } as any);
+      } as never);
 
       const result = await scheduledExportService.create(createRequest);
 
@@ -245,7 +245,7 @@ describe('scheduledExportService', () => {
 
       vi.mocked(mockAxiosInstance.patch).mockResolvedValue({
         data: mockUpdatedExport,
-      } as any);
+      } as never);
 
       const result = await scheduledExportService.update('export-1', updateRequest);
 
@@ -262,7 +262,7 @@ describe('scheduledExportService', () => {
     it('should delete a scheduled export', async () => {
       vi.mocked(mockAxiosInstance.delete).mockResolvedValue({
         status: 204,
-      } as any);
+      } as never);
 
       await scheduledExportService.delete('export-1');
 
@@ -287,7 +287,7 @@ describe('scheduledExportService', () => {
 
       vi.mocked(mockAxiosInstance.post).mockResolvedValue({
         data: mockTriggerResponse,
-      } as any);
+      } as never);
 
       const result = await scheduledExportService.trigger('export-1', triggerRequest);
 
@@ -311,7 +311,7 @@ describe('scheduledExportService', () => {
 
       vi.mocked(mockAxiosInstance.post).mockResolvedValue({
         data: mockTriggerResponse,
-      } as any);
+      } as never);
 
       const result = await scheduledExportService.trigger('export-1');
 
@@ -361,7 +361,7 @@ describe('scheduledExportService', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockRuns,
-      } as any);
+      } as never);
 
       const result = await scheduledExportService.listRuns('export-1');
 
@@ -394,7 +394,7 @@ describe('scheduledExportService', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockRun,
-      } as any);
+      } as never);
 
       const result = await scheduledExportService.getRunById('run-1');
 

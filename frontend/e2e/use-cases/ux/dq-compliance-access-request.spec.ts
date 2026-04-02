@@ -16,7 +16,7 @@ import {
 } from '../../fixtures/helpers';
 
 test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test('DQ run create modal shows AssetPicker, DatasetPicker, FilePicker', async ({
     page,
@@ -25,7 +25,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
     await loginAndNavigateToRoute(page, user, '/dq', {
       timeout: 60000,
       contentSelector:
-        '.dq-run-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+        '.dq-run-list-page, .empty-state, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -56,7 +56,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
     await loginAndNavigateToRoute(page, user, '/dq', {
       timeout: 60000,
       contentSelector:
-        '.dq-run-list-page, .empty-state, .error-display, h1',
+        '.dq-run-list-page, .empty-state, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -64,7 +64,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
       .locator('button:has-text("Create DQ run")')
       .or(page.locator('.dq-create-run-btn'));
     if ((await createBtn.count()) === 0) {
-      test.skip();
+      test.skip(true, 'Create DQ run button not rendered — DQ feature may not be enabled');
       return;
     }
     await createBtn.first().click();
@@ -83,7 +83,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
     const hasLoading =
       (await page.locator('.asset-picker-loading').count()) > 0;
 
-    expect(hasOptions || hasEmpty || hasLoading).toBe(true);
+    expect(hasOptions || hasEmpty || hasLoading).toBe(true) /* acceptable states */;
   });
 
   test('Compliance run create modal shows AssetPicker, DatasetPicker, FilePicker', async ({
@@ -93,7 +93,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
     await loginAndNavigateToRoute(page, user, '/compliance', {
       timeout: 60000,
       contentSelector:
-        '.compliance-run-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+        '.compliance-run-list-page, .empty-state, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -128,7 +128,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
     await loginAndNavigateToRoute(page, user, '/compliance', {
       timeout: 60000,
       contentSelector:
-        '.compliance-run-list-page, .empty-state, .error-display, h1',
+        '.compliance-run-list-page, .empty-state, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -136,7 +136,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
       .locator('button:has-text("Create compliance run")')
       .or(page.locator('.compliance-create-run-btn'));
     if ((await createBtn.count()) === 0) {
-      test.skip();
+      test.skip(true, 'Create compliance run button not rendered — compliance feature may not be enabled');
       return;
     }
     await createBtn.first().click();
@@ -159,7 +159,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
     const hasLoading =
       (await page.locator('.resource-picker-loading').count()) > 0;
 
-    expect(hasOptions || hasEmpty || hasLoading).toBe(true);
+    expect(hasOptions || hasEmpty || hasLoading).toBe(true) /* acceptable states */;
   });
 
   test('Access Request create page shows AssetPicker, DatasetPicker, FilePicker', async ({
@@ -169,7 +169,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
     await loginAndNavigateToRoute(page, user, '/governance/access-requests/create', {
       timeout: 60000,
       contentSelector:
-        '.governance-create-page, .error-display, .loading-spinner-container, h1, [data-testid="access-request-asset-picker"]',
+        '.governance-create-page, h1, [data-testid="access-request-asset-picker"]',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -195,7 +195,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
     await loginAndNavigateToRoute(page, user, '/governance/access-requests/create', {
       timeout: 60000,
       contentSelector:
-        '.governance-create-page, .error-display, h1',
+        '.governance-create-page, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -215,6 +215,6 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
     const hasLoading =
       (await page.locator('.resource-picker-loading').count()) > 0;
 
-    expect(hasOptions || hasEmpty || hasLoading).toBe(true);
+    expect(hasOptions || hasEmpty || hasLoading).toBe(true) /* acceptable states */;
   });
 });

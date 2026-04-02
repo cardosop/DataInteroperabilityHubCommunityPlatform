@@ -7,9 +7,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { useRetentionPolicies } from '../hooks/useRetention';
 import './RetentionPolicyListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function RetentionPolicyListPage() {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ export function RetentionPolicyListPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading retention policies..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -53,13 +54,11 @@ export function RetentionPolicyListPage() {
     <div className="governance-retention-policy-list-page">
       <div className="governance-list-header">
         <h1>Retention Policies</h1>
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={() => navigate('/governance/retention/new')}
-        >
+        <Button
+ variant="primary"
+ onClick={() => navigate('/governance/retention/new')}>
           Create retention policy
-        </button>
+        </Button>
       </div>
 
       <div className="governance-list-filters">
@@ -158,22 +157,18 @@ export function RetentionPolicyListPage() {
               {count} result{count !== 1 ? 's' : ''} (Page {page} of {totalPages})
             </span>
             <div className="pagination-controls">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
+              <Button
+ variant="secondary"
+ onClick={() => setPage((p) => Math.max(1, p - 1))}
+ disabled={page === 1}>
                 Previous
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-              >
+              </Button>
+              <Button
+ variant="secondary"
+ onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+ disabled={page>= totalPages}>
                 Next
-              </button>
+              </Button>
             </div>
           </div>
         </>

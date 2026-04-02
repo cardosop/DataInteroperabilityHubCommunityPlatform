@@ -14,7 +14,7 @@ import { getDataMeshDomainOwnerUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DMO-001: Create Data Mesh Domain', () => {
-  test.setTimeout(300000); // 5 min: persona login + mesh under parallel E2E load
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('mesh list loads for domain creation', async ({ page }) => {
@@ -42,7 +42,7 @@ test.describe('JOURNEY-DMO-001: Create Data Mesh Domain', () => {
       const onMeshCreate = page.url().includes('/mesh/create');
       const hasContent =
         (await page.locator('.mesh-domain-create-page, .app-main').count()) > 0;
-      expect(onMeshCreate && hasContent).toBe(true);
+      expect(onMeshCreate && hasContent).toBe(true) /* acceptable states */;
       await expect(page.locator('.error-display')).not.toBeVisible();
     });
 

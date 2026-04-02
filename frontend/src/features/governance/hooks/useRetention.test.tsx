@@ -44,7 +44,7 @@ vi.mock('axios', () => {
 import axios from 'axios';
 import { apiClient } from '../../../shared/api/client';
 
-const mockAxiosCreate = vi.mocked(axios.create);
+vi.mocked(axios.create);
 
 describe('useRetention hooks', () => {
   let queryClient: QueryClient;
@@ -93,7 +93,7 @@ describe('useRetention hooks', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockResponse,
-      } as any);
+      } as never);
 
       const { result } = renderHook(() => useRetentionPolicies({ page: 1 }), { wrapper });
 
@@ -133,7 +133,7 @@ describe('useRetention hooks', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockPolicy,
-      } as any);
+      } as never);
 
       const { result } = renderHook(() => useRetentionPolicy('policy-1'), { wrapper });
 
@@ -188,7 +188,7 @@ describe('useRetention hooks', () => {
 
       vi.mocked(mockAxiosInstance.post).mockResolvedValue({
         data: mockCreatedPolicy,
-      } as any);
+      } as never);
 
       const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
@@ -240,7 +240,7 @@ describe('useRetention hooks', () => {
 
       vi.mocked(mockAxiosInstance.patch).mockResolvedValue({
         data: mockUpdatedPolicy,
-      } as any);
+      } as never);
 
       const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
@@ -266,7 +266,7 @@ describe('useRetention hooks', () => {
     it('should delete retention policy and invalidate queries', async () => {
       vi.mocked(mockAxiosInstance.delete).mockResolvedValue({
         status: 204,
-      } as any);
+      } as never);
 
       const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 

@@ -2,7 +2,8 @@
  * Files React Query Hooks
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { fileService } from '../services/fileService';
 
 export function useFiles(filters: {
@@ -31,7 +32,7 @@ export function useFile(id: string | null) {
 export function useUploadFile() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({
       file,
       options,
@@ -42,6 +43,8 @@ export function useUploadFile() {
         onProgress?: (progress: number) => void;
       };
     }) => fileService.uploadFile(file, options),
+    successMessage: 'File uploaded',
+    errorMessage: 'Failed to upload file',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['files'] });
     },
@@ -51,8 +54,10 @@ export function useUploadFile() {
 export function useDeleteFile() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => fileService.delete(id),
+    successMessage: 'File deleted',
+    errorMessage: 'Failed to delete file',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['files'] });
     },

@@ -11,6 +11,7 @@ import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { PricingModel } from '../../../shared/types/marketplace';
 import './ListingPublishPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ListingPublishPage() {
   const navigate = useNavigate();
@@ -24,6 +25,8 @@ export function ListingPublishPage() {
     description: '',
     license_summary: '',
     pricing_model: PricingModel.FREE as PricingModel,
+    price_amount: '',
+    currency: 'USD',
     intended_use: [] as string[],
     restricted_use: [] as string[],
   });
@@ -98,17 +101,18 @@ export function ListingPublishPage() {
         throw new Error('Description or title is required for listing creation');
       }
       
+      const priceAmount = formData.price_amount.trim() ? parseFloat(formData.price_amount) : undefined;
       const listing = await createMutation.mutateAsync({
         asset_id: formData.asset_id.trim(),
         title: formData.title.trim(),
         short_description: shortDescription, // API requires short_description (non-empty)
-        long_description: formData.description.trim() || undefined, // Use description as long_description if provided
+        long_description: formData.description.trim() || undefined,
         pricing_model: formData.pricing_model,
-        // Note: intended_use, restricted_use, license_summary are not supported by ListingCreateSerializer
-        // They may be stored in metadata_json later if needed
+        price_amount: priceAmount,
+        currency: priceAmount ? formData.currency : undefined,
       });
       navigate(`/marketplace/listings/${listing.id}`);
-    } catch (error) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -116,9 +120,9 @@ export function ListingPublishPage() {
   return (
     <div className="listing-publish-page">
       <div className="listing-publish-header">
-        <button onClick={() => navigate('/marketplace')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/marketplace')} variant="ghost">
           ← Back to Marketplace
-        </button>
+        </Button>
         <h1>Publish Listing</h1>
       </div>
 
@@ -212,6 +216,34 @@ export function ListingPublishPage() {
               {formData.pricing_model === PricingModel.REQUEST_APPROVAL && 'Listing requires approval for access'}
             </p>
           </div>
+
+          <div className="form-group">
+            <label htmlFor="price_amount">Price per Unit</label>
+            <input
+              id="price_amount"
+              name="price_amount"
+              type="number"
+              min="0"
+              step="0.01"
+              value={formData.price_amount}
+              onChange={(e) => setFormData({ ...formData, price_amount: e.target.value })}
+              placeholder="0.00 (leave empty for free)"
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="currency">Currency</label>
+            <select
+              id="currency"
+              name="currency"
+              value={formData.currency}
+              onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+            >
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+              <option value="GBP">GBP</option>
+            </select>
+          </div>
         </div>
 
         <div className="form-section">
@@ -233,9 +265,9 @@ export function ListingPublishPage() {
                 }}
                 placeholder="Enter intended use and press Enter"
               />
-              <button type="button" onClick={handleAddIntendedUse} className="btn-secondary">
+              <Button onClick={handleAddIntendedUse} variant="secondary">
                 Add
-              </button>
+              </Button>
             </div>
             {formData.intended_use.length > 0 && (
               <div className="tag-list">
@@ -271,9 +303,9 @@ export function ListingPublishPage() {
                 }}
                 placeholder="Enter restricted use and press Enter"
               />
-              <button type="button" onClick={handleAddRestrictedUse} className="btn-secondary">
+              <Button onClick={handleAddRestrictedUse} variant="secondary">
                 Add
-              </button>
+              </Button>
             </div>
             {formData.restricted_use.length > 0 && (
               <div className="tag-list">
@@ -295,19 +327,16 @@ export function ListingPublishPage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            onClick={() => navigate('/marketplace')}
-            className="btn-secondary"
-            disabled={createMutation.isPending}
-          >
+          <Button
+ onClick={() => navigate('/marketplace')}
+ variant="secondary"
+ loading={createMutation.isPending}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={createMutation.isPending}
-          >
+          </Button>
+          <Button
+ type="submit"
+ variant="primary"
+ loading={createMutation.isPending}>
             {createMutation.isPending ? (
               <>
                 <LoadingSpinner size="small" />
@@ -316,7 +345,7 @@ export function ListingPublishPage() {
             ) : (
               'Create Listing'
             )}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

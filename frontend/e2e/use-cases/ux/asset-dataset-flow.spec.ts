@@ -19,13 +19,13 @@ import {
 } from '../../fixtures/helpers';
 
 test.describe('Asset-Dataset-DQ Flow (UX)', () => {
-  test.setTimeout(300000); // 5 min: create asset, upload, dataset, DQ
+  test.setTimeout(120000);
 
   test('asset upload → dataset → DQ run (full flow)', async ({ page }) => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+      contentSelector: '.asset-list-page, .empty-state, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -109,7 +109,7 @@ test.describe('Asset-Dataset-DQ Flow (UX)', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+      contentSelector: '.asset-list-page, .empty-state, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -155,7 +155,7 @@ test.describe('Asset-Dataset-DQ Flow (UX)', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/datasets', {
       timeout: 60000,
-      contentSelector: '[data-testid="dataset-list-page"], .empty-state, .error-display, .loading-spinner-container',
+      contentSelector: '[data-testid="dataset-list-page"], .empty-state',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 

@@ -8,9 +8,9 @@
  * Tests complete marketplace journey: browse listing → purchase → entitlement visible
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { clearAuthStorage, getConsumerTestUser, getTestUser, loginAsPersona } from './fixtures/auth';
-import { loginAndNavigateToRoute, navigateToRouteFromApp, waitForAppMainReady } from './fixtures/helpers';
+import { loginAndNavigateToRoute, waitForAppMainReady } from './fixtures/helpers';
 import { isBenignConsoleError } from './fixtures/console-utils';
 
 const getApiBaseUrl = () => process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
@@ -23,7 +23,7 @@ function stepTiming(stepName: string, startMs: number): number {
 }
 
 // Helper to activate asset via API (since UI flow is complex)
-async function activateAssetViaAPI(page: any, assetId: string): Promise<boolean> {
+async function activateAssetViaAPI(page: Page, assetId: string): Promise<boolean> {
   try {
     const apiBaseUrl = getApiBaseUrl();
     const result = await page.evaluate(
@@ -316,7 +316,7 @@ async function activateAssetViaAPI(page: any, assetId: string): Promise<boolean>
 
 /** Create a marketplace listing via API (fallback when publish-page dropdown does not show asset). */
 async function createListingViaAPI(
-  page: any,
+  page: Page,
   assetId: string
 ): Promise<{ listingId: string } | { success: false; error: string }> {
   const apiBase = getApiBaseUrl().replace(/\/$/, '');
@@ -376,7 +376,7 @@ async function createListingViaAPI(
 
 test.describe('Phase 4 Marketplace Journey', () => {
   test('complete journey: browse listing → purchase → entitlement visible', async ({ page }) => {
-    test.setTimeout(300000); // 5 min (listing creation is API-first ~5–15s; rest is UI)
+    test.setTimeout(120000);
     const t0 = Date.now();
 
     page.on('console', (msg) => {
@@ -485,7 +485,7 @@ test.describe('Phase 4 Marketplace Journey', () => {
         await page.waitForTimeout(5000);
         try {
           activated = await activateAssetViaAPI(page, assetId);
-        } catch (_) {
+        } catch {
           console.log('Asset activation failed after retry - will try to continue anyway');
         }
       } else {
@@ -724,9 +724,8 @@ test.describe('Phase 4 Marketplace Journey', () => {
     console.log(`📝 Purchase button text: "${buttonText}"`);
 
     // Monitor network request to capture order creation response
-    let orderCreateRequest: any = null;
+    let orderCreateRequest: unknown = null;
     let orderCreateError: string | null = null;
-    let orderCreateResponse: any = null;
 
     page.on('request', async (request) => {
       if (request.url().includes('/marketplace/orders/') && request.method() === 'POST') {
@@ -760,7 +759,6 @@ test.describe('Phase 4 Marketplace Journey', () => {
     // Wait for response
     const orderResponse = await orderResponsePromise;
     if (orderResponse) {
-      orderCreateResponse = orderResponse;
       if (!orderResponse.ok()) {
         const errorText = await orderResponse.text().catch(() => '');
         const errorJson = await orderResponse.json().catch(() => null);

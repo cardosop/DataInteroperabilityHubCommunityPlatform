@@ -37,7 +37,7 @@ test.describe('Admin User Edit UI', () => {
       const linkCount = await editLink.count();
       if (linkCount === 0) {
         // No users to edit (empty tenant) — skip assertion
-        test.skip();
+        test.skip(true, 'No users available to edit in this tenant');
         return;
       }
 

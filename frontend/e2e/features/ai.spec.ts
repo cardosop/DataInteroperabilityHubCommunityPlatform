@@ -5,7 +5,6 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: AI', () => {
   test.setTimeout(120000);

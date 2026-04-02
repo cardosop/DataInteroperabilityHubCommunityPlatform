@@ -3,6 +3,7 @@
  * Handles login, logout, token refresh, and user management
  */
 
+import axios from 'axios';
 import { apiClient } from '../../../shared/api/client';
 import type { PaginatedResponse } from '../../../shared/types/api';
 import type {
@@ -66,6 +67,20 @@ class AuthService {
     return response.data;
   }
 
+  async verifyEmail(token: string): Promise<MessageResponse> {
+    const response = await apiClient
+      .getClient()
+      .post<MessageResponse>('/auth/verify-email/', { token }, { timeout: 45000 });
+    return response.data;
+  }
+
+  async resendVerificationEmail(email: string): Promise<MessageResponse> {
+    const response = await apiClient
+      .getClient()
+      .post<MessageResponse>('/auth/resend-verification/', { email }, { timeout: 45000 });
+    return response.data;
+  }
+
   async logout(): Promise<void> {
     try {
       // Call logout endpoint if available
@@ -86,9 +101,14 @@ class AuthService {
       throw new Error('No refresh token available');
     }
 
-    const response = await apiClient.getClient().post<RefreshTokenResponse>('/auth/refresh/', {
-      refresh_token: refreshToken,
-    } as RefreshTokenRequest);
+    // Use axios directly (bypass apiClient interceptors) to avoid the 401 interceptor
+    // triggering a recursive refresh or hard redirect to /login during proactive refresh.
+    const baseURL = apiClient.getClient().defaults.baseURL || '/api/v1';
+    const response = await axios.post<RefreshTokenResponse>(
+      `${baseURL}/auth/refresh/`,
+      { refresh_token: refreshToken } as RefreshTokenRequest,
+      { withCredentials: true, timeout: 30000 },
+    );
 
     this.setAccessToken(response.data.access_token);
     if (response.data.refresh_token) {
@@ -179,9 +199,9 @@ class AuthService {
     return response.data;
   }
 
-  // Token management
+  // Token management — Phase 11.1: access_token kept in JS module memory only
   getAccessToken(): string | null {
-    return localStorage.getItem(TOKEN_STORAGE_KEY);
+    return apiClient.getAccessToken();
   }
 
   getRefreshToken(): string | null {
@@ -189,7 +209,7 @@ class AuthService {
   }
 
   setAccessToken(token: string): void {
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    // Phase 11.1: store only in apiClient memory, never in localStorage
     apiClient.setAccessToken(token);
   }
 
@@ -216,6 +236,7 @@ class AuthService {
 
   // Clear all auth data
   clearAuth(): void {
+    // Remove from localStorage (refresh_token, user, and legacy access_token if present)
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
     localStorage.removeItem(USER_STORAGE_KEY);
@@ -224,17 +245,27 @@ class AuthService {
 
   // Check if user is authenticated
   isAuthenticated(): boolean {
-    return !!this.getAccessToken() && !!this.getUser();
+    // Phase 11.1: access_token is in-memory only; also consider authenticated
+    // if we have a user profile (session may be resumable via refresh_token cookie)
+    return (!!this.getAccessToken() || !!this.getRefreshToken()) && !!this.getUser();
   }
 
   // Initialize auth state from storage
   initializeAuth(): void {
-    const token = this.getAccessToken();
-    const refreshToken = this.getRefreshToken();
-
-    if (token) {
-      apiClient.setAccessToken(token);
+    // Phase 11.1: access_token is no longer written to localStorage by UI login
+    // (it lives in JS module memory only). However, E2E tests inject access_token
+    // into localStorage via loginViaApiAndInject for session restoration across
+    // page reloads. Read it into memory if present — do NOT remove it, because
+    // page.goto() in Playwright causes full page reloads that clear JS memory,
+    // and the token needs to survive multiple reloads within the same test.
+    // Security: UI login (authService.setAccessToken) never writes to localStorage,
+    // so production users are unaffected.
+    const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (storedToken) {
+      apiClient.setAccessToken(storedToken);
     }
+
+    const refreshToken = this.getRefreshToken();
     if (refreshToken) {
       apiClient.setRefreshToken(refreshToken);
     }

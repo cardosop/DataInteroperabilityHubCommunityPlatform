@@ -7,10 +7,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import type { AccessRequestStatus } from '../../../shared/types/governance';
 import { useAccessRequests } from '../hooks/useGovernance';
 import './AccessRequestListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 const STATUS_OPTIONS: { value: '' | AccessRequestStatus; label: string }[] = [
   { value: '', label: 'All' },
@@ -40,7 +41,7 @@ export function AccessRequestListPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading access requests..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -60,13 +61,11 @@ export function AccessRequestListPage() {
     <div className="governance-access-request-list-page">
       <div className="governance-list-header">
         <h1>Access Requests</h1>
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={() => navigate('/governance/access-requests/create')}
-        >
+        <Button
+ variant="primary"
+ onClick={() => navigate('/governance/access-requests/create')}>
           Create access request
-        </button>
+        </Button>
       </div>
 
       <div className="governance-list-filters">

@@ -8,19 +8,6 @@
   margin-bottom: var(--spacing-lg);
 }
 
-.marketplace-connection-create-header .btn-back {
-  background: none;
-  border: none;
-  color: var(--color-primary);
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 0.5rem 0;
-  margin-bottom: 1rem;
-}
-
-.marketplace-connection-create-header .btn-back:hover {
-  text-decoration: underline;
-}
 
 .marketplace-connection-create-header h1 {
   margin: 0;
@@ -82,16 +69,3 @@
   margin-top: var(--spacing-lg);
 }
 
-.form-actions .btn-primary,
-.form-actions .btn-secondary {
-  padding: var(--spacing-sm) var(--spacing-lg);
-  border-radius: var(--border-radius-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-}
-
-.form-actions .btn-primary:disabled,
-.form-actions .btn-secondary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}

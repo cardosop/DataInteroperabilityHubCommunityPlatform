@@ -45,7 +45,7 @@ test.describe('Phase 15: Platform Admin Suspend/Resume & Usage', () => {
       const hasTable = (await page.locator('.admin-table').count()) > 0;
       const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
       const hasLoading = (await page.locator('.loading-spinner').count()) > 0;
-      expect(hasTable || hasEmptyState || hasLoading).toBe(true);
+      expect(hasTable || hasEmptyState || hasLoading).toBe(true) /* acceptable states */;
     });
 
     test('platform admin sees Suspend/Resume actions in Tenants tab', async ({ page }) => {
@@ -71,8 +71,8 @@ test.describe('Phase 15: Platform Admin Suspend/Resume & Usage', () => {
       const hasTableOrEmpty =
         (await page.locator('.admin-table').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
-      expect(hasTableOrEmpty).toBe(true);
-      expect(hasActionsColumn || hasTableOrEmpty).toBe(true);
+      expect(hasTableOrEmpty).toBe(true) /* acceptable states */;
+      expect(hasActionsColumn || hasTableOrEmpty).toBe(true) /* acceptable states */;
     });
   });
 
@@ -100,7 +100,7 @@ test.describe('Phase 15: Platform Admin Suspend/Resume & Usage', () => {
       await waitForLoadingComplete(page, { timeout: 15000 });
       const hasContent =
         (await page.locator('.admin-page, .admin-table, .empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
 });

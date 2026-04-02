@@ -14,14 +14,14 @@ import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('UC-INT-001: Install Pre-built Connector', () => {
-  test.setTimeout(300000); // 5 min: login retries can take ~80s under parallel E2E load
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('integrations page loads', async ({ page }) => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/integrations', {
         timeout: 60000,
-        contentSelector: '.marketplace-connection-list-page, .integrations-layout, .empty-state, .error-display',
+        contentSelector: '.marketplace-connection-list-page, .integrations-layout, .empty-state',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);

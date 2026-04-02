@@ -11,6 +11,7 @@ import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import {
   useDeleteScheduledExport,
   useScheduledExport,
@@ -20,6 +21,7 @@ import {
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './ScheduledExportDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ScheduledExportDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -65,7 +67,7 @@ export function ScheduledExportDetailPage() {
   if (isLoading) {
     return (
       <div data-testid="scheduled-export-detail-page" className="scheduled-export-detail-page">
-        <LoadingSpinner message="Loading scheduled export..." />
+        <DetailPageSkeleton />
       </div>
     );
   }
@@ -102,43 +104,35 @@ export function ScheduledExportDetailPage() {
   return (
     <div className="scheduled-export-detail-page" data-testid="scheduled-export-detail-page">
       <div className="scheduled-export-detail-header">
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => navigate('/scheduled-exports')}
-          aria-label="Back to scheduled exports"
-        >
+        <Button
+ variant="secondary"
+ onClick={() => navigate('/scheduled-exports')}
+ aria-label="Back to scheduled exports">
           ← Back to Scheduled Exports
-        </button>
+        </Button>
         <div className="scheduled-export-detail-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={handleEdit}
-            aria-label="Edit scheduled export"
-          >
+          <Button
+ variant="secondary"
+ onClick={handleEdit}
+ aria-label="Edit scheduled export">
             Edit
-          </button>
+          </Button>
           {canTrigger && (
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleTriggerClick}
-              disabled={triggerMutation.isPending}
-              aria-label="Trigger scheduled export"
-            >
-              {triggerMutation.isPending ? 'Triggering...' : 'Trigger Now'}
-            </button>
+            <Button
+ variant="primary"
+ onClick={handleTriggerClick}
+ loading={triggerMutation.isPending}
+ aria-label="Trigger scheduled export">
+              Trigger Now
+            </Button>
           )}
-          <button
-            type="button"
-            className="btn-danger"
-            onClick={handleDeleteClick}
-            disabled={deleteMutation.isPending}
-            aria-label="Delete scheduled export"
-          >
-            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-          </button>
+          <Button
+ variant="danger"
+ onClick={handleDeleteClick}
+ loading={deleteMutation.isPending}
+ aria-label="Delete scheduled export">
+            Delete
+          </Button>
         </div>
       </div>
 

@@ -65,6 +65,8 @@ export interface User {
   preferences?: Record<string, unknown>;
   /** When false, tenant switch UI and X-Tenant-Id are disabled (FEATURE_TENANT_SWITCH_ENABLED). Default true. */
   feature_tenant_switch_enabled?: boolean;
+  /** From GET /auth/me/ when backend exposes platform admin flag */
+  is_platform_admin?: boolean;
 }
 
 /** PATCH /auth/me/ — partial profile update */

@@ -2,7 +2,8 @@
  * Scheduled Ingestion React Query Hooks
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import type {
   ScheduledIngestionListFilters,
   ScheduledIngestionCreateRequest,
@@ -42,8 +43,10 @@ export function useScheduledIngestionRuns(id: string | null) {
 
 export function useCreateScheduledIngestion() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: ScheduledIngestionCreateRequest) => scheduledIngestionService.create(data),
+    successMessage: 'Scheduled ingestion created',
+    errorMessage: 'Failed to create scheduled ingestion',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduled-ingestions'] });
     },
@@ -52,9 +55,11 @@ export function useCreateScheduledIngestion() {
 
 export function useUpdateScheduledIngestion() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: ScheduledIngestionUpdateRequest }) =>
       scheduledIngestionService.update(id, data),
+    successMessage: 'Scheduled ingestion updated',
+    errorMessage: 'Failed to update scheduled ingestion',
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['scheduled-ingestions'] });
       queryClient.invalidateQueries({
@@ -66,8 +71,10 @@ export function useUpdateScheduledIngestion() {
 
 export function useDeleteScheduledIngestion() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => scheduledIngestionService.delete(id),
+    successMessage: 'Scheduled ingestion deleted',
+    errorMessage: 'Failed to delete scheduled ingestion',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduled-ingestions'] });
     },
@@ -76,9 +83,11 @@ export function useDeleteScheduledIngestion() {
 
 export function useTriggerScheduledIngestion() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data?: ScheduledIngestionTriggerRequest }) =>
       scheduledIngestionService.trigger(id, data),
+    successMessage: 'Scheduled ingestion triggered',
+    errorMessage: 'Failed to trigger scheduled ingestion',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['scheduled-ingestions'] });
       queryClient.invalidateQueries({

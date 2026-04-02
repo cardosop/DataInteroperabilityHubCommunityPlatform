@@ -27,7 +27,7 @@ import { waitForComplianceRunViaApi } from '../../fixtures/api-compliance';
 const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 
 test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
-  test.setTimeout(300000); // 5 min: compliance scan can take ~90 s to reach terminal state
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('compliance runs list loads without error', async ({ page }) => {
@@ -38,7 +38,7 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           contentSelector:
-            '.compliance-run-list-page, .empty-state, .loading-spinner-container',
+            '.compliance-run-list-page, .empty-state',
         });
       } catch (_err) {
         if (page.url().includes('/login') || page.url().includes('/403')) {

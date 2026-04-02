@@ -10,21 +10,20 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
+import { getConsumerTestUser } from '../../fixtures/auth';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DC-009: Join Data Community', () => {
-  test.setTimeout(300000); // 5 min: capability-gated route + login under parallel E2E load
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('communities page loads (community)', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/communities');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.communities-page, .communities-tab, .app-main, .unavailable-page, .loading-spinner-container, .loading-spinner, #email',
-        { timeout: 90000 }
-      );
+      await loginAndNavigateToRoute(page, consumer, '/communities', {
+        timeout: 90000,
+        contentSelector:
+          '.communities-page, .communities-tab, .unavailable-page, .empty-state, .error-display',
+      });
       // Phase 2: wait for loading spinner to resolve into a terminal state (spinner is transient)
       await page
         .locator('.communities-page, .communities-tab, .unavailable-page, .empty-state, .error-display')
@@ -33,7 +32,6 @@ test.describe('JOURNEY-DC-009: Join Data Community', () => {
         .catch(() => null);
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
-      const onUnavailable = page.url().includes('/unavailable');
       const onCommunities = page.url().includes('/communities');
       // Spinner excluded from primary selectors; .app-main is a fallback when the capability
       // is enabled but renders with a different CSS class (e.g., partial rollout / variant)
@@ -45,7 +43,13 @@ test.describe('JOURNEY-DC-009: Join Data Community', () => {
         (await page.locator('.error-display').count()) > 0 ||
         // app-main is always present once the route resolves — proves the shell rendered
         (await page.locator('.app-main').count()) > 0;
-      expect(onLogin || on403 || onUnavailable || (onCommunities && hasContent)).toBe(true);
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onCommunities).toBe(true);
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 
@@ -62,13 +66,11 @@ test.describe('JOURNEY-DC-009: Join Data Community', () => {
   test.describe('Edge', () => {
     test('communities page loads or redirects', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/communities');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.communities-page, .communities-tab, .app-main, .unavailable-page, .loading-spinner-container, #email',
-        { timeout: 90000 }
-      );
+      await loginAndNavigateToRoute(page, consumer, '/communities', {
+        timeout: 90000,
+        contentSelector:
+          '.communities-page, .communities-tab, .unavailable-page, .empty-state, .error-display',
+      });
       const url = page.url();
       expect(
         url.includes('/login') || url.includes('/403') || url.includes('/communities') || url.includes('/unavailable')

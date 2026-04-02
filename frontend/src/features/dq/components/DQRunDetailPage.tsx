@@ -6,11 +6,13 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDQRun, useDQRunResults } from '../hooks/useDQ';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { DQRunResultsViewer } from './DQRunResultsViewer';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './DQRunDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function DQRunDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -23,7 +25,7 @@ export function DQRunDetailPage() {
   } = useDQRunResults(id || null);
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading DQ run..." />;
+    return <DetailPageSkeleton />;
   }
 
   if (error || !dqRun) {
@@ -41,9 +43,9 @@ export function DQRunDetailPage() {
   return (
     <div className="dq-run-detail-page">
       <div className="dq-run-detail-header">
-        <button onClick={() => navigate('/dq')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/dq')} variant="ghost">
           ← Back to DQ Runs
-        </button>
+        </Button>
       </div>
 
       <div className="dq-run-detail-content">

@@ -4,6 +4,7 @@
  * Reuses Modal for overlay, focus trap, and Escape handling.
  */
 
+import { Button } from './Button';
 import { Modal } from './Modal';
 import './ConfirmDialog.css';
 
@@ -42,16 +43,15 @@ export function ConfirmDialog({
           {message}
         </p>
         <div className="confirm-dialog-actions">
-          <button type="button" className="btn-secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             {cancelLabel}
-          </button>
-          <button
-            type="button"
-            className={variant === 'danger' ? 'btn-danger' : 'btn-primary'}
+          </Button>
+          <Button
+            variant={variant === 'danger' ? 'danger' : 'primary'}
             onClick={onConfirm}
           >
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

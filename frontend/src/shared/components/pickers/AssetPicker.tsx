@@ -32,22 +32,6 @@ export function AssetPicker({
   disabled = false,
   'data-testid': dataTestId = 'asset-picker',
 }: AssetPickerProps) {
-  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
-    return (
-      <div className="asset-picker" data-testid={dataTestId}>
-        <input
-          type="text"
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value.trim() || null)}
-          placeholder="Enter asset ID (UUID)"
-          disabled={disabled}
-          className="asset-picker-input"
-          aria-label="Asset ID"
-        />
-      </div>
-    );
-  }
-
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
   const [isOpen, setIsOpen] = useState(false);
@@ -62,7 +46,7 @@ export function AssetPicker({
     ordering: '-created_at',
   };
 
-  const { data, isLoading, error, refetch } = useAssets(filters, { enabled: isOpen });
+  const { data, isLoading, error, refetch } = useAssets(filters, { enabled: isOpen && FEATURE_RESOURCE_PICKERS_ENABLED });
 
   const results = data?.results ?? [];
   const maxIndex = results.length - 1;
@@ -85,7 +69,7 @@ export function AssetPicker({
   }, [onChange]);
 
   const selectedFromList = value ? results.find((a: Asset) => a.id === value) : null;
-  const { data: selectedAssetData } = useAsset(value);
+  const { data: selectedAssetData } = useAsset(FEATURE_RESOURCE_PICKERS_ENABLED ? value : null);
   const selectedAsset = selectedFromList ?? (value && selectedAssetData ? selectedAssetData : null);
 
   useEffect(() => {
@@ -132,6 +116,22 @@ export function AssetPicker({
         break;
     }
   };
+
+  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
+    return (
+      <div className="asset-picker" data-testid={dataTestId}>
+        <input
+          type="text"
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value.trim() || null)}
+          placeholder="Enter asset ID (UUID)"
+          disabled={disabled}
+          className="asset-picker-input"
+          aria-label="Asset ID"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="asset-picker" data-testid={dataTestId}>

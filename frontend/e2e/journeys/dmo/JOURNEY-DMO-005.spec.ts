@@ -14,7 +14,7 @@ import { clearAuthStorage, getDataMeshDomainOwnerUser } from '../../fixtures/aut
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DMO-005: Monitor Domain Health', () => {
-  test.setTimeout(300000); // 5 min: persona login + mesh/observability under parallel E2E load
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('mesh list loads for domain health', async ({ page }) => {
@@ -34,7 +34,7 @@ test.describe('JOURNEY-DMO-005: Monitor Domain Health', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/observability', {
         timeout: 90000,
-        contentSelector: '.observability-page, .app-main, .error-display',
+        contentSelector: '.observability-page, .unavailable-page, .empty-state',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -42,8 +42,7 @@ test.describe('JOURNEY-DMO-005: Monitor Domain Health', () => {
       }
       expect(page.url()).toContain('/observability');
       const hasContent =
-        (await page.locator('.observability-page, .app-main').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.observability-page, .unavailable-page, .empty-state').count()) > 0;
       expect(hasContent).toBe(true);
     });
   });

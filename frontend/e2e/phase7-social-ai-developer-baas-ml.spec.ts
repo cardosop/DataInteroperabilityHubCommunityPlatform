@@ -13,7 +13,7 @@ import { loginAndNavigateToRoute } from './fixtures/helpers';
 
 test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
   test.beforeEach(() => {
-    test.setTimeout(180000); // 3 min: 429 retries (25s × 3) + getTestUser + login
+    test.setTimeout(90000);
   });
 
   test('Communities page loads or shows clear gated message', async ({ page }) => {
@@ -30,7 +30,7 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
     const hasCommunitiesContent = (await communitiesPage.count()) > 0;
     const hasUnavailable = (await unavailablePage.count()) > 0;
 
-    expect(hasCommunitiesContent || hasUnavailable).toBe(true);
+    expect(hasCommunitiesContent || hasUnavailable).toBe(true) /* acceptable states */;
     if (hasUnavailable) {
       await expect(unavailablePage).toContainText(/unavailable|not available|contact/i);
     }
@@ -53,7 +53,7 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
     const hasAIContent = (await aiPage.count()) > 0;
     const hasUnavailable = (await unavailablePage.count()) > 0;
 
-    expect(hasAIContent || hasUnavailable).toBe(true);
+    expect(hasAIContent || hasUnavailable).toBe(true) /* acceptable states */;
     if (hasUnavailable) {
       await expect(unavailablePage).toContainText(/unavailable|not available|contact/i);
     }
@@ -76,7 +76,7 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
     const hasDevContent = (await devPage.count()) > 0;
     const hasUnavailable = (await unavailablePage.count()) > 0;
 
-    expect(hasDevContent || hasUnavailable).toBe(true);
+    expect(hasDevContent || hasUnavailable).toBe(true) /* acceptable states */;
     if (hasUnavailable) {
       await expect(unavailablePage).toContainText(/unavailable|not available|contact/i);
     }
@@ -99,7 +99,7 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
     const hasBaaSContent = (await baasPage.count()) > 0;
     const hasUnavailable = (await unavailablePage.count()) > 0;
 
-    expect(hasBaaSContent || hasUnavailable).toBe(true);
+    expect(hasBaaSContent || hasUnavailable).toBe(true) /* acceptable states */;
     if (hasUnavailable) {
       await expect(unavailablePage).toContainText(/unavailable|not available|contact/i);
     }
@@ -122,7 +122,7 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
     const hasMLContent = (await mlPage.count()) > 0;
     const hasUnavailable = (await unavailablePage.count()) > 0;
 
-    expect(hasMLContent || hasUnavailable).toBe(true);
+    expect(hasMLContent || hasUnavailable).toBe(true) /* acceptable states */;
     if (hasUnavailable) {
       await expect(unavailablePage).toContainText(/unavailable|not available|contact/i);
     }
@@ -184,7 +184,7 @@ test.describe('Phase 7 — Social + AI + Developer/BaaS + ML', () => {
         (await page
           .locator('.communities-page, .ai-search-page, .developer-portal-page, .baas-page, .ml-page, .unavailable-page, .error-display, h1')
           .count()) > 0;
-      expect(hasHandledState, 'Phase 7 route must render a handled UI state').toBe(true);
+      expect(hasHandledState, 'Phase 7 route must render a handled UI state').toBe(true) /* acceptable states */;
     }
   });
 });

@@ -11,13 +11,14 @@ import {
   useTestMarketplaceConnection,
 } from '../hooks/useMarketplaceConnections';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './MarketplaceConnectionDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function MarketplaceConnectionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -46,12 +47,12 @@ export function MarketplaceConnectionDetailPage() {
     try {
       const result = await testMutation.mutateAsync(id);
       if (result.success) {
-        alert(`Connection test passed: ${result.message}`);
+        toast.success(`Connection test passed: ${result.message}`);
       } else {
-        alert(`Connection test failed: ${result.message}${result.error ? ` (${result.error})` : ''}`);
+        toast.error(`Connection test failed: ${result.message}${result.error ? ` (${result.error})` : ''}`);
       }
-    } catch (err) {
-      alert('Connection test failed. Check console for details.');
+    } catch {
+      toast.error('Connection test failed. Please try again.');
     }
   };
 
@@ -66,46 +67,38 @@ export function MarketplaceConnectionDetailPage() {
   }
 
   if (isLoading || !connection) {
-    return <LoadingSpinner message="Loading connection..." />;
+    return <DetailPageSkeleton />;
   }
 
   return (
     <div className="marketplace-connection-detail-page">
       <div className="marketplace-connection-detail-header">
-        <button
-          onClick={() => navigate('/integrations/connections')}
-          className="btn-back"
-          type="button"
-        >
+        <Button
+ onClick={() => navigate('/integrations/connections')}
+ variant="ghost">
           ← Back to Connections
-        </button>
+        </Button>
         <div className="header-actions">
-          <button
-            onClick={handleTest}
-            className="btn-secondary"
-            type="button"
-            disabled={testMutation.isPending}
-            title="Test connection"
-          >
-            {testMutation.isPending ? 'Testing...' : 'Test Connection'}
-          </button>
-          <button
-            onClick={() => navigate(`/integrations/connections/${id}/edit`)}
-            className="btn-secondary"
-            type="button"
-            title="Edit connection"
-          >
+          <Button
+ onClick={handleTest}
+ variant="secondary"
+ loading={testMutation.isPending}
+ title="Test connection">
+            Test Connection
+          </Button>
+          <Button
+ onClick={() => navigate(`/integrations/connections/${id}/edit`)}
+ variant="secondary"
+ title="Edit connection">
             Edit
-          </button>
-          <button
-            onClick={handleDeleteClick}
-            className="btn-danger"
-            type="button"
-            disabled={deleteMutation.isPending}
-            title="Delete connection"
-          >
-            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-          </button>
+          </Button>
+          <Button
+ onClick={handleDeleteClick}
+ variant="danger"
+ loading={deleteMutation.isPending}
+ title="Delete connection">
+            Delete
+          </Button>
         </div>
       </div>
 

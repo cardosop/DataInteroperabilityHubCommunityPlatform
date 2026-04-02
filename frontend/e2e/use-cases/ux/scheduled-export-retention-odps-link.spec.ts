@@ -22,7 +22,7 @@ import {
 } from '../../fixtures/helpers';
 
 test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test('Scheduled Export create page shows multi-pickers and ContractPicker', async ({
     page,
@@ -31,7 +31,7 @@ test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => 
     await loginAndNavigateToRoute(page, user, '/scheduled-exports/create', {
       timeout: 60000,
       contentSelector:
-        '.scheduled-export-create-page, .error-display, .loading-spinner-container, h1',
+        '.scheduled-export-create-page, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -61,7 +61,7 @@ test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => 
     await loginAndNavigateToRoute(page, user, '/scheduled-exports/create', {
       timeout: 60000,
       contentSelector:
-        '.scheduled-export-create-page, .error-display, h1',
+        '.scheduled-export-create-page, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -81,7 +81,7 @@ test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => 
     const hasLoading =
       (await page.locator('.resource-picker-loading').count()) > 0;
 
-    expect(hasOptions || hasEmpty || hasLoading).toBe(true);
+    expect(hasOptions || hasEmpty || hasLoading).toBe(true) /* acceptable states */;
   });
 
   test('Retention Policy create page shows AssetPicker, DatasetPicker, FilePicker', async ({
@@ -91,7 +91,7 @@ test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => 
     await loginAndNavigateToRoute(page, user, '/governance/retention/new', {
       timeout: 60000,
       contentSelector:
-        '.governance-retention-policy-create-page, .error-display, .loading-spinner-container, h1',
+        '.governance-retention-policy-create-page, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -117,7 +117,7 @@ test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => 
     await loginAndNavigateToRoute(page, user, '/governance/retention/new', {
       timeout: 60000,
       contentSelector:
-        '.governance-retention-policy-create-page, .error-display, h1',
+        '.governance-retention-policy-create-page, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -137,7 +137,7 @@ test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => 
     const hasLoading =
       (await page.locator('.asset-picker-loading').count()) > 0;
 
-    expect(hasOptions || hasEmpty || hasLoading).toBe(true);
+    expect(hasOptions || hasEmpty || hasLoading).toBe(true) /* acceptable states */;
   });
 
   test('Retention Policy edit page shows AssetPicker, DatasetPicker, FilePicker', async ({
@@ -148,7 +148,7 @@ test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => 
     await loginAndNavigateToRoute(page, user, `/governance/retention/${policyId}/edit`, {
       timeout: 60000,
       contentSelector:
-        '.governance-retention-policy-edit-page, .error-display, .loading-spinner-container, h1',
+        '.governance-retention-policy-edit-page, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -171,7 +171,7 @@ test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => 
     await loginAndNavigateToRoute(page, user, `/scheduled-exports/${exportId}/edit`, {
       timeout: 60000,
       contentSelector:
-        '.scheduled-export-edit-page, .error-display, .loading-spinner-container, h1',
+        '.scheduled-export-edit-page, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -194,7 +194,7 @@ test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => 
     await loginAndNavigateToRoute(page, user, `/contracts/${odcsContractId}/link-odps`, {
       timeout: 60000,
       contentSelector:
-        '.odps-link-page, .error-display, .loading-spinner-container, h1',
+        '.odps-link-page, h1',
     });
     await waitForLoadingComplete(page, { timeout: 15000 });
 
@@ -220,7 +220,7 @@ test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => 
       // ContractPicker data-testid may differ, or "Link Existing ODPS" mode may not expose picker
       // via this testid. Verify the page at least loaded successfully.
       const pageLoaded =
-        (await page.locator('.odps-link-page, .error-display').count()) > 0;
+        (await page.locator('.odps-link-page').count()) > 0;
       if (!pageLoaded) {
         test.skip(
           true,

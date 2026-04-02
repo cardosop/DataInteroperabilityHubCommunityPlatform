@@ -18,14 +18,14 @@ import {
 } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-004: Monitor Asset Quality', () => {
-  test.setTimeout(180000); // 3 min: visible/slowMo; DQ list + detail
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('DQ runs list loads without backend error', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/dq', {
         timeout: 60000,
-        contentSelector: '.dq-run-list-page, .empty-state, .error-display, .loading-spinner-container',
+        contentSelector: '.dq-run-list-page, .empty-state, .error-display',
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
       expect(page.url()).toContain('/dq');
@@ -41,7 +41,7 @@ test.describe('JOURNEY-DPO-004: Monitor Asset Quality', () => {
         (await page.locator('.dq-run-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
         (await page.locator('h1:has-text("Data Quality Runs")').count()) > 0;
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
 
@@ -67,45 +67,44 @@ test.describe('JOURNEY-DPO-004: Monitor Asset Quality', () => {
         url.includes('/dq') &&
         ((await page.locator('input#email, [href*="/login"]').count()) > 0 ||
           (await page.locator('text=Sign in').count()) > 0);
-      expect(onLogin || onDqWithLoginPrompt).toBe(true);
+      expect(onLogin || onDqWithLoginPrompt).toBe(true) /* acceptable states */;
     });
   });
 
   test.describe('Edge', () => {
     test('DQ list with empty state shows create message', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/dq');
-      await page.waitForLoadState('domcontentloaded');
-      await page
-        .locator('.dq-run-list-page, .empty-state, .error-display, .loading-spinner-container, #email')
-        .first()
-        .waitFor({ state: 'visible', timeout: 65000 });
-      if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
-        return;
-      }
+      // Same navigation contract as Success tests: shell + waitForAppMainReady ensures we leave
+      // ListPageSkeleton before asserting (plain goto + loginUser can sit on skeleton until timeout).
+      await loginAndNavigateToRoute(page, testUser, '/dq', {
+        timeout: 60000,
+        contentSelector: '.dq-run-list-page, .empty-state, .error-display',
+      });
+      test.skip(page.url().includes('/login'), 'Redirected to login');
+      await waitForLoadingComplete(page, { timeout: 30000 });
       expect(page.url()).toContain('/dq');
+
+      const hasContent =
+        (await page.locator('.dq-run-list-page').count()) > 0 ||
+        (await page.locator('.empty-state').count()) > 0 ||
+        (await page.locator('h1:has-text("Data Quality Runs")').count()) > 0 ||
+        (await page.locator('h1:has-text("Data Quality"), h1:has-text("Quality Runs"), [data-testid="dq-page"]').count()) > 0 ||
+        (await page.locator('.dq-page, .dq-runs-page, .data-quality-page').count()) > 0;
+      expect(hasContent).toBe(true);
     });
 
     test('DQ list shows data rows, pagination, or empty state (not an error)', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/dq');
-      await page.waitForLoadState('domcontentloaded');
-      await page
-        .locator('.dq-run-list-page, .empty-state, .error-display, .loading-spinner-container, .dq-run-list-pagination, #email')
-        .first()
-        .waitFor({ state: 'visible', timeout: 65000 });
+      // Use loginAndNavigateToRoute to ensure auth tokens survive navigation.
+      await loginAndNavigateToRoute(page, testUser, '/dq', {
+        timeout: 60000,
+        contentSelector: '.dq-run-list-page, .empty-state, .error-display',
+      });
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on /dq edge test');
       }
       expect(page.url()).toContain('/dq');
       await waitForLoadingComplete(page, { timeout: 30000 });
-      await page
-        .locator('.dq-run-list-page, .empty-state, .error-display')
-        .first()
-        .waitFor({ state: 'visible', timeout: 25000 });
 
       const hasError = (await page.locator('.error-display').count()) > 0;
       if (hasError) {
@@ -117,7 +116,7 @@ test.describe('JOURNEY-DPO-004: Monitor Asset Quality', () => {
       const hasListOrEmpty =
         (await page.locator('.dq-run-list-page table tr, .dq-run-list-page .list-item').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
-      expect(hasPagination || hasListOrEmpty).toBe(true);
+      expect(hasPagination || hasListOrEmpty).toBe(true) /* acceptable states */;
     });
   });
 });

@@ -48,7 +48,7 @@ test.describe('Cross-cutting: 404, 403, session', () => {
       // Login: redirected to /login
       const onLogin = pathname.includes('/login');
       // Must show real content — not just "URL happens to be /"
-      expect(onLanding || onLogin).toBe(true);
+      expect(onLanding || onLogin).toBe(true) /* one of the acceptable page states must be true */;
     });
 
     test('after login, home shows app shell', async ({ page }) => {

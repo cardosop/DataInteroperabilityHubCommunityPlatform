@@ -74,7 +74,7 @@ export function PasswordResetConfirmPage() {
   };
 
   return (
-    <div className="auth-page">
+    <div className="auth-page" role="main">
       <div className="auth-container">
         <h1>Set a new password</h1>
 

@@ -10,6 +10,7 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { useAuthStore } from '../../auth/store/authStore';
 import {
+  useCreateTenant,
   usePlatformTenantUsage,
   useResumeTenant,
   useSuspendTenant,
@@ -28,9 +29,16 @@ export function AdminPage() {
   const isTenantAdmin = user?.roles?.includes('TENANT_ADMIN') ?? false;
   const hasAdminAccess = isPlatformAdmin || isTenantAdmin;
 
+  // Create organization form state
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newOrgName, setNewOrgName] = useState('');
+  const [newOrgSlug, setNewOrgSlug] = useState('');
+  const [newOrgRegion, setNewOrgRegion] = useState('');
+
   // Only fetch tenants if platform admin
   const tenantsQuery = useTenants({ page_size: 20 }, { enabled: isPlatformAdmin });
   const usageQuery = usePlatformTenantUsage({ enabled: isPlatformAdmin });
+  const createTenantMutation = useCreateTenant();
   const suspendTenantMutation = useSuspendTenant();
   const resumeTenantMutation = useResumeTenant();
   // Fetch users (tenant-scoped or all for platform admin)
@@ -162,12 +170,91 @@ export function AdminPage() {
           <section className="admin-section" data-testid="admin-tenants-section">
             <div className="section-header">
               <h2>Tenants</h2>
+              <button
+                type="button"
+                className="admin-action-btn"
+                data-testid="create-tenant-btn"
+                onClick={() => setShowCreateForm(!showCreateForm)}
+              >
+                {showCreateForm ? 'Cancel' : '+ Create Organization'}
+              </button>
             </div>
+            {showCreateForm && (
+              <form
+                className="admin-create-form"
+                data-testid="create-tenant-form"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  await createTenantMutation.mutateAsync({
+                    name: newOrgName.trim(),
+                    slug: newOrgSlug.trim() || newOrgName.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
+                    region: newOrgRegion.trim() || undefined,
+                  });
+                  setNewOrgName('');
+                  setNewOrgSlug('');
+                  setNewOrgRegion('');
+                  setShowCreateForm(false);
+                }}
+              >
+                <div className="form-group">
+                  <label htmlFor="org-name">Organization Name *</label>
+                  <input
+                    id="org-name"
+                    type="text"
+                    value={newOrgName}
+                    onChange={(e) => {
+                      setNewOrgName(e.target.value);
+                      if (!newOrgSlug) {
+                        setNewOrgSlug(e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''));
+                      }
+                    }}
+                    required
+                    placeholder="Acme Corp"
+                    data-testid="create-tenant-name"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="org-slug">Slug *</label>
+                  <input
+                    id="org-slug"
+                    type="text"
+                    value={newOrgSlug}
+                    onChange={(e) => setNewOrgSlug(e.target.value)}
+                    required
+                    placeholder="acme-corp"
+                    pattern="^[a-zA-Z0-9_\-]+$"
+                    data-testid="create-tenant-slug"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="org-region">Region</label>
+                  <input
+                    id="org-region"
+                    type="text"
+                    value={newOrgRegion}
+                    onChange={(e) => setNewOrgRegion(e.target.value)}
+                    placeholder="us-east-1"
+                    data-testid="create-tenant-region"
+                  />
+                </div>
+                {createTenantMutation.error != null ? (
+                  <ErrorDisplay error={createTenantMutation.error} title="Failed to create organization" />
+                ) : null}
+                <button
+                  type="submit"
+                  className="admin-action-btn"
+                  disabled={createTenantMutation.isPending || !newOrgName.trim()}
+                  data-testid="create-tenant-submit"
+                >
+                  {createTenantMutation.isPending ? 'Creating...' : 'Create Organization'}
+                </button>
+              </form>
+            )}
             {tenantsQuery.isLoading && <LoadingSpinner message="Loading tenants..." />}
             {tenantsQuery.error && (
               <ErrorDisplay error={tenantsQuery.error} title="Failed to load tenants" />
             )}
-            {(suspendTenantMutation.error || resumeTenantMutation.error) && (
+            {!!(suspendTenantMutation.error || resumeTenantMutation.error) && (
               <ErrorDisplay
                 error={suspendTenantMutation.error ?? resumeTenantMutation.error}
                 title="Tenant action failed"

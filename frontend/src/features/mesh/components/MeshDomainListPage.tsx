@@ -6,11 +6,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMeshDomains } from '../hooks/useMesh';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { DomainStatus } from '../../../shared/types/mesh';
 import './MeshDomainListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function MeshDomainListPage() {
   const navigate = useNavigate();
@@ -42,7 +43,7 @@ export function MeshDomainListPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading mesh domains..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -93,9 +94,9 @@ export function MeshDomainListPage() {
           >
             Topology
           </a>
-          <button className="btn-primary" onClick={handleCreateDomain} type="button">
+          <Button variant="primary" onClick={handleCreateDomain}>
             Create Domain
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -171,25 +172,21 @@ export function MeshDomainListPage() {
 
       {data.count > pageSize && (
         <div className="mesh-domain-list-pagination">
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => Math.max(1, p - 1))}
+ disabled={page === 1}>
             Previous
-          </button>
+          </Button>
           <span>
             Page {page} of {Math.ceil(data.count / pageSize)}
           </span>
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => p + 1)}
-            disabled={!data.has_next}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => p + 1)}
+ disabled={!data.has_next}>
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>

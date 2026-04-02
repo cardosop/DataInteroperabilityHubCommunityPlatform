@@ -56,7 +56,7 @@ const MINIMAL_ODPS = JSON.stringify({
 });
 
 test.describe('ODPS Upload with Asset Linking (AssetPicker)', () => {
-  test.setTimeout(300000);
+  test.setTimeout(120000);
 
   test('ODPS upload page shows AssetPicker for optional asset link', async ({
     page,
@@ -65,7 +65,7 @@ test.describe('ODPS Upload with Asset Linking (AssetPicker)', () => {
     await loginAndNavigateToRoute(page, user, '/odps/upload', {
       timeout: 60000,
       contentSelector:
-        'textarea#odps-content, .odps-upload-page, .error-display, [data-testid="odps-upload-asset-picker"]',
+        'textarea#odps-content, .odps-upload-page, [data-testid="odps-upload-asset-picker"]',
     });
     await waitForLoadingComplete(page);
 
@@ -111,7 +111,7 @@ test.describe('ODPS Upload with Asset Linking (AssetPicker)', () => {
     await loginAndNavigateToRoute(page, user, '/assets', {
       timeout: 60000,
       contentSelector:
-        '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+        '.asset-list-page, .empty-state, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -162,18 +162,18 @@ test.describe('ODPS Upload with Asset Linking (AssetPicker)', () => {
     await expect(createBtnOdps).toBeVisible({ timeout: 5000 });
     await createBtnOdps.click();
 
-    // Wait for mutation to complete: workflow progress (success) or error display (backend failure)
-    // Sync workflow can take 60–150s; backend may fail transiently (e.g. transaction/atomic)
-    const workflowOrError = page.locator(
-      '.odps-workflow-progress, .workflow-running, .workflow-completed, .workflow-failed, .error-display'
+    // Wait for mutation to complete: workflow progress (success)
+    // Sync workflow can take 60–150s
+    const workflowIndicator = page.locator(
+      '.odps-workflow-progress, .workflow-running, .workflow-completed, .workflow-failed'
     ).first();
-    await expect(workflowOrError).toBeVisible({ timeout: 180000 });
+    await expect(workflowIndicator).toBeVisible({ timeout: 180000 });
 
+    await expect(page.locator('.error-display')).not.toBeVisible();
     const hasWorkflow = await page
       .locator('.odps-workflow-progress')
       .isVisible()
       .catch(() => false);
-    const hasError = await page.locator('.error-display').isVisible().catch(() => false);
-    expect(hasWorkflow || hasError).toBe(true);
+    expect(hasWorkflow).toBe(true) /* acceptable states */;
   });
 });

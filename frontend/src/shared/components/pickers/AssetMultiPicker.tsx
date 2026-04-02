@@ -50,29 +50,6 @@ export function AssetMultiPicker({
   disabled = false,
   'data-testid': dataTestId = 'asset-multi-picker',
 }: AssetMultiPickerProps) {
-  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
-    return (
-      <div className="asset-multi-picker resource-picker" data-testid={dataTestId}>
-        <input
-          type="text"
-          value={value.join(', ')}
-          onChange={(e) =>
-            onChange(
-              e.target.value
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean)
-            )
-          }
-          placeholder="Enter asset IDs (comma-separated UUIDs)"
-          disabled={disabled}
-          className="resource-picker-input"
-          aria-label="Asset IDs"
-        />
-      </div>
-    );
-  }
-
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
   const [isOpen, setIsOpen] = useState(false);
@@ -87,7 +64,7 @@ export function AssetMultiPicker({
     ordering: '-created_at',
   };
 
-  const { data, isLoading, error, refetch } = useAssets(filters, { enabled: isOpen });
+  const { data, isLoading, error, refetch } = useAssets(filters, { enabled: isOpen && FEATURE_RESOURCE_PICKERS_ENABLED });
 
   const results = data?.results ?? [];
   const maxIndex = results.length - 1;
@@ -156,6 +133,28 @@ export function AssetMultiPicker({
     }
   };
 
+  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
+    return (
+      <div className="asset-multi-picker resource-picker" data-testid={dataTestId}>
+        <input
+          type="text"
+          value={value.join(', ')}
+          onChange={(e) =>
+            onChange(
+              e.target.value
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            )
+          }
+          placeholder="Enter asset IDs (comma-separated UUIDs)"
+          disabled={disabled}
+          className="resource-picker-input"
+          aria-label="Asset IDs"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="resource-picker" data-testid={dataTestId}>

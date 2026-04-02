@@ -18,13 +18,13 @@ import {
 } from '../../fixtures/helpers';
 
 test.describe('Files Upload (UX)', () => {
-  test.setTimeout(180000); // 3 min
+  test.setTimeout(90000);
 
   test('files list page loads', async ({ page }) => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/files', {
       timeout: 60000,
-      contentSelector: '[data-testid="file-list-page"], .error-display, .loading-spinner-container',
+      contentSelector: '[data-testid="file-list-page"]',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -39,7 +39,7 @@ test.describe('Files Upload (UX)', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/files', {
       timeout: 60000,
-      contentSelector: '[data-testid="file-list-page"], .error-display',
+      contentSelector: '[data-testid="file-list-page"]',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -57,7 +57,7 @@ test.describe('Files Upload (UX)', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/files', {
       timeout: 60000,
-      contentSelector: '[data-testid="file-list-page"], .error-display',
+      contentSelector: '[data-testid="file-list-page"]',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -102,10 +102,10 @@ test.describe('Files Upload (UX)', () => {
         );
       });
       const hasProgress = (await progressOrSuccess.count()) > 0;
-      const hasError = (await errorDisplay.count()) > 0;
       const modalClosed = !(await uploadDialog.isVisible());
       const hasFileInTable = (await fileInTable.count()) > 0;
-      expect(hasProgress || hasError || modalClosed || hasFileInTable).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
+      expect(hasProgress || modalClosed || hasFileInTable).toBe(true) /* acceptable states */;
     } finally {
       try {
         await fs.promises.unlink(testFile);

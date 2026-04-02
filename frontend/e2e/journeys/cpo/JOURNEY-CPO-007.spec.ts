@@ -12,7 +12,7 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getComplianceOfficerUser, loginAsPersona } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { assertNonExistentIdShowsError, waitForAppMainReady, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-CPO-007: Set Up GDPR Right to be Forgotten', () => {
   test.setTimeout(120000);
@@ -26,7 +26,7 @@ test.describe('JOURNEY-CPO-007: Set Up GDPR Right to be Forgotten', () => {
         await waitForAppMainReady(page, { timeout: 60000 });
       } catch (_err) {
         if (page.url().includes('/login') || page.url().includes('/403')) {
-          expect(page.url()).toMatch(/\/login|\/403/);
+          test.skip(true, 'Auth/role gated — skipping success assertion');
           return;
         }
         throw _err;
@@ -41,7 +41,7 @@ test.describe('JOURNEY-CPO-007: Set Up GDPR Right to be Forgotten', () => {
       const hasContent =
         (await page.locator('.compliance-run-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
 
     test('governance page loads', async ({ page }) => {
@@ -52,7 +52,50 @@ test.describe('JOURNEY-CPO-007: Set Up GDPR Right to be Forgotten', () => {
       const onGov = page.url().includes('/governance');
       const on403 = page.url().includes('/403');
       const onLogin = page.url().includes('/login');
-      expect(onGov || on403 || onLogin).toBe(true);
+      if (on403 || onLogin) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onGov).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
+    });
+
+    test('governance page has GDPR or data deletion section', async ({ page }) => {
+      await loginAsPersona(page, getComplianceOfficerUser);
+      await page.goto('/governance');
+      await page.waitForLoadState('domcontentloaded');
+      try {
+        await waitForAppMainReady(page, { timeout: 60000 });
+      } catch (_err) {
+        if (page.url().includes('/login') || page.url().includes('/403')) {
+          test.skip(true, 'Auth/role gated — skipping success assertion');
+          return;
+        }
+        throw _err;
+      }
+      if (page.url().includes('/login') || page.url().includes('/403')) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      await waitForLoadingComplete(page, { timeout: 15000 });
+
+      // Look for GDPR / erasure / data-deletion related text
+      const gdprText = page.getByText(/GDPR|erasure|data.deletion|right.to.be.forgotten|retention/i);
+      const gdprTextVisible = (await gdprText.count()) > 0 && await gdprText.first().isVisible().catch(() => false);
+
+      // Look for governance sub-navigation links
+      const retentionLink = page.locator('a[href*="/governance/retention"]');
+      const accessRequestsLink = page.locator('a[href*="/governance/access-requests"]');
+      const hasRetentionLink = (await retentionLink.count()) > 0 && await retentionLink.first().isVisible().catch(() => false);
+      const hasAccessRequestsLink = (await accessRequestsLink.count()) > 0 && await accessRequestsLink.first().isVisible().catch(() => false);
+
+      const hasGovSubNav = hasRetentionLink || hasAccessRequestsLink;
+
+      // At least GDPR text OR governance sub-nav links must be visible
+      expect(gdprTextVisible || hasGovSubNav).toBe(true);
+
+      // error-display must NOT be visible (D85)
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 

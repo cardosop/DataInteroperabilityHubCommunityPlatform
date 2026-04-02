@@ -26,6 +26,7 @@ import {
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { useRetentionPolicy, useUpdateRetentionPolicy } from '../hooks/useRetention';
 import './RetentionPolicyEditPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function RetentionPolicyEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -179,17 +180,15 @@ export function RetentionPolicyEditPage() {
 
   return (
     <div className="governance-retention-policy-edit-page">
-      <button
-        type="button"
-        className="btn-back"
-        onClick={() => navigate(`/governance/retention/${id}`)}
-      >
+      <Button
+ variant="ghost"
+ onClick={() => navigate(`/governance/retention/${id}`)}>
         ← Back to Retention Policy
-      </button>
+      </Button>
       <h1>Edit retention policy</h1>
 
       <form className="governance-retention-policy-form" onSubmit={handleSubmit}>
-        {(submitError || updateMutation.error) && (
+        {!!(submitError || updateMutation.error) && (
           <ErrorDisplay
             error={submitError || updateMutation.error}
             title="Failed to update retention policy"
@@ -402,16 +401,14 @@ export function RetentionPolicyEditPage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => navigate(`/governance/retention/${id}`)}
-          >
+          <Button
+ variant="secondary"
+ onClick={() => navigate(`/governance/retention/${id}`)}>
             Cancel
-          </button>
-          <button type="submit" className="btn-primary" disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? 'Updating...' : 'Update retention policy'}
-          </button>
+          </Button>
+          <Button type="submit" variant="primary" loading={updateMutation.isPending}>
+            Update retention policy
+          </Button>
         </div>
       </form>
     </div>

@@ -2,7 +2,8 @@
  * Orders React Query Hooks
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { orderService } from '../services/orderService';
 import type {
   OrderCreateRequest,
@@ -27,8 +28,10 @@ export function useOrder(id: string | null) {
 export function useCreateOrder() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: OrderCreateRequest) => orderService.create(data),
+    successMessage: 'Order created',
+    errorMessage: 'Failed to create order',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['marketplace', 'orders'] });
       queryClient.invalidateQueries({ queryKey: ['marketplace', 'entitlements'] });
@@ -36,14 +39,30 @@ export function useCreateOrder() {
   });
 }
 
-export function usePurchaseListing() {
+/**
+ * Same as useCreateOrder — free / request-access listings use POST /orders/.
+ * Paid listings use the checkout page + orderService.purchaseWithPayment.
+ */
+export const usePurchaseListing = useCreateOrder;
+
+export function useRefundOrder() {
   const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: ({ listingId, purpose }: { listingId: string; purpose?: string }) =>
-      orderService.purchase(listingId, purpose),
-    onSuccess: () => {
+  return useMutationWithNotification({
+    mutationFn: ({
+      orderId,
+      reason,
+      amount,
+    }: {
+      orderId: string;
+      reason: string;
+      amount?: string;
+    }) => orderService.refund(orderId, { reason, amount }),
+    successMessage: 'Refund processed',
+    errorMessage: 'Refund failed',
+    onSuccess: (_, { orderId }) => {
       queryClient.invalidateQueries({ queryKey: ['marketplace', 'orders'] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace', 'orders', 'detail', orderId] });
       queryClient.invalidateQueries({ queryKey: ['marketplace', 'entitlements'] });
     },
   });
@@ -52,8 +71,10 @@ export function usePurchaseListing() {
 export function useApproveOrder() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => orderService.approve(id),
+    successMessage: 'Order approved',
+    errorMessage: 'Failed to approve order',
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['marketplace', 'orders'] });
       queryClient.invalidateQueries({ queryKey: ['marketplace', 'orders', 'detail', id] });
@@ -65,8 +86,10 @@ export function useApproveOrder() {
 export function useRejectOrder() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, reason }: { id: string; reason?: string }) => orderService.reject(id, reason),
+    successMessage: 'Order rejected',
+    errorMessage: 'Failed to reject order',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['marketplace', 'orders'] });
       queryClient.invalidateQueries({ queryKey: ['marketplace', 'orders', 'detail', variables.id] });
@@ -77,8 +100,10 @@ export function useRejectOrder() {
 export function useCancelOrder() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => orderService.cancel(id),
+    successMessage: 'Order cancelled',
+    errorMessage: 'Failed to cancel order',
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['marketplace', 'orders'] });
       queryClient.invalidateQueries({ queryKey: ['marketplace', 'orders', 'detail', id] });

@@ -17,6 +17,10 @@ import {
 const MAILHOG_BASE_URL = process.env.MAILHOG_URL || 'http://localhost:8025';
 
 test.describe('Auth UI closure — Visitor persona (no mocks)', () => {
+  // AUTH-001: clearAuth → register (45s API) → login (60s) → verify shell (45s)
+  // AUTH-003: register → password-reset → MailHog poll (120s) → confirm → login
+  test.setTimeout(240_000);
+
   test('JOURNEY-AUTH-004: unauthenticated user can access public resources', async ({ page }) => {
     await runJOURNEY_AUTH_004_Success(page);
   });
@@ -28,13 +32,18 @@ test.describe('Auth UI closure — Visitor persona (no mocks)', () => {
   test('JOURNEY-AUTH-003: visitor can request password reset and confirm via email link', async ({
     page,
   }) => {
-    test.setTimeout(180_000);
     let mailhogReachable = false;
-    try {
-      const probe = await fetch(`${MAILHOG_BASE_URL}/api/v2/messages?limit=1`);
-      if (probe.ok) mailhogReachable = true;
-    } catch {
-      // ignore
+    // Retry the MailHog probe once — under parallel E2E load the first attempt can fail
+    // with a transient connection error even though the service is healthy.
+    for (let attempt = 0; attempt < 2 && !mailhogReachable; attempt++) {
+      try {
+        const probe = await fetch(`${MAILHOG_BASE_URL}/api/v2/messages?limit=1`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (probe.ok) mailhogReachable = true;
+      } catch {
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 2000));
+      }
     }
     // Skip at test level when MailHog unavailable (optional service for password reset flow).
     // See E2E_ENVIRONMENT_REQUIREMENTS.md and E2E_TEST_SEMANTICS.md.

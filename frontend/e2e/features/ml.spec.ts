@@ -24,7 +24,8 @@ test.describe('Feature: ML', () => {
       await page.goto('/ml');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
-      expect(page.url()).toBeDefined();
+      const url = page.url();
+      expect(url).toMatch(/\/(ml|login|403|unavailable)/);
     });
   });
 });

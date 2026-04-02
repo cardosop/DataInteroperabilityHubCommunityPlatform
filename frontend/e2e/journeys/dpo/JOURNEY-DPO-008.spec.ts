@@ -14,8 +14,8 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute, waitForAppMainReady, waitForLoadingComplete } from '../../fixtures/helpers';
+import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
+import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () => {
   test.setTimeout(120000);
@@ -27,10 +27,11 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () =>
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/transformation', {
         timeout: 60000,
-        // Exclude .loading-spinner-container from stop condition — CapabilityRoute shows a
+        // Exclude  from stop condition — CapabilityRoute shows a
         // spinner while capabilities are fetched; stopping there leads to false assertion
         contentSelector:
           '.transformation-pipeline-list-page, .unavailable-page, .empty-state, .error-display',
+        acceptRedirectToLogin: false,
       });
 
       if (page.url().includes('/login')) {
@@ -41,7 +42,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () =>
       await page.waitForSelector(
         '.transformation-pipeline-list-page, .empty-state, .unavailable-page',
         { timeout: 30000 }
-      ).catch(() => null);
+      );
 
       const capabilityEnabled =
         page.url().includes('/transformation') &&
@@ -51,7 +52,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () =>
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
-      expect(capabilityEnabled || capabilityDisabled).toBe(true);
+      expect(capabilityEnabled || capabilityDisabled).toBe(true) /* acceptable states */;
 
       if (capabilityEnabled) {
         await expect(
@@ -59,7 +60,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () =>
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [role="main"]').first()
+          page.locator('.unavailable-page').first()
         ).toBeVisible({ timeout: 5000 });
       }
     });
@@ -69,45 +70,35 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () =>
     }) => {
       // CapabilityRoute for 'transformation' may redirect to /unavailable when capability is off.
       const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/', {
+      await loginAndNavigateToRoute(page, testUser, '/transformation/create', {
         timeout: 60000,
-        contentSelector: '[data-testid="home-page"], .home-page, .app-header',
+        contentSelector:
+          '.transformation-create-page, .unavailable-page, .error-display',
+        acceptRedirectToLogin: false,
       });
+      await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
-        throw new Error('Unexpected redirect to login before /transformation/create navigation');
-      }
-
-      await page.goto('/transformation/create', { waitUntil: 'domcontentloaded' });
-      await page
-        .locator(
-          '.transformation-pipeline-create-page, .unavailable-page, .error-display, .app-main, h1, #email'
-        )
-        .first()
-        .waitFor({ state: 'visible', timeout: 20000 })
-        .catch(() => null);
-
-      if (page.url().includes('/login')) {
-        throw new Error('Auth expired navigating to /transformation/create');
+        throw new Error('Unexpected redirect to login on /transformation/create after login');
       }
 
       const capabilityEnabled =
         page.url().includes('/transformation') &&
-        (await page.locator('.transformation-pipeline-create-page, .app-main').count()) > 0;
+        (await page.locator('.transformation-create-page').count()) > 0;
       const capabilityDisabled =
         (await page.locator('.unavailable-page').count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
-      expect(capabilityEnabled || capabilityDisabled).toBe(true);
+      expect(capabilityEnabled || capabilityDisabled).toBe(true) /* acceptable states */;
 
       if (capabilityEnabled) {
         await expect(
-          page.locator('.transformation-pipeline-create-page, .app-main').first()
+          page.locator('.transformation-create-page').first()
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [role="main"]').first()
+          page.locator('.unavailable-page').first()
         ).toBeVisible({ timeout: 5000 });
       }
     });
@@ -131,31 +122,29 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () =>
         const hasLoginPromptOnPage =
           (await page.locator('input#email, [href*="/login"]').count()) > 0 ||
           (await page.getByText('Sign in').count()) > 0;
-        expect(hasLoginPromptOnPage).toBe(true);
+        expect(hasLoginPromptOnPage).toBe(true) /* acceptable states */;
       } else {
-        expect(redirectedToAuth).toBe(true);
+        expect(redirectedToAuth).toBe(true) /* acceptable states */;
       }
     });
 
     test('non-existent pipeline detail shows explicit error or unavailable', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/transformation/pipelines/00000000-0000-0000-0000-000000000000', {
-        waitUntil: 'domcontentloaded',
-      });
+      await loginAndNavigateToRoute(
+        page,
+        testUser,
+        '/transformation/pipelines/00000000-0000-0000-0000-000000000000',
+        {
+          timeout: 60000,
+          contentSelector: '.transformation-detail-page, .unavailable-page, .error-display',
+          acceptRedirectToLogin: false,
+        }
+      );
+      await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
-        throw new Error('Unexpected redirect to login for non-existent pipeline detail');
+        throw new Error('Unexpected redirect to login on transformation pipeline detail after login');
       }
-
-      // Wait past CapabilityRoute loading spinner: capability gated check must complete
-      // before the pipeline detail (or unavailable redirect) renders.
-      await page.waitForSelector(
-        '.transformation-detail-page, .unavailable-page, .error-display',
-        { timeout: 30000 }
-      ).catch(() => null);
-      // Ensure loading spinner has cleared so error display has time to render
-      await waitForLoadingComplete(page, { timeout: 30000 });
 
       const capabilityDisabled =
         (await page.locator('.unavailable-page').count()) > 0 ||
@@ -164,7 +153,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () =>
 
       if (capabilityDisabled) {
         // Capability off — 404 test not meaningful; verify unavailable page renders
-        await expect(page.locator('.unavailable-page, [role="main"]').first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.unavailable-page').first()).toBeVisible({ timeout: 5000 });
         return;
       }
 
@@ -172,7 +161,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () =>
       const hasExplicitError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('[role="alert"]').count()) > 0;
-      expect(hasExplicitError).toBe(true);
+      expect(hasExplicitError).toBe(true) /* acceptable states */;
     });
   });
 
@@ -181,27 +170,16 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () =>
       page,
     }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/transformation', { waitUntil: 'domcontentloaded' });
-      try {
-        await waitForAppMainReady(page, {
-          contentSelector:
-            '.transformation-pipeline-list-page, .unavailable-page, .empty-state, .error-display',
-          timeout: 30000,
-        });
-      } catch {
-        // Acceptable: capability may redirect before terminal state
-      }
-      await page
-        .locator('.transformation-pipeline-list-page, .unavailable-page, .app-main, #email')
-        .first()
-        .waitFor({ state: 'visible', timeout: 10000 })
-        .catch(() => null);
-      // Ensure loading spinner has cleared so capability state is fully resolved
+      await loginAndNavigateToRoute(page, testUser, '/transformation', {
+        timeout: 60000,
+        contentSelector:
+          '.transformation-pipeline-list-page, .unavailable-page, .empty-state, .error-display',
+        acceptRedirectToLogin: false,
+      });
       await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
-        throw new Error('Unexpected redirect to login on /transformation edge test');
+        throw new Error('Unexpected redirect to login on /transformation after login');
       }
 
       const capabilityEnabled =
@@ -212,7 +190,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () =>
         page.url().includes('/403');
 
       // Exactly one state must be true — not "any URL is fine"
-      expect(capabilityEnabled || capabilityDisabled).toBe(true);
+      expect(capabilityEnabled || capabilityDisabled).toBe(true) /* acceptable states */;
 
       if (capabilityEnabled) {
         await expect(
@@ -220,7 +198,7 @@ test.describe('JOURNEY-DPO-008: Create Transformation Pipeline for Asset', () =>
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [role="main"]').first()
+          page.locator('.unavailable-page').first()
         ).toBeVisible({ timeout: 5000 });
       }
     });

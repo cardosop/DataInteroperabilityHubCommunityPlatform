@@ -21,7 +21,7 @@ import {
 } from '../../fixtures/helpers';
 
 test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
-  test.setTimeout(300000);
+  test.setTimeout(120000);
 
   test('asset detail without contract/dataset shows ContractPicker and DatasetPicker', async ({
     page,
@@ -30,7 +30,7 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
     await loginAndNavigateToRoute(page, user, '/assets', {
       timeout: 60000,
       contentSelector:
-        '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+        '.asset-list-page, .empty-state, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -91,7 +91,7 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
     await loginAndNavigateToRoute(page, user, '/assets', {
       timeout: 60000,
       contentSelector:
-        '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+        '.asset-list-page, .empty-state, h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -153,7 +153,7 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
     const hasLoading =
       (await page.locator('.resource-picker-loading').count()) > 0;
 
-    expect(hasOptions || hasEmpty || hasLoading).toBe(true);
+    expect(hasOptions || hasEmpty || hasLoading).toBe(true) /* acceptable states */;
   });
 
   test('asset detail: DatasetPicker opens and attach flow', async ({
@@ -163,13 +163,13 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
     await loginAndNavigateToRoute(page, user, '/datasets/create', {
       timeout: 60000,
       contentSelector:
-        '.dataset-create-page, .file-upload, .error-display, h1',
+        '.dataset-create-page, .file-upload, h1',
     });
     await waitForLoadingComplete(page);
 
     const dropzone = page.locator('.file-upload-dropzone');
     if ((await dropzone.count()) === 0) {
-      test.skip();
+      test.skip(true, 'File upload dropzone not rendered — precondition not met');
       return;
     }
 

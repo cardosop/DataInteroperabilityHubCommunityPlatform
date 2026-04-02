@@ -2,7 +2,8 @@
  * Marketplace Sync Jobs React Query Hooks
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { marketplaceSyncJobService } from '../services/marketplaceSyncJobService';
 import type {
   MarketplaceSyncJob,
@@ -48,8 +49,10 @@ export function useMarketplaceSyncJob(id: string | null) {
 export function useCreateMarketplaceSyncJob() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: MarketplaceSyncJobCreate) => marketplaceSyncJobService.create(data),
+    successMessage: 'Sync job created',
+    errorMessage: 'Failed to create sync job',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'sync'] });
     },
@@ -59,9 +62,11 @@ export function useCreateMarketplaceSyncJob() {
 export function useCancelMarketplaceSyncJob() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data?: MarketplaceSyncJobCancel }) =>
       marketplaceSyncJobService.cancel(id, data),
+    successMessage: 'Sync job cancelled',
+    errorMessage: 'Failed to cancel sync job',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'sync'] });
       queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'sync', 'detail', variables.id] });

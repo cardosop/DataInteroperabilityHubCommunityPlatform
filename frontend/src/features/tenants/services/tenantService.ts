@@ -23,9 +23,11 @@ export const tenantService = {
    * POST /api/v1/tenants/onboarding/
    */
   async createOrgTenant(data: TenantOnboardingRequest): Promise<TenantOnboardingResponse> {
+    // Extended timeout: onboarding creates tenant + user + subscription + roles in a single
+    // transaction.  Under load this can exceed the default 30s Axios timeout.
     const response = await apiClient
       .getClient()
-      .post<TenantOnboardingResponse>(`${TENANTS_BASE}/onboarding/`, data);
+      .post<TenantOnboardingResponse>(`${TENANTS_BASE}/onboarding/`, data, { timeout: 90000 });
     return response.data;
   },
 

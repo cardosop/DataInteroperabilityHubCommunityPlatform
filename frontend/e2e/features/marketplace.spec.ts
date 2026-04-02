@@ -15,7 +15,7 @@ test.describe('Feature: Marketplace', () => {
     test('marketplace list loads (or redirects to login)', async ({ page }) => {
       await page.goto('/marketplace');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.listing-list-page, .error-display, .empty-state, #email', {
+      await page.waitForSelector('.listing-list-page, .empty-state', {
         timeout: 65000,
       });
       if (page.url().includes('/login')) {
@@ -37,7 +37,7 @@ test.describe('Feature: Marketplace', () => {
       const onLogin = page.url().includes('/login');
       const hasError = (await page.locator('.error-display').count()) > 0;
       const noDetail = (await page.locator('.listing-detail-main').count()) === 0;
-      expect(onLogin || hasError || noDetail).toBe(true);
+      expect(onLogin || hasError || noDetail).toBe(true) /* acceptable states */;
     });
   });
 

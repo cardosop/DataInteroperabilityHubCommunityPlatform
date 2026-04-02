@@ -19,7 +19,7 @@ import {
 } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
-  test.setTimeout(480000); // 8 min: loginUser may use up to 7 min under rate-limit retries
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('publish listing: select asset, fill title and description, submit and reach listing or marketplace', async ({
@@ -130,12 +130,12 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       });
       await page.fill('#title', 'Some Title');
       await page.fill('#description', 'Some description');
-      page
+      await page
         .locator('button[type="submit"]')
         .or(page.locator('button:has-text("Create Listing")'))
         .first()
         .click();
-      await new Promise((r) => setTimeout(r, 500));
+      await page.waitForTimeout(500);
       const assetError = page.locator('.error-message').filter({ hasText: /asset|required/i });
       await expect(assetError.first()).toBeVisible({ timeout: 5000 });
     });
@@ -159,12 +159,12 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       const assetSelect = page.locator('select#asset_id');
       await assetSelect.selectOption({ value: assetId });
       await page.fill('#description', 'Some description');
-      page
+      await page
         .locator('button[type="submit"]')
         .or(page.locator('button:has-text("Create Listing")'))
         .first()
         .click();
-      await new Promise((r) => setTimeout(r, 500));
+      await page.waitForTimeout(500);
       const titleError = page.locator('.error-message').filter({ hasText: /title|required/i });
       await expect(titleError.first()).toBeVisible({ timeout: 5000 });
     });
@@ -179,7 +179,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
         url.includes('/marketplace') &&
         ((await page.locator('input#email, [href*="/login"]').count()) > 0 ||
           (await page.locator('text=Sign in').count()) > 0);
-      expect(onLogin || onPublishWithLoginPrompt).toBe(true);
+      expect(onLogin || onPublishWithLoginPrompt).toBe(true) /* acceptable states */;
     });
   });
 
@@ -192,9 +192,14 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       });
       const assetSelect = page.locator('select#asset_id');
       await expect(assetSelect).toBeVisible({ timeout: 5000 });
+      // Verify dropdown exists and check option count (0 real options = only placeholder)
+      const optionCount = await assetSelect.locator('option').count();
+      // At least the placeholder <option> should exist; real asset options may or may not be present
+      expect(optionCount).toBeGreaterThanOrEqual(1);
       expect(page.url()).toContain('/marketplace/publish');
     });
 
+    // Smoke test: only verifies input handling (typing special characters), not form submission.
     test('publish form accepts description with special characters', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {

@@ -39,7 +39,9 @@ export interface Contract {
   updated_at: string;
   created_by: string;
   tenant_id: string;
-  asset_id?: string;
+  /** Linked asset UUID; API may expose this and/or `asset` (same value). */
+  asset_id?: string | null;
+  asset?: string | null;
   // Computed fields from hub_contract_json
   owners?: Array<{ name: string; email: string }>;
   tags?: string[];
@@ -112,4 +114,43 @@ export interface ContractConvertRequest {
 export interface ContractConvertResult {
   converted_raw: string;
   format: ContractFormat;
+}
+
+/** Supported ODCS export versions */
+export const ODCS_EXPORT_VERSIONS = [
+  '2.2.2',
+  '3.0.0',
+  '3.0.1',
+  '3.0.2',
+  '3.1.0',
+] as const;
+
+export type ODCSExportVersion = (typeof ODCS_EXPORT_VERSIONS)[number];
+
+/** A relationship entry from hub_contract_json models */
+/** Resolved linked asset id from contract payload (DRF uses `asset`; clients often use `asset_id`). */
+export function getContractLinkedAssetId(contract: Contract): string | null {
+  const id = contract.asset_id ?? contract.asset;
+  if (id == null || id === '') {
+    return null;
+  }
+  return String(id);
+}
+
+export interface ContractRelationship {
+  id?: string;
+  type?: string;
+  source?: string[];
+  target_contract?: string;
+  target_model?: string;
+  target_properties?: string[];
+  description?: string;
+}
+
+/** A schema object (model) from hub_contract_json */
+export interface ContractSchemaObject {
+  name: string;
+  description?: string;
+  relationships?: ContractRelationship[];
+  [key: string]: unknown;
 }

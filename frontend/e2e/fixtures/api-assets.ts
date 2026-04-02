@@ -56,12 +56,13 @@ function getAlternateApiBase(currentBase: string): string | null {
   return null;
 }
 
-const RETRIES = 3;
-const RETRY_DELAYS_MS = [2000, 4000, 6000];
+const RETRIES = 5;
+const RETRY_DELAYS_MS = [2000, 4000, 6000, 8000, 10000];
 
 /**
  * Log in via API and return access token.
- * Retries on transient connection errors (other side closed, ECONNRESET).
+ * Retries on transient connection errors (other side closed, ECONNRESET),
+ * 429 rate limiting, and transient 500s.
  * Tries alternate port (8000 <-> 8001) on ECONNREFUSED.
  */
 async function loginViaApi(user: TestUser): Promise<string> {
@@ -78,6 +79,18 @@ async function loginViaApi(user: TestUser): Promise<string> {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: user.email, password: user.password }),
         });
+        if (response.status === 429) {
+          // Rate-limited: backoff and retry (parallel E2E workers saturate the limiter)
+          const retryAfter = parseInt(response.headers.get('retry-after') ?? '', 10);
+          const backoffMs = (retryAfter > 0 ? retryAfter * 1000 : RETRY_DELAYS_MS[Math.min(r, RETRY_DELAYS_MS.length - 1)]);
+          await new Promise((resolve) => setTimeout(resolve, backoffMs));
+          continue;
+        }
+        if (response.status >= 500 && r < RETRIES - 1) {
+          // Transient server error: retry with backoff
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[r]));
+          continue;
+        }
         if (!response.ok) {
           const body = await response.text().catch(() => '');
           throw new Error(`Login API failed: ${response.status} ${body}`);
@@ -97,7 +110,7 @@ async function loginViaApi(user: TestUser): Promise<string> {
         if (isConnectionRefused(err)) {
           break; // Try alternate port
         }
-        throw err;
+        if (r >= RETRIES - 1) throw err;
       }
     }
   }
@@ -119,6 +132,22 @@ export async function getAssetKeyViaApi(user: TestUser, assetId: string): Promis
   if (!res || !res.ok) return null;
   const data = (await res.json()) as { key?: string };
   return data.key ?? null;
+}
+
+/** Linked asset UUID for a contract (Node-side API; no browser CORS). */
+export async function getContractLinkedAssetIdViaApi(
+  user: TestUser,
+  contractId: string
+): Promise<string | null> {
+  const token = await loginViaApi(user);
+  const res = await fetch(`${API_BASE_URL}/contracts/${contractId}/`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  } as RequestInit).catch(() => null);
+  if (!res || !res.ok) return null;
+  const data = (await res.json()) as { asset?: string | null };
+  const aid = data.asset;
+  return typeof aid === 'string' && aid.length > 0 ? aid : null;
 }
 
 /**
@@ -203,6 +232,33 @@ async function createAssetViaApiOnce(
   if (!response.ok) {
     const body = await response.text().catch(() => '');
     if (response.status === 403 && /subscription_inactive|No active subscription/i.test(body)) {
+      // Attempt to re-ensure subscription and retry once
+      const reEnsureRes = await fetch(`${API_BASE_URL}/test/ensure-e2e-subscription/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      }).catch(() => null);
+      if (reEnsureRes?.ok) {
+        console.log('✅ E2E subscription re-ensured after 403, retrying asset creation');
+        const retryResponse = await fetch(`${API_BASE_URL}/assets/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ key, name: 'E2E Publish Asset', description: 'Created by E2E for publish tests', visibility: 'INTERNAL' }),
+        });
+        if (retryResponse.ok) {
+          const retryData = (await retryResponse.json()) as { id?: string };
+          if (retryData.id) {
+            const retryAssetId = retryData.id;
+            if (options?.ensureActivated) {
+              await fetch(`${API_BASE_URL}/assets/${retryAssetId}/activate/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ version: 1 }),
+              }).catch(() => null);
+            }
+            return retryAssetId;
+          }
+        }
+      }
       throw new Error(
         `Create asset API failed: 403 subscription_inactive. ` +
           `Ensure E2E subscription: run 'docker exec hub-test-api python hub/manage.py ensure_e2e_subscription' or use npm run test:e2e (calls ensure endpoint automatically).`
@@ -395,7 +451,7 @@ export async function cleanupOldScheduledExports(user: TestUser): Promise<void> 
             Authorization: `Bearer ${token}`,
           },
         });
-      } catch (error) {
+      } catch {
         // Ignore deletion errors - continue cleaning up others
       }
     }
@@ -606,12 +662,35 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
     }),
   });
 
+  let effectiveInitResponse = initResponse;
   if (!initResponse.ok) {
     const body = await initResponse.text().catch(() => '');
-    throw new Error(`File init API failed: ${initResponse.status} ${body}`);
+    if (initResponse.status === 403 && /subscription_inactive|No active subscription/i.test(body)) {
+      // Re-ensure subscription and retry
+      await fetch(`${API_BASE_URL}/test/ensure-e2e-subscription/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      }).catch(() => null);
+      const retryInit = await fetch(`${API_BASE_URL}/files/init/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: `e2e-dataset-${Date.now()}.csv`,
+          content_type: 'text/csv',
+          size: Buffer.byteLength(csvContent, 'utf-8'),
+          upload_method: 'browser',
+        }),
+      });
+      if (!retryInit.ok) {
+        throw new Error(`File init API failed after subscription re-ensure: ${retryInit.status}`);
+      }
+      effectiveInitResponse = retryInit;
+    } else {
+      throw new Error(`File init API failed: ${initResponse.status} ${body}`);
+    }
   }
 
-  const initData = (await initResponse.json()) as { file_id?: string; id?: string; upload_url?: string };
+  const initData = (await effectiveInitResponse.json()) as { file_id?: string; id?: string; upload_url?: string };
   const fileId = initData.file_id ?? initData.id;
   if (!fileId) throw new Error('File init response missing file_id');
 
@@ -641,7 +720,7 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
           throw new Error(`Upload failed: ${putRes.status}`);
         }
       }
-    } catch (err) {
+    } catch {
       // In test/dev mode backend may allow complete without storage; continue
     }
   }
@@ -761,13 +840,35 @@ export async function createODPSProductViaApi(user: TestUser): Promise<string> {
     }),
   });
 
+  let effectiveResponse = response;
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    throw new Error(`createODPSProductViaApi failed: ${response.status} ${body}`);
+    if (response.status === 403 && /subscription_inactive|No active subscription/i.test(body)) {
+      await fetch(`${API_BASE_URL}/test/ensure-e2e-subscription/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      }).catch(() => null);
+      const retryRes = await fetch(`${API_BASE_URL}/contracts/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          original_raw: JSON.stringify(odpsPayload),
+          original_format: 'JSON',
+          original_spec_type: 'ODPS',
+        }),
+      });
+      if (!retryRes.ok) {
+        const retryBody = await retryRes.text().catch(() => '');
+        throw new Error(`createODPSProductViaApi failed after subscription re-ensure: ${retryRes.status} ${retryBody}`);
+      }
+      effectiveResponse = retryRes;
+    } else {
+      throw new Error(`createODPSProductViaApi failed: ${response.status} ${body}`);
+    }
   }
 
   // The ODPS upload flow creates a workflow; poll for the contract id
-  const createData = (await response.json()) as {
+  const createData = (await effectiveResponse.json()) as {
     id?: string;
     workflow_instance_id?: string;
     odps_contract?: { id?: string };
@@ -802,6 +903,105 @@ export async function createODPSProductViaApi(user: TestUser): Promise<string> {
   }
 
   throw new Error('createODPSProductViaApi: response missing id and workflow_instance_id');
+}
+
+/**
+ * Create a minimal ODPS contract linked to a new asset (linked-asset UI on ODPS detail).
+ * Returns the hub contract id (use /odps/:id in the SPA when applicable).
+ */
+export async function createODPSContractLinkedToAssetViaApi(user: TestUser): Promise<string> {
+  const token = await loginViaApi(user);
+  const assetId = await createAssetViaApi(user);
+
+  const productId = `e2e-odps-asset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const odcsId = `e2e-odcs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const odpsPayload = {
+    schema: 'https://opendataproducts.org/schema/v4.1',
+    version: '4.1',
+    product: {
+      details: {
+        en: {
+          productID: productId,
+          name: 'E2E ODPS Product (linked asset)',
+          description: 'Minimal ODPS with asset_id for contract-asset-link E2E',
+          productVersion: '1.0.0',
+        },
+      },
+      dataSchema: {
+        fields: [
+          { name: 'id', type: 'string' },
+          { name: 'value', type: 'number' },
+        ],
+      },
+      contract: {
+        spec: {
+          apiVersion: 'odcs.io/v3.0.2',
+          kind: 'DataContract',
+          id: odcsId,
+          name: 'E2E ODCS Contract (embedded in ODPS)',
+          version: '1.0.0',
+          description: 'Embedded ODCS for linked-asset E2E',
+          schema: {
+            fields: [
+              { name: 'id', type: 'string', nullable: false, description: 'ID' },
+              { name: 'value', type: 'number', nullable: true, description: 'Value' },
+            ],
+          },
+        },
+      },
+    },
+  };
+
+  const response = await fetch(`${API_BASE_URL}/contracts/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      original_raw: JSON.stringify(odpsPayload),
+      original_format: 'JSON',
+      original_spec_type: 'ODPS',
+      asset_id: assetId,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`createODPSContractLinkedToAssetViaApi failed: ${response.status} ${body}`);
+  }
+
+  const createData = (await response.json()) as {
+    id?: string;
+    workflow_instance_id?: string;
+    odps_contract?: { id?: string };
+  };
+
+  if (createData.id) return createData.id;
+
+  if (createData.workflow_instance_id) {
+    const workflowId = createData.workflow_instance_id;
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const statusRes = await fetch(
+        `${API_BASE_URL}/contracts/odps/workflow-status/${workflowId}/`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (statusRes.ok) {
+        const statusData = (await statusRes.json()) as {
+          status?: string;
+          odps_contract?: { id?: string };
+        };
+        if (statusData.status === 'COMPLETED' && statusData.odps_contract?.id) {
+          return statusData.odps_contract.id;
+        }
+        if (statusData.status === 'FAILED') {
+          throw new Error(`createODPSContractLinkedToAssetViaApi: workflow failed`);
+        }
+      }
+    }
+    throw new Error(`createODPSContractLinkedToAssetViaApi: workflow did not complete within 60s`);
+  }
+
+  throw new Error('createODPSContractLinkedToAssetViaApi: response missing id and workflow_instance_id');
 }
 
 /**

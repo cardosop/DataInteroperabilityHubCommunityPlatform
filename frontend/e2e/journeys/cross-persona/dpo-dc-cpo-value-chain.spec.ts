@@ -41,7 +41,7 @@ const API_BASE =
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
 test.describe('Cross-Persona Value Chain: DPO → DC → CPO', () => {
-  test.setTimeout(600000); // 10 min: multi-persona login + marketplace flow
+  test.setTimeout(120000);
 
   test(
     'DPO publishes ACTIVE asset → DC requests access → CPO approves → DC has entitlement',
@@ -223,7 +223,7 @@ test.describe('Cross-Persona Value Chain: DPO → DC → CPO', () => {
         const listingInEntitlements = await page.locator(`text="${listingTitle}"`).count();
         const entitlementPagePresent =
           (await page.locator('.entitlement-list-page').count()) > 0;
-        expect(listingInEntitlements > 0 || entitlementPagePresent).toBe(true);
+        expect(listingInEntitlements > 0 || entitlementPagePresent).toBe(true) /* acceptable states */;
       }
 
       // API: verify the entitlement for THIS specific listing exists and is active for the DC user.

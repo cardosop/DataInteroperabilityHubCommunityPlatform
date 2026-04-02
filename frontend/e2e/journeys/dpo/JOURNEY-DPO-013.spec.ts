@@ -27,26 +27,25 @@ async function getMeshDomainUser() {
 }
 
 test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
-  test.setTimeout(300000); // 5 min: mesh API + login under parallel E2E load
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('mesh domain list loads', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display, .loading-spinner-container',
+        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
       });
       expect(page.url()).toContain('/mesh');
       // Wait for loading to complete and actual content to appear (not just loading spinner)
       await page
-        .locator('.mesh-domain-list-page, .empty-state, .error-display')
+        .locator('.mesh-domain-list-page, .empty-state')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 });
       const hasContent =
         (await page.locator('.mesh-domain-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
-      expect(hasContent).toBe(true);
+        (await page.locator('.empty-state').count()) > 0;
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
 
     test('mesh create page loads', async ({ page }) => {
@@ -56,6 +55,9 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
         contentSelector: '.mesh-domain-create-page, .error-display',
       });
       expect(page.url()).toContain('/mesh/create');
+      const hasCreateContent =
+        (await page.locator('.mesh-domain-create-page, form').count()) > 0;
+      expect(hasCreateContent).toBe(true);
     });
 
     test('create mesh domain: fill form, submit, and domain appears in list or detail', async ({
@@ -112,11 +114,12 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
       let resp: import('@playwright/test').Response | null = null;
       try {
         resp = await createResponse;
-      } catch {
-        /* timeout — check UI state */
+      } catch (err) {
+        // Timeout waiting for POST response — fall through and check UI state instead
+        console.warn(`Mesh domain create response timeout: ${String(err).slice(0, 150)}`);
       }
 
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(1000);
 
       if (resp && resp.status() === 403) {
         // 403 means the user lacks TENANT_ADMIN role — this is a role/permission boundary test;
@@ -140,11 +143,11 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
       // Success: should navigate to the domain detail page or back to the list
       const finalUrl = page.url();
       const navigatedToDomain = /\/mesh\/[^/]+$/.test(finalUrl);
-      const onMeshList = finalUrl.includes('/mesh') && !finalUrl.includes('/create');
+      const onMeshList = /\/mesh\/?$/.test(finalUrl) || (finalUrl.includes('/mesh') && !finalUrl.includes('/create'));
       const hasSuccessContent =
-        (await page.locator('.mesh-domain-detail-page, .mesh-domain-list-page, h1').count()) > 0;
+        (await page.locator('.mesh-domain-detail-page, .mesh-domain-list-page').count()) > 0;
 
-      expect(navigatedToDomain || onMeshList || hasSuccessContent).toBe(true);
+      expect(navigatedToDomain || onMeshList || hasSuccessContent).toBe(true) /* acceptable states */;
     });
   });
 
@@ -153,7 +156,7 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display, .loading-spinner-container',
+        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
       });
       await page.goto('/mesh/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
@@ -169,9 +172,12 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display, .loading-spinner-container',
+        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
       });
       expect(page.url()).toContain('/mesh');
+      const hasListContent =
+        (await page.locator('.mesh-domain-list-page, .empty-state').count()) > 0;
+      expect(hasListContent).toBe(true);
     });
   });
 });

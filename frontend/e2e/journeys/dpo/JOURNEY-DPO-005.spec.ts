@@ -15,14 +15,14 @@ import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
-  test.setTimeout(300000); // 5 min: contracts API can be slow under parallel E2E load
+  test.setTimeout(120000); // 2 min default per test; individual tests override when needed
 
   test.describe('Success', () => {
     test('contracts list loads without backend error', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/contracts', {
         timeout: 60000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+        contentSelector: '.contract-list-page, .empty-state, .error-display, h1',
       });
       expect(page.url()).toContain('/contracts');
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -37,7 +37,7 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       const hasContent =
         (await page.locator('.contract-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
 
     test('contract detail page loads for a known contract (API-seeded)', async ({ page }) => {
@@ -49,11 +49,7 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       // Navigate directly to the contract detail URL using the seeded ID
       await loginAndNavigateToRoute(page, testUser, `/contracts/${contractId}`, {
         timeout: 90000,
-        contentSelector: '.contract-detail-page, .contract-detail-content, .error-display, #email',
-      });
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.contract-detail-page, .contract-detail-content, .error-display, #email', {
-        timeout: 20000,
+        contentSelector: '.contract-detail-page, .contract-detail-content, .error-display',
       });
 
       if (page.url().includes('/login')) {
@@ -74,10 +70,11 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
         await editBtn.click();
         await page.waitForLoadState('domcontentloaded');
         await page.waitForSelector('.contract-editor-page, .error-display', { timeout: 15000 });
-        if (!page.url().includes('/login')) {
-          expect(page.url()).toContain('/contracts');
-          expect(page.url()).toContain('/edit');
+        if (page.url().includes('/login')) {
+          throw new Error('Unexpected redirect to login after clicking Edit on contract detail');
         }
+        expect(page.url()).toContain('/contracts');
+        expect(page.url()).toContain('/edit');
       }
     });
   });
@@ -110,7 +107,7 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
         url.includes('/contracts') &&
         ((await page.locator('input#email, [href*="/login"]').count()) > 0 ||
           (await page.locator('text=Sign in').count()) > 0);
-      expect(onLogin || onContractsWithLoginPrompt).toBe(true);
+      expect(onLogin || onContractsWithLoginPrompt).toBe(true) /* acceptable states */;
     });
   });
 
@@ -125,13 +122,18 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
         throw new Error('Contracts list redirected to login; auth may have failed under parallel load.');
       }
       expect(page.url()).toContain('/contracts');
+
+      const hasContent =
+        (await page.locator('.contract-list-page').count()) > 0 ||
+        (await page.locator('.empty-state').count()) > 0;
+      expect(hasContent).toBe(true);
     });
 
     test('contracts list shows data rows, pagination, or empty state (not an error)', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/contracts', {
         timeout: 90000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display, .contract-list-pagination, .loading-spinner-container, h1',
+        contentSelector: '.contract-list-page, .empty-state, .error-display, .contract-list-pagination, h1',
       });
       if (page.url().includes('/login')) {
         throw new Error('Contracts list redirected to login; auth may have failed under parallel load.');
@@ -152,7 +154,7 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       const hasListOrEmpty =
         (await page.locator('.contract-list-page table tr, .contract-list-page .list-item, .contract-list-page a[href*="/contracts/"]').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
-      expect(hasPagination || hasListOrEmpty).toBe(true);
+      expect(hasPagination || hasListOrEmpty).toBe(true) /* acceptable states */;
     });
   });
 });

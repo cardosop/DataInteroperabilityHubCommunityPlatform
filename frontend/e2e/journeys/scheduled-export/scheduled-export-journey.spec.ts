@@ -99,7 +99,7 @@ async function pollRunUntilTerminal(
   // Use page.request (Node.js) not page.evaluate (browser) to avoid CORS blocking on localhost:8084.
   try {
     await page.request.post(`${PREFECT_INTEGRATION_URL.replace(/\/$/, '')}/status/sync`, { timeout: 5000 }).catch(() => {});
-  } catch (e) {
+  } catch {
     // Ignore status sync errors - continue polling
   }
 
@@ -116,7 +116,7 @@ async function pollRunUntilTerminal(
         // Wait for the sync to process and update the database
         await page.waitForTimeout(2000);
         lastStatusSync = Date.now();
-      } catch (e) {
+      } catch {
         // Ignore status sync errors - continue polling
       }
     }
@@ -155,7 +155,7 @@ async function pollRunUntilTerminal(
     await page.request.post(`${PREFECT_INTEGRATION_URL.replace(/\/$/, '')}/status/sync`, { timeout: 5000 }).catch(() => {});
     // Wait longer for sync to process and database to update
     await page.waitForTimeout(3000);
-  } catch (e) {
+  } catch {
     // Ignore status sync errors
   }
 
@@ -286,7 +286,7 @@ async function fillAssetIdInExportForm(
 test.describe('Scheduled Export Journey', () => {
   // 15 min: setup (login + asset + export creation + trigger) up to 11 min under parallel E2E load
   // + 4 min RUN_COMPLETION_TIMEOUT_MS polling = 15 min total budget.
-  test.setTimeout(900000);
+  test.setTimeout(90000);
 
   test.describe('Failure', () => {
     test('unauthenticated access to scheduled-exports redirects to login', async ({ page }) => {
@@ -298,7 +298,7 @@ test.describe('Scheduled Export Journey', () => {
       const onRouteWithLoginPrompt =
         url.includes('/scheduled-exports') &&
         (await hasLoginPrompt(page));
-      expect(onLogin || onRouteWithLoginPrompt).toBe(true);
+      expect(onLogin || onRouteWithLoginPrompt).toBe(true) /* acceptable states */;
     });
   });
 
@@ -333,7 +333,7 @@ test.describe('Scheduled Export Journey', () => {
       await loginAndNavigateToRoute(page, testUser, '/scheduled-exports', {
         timeout: 90000,
         contentSelector:
-          '.scheduled-export-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+          '.scheduled-export-list-page, .empty-state, .error-display, h1',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         test.skip(
@@ -379,7 +379,7 @@ test.describe('Scheduled Export Journey', () => {
             waitUntil: 'domcontentloaded',
           }
         );
-      } catch (err) {
+      } catch {
         const hasError = (await page.locator('.error-display').count()) > 0;
         const errText = hasError
           ? (await page.locator('.error-display').first().textContent().catch(() => '')) || ''
@@ -524,28 +524,26 @@ test.describe('Scheduled Export Journey', () => {
         run = await pollRunUntilTerminal(page, exportId, flowRunId);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        // Skip only on Prefect infrastructure unavailability (run never started / worker not running)
-        // Also skip on 404: export deleted by parallel project's cleanupOldScheduledExports mid-poll.
-        const isPrefectInfra =
+        // D88: Only skip on Prefect worker health-check failures (worker not running, run never started).
+        const isPrefectWorkerDown =
           msg.includes('not found within') ||
           msg.includes('did not reach terminal state') ||
-          msg.includes('Ensure Prefect worker') ||
-          msg.includes('flow_run_id') || // run not matched by flow_run_id — Prefect worker not running
-          msg.includes('Export runs not found (404)'); // export deleted by parallel cleanup mid-poll
-        if (isPrefectInfra) {
+          msg.includes('Ensure Prefect worker');
+        if (isPrefectWorkerDown) {
           test.skip(
             true,
-            `Prefect infrastructure not running — skip. ` +
+            `Prefect worker not running — skip. ` +
               `Start: docker compose -f docker-compose.test.yml up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test. ` +
               `Detail: ${msg.slice(0, 200)}`
           );
           return;
         }
-        // HTTP errors fetching runs list or auth expiry are real failures — propagate
+        // All other errors (flow_run_id mismatch, 404, auth expiry) are real failures — propagate
         throw err;
       }
 
-      expect(['COMPLETED', 'FAILED', 'CANCELLED']).toContain(run.status);
+      // D88: Success flow must only accept COMPLETED. FAILED/CANCELLED are test failures.
+      expect(run.status).toBe('COMPLETED');
       if (run.status === 'COMPLETED') {
         // A COMPLETED run must have found and exported at least 1 item.
         // items_found === 0 means the flow silently succeeded without touching any data
@@ -789,7 +787,7 @@ test.describe('Scheduled Export Journey', () => {
         (await page.locator('.error-message, .field-error, [role="alert"]').count()) > 0 ||
         (await page.locator('text=/invalid.*cron|cron.*invalid|format/i').count()) > 0;
 
-      expect(hasValidationError, 'Expected cron validation error for invalid cron expression').toBe(true);
+      expect(hasValidationError, 'Expected cron validation error for invalid cron expression').toBe(true) /* acceptable states */;
     });
   });
 
@@ -824,7 +822,7 @@ test.describe('Scheduled Export Journey', () => {
       await loginAndNavigateToRoute(page, testUser, '/scheduled-exports', {
         timeout: 90000,
         contentSelector:
-          '.scheduled-export-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+          '.scheduled-export-list-page, .empty-state, .error-display, h1',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         test.skip(
@@ -930,7 +928,7 @@ test.describe('Scheduled Export Journey', () => {
             (await page.locator('[data-testid="run-status"]').count()) > 0 ||
             (await page.locator('text=/status|completed|failed|running/i').count()) > 0 ||
             (await page.locator('text=/items.*found|items.*exported/i').count()) > 0;
-          expect(hasRunDetails).toBe(true);
+          expect(hasRunDetails).toBe(true) /* acceptable states */;
         } else {
           // No runs yet, but runs section exists
           expect(runsSectionCount).toBeGreaterThan(0);

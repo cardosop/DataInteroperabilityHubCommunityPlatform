@@ -28,11 +28,19 @@ export const RiskLevel = {
 export type RiskLevel = (typeof RiskLevel)[keyof typeof RiskLevel];
 
 export interface ComplianceColumnFinding {
-  column_name: string;
-  pii_types: string[];
-  risk_score: number;
+  column: string;
+  categories: string[];
+  match_ratio: number;
+  confidence?: string;
+  sample_matches?: number;
+  total_sampled?: number;
+  /** @deprecated Use `column` instead */
+  column_name?: string;
+  /** @deprecated Use `categories` instead */
+  pii_types?: string[];
+  /** @deprecated Use `match_ratio` instead */
+  risk_score?: number;
   regulations_affected?: string[];
-  confidence?: number;
   sample_values?: string[];
 }
 

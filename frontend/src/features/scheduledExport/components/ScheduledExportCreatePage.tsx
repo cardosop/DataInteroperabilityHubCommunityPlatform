@@ -18,6 +18,7 @@ import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type { DestinationType } from '../../../shared/types/scheduledExport';
 import { useCreateScheduledExport } from '../hooks/useScheduledExport';
 import './ScheduledExportCreatePage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ScheduledExportCreatePage() {
   const navigate = useNavigate();
@@ -79,17 +80,15 @@ export function ScheduledExportCreatePage() {
   return (
     <div className="scheduled-export-create-page" data-testid="scheduled-export-create-page">
       <div className="scheduled-export-create-header">
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => navigate('/scheduled-exports')}
-        >
+        <Button
+ variant="secondary"
+ onClick={() => navigate('/scheduled-exports')}>
           ← Back to Scheduled Exports
-        </button>
+        </Button>
         <h1>Create Scheduled Export</h1>
       </div>
 
-      {createMutation.error && (
+      {!!createMutation.error && (
         <ErrorDisplay
           error={createMutation.error}
           title="Failed to create scheduled export"
@@ -197,20 +196,17 @@ export function ScheduledExportCreatePage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => navigate('/scheduled-exports')}
-          >
+          <Button
+ variant="secondary"
+ onClick={() => navigate('/scheduled-exports')}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={createMutation.isPending || !name || !cronExpression}
-          >
+          </Button>
+          <Button
+ type="submit"
+ variant="primary"
+ disabled={createMutation.isPending || !name || !cronExpression}>
             {createMutation.isPending ? 'Creating...' : 'Create'}
-          </button>
+          </Button>
         </div>
       </form>
 

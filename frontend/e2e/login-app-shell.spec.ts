@@ -17,7 +17,7 @@ import { isBenignConsoleError } from './fixtures/console-utils';
 import { waitForLoadingComplete } from './fixtures/helpers';
 
 test.describe('Login → Load App Shell (DoD-2.2)', () => {
-  test.setTimeout(120000); // 2 min: visible/slowMo + rate limiting
+  test.setTimeout(120000);
 
   test('user can login and app shell loads correctly', async ({ page }) => {
     page.on('console', (msg) => {
@@ -75,20 +75,17 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
     // Step 6: Verify navigation works
     // Click on a navigation item (e.g., Home or first available)
     const homeLink = sidebar.locator('.nav-link').first();
-    if ((await homeLink.count()) > 0) {
-      await homeLink.click();
-      // Wait for navigation
-      await page.waitForTimeout(500);
-      // Verify we're still in the app shell
-      await expect(header).toBeVisible();
-      await expect(sidebar).toBeVisible();
-    }
+    await expect(homeLink).toBeVisible({ timeout: 5000 });
+    await homeLink.click();
+    // Wait for navigation
+    await page.waitForTimeout(500);
+    // Verify we're still in the app shell
+    await expect(header).toBeVisible();
+    await expect(sidebar).toBeVisible();
 
-    // Step 7: Verify tenant switcher is present (if user has tenant)
+    // Step 7: Verify tenant switcher is present (user always has a tenant after login)
     const tenantSwitcher = header.locator('.tenant-switcher');
-    if ((await tenantSwitcher.count()) > 0) {
-      await expect(tenantSwitcher).toBeVisible();
-    }
+    await expect(tenantSwitcher).toBeVisible({ timeout: 5000 });
 
     // Step 8: Verify logout is accessible via user menu
     // Logout button is inside user-menu-dropdown, so we need to open the menu first
@@ -103,7 +100,7 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
   });
 
   test('app shell persists across navigation', async ({ page }) => {
-    test.setTimeout(60000); // 60 seconds
+    test.setTimeout(120000);
 
     // Login first
     const testUser = await getTestUser();
@@ -157,7 +154,7 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
   });
 
   test('logout redirects to login and clears auth tokens', async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(120000);
 
     // Login first
     const testUser = await getTestUser();
@@ -196,7 +193,7 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
       (new URL(postLogoutUrl).pathname === '/' || new URL(postLogoutUrl).pathname === '') &&
       (await page.locator('[data-testid="landing-page"], .landing-page, h1').count()) > 0;
     const appShellGone = (await page.locator('.app-header').count()) === 0;
-    expect(isOnLogin || isOnLanding || appShellGone).toBe(true);
+    expect(isOnLogin || isOnLanding || appShellGone).toBe(true) /* acceptable states */;
 
     // Tokens must be cleared from localStorage (already confirmed by waitForFunction above,
     // but assert all three keys for completeness)

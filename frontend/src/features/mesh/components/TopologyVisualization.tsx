@@ -1,199 +1,146 @@
 /**
- * Topology Visualization Component
- * Minimal viable graph visualization for mesh topology
+ * Topology Visualization — Phase 38 (36.4)
+ *
+ * Renders mesh topology using React Flow + dagre auto-layout via GraphCanvas.
+ * Replaces original SVG circular layout with DomainNode / RelationshipEdge.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useCallback } from 'react';
+import { MarkerType, type Node, type Edge } from '@xyflow/react';
 import { useMeshTopology } from '../hooks/useMesh';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
-import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { GraphCanvas } from '../../../shared/components/GraphCanvas';
+import { useDagreLayout } from '../../../shared/hooks/useDagreLayout';
+import { EmptyState } from '../../../shared/components/EmptyState';
+import { DomainNode } from './nodes/DomainNode';
+import { RelationshipEdge } from './edges/RelationshipEdge';
+import { DOMAIN_HEALTH_THRESHOLDS } from '../constants/healthThresholds';
 import type { TopologyNode, TopologyEdge } from '../../../shared/types/mesh';
-import './TopologyVisualization.css';
+import styles from './TopologyVisualization.module.css';
 
-interface NodePosition {
-  x: number;
-  y: number;
+const nodeTypes = { domainNode: DomainNode } as const;
+const edgeTypes = { relationship: RelationshipEdge } as const;
+
+function toRFNode(node: TopologyNode): Node {
+  return {
+    id: node.id,
+    type: 'domainNode',
+    data: {
+      name: node.name,
+      status: node.status,
+      health_score: node.health_metrics?.health_score,
+      description: node.description,
+      id: node.id,
+    },
+    position: { x: 0, y: 0 },
+  };
+}
+
+function toRFEdge(edge: TopologyEdge): Edge {
+  return {
+    id: `${edge.source}-${edge.target}`,
+    source: edge.source,
+    target: edge.target,
+    type: 'relationship',
+    data: { relationship_type: edge.type },
+    markerEnd: { type: MarkerType.ArrowClosed },
+  };
+}
+
+function healthLabel(score: number | undefined): string {
+  if (score == null) return 'Unknown';
+  if (score >= DOMAIN_HEALTH_THRESHOLDS.healthy) return 'Healthy';
+  if (score >= DOMAIN_HEALTH_THRESHOLDS.warning) return 'Warning';
+  return 'Critical';
 }
 
 export function TopologyVisualization() {
   const { data: topology, isLoading, error, refetch } = useMeshTopology(true);
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [nodePositions, setNodePositions] = useState<Map<string, NodePosition>>(new Map());
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!topology || !svgRef.current) return;
+  const rfNodes: Node[] = useMemo(
+    () => (topology?.nodes ?? []).map(toRFNode),
+    [topology?.nodes],
+  );
 
-    const svg = svgRef.current;
-    const width = svg.clientWidth || 1200;
-    const height = svg.clientHeight || 800;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const radius = Math.min(width, height) * 0.3;
+  const rfEdges: Edge[] = useMemo(
+    () => (topology?.edges ?? []).map(toRFEdge),
+    [topology?.edges],
+  );
 
-    // Calculate positions in a circular layout
-    const positions = new Map<string, NodePosition>();
-    const nodes = topology.nodes;
-    const angleStep = (2 * Math.PI) / nodes.length;
+  const layoutedNodes = useDagreLayout(rfNodes, rfEdges, {
+    direction: 'TB',
+    nodeWidth: 180,
+    nodeHeight: 80,
+  });
 
-    nodes.forEach((node, index) => {
-      const angle = index * angleStep;
-      const x = centerX + radius * Math.cos(angle);
-      const y = centerY + radius * Math.sin(angle);
-      positions.set(node.id, { x, y });
-    });
-
-    setNodePositions(positions);
-  }, [topology]);
-
-  if (isLoading) {
-    return <LoadingSpinner message="Loading topology..." />;
-  }
-
-  if (error || !topology) {
-    return <ErrorDisplay error={error} title="Failed to load topology" onRetry={() => refetch()} />;
-  }
-
-  const renderEdge = (edge: TopologyEdge) => {
-    const sourcePos = nodePositions.get(edge.source);
-    const targetPos = nodePositions.get(edge.target);
-    
-    if (!sourcePos || !targetPos) return null;
-
-    return (
-      <line
-        key={`${edge.source}-${edge.target}`}
-        x1={sourcePos.x}
-        y1={sourcePos.y}
-        x2={targetPos.x}
-        y2={targetPos.y}
-        stroke="#999"
-        strokeWidth={2}
-        strokeOpacity={0.5}
-        markerEnd="url(#arrowhead)"
-      />
-    );
-  };
-
-  const renderNode = (node: TopologyNode) => {
-    const pos = nodePositions.get(node.id);
-    if (!pos) return null;
-
-    const isSelected = selectedNode === node.id;
-    const healthScore = node.health_metrics?.health_score ?? 0;
-    const nodeColor = healthScore >= 80 ? '#4caf50' : healthScore >= 60 ? '#ff9800' : '#f44336';
-
-    return (
-      <g key={node.id}>
-        <circle
-          cx={pos.x}
-          cy={pos.y}
-          r={isSelected ? 25 : 20}
-          fill={nodeColor}
-          stroke={isSelected ? '#0066cc' : '#333'}
-          strokeWidth={isSelected ? 3 : 2}
-          onClick={() => setSelectedNode(isSelected ? null : node.id)}
-          style={{ cursor: 'pointer' }}
-        />
-        <text
-          x={pos.x}
-          y={pos.y + 35}
-          textAnchor="middle"
-          fontSize="12"
-          fill="#333"
-          fontWeight={isSelected ? 'bold' : 'normal'}
-        >
-          {node.name}
-        </text>
-        {node.health_metrics && (
-          <text
-            x={pos.x}
-            y={pos.y + 50}
-            textAnchor="middle"
-            fontSize="10"
-            fill="#666"
-          >
-            Health: {healthScore}
-          </text>
-        )}
-      </g>
-    );
-  };
+  const handleNodeClick = useCallback(
+    () => {
+      /* Selection is handled internally by React Flow */
+    },
+    [],
+  );
 
   return (
-    <div className="topology-visualization">
-      <div className="topology-header">
-        <h2>Mesh Topology</h2>
-        <div className="topology-summary">
-          <span>{topology.summary.total_domains} Domains</span>
-          <span>{topology.summary.total_relationships} Relationships</span>
-          {topology.summary.average_health_score != null && (
-            <span>Avg Health: {Number(topology.summary.average_health_score).toFixed(1)}</span>
-          )}
-        </div>
+    <div className={styles.wrapper}>
+      <div className={styles.header}>
+        <h2 className={styles.title}>Mesh Topology</h2>
+
+        {topology && (
+          <div className={styles.summary}>
+            <span>{topology.summary.total_domains} Domains</span>
+            <span>{topology.summary.total_relationships} Relationships</span>
+            {topology.summary.average_health_score != null && (
+              <span>
+                Avg Health: {Number(topology.summary.average_health_score).toFixed(1)}
+                {' '}({healthLabel(topology.summary.average_health_score)})
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="topology-canvas">
-        <svg ref={svgRef} width="100%" height="800" viewBox="0 0 1200 800">
-          <defs>
-            <marker
-              id="arrowhead"
-              markerWidth="10"
-              markerHeight="10"
-              refX="9"
-              refY="3"
-              orient="auto"
-            >
-              <polygon points="0 0, 10 3, 0 6" fill="#999" />
-            </marker>
-          </defs>
-          
-          {/* Render edges first (behind nodes) */}
-          {topology.edges.map(renderEdge)}
-          
-          {/* Render nodes */}
-          {topology.nodes.map(renderNode)}
-        </svg>
-      </div>
-
-      {selectedNode && (
-        <div className="node-details">
-          <h3>Node Details</h3>
-          {(() => {
-            const node = topology.nodes.find(n => n.id === selectedNode);
-            if (!node) return null;
-            return (
-              <div>
-                <p><strong>Name:</strong> {node.name}</p>
-                {node.description && <p><strong>Description:</strong> {node.description}</p>}
-                <p><strong>Status:</strong> {node.status}</p>
-                {node.health_metrics && (
-                  <>
-                    <p><strong>Health Score:</strong> {node.health_metrics.health_score}</p>
-                    <p><strong>Compliance:</strong> {node.health_metrics.compliance_status}</p>
-                    <p><strong>Violations:</strong> {node.health_metrics.violation_count}</p>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-        </div>
+      {topology && topology.nodes.length === 0 ? (
+        <EmptyState
+          icon="🔗"
+          title="No domains found"
+          message="Create a data mesh domain to see the topology."
+          data-testid="topology-empty-state"
+        />
+      ) : (
+        <GraphCanvas
+          nodes={layoutedNodes}
+          edges={rfEdges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          loading={isLoading}
+          error={error ?? undefined}
+          onRetry={() => refetch()}
+          onNodeClick={handleNodeClick}
+        />
       )}
 
-      <div className="topology-legend">
-        <h4>Legend</h4>
-        <div className="legend-items">
-          <div className="legend-item">
-            <div className="legend-color" style={{ background: '#4caf50' }}></div>
-            <span>Health ≥ 80</span>
+      <div className={styles.legend}>
+        <span className={styles.legendTitle}>Legend</span>
+        <div className={styles.legendItems}>
+          <div className={styles.legendItem}>
+            <span
+              className={styles.legendDot}
+              style={{ background: 'var(--color-success-500, #4CAF50)' }}
+            />
+            <span>≥ {DOMAIN_HEALTH_THRESHOLDS.healthy}</span>
           </div>
-          <div className="legend-item">
-            <div className="legend-color" style={{ background: '#ff9800' }}></div>
-            <span>Health 60-79</span>
+          <div className={styles.legendItem}>
+            <span
+              className={styles.legendDot}
+              style={{ background: 'var(--color-warning-500, #FFC107)' }}
+            />
+            <span>{DOMAIN_HEALTH_THRESHOLDS.warning}–{DOMAIN_HEALTH_THRESHOLDS.healthy - 1}</span>
           </div>
-          <div className="legend-item">
-            <div className="legend-color" style={{ background: '#f44336' }}></div>
-            <span>Health &lt; 60</span>
+          <div className={styles.legendItem}>
+            <span
+              className={styles.legendDot}
+              style={{ background: 'var(--color-error-500, #F44336)' }}
+            />
+            <span>&lt; {DOMAIN_HEALTH_THRESHOLDS.warning}</span>
           </div>
         </div>
       </div>

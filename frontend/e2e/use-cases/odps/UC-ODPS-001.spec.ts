@@ -14,33 +14,34 @@ import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('UC-ODPS-001: Create ODPS Product', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('ODPS list loads', async ({ page }) => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/odps', {
         timeout: 60000,
-        contentSelector: '.odps-list-page, .empty-state, .error-display, .loading-spinner-container',
+        contentSelector: '.odps-list-page, .empty-state',
       });
-      if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
-        return;
-      }
+      test.skip(page.url().includes('/login'), 'Redirected to login');
       expect(page.url()).toContain('/odps');
+      const hasContent =
+        (await page.locator('.odps-list-page').count()) > 0 ||
+        (await page.locator('.empty-state').count()) > 0;
+      expect(hasContent).toBe(true);
     });
 
     test('ODPS upload page loads', async ({ page }) => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/odps/upload', {
         timeout: 60000,
-        contentSelector: 'textarea#odps-content, textarea, .odps-upload-page, .error-display',
+        contentSelector: 'textarea#odps-content, textarea, .odps-upload-page',
       });
-      if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
-        return;
-      }
+      test.skip(page.url().includes('/login'), 'Redirected to login');
       expect(page.url()).toContain('/odps/upload');
+      const hasUploadUI =
+        (await page.locator('textarea#odps-content, textarea, .odps-upload-page').count()) > 0;
+      expect(hasUploadUI).toBe(true);
     });
   });
 
@@ -49,8 +50,8 @@ test.describe('UC-ODPS-001: Create ODPS Product', () => {
       const { clearAuthStorage } = await import('../../fixtures/auth');
       await clearAuthStorage(page);
       await page.goto('/odps', { waitUntil: 'domcontentloaded' });
-      await page.waitForURL(/\/(login|odps)/, { timeout: 20_000 });
-      expect(page.url().includes('/login') || page.url().includes('/odps')).toBe(true);
+      await page.waitForURL(/\/login/, { timeout: 20_000 });
+      expect(page.url()).toContain('/login');
     });
   });
 
@@ -62,6 +63,10 @@ test.describe('UC-ODPS-001: Create ODPS Product', () => {
         contentSelector: '.odps-list-page, .empty-state, .error-display',
       });
       expect(page.url()).toContain('/odps');
+      const hasContent =
+        (await page.locator('.odps-list-page').count()) > 0 ||
+        (await page.locator('.empty-state').count()) > 0;
+      expect(hasContent).toBe(true);
     });
   });
 });

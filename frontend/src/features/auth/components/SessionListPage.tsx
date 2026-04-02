@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { useToast } from '../../../shared/components/Toast';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import type { ApiError } from '../../../shared/types/api';
 import type { Session } from '../../../shared/types/auth';
 import { normalizeError } from '../../../shared/utils/errorUtils';
@@ -60,7 +60,7 @@ export function SessionListPage() {
   };
 
   if (loading) {
-    return <LoadingSpinner message="Loading active sessions..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {

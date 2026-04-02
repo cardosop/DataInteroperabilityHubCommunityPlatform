@@ -12,6 +12,7 @@ import { FilePicker } from '../../../shared/components/pickers/FilePicker';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { useCreateAccessRequest } from '../hooks/useGovernance';
 import './AccessRequestCreatePage.css';
+import { Button } from '../../../shared/components/Button';
 
 const INITIAL_FORM: AccessRequestCreateRequest & {
   asset_id: string;
@@ -63,9 +64,9 @@ export function AccessRequestCreatePage() {
 
   return (
     <div className="governance-create-page">
-      <button type="button" className="btn-back" onClick={() => navigate('/governance')}>
+      <Button variant="ghost" onClick={() => navigate('/governance')}>
         ← Back to Access Requests
-      </button>
+      </Button>
       <h1>Create access request</h1>
 
       <form className="governance-create-form" onSubmit={handleSubmit}>
@@ -127,12 +128,12 @@ export function AccessRequestCreatePage() {
           </select>
         </div>
         <div className="form-actions">
-          <button type="button" className="btn-secondary" onClick={() => navigate('/governance')}>
+          <Button variant="secondary" onClick={() => navigate('/governance')}>
             Cancel
-          </button>
-          <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
-            {createMutation.isPending ? 'Creating…' : 'Create'}
-          </button>
+          </Button>
+          <Button type="submit" variant="primary" loading={createMutation.isPending}>
+            Create
+          </Button>
         </div>
       </form>
     </div>

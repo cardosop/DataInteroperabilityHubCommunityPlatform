@@ -11,6 +11,7 @@ import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import {
   useDeleteScheduledIngestion,
   useScheduledIngestion,
@@ -20,6 +21,7 @@ import {
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './ScheduledIngestionDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ScheduledIngestionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -73,7 +75,7 @@ export function ScheduledIngestionDetailPage() {
   }
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading scheduled ingestion..." />;
+    return <DetailPageSkeleton />;
   }
 
   if (!schedule) {
@@ -94,43 +96,35 @@ export function ScheduledIngestionDetailPage() {
   return (
     <div className="scheduled-ingestion-detail-page" data-testid="scheduled-ingestion-detail-page">
       <div className="scheduled-ingestion-detail-header">
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => navigate('/scheduled-ingestions')}
-          aria-label="Back to scheduled ingestions"
-        >
+        <Button
+ variant="secondary"
+ onClick={() => navigate('/scheduled-ingestions')}
+ aria-label="Back to scheduled ingestions">
           ← Back to Scheduled Ingestion
-        </button>
+        </Button>
         <div className="scheduled-ingestion-detail-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={handleEdit}
-            aria-label="Edit scheduled ingestion"
-          >
+          <Button
+ variant="secondary"
+ onClick={handleEdit}
+ aria-label="Edit scheduled ingestion">
             Edit
-          </button>
+          </Button>
           {canTrigger && (
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleTriggerClick}
-              disabled={triggerMutation.isPending}
-              aria-label="Trigger scheduled ingestion"
-            >
-              {triggerMutation.isPending ? 'Triggering...' : 'Trigger Now'}
-            </button>
+            <Button
+ variant="primary"
+ onClick={handleTriggerClick}
+ loading={triggerMutation.isPending}
+ aria-label="Trigger scheduled ingestion">
+              Trigger Now
+            </Button>
           )}
-          <button
-            type="button"
-            className="btn-danger"
-            onClick={handleDeleteClick}
-            disabled={deleteMutation.isPending}
-            aria-label="Delete scheduled ingestion"
-          >
-            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-          </button>
+          <Button
+ variant="danger"
+ onClick={handleDeleteClick}
+ loading={deleteMutation.isPending}
+ aria-label="Delete scheduled ingestion">
+            Delete
+          </Button>
         </div>
       </div>
 

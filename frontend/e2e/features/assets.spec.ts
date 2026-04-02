@@ -16,11 +16,11 @@ test.describe('Feature: Assets', () => {
       try {
         await waitForAppMainReady(page, {
           timeout: 60000,
-          contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container',
+          contentSelector: '.asset-list-page, .empty-state',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
+          test.skip(true, 'Redirected to login — auth may have expired');
           return;
         }
         throw _err;

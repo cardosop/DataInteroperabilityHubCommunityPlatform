@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { clearAuthStorage, getPlatformAdminUser, loginAsPersona } from '../../fixtures/auth';
+import { clearAuthStorage, getPlatformAdminUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-MPA-004: Configure Platform Settings', () => {
@@ -20,8 +20,10 @@ test.describe('JOURNEY-MPA-004: Configure Platform Settings', () => {
     test('admin page loads for platform settings', async ({ page }) => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/admin', { timeout: 60000 });
-      // Admin or 403: role-gated; 403 when ensure_e2e_user_roles hasn't assigned PLATFORM_ADMIN
-      expect(page.url().includes('/admin') || page.url().includes('/403')).toBe(true);
+      if (page.url().includes('/403')) {
+        test.skip(true, 'Redirected to /403 — PLATFORM_ADMIN role not assigned to test user');
+      }
+      expect(page.url()).toContain('/admin');
     });
   });
 

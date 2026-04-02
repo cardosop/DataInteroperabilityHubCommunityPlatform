@@ -117,6 +117,17 @@ async function globalSetup(config: FullConfig) {
                 encoding: 'utf8',
               });
               console.log('✅ E2E subscription ensured (ensure_e2e_subscription)');
+              try {
+                const authDir = path.join(process.cwd(), 'e2e', '.auth');
+                fs.mkdirSync(authDir, { recursive: true });
+                fs.writeFileSync(
+                  path.join(authDir, 'subscription-primed.json'),
+                  JSON.stringify({ apiBaseUrl: API_BASE_URL }),
+                  'utf8'
+                );
+              } catch {
+                // Marker is optional; workers fall back to HTTP ensure
+              }
             } catch {
               // Ignore - command may not exist or subscription setup may fail
             }

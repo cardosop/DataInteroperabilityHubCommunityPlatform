@@ -9,6 +9,7 @@ import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type { SchemaMatchingRequest } from '../../../shared/types/ai';
 import { useSchemaMatching } from '../hooks/useAI';
 import './SchemaMatchingPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function SchemaMatchingPage() {
   const [sourceSchema, setSourceSchema] = useState(
@@ -159,17 +160,16 @@ export function SchemaMatchingPage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={matchingMutation.isPending || !sourceSchema.trim() || !targetSchema.trim()}
-          >
+          <Button
+ type="submit"
+ variant="primary"
+ disabled={matchingMutation.isPending || !sourceSchema.trim() || !targetSchema.trim()}>
             {matchingMutation.isPending ? 'Matching...' : 'Match Schemas'}
-          </button>
+          </Button>
         </div>
       </form>
 
-      {matchingMutation.error && (
+      {!!matchingMutation.error && (
         <ErrorDisplay
           error={matchingMutation.error}
           title="Schema matching failed"

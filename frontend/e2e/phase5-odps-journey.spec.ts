@@ -8,16 +8,16 @@
  * Tests complete ODPS journey: upload → workflow status → link ODCS → export
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import * as fs from 'fs';
-import { getTestUser, loginAsPersona, loginUser } from './fixtures/auth';
+import { getTestUser, loginAsPersona } from './fixtures/auth';
 import { isBenignConsoleError } from './fixtures/console-utils';
 import { loginAndNavigateToRoute } from './fixtures/helpers';
 
 const getApiBaseUrl = () => process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
 // Helper to create a valid ODCS contract via API
-async function createODCSContractViaAPI(page: any): Promise<string | null> {
+async function createODCSContractViaAPI(page: Page): Promise<string | null> {
   try {
     const apiBase = getApiBaseUrl().replace(/\/$/, '');
     const result = await page.evaluate(async (base: string) => {
@@ -81,10 +81,10 @@ async function createODCSContractViaAPI(page: any): Promise<string | null> {
 
 // Helper to poll workflow status until completion
 async function pollWorkflowStatus(
-  page: any,
+  page: Page,
   workflowInstanceId: string,
   timeout: number = 300000
-): Promise<any> {
+): Promise<unknown> {
   const startTime = Date.now();
   const pollInterval = 2000; // Poll every 2 seconds
   const apiBase = getApiBaseUrl().replace(/\/$/, '');
@@ -173,7 +173,7 @@ async function pollWorkflowStatus(
 
 test.describe('Phase 5 ODPS Journey', () => {
   test('complete journey: ODPS upload → workflow status → link ODCS → export', async ({ page }) => {
-    test.setTimeout(600000); // 10 minutes for complete journey
+    test.setTimeout(120000);
 
     // Log console errors except known benign ones (navigation aborts, WS unavailable)
     page.on('console', (msg) => {

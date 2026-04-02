@@ -6,9 +6,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { useContracts } from '../hooks/useContracts';
 import './ContractListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ContractListPage() {
   const navigate = useNavigate();
@@ -19,7 +20,7 @@ export function ContractListPage() {
     ordering: '-created_at',
   });
 
-  if (isLoading) return <LoadingSpinner message="Loading contracts..." />;
+  if (isLoading) return <ListPageSkeleton />;
   if (error)
     return (
       <ErrorDisplay error={error} title="Failed to load contracts" onRetry={() => refetch()} />
@@ -41,9 +42,9 @@ export function ContractListPage() {
     <div className="contract-list-page" data-testid="contract-list-page">
       <div className="contract-list-header" data-testid="contract-list-header">
         <h1>Contracts</h1>
-        <button className="btn-primary" onClick={handleCreateContract} type="button">
+        <Button variant="primary" onClick={handleCreateContract}>
           Create Contract
-        </button>
+        </Button>
       </div>
       <div className="contract-list-table" data-testid="contract-list-table">
         <table role="table" aria-label="Contracts list">

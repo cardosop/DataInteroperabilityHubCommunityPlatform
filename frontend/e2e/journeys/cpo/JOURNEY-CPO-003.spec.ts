@@ -28,7 +28,7 @@ test.describe('JOURNEY-CPO-003: Review Access Request', () => {
         timeout: 60000,
         // .error-display excluded: an error is not a valid success state for a CPO user
         contentSelector:
-          '.governance-access-request-list-page, .access-request-list-page, .empty-state, .loading-spinner-container, #email',
+          '.governance-access-request-list-page, .access-request-list-page, .empty-state',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         throw new Error(`Unexpected redirect to ${page.url()} — verify CPO user has governance access`);
@@ -49,7 +49,7 @@ test.describe('JOURNEY-CPO-003: Review Access Request', () => {
         timeout: 60000,
         // .error-display excluded: an error is not a valid success state for a CPO user
         contentSelector:
-          '.governance-access-request-list-page, .access-request-list-page, .empty-state, #email',
+          '.governance-access-request-list-page, .access-request-list-page, .empty-state',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         throw new Error(`Unexpected redirect to ${page.url()} — verify CPO user has governance access`);
@@ -72,7 +72,7 @@ test.describe('JOURNEY-CPO-003: Review Access Request', () => {
       await loginAndNavigateToRoute(page, cpoUser, '/governance', {
         timeout: 60000,
         contentSelector:
-          '.governance-access-request-list-page, .access-request-list-page, .empty-state, #email',
+          '.governance-access-request-list-page, .access-request-list-page, .empty-state',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) return;
       if (!(await page.locator('.governance-access-request-list-page, .access-request-list-page').isVisible())) return;

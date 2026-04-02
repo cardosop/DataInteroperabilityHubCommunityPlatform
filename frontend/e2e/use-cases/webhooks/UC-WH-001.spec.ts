@@ -21,7 +21,7 @@ test.describe('UC-WH-001: Create/Manage Webhook', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/webhooks', {
         timeout: 60000,
-        contentSelector: '.webhook-list-page, .empty-state, .error-display, .loading-spinner-container',
+        contentSelector: '.webhook-list-page, .empty-state',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
@@ -34,7 +34,7 @@ test.describe('UC-WH-001: Create/Manage Webhook', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/webhooks/create', {
         timeout: 60000,
-        contentSelector: '.webhook-create-page, form, .error-display, .empty-state',
+        contentSelector: '.webhook-create-page, form, .empty-state',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
@@ -46,8 +46,8 @@ test.describe('UC-WH-001: Create/Manage Webhook', () => {
       await page.waitForSelector('.webhook-create-page, form', { timeout: 15000 });
       const hasForm = (await page.locator('.webhook-create-page, form').count()) > 0;
       const hasInputs = (await page.locator('input[name], textarea[name], input[type="url"]').count()) > 0;
-      expect(hasForm).toBe(true);
-      expect(hasInputs).toBe(true);
+      expect(hasForm).toBe(true) /* acceptable states */;
+      expect(hasInputs).toBe(true) /* acceptable states */;
     });
   });
 
@@ -76,7 +76,7 @@ test.describe('UC-WH-001: Create/Manage Webhook', () => {
       const url = page.url();
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
-      expect(onLogin || on403).toBe(true);
+      expect(onLogin || on403).toBe(true) /* acceptable states */;
     });
   });
 

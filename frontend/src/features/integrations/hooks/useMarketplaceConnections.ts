@@ -2,7 +2,8 @@
  * Marketplace Connections React Query Hooks
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { marketplaceConnectionService } from '../services/marketplaceConnectionService';
 import type {
   MarketplaceConnectionCreate,
@@ -44,8 +45,10 @@ export function useMarketplaceConnection(id: string | null) {
 export function useCreateMarketplaceConnection() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: MarketplaceConnectionCreate) => marketplaceConnectionService.create(data),
+    successMessage: 'Connection created',
+    errorMessage: 'Failed to create connection',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections'] });
     },
@@ -55,9 +58,11 @@ export function useCreateMarketplaceConnection() {
 export function useUpdateMarketplaceConnection() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: MarketplaceConnectionUpdate }) =>
       marketplaceConnectionService.update(id, data),
+    successMessage: 'Connection updated',
+    errorMessage: 'Failed to update connection',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections'] });
       queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections', 'detail', variables.id] });
@@ -68,9 +73,11 @@ export function useUpdateMarketplaceConnection() {
 export function usePartialUpdateMarketplaceConnection() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: Partial<MarketplaceConnectionUpdate> }) =>
       marketplaceConnectionService.partialUpdate(id, data),
+    successMessage: 'Connection updated',
+    errorMessage: 'Failed to update connection',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections'] });
       queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections', 'detail', variables.id] });
@@ -81,8 +88,10 @@ export function usePartialUpdateMarketplaceConnection() {
 export function useDeleteMarketplaceConnection() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => marketplaceConnectionService.delete(id),
+    successMessage: 'Connection deleted',
+    errorMessage: 'Failed to delete connection',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections'] });
     },
@@ -90,7 +99,9 @@ export function useDeleteMarketplaceConnection() {
 }
 
 export function useTestMarketplaceConnection() {
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => marketplaceConnectionService.test(id),
+    successMessage: 'Connection test passed',
+    errorMessage: 'Failed to test connection',
   });
 }

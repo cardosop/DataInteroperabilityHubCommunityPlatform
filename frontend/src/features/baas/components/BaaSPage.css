@@ -188,20 +188,6 @@
   gap: var(--spacing-md);
 }
 
-.btn-danger {
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--color-error);
-  color: var(--color-background-primary);
-  border: none;
-  border-radius: var(--border-radius-md);
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-}
-
-.btn-danger:hover {
-  background: var(--color-error-dark);
-}
 
 .usage-stats {
   display: grid;
@@ -266,4 +252,337 @@
 
 .usage-table td {
   color: var(--color-text-secondary);
+}
+
+/* ML Developer Portal */
+.ml-developer-section h2 {
+  margin: 0 0 var(--spacing-sm);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+}
+
+.ml-developer-intro {
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--spacing-lg);
+  font-size: var(--font-size-base);
+}
+
+.ml-dev-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.ml-dev-card {
+  padding: var(--spacing-lg);
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+}
+
+.ml-dev-card h3 {
+  margin: 0 0 var(--spacing-md);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.ml-dev-card p {
+  margin: 0 0 var(--spacing-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.ml-dev-code {
+  padding: var(--spacing-md);
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  font-family: monospace;
+  font-size: var(--font-size-sm);
+  overflow-x: auto;
+  white-space: pre;
+  margin: 0;
+}
+
+.ml-dev-endpoint-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.ml-dev-endpoint-table th,
+.ml-dev-endpoint-table td {
+  padding: var(--spacing-sm) var(--spacing-md);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ml-dev-endpoint-table th {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+}
+
+.ml-dev-endpoint-table code {
+  padding: 0.1rem 0.3rem;
+  background: var(--color-background-primary);
+  border-radius: 3px;
+  font-size: var(--font-size-xs);
+}
+
+.ml-dev-method {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  font-family: monospace;
+}
+
+.ml-dev-get {
+  background: var(--color-success-light);
+  color: var(--color-success);
+}
+
+.ml-dev-post {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.ml-dev-limits-dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--spacing-sm) var(--spacing-lg);
+}
+
+.ml-dev-limits-dl dt {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.ml-dev-limits-dl dd {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.ml-dev-limits-dl code {
+  padding: 0.1rem 0.3rem;
+  background: var(--color-background-primary);
+  border-radius: 3px;
+  font-size: var(--font-size-xs);
+}
+
+/* --- Phase 116C: Customer Billing Styles --- */
+
+/* Shared billing table */
+.billing-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+.billing-table th {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  background: var(--color-background-secondary, #f3f4f6);
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  border-bottom: 2px solid var(--color-border, #e5e7eb);
+}
+.billing-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  font-size: var(--font-size-sm);
+}
+.billing-table .clickable-row {
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.billing-table .clickable-row:hover {
+  background-color: var(--color-background-secondary, #f9fafb);
+}
+.amount-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.customer-name {
+  font-weight: 600;
+}
+.customer-id-sub {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary, #6b7280);
+}
+
+/* Status badges */
+.status-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.status-draft { background: #fef3c7; color: #92400e; }
+.status-finalized { background: #dbeafe; color: #1e40af; }
+.status-sent { background: #d1fae5; color: #065f46; }
+.status-void { background: #fee2e2; color: #991b1b; }
+
+/* Section header with badge */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.section-header .badge {
+  background: var(--color-primary, #2563eb);
+  color: white;
+  padding: 0.1rem 0.6rem;
+  border-radius: 10px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+.filter-bar {
+  margin-left: auto;
+}
+.filter-bar select {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 6px;
+  font-size: var(--font-size-sm);
+}
+
+/* Customer detail */
+.customer-detail-page,
+.billing-report-detail-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.customer-header h2 {
+  margin-bottom: 0.25rem;
+}
+.customer-meta {
+  color: var(--color-text-secondary, #6b7280);
+  font-size: var(--font-size-sm);
+}
+.customer-section {
+  margin-top: 1rem;
+}
+.customer-section h3 {
+  margin-bottom: 0.75rem;
+}
+
+/* Report detail */
+.report-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.report-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.meta-item label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary, #6b7280);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.report-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+/* Invoice preview */
+.invoice-preview {
+  margin-top: 1.5rem;
+}
+.invoice-preview-header h3 {
+  margin-bottom: 0.75rem;
+}
+.invoice-card {
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+  padding: 2rem;
+  background: white;
+}
+.invoice-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+}
+.invoice-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-primary, #1e3a5f);
+}
+.invoice-id {
+  text-align: right;
+}
+.invoice-id small {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary, #6b7280);
+}
+.invoice-id code {
+  font-size: var(--font-size-xs);
+}
+.invoice-bill-to,
+.invoice-period {
+  margin-bottom: 1rem;
+}
+.invoice-cid {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary, #6b7280);
+}
+.invoice-usage-table,
+.invoice-charges-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+.invoice-usage-table th,
+.invoice-charges-table th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-primary, #2563eb);
+  color: white;
+  font-size: var(--font-size-sm);
+}
+.invoice-usage-table td,
+.invoice-charges-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  font-size: var(--font-size-sm);
+}
+.invoice-charges-table th:last-child,
+.invoice-charges-table td:last-child,
+.invoice-usage-table th:last-child,
+.invoice-usage-table td:last-child {
+  text-align: right;
+}
+.invoice-total-row {
+  border-top: 2px solid var(--color-primary, #1e3a5f);
+}
+.invoice-total-row td {
+  padding-top: 0.75rem;
+}
+
+/* Pricing config panel */
+.pricing-config-panel {
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 6px;
+  padding: 1rem;
+  margin-top: 0.5rem;
+  background: var(--color-background-secondary, #f9fafb);
 }

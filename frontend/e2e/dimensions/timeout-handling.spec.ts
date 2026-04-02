@@ -33,7 +33,7 @@ test.describe('Dimension: Timeout handling', () => {
     await page.waitForTimeout(8000);
     const leftLogin = !page.url().includes('/login');
     const hasError = (await page.locator('.error-message').count()) > 0;
-    expect(leftLogin || hasError).toBe(true);
+    expect(leftLogin || hasError).toBe(true) /* acceptable states */;
   });
 
   test('assets list load completes within reasonable time or shows loading then content', async ({
@@ -42,13 +42,13 @@ test.describe('Dimension: Timeout handling', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container',
+      contentSelector: '.asset-list-page, .empty-state, .error-display',
     });
     await page.waitForTimeout(2000);
     const hasContent =
       (await page.locator('.asset-list-page').count()) > 0 ||
       (await page.locator('.empty-state').count()) > 0 ||
       (await page.locator('.error-display').count()) > 0;
-    expect(hasContent).toBe(true);
+    expect(hasContent).toBe(true) /* acceptable states */;
   });
 });

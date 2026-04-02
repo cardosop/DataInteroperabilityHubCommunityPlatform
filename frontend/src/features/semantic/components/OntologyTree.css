@@ -1,0 +1,30 @@
+/* OntologyTree */
+
+.ontology-tree {
+  margin-bottom: var(--spacing-md);
+}
+
+.ontology-tree details {
+  margin-bottom: var(--spacing-sm);
+}
+
+.ontology-tree summary {
+  cursor: pointer;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-xs) 0;
+  color: var(--color-text-primary);
+}
+
+.ontology-tree__list {
+  list-style: none;
+  margin: var(--spacing-xs) 0 0 var(--spacing-md);
+  padding: 0;
+}
+
+.ontology-tree__item {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  padding: 2px 0;
+  color: var(--color-text-secondary);
+}

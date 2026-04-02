@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useComplianceRuns, useCreateComplianceRun } from '../hooks/useCompliance';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { useToast } from '../../../shared/components/Toast';
@@ -16,6 +16,7 @@ import { DatasetPicker } from '../../../shared/components/pickers/DatasetPicker'
 import { FilePicker } from '../../../shared/components/pickers/FilePicker';
 import type { ComplianceRunStatus } from '../../../shared/types/compliance';
 import './ComplianceRunListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ComplianceRunListPage() {
   const navigate = useNavigate();
@@ -146,12 +147,12 @@ export function ComplianceRunListPage() {
           </div>
           {createError && <p className="compliance-create-error" role="alert">{createError}</p>}
           <div className="compliance-create-modal-actions">
-            <button type="button" className="btn-secondary" onClick={() => setCreateModalOpen(false)}>
+            <Button variant="secondary" onClick={() => setCreateModalOpen(false)}>
               Cancel
-            </button>
-            <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating...' : 'Create'}
-            </button>
+            </Button>
+            <Button type="submit" variant="primary" loading={createMutation.isPending}>
+              Create
+            </Button>
           </div>
         </form>
       </div>
@@ -159,7 +160,7 @@ export function ComplianceRunListPage() {
   );
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading compliance runs..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -173,14 +174,12 @@ export function ComplianceRunListPage() {
       <div className="compliance-run-list-page">
         <div className="compliance-run-list-header">
           <h1>Compliance Runs</h1>
-          <button
-            type="button"
-            className="btn-primary compliance-create-run-btn"
-            data-testid="btn-create-compliance-run"
-            onClick={() => setCreateModalOpen(true)}
-          >
+          <Button
+ variant="primary" className="compliance-create-run-btn"
+ data-testid="btn-create-compliance-run"
+ onClick={() => setCreateModalOpen(true)}>
             Create compliance run
-          </button>
+          </Button>
         </div>
         <EmptyState
           title="No compliance runs found"
@@ -196,14 +195,12 @@ export function ComplianceRunListPage() {
       <div className="compliance-run-list-header">
         <h1>Compliance Runs</h1>
         <div className="compliance-run-list-header-actions">
-          <button
-            type="button"
-            className="btn-primary compliance-create-run-btn"
-            data-testid="btn-create-compliance-run"
-            onClick={() => setCreateModalOpen(true)}
-          >
+          <Button
+ variant="primary" className="compliance-create-run-btn"
+ data-testid="btn-create-compliance-run"
+ onClick={() => setCreateModalOpen(true)}>
             Create compliance run
-          </button>
+          </Button>
           <div className="compliance-run-list-filters">
           <select
             value={statusFilter}

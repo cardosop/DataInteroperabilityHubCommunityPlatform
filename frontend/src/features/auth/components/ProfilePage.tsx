@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Button } from '../../../shared/components/Button';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type { ApiError } from '../../../shared/types/api';
@@ -50,7 +51,9 @@ export function ProfilePage() {
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
-    if (displayName.length > DISPLAY_NAME_MAX_LENGTH) {
+    if (!displayName.trim()) {
+      errs.display_name = 'Display name is required';
+    } else if (displayName.length > DISPLAY_NAME_MAX_LENGTH) {
       errs.display_name = `Display name must be at most ${DISPLAY_NAME_MAX_LENGTH} characters`;
     }
     if (avatar.trim()) {
@@ -129,6 +132,7 @@ export function ProfilePage() {
             id="profile-display_name"
             name="display_name"
             type="text"
+            required
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="Your display name"
@@ -164,9 +168,9 @@ export function ProfilePage() {
         </div>
 
         <div className="profile-form-actions">
-          <button type="submit" className="btn-save" disabled={saving}>
-            {saving ? 'Saving...' : 'Save'}
-          </button>
+          <Button variant="primary" type="submit" loading={saving}>
+            Save
+          </Button>
         </div>
       </form>
 

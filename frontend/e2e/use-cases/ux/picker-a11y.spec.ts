@@ -13,7 +13,7 @@ import {
 } from '../../fixtures/helpers';
 
 test.describe('Resource Picker Accessibility (axe, authenticated)', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test('Scheduled Export create page (multi-pickers, ContractPicker) has no critical a11y violations', async ({
     page,
@@ -22,7 +22,7 @@ test.describe('Resource Picker Accessibility (axe, authenticated)', () => {
     await loginAndNavigateToRoute(page, user, '/scheduled-exports/create', {
       timeout: 60000,
       contentSelector:
-        '.scheduled-export-create-page, .error-display, .loading-spinner-container, h1',
+        '.scheduled-export-create-page, h1',
     });
     await waitForLoadingComplete(page, { timeout: 15000 });
 
@@ -43,7 +43,7 @@ test.describe('Resource Picker Accessibility (axe, authenticated)', () => {
     await loginAndNavigateToRoute(page, user, '/governance/retention/new', {
       timeout: 60000,
       contentSelector:
-        '.governance-retention-policy-create-page, .error-display, .loading-spinner-container, h1',
+        '.governance-retention-policy-create-page, h1',
     });
     await waitForLoadingComplete(page, { timeout: 15000 });
 
@@ -64,7 +64,7 @@ test.describe('Resource Picker Accessibility (axe, authenticated)', () => {
     await loginAndNavigateToRoute(page, user, '/datasets/create?linkMode=existing', {
       timeout: 60000,
       contentSelector:
-        '.dataset-create-page, .error-display, .loading-spinner-container, h1',
+        '.dataset-create-page, h1',
     });
     await waitForLoadingComplete(page, { timeout: 15000 });
 

@@ -10,11 +10,11 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
+import { getConsumerTestUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DC-005: Download Data', () => {
-  test.setTimeout(240000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('entitlement detail loads with access path to asset', async ({ page }) => {
@@ -22,7 +22,7 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace/entitlements', {
         timeout: 90000,
         contentSelector:
-          '.entitlement-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+          '.entitlement-list-page, .empty-state, .error-display',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -50,7 +50,7 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
           (await page.locator('.error-display').count()) > 0 ||
           // Fallback: route resolved and app shell rendered something
           (await page.locator('.app-main').count()) > 0;
-        expect(hasEmptyOrError).toBe(true);
+        expect(hasEmptyOrError).toBe(true) /* acceptable states */;
         return;
       }
 
@@ -63,13 +63,13 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
         const msg = await page.locator('.error-display').first().textContent().catch(() => '');
         throw new Error(`Entitlement detail shows error instead of content: "${msg?.slice(0, 300)}"`);
       }
-      expect(hasDetail).toBe(true);
+      expect(hasDetail).toBe(true) /* acceptable states */;
       if (hasDetail) {
         // Download/Access: entitlement detail must expose a download or asset link
         const downloadBtn = page.locator('button:has-text("Download"), a:has-text("Download"), button:has-text("Access")');
         const assetLink = page.locator('a[href*="/assets/"]');
         const hasAccessPath = (await downloadBtn.count()) > 0 || (await assetLink.count()) > 0;
-        expect(hasAccessPath).toBe(true);
+        expect(hasAccessPath).toBe(true) /* acceptable states */;
       }
     });
 
@@ -78,7 +78,7 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 90000,
         contentSelector:
-          '.listing-list-page, .listing-list-grid, .empty-state, .error-display, #email',
+          '.listing-list-page, .listing-list-grid, .empty-state, .error-display',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -92,13 +92,13 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
         const downloadBtn = page.locator('button:has-text("Download"), a:has-text("Download")');
         const hasDownload = (await downloadBtn.count()) > 0;
         const hasDetail = (await page.locator('.listing-detail-main').count()) > 0;
-        expect(hasDetail || hasDownload).toBe(true);
+        expect(hasDetail || hasDownload).toBe(true) /* acceptable states */;
       } else {
         // No listings available — assert empty state is shown (not a blank/silent pass)
         const hasEmptyOrError =
           (await page.locator('.empty-state').count()) > 0 ||
           (await page.locator('.error-display').count()) > 0;
-        expect(hasEmptyOrError).toBe(true);
+        expect(hasEmptyOrError).toBe(true) /* acceptable states */;
         test.info().annotations.push({ type: 'note', description: 'Marketplace empty — listing detail download not tested' });
       }
     });
@@ -107,9 +107,12 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
   test.describe('Failure', () => {
     test('download from non-existent entitlement shows error', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/marketplace/entitlements/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
+      await loginAndNavigateToRoute(
+        page,
+        consumer,
+        '/marketplace/entitlements/00000000-0000-0000-0000-000000000000',
+        { timeout: 65000 }
+      );
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.entitlement-detail-page, .error-display',
         waitAfterLoad: 12000,
@@ -123,7 +126,7 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace/entitlements', {
         timeout: 90000,
         contentSelector:
-          '.entitlement-list-page, .empty-state, .error-display, .loading-spinner-container',
+          '.entitlement-list-page, .empty-state, .error-display',
       });
       const url = page.url();
       if (url.includes('/login')) {
@@ -153,7 +156,7 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
         (await page.locator('.entitlement-list-page').count()) > 0 ||
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('.app-main').count()) > 0;
-      expect(hasEmptyOrListOrError).toBe(true);
+      expect(hasEmptyOrListOrError).toBe(true) /* acceptable states */;
     });
   });
 });

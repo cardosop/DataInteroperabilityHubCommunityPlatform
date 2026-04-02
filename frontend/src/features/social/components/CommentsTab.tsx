@@ -11,6 +11,7 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import type { Comment } from '../../../shared/types/social';
 import './CommentsTab.css';
+import { Button } from '../../../shared/components/Button';
 
 interface CommentsTabProps {
   assetId: string | null;
@@ -19,7 +20,7 @@ interface CommentsTabProps {
   assetIdOnly?: boolean;
 }
 
-export function CommentsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnly = false }: CommentsTabProps) {
+export function CommentsTab({ assetId, assetIdOnly = false }: CommentsTabProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(assetId);
 
   useEffect(() => {
@@ -49,7 +50,7 @@ export function CommentsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnl
       setReplyingTo(null);
       setShowForm(false);
       refetch();
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -158,16 +159,14 @@ export function CommentsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnl
       {effectiveAssetId && (
         <>
           {!showForm && (
-            <button
-              className="btn-primary"
-              onClick={() => {
-                setShowForm(true);
-                setReplyingTo(null);
-              }}
-              type="button"
-            >
+            <Button
+ variant="primary"
+ onClick={() => {
+ setShowForm(true);
+ setReplyingTo(null);
+ }}>
               Add Comment
-            </button>
+            </Button>
           )}
 
           {showForm && (
@@ -190,25 +189,21 @@ export function CommentsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnl
                 {commentText.length}/1000 characters
               </div>
               <div className="form-actions">
-                <button
-                  className="btn-primary"
-                  onClick={handleSubmitComment}
-                  disabled={!commentText.trim() || submitCommentMutation.isPending}
-                  type="button"
-                >
+                <Button
+ variant="primary"
+ onClick={handleSubmitComment}
+ disabled={!commentText.trim() || submitCommentMutation.isPending}>
                   {submitCommentMutation.isPending ? 'Submitting...' : 'Submit'}
-                </button>
-                <button
-                  className="btn-secondary"
-                  onClick={() => {
-                    setShowForm(false);
-                    setCommentText('');
-                    setReplyingTo(null);
-                  }}
-                  type="button"
-                >
+                </Button>
+                <Button
+ variant="secondary"
+ onClick={() => {
+ setShowForm(false);
+ setCommentText('');
+ setReplyingTo(null);
+ }}>
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           )}

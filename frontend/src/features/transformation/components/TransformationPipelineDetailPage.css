@@ -4,17 +4,36 @@
   margin: 0 auto;
 }
 
-.transformation-detail-content h1 {
-  margin: 0 0 var(--spacing-md);
+.transformation-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.transformation-detail-header h1 {
+  margin: 0;
   font-size: var(--font-size-xxl);
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
+}
+
+.transformation-detail-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.transformation-detail-description {
+  margin: 0 0 var(--spacing-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
 }
 
 .transformation-detail-metadata {
   display: flex;
   gap: var(--spacing-md);
   align-items: center;
+  margin-bottom: var(--spacing-lg);
 }
 
 .transformation-detail-metadata .status-badge {
@@ -26,7 +45,214 @@
   text-transform: uppercase;
 }
 
-.transformation-detail-metadata .pipeline-id {
+.transformation-detail-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xl);
+  padding: var(--spacing-lg);
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+}
+
+.transformation-detail-info-grid .info-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.transformation-detail-info-grid .info-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.transformation-detail-info-grid .info-value {
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+}
+
+/* Execute form card */
+.transformation-execute-form-card {
+  margin-bottom: var(--spacing-xl);
+  padding: var(--spacing-lg);
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+}
+
+.transformation-execute-form-card h3 {
+  margin: 0 0 var(--spacing-md);
+  font-size: var(--font-size-lg);
+  color: var(--color-text-primary);
+}
+
+.transformation-execute-form .form-field {
+  margin-bottom: var(--spacing-md);
+}
+
+.transformation-execute-form .form-field label {
+  display: block;
+  margin-bottom: var(--spacing-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.transformation-execute-form .form-field input {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+}
+
+.transformation-execute-form .form-actions {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+/* Steps section */
+.transformation-steps-section {
+  margin-bottom: var(--spacing-xl);
+}
+
+.transformation-steps-section h2 {
+  font-size: var(--font-size-lg);
+  margin: 0 0 var(--spacing-md);
+  color: var(--color-text-primary);
+}
+
+.transformation-steps-empty {
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.transformation-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.transformation-step-card {
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+}
+
+.transformation-step-card .step-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-background-secondary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.transformation-step-card .step-number {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+}
+
+.step-type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+}
+
+.transformation-step-card .step-card-body {
+  padding: var(--spacing-md);
+}
+
+.step-config-preview {
+  margin: var(--spacing-sm) 0 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Executions section */
+.transformation-executions-section {
+  margin-bottom: var(--spacing-xl);
+}
+
+.transformation-executions-section h2 {
+  font-size: var(--font-size-lg);
+  margin: 0 0 var(--spacing-md);
+  color: var(--color-text-primary);
+}
+
+.transformation-executions-empty {
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.transformation-executions-table {
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+}
+
+.transformation-executions-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.transformation-executions-table thead {
+  background: var(--color-background-secondary);
+}
+
+.transformation-executions-table th {
+  padding: var(--spacing-md);
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
+
+.transformation-executions-table tbody tr {
+  border-top: 1px solid var(--color-border);
+  transition: background-color 0.2s;
+}
+
+.transformation-executions-table tbody tr:hover {
+  background: var(--color-background-secondary);
+}
+
+.execution-row {
+  cursor: pointer;
+}
+
+.transformation-executions-table td {
+  padding: var(--spacing-md);
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+}
+
+/* Status badge colors (shared with list page) */
+.transformation-detail-page .status-badge.status-draft { background: var(--color-info-light, #dbeafe); color: var(--color-info, #2563eb); }
+.transformation-detail-page .status-badge.status-active { background: var(--color-success-light, #d1fae5); color: var(--color-success, #059669); }
+.transformation-detail-page .status-badge.status-inactive { background: var(--color-warning-light, #fef3c7); color: var(--color-warning, #d97706); }
+.transformation-detail-page .status-badge.status-archived { background: var(--color-background-secondary, #f3f4f6); color: var(--color-text-secondary, #6b7280); }
+.transformation-detail-page .status-badge.status-pending { background: var(--color-info-light, #dbeafe); color: var(--color-info, #2563eb); }
+.transformation-detail-page .status-badge.status-running { background: var(--color-primary-light, #ede9fe); color: var(--color-primary, #7c3aed); }
+.transformation-detail-page .status-badge.status-completed { background: var(--color-success-light, #d1fae5); color: var(--color-success, #059669); }
+.transformation-detail-page .status-badge.status-failed { background: var(--color-error-light, #fee2e2); color: var(--color-error, #dc2626); }
+.transformation-detail-page .status-badge.status-cancelled { background: var(--color-background-secondary, #f3f4f6); color: var(--color-text-secondary, #6b7280); }

@@ -59,7 +59,7 @@ describe('ScheduledExportCreatePage', () => {
     mockAxiosInstance = realClient;
     vi.mocked(mockAxiosInstance.get).mockResolvedValue({
       data: { results: [], count: 0 },
-    } as any);
+    } as never);
   });
 
   it('should render form with multi-pickers and ContractPicker', () => {

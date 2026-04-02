@@ -3,7 +3,8 @@
  * React Query hooks for mesh domain operations
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { meshService } from '../services/meshService';
 import type {
   MeshDomainCreateRequest,
@@ -52,8 +53,10 @@ export function useMeshDomain(id: string | undefined) {
 export function useCreateMeshDomain() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: MeshDomainCreateRequest) => meshService.createDomain(data),
+    successMessage: 'Mesh domain created',
+    errorMessage: 'Failed to create mesh domain',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.domains });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.topology });
@@ -67,9 +70,11 @@ export function useCreateMeshDomain() {
 export function useUpdateMeshDomain() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: MeshDomainUpdateRequest }) =>
       meshService.updateDomain(id, data),
+    successMessage: 'Mesh domain updated',
+    errorMessage: 'Failed to update mesh domain',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.domains });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.domain(variables.id) });
@@ -84,9 +89,11 @@ export function useUpdateMeshDomain() {
 export function usePatchMeshDomain() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: Partial<MeshDomainUpdateRequest> }) =>
       meshService.patchDomain(id, data),
+    successMessage: 'Mesh domain updated',
+    errorMessage: 'Failed to update mesh domain',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.domains });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.domain(variables.id) });
@@ -101,8 +108,10 @@ export function usePatchMeshDomain() {
 export function useDeleteMeshDomain() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => meshService.deleteDomain(id),
+    successMessage: 'Mesh domain deleted',
+    errorMessage: 'Failed to delete mesh domain',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.domains });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.topology });
@@ -179,9 +188,11 @@ export function useDomainPolicies(domainId: string | undefined) {
 export function useApplyPolicy() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ domainId, data }: { domainId: string; data: ApplyPolicyRequest }) =>
       meshService.applyPolicy(domainId, data),
+    successMessage: 'Policy applied',
+    errorMessage: 'Failed to apply policy',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.domainPolicies(variables.domainId) });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.domain(variables.domainId) });
@@ -195,9 +206,11 @@ export function useApplyPolicy() {
 export function useRemovePolicy() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ domainId, policyId }: { domainId: string; policyId: string }) =>
       meshService.removePolicy(domainId, policyId),
+    successMessage: 'Policy removed',
+    errorMessage: 'Failed to remove policy',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.domainPolicies(variables.domainId) });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.domain(variables.domainId) });
@@ -211,9 +224,11 @@ export function useRemovePolicy() {
 export function useCheckCompliance() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ domainId, data }: { domainId: string; data?: CheckComplianceRequest }) =>
       meshService.checkCompliance(domainId, data),
+    successMessage: 'Compliance checked',
+    errorMessage: 'Failed to check compliance',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.complianceReports(variables.domainId) });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.domain(variables.domainId) });
@@ -238,9 +253,11 @@ export function useComplianceReports(domainId: string | undefined) {
 export function useTransferOwnership() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ domainId, newOwnerId }: { domainId: string; newOwnerId: string | null }) =>
       meshService.transferOwnership(domainId, newOwnerId),
+    successMessage: 'Ownership transferred',
+    errorMessage: 'Failed to transfer ownership',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.domain(variables.domainId) });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.domains });

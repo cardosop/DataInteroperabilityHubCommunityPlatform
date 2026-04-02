@@ -6,11 +6,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useEntitlements } from '../hooks/useEntitlements';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { EntitlementStatus } from '../../../shared/types/marketplace';
 import './EntitlementListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function EntitlementListPage() {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ export function EntitlementListPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading entitlements..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -124,25 +125,21 @@ export function EntitlementListPage() {
 
       {data.count > pageSize && (
         <div className="entitlement-list-pagination">
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => Math.max(1, p - 1))}
+ disabled={page === 1}>
             Previous
-          </button>
+          </Button>
           <span className="pagination-info">
             Page {page} of {Math.ceil(data.count / pageSize)}
           </span>
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => p + 1)}
-            disabled={page >= Math.ceil(data.count / pageSize)}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => p + 1)}
+ disabled={page>= Math.ceil(data.count / pageSize)}>
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>

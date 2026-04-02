@@ -19,23 +19,33 @@ const WORKER_HEALTH_URL = process.env.WORKER_HEALTH_URL || 'http://localhost:808
 
 test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
   // Allow loginUser rate-limit retries (up to 4×65s) after password reset confirm when suite runs many auth tests
-  test.setTimeout(480_000);
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('visitor requests password reset and confirms via email link', async ({ page }) => {
       let mailhogReachable = false;
       let workerReachable = false;
-      try {
-        const probe = await fetch(`${MAILHOG_BASE_URL}/api/v2/messages?limit=1`);
-        if (probe.ok) mailhogReachable = true;
-      } catch {
-        // ignore
+      // Retry probes once — under parallel E2E load the first attempt can fail
+      // with a transient connection error even though the services are healthy.
+      for (let attempt = 0; attempt < 2 && !mailhogReachable; attempt++) {
+        try {
+          const probe = await fetch(`${MAILHOG_BASE_URL}/api/v2/messages?limit=1`, {
+            signal: AbortSignal.timeout(5000),
+          });
+          if (probe.ok) mailhogReachable = true;
+        } catch {
+          if (attempt === 0) await new Promise((r) => setTimeout(r, 2000));
+        }
       }
-      try {
-        const workerProbe = await fetch(WORKER_HEALTH_URL);
-        if (workerProbe.ok) workerReachable = true;
-      } catch {
-        // ignore
+      for (let attempt = 0; attempt < 2 && !workerReachable; attempt++) {
+        try {
+          const workerProbe = await fetch(WORKER_HEALTH_URL, {
+            signal: AbortSignal.timeout(5000),
+          });
+          if (workerProbe.ok) workerReachable = true;
+        } catch {
+          if (attempt === 0) await new Promise((r) => setTimeout(r, 2000));
+        }
       }
       // Skip when MailHog or worker unavailable (optional services for password reset flow).
       // Worker processes send_password_reset_email jobs; MailHog captures the email.
@@ -100,7 +110,7 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
       await page.click('button[type="submit"]');
       await page.locator('.error-message, .success-message').first().waitFor({ timeout: 25_000 });
       const hasError = (await page.locator('.error-message').count()) > 0;
-      expect(hasError).toBe(true);
+      expect(hasError).toBe(true) /* acceptable states */;
     });
   });
 
@@ -156,7 +166,7 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
       const hasValidation =
         (await page.locator('input#email:invalid').count()) > 0 ||
         (await page.locator('.error-message').count()) > 0;
-      expect(stillOnReset || hasValidation).toBe(true);
+      expect(stillOnReset || hasValidation).toBe(true) /* acceptable states */;
     });
   });
 });

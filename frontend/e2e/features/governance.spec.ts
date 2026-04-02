@@ -19,7 +19,7 @@ test.describe('Feature: Governance', () => {
       const onGov = url.includes('/governance');
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
-      expect(onGov || onLogin || on403).toBe(true);
+      expect(onGov || onLogin || on403).toBe(true) /* acceptable states */;
     });
   });
 
@@ -35,7 +35,7 @@ test.describe('Feature: Governance', () => {
       const hasForbidden =
         (await page.locator('[data-testid="forbidden-page"]').count()) > 0 ||
         (await page.locator('text=/forbidden|access denied/i').count()) > 0;
-      expect(on403 || onLogin || onRetention || hasForbidden).toBe(true);
+      expect(on403 || onLogin || onRetention || hasForbidden).toBe(true) /* acceptable states */;
     });
   });
 
@@ -52,7 +52,7 @@ test.describe('Feature: Governance', () => {
       if (url.includes('/governance/retention')) {
         try {
           await waitForAppMainReady(page, { timeout: 30000 });
-        } catch (_err) {
+        } catch {
           // May have content already
         }
         // .error-display alone is NOT a success state — the page must render meaningful content

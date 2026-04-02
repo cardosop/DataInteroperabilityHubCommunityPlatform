@@ -25,26 +25,30 @@ test.describe('JOURNEY-TA-006: Set Up Advanced Governance', () => {
       const onGov = page.url().includes('/governance');
       const on403 = page.url().includes('/403');
       const onLogin = page.url().includes('/login');
+      if (on403 || onLogin) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onGov).toBe(true);
       const hasContent =
-        (await page.locator('.governance-access-request-list-page, .access-request-list-page, .app-main, .error-display').count()) > 0;
-      expect(onGov || on403 || onLogin).toBe(true);
-      expect(hasContent || on403 || onLogin).toBe(true);
+        (await page.locator('.governance-access-request-list-page, .access-request-list-page, .app-main').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
 
     test('governance retention list loads', async ({ page }) => {
       const taUser = await getTenantAdminUser();
       await loginAndNavigateToRoute(page, taUser, '/governance/retention', { timeout: 60000 });
       if (page.url().includes('/login') || page.url().includes('/403')) {
-        expect(page.url()).toMatch(/\/login|\/403/);
+        test.skip(true, 'Auth/role gated — skipping success assertion');
         return;
       }
       const onRetention = page.url().includes('/governance/retention');
-      const on403 = page.url().includes('/403');
+      expect(onRetention).toBe(true);
       const hasContent =
-        (await page.locator('.governance-retention-policy-list-page, .empty-state, .error-display, [data-testid="forbidden-page"]').count()) > 0;
-      // Role-gated: 403 when TENANT_ADMIN not assigned; or retention list loads
-      expect(onRetention || on403).toBe(true);
-      expect(hasContent || on403).toBe(true);
+        (await page.locator('.governance-retention-policy-list-page, .empty-state').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 

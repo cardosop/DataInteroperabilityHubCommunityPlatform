@@ -6,9 +6,10 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { useDatasets } from '../hooks/useDatasets';
 import './DatasetListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function DatasetListPage() {
   const navigate = useNavigate();
@@ -22,7 +23,7 @@ export function DatasetListPage() {
   };
   const { data, isLoading, error, refetch } = useDatasets(filters);
 
-  if (isLoading) return <LoadingSpinner message="Loading datasets..." />;
+  if (isLoading) return <ListPageSkeleton />;
   if (error)
     return <ErrorDisplay error={error} title="Failed to load datasets" onRetry={() => refetch()} />;
   const handleCreateDataset = () => navigate('/datasets/create');
@@ -34,9 +35,9 @@ export function DatasetListPage() {
       <div className="dataset-list-page" data-testid="dataset-list-page">
         <div className="dataset-list-header">
           <h1>Datasets</h1>
-          <button className="btn-primary" onClick={handleCreateDataset} type="button">
+          <Button variant="primary" onClick={handleCreateDataset}>
             Create Dataset
-          </button>
+          </Button>
         </div>
         <div className="dataset-list-filters" data-testid="dataset-list-filters">
           <label htmlFor="dataset-asset-id-filter" className="sr-only">
@@ -83,9 +84,9 @@ export function DatasetListPage() {
     <div className="dataset-list-page" data-testid="dataset-list-page">
       <div className="dataset-list-header">
         <h1>Datasets</h1>
-        <button className="btn-primary" onClick={handleCreateDataset} type="button">
+        <Button variant="primary" onClick={handleCreateDataset}>
           Create Dataset
-        </button>
+        </Button>
       </div>
       <div className="dataset-list-filters" data-testid="dataset-list-filters">
         <label htmlFor="dataset-asset-id-filter" className="sr-only">

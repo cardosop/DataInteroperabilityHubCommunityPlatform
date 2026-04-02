@@ -6,11 +6,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMarketplaceSyncJobs } from '../hooks/useMarketplaceSyncJobs';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { SyncJobStatus, SyncDirection } from '../../../shared/types/integrations';
 import './MarketplaceSyncJobListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function MarketplaceSyncJobListPage() {
   const navigate = useNavigate();
@@ -38,7 +39,7 @@ export function MarketplaceSyncJobListPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading sync jobs..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -63,9 +64,9 @@ export function MarketplaceSyncJobListPage() {
     <div className="sync-job-list-page">
       <div className="sync-job-list-header">
         <h1>Marketplace Sync Jobs</h1>
-        <button className="btn-primary" onClick={handleCreateSyncJob} type="button">
+        <Button variant="primary" onClick={handleCreateSyncJob}>
           Create Sync Job
-        </button>
+        </Button>
       </div>
 
       <div className="sync-job-list-filters">
@@ -153,25 +154,21 @@ export function MarketplaceSyncJobListPage() {
 
       {data.count > pageSize && (
         <div className="sync-job-list-pagination">
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => Math.max(1, p - 1))}
+ disabled={page === 1}>
             Previous
-          </button>
+          </Button>
           <span className="pagination-info">
             Page {page} of {Math.ceil(data.count / pageSize)}
           </span>
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => p + 1)}
-            disabled={page >= Math.ceil(data.count / pageSize)}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => p + 1)}
+ disabled={page>= Math.ceil(data.count / pageSize)}>
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>

@@ -6,9 +6,11 @@
 import { NavLink } from 'react-router-dom';
 import { useCapabilities } from '../../../shared/hooks/useCapabilities';
 import { useAuthStore } from '../../auth/store/authStore';
+import { isMvpModeEnabledFromEnv } from '../utils/mvpNav';
+import { filterVisibleNavItems } from '../utils/sidebarNavFilter';
 import './Sidebar.css';
 
-interface NavItem {
+export interface NavItem {
   path: string;
   label: string;
   icon?: string;
@@ -28,12 +30,22 @@ const navItems: NavItem[] = [
   { path: '/files', label: 'Files', icon: '📁' },
   { path: '/contracts', label: 'Contracts', icon: '📄' },
   { path: '/marketplace', label: 'Marketplace', icon: '🛒' },
-  { path: '/integrations/connections', label: 'Integrations', icon: '🔌' },
+  {
+    path: '/integrations/connections',
+    label: 'Integrations',
+    icon: '🔌',
+    requiredCapability: 'integrations.marketplace',
+  },
   { path: '/odps', label: 'ODPS', icon: '🔗' },
   { path: '/dq', label: 'Data Quality', icon: '✅' },
   { path: '/compliance', label: 'Compliance', icon: '🛡️' },
-  { path: '/mesh', label: 'Data Mesh', icon: '🌐' },
-  { path: '/virtualization', label: 'Virtualization', icon: '🔮' },
+  { path: '/mesh', label: 'Data Mesh', icon: '🌐', requiredCapability: 'mesh.domains' },
+  {
+    path: '/virtualization',
+    label: 'Virtualization',
+    icon: '🔮',
+    requiredCapability: 'virtualization.datasets',
+  },
   { path: '/search', label: 'Search', icon: '🔍' },
   {
     path: '/semantic',
@@ -97,18 +109,10 @@ export function Sidebar() {
     return requiredRoles.some((role) => user.roles.includes(role));
   };
 
-  const filteredNavItems = navItems.filter((item) => {
-    // Check role requirement
-    if (!hasRole(item.requiredRole)) {
-      return false;
-    }
-
-    // Check capability requirement
-    if (item.requiredCapability) {
-      return isCapabilityAvailable(item.requiredCapability);
-    }
-
-    return true;
+  const filteredNavItems = filterVisibleNavItems(navItems, {
+    mvpModeEnabled: isMvpModeEnabledFromEnv(),
+    hasRole,
+    isCapabilityAvailable,
   });
 
   return (

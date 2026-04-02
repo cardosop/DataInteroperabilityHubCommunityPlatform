@@ -10,6 +10,7 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { isValidUUID } from '../../../shared/utils/validation';
 import { DomainStatus } from '../../../shared/types/mesh';
 import './MeshDomainCreatePage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function MeshDomainCreatePage() {
   const navigate = useNavigate();
@@ -58,7 +59,7 @@ export function MeshDomainCreatePage() {
         status: formData.status,
       });
       navigate(`/mesh/${domain.id}`);
-    } catch (error) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -66,9 +67,9 @@ export function MeshDomainCreatePage() {
   return (
     <div className="mesh-domain-create-page">
       <div className="mesh-domain-create-header">
-        <button onClick={() => navigate('/mesh')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/mesh')} variant="ghost">
           ← Back to Domains
-        </button>
+        </Button>
         <h1>Create Mesh Domain</h1>
       </div>
 
@@ -133,21 +134,18 @@ export function MeshDomainCreatePage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            onClick={() => navigate('/mesh')}
-            className="btn-secondary"
-            disabled={createMutation.isPending}
-          >
+          <Button
+ onClick={() => navigate('/mesh')}
+ variant="secondary"
+ loading={createMutation.isPending}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={createMutation.isPending}
-          >
-            {createMutation.isPending ? 'Creating...' : 'Create Domain'}
-          </button>
+          </Button>
+          <Button
+ type="submit"
+ variant="primary"
+ loading={createMutation.isPending}>
+            Create Domain
+          </Button>
         </div>
       </form>
     </div>

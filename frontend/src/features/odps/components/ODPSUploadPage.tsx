@@ -12,10 +12,13 @@ import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { AssetPicker } from '../../../shared/components/pickers';
 import { ContractFormat } from '../../../shared/types/contracts';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { useToast } from '../../../shared/components/Toast';
 import './ODPSUploadPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ODPSUploadPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [odpsContent, setOdpsContent] = useState('');
   const [format, setFormat] = useState<ContractFormat>(ContractFormat.JSON);
   const [resolveExternalRefs, setResolveExternalRefs] = useState(true);
@@ -33,12 +36,13 @@ export function ODPSUploadPage() {
   // Navigate to ODPS detail page when workflow completes
   useEffect(() => {
     if (workflowStatus?.status === 'COMPLETED' && workflowStatus.odps_contract?.id) {
+      const contractId = workflowStatus.odps_contract.id;
       const t = setTimeout(() => {
-        navigate(`/odps/${workflowStatus.odps_contract!.id}`);
+        navigate(`/odps/${contractId}`);
       }, 2000);
       return () => clearTimeout(t);
     }
-  }, [workflowStatus?.status, workflowStatus?.odps_contract?.id, navigate]);
+  }, [workflowStatus?.status, workflowStatus?.odps_contract?.id, workflowStatus?.odps_contract, navigate]);
 
   const handleFileSelect = async (file: File) => {
     try {
@@ -66,7 +70,7 @@ export function ODPSUploadPage() {
 
   const handleSubmit = async () => {
     if (!odpsContent.trim()) {
-      alert('Please provide ODPS content');
+      toast.error('Please provide ODPS content');
       return;
     }
 
@@ -105,9 +109,9 @@ export function ODPSUploadPage() {
         ]}
       />
       <div className="odps-upload-header">
-        <button onClick={() => navigate('/odps')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/odps')} variant="ghost">
           ← Back to ODPS
-        </button>
+        </Button>
         <h1>Create ODPS Product</h1>
       </div>
 
@@ -124,13 +128,11 @@ export function ODPSUploadPage() {
                 onChange={handleFileInputChange}
                 className="file-input"
               />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="btn-secondary"
-                type="button"
-              >
+              <Button
+ onClick={() => fileInputRef.current?.click()}
+ variant="secondary">
                 Select File
-              </button>
+              </Button>
             </div>
 
             <div className="form-section">
@@ -180,17 +182,15 @@ export function ODPSUploadPage() {
             </div>
 
             <div className="form-actions">
-              <button
-                onClick={handleSubmit}
-                disabled={createMutation.isPending || !odpsContent.trim()}
-                className="btn-primary"
-                type="button"
-              >
+              <Button
+ onClick={handleSubmit}
+ disabled={createMutation.isPending || !odpsContent.trim()}
+ variant="primary">
                 {createMutation.isPending ? 'Creating...' : 'Create ODPS Product'}
-              </button>
-              <button onClick={handleReset} className="btn-secondary" type="button">
+              </Button>
+              <Button onClick={handleReset} variant="secondary">
                 Reset
-              </button>
+              </Button>
             </div>
 
             {createMutation.isError && (
@@ -264,9 +264,9 @@ export function ODPSUploadPage() {
                 <div className="error-icon">✗</div>
                 <h3>Workflow Failed</h3>
                 <p>{workflowStatus?.message || 'An error occurred during workflow execution'}</p>
-                <button onClick={handleReset} className="btn-primary" type="button">
+                <Button onClick={handleReset} variant="primary">
                   Try Again
-                </button>
+                </Button>
               </div>
             )}
 

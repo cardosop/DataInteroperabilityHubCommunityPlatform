@@ -25,7 +25,12 @@ test.describe('JOURNEY-CPO-004: Review Access Requests', () => {
       const onGov = page.url().includes('/governance');
       const on403 = page.url().includes('/403');
       const onLogin = page.url().includes('/login');
-      expect(onGov || on403 || onLogin).toBe(true);
+      if (on403 || onLogin) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onGov).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 

@@ -243,3 +243,23 @@
   max-height: 600px;
   overflow-y: auto;
 }
+
+.odps-linked-asset {
+  margin-top: var(--spacing-lg);
+  padding: var(--spacing-lg);
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
+}
+
+.odps-linked-asset h2 {
+  margin: 0 0 var(--spacing-md) 0;
+  font-size: var(--font-size-lg, 1.25rem);
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--color-text-primary);
+}
+
+.linked-asset-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md, 1rem);
+}

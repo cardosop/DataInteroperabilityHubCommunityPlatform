@@ -2,7 +2,8 @@
  * Admin React Query Hooks
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import type { TenantListFilters } from '../../../shared/types/tenants';
 import type { UserListFilters } from '../../../shared/types/users';
 import { adminService } from '../services/adminService';
@@ -55,7 +56,7 @@ export function useRoles() {
 
 export function useUpdateUser() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({
       id,
       data,
@@ -63,6 +64,8 @@ export function useUpdateUser() {
       id: string;
       data: { display_name?: string; status?: string; role_ids?: string[] };
     }) => adminService.updateUser(id, data),
+    successMessage: 'User updated',
+    errorMessage: 'Failed to update user',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users', 'list'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'users', 'detail', variables.id] });
@@ -70,11 +73,27 @@ export function useUpdateUser() {
   });
 }
 
+export function useCreateTenant() {
+  const queryClient = useQueryClient();
+  return useMutationWithNotification({
+    mutationFn: (data: { name: string; slug: string; region?: string }) =>
+      adminService.createTenant(data),
+    successMessage: 'Organization created',
+    errorMessage: 'Failed to create organization',
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'tenants', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'platform', 'usage'] });
+    },
+  });
+}
+
 export function useSuspendTenant() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
       adminService.suspendTenant(id, reason),
+    successMessage: 'Tenant suspended',
+    errorMessage: 'Failed to suspend tenant',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenants', 'list'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenants', 'detail', variables.id] });
@@ -85,8 +104,10 @@ export function useSuspendTenant() {
 
 export function useResumeTenant() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id }: { id: string }) => adminService.resumeTenant(id),
+    successMessage: 'Tenant resumed',
+    errorMessage: 'Failed to resume tenant',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenants', 'list'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenants', 'detail', variables.id] });

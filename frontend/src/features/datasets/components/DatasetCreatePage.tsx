@@ -18,6 +18,7 @@ import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import type { File } from '../../../shared/types/files';
 import './DatasetCreatePage.css';
+import { Button } from '../../../shared/components/Button';
 
 export type LinkMode = 'none' | 'existing' | 'create_new';
 
@@ -133,13 +134,13 @@ export function DatasetCreatePage() {
   return (
     <div className="dataset-create-page" data-testid="dataset-create-page">
       <div className="dataset-create-header">
-        <button onClick={() => navigate('/datasets')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/datasets')} variant="ghost">
           ← Back to Datasets
-        </button>
+        </Button>
         <h1>Create Dataset</h1>
       </div>
 
-      {mutationError && (
+      {!!mutationError && (
         <ErrorDisplay
           error={mutationError}
           title="Failed to create dataset"
@@ -248,21 +249,17 @@ export function DatasetCreatePage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            onClick={() => navigate('/datasets')}
-            className="btn-secondary"
-            disabled={isPending}
-          >
+          <Button
+ onClick={() => navigate('/datasets')}
+ variant="secondary"
+ disabled={isPending}>
             Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            className="btn-primary"
-            disabled={!canSubmit || isPending}
-            type="button"
-            data-testid="btn-create-dataset"
-          >
+          </Button>
+          <Button
+ onClick={handleSubmit}
+ variant="primary"
+ disabled={!canSubmit || isPending}
+ data-testid="btn-create-dataset">
             {isPending ? (
               <>
                 <LoadingSpinner size="small" />
@@ -271,7 +268,7 @@ export function DatasetCreatePage() {
             ) : (
               linkMode === 'create_new' ? 'Create Asset & Dataset' : 'Create Dataset'
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

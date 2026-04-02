@@ -2,7 +2,8 @@
  * Jobs React Query Hooks
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { emptyPaginatedResponse } from '../../../shared/types/api';
 import { jobService } from '../services/jobService';
 import type { Job, JobCreateRequest, JobListFilters } from '../../../shared/types/jobs';
@@ -50,8 +51,10 @@ export function useJob(id: string | null) {
 export function useCreateJob() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: JobCreateRequest) => jobService.create(data),
+    successMessage: 'Job created',
+    errorMessage: 'Failed to create job',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
@@ -61,8 +64,10 @@ export function useCreateJob() {
 export function useCancelJob() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => jobService.cancel(id),
+    successMessage: 'Job cancelled',
+    errorMessage: 'Failed to cancel job',
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       queryClient.invalidateQueries({ queryKey: ['jobs', 'detail', id] });

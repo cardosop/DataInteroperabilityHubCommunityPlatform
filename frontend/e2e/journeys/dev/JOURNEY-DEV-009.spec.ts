@@ -14,7 +14,7 @@ import { getExternalDeveloperUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DEV-009: Integrate with Developer Portal', () => {
-  test.setTimeout(300000); // 5 min: persona login + developer routes under parallel E2E load
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('developer page loads', async ({ page }) => {
@@ -26,9 +26,15 @@ test.describe('JOURNEY-DEV-009: Integrate with Developer Portal', () => {
       const onDeveloper = page.url().includes('/developer');
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onDeveloper).toBe(true);
       const hasContent =
-        (await page.locator('.developer-portal-page, .app-main, .unavailable-page').count()) > 0;
-      expect(onLogin || on403 || (onDeveloper && hasContent)).toBe(true);
+        (await page.locator('.developer-portal-page, .app-main').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
 
     test('settings api-keys loads', async ({ page }) => {
@@ -38,10 +44,11 @@ test.describe('JOURNEY-DEV-009: Integrate with Developer Portal', () => {
         contentSelector: '.auth-api-key-list-page, .empty-state, .error-display',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
-        expect(page.url()).toMatch(/\/login|\/403/);
+        test.skip(true, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(page.url()).toContain('/settings/api-keys');
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
 
     test('webhooks list loads', async ({ page }) => {
@@ -51,10 +58,11 @@ test.describe('JOURNEY-DEV-009: Integrate with Developer Portal', () => {
         contentSelector: '.webhook-list-page, .empty-state, .error-display',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
-        expect(page.url()).toMatch(/\/login|\/403/);
+        test.skip(true, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(page.url()).toContain('/webhooks');
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 
@@ -80,7 +88,7 @@ test.describe('JOURNEY-DEV-009: Integrate with Developer Portal', () => {
       await loginAndNavigateToRoute(page, devUser, '/developer', {
         timeout: 90000,
         contentSelector:
-          '.developer-portal-page, .developer-page, .app-main, .unavailable-page, .loading-spinner-container',
+          '.developer-portal-page, .developer-page, .app-main, .unavailable-page',
       });
       expect(
         page.url().includes('/developer') ||

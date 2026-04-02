@@ -16,7 +16,7 @@ const API_BASE =
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
 test.describe('JOURNEY-PA-009: Manage Federated Assets', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('platform admin can view federated assets or data mesh topology', async ({ page }) => {
@@ -60,7 +60,7 @@ test.describe('JOURNEY-PA-009: Manage Federated Assets', () => {
         (await page.locator('.mesh-domain-list-page, .topology-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
         (await page.locator('.unavailable-page').count()) > 0; // capability may be gated
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
 

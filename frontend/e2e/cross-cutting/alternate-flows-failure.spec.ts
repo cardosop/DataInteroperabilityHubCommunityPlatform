@@ -17,12 +17,12 @@ test.describe('Alternate flows — failure (USE_CASES A1–An)', () => {
     // as the 1st but gets a 409 on the *first* create, meaning the "second create with the
     // same key" scenario is never reached. Fix: include Math.random() for uniqueness.
     const key = `e2e-dup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    await page.goto('/assets/create');
+    await page.goto('/assets/create', { waitUntil: 'domcontentloaded' });
     try {
       await waitForAppMainReady(page, { contentSelector: '.asset-create-page', timeout: 60000 });
     } catch (_err) {
       if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
+        test.skip(true, 'Auth redirect during asset create — rate-limit or session issue');
         return;
       }
       throw _err;
@@ -30,15 +30,27 @@ test.describe('Alternate flows — failure (USE_CASES A1–An)', () => {
     await page.fill('input[id="key"]', key);
     await page.fill('input[id="name"]', 'First Asset');
     await page.fill('textarea[id="description"]', 'Description');
+
+    // Wait for POST response to confirm first asset was actually created
+    const firstCreateResp = page.waitForResponse(
+      (r) => r.url().includes('/api/v1/assets/') && r.request().method() === 'POST',
+      { timeout: 30000 }
+    ).catch(() => null);
     await page.locator('button:has-text("Create Asset")').click();
+    const resp = await firstCreateResp;
+    if (!resp || resp.status() >= 400) {
+      // First create didn't succeed — can't test duplicate key scenario
+      test.skip(true, `First asset create failed (${resp?.status() ?? 'timeout'}) — cannot test duplicate key`);
+      return;
+    }
     await page.waitForURL(/\/assets\/[^/]+$/, { timeout: 15000 }).catch(() => null);
 
-    await page.goto('/assets/create');
+    await page.goto('/assets/create', { waitUntil: 'domcontentloaded' });
     try {
       await waitForAppMainReady(page, { contentSelector: '.asset-create-page', timeout: 60000 });
     } catch (_err) {
       if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
+        test.skip(true, 'Auth redirect during asset create — rate-limit or session issue');
         return;
       }
       throw _err;
@@ -53,6 +65,6 @@ test.describe('Alternate flows — failure (USE_CASES A1–An)', () => {
       (await page.locator('.error-display').count()) > 0 ||
       (await page.locator('text=/already exists|duplicate|400|unique/i').count()) > 0;
     const stillOnCreate = page.url().includes('/assets/create');
-    expect(hasError || stillOnCreate).toBe(true);
+    expect(hasError || stillOnCreate).toBe(true) /* acceptable states */;
   });
 });

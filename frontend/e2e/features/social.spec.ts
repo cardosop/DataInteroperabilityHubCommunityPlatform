@@ -45,9 +45,9 @@ test.describe('Feature: Social on Asset Page (Phase 27.1)', () => {
       const assetId = await createAssetViaApi(testUser);
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section, .error-display, .loading-spinner-container',
+        contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section',
       });
-      await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
+      await page.waitForSelector('.asset-detail-page', { timeout: 15000 });
       if ((await page.locator('.error-display').count()) > 0) {
         test.skip(true, 'Asset load failed; cannot assert Community section');
       }
@@ -55,15 +55,16 @@ test.describe('Feature: Social on Asset Page (Phase 27.1)', () => {
       // AssetSocialSection renders with data-testid="asset-social-section"
       const socialSection = page.locator('[data-testid="asset-social-section"]');
       await socialSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
-      if ((await socialSection.count()) > 0 && (await socialSection.isVisible())) {
-        await expect(socialSection.locator('h2')).toContainText(/Community/i);
-        const hasTabs =
-          (await socialSection.locator('button:has-text("Ratings")').count()) > 0 ||
-          (await socialSection.locator('button:has-text("Reviews")').count()) > 0 ||
-          (await socialSection.locator('button:has-text("Comments")').count()) > 0;
-        expect(hasTabs).toBe(true);
+      if ((await socialSection.count()) === 0 || !(await socialSection.isVisible())) {
+        test.skip(true, 'Social capabilities not available; cannot assert Community section');
+        return;
       }
-      // If section not visible, capabilities may be off; asset page still loaded successfully
+      await expect(socialSection.locator('h2')).toContainText(/Community/i);
+      const hasTabs =
+        (await socialSection.locator('button:has-text("Ratings")').count()) > 0 ||
+        (await socialSection.locator('button:has-text("Reviews")').count()) > 0 ||
+        (await socialSection.locator('button:has-text("Comments")').count()) > 0;
+      expect(hasTabs).toBe(true);
     });
   });
 });
@@ -77,7 +78,7 @@ test.describe('Feature: Rate and Review on Asset Page (Phase 27.3.2)', () => {
       const assetId = await createAssetViaApi(testUser, { ensureActivated: true });
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section, .error-display, .loading-spinner-container',
+        contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section',
       });
       const socialSection = page.locator('[data-testid="asset-social-section"]');
       await socialSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
@@ -116,7 +117,7 @@ test.describe('Feature: Rate and Review on Asset Page (Phase 27.3.2)', () => {
       const assetId = await createAssetViaApi(testUser, { ensureActivated: true });
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section, .error-display, .loading-spinner-container',
+        contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section',
       });
       const socialSection = page.locator('[data-testid="asset-social-section"]');
       await socialSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);

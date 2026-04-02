@@ -21,7 +21,8 @@ export function CapabilityRoute({ capability, children }: CapabilityRouteProps) 
   }
 
   if (!isCapabilityAvailable(capability)) {
-    return <Navigate to="/unavailable" state={{ capability }} replace />;
+    const to = import.meta.env.VITE_MVP_MODE === 'true' ? '/coming-soon' : '/unavailable';
+    return <Navigate to={to} state={{ capability }} replace />;
   }
 
   return <>{children}</>;

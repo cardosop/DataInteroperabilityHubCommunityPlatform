@@ -31,7 +31,10 @@ test.describe('Feature: Lineage', () => {
       await page.goto('/lineage', { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(1500);
 
-      if (page.url().includes('/login')) return;
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Redirected to login — auth may have expired');
+        return;
+      }
 
       const url = page.url();
       // Accept /lineage (SPA 404 stays on requested URL), /assets, /403, or any redirect
@@ -43,12 +46,13 @@ test.describe('Feature: Lineage', () => {
         return;
       }
 
+      // Success test must NOT accept .error-display
+      await expect(page.locator('.error-display')).not.toBeVisible();
       const hasContent =
         (await page.locator('.lineage-page, .unavailable-page, .empty-state, h1').count()) > 0;
-      const hasError = (await page.locator('.error-display').count()) > 0;
       // SPA 404 page renders plain text without .app-main — accept as valid for unknown routes
       const hasSpaFallback = (await page.locator('text=/404|not found/i').count()) > 0;
-      expect(hasContent || hasError || hasSpaFallback).toBe(true);
+      expect(hasContent || hasSpaFallback).toBe(true);
     });
   });
 
@@ -77,10 +81,7 @@ test.describe('Feature: Lineage', () => {
       const is404 = page.url().includes('/404') || page.url().includes('/not-found');
       const hasNotFoundText =
         (await page.locator('text=/not found|404|does not exist/i').count()) > 0;
-      // SPA 404 page (path: '*') renders without .app-main — the URL stays on the requested path
-      const hasSpaFallback = page.url().includes('/lineage');
-
-      expect(hasError || hasUnavailable || is404 || hasNotFoundText || hasSpaFallback).toBe(true);
+      expect(hasError || hasUnavailable || is404 || hasNotFoundText).toBe(true) /* acceptable states */;
     });
   });
 });

@@ -1,76 +1,67 @@
 /**
- * Toast Context and Provider
+ * Toast Provider Component
  */
 
-import { createContext, useCallback, useContext, useState } from 'react';
-import { FEATURE_TOAST_ENABLED } from '../../config/featureFlags';
+import { useCallback, useRef, useState } from 'react';
 import { ToastItem } from './ToastItem';
+import { ToastContext } from './toastTypes';
+import type { Toast, ToastType } from './toastTypes';
 
-export type ToastType = 'success' | 'error' | 'info';
-
-export interface Toast {
-  id: string;
-  type: ToastType;
-  message: string;
-  duration?: number;
-}
-
-interface ToastContextValue {
-  toasts: Toast[];
-  addToast: (type: ToastType, message: string, duration?: number) => void;
-  removeToast: (id: string) => void;
-}
-
-const ToastContext = createContext<ToastContextValue | null>(null);
-
-export function useToast() {
-  const ctx = useContext(ToastContext);
-  if (!ctx) {
-    throw new Error('useToast must be used within ToastProvider');
-  }
-  return {
-    success: (message: string, duration?: number) => ctx.addToast('success', message, duration),
-    error: (message: string, duration?: number) => ctx.addToast('error', message, duration),
-    info: (message: string, duration?: number) => ctx.addToast('info', message, duration),
-  };
-}
+export type { Toast, ToastType } from './toastTypes';
+export { ToastContext } from './toastTypes';
 
 const DEFAULT_DURATION = 4000;
 
+const DEDUP_WINDOW_MS = 500;
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const recentRef = useRef<Map<string, number>>(new Map());
+  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const addToast = useCallback((type: ToastType, message: string, duration = DEFAULT_DURATION) => {
-    if (!FEATURE_TOAST_ENABLED) return;
-    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    // Deduplication: skip if an identical message was shown within DEDUP_WINDOW_MS
+    const now = Date.now();
+    const key = `${type}:${message}`;
+    const lastShown = recentRef.current.get(key);
+    if (lastShown !== undefined && now - lastShown < DEDUP_WINDOW_MS) return;
+    recentRef.current.set(key, now);
+
+    const id = `toast-${now}-${Math.random().toString(36).slice(2)}`;
     const toast: Toast = { id, type, message, duration };
     setToasts((prev) => [...prev, toast]);
 
     if (duration > 0) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
+        recentRef.current.delete(key);
+        timersRef.current.delete(id);
       }, duration);
+      timersRef.current.set(id, timer);
     }
   }, []);
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+    const timer = timersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      timersRef.current.delete(id);
+    }
   }, []);
 
   return (
     <ToastContext.Provider value={{ toasts, addToast, removeToast }}>
       {children}
-      {FEATURE_TOAST_ENABLED && (
-        <div className="toast-container" role="region" aria-label="Notifications">
-          {toasts.map((toast) => (
-            <ToastItem
-              key={toast.id}
-              toast={toast}
-              onClose={() => removeToast(toast.id)}
-            />
-          ))}
-        </div>
-      )}
+      <div className="toast-container" role="region" aria-label="Notifications" data-testid="toast-container">
+        {toasts.map((toast) => (
+          <ToastItem
+            key={toast.id}
+            toast={toast}
+            onClose={() => removeToast(toast.id)}
+          />
+        ))}
+      </div>
     </ToastContext.Provider>
   );
 }

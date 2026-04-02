@@ -12,7 +12,7 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getComplianceOfficerUser, loginAsPersona } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError, waitForAppMainReady } from '../../fixtures/helpers';
+import { assertNonExistentIdShowsError, waitForAppMainReady, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-CPO-006: Configure Automated Compliance', () => {
   test.setTimeout(120000);
@@ -32,6 +32,50 @@ test.describe('JOURNEY-CPO-006: Configure Automated Compliance', () => {
         throw _err;
       }
       expect(page.url()).toContain('/compliance');
+    });
+
+    test('compliance page has create run or configuration UI', async ({ page }) => {
+      await loginAsPersona(page, getComplianceOfficerUser);
+      await page.goto('/compliance');
+      await page.waitForLoadState('domcontentloaded');
+      try {
+        await waitForAppMainReady(page, { timeout: 60000 });
+      } catch (_err) {
+        if (page.url().includes('/login') || page.url().includes('/403')) {
+          test.skip(true, 'Auth/role gated — skipping success assertion');
+          return;
+        }
+        throw _err;
+      }
+      if (page.url().includes('/login') || page.url().includes('/403')) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      await waitForLoadingComplete(page, { timeout: 15000 });
+
+      // Look for create / new / run buttons
+      const createButton = page.locator(
+        'button:has-text("Create"), button:has-text("New"), button:has-text("Run"), a:has-text("Create")'
+      );
+      const hasCreateButton = (await createButton.count()) > 0 && await createButton.first().isVisible().catch(() => false);
+
+      // Look for configuration UI
+      const configUI = page.locator(
+        '[class*="schedule"], [class*="config"], [data-testid*="config"]'
+      );
+      const hasConfigUI = (await configUI.count()) > 0 && await configUI.first().isVisible().catch(() => false);
+
+      // Look for compliance list content (runs list or empty state)
+      const complianceContent = page.locator(
+        '.compliance-run-list-page, .compliance-run-list, .empty-state'
+      );
+      const hasComplianceContent = (await complianceContent.count()) > 0 && await complianceContent.first().isVisible().catch(() => false);
+
+      // At least one of: create button, config UI, or compliance list content
+      expect(hasCreateButton || hasConfigUI || hasComplianceContent).toBe(true);
+
+      // error-display must NOT be visible (D85)
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 

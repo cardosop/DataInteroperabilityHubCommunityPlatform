@@ -94,7 +94,7 @@ export const socialService = {
     if (filters.page) params.append('page', filters.page.toString());
     if (filters.page_size) params.append('page_size', filters.page_size.toString());
     if (filters.status) params.append('status', filters.status);
-    if ((filters as any).parent_comment_id) params.append('parent_comment_id', (filters as any).parent_comment_id);
+    if ((filters as Record<string, unknown>).parent_comment_id) params.append('parent_comment_id', String((filters as Record<string, unknown>).parent_comment_id));
 
     const response = await apiClient.getClient().get<PaginatedResponse<Comment>>(
       `${SOCIAL_BASE_PATH}/comments/?${params.toString()}`

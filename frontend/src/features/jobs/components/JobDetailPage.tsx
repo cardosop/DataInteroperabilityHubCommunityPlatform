@@ -8,12 +8,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useJob, useCancelJob } from '../hooks/useJobs';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './JobDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -41,7 +43,7 @@ export function JobDetailPage() {
   }
 
   if (isLoading || !job) {
-    return <LoadingSpinner message="Loading job..." />;
+    return <DetailPageSkeleton />;
   }
 
   const isRunning = job.status === 'PENDING' || job.status === 'RUNNING';
@@ -50,19 +52,17 @@ export function JobDetailPage() {
   return (
     <div className="job-detail-page">
       <div className="job-detail-header">
-        <button onClick={() => navigate('/jobs')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/jobs')} variant="ghost">
           ← Back to Jobs
-        </button>
+        </Button>
         <div className="job-detail-actions">
           {isRunning && (
-            <button
-              onClick={handleCancelClick}
-              disabled={cancelMutation.isPending}
-              className="btn-danger"
-              type="button"
-            >
-              {cancelMutation.isPending ? 'Cancelling...' : 'Cancel Job'}
-            </button>
+            <Button
+ onClick={handleCancelClick}
+ loading={cancelMutation.isPending}
+ variant="danger">
+              Cancel Job
+            </Button>
           )}
         </div>
       </div>

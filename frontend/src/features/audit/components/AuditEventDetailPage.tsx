@@ -6,11 +6,12 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { useAuditEvent } from '../hooks/useAudit';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './AuditEventDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function AuditEventDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,7 +19,7 @@ export function AuditEventDetailPage() {
   const { data: event, isLoading, error, refetch } = useAuditEvent(id || null);
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading audit event..." />;
+    return <DetailPageSkeleton />;
   }
 
   if (error) {
@@ -43,14 +44,12 @@ export function AuditEventDetailPage() {
   return (
     <div className="audit-event-detail-page" data-testid="audit-event-detail-page">
       <div className="audit-detail-header">
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => navigate('/audit')}
-          aria-label="Back to audit events"
-        >
+        <Button
+ variant="secondary"
+ onClick={() => navigate('/audit')}
+ aria-label="Back to audit events">
           ← Back to Audit Events
-        </button>
+        </Button>
         <h1>Audit Event Details</h1>
       </div>
 

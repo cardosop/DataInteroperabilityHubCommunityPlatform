@@ -47,7 +47,7 @@ vi.mock('axios', () => {
 import axios from 'axios';
 import { apiClient } from '../../../shared/api/client';
 
-const mockAxiosCreate = vi.mocked(axios.create);
+vi.mocked(axios.create);
 
 describe('useScheduledExport hooks', () => {
   let queryClient: QueryClient;
@@ -123,7 +123,7 @@ describe('useScheduledExport hooks', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockResponse,
-      } as any);
+      } as never);
 
       const { result } = renderHook(() => useScheduledExports({ page: 1 }), { wrapper });
 
@@ -157,7 +157,7 @@ describe('useScheduledExport hooks', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockExport,
-      } as any);
+      } as never);
 
       const { result } = renderHook(() => useScheduledExport('export-1'), { wrapper });
 
@@ -199,7 +199,7 @@ describe('useScheduledExport hooks', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockRuns,
-      } as any);
+      } as never);
 
       const { result } = renderHook(() => useScheduledExportRuns('export-1'), { wrapper });
 
@@ -248,7 +248,7 @@ describe('useScheduledExport hooks', () => {
 
       vi.mocked(mockAxiosInstance.post).mockResolvedValue({
         data: mockCreatedExport,
-      } as any);
+      } as never);
 
       const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
@@ -290,7 +290,7 @@ describe('useScheduledExport hooks', () => {
 
       vi.mocked(mockAxiosInstance.patch).mockResolvedValue({
         data: mockUpdatedExport,
-      } as any);
+      } as never);
 
       const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
@@ -314,7 +314,7 @@ describe('useScheduledExport hooks', () => {
     it('should delete scheduled export and invalidate queries', async () => {
       vi.mocked(mockAxiosInstance.delete).mockResolvedValue({
         status: 204,
-      } as any);
+      } as never);
 
       const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
@@ -345,7 +345,7 @@ describe('useScheduledExport hooks', () => {
 
       vi.mocked(mockAxiosInstance.post).mockResolvedValue({
         data: mockTriggerResponse,
-      } as any);
+      } as never);
 
       const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 

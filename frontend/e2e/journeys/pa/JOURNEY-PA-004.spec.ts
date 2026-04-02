@@ -16,7 +16,7 @@ const API_BASE =
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
 test.describe('JOURNEY-PA-004: Review Platform Analytics', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('platform admin sees analytics with non-zero metric values', async ({ page }) => {

@@ -2,7 +2,8 @@
  * Marketplace Mappings React Query Hooks
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { marketplaceMappingService } from '../services/marketplaceMappingService';
 import type { MarketplaceMappingListFilters } from '../../../shared/types/integrations';
 
@@ -24,8 +25,10 @@ export function useMarketplaceMapping(id: string | null) {
 export function useDeleteMarketplaceMapping() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => marketplaceMappingService.delete(id),
+    successMessage: 'Mapping deleted',
+    errorMessage: 'Failed to delete mapping',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'mappings'] });
     },

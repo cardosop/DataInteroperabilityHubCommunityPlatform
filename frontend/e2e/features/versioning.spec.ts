@@ -17,7 +17,7 @@ test.describe('Feature: Versioning', () => {
         await waitForAppMainReady(page, { timeout: 60000 });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
+          test.skip(true, 'Redirected to login — auth may have expired');
           return;
         }
         throw _err;
@@ -35,7 +35,7 @@ test.describe('Feature: Versioning', () => {
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('text=/not found|404/i').count()) > 0;
-      expect(onLogin || hasError).toBe(true);
+      expect(onLogin || hasError).toBe(true) /* acceptable states */;
     });
   });
 });

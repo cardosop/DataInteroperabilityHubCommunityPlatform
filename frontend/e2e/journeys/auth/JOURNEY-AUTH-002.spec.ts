@@ -13,7 +13,7 @@ import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
 import { assertVisible, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-AUTH-002: User Logs In', () => {
-  test.setTimeout(200000); // 3+ min: rate-limiting test does 6 login attempts; visible/slowMo adds latency
+  test.setTimeout(90000);
 
   /**
    * Performance: Login completes within target time (runs first to avoid rate-limit exhaustion)
@@ -21,7 +21,7 @@ test.describe('JOURNEY-AUTH-002: User Logs In', () => {
    * Uses shared loginUser fixture; measures duration. Run early so auth rate limit is fresh.
    */
   test('performance: login completes within target time', async ({ page }) => {
-    test.setTimeout(240000); // 4 min: API under load, rate-limit retries; visible/slowMo adds latency
+    test.setTimeout(90000);
 
     await clearAuthStorage(page);
     const testUser = await getTestUser();
@@ -56,7 +56,7 @@ test.describe('JOURNEY-AUTH-002: User Logs In', () => {
    * retries (429) and redirect handling are consistent. Verifies redirect and app shell.
    */
   test('happy path: user successfully logs in', async ({ page }) => {
-    test.setTimeout(180000); // 3 min: API under load, rate-limit retries
+    test.setTimeout(90000);
 
     await clearAuthStorage(page);
     const testUser = await getTestUser();
@@ -214,7 +214,7 @@ test.describe('JOURNEY-AUTH-002: User Logs In', () => {
      * Verifies that rate limiting is handled gracefully.
      */
     test('rate limiting handled gracefully', async ({ page }) => {
-      test.setTimeout(180000); // Longer timeout for rate limit retries
+      test.setTimeout(90000);
 
       await clearAuthStorage(page);
       const testUser = await getTestUser();
@@ -251,14 +251,18 @@ test.describe('JOURNEY-AUTH-002: User Logs In', () => {
       // The critical assertion: no unhandled exception page or blank screen.
       const errorMessage = page.locator('.error-message');
       const rateLimitError = page.locator('text=/rate limit|too many requests/i');
-      const hasRateLimitSignal =
-        (await errorMessage.count()) > 0 ||
-        (await rateLimitError.count()) > 0 ||
-        // System allowed eventual successful login — also a valid outcome
-        !page.url().includes('/login') ||
-        // System is on /login page — rate limiter blocked login, app is still responsive (no crash)
-        page.url().includes('/login');
-      expect(hasRateLimitSignal).toBe(true);
+      // Valid outcomes after 6 rapid login attempts:
+      //   a) rate-limit / error message visible on the login page
+      //   b) successful login (navigated away from /login)
+      //   c) still on /login (rate limiter blocked, but app didn't crash)
+      // The original assertion was tautological (!url.includes('/login') || url.includes('/login') === always true).
+      // Fixed: assert at least one meaningful signal exists.
+      const hasErrorMessage = (await errorMessage.count()) > 0;
+      const hasRateLimitMessage = (await rateLimitError.count()) > 0;
+      const loginSucceeded = !page.url().includes('/login');
+      const loginPageStillResponsive = page.url().includes('/login') &&
+        (await page.locator('input#email, input[type="email"], button[type="submit"]').count()) > 0;
+      expect(hasErrorMessage || hasRateLimitMessage || loginSucceeded || loginPageStillResponsive).toBe(true);
       console.log('Rate limiting test completed - system handled multiple login attempts');
     });
 

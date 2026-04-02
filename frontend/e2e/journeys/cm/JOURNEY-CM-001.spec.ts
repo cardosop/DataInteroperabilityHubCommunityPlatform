@@ -5,8 +5,13 @@
  * Persona: Community Manager
  * Reference: docs/USER_JOURNEYS.md
  *
+ * Distinct from CM-002 (Moderate Reviews/Ratings) and CM-004 (Manage Activity Feeds):
+ * CM-001 focuses on the /communities page itself — listing communities, viewing
+ * community content. CM-002 tests the Ratings/Reviews tabs on an asset page.
+ * CM-004 tests the Comments/Activity tab on an asset page.
+ *
  * Success/Failure/Edge. Routes: /communities (Phase 27.2).
- * Capability-gated: social.communities. Uses default storageState (e2e_test). Real backend only; no mocks.
+ * Capability-gated: social.communities. Real backend only; no mocks.
  */
 
 import { expect, test } from '@playwright/test';
@@ -15,21 +20,32 @@ test.describe('JOURNEY-CM-001: Manage Data Community', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
-    test('communities page loads for community management', async ({ page }) => {
+    test('communities page loads with community list or empty state', async ({ page }) => {
       await page.goto('/communities');
       await page.waitForLoadState('domcontentloaded');
       await page
-        .locator('.communities-page, .communities-tab, .app-main, .unavailable-page, .loading-spinner-container, #email')
+        .locator('.communities-page, [data-testid="communities-page"], .unavailable-page')
         .first()
-        .waitFor({ state: 'visible', timeout: 25000 });
+        .waitFor({ state: 'visible', timeout: 25000 })
+        .catch(() => null);
+
       const url = page.url();
-      const onLogin = url.includes('/login');
-      const on403 = url.includes('/403');
-      const onCommunities = url.includes('/communities');
-      const onUnavailable = url.includes('/unavailable');
-      const hasContent =
-        (await page.locator('.communities-page, .communities-tab, .app-main, .unavailable-page, .loading-spinner-container, #email').count()) > 0;
-      expect(onLogin || on403 || onUnavailable || (onCommunities && hasContent)).toBe(true);
+      if (url.includes('/login') || url.includes('/403')) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+
+      expect(url).toContain('/communities');
+      await expect(page.locator('.error-display')).not.toBeVisible();
+
+      // CM-001 specific: communities page must render its data-testid or class
+      const hasCommunitiesPage =
+        (await page.locator('.communities-page, [data-testid="communities-page"]').count()) > 0;
+      const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
+      expect(
+        hasCommunitiesPage || hasEmptyState,
+        'Expected .communities-page or .empty-state on /communities'
+      ).toBe(true);
     });
   });
 
@@ -41,11 +57,10 @@ test.describe('JOURNEY-CM-001: Manage Data Community', () => {
       const url = page.url();
       const on403 = url.includes('/403');
       const onUnavailable = url.includes('/unavailable');
-      const onCommunities = url.includes('/communities');
       const onLogin = url.includes('/login');
       const hasUnavailableContent =
         (await page.locator('.unavailable-page, .error-display').count()) > 0;
-      expect(on403 || onUnavailable || hasUnavailableContent || onCommunities || onLogin).toBe(true);
+      expect(on403 || onUnavailable || hasUnavailableContent || onLogin).toBe(true);
     });
   });
 

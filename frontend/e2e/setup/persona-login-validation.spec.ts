@@ -21,8 +21,8 @@ import {
   loginViaApi,
 } from '../fixtures/auth';
 
-test.describe('Persona login validation (6.10.1.3, 6.11.7)', () => {
-  test.setTimeout(60000); // loginViaApi retries up to 5× with backoff
+test.describe.serial('Persona login validation (6.10.1.3, 6.11.7)', () => {
+  // Serial: avoids rate-limiter saturation from 6 concurrent API logins.
 
   test('getTenantAdminUser resolves and can authenticate via API', async () => {
     const user = await getTenantAdminUser();

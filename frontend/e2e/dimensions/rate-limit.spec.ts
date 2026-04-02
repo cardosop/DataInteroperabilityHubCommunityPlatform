@@ -12,7 +12,7 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage } from '../fixtures/auth';
 
 test.describe('Dimension: Rate limit (429)', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test('repeated login attempts with invalid credentials can receive 429 or show error', async ({
     page,

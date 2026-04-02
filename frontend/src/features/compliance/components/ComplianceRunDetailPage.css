@@ -14,39 +14,6 @@
   gap: 0.75rem;
 }
 
-.compliance-run-detail-actions .btn-danger {
-  padding: 0.5rem 1rem;
-  border-radius: 4px;
-  border: 1px solid var(--color-error-500);
-  background: var(--color-error-50);
-  color: var(--color-error-700);
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-
-.compliance-run-detail-actions .btn-danger:hover:not(:disabled) {
-  background: var(--color-error-100);
-}
-
-.compliance-run-detail-actions .btn-danger:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-back {
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  background: var(--color-background-primary);
-  cursor: pointer;
-  font-size: 0.9rem;
-  color: var(--color-text-primary);
-}
-
-.btn-back:hover {
-  background: var(--color-neutral-100);
-}
-
 .compliance-run-detail-content {
   background: var(--color-background-primary);
   border-radius: 8px;

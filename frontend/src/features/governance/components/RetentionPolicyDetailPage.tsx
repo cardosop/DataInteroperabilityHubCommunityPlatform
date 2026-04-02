@@ -9,11 +9,12 @@ import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { useDeleteRetentionPolicy, useRetentionPolicy } from '../hooks/useRetention';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './RetentionPolicyDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function RetentionPolicyDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -41,7 +42,7 @@ export function RetentionPolicyDetailPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading retention policy..." />;
+    return <DetailPageSkeleton />;
   }
 
   if (error || !policy) {
@@ -62,25 +63,21 @@ export function RetentionPolicyDetailPage() {
   return (
     <div className="governance-retention-policy-detail-page">
       <div className="governance-detail-header">
-        <button
-          type="button"
-          className="btn-back"
-          onClick={() => navigate('/governance/retention')}
-        >
+        <Button
+ variant="ghost"
+ onClick={() => navigate('/governance/retention')}>
           ← Back to Retention Policies
-        </button>
+        </Button>
         <div className="governance-detail-actions">
-          <button type="button" className="btn-secondary" onClick={handleEdit}>
+          <Button variant="secondary" onClick={handleEdit}>
             Edit
-          </button>
-          <button
-            type="button"
-            className="btn-danger"
-            onClick={handleDeleteClick}
-            disabled={deleteMutation.isPending}
-          >
-            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-          </button>
+          </Button>
+          <Button
+ variant="danger"
+ onClick={handleDeleteClick}
+ loading={deleteMutation.isPending}>
+            Delete
+          </Button>
         </div>
       </div>
 
@@ -183,7 +180,7 @@ export function RetentionPolicyDetailPage() {
           </div>
         </div>
 
-        {deleteMutation.error && (
+        {!!deleteMutation.error && (
           <div className="error-display" role="alert">
             {deleteMutation.error instanceof Error
               ? deleteMutation.error.message

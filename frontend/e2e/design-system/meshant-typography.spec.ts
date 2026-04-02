@@ -14,8 +14,8 @@ test.describe('Meshant Typography (Phase 29.0)', () => {
   });
 
   test('body font-family includes Inter', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-
+    // loginUser in beforeEach already navigated to '/' — no reload needed.
+    // A full page.goto('/') re-initializes auth which takes 60-120s under parallel load.
     const fontFamily = await page.locator('body').evaluate((el) => {
       const style = window.getComputedStyle(el);
       return style.fontFamily;
@@ -24,7 +24,7 @@ test.describe('Meshant Typography (Phase 29.0)', () => {
   });
 
   test('key headings use design tokens (smoke)', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    // loginUser in beforeEach already navigated to '/' — no reload needed.
     await page.waitForSelector('.app-main, h1', { state: 'visible', timeout: 15000 });
 
     const h1 = page.locator('h1').first();

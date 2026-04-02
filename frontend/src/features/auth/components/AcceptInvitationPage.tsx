@@ -10,6 +10,7 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { authService } from '../services/authService';
 import './AcceptInvitationPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function AcceptInvitationPage() {
   const [searchParams] = useSearchParams();
@@ -113,9 +114,9 @@ export function AcceptInvitationPage() {
                 />
               </div>
               <div className="accept-invitation-actions">
-                <button type="submit" className="btn-primary" disabled={submitting}>
+                <Button type="submit" variant="primary" disabled={submitting}>
                   {submitting ? 'Activating...' : 'Activate account'}
-                </button>
+                </Button>
                 <a href="/login" className="link-cancel">
                   Cancel
                 </a>

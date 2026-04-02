@@ -6,11 +6,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useListings, useSearchListings } from '../hooks/useListings';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
-import { ListingStatus, PricingModel } from '../../../shared/types/marketplace';
+import { ListingStatus, PricingModel, ProductCategory } from '../../../shared/types/marketplace';
 import './ListingListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ListingListPage() {
   const navigate = useNavigate();
@@ -20,6 +21,7 @@ export function ListingListPage() {
   const [domainFilter, setDomainFilter] = useState<string>('');
   const [pricingFilter, setPricingFilter] = useState<PricingModel | ''>('');
   const [statusFilter, setStatusFilter] = useState<ListingStatus | ''>('');
+  const [categoryFilter, setCategoryFilter] = useState<ProductCategory | ''>('');
 
   const filters = {
     page,
@@ -28,6 +30,7 @@ export function ListingListPage() {
     domain: domainFilter || undefined,
     pricing_model: pricingFilter || undefined,
     status: statusFilter || undefined,
+    product_category: categoryFilter || undefined,
     ordering: '-created_at',
   };
 
@@ -53,7 +56,7 @@ export function ListingListPage() {
   };
 
   if (displayIsLoading) {
-    return <LoadingSpinner message="Loading listings..." />;
+    return <ListPageSkeleton />;
   }
 
   if (displayError) {
@@ -61,20 +64,40 @@ export function ListingListPage() {
   }
 
   if (!displayData || displayData.results.length === 0) {
+    const hasFilters = !!(search || domainFilter || pricingFilter || statusFilter || categoryFilter);
     return (
-      <div className="listing-list-page">
-        <div className="listing-list-header">
+      <div className="listing-list-page" data-testid="listing-list-page">
+        <div className="listing-list-header" data-testid="listing-list-header">
           <h1>Marketplace</h1>
-          <button className="btn-secondary" onClick={handleOrdersClick} type="button">
-            My Orders
-          </button>
+          <div className="listing-list-header-actions">
+            <Button variant="secondary" onClick={handleOrdersClick}>
+              My Orders
+            </Button>
+            <Button variant="primary" onClick={handlePublishClick}>
+              Publish Listing
+            </Button>
+          </div>
         </div>
+
+        <div className="listing-list-filters" data-testid="listing-list-filters">
+          <input
+            type="text"
+            placeholder="Search listings..."
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            className="filter-input"
+          />
+        </div>
+
         <EmptyState
           title="No listings found"
-          message={search || domainFilter || pricingFilter || statusFilter
+          message={hasFilters
             ? "Try adjusting your filters to see more results."
             : "No marketplace listings available yet."}
-          action={!search && !domainFilter && !pricingFilter && !statusFilter
+          action={!hasFilters
             ? { label: 'Publish Listing', onClick: handlePublishClick }
             : undefined}
         />
@@ -87,12 +110,12 @@ export function ListingListPage() {
       <div className="listing-list-header" data-testid="listing-list-header">
         <h1>Marketplace</h1>
         <div className="listing-list-header-actions">
-          <button className="btn-secondary" onClick={handleOrdersClick} type="button">
+          <Button variant="secondary" onClick={handleOrdersClick}>
             My Orders
-          </button>
-          <button className="btn-primary" onClick={handlePublishClick} type="button">
+          </Button>
+          <Button variant="primary" onClick={handlePublishClick}>
             Publish Listing
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -143,6 +166,18 @@ export function ListingListPage() {
           <option value={ListingStatus.PUBLISHED}>Published</option>
           <option value={ListingStatus.UNLISTED}>Unlisted</option>
         </select>
+        <select
+          value={categoryFilter}
+          onChange={(e) => {
+            setCategoryFilter(e.target.value as ProductCategory | '');
+            setPage(1);
+          }}
+          className="filter-select"
+        >
+          <option value="">All Categories</option>
+          <option value={ProductCategory.DATA}>Data Products</option>
+          <option value={ProductCategory.ML_MODEL}>ML Models</option>
+        </select>
       </div>
 
       <div className="listing-list-grid">
@@ -166,6 +201,9 @@ export function ListingListPage() {
               <span className={`listing-status listing-status-${listing.status.toLowerCase()}`}>
                 {listing.status}
               </span>
+              {listing.product_category === ProductCategory.ML_MODEL && (
+                <span className="listing-category-badge listing-category-ml">ML Model</span>
+              )}
             </div>
             <p className="listing-card-description">
               {listing.short_description || listing.description || 'No description available'}
@@ -186,25 +224,21 @@ export function ListingListPage() {
 
       {displayData.count > pageSize && (
         <div className="listing-list-pagination">
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => Math.max(1, p - 1))}
+ disabled={page === 1}>
             Previous
-          </button>
+          </Button>
           <span className="pagination-info">
             Page {page} of {Math.ceil(displayData.count / pageSize)}
           </span>
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => p + 1)}
-            disabled={page >= Math.ceil(displayData.count / pageSize)}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => p + 1)}
+ disabled={page>= Math.ceil(displayData.count / pageSize)}>
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>

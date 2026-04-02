@@ -25,7 +25,7 @@ test.describe('JOURNEY-CPO-002: Generate Compliance Report', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           contentSelector:
-            '.compliance-run-list-page, .empty-state, .error-display, .loading-spinner-container',
+            '.compliance-run-list-page, .empty-state, .error-display',
         });
       } catch (_err) {
         if (page.url().includes('/login') || page.url().includes('/403')) {

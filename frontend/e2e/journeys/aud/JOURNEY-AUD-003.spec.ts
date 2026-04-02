@@ -56,7 +56,7 @@ test.describe('JOURNEY-AUD-003: Export Audit Data', () => {
         const hasContent =
           (await page.locator('.audit-event-list-page').count()) > 0 ||
           (await page.locator('.empty-state').count()) > 0;
-        expect(hasContent).toBe(true);
+        expect(hasContent).toBe(true) /* acceptable states */;
       }
     });
   });

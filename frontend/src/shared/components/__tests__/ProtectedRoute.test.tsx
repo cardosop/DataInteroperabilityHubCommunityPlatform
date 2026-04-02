@@ -30,7 +30,7 @@ describe('ProtectedRoute', () => {
       isAuthenticated: true,
       user: { id: '1', email: 'test@example.com', name: 'Test', tenant_id: 't1', roles: ['USER'] },
       isLoading: false,
-    } as any);
+    } as never);
 
     render(
       <MemoryRouter>
@@ -48,7 +48,7 @@ describe('ProtectedRoute', () => {
       isAuthenticated: false,
       user: null,
       isLoading: true,
-    } as any);
+    } as never);
 
     render(
       <MemoryRouter>
@@ -67,7 +67,7 @@ describe('ProtectedRoute', () => {
       isAuthenticated: false,
       user: null,
       isLoading: false,
-    } as any);
+    } as never);
 
     render(
       <MemoryRouter initialEntries={['/protected']}>
@@ -85,7 +85,7 @@ describe('ProtectedRoute', () => {
       isAuthenticated: true,
       user: { id: '1', email: 'test@example.com', name: 'Test', tenant_id: 't1', roles: ['USER'] },
       isLoading: false,
-    } as any);
+    } as never);
 
     render(
       <MemoryRouter initialEntries={['/admin']}>
@@ -109,7 +109,7 @@ describe('ProtectedRoute', () => {
         roles: ['USER', 'ADMIN'],
       },
       isLoading: false,
-    } as any);
+    } as never);
 
     render(
       <MemoryRouter>

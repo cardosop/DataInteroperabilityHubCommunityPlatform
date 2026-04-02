@@ -11,7 +11,7 @@
 
 import { expect, test } from '@playwright/test';
 import { getTenantAdminUser, loginAsPersona } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError, waitForAppMainReady } from '../../fixtures/helpers';
+import { assertNonExistentIdShowsError, waitForAppMainReady, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-TA-008: Configure Integration Ecosystem', () => {
   test.setTimeout(120000);
@@ -21,7 +21,7 @@ test.describe('JOURNEY-TA-008: Configure Integration Ecosystem', () => {
       await loginAsPersona(page, getTenantAdminUser);
       await page.goto('/integrations/connections');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.connection-list-page, .error-display, .empty-state, #email', {
+      await page.waitForSelector('.connection-list-page, .empty-state', {
         timeout: 65000,
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
@@ -29,6 +29,8 @@ test.describe('JOURNEY-TA-008: Configure Integration Ecosystem', () => {
         return;
       }
       expect(page.url()).toContain('/integrations/connections');
+      // D85: error-display is NOT acceptable in success test
+      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 1000 });
     });
 
     test('integrations sync-jobs list loads', async ({ page }) => {
@@ -59,6 +61,62 @@ test.describe('JOURNEY-TA-008: Configure Integration Ecosystem', () => {
         throw _err;
       }
       expect(page.url()).toContain('/integrations/mappings');
+    });
+
+    test('connections page has create connection button or form', async ({ page }) => {
+      await loginAsPersona(page, getTenantAdminUser);
+      await page.goto('/integrations/connections');
+      await page.waitForLoadState('domcontentloaded');
+      try {
+        await waitForAppMainReady(page, { timeout: 60000 });
+      } catch (_err) {
+        if (page.url().includes('/login') || page.url().includes('/403')) {
+          test.skip(true, 'Login redirect or 403 — skipping success assertion');
+          return;
+        }
+        throw _err;
+      }
+      if (page.url().includes('/login') || page.url().includes('/403')) {
+        test.skip(true, 'Login redirect or 403 — skipping success assertion');
+        return;
+      }
+      await waitForLoadingComplete(page);
+
+      const createButton = page.locator(
+        'button:has-text("Create"), button:has-text("New"), a:has-text("Create"), button:has-text("Connect")'
+      );
+      const connectionList = page.locator(
+        '.connection-list-page, .marketplace-connection-list-page'
+      );
+      const emptyState = page.locator('.empty-state');
+
+      const hasCreateButton = (await createButton.count()) > 0;
+      const hasConnectionList = (await connectionList.count()) > 0;
+      const hasEmptyState = (await emptyState.count()) > 0;
+
+      if (hasCreateButton) {
+        await createButton.first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(3000);
+
+        const form = page.locator('form');
+        const nameInput = page.locator('input[name="name"]');
+        const urlInput = page.locator('input[name="url"]');
+        const createPage = page.locator(
+          '.marketplace-connection-create-page, .connection-create-page'
+        );
+
+        const hasForm = (await form.count()) > 0;
+        const hasNameInput = (await nameInput.count()) > 0;
+        const hasUrlInput = (await urlInput.count()) > 0;
+        const hasCreatePage = (await createPage.count()) > 0;
+
+        expect(hasForm || hasNameInput || hasUrlInput || hasCreatePage).toBe(true);
+      } else {
+        expect(hasConnectionList || hasEmptyState).toBe(true);
+      }
+
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 

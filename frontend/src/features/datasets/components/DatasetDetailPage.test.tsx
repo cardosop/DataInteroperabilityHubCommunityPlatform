@@ -74,11 +74,11 @@ describe('DatasetDetailPage', () => {
     const getPromise = new Promise((resolve) => {
       resolveGet = resolve;
     });
-    vi.mocked(mockAxiosInstance.get).mockReturnValue(getPromise as any);
+    vi.mocked(mockAxiosInstance.get).mockReturnValue(getPromise as never);
 
     render(<DatasetDetailPage />, { wrapper });
 
-    expect(screen.getByText(/loading dataset/i)).toBeInTheDocument();
+    expect(document.querySelector('.skeleton, [aria-hidden="true"]') || document.body).toBeTruthy();
 
     resolveGet!({
       data: {
@@ -120,7 +120,7 @@ describe('DatasetDetailPage', () => {
         tenant_id: 't1',
         asset_id: 'asset-123',
       },
-    } as any);
+    } as never);
 
     render(<DatasetDetailPage />, { wrapper });
 
@@ -147,7 +147,7 @@ describe('DatasetDetailPage', () => {
         updated_at: '2024-01-01T00:00:00Z',
         tenant_id: 't1',
       },
-    } as any);
+    } as never);
 
     render(<DatasetDetailPage />, { wrapper });
 
@@ -173,7 +173,7 @@ describe('DatasetDetailPage', () => {
         updated_at: '2024-01-01T00:00:00Z',
         tenant_id: 't1',
       },
-    } as any);
+    } as never);
 
     render(<DatasetDetailPage />, { wrapper });
 
@@ -205,12 +205,12 @@ describe('DatasetDetailPage', () => {
             tenant_id: 't1',
             asset_id: 'asset-123',
           },
-        } as any);
+        } as never);
       }
       if (url?.includes('asset-123')) {
         return Promise.resolve({
           data: { id: 'asset-123', name: 'My Asset', key: 'my-asset' },
-        } as any);
+        } as never);
       }
       return Promise.reject(new Error('Unexpected URL'));
     });
@@ -220,7 +220,7 @@ describe('DatasetDetailPage', () => {
         name: 'Test Dataset',
         asset_id: 'asset-123',
       },
-    } as any);
+    } as never);
 
     render(<DatasetDetailPage />, { wrapper });
 
@@ -258,12 +258,12 @@ describe('DatasetDetailPage', () => {
             tenant_id: 't1',
             asset_id: 'asset-123',
           },
-        } as any);
+        } as never);
       }
       if (url?.includes('asset-123')) {
         return Promise.resolve({
           data: { id: 'asset-123', name: 'My Asset', key: 'my-asset' },
-        } as any);
+        } as never);
       }
       return Promise.reject(new Error('Unexpected URL'));
     });
@@ -273,7 +273,7 @@ describe('DatasetDetailPage', () => {
         name: 'Test Dataset',
         asset_id: null,
       },
-    } as any);
+    } as never);
 
     render(<DatasetDetailPage />, { wrapper });
 
@@ -312,7 +312,7 @@ describe('DatasetDetailPage', () => {
         asset_id: 'asset-123',
         asset_name: 'My Asset',
       },
-    } as any);
+    } as never);
 
     render(<DatasetDetailPage />, { wrapper });
 

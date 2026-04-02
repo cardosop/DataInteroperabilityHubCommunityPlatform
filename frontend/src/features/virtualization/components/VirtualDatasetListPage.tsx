@@ -6,11 +6,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useVirtualDatasets } from '../hooks/useVirtualization';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { VirtualDatasetStatus, QueryType } from '../../../shared/types/virtualization';
 import './VirtualDatasetListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function VirtualDatasetListPage() {
   const navigate = useNavigate();
@@ -40,7 +41,7 @@ export function VirtualDatasetListPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading virtual datasets..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -65,9 +66,9 @@ export function VirtualDatasetListPage() {
     <div className="virtual-dataset-list-page">
       <div className="virtual-dataset-list-header">
         <h1>Virtual Datasets</h1>
-        <button className="btn-primary" onClick={handleCreateDataset} type="button">
+        <Button variant="primary" onClick={handleCreateDataset}>
           Create Dataset
-        </button>
+        </Button>
       </div>
 
       <div className="virtual-dataset-list-filters">
@@ -162,25 +163,21 @@ export function VirtualDatasetListPage() {
 
       {data.count > pageSize && (
         <div className="virtual-dataset-list-pagination">
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => Math.max(1, p - 1))}
+ disabled={page === 1}>
             Previous
-          </button>
+          </Button>
           <span>
             Page {page} of {Math.ceil(data.count / pageSize)}
           </span>
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => p + 1)}
-            disabled={!data.has_next}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => p + 1)}
+ disabled={!data.has_next}>
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>

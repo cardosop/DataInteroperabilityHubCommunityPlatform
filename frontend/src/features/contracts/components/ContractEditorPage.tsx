@@ -8,8 +8,9 @@ import { useContract, useUpdateContract, useValidateContract } from '../hooks/us
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { useState, useEffect } from 'react';
-import { ContractFormat } from '../../../shared/types/contracts';
+import { ContractFormat, type ContractValidationResult } from '../../../shared/types/contracts';
 import './ContractEditorPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ContractEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -21,7 +22,7 @@ export function ContractEditorPage() {
   const [formData, setFormData] = useState({ name: '', description: '' });
   const [rawContent, setRawContent] = useState('');
   const [format, setFormat] = useState<ContractFormat>(ContractFormat.JSON);
-  const [validationResult, setValidationResult] = useState<any>(null);
+  const [validationResult, setValidationResult] = useState<ContractValidationResult | null>(null);
   const [isValidating, setIsValidating] = useState(false);
 
   useEffect(() => {
@@ -38,7 +39,7 @@ export function ContractEditorPage() {
     try {
       const result = await validateMutation.mutateAsync(id);
       setValidationResult(result);
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     } finally {
       setIsValidating(false);
@@ -55,7 +56,7 @@ export function ContractEditorPage() {
           : { original_raw: rawContent, original_format: format },
       });
       refetch();
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -71,9 +72,9 @@ export function ContractEditorPage() {
   return (
     <div className="contract-editor-page">
       <div className="contract-editor-header">
-        <button onClick={() => navigate(`/contracts/${id}`)} className="btn-back" type="button">
+        <Button onClick={() => navigate(`/contracts/${id}`)} variant="ghost">
           ← Back to Contract
-        </button>
+        </Button>
         <div className="editor-mode-toggle">
           <button
             onClick={() => setEditMode('form')}
@@ -91,22 +92,18 @@ export function ContractEditorPage() {
           </button>
         </div>
         <div className="editor-actions">
-          <button
-            onClick={handleValidate}
-            disabled={isValidating}
-            className="btn-secondary"
-            type="button"
-          >
+          <Button
+ onClick={handleValidate}
+ disabled={isValidating}
+ variant="secondary">
             {isValidating ? 'Validating...' : 'Validate'}
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={updateMutation.isPending}
-            className="btn-primary"
-            type="button"
-          >
-            {updateMutation.isPending ? 'Saving...' : 'Save'}
-          </button>
+          </Button>
+          <Button
+ onClick={handleSave}
+ loading={updateMutation.isPending}
+ variant="primary">
+            Save
+          </Button>
         </div>
       </div>
 
@@ -162,7 +159,7 @@ export function ContractEditorPage() {
                 <div className="validation-errors">
                   <p>✗ Contract has errors:</p>
                   <ul>
-                    {validationResult.errors?.map((err: any, idx: number) => (
+                    {validationResult.errors?.map((err, idx) => (
                       <li key={idx}>
                         {err.field && <strong>{err.field}:</strong>} {err.message}
                       </li>
@@ -172,7 +169,7 @@ export function ContractEditorPage() {
                     <>
                       <p>Warnings:</p>
                       <ul>
-                        {validationResult.warnings.map((warn: any, idx: number) => (
+                        {validationResult.warnings.map((warn, idx) => (
                           <li key={idx} className="warning">
                             {warn.field && <strong>{warn.field}:</strong>} {warn.message}
                           </li>

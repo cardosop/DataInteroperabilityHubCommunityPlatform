@@ -8,20 +8,6 @@
   margin-bottom: var(--spacing-xl);
 }
 
-.governance-detail-header .btn-back {
-  background: none;
-  border: none;
-  color: var(--color-primary);
-  cursor: pointer;
-  font-size: var(--font-size-base);
-  padding: 0;
-  margin-bottom: var(--spacing-md);
-}
-
-.governance-detail-header .btn-back:hover {
-  text-decoration: underline;
-}
-
 .governance-detail-content h1 {
   margin: 0 0 var(--spacing-lg);
   font-size: var(--font-size-2xl);

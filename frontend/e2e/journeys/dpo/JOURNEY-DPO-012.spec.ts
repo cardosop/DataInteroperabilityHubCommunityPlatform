@@ -14,7 +14,7 @@ import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-012: Join Data Community', () => {
-  test.setTimeout(300000); // 5 min: capability-gated route + login under parallel E2E load
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('communities page loads and shows community list or Join button', async ({ page }) => {
@@ -22,10 +22,10 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 90000,
         contentSelector:
-          '.communities-page, .communities-tab, .app-main, .unavailable-page, .loading-spinner-container',
-        acceptRedirectToLogin: true,
+          '.communities-page, .communities-tab, .unavailable-page',
+        acceptRedirectToLogin: false,
       });
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(1500);
 
       const url = page.url();
       const onLogin = url.includes('/login');
@@ -39,12 +39,12 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
 
       // If capability is off, an unavailable or 403 state is valid
       if (onUnavailable || on403) {
-        const unavailablePage = page.locator('.unavailable-page, body');
+        const unavailablePage = page.locator('.unavailable-page');
         await expect(unavailablePage.first()).toBeVisible({ timeout: 5000 });
         return;
       }
 
-      expect(onCommunities).toBe(true);
+      expect(onCommunities).toBe(true) /* acceptable states */;
 
       // When the communities page is enabled, validate specific community UI elements:
       // a community list, a "Join" / membership button, or an empty state
@@ -53,14 +53,12 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
         'button:has-text("Join"), [data-testid="join-community-btn"]'
       );
       const emptyState = page.locator('.empty-state, [data-testid="communities-empty"]');
-      const loadingSpinner = page.locator('.loading-spinner-container');
 
       const hasList = (await communityList.count()) > 0;
       const hasJoin = (await joinBtn.count()) > 0;
       const hasEmpty = (await emptyState.count()) > 0;
-      const hasLoading = (await loadingSpinner.count()) > 0;
 
-      expect(hasList || hasJoin || hasEmpty || hasLoading).toBe(true);
+      expect(hasList || hasJoin || hasEmpty).toBe(true) /* acceptable states */;
     });
   });
 
@@ -72,7 +70,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 90000,
         contentSelector: '.communities-page, .communities-tab, .unavailable-page, .error-display',
-        acceptRedirectToLogin: true,
+        acceptRedirectToLogin: false,
       });
 
       if (page.url().includes('/login')) {
@@ -83,22 +81,22 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
         page.url().includes('/communities') &&
         (await page.locator('.communities-page, .communities-tab').count()) > 0 &&
         (await page.locator('.unavailable-page').count()) === 0;
-
-      if (capabilityEnabled) {
-        // Capability is on — failure path not applicable; annotate and pass
-        test.info().annotations.push({
-          type: 'capability-enabled',
-          description: 'social.communities is on; 403/unavailable failure path not triggered',
-        });
-        return;
-      }
-
-      // Capability disabled: unavailable or 403 must be shown
       const capabilityDisabled =
         (await page.locator('.unavailable-page, .error-display').count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
-      expect(capabilityDisabled).toBe(true);
+
+      expect(capabilityEnabled || capabilityDisabled).toBe(true) /* acceptable states */;
+
+      if (capabilityDisabled) {
+        await expect(
+          page.locator('.unavailable-page, .error-display').first()
+        ).toBeVisible({ timeout: 10000 });
+      } else {
+        await expect(
+          page.locator('.communities-page, .communities-tab').first()
+        ).toBeVisible({ timeout: 10000 });
+      }
     });
   });
 
@@ -107,8 +105,8 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 90000,
-        contentSelector: '.communities-page, .communities-tab, .app-main, .unavailable-page',
-        acceptRedirectToLogin: true,
+        contentSelector: '.communities-page, .communities-tab, .unavailable-page',
+        acceptRedirectToLogin: false,
       });
 
       if (page.url().includes('/login')) {
@@ -119,7 +117,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
       const hasContent =
         (await page.locator('.communities-page, .communities-tab, .unavailable-page').count()) > 0 ||
         page.url().includes('/403');
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
 });

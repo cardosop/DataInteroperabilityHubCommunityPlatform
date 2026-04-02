@@ -4,6 +4,10 @@
  * Use this config so test:a11y runs in CI without starting the backend.
  */
 import { defineConfig, devices } from '@playwright/test';
+import { resolvePlaywrightFrontend } from './src/lib/playwright-frontend-resolve';
+
+const { baseURL: resolvedFrontendBaseURL, webPort, webServerCheckUrl } =
+  resolvePlaywrightFrontend();
 
 export default defineConfig({
   testDir: './e2e',
@@ -13,7 +17,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: 'html',
   use: {
-    baseURL: process.env.FRONTEND_URL || process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173',
+    baseURL: resolvedFrontendBaseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -24,8 +28,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
+    command: `npm run dev -- --port ${webPort} --strictPort`,
+    url: webServerCheckUrl.replace(/\/$/, '') || webServerCheckUrl,
     reuseExistingServer: true,
     timeout: 120 * 1000,
     env: {

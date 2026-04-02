@@ -43,9 +43,7 @@ export function LandingPage() {
             Create an account
           </Link>
         )}
-        <Link to="/onboard-org" className="landing-link" data-testid="landing-onboard-org-link">
-          Create organization
-        </Link>
+        {/* Organization creation moved to Platform Admin panel (/admin → Tenants tab) */}
         <Link to="/public" className="landing-link">
           Public resources
         </Link>

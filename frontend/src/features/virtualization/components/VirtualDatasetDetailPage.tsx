@@ -8,13 +8,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useVirtualDataset, useDeleteVirtualDataset, useValidateVirtualDataset } from '../hooks/useVirtualization';
 import { QueryExecutionUI } from './QueryExecutionUI';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './VirtualDatasetDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function VirtualDatasetDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -43,11 +44,11 @@ export function VirtualDatasetDetailPage() {
     try {
       const result = await validateMutation.mutateAsync(id);
       if (result.is_valid) {
-        alert('Dataset validation passed!');
+        toast.success('Dataset validation passed!');
       } else {
-        alert(`Validation failed: ${result.errors.join(', ')}`);
+        toast.error(`Validation failed: ${result.errors.join(', ')}`);
       }
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -57,25 +58,25 @@ export function VirtualDatasetDetailPage() {
   }
 
   if (isLoading || !dataset) {
-    return <LoadingSpinner message="Loading dataset..." />;
+    return <DetailPageSkeleton />;
   }
 
   return (
     <div className="virtual-dataset-detail-page">
       <div className="virtual-dataset-detail-header">
-        <button onClick={() => navigate('/virtualization')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/virtualization')} variant="ghost">
           ← Back to Datasets
-        </button>
+        </Button>
         <div className="header-actions">
-          <button onClick={handleValidate} className="btn-secondary" type="button" disabled={validateMutation.isPending}>
-            {validateMutation.isPending ? 'Validating...' : 'Validate'}
-          </button>
-          <button onClick={() => navigate(`/virtualization/${id}/edit`)} className="btn-secondary" type="button">
+          <Button onClick={handleValidate} variant="secondary" loading={validateMutation.isPending}>
+            Validate
+          </Button>
+          <Button onClick={() => navigate(`/virtualization/${id}/edit`)} variant="secondary">
             Edit
-          </button>
-          <button onClick={handleDeleteClick} className="btn-danger" type="button" disabled={deleteMutation.isPending}>
-            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-          </button>
+          </Button>
+          <Button onClick={handleDeleteClick} variant="danger" loading={deleteMutation.isPending}>
+            Delete
+          </Button>
         </div>
       </div>
 

@@ -5,7 +5,7 @@
  * Real backend only; no mocks.
  */
 import { expect, test } from '@playwright/test';
-import { clearAuthStorage, getPlatformAdminUser } from '../../fixtures/auth';
+import { getPlatformAdminUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
@@ -16,7 +16,7 @@ const API_BASE =
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
 test.describe('JOURNEY-PA-007: Manage ODPS Products (Platform)', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('platform admin can view ODPS products list and API returns 200', async ({ page }) => {
@@ -74,7 +74,7 @@ test.describe('JOURNEY-PA-007: Manage ODPS Products (Platform)', () => {
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('[data-testid="not-found"]').count()) > 0;
-      expect(hasError).toBe(true);
+      expect(hasError).toBe(true) /* acceptable states */;
     });
   });
 

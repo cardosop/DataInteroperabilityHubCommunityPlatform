@@ -3,7 +3,7 @@
  * Handles file upload with progress tracking
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useUploadFile } from '../hooks/useFiles';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
@@ -21,15 +21,19 @@ interface FileUploadProps {
 export function FileUpload({
   onUploadComplete,
   onUploadError,
-  assetId: _assetId,
-  datasetId: _datasetId,
   accept = '.csv,.json,.parquet',
 }: FileUploadProps) {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const uploadMutation = useUploadFile();
+
+  // Clean up success timer on unmount
+  useEffect(() => {
+    return () => clearTimeout(successTimerRef.current);
+  }, []);
 
   const handleFileSelect = async (file: globalThis.File) => {
     setUploadProgress(0);
@@ -56,7 +60,8 @@ export function FileUpload({
       onUploadComplete?.(uploadedFile as AppFile);
       
       // Reset success state after 10 seconds to show dropzone again (longer for tests to detect)
-      setTimeout(() => {
+      clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => {
         setUploadSuccess(false);
         setUploadProgress(null);
       }, 10000);

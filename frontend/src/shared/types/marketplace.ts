@@ -12,6 +12,12 @@ export const ListingStatus = {
 
 export type ListingStatus = typeof ListingStatus[keyof typeof ListingStatus];
 
+export const ProductCategory = {
+  DATA: 'DATA',
+  ML_MODEL: 'ML_MODEL',
+} as const;
+export type ProductCategory = (typeof ProductCategory)[keyof typeof ProductCategory];
+
 export const PricingModel = {
   FREE: 'FREE',
   FREE_AUTO_APPROVE: 'FREE_AUTO_APPROVE',
@@ -25,6 +31,7 @@ export interface Listing {
   tenant: string;
   asset: string;
   status: ListingStatus;
+  product_category?: ProductCategory;
   pricing_model: PricingModel;
   metadata_json?: Record<string, unknown> | null;
   published_at?: string | null;
@@ -77,6 +84,7 @@ export interface ListingListFilters {
   domain?: string;
   pricing_model?: PricingModel;
   status?: ListingStatus;
+  product_category?: ProductCategory;
 }
 
 export const OrderStatus = {

@@ -10,22 +10,16 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError } from '../../fixtures/helpers';
+import { getConsumerTestUser } from '../../fixtures/auth';
+import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DC-010: Query Virtual Dataset', () => {
-  test.setTimeout(240000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('virtualization list loads', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/virtualization');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.virtual-dataset-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 90000 }
-      );
+      await loginAndNavigateToRoute(page, consumer, '/virtualization', { timeout: 90000 });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
@@ -49,9 +43,12 @@ test.describe('JOURNEY-DC-010: Query Virtual Dataset', () => {
   test.describe('Failure', () => {
     test('virtual dataset detail with non-existent id shows error', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/virtualization/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
+      await loginAndNavigateToRoute(
+        page,
+        consumer,
+        '/virtualization/00000000-0000-0000-0000-000000000000',
+        { timeout: 90000 }
+      );
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.virtual-dataset-detail-page, .error-display',
         waitAfterLoad: 12000,
@@ -62,13 +59,7 @@ test.describe('JOURNEY-DC-010: Query Virtual Dataset', () => {
   test.describe('Edge', () => {
     test('virtualization list loads with empty state', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/virtualization');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.virtual-dataset-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 90000 }
-      );
+      await loginAndNavigateToRoute(page, consumer, '/virtualization', { timeout: 90000 });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;

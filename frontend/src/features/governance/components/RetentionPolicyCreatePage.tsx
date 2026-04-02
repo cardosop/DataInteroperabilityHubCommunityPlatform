@@ -25,6 +25,7 @@ import {
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { useCreateRetentionPolicy } from '../hooks/useRetention';
 import './RetentionPolicyCreatePage.css';
+import { Button } from '../../../shared/components/Button';
 
 const INITIAL_FORM: RetentionPolicyCreateRequest = {
   name: '',
@@ -137,13 +138,13 @@ export function RetentionPolicyCreatePage() {
 
   return (
     <div className="governance-retention-policy-create-page">
-      <button type="button" className="btn-back" onClick={() => navigate('/governance/retention')}>
+      <Button variant="ghost" onClick={() => navigate('/governance/retention')}>
         ← Back to Retention Policies
-      </button>
+      </Button>
       <h1>Create retention policy</h1>
 
       <form className="governance-retention-policy-form" onSubmit={handleSubmit}>
-        {(submitError || createMutation.error) && (
+        {!!(submitError || createMutation.error) && (
           <ErrorDisplay
             error={submitError || createMutation.error}
             title="Failed to create retention policy"
@@ -345,16 +346,14 @@ export function RetentionPolicyCreatePage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => navigate('/governance/retention')}
-          >
+          <Button
+ variant="secondary"
+ onClick={() => navigate('/governance/retention')}>
             Cancel
-          </button>
-          <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
-            {createMutation.isPending ? 'Creating...' : 'Create retention policy'}
-          </button>
+          </Button>
+          <Button type="submit" variant="primary" loading={createMutation.isPending}>
+            Create retention policy
+          </Button>
         </div>
       </form>
     </div>

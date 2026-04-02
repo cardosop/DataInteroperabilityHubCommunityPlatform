@@ -10,22 +10,16 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
+import { getTestUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-003: Configure Data Quality Checks', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('dq list loads (runs list or empty)', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/dq');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.dq-run-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 90000 }
-      );
+      await loginAndNavigateToRoute(page, testUser, '/dq', { timeout: 90000 });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
@@ -37,9 +31,12 @@ test.describe('JOURNEY-DE-003: Configure Data Quality Checks', () => {
   test.describe('Failure', () => {
     test('dq run detail with non-existent id shows error', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/dq/runs/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
+      await loginAndNavigateToRoute(
+        page,
+        testUser,
+        '/dq/runs/00000000-0000-0000-0000-000000000000',
+        { timeout: 90000 }
+      );
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.dq-run-detail-main, .error-display',
         waitAfterLoad: 12000,
@@ -53,7 +50,7 @@ test.describe('JOURNEY-DE-003: Configure Data Quality Checks', () => {
       await loginAndNavigateToRoute(page, testUser, '/dq', {
         timeout: 90000,
         contentSelector:
-          '.dq-run-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+          '.dq-run-list-page, .empty-state, .error-display',
       });
       expect(page.url()).toContain('/dq');
     });

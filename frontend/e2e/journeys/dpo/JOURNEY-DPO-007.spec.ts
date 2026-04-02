@@ -10,32 +10,27 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
-import { waitForLoadingComplete } from '../../fixtures/helpers';
+import { getTestUser } from '../../fixtures/auth';
+import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () => {
-  test.setTimeout(180000); // 3 min: visible/slowMo
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('schema matching page loads or shows unavailable when capability is off', async ({ page }) => {
-      // Use direct navigation (not loginAndNavigateToRoute) to avoid waitForAppMainReady timing
-      // out while CapabilityRoute shows its loading spinner under backend load.
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/ai/schema-matching');
-      await page.waitForLoadState('domcontentloaded');
-
-      // CapabilityRoute shows a loading spinner while capabilities are fetched.
-      // Wait until either the feature page or the unavailable page renders.
-      await page.waitForSelector(
-        '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, .error-display, #email',
-        { timeout: 30000 }
-      ).catch(() => null);
-      // Ensure loading spinner has cleared before asserting capability state
+      // loginAndNavigateToRoute handles auth token injection and retry on redirect-to-login.
+      // /ai/schema-matching is in CAPABILITY_GATED_ROUTES so acceptRedirectToLogin is auto-set.
+      await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
+        timeout: 60000,
+        contentSelector:
+          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, .error-display',
+        acceptRedirectToLogin: false,
+      });
       await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
-        throw new Error('Unexpected redirect to login on AI schema-matching page');
+        throw new Error('Unexpected redirect to login on /ai/schema-matching after login');
       }
 
       const capabilityEnabled =
@@ -46,17 +41,15 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
-      // Exactly one of the two branches must be true
-      expect(capabilityEnabled || capabilityDisabled).toBe(true);
+      expect(capabilityEnabled || capabilityDisabled).toBe(true) /* acceptable states */;
 
       if (capabilityEnabled) {
         await expect(
           page.locator('.schema-matching-page, [data-testid="schema-matching-page"]').first()
         ).toBeVisible({ timeout: 5000 });
       } else {
-        // Capability disabled: unavailable indicator must be visible (not a blank/crash)
         await expect(
-          page.locator('.unavailable-page, [role="main"]').first()
+          page.locator('.unavailable-page').first()
         ).toBeVisible({ timeout: 5000 });
       }
     });
@@ -66,70 +59,59 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
     test('schema matching without capability shows unavailable page, not a crash', async ({
       page,
     }) => {
-      // When the ai.schema-matching capability is disabled the CapabilityRoute must render
-      // an unavailable indicator — NOT a blank screen, runtime error, or broken render.
-      // CapabilityRoute shows a loading spinner while capabilities are fetched — we must
-      // wait past it before asserting.
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/ai/schema-matching');
-      await page.waitForLoadState('domcontentloaded');
-
-      // Wait for CapabilityRoute to finish loading (spinner disappears, final state renders)
-      await page.waitForSelector(
-        '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, .error-display, #email',
-        { timeout: 30000 }
-      ).catch(() => null);
-      // Ensure loading spinner has cleared before asserting capability state
+      await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
+        timeout: 60000,
+        contentSelector:
+          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, .error-display',
+        acceptRedirectToLogin: false,
+      });
       await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
-        throw new Error('Unexpected redirect to login on AI schema-matching page');
+        throw new Error('Unexpected redirect to login on /ai/schema-matching after login');
       }
 
       const capabilityEnabled =
         page.url().includes('/ai/schema-matching') &&
         (await page.locator('.schema-matching-page, [data-testid="schema-matching-page"]').count()) > 0;
-
-      if (capabilityEnabled) {
-        // Capability is on — page loads correctly; failure scenario doesn't apply.
-        // Annotate so the CI report shows the branch taken.
-        test.info().annotations.push({
-          type: 'capability-enabled',
-          description: 'ai.schema-matching is on in this env; unavailable branch not triggered',
-        });
-        return;
-      }
-
-      // Capability disabled: must show unavailable page or 403 — NOT a blank render or crash
       const capabilityDisabled =
         (await page.locator('.unavailable-page').count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
+
+      if (capabilityEnabled) {
+        await expect(
+          page.locator('.schema-matching-page, [data-testid="schema-matching-page"]').first()
+        ).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.error-display')).not.toBeVisible();
+        test.info().annotations.push({
+          type: 'capability-enabled',
+          description: 'ai.schema-matching is enabled; verified enabled path renders correctly instead',
+        });
+        return;
+      }
+
       expect(capabilityDisabled).toBe(true);
       await expect(
-        page.locator('.unavailable-page, [role="main"]').first()
+        page.locator('.unavailable-page').first()
       ).toBeVisible({ timeout: 5000 });
     });
   });
 
   test.describe('Edge', () => {
     test('schema matching form accepts file input when capability is enabled', async ({ page }) => {
-      // When the capability IS enabled the upload form must accept a schema file and
-      // trigger the matching process (or show a progress indicator).
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/ai/schema-matching');
-      await page.waitForLoadState('domcontentloaded');
-      await page
-        .locator('.schema-matching-page, .unavailable-page, .error-display, h1, #email')
-        .first()
-        .waitFor({ state: 'visible', timeout: 20000 })
-        .catch(() => null);
-      await new Promise((r) => setTimeout(r, 1000));
+      await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
+        timeout: 60000,
+        contentSelector:
+          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, .error-display',
+        acceptRedirectToLogin: false,
+      });
+      await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
-        throw new Error('Unexpected redirect to login');
+        throw new Error('Unexpected redirect to login on /ai/schema-matching after login');
       }
 
       const capabilityDisabled =
@@ -138,20 +120,21 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
         (await page.locator('.unavailable-page').count()) > 0;
 
       if (capabilityDisabled) {
-        // Capability disabled — verify unavailable page renders correctly (not a crash)
-        await expect(page.locator('.unavailable-page, [role="main"]').first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.unavailable-page').first()).toBeVisible({ timeout: 5000 });
         return;
       }
 
-      const hasSchemaMatchingPage = (await page.locator('.schema-matching-page').count()) > 0;
+      const hasSchemaMatchingPage =
+        (await page.locator('.schema-matching-page, [data-testid="schema-matching-page"]').count()) > 0;
       if (!hasSchemaMatchingPage) {
-        // Capability disabled rendered inline without URL redirect — verify some content exists
-        await expect(page.locator('.app-main, h1').first()).toBeVisible({ timeout: 5000 });
-        return;
+        throw new Error(
+          `Expected schema matching UI at /ai/schema-matching but main content is missing. URL=${page.url()}`
+        );
       }
 
-      // Capability is enabled — upload a schema file and verify matching responds
-      await expect(page.locator('.schema-matching-page')).toBeVisible({ timeout: 5000 });
+      await expect(
+        page.locator('.schema-matching-page, [data-testid="schema-matching-page"]').first()
+      ).toBeVisible({ timeout: 5000 });
       const fileInput = page.locator('input[type="file"]').first();
       if ((await fileInput.count()) > 0) {
         await fileInput.setInputFiles({
@@ -162,15 +145,14 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
           ),
         });
         await page.waitForTimeout(1000);
-        // After file upload: either results appear OR loading starts — no error display
         const hasError = (await page.locator('.error-display').count()) > 0;
         if (hasError) {
           const errText = (await page.locator('.error-display').first().textContent()) ?? '';
           throw new Error(`Schema matching file upload produced error: ${errText.slice(0, 200)}`);
         }
         const hasResults =
-          (await page.locator('.schema-matching-results, [data-testid="matching-results"], .loading-spinner-container').count()) > 0;
-        expect(hasResults).toBe(true);
+          (await page.locator('.schema-matching-results, [data-testid="matching-results"]').count()) > 0;
+        expect(hasResults).toBe(true) /* acceptable states */;
       }
       expect(page.url()).toContain('/ai/schema-matching');
     });

@@ -18,6 +18,7 @@ import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ContractFormat } from '../../../shared/types/contracts';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import './ODPSLinkPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ODPSLinkPage() {
   const { id } = useParams<{ id: string }>();
@@ -115,6 +116,10 @@ export function ODPSLinkPage() {
   };
 
   if (contractLoading || linksLoading) {
+    // Show error immediately if contract fetch completed with no data while links still loading
+    if (!contractLoading && !contract) {
+      return <ErrorDisplay error={new Error('Contract not found')} title="Failed to load contract" />;
+    }
     return <LoadingSpinner message="Loading contract..." />;
   }
 
@@ -129,9 +134,9 @@ export function ODPSLinkPage() {
         <div className="error-message">
           <h2>No Linked ODCS Contract</h2>
           <p>This ODPS contract is not linked to an ODCS contract. To link contracts, navigate to the ODCS contract page and use the "Link ODPS" button.</p>
-          <button onClick={() => navigate(`/odps/${id}`)} className="btn-primary" type="button">
+          <Button onClick={() => navigate(`/odps/${id}`)} variant="primary">
             Back to ODPS Contract
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -144,9 +149,9 @@ export function ODPSLinkPage() {
         <div className="error-message">
           <h2>Invalid Contract Type</h2>
           <p>This contract is not an ODCS contract. Only ODCS contracts can be linked to ODPS contracts.</p>
-          <button onClick={() => navigate(isODPS ? `/odps/${id}` : `/contracts/${id}`)} className="btn-primary" type="button">
+          <Button onClick={() => navigate(isODPS ? `/odps/${id}` : `/contracts/${id}`)} variant="primary">
             Back to Contract
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -165,9 +170,9 @@ export function ODPSLinkPage() {
         ]}
       />
       <div className="odps-link-header">
-        <button onClick={() => navigate(isODPS ? `/odps/${id}` : `/contracts/${id}`)} className="btn-back" type="button">
+        <Button onClick={() => navigate(isODPS ? `/odps/${id}` : `/contracts/${id}`)} variant="ghost">
           ← Back to Contract
-        </button>
+        </Button>
         <h1>Link ODPS to ODCS Contract</h1>
       </div>
 
@@ -211,9 +216,9 @@ export function ODPSLinkPage() {
                 <strong>Status:</strong> {links!.odps_link!.normalization_status}
               </p>
             </div>
-            <button onClick={handleUnlinkClick} disabled={unlinkMutation.isPending} className="btn-danger" type="button">
-              {unlinkMutation.isPending ? 'Unlinking...' : 'Unlink ODPS Contract'}
-            </button>
+            <Button onClick={handleUnlinkClick} loading={unlinkMutation.isPending} variant="danger">
+              Unlink ODPS Contract
+            </Button>
           </div>
         ) : (
           <div className="link-form">
@@ -258,13 +263,11 @@ export function ODPSLinkPage() {
                     onChange={handleFileInputChange}
                     className="file-input"
                   />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="btn-secondary"
-                    type="button"
-                  >
+                  <Button
+ onClick={() => fileInputRef.current?.click()}
+ variant="secondary">
                     Select File
-                  </button>
+                  </Button>
                 </div>
 
                 <div className="form-section">
@@ -306,14 +309,12 @@ export function ODPSLinkPage() {
             )}
 
             <div className="form-actions">
-              <button
-                onClick={handleLink}
-                disabled={linkMutation.isPending || (linkMode === 'existing' && !odpsContractId) || (linkMode === 'create' && !odpsContent.trim())}
-                className="btn-primary"
-                type="button"
-              >
+              <Button
+ onClick={handleLink}
+ disabled={linkMutation.isPending || (linkMode === 'existing' && !odpsContractId) || (linkMode === 'create' && !odpsContent.trim())}
+ variant="primary">
                 {linkMutation.isPending ? 'Linking...' : 'Link ODPS Contract'}
-              </button>
+              </Button>
             </div>
 
             {linkMutation.isError && (

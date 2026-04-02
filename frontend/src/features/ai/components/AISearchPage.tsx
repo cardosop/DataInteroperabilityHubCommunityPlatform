@@ -6,16 +6,25 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useNaturalLanguageSearch } from '../hooks/useAI';
+import type { NaturalLanguageSearchResponse } from '../../../shared/types/ai';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import './AISearchPage.css';
+import { Button } from '../../../shared/components/Button';
+
+interface SearchResultItem {
+  id: string;
+  name?: string;
+  key?: string;
+  description?: string;
+}
 
 export function AISearchPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [resultTypes, setResultTypes] = useState<('assets' | 'contracts' | 'datasets')[]>(['assets', 'contracts', 'datasets']);
-  const [searchResults, setSearchResults] = useState<any>(null);
+  const [searchResults, setSearchResults] = useState<NaturalLanguageSearchResponse | null>(null);
   const searchMutation = useNaturalLanguageSearch();
 
   const handleSearch = async () => {
@@ -27,7 +36,7 @@ export function AISearchPage() {
         result_types: resultTypes,
       });
       setSearchResults(results);
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -62,14 +71,12 @@ export function AISearchPage() {
             onKeyPress={handleKeyPress}
             rows={3}
           />
-          <button
-            className="btn-primary search-button"
-            onClick={handleSearch}
-            disabled={!query.trim() || searchMutation.isPending}
-            type="button"
-          >
+          <Button
+ variant="primary" className="search-button"
+ onClick={handleSearch}
+ disabled={!query.trim() || searchMutation.isPending}>
             {searchMutation.isPending ? 'Searching...' : 'Search'}
-          </button>
+          </Button>
         </div>
 
         <div className="result-types-selector">
@@ -123,7 +130,7 @@ export function AISearchPage() {
         <LoadingSpinner message="Understanding your query and searching..." />
       )}
 
-      {searchMutation.error && (
+      {!!searchMutation.error && (
         <ErrorDisplay
           error={searchMutation.error}
           title="Search failed"
@@ -155,7 +162,7 @@ export function AISearchPage() {
               <div className="result-section">
                 <h3>Assets ({searchResults.results.assets.total})</h3>
                 <div className="results-list">
-                  {searchResults.results.assets.items.map((item: any) => (
+                  {(searchResults.results.assets.items as SearchResultItem[]).map((item) => (
                     <div
                       key={item.id}
                       className="result-item"
@@ -173,7 +180,7 @@ export function AISearchPage() {
               <div className="result-section">
                 <h3>Contracts ({searchResults.results.contracts.total})</h3>
                 <div className="results-list">
-                  {searchResults.results.contracts.items.map((item: any) => (
+                  {(searchResults.results.contracts.items as SearchResultItem[]).map((item) => (
                     <div
                       key={item.id}
                       className="result-item"
@@ -191,7 +198,7 @@ export function AISearchPage() {
               <div className="result-section">
                 <h3>Datasets ({searchResults.results.datasets.total})</h3>
                 <div className="results-list">
-                  {searchResults.results.datasets.items.map((item: any) => (
+                  {(searchResults.results.datasets.items as SearchResultItem[]).map((item) => (
                     <div
                       key={item.id}
                       className="result-item"

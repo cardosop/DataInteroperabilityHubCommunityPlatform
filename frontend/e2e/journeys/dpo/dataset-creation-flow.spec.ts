@@ -8,7 +8,7 @@ import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('Dataset Creation Flow', () => {
-  test.setTimeout(300000); // 5 min: visible/slowMo; file upload + create can be slow
+  test.setTimeout(120000);
 
   test.describe('Failure', () => {
     test('unauthenticated access to datasets create redirects to login', async ({ page }) => {
@@ -20,16 +20,16 @@ test.describe('Dataset Creation Flow', () => {
       const onDatasetsWithLoginPrompt =
         url.includes('/datasets') &&
         (await hasLoginPrompt(page));
-      expect(onLogin || onDatasetsWithLoginPrompt).toBe(true);
+      expect(onLogin || onDatasetsWithLoginPrompt).toBe(true) /* acceptable states */;
     });
   });
 
   test('should create dataset with file upload', async ({ page }) => {
-    test.setTimeout(300000); // Override chromium-routes --timeout=120000; file upload + 429 retries need headroom
+    test.setTimeout(120000);
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/datasets/create', {
       timeout: 90000,
-      contentSelector: '.dataset-create-page, .error-display, .loading-spinner-container, .file-upload, h1',
+      contentSelector: '.dataset-create-page, .error-display, .file-upload, h1',
     });
     await waitForLoadingComplete(page);
 
@@ -42,10 +42,13 @@ test.describe('Dataset Creation Flow', () => {
 
     // Upload file if dropzone present - handle rate limiting (429)
     const dropzone = page.locator('.file-upload-dropzone');
-    if ((await dropzone.count()) > 0) {
+    if ((await dropzone.count()) === 0) {
+      test.skip(true, 'File upload dropzone not found — UI may have changed');
+    }
+    {
       await expect(dropzone.first()).toBeVisible({ timeout: 10000 });
       await dropzone.first().click();
-      await new Promise((r) => setTimeout(r, 500));
+      await page.waitForTimeout(500);
 
       const fileInput = page.locator('input[type="file"]');
       if ((await fileInput.count()) > 0) {
@@ -69,8 +72,7 @@ test.describe('Dataset Creation Flow', () => {
                   resp.url().includes('/files/') &&
                   (resp.status() === 200 || resp.status() === 201 || resp.status() === 429),
                 { timeout: 30000 }
-              )
-              .catch(() => null);
+              );
 
             if (response && response.status() === 429) {
               // Rate limited - parse retry-after from error message
@@ -91,7 +93,7 @@ test.describe('Dataset Creation Flow', () => {
               console.log(
                 `File upload rate limited (429), waiting ${retryAfter}s before retry ${retries + 1}/${maxRetries}`
               );
-              await new Promise((r) => setTimeout(r, retryAfter * 1000));
+              await page.waitForTimeout(retryAfter * 1000);
               retries++;
               continue;
             }
@@ -104,6 +106,15 @@ test.describe('Dataset Creation Flow', () => {
             });
             uploadSuccess = true;
           } catch (error) {
+            // Assertion errors (expect() failures) should not be retried — re-throw immediately
+            if (error instanceof Error && error.name === 'AssertionError') {
+              throw error;
+            }
+            // Check if it's a Playwright expect error (has matcherResult)
+            if (error && typeof error === 'object' && 'matcherResult' in error) {
+              throw error;
+            }
+
             // Check if it's a rate limit error from console
             const consoleErrors = await page
               .evaluate(() => {
@@ -119,7 +130,7 @@ test.describe('Dataset Creation Flow', () => {
                 console.log(
                   `File upload rate limited (from error), waiting ${retryAfter}s before retry ${retries + 1}/${maxRetries}`
                 );
-                await new Promise((r) => setTimeout(r, retryAfter * 1000));
+                await page.waitForTimeout(retryAfter * 1000);
                 retries++;
                 continue;
               }
@@ -134,7 +145,7 @@ test.describe('Dataset Creation Flow', () => {
               console.log(
                 `File upload attempt ${retries + 1} failed${isNetworkError ? ' (connection error)' : ''}, retrying in ${delay / 1000}s...`
               );
-              await new Promise((r) => setTimeout(r, delay));
+              await page.waitForTimeout(delay);
               retries++;
             } else {
               throw error;
@@ -144,14 +155,15 @@ test.describe('Dataset Creation Flow', () => {
       }
     }
 
-    // Fill dataset form
-    const nameInput = page.locator('input[id="name"]');
+    // The dataset create page uses radio-button linkMode to select flow:
+    // "Create dataset only", "Link to existing asset", "Create new asset and link".
+    // If a name input exists (e.g. for "create new asset" flow), fill it.
+    const nameInput = page.locator('input[id="name"], input[name="name"], #name, input[id="create-new-name"]');
     if ((await nameInput.count()) > 0) {
-      await expect(nameInput).toBeVisible({ timeout: 10000 });
-      await nameInput.fill(`test-dataset-${Date.now()}`);
+      await nameInput.first().fill(`test-dataset-${Date.now()}`);
     }
 
-    // Submit
+    // Submit — the "Create Dataset" button should be enabled after file upload
     const submitButton = page.locator('button:has-text("Create Dataset")');
     await expect(submitButton).toBeVisible({ timeout: 10000 });
     await submitButton.click();

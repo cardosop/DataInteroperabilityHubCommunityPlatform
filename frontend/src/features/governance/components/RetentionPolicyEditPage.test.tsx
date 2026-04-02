@@ -101,7 +101,7 @@ describe('RetentionPolicyEditPage', () => {
     const getPromise = new Promise((resolve) => {
       resolveGet = resolve;
     });
-    vi.mocked(mockAxiosInstance.get).mockReturnValue(getPromise as any);
+    vi.mocked(mockAxiosInstance.get).mockReturnValue(getPromise as never);
 
     render(<RetentionPolicyEditPage />, { wrapper });
 
@@ -141,7 +141,7 @@ describe('RetentionPolicyEditPage', () => {
   it('should display form with policy data', async () => {
     vi.mocked(mockAxiosInstance.get).mockResolvedValue({
       data: mockPolicy,
-    } as any);
+    } as never);
 
     render(<RetentionPolicyEditPage />, { wrapper });
 
@@ -159,7 +159,7 @@ describe('RetentionPolicyEditPage', () => {
     const user = userEvent.setup();
     vi.mocked(mockAxiosInstance.get).mockResolvedValue({
       data: mockPolicy,
-    } as any);
+    } as never);
 
     render(<RetentionPolicyEditPage />, { wrapper });
 
@@ -186,10 +186,10 @@ describe('RetentionPolicyEditPage', () => {
     const user = userEvent.setup();
     vi.mocked(mockAxiosInstance.get).mockResolvedValue({
       data: mockPolicy,
-    } as any);
+    } as never);
     vi.mocked(mockAxiosInstance.patch).mockResolvedValue({
       data: { ...mockPolicy, name: 'Updated Policy' },
-    } as any);
+    } as never);
 
     render(<RetentionPolicyEditPage />, { wrapper });
 
@@ -221,7 +221,7 @@ describe('RetentionPolicyEditPage', () => {
     const user = userEvent.setup();
     vi.mocked(mockAxiosInstance.get).mockResolvedValue({
       data: mockPolicy,
-    } as any);
+    } as never);
     vi.mocked(mockAxiosInstance.patch).mockRejectedValue({
       response: {
         status: 400,

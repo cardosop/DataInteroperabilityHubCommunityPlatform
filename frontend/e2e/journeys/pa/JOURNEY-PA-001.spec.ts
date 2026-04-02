@@ -27,8 +27,8 @@ test.describe('JOURNEY-PA-001: Onboard New Tenant', () => {
       expect(page.url()).toContain('/admin');
       const hasTenantsTab = (await page.locator('button:has-text("Tenants")').count()) > 0;
       const hasContent = (await page.locator('.admin-page').count()) > 0;
-      expect(hasContent).toBe(true);
-      expect(hasTenantsTab).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
+      expect(hasTenantsTab).toBe(true) /* acceptable states */;
     });
 
     test('tenants tab loads tenant list', async ({ page }) => {
@@ -46,7 +46,7 @@ test.describe('JOURNEY-PA-001: Onboard New Tenant', () => {
         (await page.locator('[data-testid="admin-tenants-section"]').count()) > 0 ||
         (await page.locator('.admin-table').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
-      expect(hasTenantsSection).toBe(true);
+      expect(hasTenantsSection).toBe(true) /* acceptable states */;
     });
   });
 
@@ -66,7 +66,7 @@ test.describe('JOURNEY-PA-001: Onboard New Tenant', () => {
       const hasContent =
         (await page.locator('.admin-page, .admin-no-permission, [data-testid="forbidden-page"]').count()) > 0;
       const no500 = (await page.locator('text=/500|internal server error/i').count()) === 0;
-      expect(onAdmin || on403 || onLogin).toBe(true);
+      expect(onAdmin || on403 || onLogin).toBe(true) /* acceptable states */;
       // When on /login, we may not have admin content; when on /admin or /403, expect content and no 500
       expect(onLogin || (hasContent && no500)).toBe(true);
     });

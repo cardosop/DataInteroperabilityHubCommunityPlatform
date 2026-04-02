@@ -6,7 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTenantAdminUser } from '../fixtures/auth';
-import { loginAndNavigateToRoute, waitForAppMainReady } from '../fixtures/helpers';
+import { loginAndNavigateToRoute } from '../fixtures/helpers';
 
 test.describe('Feature: Scheduled Export', () => {
   test.setTimeout(120000);
@@ -17,10 +17,13 @@ test.describe('Feature: Scheduled Export', () => {
       await loginAndNavigateToRoute(page, adminUser, '/scheduled-exports', {
         timeout: 60000,
         contentSelector:
-          '.scheduled-export-list-page, .empty-state, .unavailable-page, .error-display, h1',
+          '.scheduled-export-list-page, .empty-state, .unavailable-page, h1',
         acceptRedirectToLogin: true,
       });
-      if (page.url().includes('/login')) return;
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Redirected to login — auth may have expired');
+        return;
+      }
 
       const url = page.url();
       expect(url).toMatch(/\/scheduled-exports|\/403/);

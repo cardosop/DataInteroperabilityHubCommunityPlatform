@@ -10,29 +10,20 @@ import type {
   OpenAPISchema,
 } from '../../../shared/types/capabilities';
 
-const CAPABILITIES_CACHE_KEY = 'capabilities_cache';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-interface CachedCapabilities {
-  capabilities: CapabilitiesMap;
-  timestamp: number;
-}
 
 class CapabilitiesService {
   private capabilities: CapabilitiesMap = {};
   private openApiSchema: OpenAPISchema | null = null;
+  private cachedAt = 0;
 
   /**
    * Load OpenAPI schema and derive capabilities
    */
   async loadCapabilities(forceRefresh = false): Promise<CapabilitiesMap> {
-    // Check cache first
-    if (!forceRefresh) {
-      const cached = this.getCachedCapabilities();
-      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-        this.capabilities = cached.capabilities;
-        return this.capabilities;
-      }
+    // Check in-memory cache first (no localStorage — prevents client-side manipulation)
+    if (!forceRefresh && this.cachedAt > 0 && Date.now() - this.cachedAt < CACHE_TTL) {
+      return this.capabilities;
     }
 
     try {
@@ -44,8 +35,12 @@ class CapabilitiesService {
           timeout: CAPABILITIES_TIMEOUT_MS,
         });
       } catch (firstError) {
-        if (import.meta.env.MODE !== 'test') {
-          console.error('Failed to load capabilities (first attempt):', firstError);
+        // First OpenAPI fetch may fail under parallel E2E load or dev warm-up; we retry below.
+        // Avoid console.error here — it pollutes browser logs during intentional retries (Vite dev
+        // uses MODE=development; VITE_E2E_TEST is set by Playwright webServer).
+        const isE2E = import.meta.env.VITE_E2E_TEST === 'true';
+        if (import.meta.env.MODE !== 'test' && !isE2E) {
+          console.warn('OpenAPI schema fetch failed (first attempt), retrying…', firstError);
         }
         // Retry once after delay (handles dev server warm-up and backend congestion)
         await new Promise((r) => setTimeout(r, 1500));
@@ -59,12 +54,13 @@ class CapabilitiesService {
       // Derive capabilities from OpenAPI paths
       this.capabilities = this.deriveCapabilitiesFromOpenAPI(this.openApiSchema);
 
-      // Cache capabilities only when we have a valid schema (never cache empty on error)
-      this.cacheCapabilities(this.capabilities);
+      // Cache in-memory only when we have a valid schema (never cache empty on error)
+      this.cachedAt = Date.now();
 
       return this.capabilities;
     } catch (error) {
-      if (import.meta.env.MODE !== 'test') {
+      const isE2E = import.meta.env.VITE_E2E_TEST === 'true';
+      if (import.meta.env.MODE !== 'test' && !isE2E) {
         console.error('Failed to load capabilities:', error);
       }
       // Do NOT cache empty capabilities so next load will retry.
@@ -275,11 +271,45 @@ class CapabilitiesService {
     // Transformation pipelines (placeholder API exists at /api/v1/transformation/pipelines/)
     const transformationAvailable =
       '/api/v1/transformation/pipelines/' in paths ||
-      Object.keys(paths).some((p) => p.includes('transformation/pipelines'));
+      Object.keys(paths).some((p) => p.includes('transformation/pipelines') || p.includes('transformation.pipelines'));
     capabilities['transformation'] = {
       name: 'Transformation',
       available: transformationAvailable,
       endpoint: '/api/v1/transformation/pipelines/',
+    };
+    capabilities['transformation.pipelines'] = {
+      name: 'Transformation Pipelines',
+      available: transformationAvailable,
+      endpoint: '/api/v1/transformation/pipelines/',
+    };
+
+    const meshDomainsAvailable =
+      '/api/v1/mesh/domains/' in paths ||
+      Object.keys(paths).some((p) => p.includes('/mesh/domains'));
+    capabilities['mesh.domains'] = {
+      name: 'Data Mesh Domains',
+      available: meshDomainsAvailable,
+      endpoint: '/api/v1/mesh/domains/',
+    };
+
+    const virtualizationDatasetsAvailable =
+      '/api/v1/virtualization/datasets/' in paths ||
+      Object.keys(paths).some((p) => p.includes('/virtualization/datasets'));
+    capabilities['virtualization.datasets'] = {
+      name: 'Virtualization Datasets',
+      available: virtualizationDatasetsAvailable,
+      endpoint: '/api/v1/virtualization/datasets/',
+    };
+
+    const integrationsMarketplaceAvailable =
+      '/api/v1/integrations/marketplace/connections/' in paths ||
+      Object.keys(paths).some(
+        (p) => p.includes('/integrations/') && p.includes('marketplace'),
+      );
+    capabilities['integrations.marketplace'] = {
+      name: 'Marketplace Integrations',
+      available: integrationsMarketplaceAvailable,
+      endpoint: '/api/v1/integrations/marketplace/connections/',
     };
 
     return capabilities;
@@ -328,32 +358,11 @@ class CapabilitiesService {
       // Try a HEAD or OPTIONS request
       await apiClient.getClient().head(endpoint);
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
 
-  private getCachedCapabilities(): CachedCapabilities | null {
-    try {
-      const cached = localStorage.getItem(CAPABILITIES_CACHE_KEY);
-      if (!cached) return null;
-      return JSON.parse(cached) as CachedCapabilities;
-    } catch {
-      return null;
-    }
-  }
-
-  private cacheCapabilities(capabilities: CapabilitiesMap): void {
-    try {
-      const cached: CachedCapabilities = {
-        capabilities,
-        timestamp: Date.now(),
-      };
-      localStorage.setItem(CAPABILITIES_CACHE_KEY, JSON.stringify(cached));
-    } catch (error) {
-      console.warn('Failed to cache capabilities:', error);
-    }
-  }
 }
 
 export const capabilitiesService = new CapabilitiesService();

@@ -17,7 +17,7 @@ test.describe('Feature: Virtualization', () => {
         await waitForAppMainReady(page, { timeout: 60000 });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
+          test.skip(true, 'Redirected to login — auth may have expired');
           return;
         }
         throw _err;
@@ -31,7 +31,8 @@ test.describe('Feature: Virtualization', () => {
       await page.goto('/virtualization');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
-      expect(page.url()).toBeDefined();
+      const url = page.url();
+      expect(url).toMatch(/\/(virtualization|login|403|unavailable)/);
     });
   });
 });

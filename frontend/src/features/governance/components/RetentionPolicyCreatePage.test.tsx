@@ -202,7 +202,7 @@ describe('RetentionPolicyCreatePage', () => {
     };
     vi.mocked(mockAxiosInstance.post).mockResolvedValue({
       data: createdPolicy,
-    } as any);
+    } as never);
 
     render(<RetentionPolicyCreatePage />, { wrapper });
 
@@ -298,7 +298,7 @@ describe('RetentionPolicyCreatePage', () => {
     const postPromise = new Promise((resolve) => {
       resolvePost = resolve;
     });
-    vi.mocked(mockAxiosInstance.post).mockReturnValue(postPromise as any);
+    vi.mocked(mockAxiosInstance.post).mockReturnValue(postPromise as never);
 
     render(<RetentionPolicyCreatePage />, { wrapper });
 
@@ -320,7 +320,10 @@ describe('RetentionPolicyCreatePage', () => {
     const submitButton = screen.getByRole('button', { name: /create retention policy/i });
     await user.click(submitButton);
 
-    expect(screen.getByRole('button', { name: /creating/i })).toBeInTheDocument();
+    // Button uses loading prop: label stays, button is disabled + aria-busy
+    const loadingBtn = screen.getByRole('button', { name: /create retention policy/i });
+    expect(loadingBtn).toBeDisabled();
+    expect(loadingBtn).toHaveAttribute('aria-busy', 'true');
 
     resolvePost!({
       data: {
@@ -347,7 +350,9 @@ describe('RetentionPolicyCreatePage', () => {
       },
     });
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /creating/i })).not.toBeInTheDocument();
+      // After success, the component navigates away; button should not be loading
+      const btn = screen.queryByRole('button', { name: /create retention policy/i });
+      if (btn) expect(btn).not.toBeDisabled();
     });
   });
 });

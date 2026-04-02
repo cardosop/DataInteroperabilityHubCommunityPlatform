@@ -7,9 +7,8 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
+import { clearAuthStorage, getTestUser, loginUser, loginViaApi } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, switchTenantViaUI } from '../../fixtures/helpers';
-import { createAssetViaApi } from '../../fixtures/api-assets';
 
 // Align with fixtures/auth.ts API resolution
 const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
@@ -20,29 +19,41 @@ const API_BASE =
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
 test.describe('Tenant Switch (login → switch → verify context)', () => {
-  test.setTimeout(180000);
+  // loginUser (60-120s) + clearAuthStorage (10s) + multiple API calls (setup, tenants, switch, assets: 60s)
+  test.setTimeout(300000);
 
   test('login, switch tenant via API, verify /auth/me and assets scoped to new tenant', async ({
     page,
   }) => {
-    await clearAuthStorage(page);
+    // This test is purely API-based (page.request calls). It doesn't need the app shell.
+    // Using loginViaApi directly avoids the 90s app-shell wait in loginUser/loginViaApiAndInject
+    // which fails under heavy parallel load when the capabilities API is slow.
     const user = await getTestUser();
-    await loginUser(page, user);
+    const apiAuth = await loginViaApi(user.email, user.password);
+    const accessToken = apiAuth.access_token;
 
-    const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
-    if (!accessToken) {
-      test.skip(true, 'No access token after login');
-      return;
-    }
+    // Inject token into page context so page.request picks up the auth headers
+    await page.goto('/login', { waitUntil: 'commit', timeout: 10000 }).catch(() => {});
+    await page.evaluate(
+      ({ token }) => { localStorage.setItem('access_token', token); },
+      { token: accessToken }
+    );
 
     const headers = { Authorization: `Bearer ${accessToken}` };
 
-    // Ensure user has 2 tenants (E2E setup)
-    const setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
+    // Ensure user has 2 tenants (E2E setup). Retry once — under parallel load the first
+    // request can fail with a connection error even though the endpoint is healthy.
+    let setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
       headers,
-    });
-    if (!setupRes.ok()) {
-      test.skip(true, 'ensure-e2e-tenant-switch-setup not available (ENVIRONMENT=test required)');
+    }).catch(() => null);
+    if (!setupRes?.ok()) {
+      await new Promise((r) => setTimeout(r, 3000));
+      setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
+        headers,
+      }).catch(() => null);
+    }
+    if (!setupRes?.ok()) {
+      test.skip(true, `ensure-e2e-tenant-switch-setup returned ${setupRes?.status() ?? 'network error'} (need ENVIRONMENT=test + valid token)`);
       return;
     }
     const setup = (await setupRes.json()) as { secondary_tenant_id: string; tenant_ids: string[] };
@@ -50,7 +61,7 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
 
     // GET /auth/me/tenants/
     const tenantsRes = await page.request.get(`${API_BASE}/auth/me/tenants/`, { headers });
-    expect(tenantsRes.ok()).toBeTruthy();
+    expect(tenantsRes.ok()).toBe(true);
     const tenants = (await tenantsRes.json()) as { id: string; name: string; slug: string }[];
     expect(tenants.length).toBeGreaterThanOrEqual(2);
 
@@ -59,7 +70,7 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
       data: { tenant_id: secondaryTenantId },
       headers: { ...headers, 'Content-Type': 'application/json' },
     });
-    expect(switchRes.ok()).toBeTruthy();
+    expect(switchRes.ok()).toBe(true);
     const switchData = (await switchRes.json()) as { tenant_id: string };
     expect(switchData.tenant_id).toBe(secondaryTenantId);
 
@@ -67,9 +78,10 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
     const assetsRes = await page.request.get(`${API_BASE}/assets/`, {
       headers: { ...headers, 'X-Tenant-Id': secondaryTenantId },
     });
-    expect(assetsRes.ok()).toBeTruthy();
+    expect(assetsRes.ok()).toBe(true);
     const assetsData = (await assetsRes.json()) as { results?: unknown[] };
-    expect(Array.isArray(assetsData.results) || Array.isArray(assetsData)).toBeTruthy();
+    // API contract: paginated response has .results array
+    expect(Array.isArray(assetsData.results)).toBe(true);
   });
 
   test('UI: tenant switcher dropdown — click → select → header updates → assets scoped to new tenant', async ({
@@ -96,12 +108,18 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
 
     const headers = { Authorization: `Bearer ${accessToken}` };
 
-    // Ensure user has a secondary tenant
-    const setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
+    // Ensure user has a secondary tenant. Retry once for transient connection errors.
+    let setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
       headers,
-    });
-    if (!setupRes.ok()) {
-      test.skip(true, 'ensure-e2e-tenant-switch-setup not available (ENVIRONMENT=test required)');
+    }).catch(() => null);
+    if (!setupRes?.ok()) {
+      await new Promise((r) => setTimeout(r, 3000));
+      setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
+        headers,
+      }).catch(() => null);
+    }
+    if (!setupRes?.ok()) {
+      test.skip(true, `ensure-e2e-tenant-switch-setup returned ${setupRes?.status() ?? 'network error'} (need ENVIRONMENT=test + valid token)`);
       return;
     }
     const setup = (await setupRes.json()) as {
@@ -136,8 +154,7 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
       await page.waitForLoadState('domcontentloaded');
     } else {
       // Sidebar not found — fall back to goto (active_tenant_id may be lost after reload).
-      await page.goto('/assets');
-      await page.waitForLoadState('domcontentloaded');
+      await page.goto('/assets', { waitUntil: 'domcontentloaded' });
     }
     await page.waitForSelector('.asset-list-page, .empty-state, .error-display', {
       timeout: 30000,

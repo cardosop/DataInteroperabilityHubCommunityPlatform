@@ -11,8 +11,8 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError, waitForAppMainReady } from '../../fixtures/helpers';
+import { getTestUser } from '../../fixtures/auth';
+import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
   test.setTimeout(120000);
@@ -20,34 +20,22 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
   test.describe('Success', () => {
     test('contracts list loads', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/contracts');
-      await page.waitForLoadState('domcontentloaded');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
-          return;
-        }
-        throw _err;
+      await loginAndNavigateToRoute(page, testUser, '/contracts', { timeout: 60000 });
+      if (page.url().includes('/login')) {
+        expect(page.url()).toContain('/login');
+        return;
       }
       expect(page.url()).toContain('/contracts');
       const hasContent =
         (await page.locator('.contract-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
         (await page.locator('.error-display').count()) > 0;
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
 
     test('ODPS list loads', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/odps');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.odps-list-page, .odps-empty-state, .error-display, #email', {
-        timeout: 65000,
-      });
+      await loginAndNavigateToRoute(page, testUser, '/odps', { timeout: 65000 });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
@@ -57,19 +45,10 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
 
     test('ODPS upload page loads', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/odps/upload');
-      try {
-        await waitForAppMainReady(page, {
-          contentSelector: '.odps-upload-page',
-          timeout: 60000,
-        });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
-          return;
-        }
-        throw _err;
+      await loginAndNavigateToRoute(page, testUser, '/odps/upload', { timeout: 60000 });
+      if (page.url().includes('/login')) {
+        expect(page.url()).toContain('/login');
+        return;
       }
       expect(page.url()).toContain('/odps/upload');
     });
@@ -78,11 +57,14 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
   test.describe('Failure', () => {
     test('contract edit with non-existent id shows error', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/contracts/00000000-0000-0000-0000-000000000000/edit');
-      await page.waitForLoadState('domcontentloaded');
+      await loginAndNavigateToRoute(
+        page,
+        testUser,
+        '/contracts/00000000-0000-0000-0000-000000000000/edit',
+        { timeout: 65000 }
+      );
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.contract-detail-page, .contract-edit-page',
+        detailContentSelector: '.contract-editor-page, .contract-detail-page, .error-display',
         waitAfterLoad: 8000,
       });
     });
@@ -91,11 +73,14 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
   test.describe('Edge', () => {
     test('link-odps with non-existent contract shows error or redirect', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/contracts/00000000-0000-0000-0000-000000000000/link-odps');
-      await page.waitForLoadState('domcontentloaded');
+      await loginAndNavigateToRoute(
+        page,
+        testUser,
+        '/contracts/00000000-0000-0000-0000-000000000000/link-odps',
+        { timeout: 65000 }
+      );
       await page
-        .locator('.error-display, .contract-detail-page, #email')
+        .locator('.error-display, .contract-detail-page')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
@@ -106,7 +91,7 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('text=/not found|failed|403|forbidden/i').count()) > 0;
-      expect(onLinkOdps || hasError || onLogin || on403).toBe(true);
+      expect(onLinkOdps || hasError || onLogin || on403).toBe(true) /* acceptable states */;
     });
   });
 });

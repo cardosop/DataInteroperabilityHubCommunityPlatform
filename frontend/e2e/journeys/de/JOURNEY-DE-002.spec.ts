@@ -10,11 +10,11 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
+import { getTestUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-002: Set Up Scheduled Ingestion (if applicable)', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('scheduled ingestions list loads', async ({ page }) => {
@@ -22,7 +22,7 @@ test.describe('JOURNEY-DE-002: Set Up Scheduled Ingestion (if applicable)', () =
       await loginAndNavigateToRoute(page, testUser, '/scheduled-ingestions', {
         timeout: 90000,
         contentSelector:
-          '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, .loading-spinner-container, h1',
+          '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, h1',
       });
       expect(page.url()).toContain('/scheduled-ingestions');
       const hasContent =
@@ -37,9 +37,12 @@ test.describe('JOURNEY-DE-002: Set Up Scheduled Ingestion (if applicable)', () =
   test.describe('Failure', () => {
     test('scheduled ingestion detail with non-existent id shows error', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/scheduled-ingestions/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
+      await loginAndNavigateToRoute(
+        page,
+        testUser,
+        '/scheduled-ingestions/00000000-0000-0000-0000-000000000000',
+        { timeout: 90000 }
+      );
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '[data-testid="scheduled-ingestion-detail-page"]',
         waitAfterLoad: 8000,
@@ -53,7 +56,7 @@ test.describe('JOURNEY-DE-002: Set Up Scheduled Ingestion (if applicable)', () =
       await loginAndNavigateToRoute(page, testUser, '/scheduled-ingestions', {
         timeout: 90000,
         contentSelector:
-          '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, .loading-spinner-container, h1',
+          '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, h1',
       });
       expect(page.url()).toContain('/scheduled-ingestions');
     });

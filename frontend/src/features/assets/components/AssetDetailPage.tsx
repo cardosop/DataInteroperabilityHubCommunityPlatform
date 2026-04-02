@@ -1,18 +1,21 @@
 /**
  * Asset Detail Page
- * Displays asset details with linked contracts and datasets
+ * Displays asset details with linked contracts/datasets (plural tables),
+ * onboarding checklist for DRAFT assets, activation blocker dialog,
+ * and inline DQ/Compliance result summaries.
  */
 
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuthStore } from '../../auth/store/authStore';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import type { File } from '../../../shared/types/files';
 import { useComplianceRuns, useCreateComplianceRun } from '../../compliance/hooks/useCompliance';
-import { useCreateDataset } from '../../datasets/hooks/useDatasets';
+import { useContracts } from '../../contracts/hooks/useContracts';
+import { useCreateDataset, useDatasets } from '../../datasets/hooks/useDatasets';
 import { useCreateDQRun, useDQRuns } from '../../dq/hooks/useDQ';
 import { FileUpload } from '../../files/components/FileUpload';
 import {
@@ -29,7 +32,10 @@ import { ContractPicker, DatasetPicker } from '../../../shared/components/picker
 import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { AssetSocialSection } from '../../social/components/AssetSocialSection';
+import { OnboardingChecklist } from './OnboardingChecklist';
+import { ActivationBlockerDialog, extractBlockersFromError } from './ActivationBlockerDialog';
 import './AssetDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -46,8 +52,23 @@ export function AssetDetailPage() {
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [contractId, setContractId] = useState<string | null>(null);
   const [datasetId, setDatasetId] = useState<string | null>(null);
+  const [activationBlockers, setActivationBlockers] = useState<string[] | null>(null);
 
-  // DQ and Compliance runs for this asset (only fetch if asset is loaded)
+  // Fetch all contracts linked to this asset (plural)
+  const { data: contractsData } = useContracts(
+    id ? { asset_id: id, page_size: 50 } : {},
+    { enabled: !!id }
+  );
+  const linkedContracts = contractsData?.results ?? [];
+
+  // Fetch all datasets linked to this asset (plural)
+  const { data: datasetsData } = useDatasets(
+    id ? { asset_id: id, page_size: 50 } : {},
+    { enabled: !!id }
+  );
+  const linkedDatasets = datasetsData?.results ?? [];
+
+  // DQ and Compliance runs for this asset
   const { data: dqRuns } = useDQRuns(
     asset?.dataset_id ? { dataset_id: asset.dataset_id, page_size: 5 } : {}
   );
@@ -63,13 +84,25 @@ export function AssetDetailPage() {
   const { data: recommendations } = useAssetRecommendations(id ? { asset_id: id, limit: 5 } : {});
   const toast = useToast();
 
+  // Latest DQ run summary
+  const latestDQRun = dqRuns?.results?.[0] ?? null;
+  // Latest compliance run summary
+  const latestComplianceRun = complianceRuns?.results?.[0] ?? null;
+
   const handleActivate = async () => {
     if (!id || !asset) return;
+    setActivationBlockers(null);
     try {
       await activateMutation.mutateAsync({ id, version: asset.version });
+      toast.success('Asset activated successfully.');
       refetch();
     } catch (err) {
-      // Error handled by mutation
+      const blockers = extractBlockersFromError(err);
+      if (blockers) {
+        setActivationBlockers(blockers);
+      } else {
+        toast.error(normalizeError(err).error.message || 'Failed to activate asset');
+      }
     }
   };
 
@@ -87,18 +120,15 @@ export function AssetDetailPage() {
   const handleFileUploaded = async (file: File) => {
     if (!id) return;
     try {
-      // Create dataset from uploaded file
       const dataset = await createDatasetMutation.mutateAsync({
         file_id: file.id,
         asset_id: id,
       });
-      // Attach dataset to asset (useAttachDataset onSuccess updates asset cache via setQueryData)
       await attachDatasetMutation.mutateAsync({ id, data: { dataset_id: dataset.id } });
       setShowFileUpload(false);
       toast.success('Dataset created and linked successfully.');
     } catch (err) {
       toast.error(normalizeError(err).error.message || 'Upload failed. See details below.');
-      // ErrorDisplay below shows createDatasetMutation or attachDatasetMutation error
     }
   };
 
@@ -154,7 +184,7 @@ export function AssetDetailPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading asset..." />;
+    return <DetailPageSkeleton />;
   }
 
   if (error || !asset) {
@@ -167,8 +197,7 @@ export function AssetDetailPage() {
     );
   }
 
-  // Tenant isolation: non-PUBLIC assets belonging to another tenant must not be rendered.
-  // This guards against cross-tenant cache leaks and direct URL access in a switched-tenant session.
+  // Tenant isolation
   if (
     effectiveTenantId &&
     asset.tenant &&
@@ -185,38 +214,44 @@ export function AssetDetailPage() {
 
   const canActivate = asset.status === 'DRAFT';
   const canRetire = asset.status === 'ACTIVE';
+  const isDraft = asset.status === 'DRAFT';
 
   return (
     <div className="asset-detail-page">
       <div className="asset-detail-header">
-        <button onClick={() => navigate('/assets')} className="btn-back" type="button">
-          ← Back to Assets
-        </button>
+        <Button onClick={() => navigate('/assets')} variant="ghost">
+          &larr; Back to Assets
+        </Button>
         <div className="asset-detail-actions">
           {canActivate && (
-            <button
+            <Button
               onClick={handleActivate}
-              disabled={activateMutation.isPending}
-              className="btn-primary"
-              type="button"
-              data-testid="btn-activate-asset"
-            >
-              {activateMutation.isPending ? 'Activating...' : 'Activate Asset'}
-            </button>
+              loading={activateMutation.isPending}
+              variant="primary"
+              data-testid="btn-activate-asset">
+              Activate Asset
+            </Button>
           )}
           {canRetire && (
-            <button
+            <Button
               onClick={handleRetire}
-              disabled={retireMutation.isPending}
-              className="btn-secondary"
-              type="button"
-              data-testid="btn-retire-asset"
-            >
-              {retireMutation.isPending ? 'Retiring...' : 'Retire Asset'}
-            </button>
+              loading={retireMutation.isPending}
+              variant="secondary"
+              data-testid="btn-retire-asset">
+              Retire Asset
+            </Button>
           )}
         </div>
       </div>
+
+      {/* Activation Blocker Dialog */}
+      {activationBlockers && id && (
+        <ActivationBlockerDialog
+          blockers={activationBlockers}
+          assetId={id}
+          onDismiss={() => setActivationBlockers(null)}
+        />
+      )}
 
       <div className="asset-detail-content">
         <Breadcrumbs
@@ -281,6 +316,95 @@ export function AssetDetailPage() {
             </div>
           </div>
 
+          {/* Onboarding Checklist for DRAFT assets */}
+          {isDraft && (
+            <OnboardingChecklist
+              contracts={linkedContracts}
+              datasets={linkedDatasets}
+              dqStatus={asset.dq_status}
+              complianceStatus={asset.compliance_status}
+            />
+          )}
+
+          {/* Inline DQ Result Summary */}
+          <div className="asset-inline-summary" data-testid="asset-dq-summary">
+            <div className="inline-summary-header">
+              <h3>Latest DQ Result</h3>
+              {latestDQRun && (
+                <button
+                  type="button"
+                  className="btn-link"
+                  onClick={() => navigate(`/dq/runs/${latestDQRun.id}`)}
+                >
+                  View Details &rarr;
+                </button>
+              )}
+            </div>
+            {latestDQRun ? (
+              <div className="inline-summary-body">
+                <span className={`status-badge status-${latestDQRun.status.toLowerCase()}`}>
+                  {latestDQRun.status}
+                </span>
+                {latestDQRun.quality_score != null && (
+                  <span className="inline-summary-score">
+                    Score: {Math.round(latestDQRun.quality_score * 100)}%
+                  </span>
+                )}
+                {latestDQRun.overall_status && (
+                  <span
+                    className={`overall-status-badge overall-status-${latestDQRun.overall_status.toLowerCase()}`}
+                  >
+                    {latestDQRun.overall_status}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <p className="inline-summary-empty">No DQ runs yet.</p>
+            )}
+          </div>
+
+          {/* Inline Compliance Result Summary */}
+          <div className="asset-inline-summary" data-testid="asset-compliance-summary">
+            <div className="inline-summary-header">
+              <h3>Latest Compliance Result</h3>
+              {latestComplianceRun && (
+                <button
+                  type="button"
+                  className="btn-link"
+                  onClick={() => navigate(`/compliance/runs/${latestComplianceRun.id}`)}
+                >
+                  View Details &rarr;
+                </button>
+              )}
+            </div>
+            {latestComplianceRun ? (
+              <div className="inline-summary-body">
+                <span className={`status-badge status-${latestComplianceRun.status.toLowerCase()}`}>
+                  {latestComplianceRun.status}
+                </span>
+                {latestComplianceRun.overall_status && (
+                  <span
+                    className={`overall-status-badge overall-status-${latestComplianceRun.overall_status.toLowerCase()}`}
+                  >
+                    {latestComplianceRun.overall_status}
+                  </span>
+                )}
+                {latestComplianceRun.risk_level && (
+                  <span
+                    className={`risk-level-badge risk-level-${latestComplianceRun.risk_level.toLowerCase()}`}
+                  >
+                    {latestComplianceRun.risk_level}
+                  </span>
+                )}
+                {latestComplianceRun.allowed_to_store === false && (
+                  <span className="blocked-indicator">Storage Blocked</span>
+                )}
+              </div>
+            ) : (
+              <p className="inline-summary-empty">No compliance runs yet.</p>
+            )}
+          </div>
+
           {/* Health score section */}
           <div className="asset-health-score-section" data-testid="asset-health-score-section">
             <h2>Health score</h2>
@@ -301,7 +425,7 @@ export function AssetDetailPage() {
                   <div className="asset-health-score-breakdown">
                     {healthScore.breakdown.components?.dq && (
                       <div className="breakdown-item">
-                        DQ: {healthScore.breakdown.components.dq.score} (×
+                        DQ: {healthScore.breakdown.components.dq.score} (&times;
                         {healthScore.breakdown.components.dq.weight})
                       </div>
                     )}
@@ -322,9 +446,8 @@ export function AssetDetailPage() {
                     )}
                   </div>
                 )}
-                <button
-                  type="button"
-                  className="btn-secondary btn-small"
+                <Button
+                  variant="secondary" className="btn-small"
                   onClick={async () => {
                     if (!id) return;
                     try {
@@ -334,10 +457,9 @@ export function AssetDetailPage() {
                       // Error handled by mutation
                     }
                   }}
-                  disabled={recalculateHealthScoreMutation.isPending}
-                >
-                  {recalculateHealthScoreMutation.isPending ? 'Recalculating…' : 'Recalculate'}
-                </button>
+                  loading={recalculateHealthScoreMutation.isPending}>
+                  Recalculate
+                </Button>
               </>
             )}
           </div>
@@ -362,65 +484,126 @@ export function AssetDetailPage() {
         </div>
 
         <div className="asset-detail-linked">
-          <div className="linked-section">
-            <h2>Linked Contract</h2>
-            {asset.contract_id ? (
-              <div className="linked-item">
-                <a href={`/contracts/${asset.contract_id}`}>View Contract</a>
-              </div>
+          {/* Linked Contracts (plural table) */}
+          <div className="linked-section" data-testid="asset-contracts-section">
+            <h2>Linked Contracts ({linkedContracts.length})</h2>
+            {linkedContracts.length > 0 ? (
+              <table className="linked-table" data-testid="contracts-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Format</th>
+                    <th>Normalization</th>
+                    <th>Validation</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {linkedContracts.map((c) => (
+                    <tr key={c.id} data-testid={`contract-row-${c.id}`}>
+                      <td>{c.name || 'Unnamed'}</td>
+                      <td>{c.original_format ?? '\u2014'}</td>
+                      <td>
+                        <span className={`status-badge status-${(c.normalization_status ?? '').toLowerCase().replace('_', '-')}`}>
+                          {c.normalization_status ?? '\u2014'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`validation-badge validation-${(c.validation_status ?? '').toLowerCase()}`}>
+                          {c.validation_status ?? '\u2014'}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn-link"
+                          onClick={() => navigate(`/contracts/${c.id}`)}
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             ) : (
-              <>
-                <p className="no-linked">No contract linked</p>
-                <div className="attach-controls">
-                  <ContractPicker
-                    value={contractId}
-                    onChange={setContractId}
-                    placeholder="Search and select a contract..."
-                    data-testid="asset-attach-contract-picker"
-                  />
-                  <button
-                    onClick={handleAttachContract}
-                    disabled={!contractId || attachContractMutation.isPending}
-                    className="btn-secondary btn-small"
-                    type="button"
-                  >
-                    {attachContractMutation.isPending ? 'Attaching...' : 'Attach'}
-                  </button>
-                </div>
-              </>
+              <p className="no-linked">No contracts linked</p>
             )}
+            <div className="attach-controls">
+              <ContractPicker
+                value={contractId}
+                onChange={setContractId}
+                placeholder="Search and select a contract..."
+                data-testid="asset-attach-contract-picker"
+              />
+              <Button
+                onClick={handleAttachContract}
+                disabled={!contractId || attachContractMutation.isPending}
+                variant="secondary" className="btn-small">
+                {attachContractMutation.isPending ? 'Attaching...' : 'Attach'}
+              </Button>
+            </div>
           </div>
 
-          <div className="linked-section">
-            <h2>Linked Dataset</h2>
-            {asset.dataset_id ? (
-              <div className="linked-item">
-                <a href={`/datasets/${asset.dataset_id}`}>View Dataset</a>
-              </div>
-            ) : (
-              <>
-                <p className="no-linked">No dataset linked</p>
-                <div className="attach-controls">
-                  <DatasetPicker
-                    value={datasetId}
-                    onChange={setDatasetId}
-                    placeholder="Search and select a dataset..."
-                    data-testid="asset-attach-dataset-picker"
-                  />
-                  <button
-                    onClick={handleAttachDataset}
-                    disabled={!datasetId || attachDatasetMutation.isPending}
-                    className="btn-secondary btn-small"
-                    type="button"
-                  >
-                    {attachDatasetMutation.isPending ? 'Attaching...' : 'Attach'}
-                  </button>
-                </div>
-              </>
-            )}
+          {/* Linked Datasets (plural table) */}
+          <div className="linked-section" data-testid="asset-datasets-section">
+            <h2>Linked Datasets ({linkedDatasets.length})</h2>
+            <table className="linked-table" data-testid="datasets-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Format</th>
+                  <th>Rows</th>
+                  <th>Size</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {linkedDatasets.length > 0 ? (
+                  linkedDatasets.map((d) => (
+                    <tr key={d.id} data-testid={`dataset-row-${d.id}`}>
+                      <td>{d.name || 'Unnamed'}</td>
+                      <td>{d.format}</td>
+                      <td>{d.row_count ?? '\u2014'}</td>
+                      <td>{d.size_bytes != null ? formatBytes(d.size_bytes) : '\u2014'}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn-link"
+                          onClick={() => navigate(`/datasets/${d.id}`)}
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="no-linked-cell">
+                      No datasets linked
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            <div className="attach-controls">
+              <DatasetPicker
+                value={datasetId}
+                onChange={setDatasetId}
+                placeholder="Search and select a dataset..."
+                data-testid="asset-attach-dataset-picker"
+              />
+              <Button
+                onClick={handleAttachDataset}
+                disabled={!datasetId || attachDatasetMutation.isPending}
+                variant="secondary" className="btn-small">
+                {attachDatasetMutation.isPending ? 'Attaching...' : 'Attach'}
+              </Button>
+            </div>
           </div>
 
-          <div className="linked-section">
+          {/* Upload File */}
+          <div className="linked-section" data-testid="asset-upload-section">
             <h2>Upload File</h2>
             {(createDatasetMutation.isError || attachDatasetMutation.isError) && (
               <ErrorDisplay
@@ -433,13 +616,11 @@ export function AssetDetailPage() {
               />
             )}
             {!showFileUpload ? (
-              <button
+              <Button
                 onClick={() => setShowFileUpload(true)}
-                className="btn-secondary"
-                type="button"
-              >
+                variant="secondary">
                 Upload File
-              </button>
+              </Button>
             ) : (
               <div className="file-upload-section">
                 <FileUpload
@@ -447,13 +628,11 @@ export function AssetDetailPage() {
                   assetId={id}
                   accept=".csv,.json,.parquet"
                 />
-                <button
+                <Button
                   onClick={() => setShowFileUpload(false)}
-                  className="btn-secondary btn-small"
-                  type="button"
-                >
+                  variant="secondary" className="btn-small">
                   Cancel
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -467,18 +646,16 @@ export function AssetDetailPage() {
               <div className="quality-gate-header">
                 <h3>Data Quality Runs</h3>
                 {asset.dataset_id && (
-                  <button
+                  <Button
                     onClick={handleRunDQ}
                     disabled={
                       createDQRunMutation.isPending ||
                       createDatasetMutation.isPending ||
                       attachDatasetMutation.isPending
                     }
-                    className="btn-secondary btn-small"
-                    type="button"
-                  >
+                    variant="secondary" className="btn-small">
                     {createDQRunMutation.isPending ? 'Running...' : 'Run DQ Check'}
-                  </button>
+                  </Button>
                 )}
               </div>
               {!asset.dataset_id ? (
@@ -517,13 +694,13 @@ export function AssetDetailPage() {
                   ))}
                   {dqRuns.results.length > 3 && (
                     <button onClick={() => navigate('/dq')} className="btn-link" type="button">
-                      View all DQ runs →
+                      View all DQ runs &rarr;
                     </button>
                   )}
                 </div>
               ) : (
                 <p className="quality-gate-message">
-                  No DQ runs yet. Click "Run DQ Check" to start.
+                  No DQ runs yet. Click &quot;Run DQ Check&quot; to start.
                 </p>
               )}
             </div>
@@ -533,18 +710,16 @@ export function AssetDetailPage() {
               <div className="quality-gate-header">
                 <h3>Compliance Runs</h3>
                 {asset.dataset_id && (
-                  <button
+                  <Button
                     onClick={handleRunCompliance}
                     disabled={
                       createComplianceRunMutation.isPending ||
                       createDatasetMutation.isPending ||
                       attachDatasetMutation.isPending
                     }
-                    className="btn-secondary btn-small"
-                    type="button"
-                  >
+                    variant="secondary" className="btn-small">
                     {createComplianceRunMutation.isPending ? 'Running...' : 'Run Compliance Check'}
-                  </button>
+                  </Button>
                 )}
               </div>
               {!asset.dataset_id ? (
@@ -580,7 +755,7 @@ export function AssetDetailPage() {
                         </div>
                         <div className="run-details">
                           {isBlocked && (
-                            <span className="blocked-indicator">⚠️ Storage Blocked</span>
+                            <span className="blocked-indicator">Storage Blocked</span>
                           )}
                           <span className="run-date">
                             {new Date(run.created_at).toLocaleString()}
@@ -600,13 +775,13 @@ export function AssetDetailPage() {
                       className="btn-link"
                       type="button"
                     >
-                      View all compliance runs →
+                      View all compliance runs &rarr;
                     </button>
                   )}
                 </div>
               ) : (
                 <p className="quality-gate-message">
-                  No compliance runs yet. Click "Run Compliance Check" to start.
+                  No compliance runs yet. Click &quot;Run Compliance Check&quot; to start.
                 </p>
               )}
             </div>
@@ -615,4 +790,12 @@ export function AssetDetailPage() {
       </div>
     </div>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }

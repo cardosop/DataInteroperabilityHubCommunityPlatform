@@ -22,16 +22,22 @@ test.describe('JOURNEY-DEV-003: Integrate via CLI', () => {
       await page.goto('/developer');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.developer-portal-page, .app-main, .unavailable-page, .loading-spinner-container, [role="status"]',
+        '.developer-portal-page, .app-main, .unavailable-page, [role="status"]',
         { timeout: 25000 }
       );
       await page.waitForTimeout(2000);
       const onDeveloper = page.url().includes('/developer');
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onDeveloper).toBe(true);
       const hasContent =
-        (await page.locator('.developer-portal-page, .app-main, .unavailable-page, .loading-spinner-container').count()) > 0;
-      expect(onLogin || on403 || (onDeveloper && hasContent)).toBe(true);
+        (await page.locator('.developer-portal-page, .app-main').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 

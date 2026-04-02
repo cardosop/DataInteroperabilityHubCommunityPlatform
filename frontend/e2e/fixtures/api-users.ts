@@ -6,7 +6,7 @@
 import type { TestUser } from '../setup/create-test-user';
 
 const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
-let API_BASE_URL =
+const API_BASE_URL =
   process.env.E2E_API_BASE_URL ||
   (process.env.VITE_PROXY_TARGET
     ? `${process.env.VITE_PROXY_TARGET.replace(/\/$/, '')}/api/v1`
@@ -26,8 +26,8 @@ function isTransientConnectionError(err: unknown): boolean {
   return false;
 }
 
-const RETRIES = 3;
-const RETRY_DELAYS_MS = [2000, 4000, 6000];
+const RETRIES = 5;
+const RETRY_DELAYS_MS = [2000, 4000, 6000, 8000, 10000];
 
 async function loginViaApiUsers(user: TestUser): Promise<string> {
   for (let r = 0; r < RETRIES; r++) {
@@ -37,6 +37,16 @@ async function loginViaApiUsers(user: TestUser): Promise<string> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: user.email, password: user.password }),
       });
+      if (response.status === 429) {
+        const retryAfter = parseInt(response.headers.get('retry-after') ?? '', 10);
+        const backoffMs = retryAfter > 0 ? retryAfter * 1000 : RETRY_DELAYS_MS[Math.min(r, RETRY_DELAYS_MS.length - 1)];
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        continue;
+      }
+      if (response.status >= 500 && r < RETRIES - 1) {
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[r]));
+        continue;
+      }
       if (!response.ok) {
         const body = await response.text().catch(() => '');
         throw new Error(`Login failed: ${response.status} ${body}`);
@@ -49,7 +59,7 @@ async function loginViaApiUsers(user: TestUser): Promise<string> {
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[r]));
         continue;
       }
-      throw err;
+      if (r >= RETRIES - 1) throw err;
     }
   }
   throw new Error('loginViaApiUsers: exhausted retries');

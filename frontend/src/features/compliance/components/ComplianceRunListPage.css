@@ -87,25 +87,6 @@
   margin-top: 1.25rem;
 }
 
-.compliance-create-modal-actions .btn-primary,
-.compliance-create-modal-actions .btn-secondary {
-  padding: 0.5rem 1rem;
-  border-radius: 4px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.compliance-create-modal-actions .btn-secondary {
-  background: var(--color-neutral-100);
-  border: 1px solid var(--color-border);
-}
-
-.compliance-create-modal-actions .btn-primary {
-  background: var(--color-info);
-  color: var(--color-background-primary);
-  border: none;
-}
-
 .compliance-run-list-header h1 {
   margin: 0;
   font-size: 1.5rem;

@@ -2,7 +2,8 @@
  * Social Features React Query Hooks
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { socialService } from '../services/socialService';
 import type {
   RatingCreateRequest,
@@ -24,8 +25,10 @@ export function useRatings(assetId: string, filters: SocialListFilters = {}) {
 export function useSubmitRating() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: RatingCreateRequest) => socialService.submitRating(data),
+    successMessage: 'Rating submitted',
+    errorMessage: 'Failed to submit rating',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['social', 'ratings', variables.asset_id] });
       queryClient.invalidateQueries({ queryKey: ['assets', 'detail', variables.asset_id] });
@@ -52,8 +55,10 @@ export function useReview(id: string | null) {
 export function useSubmitReview() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: ReviewCreateRequest) => socialService.submitReview(data),
+    successMessage: 'Review submitted',
+    errorMessage: 'Failed to submit review',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['social', 'reviews', variables.asset_id] });
       queryClient.invalidateQueries({ queryKey: ['assets', 'detail', variables.asset_id] });
@@ -80,8 +85,10 @@ export function useComment(id: string | null) {
 export function useSubmitComment() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: CommentCreateRequest) => socialService.submitComment(data),
+    successMessage: 'Comment submitted',
+    errorMessage: 'Failed to submit comment',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['social', 'comments', variables.asset_id] });
       queryClient.invalidateQueries({ queryKey: ['assets', 'detail', variables.asset_id] });
@@ -107,9 +114,11 @@ export function useCommunity(id: string | null) {
 export function useCreateOrJoinCommunity() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: CommunityCreateRequest | CommunityJoinRequest) =>
       socialService.createOrJoinCommunity(data),
+    successMessage: 'Community joined',
+    errorMessage: 'Failed to join community',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['social', 'communities'] });
     },

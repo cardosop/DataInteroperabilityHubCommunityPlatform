@@ -14,7 +14,7 @@ import { clearAuthStorage, getDataMeshDomainOwnerUser } from '../../fixtures/aut
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DMO-004: Transfer Asset Ownership', () => {
-  test.setTimeout(300000); // 5 min: persona login + assets/mesh under parallel E2E load
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('assets list loads for ownership transfer', async ({ page }) => {

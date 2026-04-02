@@ -24,15 +24,13 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      // Thresholds set to current coverage so CI passes. Short-term plan (see docs/TEST_EXECUTION_PLAN.md §Frontend Coverage):
-      // - Q1: Raise lines/statements to 20%; functions 60%; branches 65%
-      // - Q2: Raise lines/statements to 40%; functions 70%; branches 70%
+      // Phase 121I: Raised thresholds per Q2 plan
       // - Target: 80% across all metrics
       thresholds: {
-        lines: 10,
-        functions: 52,
-        branches: 60,
-        statements: 10,
+        lines: 60,
+        functions: 75,
+        branches: 75,
+        statements: 25,
       },
     },
   },

@@ -9,6 +9,7 @@ import { useCreateMarketplaceConnection } from '../hooks/useMarketplaceConnectio
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { MarketplaceType } from '../../../shared/types/integrations';
 import './MarketplaceConnectionCreatePage.css';
+import { Button } from '../../../shared/components/Button';
 
 const MARKETPLACE_TYPE_OPTIONS = Object.entries(MarketplaceType).map(([key, value]) => ({
   value,
@@ -38,7 +39,7 @@ export function MarketplaceConnectionCreatePage() {
     }
     try {
       JSON.parse(formData.config_json || '{}');
-    } catch (e) {
+    } catch {
       newErrors.config_json = 'Config must be valid JSON';
     }
     setErrors(newErrors);
@@ -65,13 +66,11 @@ export function MarketplaceConnectionCreatePage() {
   return (
     <div className="marketplace-connection-create-page">
       <div className="marketplace-connection-create-header">
-        <button
-          onClick={() => navigate('/integrations/connections')}
-          className="btn-back"
-          type="button"
-        >
+        <Button
+ onClick={() => navigate('/integrations/connections')}
+ variant="ghost">
           ← Back to Connections
-        </button>
+        </Button>
         <h1>Create Marketplace Connection</h1>
       </div>
 
@@ -144,21 +143,18 @@ export function MarketplaceConnectionCreatePage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            onClick={() => navigate('/integrations/connections')}
-            className="btn-secondary"
-            disabled={createMutation.isPending}
-          >
+          <Button
+ onClick={() => navigate('/integrations/connections')}
+ variant="secondary"
+ loading={createMutation.isPending}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={createMutation.isPending}
-          >
-            {createMutation.isPending ? 'Creating...' : 'Create Connection'}
-          </button>
+          </Button>
+          <Button
+ type="submit"
+ variant="primary"
+ loading={createMutation.isPending}>
+            Create Connection
+          </Button>
         </div>
       </form>
     </div>

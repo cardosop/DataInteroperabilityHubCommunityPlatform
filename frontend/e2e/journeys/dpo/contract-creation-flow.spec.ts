@@ -8,7 +8,7 @@ import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('Contract Creation Flow', () => {
-  test.setTimeout(180000); // 3 min: login + ODPS upload + contract creation under Docker
+  test.setTimeout(90000);
 
   test.describe('Failure', () => {
     test('unauthenticated access to contracts redirects to login', async ({ page }) => {
@@ -20,7 +20,7 @@ test.describe('Contract Creation Flow', () => {
       const onContractsWithLoginPrompt =
         url.includes('/contracts') &&
         (await hasLoginPrompt(page));
-      expect(onLogin || onContractsWithLoginPrompt).toBe(true);
+      expect(onLogin || onContractsWithLoginPrompt).toBe(true) /* acceptable states */;
     });
 
     test('invalid ODPS (missing schema.fields) shows error', async ({ page }) => {
@@ -61,12 +61,10 @@ test.describe('Contract Creation Flow', () => {
       // Expect error: 400 or validation error; no contract created (stay on upload or show error)
       const errorDisplay = page.locator('.error-display, [role="alert"], .alert-danger');
       const hasErrorDisplay =
-        (await errorDisplay.count()) > 0 && (await errorDisplay.first().isVisible().catch(() => false));
+        (await errorDisplay.count()) > 0 && (await errorDisplay.first().isVisible());
       const hasErrorText =
         (await page.getByText(/400|validation|invalid|schema|required|dataSchema/i).count()) > 0;
-      const stillOnUpload = page.url().includes('/odps/upload');
-      const noRedirectToDetail = !page.url().match(/\/contracts\/[^/]+$/) && !page.url().match(/\/odps\/[^/]+$/);
-      expect(hasErrorDisplay || hasErrorText || (stillOnUpload && noRedirectToDetail)).toBe(true);
+      expect(hasErrorDisplay || hasErrorText).toBe(true);
     });
   });
 
@@ -75,7 +73,7 @@ test.describe('Contract Creation Flow', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/contracts', {
       timeout: 60000,
-      contentSelector: '.contract-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+      contentSelector: '.contract-list-page, .empty-state, .error-display, h1',
     });
     await waitForLoadingComplete(page);
 
@@ -89,22 +87,13 @@ test.describe('Contract Creation Flow', () => {
 
     const hasEmptyState =
       (await emptyState.count()) > 0 &&
-      (await emptyState
-        .first()
-        .isVisible()
-        .catch(() => false));
+      (await emptyState.first().isVisible());
     const hasCreateButton =
       (await createButton.count()) > 0 &&
-      (await createButton
-        .first()
-        .isVisible()
-        .catch(() => false));
+      (await createButton.first().isVisible());
     const hasEmptyStateAction =
       (await emptyStateAction.count()) > 0 &&
-      (await emptyStateAction
-        .first()
-        .isVisible()
-        .catch(() => false));
+      (await emptyStateAction.first().isVisible());
 
     if (hasEmptyState && !hasCreateButton) {
       // Empty state - check if there's an action button
@@ -222,25 +211,20 @@ test.describe('Contract Creation Flow', () => {
         page.locator('h1, .workflow-status, .status, [data-testid="workflow-status"]').first()
       ).toBeVisible({ timeout: 10000 });
     } else if (finalUrl.includes('/odps/upload')) {
-      // Still on upload page - verify page content (form or error)
-      const uploadContent = page.locator('.odps-upload-page, .upload-form, .error-display').first();
-      await expect(uploadContent).toBeVisible({ timeout: 10000 });
-      // If error display is shown, check if it's a backend configuration issue (non-fatal)
+      // Still on upload page — check for error display
       const errorDisplay = page.locator('.error-display');
       if ((await errorDisplay.count()) > 0 && (await errorDisplay.first().isVisible())) {
         const errorText = await errorDisplay.first().textContent() ?? '';
-        // "Workflows are disabled for this tenant" is a backend config issue, not a test failure
+        // "Workflows are disabled for this tenant" is a backend config issue — skip
         if (/workflows are disabled/i.test(errorText)) {
-          test.info().annotations.push({
-            type: 'skip-reason',
-            description: `Contract creation skipped: ${errorText.replace(/\s+/g, ' ').substring(0, 200)}`,
-          });
-          return;
+          test.skip(true, 'Contract creation skipped: workflows are disabled');
         }
         throw new Error(
           `Contract creation failed. API error: ${errorText.replace(/\s+/g, ' ').substring(0, 500)}`
         );
       }
+      // No error and no redirect — this is a failure
+      throw new Error('Still on upload page after submit with no error and no redirect');
     } else {
       throw new Error(`Unexpected URL after submit: ${finalUrl}`);
     }

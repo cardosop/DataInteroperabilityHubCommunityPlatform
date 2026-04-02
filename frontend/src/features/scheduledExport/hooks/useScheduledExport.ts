@@ -2,7 +2,8 @@
  * Scheduled Export React Query Hooks
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import type {
   ScheduledExportCreateRequest,
   ScheduledExportListFilters,
@@ -36,8 +37,10 @@ export function useScheduledExportRuns(id: string | null) {
 
 export function useCreateScheduledExport() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: ScheduledExportCreateRequest) => scheduledExportService.create(data),
+    successMessage: 'Scheduled export created',
+    errorMessage: 'Failed to create scheduled export',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduled-exports'] });
     },
@@ -46,9 +49,11 @@ export function useCreateScheduledExport() {
 
 export function useUpdateScheduledExport() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: ScheduledExportUpdateRequest }) =>
       scheduledExportService.update(id, data),
+    successMessage: 'Scheduled export updated',
+    errorMessage: 'Failed to update scheduled export',
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['scheduled-exports'] });
       queryClient.invalidateQueries({
@@ -60,8 +65,10 @@ export function useUpdateScheduledExport() {
 
 export function useDeleteScheduledExport() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => scheduledExportService.delete(id),
+    successMessage: 'Scheduled export deleted',
+    errorMessage: 'Failed to delete scheduled export',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduled-exports'] });
     },
@@ -70,9 +77,11 @@ export function useDeleteScheduledExport() {
 
 export function useTriggerScheduledExport() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data?: ScheduledExportTriggerRequest }) =>
       scheduledExportService.trigger(id, data),
+    successMessage: 'Scheduled export triggered',
+    errorMessage: 'Failed to trigger scheduled export',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['scheduled-exports'] });
       queryClient.invalidateQueries({

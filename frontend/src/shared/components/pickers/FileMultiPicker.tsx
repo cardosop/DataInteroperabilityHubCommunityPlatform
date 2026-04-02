@@ -54,29 +54,6 @@ export function FileMultiPicker({
   datasetId,
   'data-testid': dataTestId = 'file-multi-picker',
 }: FileMultiPickerProps) {
-  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
-    return (
-      <div className="file-multi-picker resource-picker" data-testid={dataTestId}>
-        <input
-          type="text"
-          value={value.join(', ')}
-          onChange={(e) =>
-            onChange(
-              e.target.value
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean)
-            )
-          }
-          placeholder="Enter file IDs (comma-separated UUIDs)"
-          disabled={disabled}
-          className="resource-picker-input"
-          aria-label="File IDs"
-        />
-      </div>
-    );
-  }
-
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
   const [isOpen, setIsOpen] = useState(false);
@@ -93,7 +70,7 @@ export function FileMultiPicker({
     dataset_id: datasetId,
   };
 
-  const { data, isLoading, error, refetch } = useFiles(filters, { enabled: isOpen });
+  const { data, isLoading, error, refetch } = useFiles(filters, { enabled: isOpen && FEATURE_RESOURCE_PICKERS_ENABLED });
 
   const results = data?.results ?? [];
   const maxIndex = results.length - 1;
@@ -161,6 +138,29 @@ export function FileMultiPicker({
         break;
     }
   };
+
+  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
+    return (
+      <div className="file-multi-picker resource-picker" data-testid={dataTestId}>
+        <input
+          type="text"
+          value={value.join(', ')}
+          onChange={(e) =>
+            onChange(
+              e.target.value
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            )
+          }
+          placeholder="Enter file IDs (comma-separated UUIDs)"
+          disabled={disabled}
+          className="resource-picker-input"
+          aria-label="File IDs"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="resource-picker" data-testid={dataTestId}>

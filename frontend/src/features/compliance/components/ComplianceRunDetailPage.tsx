@@ -3,10 +3,11 @@
  * Displays compliance run details with results viewer
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useComplianceRun, useComplianceRunResults, useCancelComplianceRun, useDeleteComplianceRun } from '../hooks/useCompliance';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ComplianceRunResultsViewer } from './ComplianceRunResultsViewer';
@@ -15,6 +16,7 @@ import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import './ComplianceRunDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ComplianceRunDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -31,8 +33,25 @@ export function ComplianceRunDetailPage() {
     error: resultsError,
   } = useComplianceRunResults(id || null);
 
+  // Run is "stuck" if PENDING for >2 min with no started_at (worker never picked up the job).
+  // Date.now() is called inside useEffect to satisfy react-hooks/purity.
+  const [isStuckPending, setIsStuckPending] = useState(false);
+  useEffect(() => {
+    if (!complianceRun) { setIsStuckPending(false); return; }
+    const createdMs = complianceRun.created_at
+      ? new Date(complianceRun.created_at).getTime()
+      : 0;
+    const stuckThresholdMs = 2 * 60 * 1000;
+    setIsStuckPending(
+      complianceRun.status === 'PENDING' &&
+      !complianceRun.started_at &&
+      createdMs > 0 &&
+      Date.now() - createdMs > stuckThresholdMs
+    );
+  }, [complianceRun]);
+
   if (isLoading) {
-    return <LoadingSpinner message="Loading compliance run..." />;
+    return <DetailPageSkeleton />;
   }
 
   if (error || !complianceRun) {
@@ -46,17 +65,6 @@ export function ComplianceRunDetailPage() {
   }
 
   const isRunning = complianceRun.status === 'PENDING' || complianceRun.status === 'RUNNING';
-
-  // Run is "stuck" if PENDING for >2 min with no started_at (worker never picked up the job)
-  const createdMs = complianceRun.created_at
-    ? new Date(complianceRun.created_at).getTime()
-    : 0;
-  const stuckThresholdMs = 2 * 60 * 1000;
-  const isStuckPending =
-    complianceRun.status === 'PENDING' &&
-    !complianceRun.started_at &&
-    createdMs > 0 &&
-    Date.now() - createdMs > stuckThresholdMs;
 
   const handleCancelClick = () => setShowCancelConfirm(true);
   const handleCancelConfirm = async () => {
@@ -87,28 +95,24 @@ export function ComplianceRunDetailPage() {
   return (
     <div className="compliance-run-detail-page">
       <div className="compliance-run-detail-header">
-        <button onClick={() => navigate('/compliance')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/compliance')} variant="ghost">
           ← Back to Compliance Runs
-        </button>
+        </Button>
         <div className="compliance-run-detail-actions">
           {isRunning && (
-            <button
-              onClick={handleCancelClick}
-              disabled={cancelMutation.isPending}
-              className="btn-danger"
-              type="button"
-            >
-              {cancelMutation.isPending ? 'Cancelling...' : 'Cancel Run'}
-            </button>
+            <Button
+ onClick={handleCancelClick}
+ loading={cancelMutation.isPending}
+ variant="danger">
+              Cancel Run
+            </Button>
           )}
-          <button
-            onClick={handleDeleteClick}
-            disabled={deleteMutation.isPending}
-            className="btn-danger"
-            type="button"
-          >
-            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-          </button>
+          <Button
+ onClick={handleDeleteClick}
+ loading={deleteMutation.isPending}
+ variant="danger">
+            Delete
+          </Button>
         </div>
       </div>
 

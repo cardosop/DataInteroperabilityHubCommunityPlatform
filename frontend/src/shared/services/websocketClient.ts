@@ -31,7 +31,8 @@ function getWsBaseUrl(): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${protocol}//${window.location.host}`;
   }
-  return 'ws://localhost:8000';
+  // Non-browser context (SSR): derive from empty string so no hardcoded URL leaks into the bundle
+  return '';
 }
 
 const WS_BASE_URL = getWsBaseUrl();

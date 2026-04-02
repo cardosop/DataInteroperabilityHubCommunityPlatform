@@ -184,7 +184,7 @@ test.describe('JOURNEY-AUTH-005: User Switches Active Tenant', () => {
         // Navigate to assets list — the page must load within the switched tenant context
         await page.goto('/assets', { waitUntil: 'domcontentloaded' });
         await page
-          .locator('.asset-list-page, .empty-state, .error-display, .loading-spinner-container')
+          .locator('.asset-list-page, .empty-state, .error-display')
           .first()
           .waitFor({ state: 'visible', timeout: 20000 })
           .catch(() => null);

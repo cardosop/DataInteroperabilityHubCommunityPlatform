@@ -10,6 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { createODCSContractViaApi } from '../../fixtures/api-assets';
 import { getTestUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
@@ -19,34 +20,35 @@ test.describe('UC-CM-002: Validate Contract / Link ODPS', () => {
   test.describe('Success', () => {
     test('contract edit page loads when contract exists', async ({ page }) => {
       const user = await getTestUser();
-      await loginAndNavigateToRoute(page, user, '/contracts', {
+      const contractId = await createODCSContractViaApi(user);
+      await loginAndNavigateToRoute(page, user, `/contracts/${contractId}`, {
         timeout: 60000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display',
+        contentSelector: '.contract-detail-page, .contract-detail-content, .error-display',
+        acceptRedirectToLogin: false,
       });
-      const row = page.locator('.contract-list-page tr.contract-row').first();
-      if ((await row.count()) > 0) {
-        await row.click();
-        await page.waitForURL(/\/contracts\/[^/]+$/, { timeout: 10000 });
-        const editBtn = page.locator('button:has-text("Edit")');
-        if ((await editBtn.count()) > 0) {
-          await editBtn.click();
-          await page.waitForLoadState('domcontentloaded');
-          expect(page.url()).toContain('/edit');
-        }
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login on contract detail');
       }
-      expect(page.url()).toContain('/contracts');
+      const editBtn = page.locator('button:has-text("Edit")');
+      await expect(editBtn.first()).toBeVisible({ timeout: 15000 });
+      await editBtn.first().click();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForSelector('.contract-editor-page, .error-display', { timeout: 15000 });
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login after opening contract edit');
+      }
+      expect(page.url()).toContain('/edit');
     });
   });
 
   test.describe('Failure', () => {
     test('contract edit with non-existent id shows error', async ({ page }) => {
       const user = await getTestUser();
-      await loginAndNavigateToRoute(page, user, '/', {
+      await loginAndNavigateToRoute(page, user, '/contracts/00000000-0000-0000-0000-000000000000/edit', {
         timeout: 60000,
-        contentSelector: '[data-testid="home-page"], .home-page, main',
+        contentSelector: '.contract-editor-page, .contract-detail-page, .error-display, [role="alert"]',
+        acceptRedirectToLogin: false,
       });
-      await page.goto('/contracts/00000000-0000-0000-0000-000000000000/edit');
-      await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.contract-editor-page, .contract-detail-page',
         waitAfterLoad: 8000,
@@ -58,20 +60,17 @@ test.describe('UC-CM-002: Validate Contract / Link ODPS', () => {
   test.describe('Edge', () => {
     test('link-odps route with non-existent id shows error or redirect', async ({ page }) => {
       const user = await getTestUser();
-      await loginAndNavigateToRoute(page, user, '/', {
+      // ODPSLinkPage now renders ErrorDisplay BEFORE loading spinner when contract not found.
+      // Do NOT include  — it would stop waitForAppMainReady too early.
+      await loginAndNavigateToRoute(page, user, '/contracts/00000000-0000-0000-0000-000000000000/link-odps', {
         timeout: 60000,
-        contentSelector: '[data-testid="home-page"], .home-page, main',
+        contentSelector: '.error-display, [role="alert"], .odps-link-page',
+        acceptRedirectToLogin: false,
       });
-      await page.goto('/contracts/00000000-0000-0000-0000-000000000000/link-odps');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.error-display, [role="alert"], .odps-link-page', {
-        timeout: 30000,
-      }).catch(() => null);
       const url = page.url();
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('[role="alert"]').count()) > 0 ||
-        (await page.locator('text=/not found|failed|403/i').count()) > 0;
+        (await page.locator('[role="alert"]').count()) > 0;
       expect(url.includes('/login') || url.includes('/403') || hasError).toBe(true);
     });
   });

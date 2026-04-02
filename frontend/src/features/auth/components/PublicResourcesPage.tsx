@@ -18,7 +18,7 @@ export function PublicResourcesPage() {
   const healthUrl = '/health';
 
   return (
-    <div className="auth-page">
+    <div className="auth-page" role="main">
       <div className="auth-container">
         <h1>Public Resources</h1>
         <p style={{ marginBottom: 'var(--spacing-md)', color: 'var(--color-neutral-700)' }}>

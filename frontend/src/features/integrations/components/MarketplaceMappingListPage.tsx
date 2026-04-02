@@ -6,10 +6,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMarketplaceMappings } from '../hooks/useMarketplaceMappings';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import './MarketplaceMappingListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function MarketplaceMappingListPage() {
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ export function MarketplaceMappingListPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading mappings..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -97,25 +98,21 @@ export function MarketplaceMappingListPage() {
 
       {data.count > pageSize && (
         <div className="mapping-list-pagination">
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => Math.max(1, p - 1))}
+ disabled={page === 1}>
             Previous
-          </button>
+          </Button>
           <span className="pagination-info">
             Page {page} of {Math.ceil(data.count / pageSize)}
           </span>
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => p + 1)}
-            disabled={page >= Math.ceil(data.count / pageSize)}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => p + 1)}
+ disabled={page>= Math.ceil(data.count / pageSize)}>
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>

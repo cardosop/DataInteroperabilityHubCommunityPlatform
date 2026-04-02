@@ -23,6 +23,35 @@
   color: var(--color-text-primary);
 }
 
+.transformation-list-filters {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.transformation-search-input {
+  flex: 1;
+  max-width: 400px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+}
+
+.transformation-status-filter {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+  background: var(--color-background-primary);
+}
+
+.transformation-no-results {
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
 .transformation-list-table {
   background: var(--color-background-primary);
   border: 1px solid var(--color-border);
@@ -67,3 +96,30 @@
   font-size: var(--font-size-base);
   color: var(--color-text-primary);
 }
+
+.pipeline-description-cell {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pipeline-date-cell {
+  white-space: nowrap;
+}
+
+.text-muted {
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* Pipeline + execution status badge colors */
+.status-badge.status-draft { background: var(--color-info-light, #dbeafe); color: var(--color-info, #2563eb); }
+.status-badge.status-active { background: var(--color-success-light, #d1fae5); color: var(--color-success, #059669); }
+.status-badge.status-inactive { background: var(--color-warning-light, #fef3c7); color: var(--color-warning, #d97706); }
+.status-badge.status-archived { background: var(--color-background-secondary, #f3f4f6); color: var(--color-text-secondary, #6b7280); }
+.status-badge.status-pending { background: var(--color-info-light, #dbeafe); color: var(--color-info, #2563eb); }
+.status-badge.status-running { background: var(--color-primary-light, #ede9fe); color: var(--color-primary, #7c3aed); }
+.status-badge.status-completed { background: var(--color-success-light, #d1fae5); color: var(--color-success, #059669); }
+.status-badge.status-failed { background: var(--color-error-light, #fee2e2); color: var(--color-error, #dc2626); }
+.status-badge.status-cancelled { background: var(--color-background-secondary, #f3f4f6); color: var(--color-text-secondary, #6b7280); }

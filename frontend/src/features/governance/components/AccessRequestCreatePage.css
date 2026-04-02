@@ -11,20 +11,6 @@
   color: var(--color-text-primary);
 }
 
-.governance-create-page .btn-back {
-  background: none;
-  border: none;
-  color: var(--color-primary);
-  cursor: pointer;
-  font-size: var(--font-size-base);
-  padding: 0;
-  margin-bottom: var(--spacing-md);
-}
-
-.governance-create-page .btn-back:hover {
-  text-decoration: underline;
-}
-
 .governance-create-form .form-group {
   margin-bottom: var(--spacing-lg);
 }

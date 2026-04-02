@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { assertFailureRedirect, assertSuccessLoad } from '../fixtures/journey-helpers';
+import { assertSuccessLoad } from '../fixtures/journey-helpers';
 import { waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Contracts', () => {
@@ -17,11 +17,11 @@ test.describe('Feature: Contracts', () => {
       try {
         await waitForAppMainReady(page, {
           timeout: 60000,
-          contentSelector: '.contract-list-page, .empty-state, .error-display, .loading-spinner-container',
+          contentSelector: '.contract-list-page, .empty-state',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          await assertFailureRedirect(page);
+          test.skip(true, 'Redirected to login — auth may have expired');
           return;
         }
         throw _err;
@@ -41,7 +41,7 @@ test.describe('Feature: Contracts', () => {
       const onLogin = page.url().includes('/login');
       const hasError = (await page.locator('.error-display').count()) > 0;
       const noEditor = (await page.locator('.contract-editor-page').count()) === 0;
-      expect(onLogin || hasError || noEditor).toBe(true);
+      expect(onLogin || hasError || noEditor).toBe(true) /* acceptable states */;
     });
   });
 
@@ -57,7 +57,7 @@ test.describe('Feature: Contracts', () => {
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('text=/not found|failed|403|forbidden/i').count()) > 0;
-      expect(onLinkOdps || hasError || onLogin || on403).toBe(true);
+      expect(onLinkOdps || hasError || onLogin || on403).toBe(true) /* acceptable states */;
     });
   });
 });

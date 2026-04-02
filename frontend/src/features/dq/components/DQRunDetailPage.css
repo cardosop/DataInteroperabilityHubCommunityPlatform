@@ -6,20 +6,6 @@
   margin-bottom: 2rem;
 }
 
-.btn-back {
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  background: var(--color-background-primary);
-  cursor: pointer;
-  font-size: 0.9rem;
-  color: var(--color-text-primary);
-}
-
-.btn-back:hover {
-  background: var(--color-neutral-100);
-}
-
 .dq-run-detail-content {
   background: var(--color-background-primary);
   border-radius: 8px;

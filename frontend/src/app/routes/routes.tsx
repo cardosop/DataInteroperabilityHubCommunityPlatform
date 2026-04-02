@@ -4,12 +4,13 @@
  */
 /* eslint-disable react-refresh/only-export-components */
 
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 // Critical routes - eagerly loaded (login, public pages)
 import { AcceptInvitationPage } from '../../features/auth/components/AcceptInvitationPage';
 import { LoginPage } from '../../features/auth/components/LoginPage';
-import { OrgOnboardingPage } from '../../features/tenants/components/OrgOnboardingPage';
+import { VerifyEmailPage } from '../../features/auth/components/VerifyEmailPage';
+// OrgOnboardingPage removed — org creation is now a Platform Admin function in /admin
 import { PasswordResetConfirmPage } from '../../features/auth/components/PasswordResetConfirmPage';
 import { PasswordResetPage } from '../../features/auth/components/PasswordResetPage';
 import { PublicResourcesPage } from '../../features/auth/components/PublicResourcesPage';
@@ -17,9 +18,22 @@ import { RegisterPage } from '../../features/auth/components/RegisterPage';
 import { RegistrationRoute } from '../../features/auth/components/RegistrationRoute';
 import { RootRoute } from './RootRoute';
 import { CapabilityRoute } from '../../shared/components/CapabilityRoute';
+import { ErrorBoundary } from '../../shared/components/ErrorBoundary';
 import { LoadingSpinner } from '../../shared/components/LoadingSpinner';
 import { ProtectedRoute } from '../../shared/components/ProtectedRoute';
+import { ComingSoonPage } from '../../shared/components/ComingSoonPage';
 import { UnavailablePage } from '../../shared/components/UnavailablePage';
+
+/** Wrap a lazy-loaded page in both Suspense and ErrorBoundary */
+function EB({ fallbackMsg, children }: { fallbackMsg: string; children: ReactNode }) {
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<LoadingSpinner message={fallbackMsg} />}>
+        {children}
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
 
 // Lazy load non-critical routes for code splitting
 const AISearchPage = lazy(() =>
@@ -92,6 +106,12 @@ const TenantSettingsPage = lazy(() =>
 );
 const BaaSPage = lazy(() =>
   import('../../features/baas/components/BaaSPage').then((m) => ({ default: m.BaaSPage }))
+);
+const CustomerDetailPage = lazy(() =>
+  import('../../features/baas/components/CustomerDetailPage').then((m) => ({ default: m.CustomerDetailPage }))
+);
+const BillingReportDetailPage = lazy(() =>
+  import('../../features/baas/components/BillingReportDetailPage').then((m) => ({ default: m.BillingReportDetailPage }))
 );
 const ComplianceRunDetailPage = lazy(() =>
   import('../../features/compliance/components/ComplianceRunDetailPage').then((m) => ({
@@ -218,6 +238,15 @@ const TopologyVisualization = lazy(() =>
 const MLPage = lazy(() =>
   import('../../features/ml/components/MLPage').then((m) => ({ default: m.MLPage }))
 );
+const MLModelDetailPage = lazy(() =>
+  import('../../features/ml/components/MLModelDetailPage').then((m) => ({ default: m.MLModelDetailPage }))
+);
+const TrainingDashboardPage = lazy(() =>
+  import('../../features/ml/components/TrainingDashboardPage').then((m) => ({ default: m.TrainingDashboardPage }))
+);
+const InferenceMetricsPage = lazy(() =>
+  import('../../features/ml/components/InferenceMetricsPage').then((m) => ({ default: m.InferenceMetricsPage }))
+);
 const ObservabilityPage = lazy(() =>
   import('../../features/observability/components/ObservabilityPage').then((m) => ({
     default: m.ObservabilityPage,
@@ -307,6 +336,11 @@ const TransformationPipelineCreatePage = lazy(() =>
     default: m.TransformationPipelineCreatePage,
   }))
 );
+const TransformationRunDetailPage = lazy(() =>
+  import('../../features/transformation/components/TransformationRunDetailPage').then((m) => ({
+    default: m.TransformationRunDetailPage,
+  }))
+);
 const VirtualDatasetCreatePage = lazy(() =>
   import('../../features/virtualization/components/VirtualDatasetCreatePage').then((m) => ({
     default: m.VirtualDatasetCreatePage,
@@ -366,6 +400,11 @@ const ListingDetailPage = lazy(() =>
 const ListingPublishPage = lazy(() =>
   import('../../features/marketplace/components/ListingPublishPage').then((m) => ({
     default: m.ListingPublishPage,
+  }))
+);
+const CheckoutPage = lazy(() =>
+  import('../../features/marketplace/components/CheckoutPage').then((m) => ({
+    default: m.CheckoutPage,
   }))
 );
 const OrderListPage = lazy(() =>
@@ -455,6 +494,14 @@ export const router = createBrowserRouter([
     element: <LoginPage />,
   },
   {
+    path: '/verify-email',
+    element: <VerifyEmailPage />,
+  },
+  {
+    path: '/auth/verify-email',
+    element: <VerifyEmailPage />,
+  },
+  {
     path: '/public',
     element: <PublicResourcesPage />,
   },
@@ -466,10 +513,7 @@ export const router = createBrowserRouter([
       </RegistrationRoute>
     ),
   },
-  {
-    path: '/onboard-org',
-    element: <OrgOnboardingPage />,
-  },
+  // /onboard-org removed — org creation is now a Platform Admin function in /admin
   {
     path: '/password-reset',
     element: (
@@ -508,11 +552,15 @@ export const router = createBrowserRouter([
     element: <UnavailablePage />,
   },
   {
+    path: '/coming-soon',
+    element: <ComingSoonPage />,
+  },
+  {
     path: '/403',
     element: (
-      <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+      <EB fallbackMsg="Loading...">
         <ForbiddenPage />
-      </Suspense>
+      </EB>
     ),
   },
   {
@@ -522,9 +570,9 @@ export const router = createBrowserRouter([
       {
         index: true,
         element: (
-          <Suspense fallback={<LoadingSpinner message="Loading dashboard..." />}>
+          <EB fallbackMsg="Loading dashboard...">
             <HomePage />
-          </Suspense>
+          </EB>
         ),
       },
       {
@@ -533,25 +581,25 @@ export const router = createBrowserRouter([
           {
             index: true,
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading assets..." />}>
+              <EB fallbackMsg="Loading assets...">
                 <AssetListPage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: 'create',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+              <EB fallbackMsg="Loading...">
                 <AssetCreatePage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: ':id',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading asset..." />}>
+              <EB fallbackMsg="Loading asset...">
                 <AssetDetailPage />
-              </Suspense>
+              </EB>
             ),
           },
         ],
@@ -562,33 +610,33 @@ export const router = createBrowserRouter([
           {
             index: true,
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading datasets..." />}>
+              <EB fallbackMsg="Loading datasets...">
                 <DatasetListPage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: 'create',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+              <EB fallbackMsg="Loading...">
                 <DatasetCreatePage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: ':id',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading dataset..." />}>
+              <EB fallbackMsg="Loading dataset...">
                 <DatasetDetailPage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: ':id/versions',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading versions..." />}>
+              <EB fallbackMsg="Loading versions...">
                 <DatasetVersionsPage />
-              </Suspense>
+              </EB>
             ),
           },
         ],
@@ -599,9 +647,9 @@ export const router = createBrowserRouter([
           {
             index: true,
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading files..." />}>
+              <EB fallbackMsg="Loading files...">
                 <FileListPage />
-              </Suspense>
+              </EB>
             ),
           },
         ],
@@ -612,33 +660,33 @@ export const router = createBrowserRouter([
           {
             index: true,
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading contracts..." />}>
+              <EB fallbackMsg="Loading contracts...">
                 <ContractListPage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: ':id',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading contract..." />}>
+              <EB fallbackMsg="Loading contract...">
                 <ContractDetailPage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: ':id/edit',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading contract editor..." />}>
+              <EB fallbackMsg="Loading contract editor...">
                 <ContractEditorPage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: ':id/link-odps',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+              <EB fallbackMsg="Loading...">
                 <ODPSLinkPage />
-              </Suspense>
+              </EB>
             ),
           },
         ],
@@ -649,25 +697,33 @@ export const router = createBrowserRouter([
           {
             index: true,
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading marketplace..." />}>
+              <EB fallbackMsg="Loading marketplace...">
                 <ListingListPage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: 'listings/:id',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading listing..." />}>
+              <EB fallbackMsg="Loading listing...">
                 <ListingDetailPage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: 'publish',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading publish page..." />}>
+              <EB fallbackMsg="Loading publish page...">
                 <ListingPublishPage />
-              </Suspense>
+              </EB>
+            ),
+          },
+          {
+            path: 'checkout/:listingId',
+            element: (
+              <EB fallbackMsg="Loading checkout...">
+                <CheckoutPage />
+              </EB>
             ),
           },
           {
@@ -676,17 +732,17 @@ export const router = createBrowserRouter([
               {
                 index: true,
                 element: (
-                  <Suspense fallback={<LoadingSpinner message="Loading orders..." />}>
+                  <EB fallbackMsg="Loading orders...">
                     <OrderListPage />
-                  </Suspense>
+                  </EB>
                 ),
               },
               {
                 path: ':id',
                 element: (
-                  <Suspense fallback={<LoadingSpinner message="Loading order..." />}>
+                  <EB fallbackMsg="Loading order...">
                     <OrderDetailPage />
-                  </Suspense>
+                  </EB>
                 ),
               },
             ],
@@ -697,17 +753,17 @@ export const router = createBrowserRouter([
               {
                 index: true,
                 element: (
-                  <Suspense fallback={<LoadingSpinner message="Loading entitlements..." />}>
+                  <EB fallbackMsg="Loading entitlements...">
                     <EntitlementListPage />
-                  </Suspense>
+                  </EB>
                 ),
               },
               {
                 path: ':id',
                 element: (
-                  <Suspense fallback={<LoadingSpinner message="Loading entitlement..." />}>
+                  <EB fallbackMsg="Loading entitlement...">
                     <EntitlementDetailPage />
-                  </Suspense>
+                  </EB>
                 ),
               },
             ],
@@ -717,9 +773,9 @@ export const router = createBrowserRouter([
       {
         path: 'integrations',
         element: (
-          <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+          <EB fallbackMsg="Loading...">
             <IntegrationsLayout />
-          </Suspense>
+          </EB>
         ),
         children: [
           {
@@ -728,33 +784,33 @@ export const router = createBrowserRouter([
               {
                 index: true,
                 element: (
-                  <Suspense fallback={<LoadingSpinner message="Loading connections..." />}>
+                  <EB fallbackMsg="Loading connections...">
                     <MarketplaceConnectionListPage />
-                  </Suspense>
+                  </EB>
                 ),
               },
               {
                 path: 'create',
                 element: (
-                  <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                  <EB fallbackMsg="Loading...">
                     <MarketplaceConnectionCreatePage />
-                  </Suspense>
+                  </EB>
                 ),
               },
               {
                 path: ':id/edit',
                 element: (
-                  <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                  <EB fallbackMsg="Loading...">
                     <MarketplaceConnectionEditPage />
-                  </Suspense>
+                  </EB>
                 ),
               },
               {
                 path: ':id',
                 element: (
-                  <Suspense fallback={<LoadingSpinner message="Loading connection..." />}>
+                  <EB fallbackMsg="Loading connection...">
                     <MarketplaceConnectionDetailPage />
-                  </Suspense>
+                  </EB>
                 ),
               },
             ],
@@ -765,9 +821,9 @@ export const router = createBrowserRouter([
               {
                 index: true,
                 element: (
-                  <Suspense fallback={<LoadingSpinner message="Loading sync jobs..." />}>
+                  <EB fallbackMsg="Loading sync jobs...">
                     <MarketplaceSyncJobListPage />
-                  </Suspense>
+                  </EB>
                 ),
               },
             ],
@@ -778,9 +834,9 @@ export const router = createBrowserRouter([
               {
                 index: true,
                 element: (
-                  <Suspense fallback={<LoadingSpinner message="Loading mappings..." />}>
+                  <EB fallbackMsg="Loading mappings...">
                     <MarketplaceMappingListPage />
-                  </Suspense>
+                  </EB>
                 ),
               },
               {
@@ -798,15 +854,15 @@ export const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <ODPSListPage />,
+            element: <EB fallbackMsg="Loading ODPS..."><ODPSListPage /></EB>,
           },
           {
             path: 'upload',
-            element: <ODPSUploadPage />,
+            element: <EB fallbackMsg="Loading..."><ODPSUploadPage /></EB>,
           },
           {
             path: ':id',
-            element: <ODPSDetailPage />,
+            element: <EB fallbackMsg="Loading ODPS..."><ODPSDetailPage /></EB>,
           },
         ],
       },
@@ -815,11 +871,11 @@ export const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <DQRunListPage />,
+            element: <EB fallbackMsg="Loading..."><DQRunListPage /></EB>,
           },
           {
             path: 'runs/:id',
-            element: <DQRunDetailPage />,
+            element: <EB fallbackMsg="Loading..."><DQRunDetailPage /></EB>,
           },
         ],
       },
@@ -828,11 +884,11 @@ export const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <ComplianceRunListPage />,
+            element: <EB fallbackMsg="Loading..."><ComplianceRunListPage /></EB>,
           },
           {
             path: 'runs/:id',
-            element: <ComplianceRunDetailPage />,
+            element: <EB fallbackMsg="Loading..."><ComplianceRunDetailPage /></EB>,
           },
         ],
       },
@@ -843,33 +899,33 @@ export const router = createBrowserRouter([
           {
             index: true,
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading mesh domains..." />}>
+              <EB fallbackMsg="Loading mesh domains...">
                 <MeshDomainListPage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: 'topology',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading topology..." />}>
+              <EB fallbackMsg="Loading topology...">
                 <TopologyVisualization />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: 'create',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading create form..." />}>
+              <EB fallbackMsg="Loading create form...">
                 <MeshDomainCreatePage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: ':id',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading domain..." />}>
+              <EB fallbackMsg="Loading domain...">
                 <MeshDomainDetailPage />
-              </Suspense>
+              </EB>
             ),
           },
         ],
@@ -878,38 +934,44 @@ export const router = createBrowserRouter([
         path: 'virtualization',
         element: <VirtualizationPage />,
         children: [
-          { index: true, element: <VirtualDatasetListPage /> },
-          { path: 'create', element: <VirtualDatasetCreatePage /> },
-          { path: ':id/edit', element: <VirtualDatasetEditPage /> },
-          { path: ':id', element: <VirtualDatasetDetailPage /> },
+          { index: true, element: <EB fallbackMsg="Loading..."><VirtualDatasetListPage /></EB> },
+          { path: 'create', element: <EB fallbackMsg="Loading..."><VirtualDatasetCreatePage /></EB> },
+          { path: ':id/edit', element: <EB fallbackMsg="Loading..."><VirtualDatasetEditPage /></EB> },
+          { path: ':id', element: <EB fallbackMsg="Loading..."><VirtualDatasetDetailPage /></EB> },
         ],
       },
       {
         path: 'search',
-        element: <SearchPage />,
+        element: <EB fallbackMsg="Loading..."><SearchPage /></EB>,
       },
       {
         path: 'semantic',
         element: (
-          <CapabilityRoute capability="semantic.sparql">
-            <SemanticPage />
-          </CapabilityRoute>
+          <ErrorBoundary>
+            <CapabilityRoute capability="semantic.sparql">
+              <SemanticPage />
+            </CapabilityRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'ai/search',
         element: (
-          <CapabilityRoute capability="ai.natural-language-search">
-            <AISearchPage />
-          </CapabilityRoute>
+          <ErrorBoundary>
+            <CapabilityRoute capability="ai.natural-language-search">
+              <AISearchPage />
+            </CapabilityRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'ai/schema-matching',
         element: (
-          <CapabilityRoute capability="ai.schema-matching">
-            <SchemaMatchingPage />
-          </CapabilityRoute>
+          <ErrorBoundary>
+            <CapabilityRoute capability="ai.schema-matching">
+              <SchemaMatchingPage />
+            </CapabilityRoute>
+          </ErrorBoundary>
         ),
       },
       {
@@ -924,41 +986,104 @@ export const router = createBrowserRouter([
       {
         path: 'communities',
         element: (
-          <CapabilityRoute capability="social.communities">
-            <CommunitiesPage />
-          </CapabilityRoute>
+          <ErrorBoundary>
+            <CapabilityRoute capability="social.communities">
+              <CommunitiesPage />
+            </CapabilityRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'developer',
         element: (
-          <CapabilityRoute capability="developer.plugins">
-            <DeveloperPortalPage />
-          </CapabilityRoute>
+          <ErrorBoundary>
+            <CapabilityRoute capability="developer.plugins">
+              <DeveloperPortalPage />
+            </CapabilityRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'baas',
         element: (
-          <CapabilityRoute capability="baas.api-keys">
-            <BaaSPage />
-          </CapabilityRoute>
+          <ErrorBoundary>
+            <CapabilityRoute capability="baas.api-keys">
+              <BaaSPage />
+            </CapabilityRoute>
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: 'baas/customers/:customerId',
+        element: (
+          <ErrorBoundary>
+            <CapabilityRoute capability="baas.api-keys">
+              <CustomerDetailPage />
+            </CapabilityRoute>
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: 'baas/billing-reports/:reportId',
+        element: (
+          <ErrorBoundary>
+            <CapabilityRoute capability="baas.api-keys">
+              <BillingReportDetailPage />
+            </CapabilityRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'ml',
-        element: (
-          <CapabilityRoute capability="ml.models">
-            <MLPage />
-          </CapabilityRoute>
-        ),
+        children: [
+          {
+            index: true,
+            element: (
+              <ErrorBoundary>
+                <CapabilityRoute capability="ml.models">
+                  <MLPage />
+                </CapabilityRoute>
+              </ErrorBoundary>
+            ),
+          },
+          {
+            path: 'models/:id',
+            element: (
+              <ErrorBoundary>
+                <CapabilityRoute capability="ml.models">
+                  <MLModelDetailPage />
+                </CapabilityRoute>
+              </ErrorBoundary>
+            ),
+          },
+          {
+            path: 'training/:id',
+            element: (
+              <ErrorBoundary>
+                <CapabilityRoute capability="ml.models">
+                  <TrainingDashboardPage />
+                </CapabilityRoute>
+              </ErrorBoundary>
+            ),
+          },
+          {
+            path: 'inference/:id',
+            element: (
+              <ErrorBoundary>
+                <CapabilityRoute capability="ml.models">
+                  <InferenceMetricsPage />
+                </CapabilityRoute>
+              </ErrorBoundary>
+            ),
+          },
+        ],
       },
       {
         path: 'observability',
         element: (
-          <Suspense fallback={<LoadingSpinner message="Loading observability..." />}>
+          <EB fallbackMsg="Loading observability...">
             <ObservabilityPage />
-          </Suspense>
+          </EB>
         ),
       },
       {
@@ -966,11 +1091,11 @@ export const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <JobListPage />,
+            element: <EB fallbackMsg="Loading..."><JobListPage /></EB>,
           },
           {
             path: ':id',
-            element: <JobDetailPage />,
+            element: <EB fallbackMsg="Loading..."><JobDetailPage /></EB>,
           },
         ],
       },
@@ -978,15 +1103,16 @@ export const router = createBrowserRouter([
         path: 'transformation',
         element: (
           <CapabilityRoute capability="transformation">
-            <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+            <EB fallbackMsg="Loading...">
               <Outlet />
-            </Suspense>
+            </EB>
           </CapabilityRoute>
         ),
         children: [
-          { index: true, element: <TransformationPipelineListPage /> },
-          { path: 'create', element: <TransformationPipelineCreatePage /> },
-          { path: 'pipelines/:id', element: <TransformationPipelineDetailPage /> },
+          { index: true, element: <EB fallbackMsg="Loading..."><TransformationPipelineListPage /></EB> },
+          { path: 'create', element: <EB fallbackMsg="Loading..."><TransformationPipelineCreatePage /></EB> },
+          { path: 'pipelines/:id', element: <EB fallbackMsg="Loading..."><TransformationPipelineDetailPage /></EB> },
+          { path: 'executions/:id', element: <EB fallbackMsg="Loading..."><TransformationRunDetailPage /></EB> },
         ],
       },
       {
@@ -994,19 +1120,19 @@ export const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <WebhookListPage />,
+            element: <EB fallbackMsg="Loading..."><WebhookListPage /></EB>,
           },
           {
             path: 'create',
-            element: <WebhookCreatePage />,
+            element: <EB fallbackMsg="Loading..."><WebhookCreatePage /></EB>,
           },
           {
             path: ':id',
-            element: <WebhookDetailPage />,
+            element: <EB fallbackMsg="Loading..."><WebhookDetailPage /></EB>,
           },
           {
             path: ':id/edit',
-            element: <WebhookEditPage />,
+            element: <EB fallbackMsg="Loading..."><WebhookEditPage /></EB>,
           },
         ],
       },
@@ -1018,102 +1144,122 @@ export const router = createBrowserRouter([
           </ProtectedRoute>
         ),
         children: [
-          { index: true, element: <AccessRequestListPage /> },
-          { path: 'access-requests/create', element: <AccessRequestCreatePage /> },
-          { path: 'access-requests/:id', element: <AccessRequestDetailPage /> },
-          { path: 'retention', element: <RetentionPolicyListPage /> },
-          { path: 'retention/new', element: <RetentionPolicyCreatePage /> },
-          { path: 'retention/:id', element: <RetentionPolicyDetailPage /> },
-          { path: 'retention/:id/edit', element: <RetentionPolicyEditPage /> },
+          { index: true, element: <EB fallbackMsg="Loading..."><AccessRequestListPage /></EB> },
+          { path: 'access-requests/create', element: <EB fallbackMsg="Loading..."><AccessRequestCreatePage /></EB> },
+          { path: 'access-requests/:id', element: <EB fallbackMsg="Loading..."><AccessRequestDetailPage /></EB> },
+          { path: 'retention', element: <EB fallbackMsg="Loading..."><RetentionPolicyListPage /></EB> },
+          { path: 'retention/new', element: <EB fallbackMsg="Loading..."><RetentionPolicyCreatePage /></EB> },
+          { path: 'retention/:id', element: <EB fallbackMsg="Loading..."><RetentionPolicyDetailPage /></EB> },
+          { path: 'retention/:id/edit', element: <EB fallbackMsg="Loading..."><RetentionPolicyEditPage /></EB> },
         ],
       },
       {
         path: 'audit',
         element: (
-          <ProtectedRoute requiredRole={['AUDITOR', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-            <AuditEventListPage />
-          </ProtectedRoute>
+          <ErrorBoundary>
+            <ProtectedRoute requiredRole={['AUDITOR', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+              <AuditEventListPage />
+            </ProtectedRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'audit/:id',
         element: (
-          <ProtectedRoute requiredRole={['AUDITOR', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-            <AuditEventDetailPage />
-          </ProtectedRoute>
+          <ErrorBoundary>
+            <ProtectedRoute requiredRole={['AUDITOR', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+              <AuditEventDetailPage />
+            </ProtectedRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'scheduled-ingestions',
         element: (
-          <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-            <ScheduledIngestionListPage />
-          </ProtectedRoute>
+          <ErrorBoundary>
+            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+              <ScheduledIngestionListPage />
+            </ProtectedRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'scheduled-ingestions/create',
         element: (
-          <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-            <ScheduledIngestionCreatePage />
-          </ProtectedRoute>
+          <ErrorBoundary>
+            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+              <ScheduledIngestionCreatePage />
+            </ProtectedRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'scheduled-ingestions/:id',
         element: (
-          <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-            <ScheduledIngestionDetailPage />
-          </ProtectedRoute>
+          <ErrorBoundary>
+            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+              <ScheduledIngestionDetailPage />
+            </ProtectedRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'scheduled-ingestions/:id/edit',
         element: (
-          <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-            <ScheduledIngestionEditPage />
-          </ProtectedRoute>
+          <ErrorBoundary>
+            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+              <ScheduledIngestionEditPage />
+            </ProtectedRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'scheduled-exports',
         element: (
-          <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-            <ScheduledExportListPage />
-          </ProtectedRoute>
+          <ErrorBoundary>
+            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+              <ScheduledExportListPage />
+            </ProtectedRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'scheduled-exports/create',
         element: (
-          <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-            <ScheduledExportCreatePage />
-          </ProtectedRoute>
+          <ErrorBoundary>
+            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+              <ScheduledExportCreatePage />
+            </ProtectedRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'scheduled-exports/:id',
         element: (
-          <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-            <ScheduledExportDetailPage />
-          </ProtectedRoute>
+          <ErrorBoundary>
+            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+              <ScheduledExportDetailPage />
+            </ProtectedRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'scheduled-exports/:id/edit',
         element: (
-          <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-            <ScheduledExportEditPage />
-          </ProtectedRoute>
+          <ErrorBoundary>
+            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+              <ScheduledExportEditPage />
+            </ProtectedRoute>
+          </ErrorBoundary>
         ),
       },
       {
         path: 'admin',
         element: (
           <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-            <Suspense fallback={<LoadingSpinner message="Loading admin..." />}>
+            <EB fallbackMsg="Loading admin...">
               <AdminPage />
-            </Suspense>
+            </EB>
           </ProtectedRoute>
         ),
       },
@@ -1121,9 +1267,9 @@ export const router = createBrowserRouter([
         path: 'admin/users/:id/edit',
         element: (
           <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-            <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+            <EB fallbackMsg="Loading...">
               <UserEditPage />
-            </Suspense>
+            </EB>
           </ProtectedRoute>
         ),
       },
@@ -1133,42 +1279,42 @@ export const router = createBrowserRouter([
           {
             path: 'profile',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading profile..." />}>
+              <EB fallbackMsg="Loading profile...">
                 <ProfilePage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: 'sessions',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading sessions..." />}>
+              <EB fallbackMsg="Loading sessions...">
                 <SessionListPage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: 'privacy',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading privacy..." />}>
+              <EB fallbackMsg="Loading privacy...">
                 <PrivacyPage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: 'api-keys',
             element: (
-              <Suspense fallback={<LoadingSpinner message="Loading API keys..." />}>
+              <EB fallbackMsg="Loading API keys...">
                 <AuthAPIKeyListPage />
-              </Suspense>
+              </EB>
             ),
           },
           {
             path: 'tenant',
             element: (
               <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-                <Suspense fallback={<LoadingSpinner message="Loading tenant settings..." />}>
+                <EB fallbackMsg="Loading tenant settings...">
                   <TenantSettingsPage />
-                </Suspense>
+                </EB>
               </ProtectedRoute>
             ),
           },
@@ -1176,9 +1322,9 @@ export const router = createBrowserRouter([
             path: 'subscription',
             element: (
               <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-                <Suspense fallback={<LoadingSpinner message="Loading subscription..." />}>
+                <EB fallbackMsg="Loading subscription...">
                   <SubscriptionPage />
-                </Suspense>
+                </EB>
               </ProtectedRoute>
             ),
           },
@@ -1186,9 +1332,9 @@ export const router = createBrowserRouter([
             path: 'cost',
             element: (
               <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-                <Suspense fallback={<LoadingSpinner message="Loading cost tracking..." />}>
+                <EB fallbackMsg="Loading cost tracking...">
                   <CostPage />
-                </Suspense>
+                </EB>
               </ProtectedRoute>
             ),
           },
@@ -1199,9 +1345,9 @@ export const router = createBrowserRouter([
   {
     path: '*',
     element: (
-      <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+      <EB fallbackMsg="Loading...">
         <NotFoundPage />
-      </Suspense>
+      </EB>
     ),
   },
 ]);

@@ -20,6 +20,45 @@ fail_no_backend() {
   exit 1
 }
 
+# True when Vite (or any HTTP server) accepts GET / on the E2E web port.
+# Prefer 127.0.0.1 first — avoids IPv6/localhost resolution differences with Node/Playwright.
+curl_frontend_root() {
+  local port="${1:?}"
+  curl -sf --connect-timeout 3 --max-time 10 "http://127.0.0.1:${port}/" > /dev/null 2>&1 \
+    || curl -sf --connect-timeout 3 --max-time 10 "http://localhost:${port}/" > /dev/null 2>&1
+}
+
+# Start npm run dev on port if nothing is listening; wait until HTTP answers.
+# Sets FRONTEND_STARTED=true and EXIT trap when this process starts Vite (see bottom: no exec).
+ensure_e2e_frontend_dev_server() {
+  local port="${1:?}"
+  if curl_frontend_root "$port"; then
+    echo "Frontend already running at http://localhost:${port}"
+    return 0
+  fi
+  echo "Starting frontend dev server on port ${port}..."
+  VITE_WS_ENABLED=false VITE_E2E_TEST=true npm run dev -- --port "${port}" --strictPort &
+  FRONTEND_PID=$!
+  FRONTEND_STARTED=true
+  trap 'kill "$FRONTEND_PID" 2>/dev/null || true' EXIT
+  local i
+  for i in $(seq 1 60); do
+    if curl_frontend_root "$port"; then
+      echo "Frontend ready at http://localhost:${port}"
+      return 0
+    fi
+    if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
+      echo "❌ Frontend process exited unexpectedly before becoming ready."
+      echo "   Check: npm run dev -- --port ${port} --strictPort (strictPort fails if port is held by a stale process)"
+      return 1
+    fi
+    sleep 2
+  done
+  echo "❌ Frontend failed to become ready within ~120s"
+  kill "$FRONTEND_PID" 2>/dev/null || true
+  return 1
+}
+
 # If VITE_API_BASE_URL is already set, still verify backend is reachable before running
 if [[ -n "${VITE_API_BASE_URL:-}" ]]; then
   echo "Using VITE_API_BASE_URL=${VITE_API_BASE_URL}"
@@ -73,6 +112,8 @@ elif curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1;
   export VITE_API_BASE_URL=/api/v1
   export VITE_PROXY_TARGET=http://localhost:8001
   export E2E_API_BASE_URL=http://localhost:8001/api/v1
+  # Local Vite on 5184 — must override FRONTEND_URL from .env (often :3010 for docker nginx)
+  # so Playwright baseURL and webServer use the same port (see src/lib/playwright-frontend-resolve.ts).
   export E2E_WEB_PORT=5184
   export PREFECT_INTEGRATION_SERVICE_URL="${PREFECT_INTEGRATION_SERVICE_URL:-http://localhost:8114}"
   # ODBC E2E (phase6): API connects to postgres-test from inside container
@@ -158,36 +199,24 @@ elif curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1;
   docker exec hub-test-api python hub/manage.py ensure_e2e_subscription 2>/dev/null || true
 
   # Start frontend dev server explicitly so Playwright has a reliable target.
-  # Playwright's webServer with reuseExistingServer will reuse this.
+  # Playwright's webServer with reuseExistingServer will reuse this if HTTP still answers.
   FRONTEND_STARTED=false
-  if ! curl -sf --connect-timeout 5 "http://localhost:${E2E_WEB_PORT}/" > /dev/null 2>&1; then
-    echo "Starting frontend dev server on port ${E2E_WEB_PORT}..."
-    VITE_WS_ENABLED=false VITE_E2E_TEST=true npm run dev -- --port "${E2E_WEB_PORT}" --strictPort &
-    FRONTEND_PID=$!
-    FRONTEND_STARTED=true
-    trap "kill $FRONTEND_PID 2>/dev/null || true" EXIT
-    for i in $(seq 1 60); do
-      if curl -sf --connect-timeout 5 "http://localhost:${E2E_WEB_PORT}/" > /dev/null 2>&1; then
-        echo "Frontend ready at http://localhost:${E2E_WEB_PORT}"
-        break
-      fi
-      if ! kill -0 $FRONTEND_PID 2>/dev/null; then
-        echo "Frontend process exited unexpectedly"
-        exit 1
-      fi
-      sleep 2
-    done
-    if ! curl -sf --connect-timeout 5 "http://localhost:${E2E_WEB_PORT}/" > /dev/null 2>&1; then
-      echo "Frontend failed to become ready within 120s"
-      kill $FRONTEND_PID 2>/dev/null || true
-      exit 1
-    fi
-  else
-    echo "Frontend already running at http://localhost:${E2E_WEB_PORT}"
-  fi
+  ensure_e2e_frontend_dev_server "${E2E_WEB_PORT}" || exit 1
 else
   fail_no_backend
 fi
+
+# Default to --project chromium when no --project is specified and E2E_VISIBLE is not set.
+# Running all 3 projects (chromium + visible + chromium-routes) triples execution time
+# since they run the same tests on the same browser. Use E2E_VISIBLE=1 to add the
+# headed+slowMo visible project for interactive debugging.
+HAS_PROJECT_ARG=false
+for check_arg in "$@"; do
+  if [[ "$check_arg" == --project=* ]] || [[ "$check_arg" == --project ]]; then
+    HAS_PROJECT_ARG=true
+    break
+  fi
+done
 
 # Cap workers to 4 to reduce API/rate-limit pressure (5+ workers cause auth flakiness)
 # Handles both --workers=5 and --workers 5 (space-separated)
@@ -224,6 +253,26 @@ if ! curl -s --connect-timeout 5 "${API_ORIGIN}/health/" > /dev/null 2>&1; then
 fi
 echo "Checking backend API availability at ${E2E_API_BASE_URL:-$API_ORIGIN/api/v1}..."
 echo "✅ Backend API is available and responding"
+
+# Vite may stop between the first curl and Playwright (OOM, strictPort conflict, user stopped dev server).
+# Playwright webServer with reuseExistingServer does not restart a server that later disappears.
+# Re-verify here so setup-auth never hits ERR_CONNECTION_REFUSED on a stale "already running".
+if [[ -n "${E2E_WEB_PORT:-}" ]]; then
+  if ! curl_frontend_root "${E2E_WEB_PORT}"; then
+    echo "⚠️  Frontend on port ${E2E_WEB_PORT} not responding before Playwright; ensuring dev server..."
+    ensure_e2e_frontend_dev_server "${E2E_WEB_PORT}" || exit 1
+  fi
+fi
+
+# When no --project flag was passed, default to chromium only (avoids 3x test duplication).
+# E2E_VISIBLE=1 adds the visible project; E2E_ALL_PROJECTS=1 runs all 3.
+if [[ "$HAS_PROJECT_ARG" == "false" ]] && [[ "${E2E_ALL_PROJECTS:-0}" != "1" ]]; then
+  if [[ "${E2E_VISIBLE:-0}" == "1" ]]; then
+    ARGS+=(--project=chromium --project=visible)
+  else
+    ARGS+=(--project=chromium)
+  fi
+fi
 
 # When we started the frontend, don't use exec so the EXIT trap runs to kill it
 if [[ "${FRONTEND_STARTED:-false}" == "true" ]]; then

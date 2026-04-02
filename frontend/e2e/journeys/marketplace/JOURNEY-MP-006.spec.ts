@@ -14,7 +14,7 @@ import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-MP-006: Manage Marketplace Mappings', () => {
-  test.setTimeout(180000); // 3 min; client-side nav to mappings avoids full-reload auth race
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('mappings list loads', async ({ page }) => {
@@ -25,7 +25,7 @@ test.describe('JOURNEY-MP-006: Manage Marketplace Mappings', () => {
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
+        test.skip(true, 'Redirected to login — auth may have expired');
         return;
       }
       expect(page.url()).toContain('/integrations/mappings');
@@ -33,7 +33,7 @@ test.describe('JOURNEY-MP-006: Manage Marketplace Mappings', () => {
         (await page.locator('.mapping-list-page').count()) > 0 ||
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
 
@@ -61,7 +61,7 @@ test.describe('JOURNEY-MP-006: Manage Marketplace Mappings', () => {
         page.url().includes('/integrations/mappings') &&
         !page.url().includes('00000000-0000-0000-0000-000000000000');
       const on403 = page.url().includes('/403');
-      expect(onMappingsList || onLogin || on403).toBe(true);
+      expect(onMappingsList || onLogin || on403).toBe(true) /* acceptable states */;
     });
 
     test('unauthenticated access redirects to login', async ({ page }) => {

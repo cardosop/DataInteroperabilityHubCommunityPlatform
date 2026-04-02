@@ -10,48 +10,34 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginViaApi } from '../../fixtures/auth';
-
-/** Inject API tokens into the page to bypass slow UI login (avoids slowMo=400ms overhead). */
-async function loginViaApiAndInject(page: import('@playwright/test').Page): Promise<void> {
-  const testUser = await getTestUser();
-  const auth = await loginViaApi(testUser.email, testUser.password);
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.evaluate(
-    ({ accessToken, refreshToken, user }) => {
-      localStorage.setItem('access_token', accessToken);
-      localStorage.setItem('refresh_token', refreshToken);
-      localStorage.setItem('user', JSON.stringify(user));
-    },
-    { accessToken: auth.access_token, refreshToken: auth.refresh_token, user: auth.user }
-  );
-}
+import { getTestUser } from '../../fixtures/auth';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-008: Integrate AI Schema Matching into Workflow', () => {
-  // 6 min: capability-gated route; uses token injection to avoid slowMo login overhead
-  test.setTimeout(360000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('schema matching page loads', async ({ page }) => {
-      // Use API token injection instead of UI loginUser to avoid the slowMo=400ms-per-action
-      // penalty on login, which caused the visible project to exceed the 360s budget when
-      // the API was restarting and connection retries stacked up.
-      await loginViaApiAndInject(page);
-      await page.goto('/ai/schema-matching');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.schema-matching-page, .app-main, .unavailable-page, .loading-spinner-container, #email',
-        { timeout: 30000 }
-      );
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
+        timeout: 60000,
+        contentSelector:
+          '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, .error-display',
+      });
       const url = page.url();
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
-      const onUnavailable = url.includes('/unavailable');
       const onSchemaMatching = url.includes('/ai/schema-matching');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onSchemaMatching).toBe(true);
       const hasContent =
-        (await page.locator('.schema-matching-page, .app-main, .unavailable-page, .loading-spinner-container').count()) >
-        0;
-      expect(onLogin || on403 || onUnavailable || (onSchemaMatching && hasContent)).toBe(true);
+        (await page.locator('.schema-matching-page, [data-testid="schema-matching-page"]').count()) > 0 ||
+        (await page.locator('.unavailable-page').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 
@@ -67,15 +53,16 @@ test.describe('JOURNEY-DE-008: Integrate AI Schema Matching into Workflow', () =
 
   test.describe('Edge', () => {
     test('schema matching page loads or redirects', async ({ page }) => {
-      await loginViaApiAndInject(page);
-      await page.goto('/ai/schema-matching');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.schema-matching-page, .unavailable-page, .loading-spinner-container, #email',
-        { timeout: 30000 }
-      );
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
+        timeout: 60000,
+        contentSelector:
+          '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, .error-display',
+      });
       const url = page.url();
-      expect(url.includes('/login') || url.includes('/403') || url.includes('/ai/schema-matching')).toBe(true);
+      expect(url.includes('/login') || url.includes('/403') || url.includes('/ai/schema-matching')).toBe(
+        true
+      );
     });
   });
 });

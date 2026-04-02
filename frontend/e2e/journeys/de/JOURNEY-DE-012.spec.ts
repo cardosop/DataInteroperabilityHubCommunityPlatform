@@ -10,28 +10,33 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
+import { getTestUser } from '../../fixtures/auth';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-012: Create Custom Plugin', () => {
-  test.setTimeout(360000); // 6 min: capability-gated route + login under parallel E2E load
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('developer page loads', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/developer');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.developer-portal-page, .app-main, .unavailable-page, .loading-spinner-container, .loading-spinner, #email',
-        { timeout: 45000 }
-      );
+      await loginAndNavigateToRoute(page, testUser, '/developer', {
+        timeout: 60000,
+        contentSelector:
+          '.developer-portal-page, .developer-page, .unavailable-page, .error-display',
+      });
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
-      const onUnavailable = page.url().includes('/unavailable');
       const onDeveloper = page.url().includes('/developer');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onDeveloper).toBe(true);
       const hasContent =
-        (await page.locator('.developer-portal-page, .app-main, .unavailable-page, .loading-spinner-container, .loading-spinner').count()) > 0;
-      expect(onLogin || on403 || onUnavailable || (onDeveloper && hasContent)).toBe(true);
+        (await page.locator('.developer-portal-page, .developer-page').count()) > 0 ||
+        (await page.locator('.unavailable-page').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 
@@ -48,13 +53,11 @@ test.describe('JOURNEY-DE-012: Create Custom Plugin', () => {
   test.describe('Edge', () => {
     test('developer page loads or redirects', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/developer');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.developer-portal-page, .app-main, .unavailable-page, #email',
-        { timeout: 90000 }
-      );
+      await loginAndNavigateToRoute(page, testUser, '/developer', {
+        timeout: 90000,
+        contentSelector:
+          '.developer-portal-page, .developer-page, .unavailable-page, .error-display',
+      });
       const url = page.url();
       expect(
         url.includes('/login') ||

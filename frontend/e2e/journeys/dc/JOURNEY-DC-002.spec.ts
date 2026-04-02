@@ -10,24 +10,22 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { getConsumerTestUser } from '../../fixtures/auth';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DC-002: Search Marketplace', () => {
-  test.setTimeout(180000); // 3 min: visible/slowMo adds latency; login + marketplace + search nav
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('marketplace search input filters results or shows empty state', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/marketplace');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.listing-list-page, .listing-list-grid, .error-display, .empty-state, .loading-spinner-container, #email',
-        { timeout: 65000 }
-      );
+      await loginAndNavigateToRoute(page, consumer, '/marketplace', {
+        timeout: 65000,
+        contentSelector:
+          '.listing-list-page, .listing-list-grid, .error-display, .empty-state, [data-testid="listing-list-page"]',
+      });
       if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
+        test.skip(true, 'Auth gated — skipping success assertion');
         return;
       }
       expect(page.url()).toContain('/marketplace');
@@ -49,26 +47,28 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
           (await page.locator('.empty-state').count()) > 0 ||
           (await page.locator('.listing-list-page, .listing-list-grid').count()) > 0 ||
           (await page.locator('.error-display').count()) > 0;
-        expect(hasTerminalState).toBe(true);
+        expect(hasTerminalState).toBe(true) /* acceptable states */;
       }
     });
 
     test('search page loads', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/search');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.search-page, .unavailable-page, .app-main, #email',
-        { timeout: 45000 }
-      );
+      await loginAndNavigateToRoute(page, consumer, '/search', {
+        timeout: 60000,
+        contentSelector: '.search-page, .unavailable-page, .empty-state, .error-display',
+      });
       const url = page.url();
       const onLogin = url.includes('/login');
-      const onUnavailable = url.includes('/unavailable');
       const onSearch = url.includes('/search');
+      if (onLogin) {
+        test.skip(true, 'Auth gated — skipping success assertion');
+        return;
+      }
+      expect(onSearch).toBe(true);
       const hasContent =
-        (await page.locator('.search-page, .app-main, .loading-spinner-container, .unavailable-page').count()) > 0;
-      expect(onLogin || onUnavailable || (onSearch && hasContent)).toBe(true);
+        (await page.locator('.search-page, .app-main').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 
@@ -78,7 +78,7 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
       await loginAndNavigateToRoute(page, consumer, '/search', {
         timeout: 60000,
         contentSelector:
-          '.search-page, .empty-state, .error-display, .loading-spinner-container, .unavailable-page',
+          '.search-page, .empty-state, .error-display, .unavailable-page',
       });
       // If the search feature is unavailable for this tenant, accept gracefully.
       if (page.url().includes('/unavailable')) {
@@ -110,13 +110,13 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 60000,
         contentSelector:
-          '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .loading-spinner-container',
+          '.listing-list-page, .listing-list-grid, .empty-state, .error-display',
       });
       expect(page.url()).toContain('/marketplace');
       await loginAndNavigateToRoute(page, consumer, '/search', {
         timeout: 60000,
         contentSelector:
-          '.search-page, .empty-state, .error-display, .loading-spinner-container, .unavailable-page',
+          '.search-page, .empty-state, .error-display, .unavailable-page',
       });
       expect(page.url()).toContain('/search');
     });

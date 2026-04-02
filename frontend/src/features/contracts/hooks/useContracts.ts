@@ -2,7 +2,8 @@
  * Contracts React Query Hooks
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { emptyPaginatedResponse } from '../../../shared/types/api';
 import { contractService } from '../services/contractService';
 import type {
@@ -42,8 +43,10 @@ export function useContract(id: string | null) {
 export function useCreateContract() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: ContractCreateRequest) => contractService.create(data),
+    successMessage: 'Contract created',
+    errorMessage: 'Failed to create contract',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
     },
@@ -53,9 +56,11 @@ export function useCreateContract() {
 export function useUpdateContract() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: ContractUpdateRequest }) =>
       contractService.update(id, data),
+    successMessage: 'Contract updated',
+    errorMessage: 'Failed to update contract',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
       queryClient.invalidateQueries({ queryKey: ['contracts', 'detail', variables.id] });
@@ -66,8 +71,10 @@ export function useUpdateContract() {
 export function useDeleteContract() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => contractService.delete(id),
+    successMessage: 'Contract deleted',
+    errorMessage: 'Failed to delete contract',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
     },
@@ -75,23 +82,29 @@ export function useDeleteContract() {
 }
 
 export function useValidateContract() {
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => contractService.validate(id),
+    successMessage: 'Contract validated',
+    errorMessage: 'Validation failed',
   });
 }
 
 export function useLintContract() {
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => contractService.lint(id),
+    successMessage: 'Contract linted',
+    errorMessage: 'Linting failed',
   });
 }
 
 export function useConvertContract() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: ContractConvertRequest }) =>
       contractService.convert(id, data),
+    successMessage: 'Contract converted',
+    errorMessage: 'Failed to convert contract',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['contracts', 'detail', variables.id] });
     },
@@ -99,16 +112,20 @@ export function useConvertContract() {
 }
 
 export function useExportContract() {
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, format }: { id: string; format?: string }) =>
       contractService.export(id, format),
+    successMessage: 'Contract exported',
+    errorMessage: 'Failed to export contract',
   });
 }
 
 export function useDownloadContract() {
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, format }: { id: string; format?: string }) =>
       contractService.download(id, format),
+    successMessage: 'Contract downloaded',
+    errorMessage: 'Failed to download contract',
   });
 }
 

@@ -10,11 +10,11 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { clearAuthStorage, getTenantAdminUser, loginAsPersona } from '../../fixtures/auth';
+import { clearAuthStorage, getTenantAdminUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-TA-004: Manage Tenant Billing', () => {
-  test.setTimeout(240000); // 4 min: visible/slowMo + login can exceed 2 min
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('admin page loads for billing', async ({ page }) => {

@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Button } from '../../../shared/components/Button';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type { WebhookCreateRequest } from '../../../shared/types/webhooks';
@@ -85,9 +86,9 @@ export function WebhookCreatePage() {
 
   return (
     <div className="webhook-create-page">
-      <button type="button" className="btn-back" onClick={() => navigate('/webhooks')}>
+      <Button variant="ghost" onClick={() => navigate('/webhooks')}>
         ← Back to Webhooks
-      </button>
+      </Button>
       <h1>Create webhook</h1>
 
       <form className="webhook-create-form" onSubmit={handleSubmit}>
@@ -154,12 +155,12 @@ export function WebhookCreatePage() {
         </div>
 
         <div className="form-actions">
-          <button type="button" className="btn-secondary" onClick={() => navigate('/webhooks')}>
+          <Button variant="secondary" onClick={() => navigate('/webhooks')}>
             Cancel
-          </button>
-          <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
-            {createMutation.isPending ? 'Creating...' : 'Create webhook'}
-          </button>
+          </Button>
+          <Button variant="primary" type="submit" loading={createMutation.isPending}>
+            Create webhook
+          </Button>
         </div>
       </form>
     </div>

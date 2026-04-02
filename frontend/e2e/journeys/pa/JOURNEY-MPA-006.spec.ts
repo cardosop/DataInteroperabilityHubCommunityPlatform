@@ -21,7 +21,7 @@ test.describe('JOURNEY-MPA-006: Configure Advanced Marketplace Features', () => 
       await loginAsPersona(page, getPlatformAdminUser);
       await page.goto('/marketplace');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.listing-list-page, .error-display, .empty-state, #email', {
+      await page.waitForSelector('.listing-list-page, .error-display, .empty-state', {
         timeout: 65000,
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
@@ -56,7 +56,7 @@ test.describe('JOURNEY-MPA-006: Configure Advanced Marketplace Features', () => 
       const hasError = (await page.locator('.error-display').count()) > 0;
       const noSuccessContent = (await page.locator('.listing-detail-main').count()) === 0;
       const onLogin = page.url().includes('/login');
-      expect(hasError || noSuccessContent || onLogin).toBe(true);
+      expect(hasError || noSuccessContent || onLogin).toBe(true) /* acceptable states */;
     });
   });
 

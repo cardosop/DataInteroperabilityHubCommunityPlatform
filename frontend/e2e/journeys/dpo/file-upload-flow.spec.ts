@@ -9,7 +9,7 @@ import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('File Upload Flow', () => {
-  test.setTimeout(300000); // 5 min: login + upload + 429 retries (5×10s) under visible/slowMo
+  test.setTimeout(120000);
 
   test.describe('Failure', () => {
     test('unauthenticated access to datasets create redirects to login', async ({ page }) => {
@@ -21,7 +21,7 @@ test.describe('File Upload Flow', () => {
       const onDatasetsWithLoginPrompt =
         url.includes('/datasets') &&
         (await hasLoginPrompt(page));
-      expect(onLogin || onDatasetsWithLoginPrompt).toBe(true);
+      expect(onLogin || onDatasetsWithLoginPrompt).toBe(true) /* acceptable states */;
     });
   });
 
@@ -30,7 +30,7 @@ test.describe('File Upload Flow', () => {
     await loginAndNavigateToRoute(page, testUser, '/datasets/create', {
       timeout: 60000,
       contentSelector:
-        '.dataset-create-page, .file-upload-dropzone, input.file-upload-input, .loading-spinner-container, form',
+        '.dataset-create-page, .file-upload-dropzone, input.file-upload-input, form',
     });
     await waitForLoadingComplete(page);
 
@@ -45,7 +45,7 @@ test.describe('File Upload Flow', () => {
     // Upload file with retry on rate limit (429) - parse retry-after from error message
     let uploadSuccess = false;
     let retries = 0;
-    const maxRetries = process.env.E2E_VISIBLE === '1' ? 8 : 5; // visible/slowMo needs more retries
+    const maxRetries = 3;
 
     while (!uploadSuccess && retries < maxRetries) {
       try {
@@ -61,9 +61,8 @@ test.describe('File Upload Flow', () => {
             (resp) =>
               resp.url().includes('/files/') &&
               (resp.status() === 200 || resp.status() === 201 || resp.status() === 429),
-            { timeout: 30000 }
-          )
-          .catch(() => null);
+            { timeout: 15000 }
+          );
 
         if (response && response.status() === 429) {
           // Rate limited - parse retry-after from error message
@@ -88,10 +87,19 @@ test.describe('File Upload Flow', () => {
 
         // Wait for upload to complete (Dataset Create shows .file-upload-success or .upload-success)
         await expect(
-          page.locator('.file-upload-success, .file-upload-success-text, .upload-success')
+          page.locator('.file-upload-success, .file-upload-success-text, .upload-success').first()
         ).toBeVisible({ timeout: 60000 });
         uploadSuccess = true;
       } catch (error) {
+        // Assertion errors (expect() failures) should not be retried — re-throw immediately
+        if (error instanceof Error && error.name === 'AssertionError') {
+          throw error;
+        }
+        // Check if it's a Playwright expect error (has matcherResult)
+        if (error && typeof error === 'object' && 'matcherResult' in error) {
+          throw error;
+        }
+
         // Check if it's a rate limit error from console
         const consoleErrors = await page
           .evaluate(() => {
@@ -132,5 +140,8 @@ test.describe('File Upload Flow', () => {
         }
       }
     }
+
+    // Final assertion: upload must have succeeded after all retries
+    expect(uploadSuccess).toBe(true);
   });
 });

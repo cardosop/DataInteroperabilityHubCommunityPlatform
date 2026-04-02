@@ -42,7 +42,7 @@ test.describe('Dimension: Network failures', () => {
     const testUser = await getTestUser();
     await loginUser(page, testUser);
     await page.goto('/assets', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('.asset-list-page, .empty-state, .error-display, .loading-spinner-container', {
+    await page.waitForSelector('.asset-list-page, .empty-state, .error-display', {
       timeout: 15000,
     });
     await page.waitForTimeout(3000);
@@ -50,7 +50,7 @@ test.describe('Dimension: Network failures', () => {
       (await page.locator('.error-display').count()) > 0 ||
       (await page.locator('.empty-state').count()) > 0 ||
       (await page.locator('.asset-list-page').count()) > 0;
-    expect(hasContent).toBe(true);
+    expect(hasContent).toBe(true) /* acceptable states */;
   });
 
   test('when API request is delayed then aborted (timeout), user remains on login', async ({
@@ -85,8 +85,11 @@ test.describe('Dimension: Network failures', () => {
     }
     await page.waitForTimeout(2000);
     const onLogin = page.url().includes('/login');
-    const hasBody = (await page.locator('body').count()) > 0;
-    expect(onLogin || hasBody).toBe(true);
+    // When offline, the browser may show its own error page or a cached login page.
+    // Assert the page didn't crash by checking for visible content.
+    const bodyText = await page.locator('body').textContent();
+    const hasVisibleContent = (bodyText?.length ?? 0) > 0;
+    expect(onLogin || hasVisibleContent).toBe(true) /* acceptable states */;
     await page.context().setOffline(false);
   });
 });

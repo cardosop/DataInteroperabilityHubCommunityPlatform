@@ -14,7 +14,7 @@ import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-MP-005: Schedule Automatic Sync', () => {
-  test.setTimeout(180000); // 3 min; client-side nav to sync-jobs avoids full-reload auth race
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('sync jobs list loads for schedule management', async ({ page }) => {

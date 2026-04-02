@@ -52,29 +52,6 @@ export function DatasetMultiPicker({
   assetId,
   'data-testid': dataTestId = 'dataset-multi-picker',
 }: DatasetMultiPickerProps) {
-  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
-    return (
-      <div className="dataset-multi-picker resource-picker" data-testid={dataTestId}>
-        <input
-          type="text"
-          value={value.join(', ')}
-          onChange={(e) =>
-            onChange(
-              e.target.value
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean)
-            )
-          }
-          placeholder="Enter dataset IDs (comma-separated UUIDs)"
-          disabled={disabled}
-          className="resource-picker-input"
-          aria-label="Dataset IDs"
-        />
-      </div>
-    );
-  }
-
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
   const [isOpen, setIsOpen] = useState(false);
@@ -90,7 +67,7 @@ export function DatasetMultiPicker({
     asset_id: assetId,
   };
 
-  const { data, isLoading, error, refetch } = useDatasets(filters, { enabled: isOpen });
+  const { data, isLoading, error, refetch } = useDatasets(filters, { enabled: isOpen && FEATURE_RESOURCE_PICKERS_ENABLED });
 
   const results = data?.results ?? [];
   const maxIndex = results.length - 1;
@@ -158,6 +135,29 @@ export function DatasetMultiPicker({
         break;
     }
   };
+
+  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
+    return (
+      <div className="dataset-multi-picker resource-picker" data-testid={dataTestId}>
+        <input
+          type="text"
+          value={value.join(', ')}
+          onChange={(e) =>
+            onChange(
+              e.target.value
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            )
+          }
+          placeholder="Enter dataset IDs (comma-separated UUIDs)"
+          disabled={disabled}
+          className="resource-picker-input"
+          aria-label="Dataset IDs"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="resource-picker" data-testid={dataTestId}>

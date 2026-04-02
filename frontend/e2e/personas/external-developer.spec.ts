@@ -14,3 +14,39 @@ import '../journeys/dev/JOURNEY-DEV-006.spec';
 import '../journeys/dev/JOURNEY-DEV-007.spec';
 import '../journeys/dev/JOURNEY-DEV-008.spec';
 import '../journeys/dev/JOURNEY-DEV-009.spec';
+
+import { test, expect } from '@playwright/test';
+import { loginAsPersona, getExternalDeveloperUser } from '../fixtures/auth';
+
+test.describe('Persona RBAC: External Developer', () => {
+  test.setTimeout(120000);
+
+  test('DEV can access /developer', async ({ page }) => {
+    await loginAsPersona(page, getExternalDeveloperUser);
+    await page.goto('/developer');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(3000);
+    test.skip(page.url().includes('/login'), 'Auth redirect');
+    const url = page.url();
+    expect(url.includes('/developer') || url.includes('/baas')).toBe(true);
+  });
+
+  test('DEV can access /baas', async ({ page }) => {
+    await loginAsPersona(page, getExternalDeveloperUser);
+    await page.goto('/baas');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(3000);
+    test.skip(page.url().includes('/login'), 'Auth redirect');
+    const url = page.url();
+    expect(url.includes('/baas') || url.includes('/developer')).toBe(true);
+  });
+
+  test('DEV cannot access /admin', async ({ page }) => {
+    await loginAsPersona(page, getExternalDeveloperUser);
+    await page.goto('/admin');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForURL(/\/(403|login|admin|developer)/, { timeout: 20000 }).catch(() => null);
+    const url = page.url();
+    expect(url.includes('/403') || url.includes('/login') || !url.includes('/admin')).toBe(true);
+  });
+});

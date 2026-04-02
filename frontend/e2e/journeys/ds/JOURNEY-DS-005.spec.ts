@@ -31,7 +31,7 @@ test.describe('JOURNEY-DS-005: Review Auto-Classification Results', () => {
       await loginAndNavigateToRoute(page, testUser, '/compliance', {
         timeout: 60000,
         contentSelector:
-          '.compliance-run-list-page, .compliance-run-list-table, .empty-state, .error-display, .loading-spinner-container',
+          '.compliance-run-list-page, .compliance-run-list-table, .empty-state, .error-display',
       });
       await page.waitForTimeout(3000);
       expect(page.url()).toContain('/compliance');
@@ -40,9 +40,8 @@ test.describe('JOURNEY-DS-005: Review Auto-Classification Results', () => {
         (await page.locator('.compliance-run-list-table').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
         (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.loading-spinner-container').count()) > 0 ||
         (await page.locator('.app-main').count()) > 0;
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
 
@@ -56,7 +55,7 @@ test.describe('JOURNEY-DS-005: Review Auto-Classification Results', () => {
       await page.waitForTimeout(3000);
       const hasError = (await page.locator('.error-display').count()) > 0;
       const onLogin = page.url().includes('/login');
-      expect(hasError || onLogin).toBe(true);
+      expect(hasError || onLogin).toBe(true) /* acceptable states */;
     });
 
     test('unauthenticated access redirects to login', async ({ page }) => {

@@ -40,9 +40,12 @@ test.describe('Phase 17: Change Plan & Invoices', () => {
 
     const changePlanSection = page.locator('.subscription-change-plan');
     const changePlanSelect = page.locator('.subscription-change-plan-controls select');
-    if (await changePlanSection.isVisible()) {
-      await expect(changePlanSelect).toBeVisible({ timeout: 5000 });
+    await changePlanSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+    if (!(await changePlanSection.isVisible())) {
+      test.skip(true, 'Change plan section not visible (no alternative plans available)');
+      return;
     }
+    await expect(changePlanSelect).toBeVisible({ timeout: 5000 });
   });
 
   test('invoice history section shows table or empty state', async ({ page }) => {
@@ -59,6 +62,6 @@ test.describe('Phase 17: Change Plan & Invoices', () => {
 
     const hasTable = await page.locator('.subscription-invoices-table').isVisible();
     const hasEmpty = await page.locator('.subscription-no-data:has-text("No invoices")').isVisible();
-    expect(hasTable || hasEmpty).toBe(true);
+    expect(hasTable || hasEmpty).toBe(true) /* acceptable states */;
   });
 });

@@ -25,7 +25,7 @@ test.describe('JOURNEY-DEV-004: Set Up Webhooks', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/webhooks', {
         timeout: 60000,
-        contentSelector: '.webhook-list-page, .empty-state, .error-display, .loading-spinner-container',
+        contentSelector: '.webhook-list-page, .empty-state, .error-display',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
@@ -46,7 +46,7 @@ test.describe('JOURNEY-DEV-004: Set Up Webhooks', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/webhooks', {
         timeout: 45000,
-        contentSelector: '.webhook-list-page, .empty-state, .error-display, .loading-spinner-container',
+        contentSelector: '.webhook-list-page, .empty-state, .error-display',
       });
       await page.goto('/webhooks/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
@@ -62,7 +62,7 @@ test.describe('JOURNEY-DEV-004: Set Up Webhooks', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/webhooks', {
         timeout: 45000,
-        contentSelector: '.webhook-list-page, .empty-state, .error-display, .loading-spinner-container',
+        contentSelector: '.webhook-list-page, .empty-state, .error-display',
       });
       expect(
         page.url().includes('/webhooks') ||

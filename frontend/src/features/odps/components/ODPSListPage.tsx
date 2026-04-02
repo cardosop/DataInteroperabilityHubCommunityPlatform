@@ -5,9 +5,10 @@
 
 import { useNavigate } from 'react-router-dom';
 import { useContracts } from '../../contracts/hooks/useContracts';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import './ODPSListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ODPSListPage() {
   const navigate = useNavigate();
@@ -21,7 +22,7 @@ export function ODPSListPage() {
     (contract) => contract.original_spec_type === 'ODPS'
   ) || [];
 
-  if (isLoading) return <LoadingSpinner message="Loading ODPS contracts..." />;
+  if (isLoading) return <ListPageSkeleton />;
   if (error) {
     return <ErrorDisplay error={error} title="Failed to load ODPS contracts" onRetry={() => refetch()} />;
   }
@@ -30,17 +31,17 @@ export function ODPSListPage() {
     <div className="odps-list-page">
       <div className="odps-list-header">
         <h1>ODPS Contracts</h1>
-        <button onClick={() => navigate('/odps/upload')} className="btn-primary" type="button">
+        <Button onClick={() => navigate('/odps/upload')} variant="primary">
           Create ODPS Product
-        </button>
+        </Button>
       </div>
 
       {odpsContracts.length === 0 ? (
         <div className="odps-empty-state">
           <p>No ODPS contracts found.</p>
-          <button onClick={() => navigate('/odps/upload')} className="btn-primary" type="button">
+          <Button onClick={() => navigate('/odps/upload')} variant="primary">
             Create Your First ODPS Product
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="odps-list">

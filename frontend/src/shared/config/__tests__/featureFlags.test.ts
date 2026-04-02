@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest';
 import {
   FEATURE_BREADCRUMBS_ENABLED,
   FEATURE_RESOURCE_PICKERS_ENABLED,
-  FEATURE_TOAST_ENABLED,
   parseBool,
 } from '../featureFlags';
 
@@ -51,10 +50,6 @@ describe('parseBool', () => {
 });
 
 describe('feature flags', () => {
-  it('exports boolean FEATURE_TOAST_ENABLED', () => {
-    expect(typeof FEATURE_TOAST_ENABLED).toBe('boolean');
-  });
-
   it('exports boolean FEATURE_BREADCRUMBS_ENABLED', () => {
     expect(typeof FEATURE_BREADCRUMBS_ENABLED).toBe('boolean');
   });

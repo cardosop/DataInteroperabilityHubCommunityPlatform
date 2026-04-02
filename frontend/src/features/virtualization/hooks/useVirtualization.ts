@@ -3,7 +3,8 @@
  * React Query hooks for virtual dataset and query execution operations
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { virtualizationService } from '../services/virtualizationService';
 import type {
   VirtualDatasetCreateRequest,
@@ -50,8 +51,10 @@ export function useVirtualDataset(id: string | undefined) {
 export function useCreateVirtualDataset() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: VirtualDatasetCreateRequest) => virtualizationService.createDataset(data),
+    successMessage: 'Virtual dataset created',
+    errorMessage: 'Failed to create virtual dataset',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.datasets });
     },
@@ -64,9 +67,11 @@ export function useCreateVirtualDataset() {
 export function useUpdateVirtualDataset() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: VirtualDatasetUpdateRequest }) =>
       virtualizationService.updateDataset(id, data),
+    successMessage: 'Virtual dataset updated',
+    errorMessage: 'Failed to update virtual dataset',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.datasets });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dataset(variables.id) });
@@ -80,9 +85,11 @@ export function useUpdateVirtualDataset() {
 export function usePatchVirtualDataset() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: Partial<VirtualDatasetUpdateRequest> }) =>
       virtualizationService.patchDataset(id, data),
+    successMessage: 'Virtual dataset updated',
+    errorMessage: 'Failed to update virtual dataset',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.datasets });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dataset(variables.id) });
@@ -96,8 +103,10 @@ export function usePatchVirtualDataset() {
 export function useDeleteVirtualDataset() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => virtualizationService.deleteDataset(id),
+    successMessage: 'Virtual dataset deleted',
+    errorMessage: 'Failed to delete virtual dataset',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.datasets });
     },
@@ -108,8 +117,10 @@ export function useDeleteVirtualDataset() {
  * Hook to validate a virtual dataset
  */
 export function useValidateVirtualDataset() {
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => virtualizationService.validateDataset(id),
+    successMessage: 'Virtual dataset validated',
+    errorMessage: 'Validation failed',
   });
 }
 
@@ -130,9 +141,11 @@ export function useDatasetVersions(id: string | undefined) {
 export function useExecuteQuery() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ datasetId, data }: { datasetId: string; data: QueryExecutionCreateRequest }) =>
       virtualizationService.executeQuery(datasetId, data),
+    successMessage: 'Query executed',
+    errorMessage: 'Failed to execute query',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.queryExecutions });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dataset(variables.datasetId) });
@@ -167,8 +180,10 @@ export function useQueryExecution(id: string | undefined) {
 export function useCancelQueryExecution() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => virtualizationService.cancelQueryExecution(id),
+    successMessage: 'Query execution cancelled',
+    errorMessage: 'Failed to cancel query execution',
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.queryExecution(id) });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.queryExecutions });

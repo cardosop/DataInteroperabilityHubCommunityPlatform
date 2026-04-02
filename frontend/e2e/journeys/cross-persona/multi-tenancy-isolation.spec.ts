@@ -28,7 +28,7 @@ const API_BASE =
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
 test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
-  test.setTimeout(300000);
+  test.setTimeout(120000);
 
   test(
     'asset created in Tenant A is invisible in Tenant B and visible back in Tenant A',

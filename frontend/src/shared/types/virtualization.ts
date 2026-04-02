@@ -67,6 +67,29 @@ export const QueryExecutionMode = {
 } as const;
 export type QueryExecutionMode = (typeof QueryExecutionMode)[keyof typeof QueryExecutionMode];
 
+export interface VirtualDatasetSchemaField {
+  name: string;
+  type: string;
+  description?: string;
+  nullable?: boolean;
+}
+
+export interface VirtualDatasetSource {
+  type: VirtualDatasetSourceType;
+  name?: string;
+  connection_string?: string;
+  config?: Record<string, unknown>;
+}
+
+export interface ExecutionMetrics {
+  rows_processed?: number;
+  bytes_scanned?: number;
+  cpu_time_ms?: number;
+  wall_time_ms?: number;
+  cache_hit?: boolean;
+  [key: string]: unknown;
+}
+
 export interface VirtualDataset {
   id: string;
   tenant: string;
@@ -75,8 +98,8 @@ export interface VirtualDataset {
   description?: string;
   query: string;
   query_type: QueryType;
-  schema?: Record<string, any>;
-  sources?: any[];
+  schema?: Record<string, VirtualDatasetSchemaField | unknown>;
+  sources?: VirtualDatasetSource[];
   version: string;
   status: VirtualDatasetStatus;
   created_at: string;
@@ -88,8 +111,8 @@ export interface VirtualDatasetCreateRequest {
   description?: string;
   query: string;
   query_type: QueryType;
-  schema?: Record<string, any>;
-  sources?: any[];
+  schema?: Record<string, VirtualDatasetSchemaField | unknown>;
+  sources?: VirtualDatasetSource[];
   version?: string;
   status?: VirtualDatasetStatus;
 }
@@ -99,8 +122,8 @@ export interface VirtualDatasetUpdateRequest {
   description?: string;
   query?: string;
   query_type?: QueryType;
-  schema?: Record<string, any>;
-  sources?: any[];
+  schema?: Record<string, VirtualDatasetSchemaField | unknown>;
+  sources?: VirtualDatasetSource[];
   version?: string;
   status?: VirtualDatasetStatus;
 }
@@ -120,7 +143,7 @@ export interface VirtualDatasetValidationResponse {
   is_valid: boolean;
   errors: string[];
   warnings: string[];
-  details: Record<string, any>;
+  details: Record<string, unknown>;
 }
 
 export interface VirtualDatasetVersion {
@@ -137,7 +160,7 @@ export interface QueryExecution {
   virtual_dataset: string;
   virtual_dataset_name: string;
   query: string;
-  parameters?: Record<string, any>;
+  parameters?: Record<string, unknown>;
   execution_mode: QueryExecutionMode;
   status: QueryExecutionStatus;
   started_at?: string;
@@ -145,22 +168,26 @@ export interface QueryExecution {
   result_cache_key?: string;
   result_storage_path?: string;
   execution_log?: string;
-  metrics?: Record<string, any>;
+  metrics?: ExecutionMetrics;
   job?: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface QueryExecutionCreateRequest {
-  parameters?: Record<string, any>;
+  parameters?: Record<string, unknown>;
   execution_mode?: QueryExecutionMode;
   force_async?: boolean;
   timeout_seconds?: number;
 }
 
+export interface QueryResultRow {
+  [column: string]: string | number | boolean | null;
+}
+
 export interface QueryExecutionResult {
   execution_id: string;
-  data: any;
+  data: QueryResultRow[] | Record<string, unknown>;
   total_count: number;
   returned_count: number;
   format: string;
@@ -183,8 +210,8 @@ export interface QueryExecutionProgress {
   started_at?: string;
   completed_at?: string;
   duration_seconds?: number;
-  metrics?: Record<string, any>;
-  latest_logs?: Array<Record<string, any>>;
+  metrics?: ExecutionMetrics;
+  latest_logs?: Array<Record<string, unknown>>;
 }
 
 export interface QueryExecutionCancelResponse {

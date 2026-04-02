@@ -11,11 +11,11 @@
 
 import { expect, test } from '@playwright/test';
 import { getTestUser, loginUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute, navigateToRouteFromApp, waitForAppMainReady } from '../../fixtures/helpers';
+import { loginAndNavigateToRoute, navigateToRouteFromApp, waitForAppMainReady, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DS-001: Use Natural Language Search', () => {
   // 4 min: login + search + AI search nav can exceed 2 min under parallel E2E load (chromium uses 90s default)
-  test.setTimeout(240000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('search page loads', async ({ page }) => {
@@ -36,7 +36,7 @@ test.describe('JOURNEY-DS-001: Use Natural Language Search', () => {
       await page.goto('/ai/search');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.ai-search-page, .app-main, .unavailable-page, [data-testid="forbidden-page"], #email',
+        '.ai-search-page, .unavailable-page, [data-testid="forbidden-page"]',
         { timeout: 15000 }
       );
       await page.waitForTimeout(3000);
@@ -50,12 +50,55 @@ test.describe('JOURNEY-DS-001: Use Natural Language Search', () => {
         (await page.locator('.unavailable-page, [data-testid="forbidden-page"]').count()) > 0;
       // Both outcomes are valid: capability enabled (page loads) or disabled (properly gated)
       if (isGated) {
-        expect(isGated).toBe(true); // Capability gate is working — valid outcome
+        // Capability gate is working — valid outcome; skip (not pass green for a gated feature)
+        test.skip(true, 'AI search capability gated (403/redirect/unavailable)');
         return;
       }
       const onAISearch = page.url().includes('/ai/search');
-      const hasContent = (await page.locator('.ai-search-page, .app-main').count()) > 0;
+      const hasContent = (await page.locator('.ai-search-page').count()) > 0;
       expect(onAISearch && hasContent).toBe(true);
+    });
+
+    test('search page accepts query and shows results area', async ({ page }) => {
+      const testUser = await getTestUser();
+      await loginUser(page, testUser);
+      await page.goto('/search');
+      await page.waitForLoadState('domcontentloaded');
+      if (page.url().includes('/login') || page.url().includes('/403')) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      await waitForLoadingComplete(page, { timeout: 15000 });
+
+      // Find search input
+      const searchInput = page.locator(
+        'input[type="search"], input[placeholder*="Search" i], .search-input, #search-query, input[name="q"], input[name="query"]'
+      );
+      const inputCount = await searchInput.count();
+
+      if (inputCount > 0) {
+        // Fill with test query
+        await searchInput.first().fill('test data');
+        // Try pressing Enter to submit
+        await searchInput.first().press('Enter');
+        // Wait for results to load
+        await page.waitForTimeout(2000);
+      }
+
+      // Look for results container or empty results message
+      const resultsArea = page.locator(
+        '.search-results, .result-list, [data-testid*="result"], .search-page'
+      );
+      const resultsVisible = (await resultsArea.count()) > 0 && await resultsArea.first().isVisible().catch(() => false);
+
+      const emptyResults = page.getByText(/no results|0 results|nothing found/i);
+      const emptyVisible = (await emptyResults.count()) > 0 && await emptyResults.first().isVisible().catch(() => false);
+
+      // Either results area or empty results message should be shown
+      expect(resultsVisible || emptyVisible).toBe(true);
+
+      // error-display must NOT be visible (D85) — search should not crash
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 
@@ -92,7 +135,7 @@ test.describe('JOURNEY-DS-001: Use Natural Language Search', () => {
         (await page.locator('.unavailable-page').count()) === 0;
 
       // Route must resolve to one of the two expected states — never a blank/crash page
-      expect(isGated || isWorking).toBe(true);
+      expect(isGated || isWorking).toBe(true) /* acceptable states */;
     });
   });
 

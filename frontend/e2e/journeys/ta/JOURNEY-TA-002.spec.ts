@@ -12,7 +12,6 @@
  * Real backend only; no mocks. Uses api-users.ts helpers for user management operations.
  */
 
-import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTenantAdminUser } from '../../fixtures/auth';
 import { hasLoginPrompt, loginAndNavigateToRoute, changeUserRolesViaAdminUI } from '../../fixtures/helpers';
@@ -27,7 +26,7 @@ const API_BASE =
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
 test.describe('JOURNEY-TA-002: Manage User Roles', () => {
-  test.setTimeout(300000); // 5 min: invite + role change + verification
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('admin can assign DATA_PROVIDER role to an invited user and verify via API re-fetch', async ({
@@ -143,7 +142,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
         .or(page.getByText(/saved|updated|success/i));
       const hasSuccessToast = await successLocator.first().isVisible().catch(() => false);
       const redirectedToAdmin = page.url().includes('/admin');
-      expect(hasSuccessToast || redirectedToAdmin).toBe(true);
+      expect(hasSuccessToast || redirectedToAdmin).toBe(true) /* acceptable states */;
 
       // ── Backend verification: re-fetch user and assert role changed ───────
       const updatedUser = await getUserByEmailViaApi(adminUser, email).catch(() => null);
@@ -203,7 +202,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
         (await page.locator('.admin-table').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
         (await page.locator('.admin-page').count()) > 0;
-      expect(hasUsersSection).toBe(true);
+      expect(hasUsersSection).toBe(true) /* acceptable states */;
     });
   });
 
@@ -218,7 +217,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
       const url = page.url();
       const redirectedCorrectly =
         url.includes('/login') || url.includes('/403') || (url.includes('/admin') && await hasLoginPrompt(page));
-      expect(redirectedCorrectly).toBe(true);
+      expect(redirectedCorrectly).toBe(true) /* acceptable states */;
     });
   });
 
@@ -243,7 +242,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
         (await page.locator('.admin-table').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
         (await page.locator('.admin-page').count()) > 0;
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
 });

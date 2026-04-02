@@ -18,6 +18,7 @@ import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type { DestinationType } from '../../../shared/types/scheduledExport';
 import { useScheduledExport, useUpdateScheduledExport } from '../hooks/useScheduledExport';
 import './ScheduledExportEditPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ScheduledExportEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -96,17 +97,15 @@ export function ScheduledExportEditPage() {
   return (
     <div className="scheduled-export-edit-page" data-testid="scheduled-export-edit-page">
       <div className="scheduled-export-edit-header">
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => navigate(`/scheduled-exports/${id}`)}
-        >
+        <Button
+ variant="secondary"
+ onClick={() => navigate(`/scheduled-exports/${id}`)}>
           ← Back to Detail
-        </button>
+        </Button>
         <h1>Edit Scheduled Export</h1>
       </div>
 
-      {updateMutation.error && (
+      {!!updateMutation.error && (
         <ErrorDisplay
           error={updateMutation.error}
           title="Failed to update scheduled export"
@@ -212,20 +211,17 @@ export function ScheduledExportEditPage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => navigate(`/scheduled-exports/${id}`)}
-          >
+          <Button
+ variant="secondary"
+ onClick={() => navigate(`/scheduled-exports/${id}`)}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={updateMutation.isPending || !name || !cronExpression}
-          >
+          </Button>
+          <Button
+ type="submit"
+ variant="primary"
+ disabled={updateMutation.isPending || !name || !cronExpression}>
             {updateMutation.isPending ? 'Updating...' : 'Update'}
-          </button>
+          </Button>
         </div>
       </form>
 

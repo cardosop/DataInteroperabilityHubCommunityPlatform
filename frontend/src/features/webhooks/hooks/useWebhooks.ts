@@ -3,7 +3,8 @@
  * Real API; no mocks
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import type {
   WebhookCreateRequest,
   WebhookListFilters,
@@ -41,8 +42,10 @@ export function useWebhookEventTypes(odpsOnly = false) {
 
 export function useCreateWebhook() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: WebhookCreateRequest) => webhookService.create(data),
+    successMessage: 'Webhook created',
+    errorMessage: 'Failed to create webhook',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['webhooks'] });
     },
@@ -51,9 +54,11 @@ export function useCreateWebhook() {
 
 export function useUpdateWebhook() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: WebhookUpdateRequest }) =>
       webhookService.update(id, data),
+    successMessage: 'Webhook updated',
+    errorMessage: 'Failed to update webhook',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['webhooks'] });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.detail(variables.id) });
@@ -63,8 +68,10 @@ export function useUpdateWebhook() {
 
 export function useDeleteWebhook() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => webhookService.delete(id),
+    successMessage: 'Webhook deleted',
+    errorMessage: 'Failed to delete webhook',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['webhooks'] });
     },
@@ -72,7 +79,9 @@ export function useDeleteWebhook() {
 }
 
 export function useTestWebhook() {
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => webhookService.test(id),
+    successMessage: 'Webhook test sent',
+    errorMessage: 'Failed to test webhook',
   });
 }

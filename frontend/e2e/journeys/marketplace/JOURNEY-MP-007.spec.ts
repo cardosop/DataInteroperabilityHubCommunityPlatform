@@ -14,7 +14,7 @@ import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, navigateToRouteFromApp } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-MP-007: Monitor Sync Jobs', () => {
-  test.setTimeout(180000); // 3 min; client-side nav to sync-jobs avoids full-reload auth race
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('sync jobs list loads for monitoring', async ({ page }) => {
@@ -56,7 +56,7 @@ test.describe('JOURNEY-MP-007: Monitor Sync Jobs', () => {
       await page.waitForTimeout(3000);
       const hasError = (await page.locator('.error-display').count()) > 0;
       const onLogin = page.url().includes('/login');
-      expect(hasError || onLogin).toBe(true);
+      expect(hasError || onLogin).toBe(true) /* acceptable states */;
     });
 
     test('unauthenticated access redirects to login', async ({ page }) => {

@@ -11,30 +11,32 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
+import { getConsumerTestUser } from '../../fixtures/auth';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DC-014: Discover ODPS Products (Semantic Search)', () => {
-  test.setTimeout(300000); // 5 min: login retries can take ~80s under parallel E2E load
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('semantic page loads', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/semantic');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.semantic-page, .app-main, .unavailable-page, .loading-spinner-container, #email',
-        { timeout: 45000 }
-      );
+      await loginAndNavigateToRoute(page, consumer, '/semantic', {
+        timeout: 60000,
+        contentSelector: '.semantic-page, .unavailable-page, .empty-state, .error-display',
+      });
       const url = page.url();
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
-      const onUnavailable = url.includes('/unavailable');
       const onSemantic = url.includes('/semantic');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onSemantic).toBe(true);
       const hasContent =
-        (await page.locator('.semantic-page, .app-main, .unavailable-page, .loading-spinner-container').count()) >
-        0;
-      expect(onLogin || on403 || onUnavailable || (onSemantic && hasContent)).toBe(true);
+        (await page.locator('.semantic-page, .app-main').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 
@@ -51,13 +53,10 @@ test.describe('JOURNEY-DC-014: Discover ODPS Products (Semantic Search)', () => 
   test.describe('Edge', () => {
     test('semantic page loads or redirects', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/semantic');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.semantic-page, .app-main, .unavailable-page, .loading-spinner-container, #email',
-        { timeout: 45000 }
-      );
+      await loginAndNavigateToRoute(page, consumer, '/semantic', {
+        timeout: 60000,
+        contentSelector: '.semantic-page, .unavailable-page, .empty-state, .error-display',
+      });
       const url = page.url();
       expect(url.includes('/login') || url.includes('/403') || url.includes('/semantic')).toBe(true);
     });

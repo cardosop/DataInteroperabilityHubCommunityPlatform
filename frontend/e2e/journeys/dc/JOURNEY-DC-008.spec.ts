@@ -12,31 +12,34 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getConsumerTestUser, getTestUser, loginUser } from '../../fixtures/auth';
+import { getConsumerTestUser, getTestUser } from '../../fixtures/auth';
 import { createAssetViaApi } from '../../fixtures/api-assets';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('communities page loads', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/communities');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.communities-page, .communities-tab, .app-main, .unavailable-page, .loading-spinner-container, #email',
-        { timeout: 60000 }
-      );
+      await loginAndNavigateToRoute(page, consumer, '/communities', {
+        timeout: 60000,
+        contentSelector:
+          '.communities-page, .communities-tab, .unavailable-page, .empty-state, .error-display',
+      });
       const url = page.url();
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
-      const onUnavailable = url.includes('/unavailable');
       const onCommunities = url.includes('/communities');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onCommunities).toBe(true);
       const hasContent =
-        (await page.locator('.communities-page, .communities-tab, .app-main, .unavailable-page, .loading-spinner-container').count()) > 0;
-      expect(onLogin || on403 || onUnavailable || (onCommunities && hasContent)).toBe(true);
+        (await page.locator('.communities-page, .communities-tab, .app-main').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
 
     test('asset page shows Community section for rating/review (Phase 27.1)', async ({ page }) => {
@@ -48,7 +51,7 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
       const assetId = await createAssetViaApi(provider);
       await loginAndNavigateToRoute(page, provider, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section, .error-display, .loading-spinner-container',
+        contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section, .error-display',
       });
       await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
       if ((await page.locator('.error-display').count()) > 0) {
@@ -80,13 +83,11 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
   test.describe('Edge', () => {
     test('communities page loads or redirects', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/communities');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.communities-page, .communities-tab, .unavailable-page, .loading-spinner-container, #email',
-        { timeout: 60000 }
-      );
+      await loginAndNavigateToRoute(page, consumer, '/communities', {
+        timeout: 60000,
+        contentSelector:
+          '.communities-page, .communities-tab, .unavailable-page, .empty-state, .error-display',
+      });
       const url = page.url();
       expect(
         url.includes('/login') || url.includes('/403') || url.includes('/communities') || url.includes('/unavailable')

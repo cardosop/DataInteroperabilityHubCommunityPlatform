@@ -30,11 +30,10 @@ test.describe('Resource Picker Accessibility (axe) — authenticated', () => {
   test('dataset create page (with AssetPicker) has no critical a11y violations', async ({
     page,
   }) => {
-    await page.goto('/datasets/create?linkMode=existing');
-    await page.waitForLoadState('domcontentloaded');
+    await page.goto('/datasets/create?linkMode=existing', { waitUntil: 'domcontentloaded' });
     // Wait for either the create form or the login page — whichever appears first.
     await page
-      .locator('.dataset-create-page, .app-main, #email')
+      .locator('.dataset-create-page, .app-main')
       .first()
       .waitFor({ state: 'visible', timeout: 30000 })
       .catch(() => null);
@@ -66,10 +65,9 @@ test.describe('Resource Picker Accessibility (axe) — authenticated', () => {
   });
 
   test('assets list page has no critical a11y violations', async ({ page }) => {
-    await page.goto('/assets');
-    await page.waitForLoadState('domcontentloaded');
+    await page.goto('/assets', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => null);
     await page
-      .locator('.asset-list-page, .empty-state, .app-main, #email')
+      .locator('.asset-list-page, .empty-state, .app-main')
       .first()
       .waitFor({ state: 'visible', timeout: 30000 })
       .catch(() => null);
@@ -83,8 +81,7 @@ test.describe('Resource Picker Accessibility (axe) — authenticated', () => {
 
     // After login we may be on the dashboard; navigate to the assets page.
     if (!page.url().includes('/assets')) {
-      await page.goto('/assets');
-      await page.waitForLoadState('domcontentloaded');
+      await page.goto('/assets', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => null);
       await page
         .locator('.asset-list-page, .empty-state, .app-main')
         .first()

@@ -31,7 +31,7 @@ test.describe('JOURNEY-AUD-006: Review Social Feature Activity / Analyze Audit T
       const hasContent =
         (await page.locator('.audit-event-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
       const hasServerError = await page.locator('text=/500|internal server error/i').count();
       expect(hasServerError).toBe(0);
     });
@@ -47,7 +47,7 @@ test.describe('JOURNEY-AUD-006: Review Social Feature Activity / Analyze Audit T
       const exportBtn = page.locator('button:has-text("Export"), .audit-export-buttons');
       const hasExport = (await exportBtn.count()) > 0;
       const hasList = (await page.locator('.audit-event-list-page').count()) > 0;
-      expect(hasList || hasExport).toBe(true);
+      expect(hasList || hasExport).toBe(true) /* acceptable states */;
     });
   });
 

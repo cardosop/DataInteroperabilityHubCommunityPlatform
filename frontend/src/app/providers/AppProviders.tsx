@@ -8,7 +8,8 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { useEffect } from 'react';
 import { ToastProvider } from '../../shared/components/Toast';
 import { useAuthStore } from '../../features/auth/store/authStore';
-import { performanceMetricsService } from '../../shared/services/performanceMetrics';
+import { initWebVitals } from '../../shared/services/performanceMetrics';
+import { apiClient } from '../../shared/api/client';
 import { websocketClient } from '../../shared/services/websocketClient';
 
 /** Extract HTTP status from query error (Axios, ApiError, or generic). */
@@ -53,7 +54,8 @@ export function AppProviders({ children }: AppProvidersProps) {
   // Initialize WebSocket connection when authenticated
   useEffect(() => {
     if (isAuthenticated && user) {
-      const token = localStorage.getItem('access_token');
+      // Phase 11.1: access_token is no longer in localStorage; read from apiClient memory
+      const token = apiClient.getAccessToken();
       if (token) {
         websocketClient.connect(token).catch(() => {
           // WebSocket may be unavailable (e.g. API served HTTP-only); real-time uses polling
@@ -71,9 +73,9 @@ export function AppProviders({ children }: AppProvidersProps) {
     };
   }, [isAuthenticated, user]);
 
-  // Initialize performance metrics collection
+  // Initialize performance metrics collection (runs once, self-cleans load listener)
   useEffect(() => {
-    performanceMetricsService.collectWebVitals();
+    initWebVitals();
   }, []);
 
   // Global error handler

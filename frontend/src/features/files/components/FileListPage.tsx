@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { Modal } from '../../../shared/components/Modal';
 import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
@@ -17,6 +17,7 @@ import { useDeleteFile, useFiles } from '../hooks/useFiles';
 import { FileDetailModal } from './FileDetailModal';
 import { FileUpload } from './FileUpload';
 import './FileListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -79,7 +80,7 @@ export function FileListPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading files..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -95,14 +96,12 @@ export function FileListPage() {
       <div className="file-list-page" data-testid="file-list-page">
         <div className="file-list-header" data-testid="file-list-header">
           <h1>Files</h1>
-          <button
-            type="button"
-            className="btn-primary file-list-upload-btn"
-            onClick={() => setShowUploadModal(true)}
-            data-testid="btn-upload-file"
-          >
+          <Button
+ variant="primary" className="file-list-upload-btn"
+ onClick={() => setShowUploadModal(true)}
+ data-testid="btn-upload-file">
             Upload File
-          </button>
+          </Button>
         </div>
         <div className="file-list-filters" data-testid="file-list-filters">
           <input
@@ -172,14 +171,12 @@ export function FileListPage() {
     <div className="file-list-page" data-testid="file-list-page">
       <div className="file-list-header" data-testid="file-list-header">
         <h1>Files</h1>
-        <button
-          type="button"
-          className="btn-primary file-list-upload-btn"
-          onClick={() => setShowUploadModal(true)}
-          data-testid="btn-upload-file"
-        >
+        <Button
+ variant="primary" className="file-list-upload-btn"
+ onClick={() => setShowUploadModal(true)}
+ data-testid="btn-upload-file">
           Upload File
-        </button>
+        </Button>
       </div>
 
       <div className="file-list-filters" data-testid="file-list-filters">

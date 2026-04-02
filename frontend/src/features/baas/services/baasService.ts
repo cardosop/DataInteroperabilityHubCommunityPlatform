@@ -13,6 +13,8 @@ import type {
   UsageByEndpoint,
   UsageByTenant,
   UsageFilters,
+  CustomerBillingReport,
+  BillingReportGenerateRequest,
 } from '../../../shared/types/baas';
 
 const BAAS_BASE_PATH = 'baas';
@@ -110,8 +112,71 @@ export const baasService = {
   /**
    * Get API documentation
    */
-  async getDocumentation(): Promise<any> {
+  async getDocumentation(): Promise<unknown> {
     const response = await apiClient.getClient().get(`${BAAS_BASE_PATH}/docs/`);
     return response.data;
+  },
+
+  // --- Billing Reports (Phase 116C) ---
+
+  async listBillingReports(filters: { customer_id?: string; status?: string } = {}): Promise<PaginatedResponse<CustomerBillingReport>> {
+    const params = new URLSearchParams();
+    if (filters.customer_id) params.append('customer_id', filters.customer_id);
+    if (filters.status) params.append('status', filters.status);
+    const response = await apiClient.getClient().get<PaginatedResponse<CustomerBillingReport>>(
+      `${BAAS_BASE_PATH}/billing-reports/?${params.toString()}`
+    );
+    return response.data;
+  },
+
+  async getBillingReport(id: string): Promise<CustomerBillingReport> {
+    const response = await apiClient.getClient().get<CustomerBillingReport>(
+      `${BAAS_BASE_PATH}/billing-reports/${id}/`
+    );
+    return response.data;
+  },
+
+  async generateBillingReport(data: BillingReportGenerateRequest): Promise<CustomerBillingReport> {
+    const response = await apiClient.getClient().post<CustomerBillingReport>(
+      `${BAAS_BASE_PATH}/billing-reports/generate/`, data
+    );
+    return response.data;
+  },
+
+  async finalizeBillingReport(id: string): Promise<CustomerBillingReport> {
+    const response = await apiClient.getClient().post<CustomerBillingReport>(
+      `${BAAS_BASE_PATH}/billing-reports/${id}/finalize/`
+    );
+    return response.data;
+  },
+
+  async sendBillingReport(id: string): Promise<CustomerBillingReport> {
+    const response = await apiClient.getClient().post<CustomerBillingReport>(
+      `${BAAS_BASE_PATH}/billing-reports/${id}/send/`
+    );
+    return response.data;
+  },
+
+  async voidBillingReport(id: string, reason?: string): Promise<CustomerBillingReport> {
+    const response = await apiClient.getClient().post<CustomerBillingReport>(
+      `${BAAS_BASE_PATH}/billing-reports/${id}/void/`,
+      reason ? { reason } : {}
+    );
+    return response.data;
+  },
+
+  async getInvoicePdf(reportId: string): Promise<Blob> {
+    const response = await apiClient.getClient().get(
+      `${BAAS_BASE_PATH}/billing-reports/${reportId}/`,
+    );
+    // PDF is stored as base64 in metadata_json — decode client-side
+    const meta = response.data?.metadata_json || response.data;
+    if (meta?.pdf_base64) {
+      const binary = atob(meta.pdf_base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return new Blob([bytes], { type: 'application/pdf' });
+    }
+    throw new Error('No PDF available for this report');
   },
 };

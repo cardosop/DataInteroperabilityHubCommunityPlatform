@@ -3,6 +3,7 @@
  * API client for marketplace order operations
  */
 
+import axios from 'axios';
 import { apiClient } from '../../../shared/api/client';
 import type { PaginatedResponse } from '../../../shared/types/api';
 import type {
@@ -13,22 +14,45 @@ import type {
 
 const ORDERS_BASE_PATH = 'marketplace/orders';
 
+export type PurchaseWithPaymentRequest = {
+  listing_id: string;
+  payment_method: string;
+  payment_method_details: Record<string, string>;
+  gateway?: string;
+};
+
+export type PurchaseWithPaymentSuccess = {
+  order: Order;
+  payment?: Record<string, unknown>;
+  entitlement?: unknown;
+};
+
+export type PurchaseWithPaymentResult =
+  | { kind: 'success'; data: PurchaseWithPaymentSuccess }
+  | {
+      kind: 'requires_action';
+      client_secret: string;
+      payment_intent_id: string;
+      order_id: string;
+      payment_id: string;
+    };
+
 export const orderService = {
   /**
    * List orders with filtering and pagination
    */
   async list(filters: OrderListFilters = {}): Promise<PaginatedResponse<Order>> {
     const params = new URLSearchParams();
-    
+
     if (filters.page) params.append('page', filters.page.toString());
     if (filters.page_size) params.append('page_size', filters.page_size.toString());
     if (filters.ordering) params.append('ordering', filters.ordering);
     if (filters.status) params.append('status', filters.status);
     if (filters.listing_id) params.append('listing_id', filters.listing_id);
 
-    const response = await apiClient.getClient().get<PaginatedResponse<Order>>(
-      `${ORDERS_BASE_PATH}/${params.toString() ? `?${params.toString()}` : ''}`
-    );
+    const qs = params.toString();
+    const url = qs ? `${ORDERS_BASE_PATH}/?${qs}` : `${ORDERS_BASE_PATH}/`;
+    const response = await apiClient.getClient().get<PaginatedResponse<Order>>(url);
     return response.data;
   },
 
@@ -45,19 +69,56 @@ export const orderService = {
    * For FREE_AUTO_APPROVE listings, response format is {order: Order, entitlement?: Entitlement}
    * For regular orders, response format is just Order
    */
-  async create(data: OrderCreateRequest): Promise<Order | { order: Order; entitlement?: any }> {
-    const response = await apiClient.getClient().post<Order | { order: Order; entitlement?: any }>(`${ORDERS_BASE_PATH}/`, data);
+  async create(data: OrderCreateRequest): Promise<Order | { order: Order; entitlement?: unknown }> {
+    const response = await apiClient
+      .getClient()
+      .post<Order | { order: Order; entitlement?: unknown }>(`${ORDERS_BASE_PATH}/`, data);
     return response.data;
   },
 
   /**
-   * Purchase (create order with auto-approval if applicable)
+   * Paid checkout: POST /orders/purchase/ (402 when 3DS required).
    */
-  async purchase(listingId: string, purpose?: string): Promise<Order> {
-    const response = await apiClient.getClient().post<Order>(`${ORDERS_BASE_PATH}/purchase/`, {
-      listing_id: listingId,
-      purpose,
-    });
+  async purchaseWithPayment(payload: PurchaseWithPaymentRequest): Promise<PurchaseWithPaymentResult> {
+    try {
+      const response = await apiClient
+        .getClient()
+        .post<PurchaseWithPaymentSuccess>(`${ORDERS_BASE_PATH}/purchase/`, payload);
+      return { kind: 'success', data: response.data };
+    } catch (e) {
+      if (axios.isAxiosError(e) && e.response?.status === 402) {
+        const d = e.response.data as Record<string, unknown>;
+        if (d?.requires_action && typeof d.client_secret === 'string') {
+          return {
+            kind: 'requires_action',
+            client_secret: d.client_secret,
+            payment_intent_id: String(d.payment_intent_id ?? ''),
+            order_id: String(d.order_id ?? ''),
+            payment_id: String(d.payment_id ?? ''),
+          };
+        }
+      }
+      throw e;
+    }
+  },
+
+  /**
+   * After 3DS, sync PI and complete order server-side.
+   */
+  async confirmPayment(orderId: string): Promise<unknown> {
+    const response = await apiClient
+      .getClient()
+      .post<unknown>(`${ORDERS_BASE_PATH}/${orderId}/confirm-payment/`, {});
+    return response.data;
+  },
+
+  /**
+   * Provider / platform admin refund
+   */
+  async refund(orderId: string, body: { reason: string; amount?: string }): Promise<unknown> {
+    const response = await apiClient
+      .getClient()
+      .post<unknown>(`${ORDERS_BASE_PATH}/${orderId}/refund/`, body);
     return response.data;
   },
 
@@ -74,7 +135,7 @@ export const orderService = {
    */
   async reject(id: string, reason?: string): Promise<Order> {
     const response = await apiClient.getClient().post<Order>(`${ORDERS_BASE_PATH}/${id}/reject/`, {
-      rejection_reason: reason,
+      reason,
     });
     return response.data;
   },

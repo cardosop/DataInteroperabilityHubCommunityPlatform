@@ -24,9 +24,15 @@ test.describe('JOURNEY-MPA-009: Manage Plugin Marketplace', () => {
       const onDeveloper = page.url().includes('/developer');
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onDeveloper).toBe(true);
       const hasContent =
-        (await page.locator('.developer-portal-page, .app-main, .unavailable-page').count()) > 0;
-      expect(onLogin || on403 || (onDeveloper && hasContent)).toBe(true);
+        (await page.locator('.developer-portal-page, .app-main').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 

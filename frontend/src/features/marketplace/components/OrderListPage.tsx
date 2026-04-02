@@ -7,10 +7,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { OrderStatus } from '../../../shared/types/marketplace';
 import { useOrders } from '../hooks/useOrders';
 import './OrderListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function OrderListPage() {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ export function OrderListPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading orders..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -116,25 +117,21 @@ export function OrderListPage() {
 
       {data.count > pageSize && (
         <div className="order-list-pagination">
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => Math.max(1, p - 1))}
+ disabled={page === 1}>
             Previous
-          </button>
+          </Button>
           <span className="pagination-info">
             Page {page} of {Math.ceil(data.count / pageSize)}
           </span>
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => p + 1)}
-            disabled={page >= Math.ceil(data.count / pageSize)}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => p + 1)}
+ disabled={page>= Math.ceil(data.count / pageSize)}>
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>

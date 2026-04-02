@@ -5,7 +5,6 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Observability', () => {
   test.setTimeout(120000);
@@ -26,15 +25,17 @@ test.describe('Feature: Observability', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(5000);
       // body.count() > 0 is always true — assert meaningful page content instead
+      // Success/edge test must NOT accept .error-display
+      await expect(page.locator('.error-display')).not.toBeVisible();
       const hasContent =
         (await page
           .locator(
-            '.observability-page, .monitoring-page, .unavailable-page, .error-display, h1'
+            '.observability-page, .monitoring-page, .unavailable-page, h1'
           )
           .count()) > 0;
       expect(
         hasContent,
-        'Expected .observability-page, .monitoring-page, .unavailable-page, .error-display, or h1 to be present'
+        'Expected .observability-page, .monitoring-page, .unavailable-page, or h1 to be present'
       ).toBe(true);
     });
   });

@@ -4,6 +4,12 @@
  */
 
 import { useState } from 'react';
+import ReactCodeMirror from '@uiw/react-codemirror';
+import { StreamLanguage } from '@codemirror/language';
+import { sparql } from '@codemirror/legacy-modes/mode/sparql';
+import { Banner } from '../../../shared/components/Banner';
+import { Button } from '../../../shared/components/Button';
+import { CodeBlock } from '../../../shared/components/CodeBlock';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type { SPARQLOutputFormat } from '../../../shared/types/semantic';
@@ -14,15 +20,21 @@ import {
   useResolveURI,
   useSPARQLQuery,
 } from '../hooks/useSemantic';
+import { useSPARQLHistory } from '../hooks/useSPARQLHistory';
+import { OntologyTree } from './OntologyTree';
+import { SPARQLResultTable } from './SPARQLResultTable';
 import './SemanticPage.css';
 
 type TabId = 'sparql' | 'uri-lookup' | 'ontology';
+type OntologySubTab = 'turtle' | 'jsonld';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'sparql', label: 'SPARQL Query' },
   { id: 'uri-lookup', label: 'URI Lookup' },
   { id: 'ontology', label: 'Ontology' },
 ];
+
+const sparqlLang = StreamLanguage.define(sparql);
 
 export function SemanticPage() {
   const [activeTab, setActiveTab] = useState<TabId>('sparql');
@@ -33,6 +45,7 @@ export function SemanticPage() {
   const [fieldAssetUuid, setFieldAssetUuid] = useState('');
   const [fieldName, setFieldName] = useState('');
   const [uriLookupType, setUriLookupType] = useState<'resource' | 'field'>('resource');
+  const [ontologySubTab, setOntologySubTab] = useState<OntologySubTab>('turtle');
 
   const sparqlMutation = useSPARQLQuery();
   const uriQuery = useResolveURI(
@@ -45,6 +58,7 @@ export function SemanticPage() {
   );
   const ontologyQuery = useOntology();
   const contextQuery = useJSONLDContext();
+  const { history, pushToHistory, clearHistory } = useSPARQLHistory();
 
   const handleSPARQLSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +68,7 @@ export function SemanticPage() {
         format: sparqlFormat,
         timeout: 30,
       });
+      pushToHistory(sparqlQuery);
     } catch (err) {
       // Error handled by mutation
       console.error('SPARQL query failed:', err);
@@ -61,7 +76,6 @@ export function SemanticPage() {
   };
 
   const handleURILookup = () => {
-    // Trigger query by changing state (handled by useQuery enabled flag)
     if (uriLookupType === 'resource' && uriResourceId) {
       uriQuery.refetch();
     } else if (uriLookupType === 'field' && fieldAssetUuid && fieldName) {
@@ -97,14 +111,13 @@ export function SemanticPage() {
                 <label htmlFor="sparql-query">
                   SPARQL Query <span className="required">*</span>
                 </label>
-                <textarea
-                  id="sparql-query"
+                <ReactCodeMirror
                   value={sparqlQuery}
-                  onChange={(e) => setSparqlQuery(e.target.value)}
-                  rows={10}
-                  required
-                  placeholder="SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10"
-                  className="sparql-query-input"
+                  onChange={(value) => setSparqlQuery(value)}
+                  extensions={[sparqlLang]}
+                  basicSetup={{ lineNumbers: true, foldGutter: false }}
+                  minHeight="150px"
+                  maxHeight="400px"
                 />
               </div>
               <div className="form-group">
@@ -121,13 +134,37 @@ export function SemanticPage() {
                 </select>
               </div>
               <div className="form-actions">
-                <button type="submit" className="btn-primary" disabled={sparqlMutation.isPending}>
-                  {sparqlMutation.isPending ? 'Executing...' : 'Execute Query'}
-                </button>
+                <Button type="submit" variant="primary" loading={sparqlMutation.isPending}>
+                  Execute Query
+                </Button>
               </div>
             </form>
 
-            {sparqlMutation.error && (
+            {/* SPARQL History */}
+            {history.length > 0 && (
+              <details className="sparql-history">
+                <summary>History ({history.length})</summary>
+                <ul className="sparql-history__list">
+                  {history.map((entry, idx) => (
+                    <li key={idx}>
+                      <button
+                        type="button"
+                        className="sparql-history__entry"
+                        onClick={() => setSparqlQuery(entry)}
+                        title={entry}
+                      >
+                        {entry.length > 80 ? entry.slice(0, 80) + '...' : entry}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <Button variant="ghost" size="sm" onClick={clearHistory}>
+                  Clear history
+                </Button>
+              </details>
+            )}
+
+            {!!sparqlMutation.error && (
               <ErrorDisplay
                 error={sparqlMutation.error}
                 title="SPARQL query failed"
@@ -139,13 +176,29 @@ export function SemanticPage() {
               <div className="sparql-results">
                 <h3>Results</h3>
                 {sparqlMutation.data.truncated && (
-                  <div className="sparql-warning">
-                    ⚠️ {sparqlMutation.data.warning || 'Results were truncated'}
-                  </div>
+                  <Banner variant="warning">
+                    {sparqlMutation.data.warning || 'Results were truncated'}
+                  </Banner>
                 )}
-                <pre className="sparql-results-json">
-                  {JSON.stringify(sparqlMutation.data.results, null, 2)}
-                </pre>
+                {(() => {
+                  const results = sparqlMutation.data?.results as Record<string, unknown> | string | undefined;
+                  const bindings = typeof results === 'object' && results !== null
+                    ? (results as Record<string, unknown>).bindings
+                    : undefined;
+                  if (sparqlFormat === 'json' && Array.isArray(bindings)) {
+                    const head = (results as Record<string, unknown>).head as { vars?: string[] } | undefined;
+                    const vars = head?.vars ?? ((results as Record<string, unknown>).vars as string[] | undefined) ?? [];
+                    return <SPARQLResultTable vars={vars} bindings={bindings} />;
+                  }
+                  return (
+                    <CodeBlock
+                      language={sparqlFormat === 'csv' ? 'plaintext' : sparqlFormat}
+                      code={typeof results === 'string'
+                        ? results
+                        : JSON.stringify(results, null, 2)}
+                    />
+                  );
+                })()}
               </div>
             )}
           </section>
@@ -224,9 +277,8 @@ export function SemanticPage() {
               )}
 
               <div className="form-actions">
-                <button
-                  type="button"
-                  className="btn-primary"
+                <Button
+                  variant="primary"
                   onClick={handleURILookup}
                   disabled={
                     (uriLookupType === 'resource' && !uriResourceId) ||
@@ -236,7 +288,7 @@ export function SemanticPage() {
                   }
                 >
                   {uriQuery.isLoading || fieldUriQuery.isLoading ? 'Resolving...' : 'Resolve URI'}
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -258,9 +310,10 @@ export function SemanticPage() {
             {(uriQuery.data || fieldUriQuery.data) && (
               <div className="uri-results">
                 <h3>JSON-LD Result</h3>
-                <pre className="uri-results-json">
-                  {JSON.stringify(uriQuery.data || fieldUriQuery.data, null, 2)}
-                </pre>
+                <CodeBlock
+                  language="json"
+                  code={JSON.stringify(uriQuery.data || fieldUriQuery.data, null, 2)}
+                />
               </div>
             )}
           </section>
@@ -269,37 +322,63 @@ export function SemanticPage() {
         {activeTab === 'ontology' && (
           <section className="semantic-section" data-testid="semantic-ontology-section">
             <h2>Ontology</h2>
-            {ontologyQuery.isLoading && <LoadingSpinner message="Loading ontology..." />}
-            {ontologyQuery.error && (
-              <ErrorDisplay
-                error={ontologyQuery.error}
-                title="Failed to load ontology"
-                onRetry={() => ontologyQuery.refetch()}
-              />
-            )}
-            {ontologyQuery.data && (
-              <div className="ontology-content">
-                <h3>Ontology Definition (Turtle)</h3>
-                <pre className="ontology-turtle">{ontologyQuery.data}</pre>
-              </div>
+
+            {/* Sub-tab bar */}
+            <div className="semantic-subtabs">
+              <button
+                type="button"
+                className={`semantic-subtab ${ontologySubTab === 'turtle' ? 'active' : ''}`}
+                onClick={() => setOntologySubTab('turtle')}
+              >
+                Turtle
+              </button>
+              <button
+                type="button"
+                className={`semantic-subtab ${ontologySubTab === 'jsonld' ? 'active' : ''}`}
+                onClick={() => setOntologySubTab('jsonld')}
+              >
+                JSON-LD Context
+              </button>
+            </div>
+
+            {ontologySubTab === 'turtle' && (
+              <>
+                {ontologyQuery.isLoading && <LoadingSpinner message="Loading ontology..." />}
+                {ontologyQuery.error && (
+                  <ErrorDisplay
+                    error={ontologyQuery.error}
+                    title="Failed to load ontology"
+                    onRetry={() => ontologyQuery.refetch()}
+                  />
+                )}
+                {ontologyQuery.data && (
+                  <div className="ontology-content">
+                    <OntologyTree turtle={ontologyQuery.data} />
+                    <CodeBlock language="turtle" code={ontologyQuery.data} />
+                  </div>
+                )}
+              </>
             )}
 
-            <div className="semantic-divider" />
-
-            <h2>JSON-LD Context</h2>
-            {contextQuery.isLoading && <LoadingSpinner message="Loading JSON-LD context..." />}
-            {contextQuery.error && (
-              <ErrorDisplay
-                error={contextQuery.error}
-                title="Failed to load JSON-LD context"
-                onRetry={() => contextQuery.refetch()}
-              />
-            )}
-            {contextQuery.data && (
-              <div className="context-content">
-                <h3>JSON-LD Context</h3>
-                <pre className="context-json">{JSON.stringify(contextQuery.data, null, 2)}</pre>
-              </div>
+            {ontologySubTab === 'jsonld' && (
+              <>
+                {contextQuery.isLoading && <LoadingSpinner message="Loading JSON-LD context..." />}
+                {contextQuery.error && (
+                  <ErrorDisplay
+                    error={contextQuery.error}
+                    title="Failed to load JSON-LD context"
+                    onRetry={() => contextQuery.refetch()}
+                  />
+                )}
+                {contextQuery.data && (
+                  <div className="context-content">
+                    <CodeBlock
+                      language="json"
+                      code={JSON.stringify(contextQuery.data, null, 2)}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </section>
         )}

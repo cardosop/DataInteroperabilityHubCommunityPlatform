@@ -10,6 +10,7 @@ import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import './RatingsTab.css';
+import { Button } from '../../../shared/components/Button';
 
 interface RatingsTabProps {
   assetId: string | null;
@@ -18,7 +19,7 @@ interface RatingsTabProps {
   assetIdOnly?: boolean;
 }
 
-export function RatingsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnly = false }: RatingsTabProps) {
+export function RatingsTab({ assetId, assetIdOnly = false }: RatingsTabProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(assetId);
 
   useEffect(() => {
@@ -46,7 +47,7 @@ export function RatingsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnly
       setComment('');
       setShowForm(false);
       refetch();
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -114,13 +115,11 @@ export function RatingsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnly
           </div>
 
           {!showForm && (
-            <button
-              className="btn-primary"
-              onClick={() => setShowForm(true)}
-              type="button"
-            >
+            <Button
+ variant="primary"
+ onClick={() => setShowForm(true)}>
               Submit Rating
-            </button>
+            </Button>
           )}
 
           {showForm && (
@@ -146,25 +145,21 @@ export function RatingsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnly
                 rows={3}
               />
               <div className="form-actions">
-                <button
-                  className="btn-primary"
-                  onClick={handleSubmitRating}
-                  disabled={rating === 0 || submitRatingMutation.isPending}
-                  type="button"
-                >
+                <Button
+ variant="primary"
+ onClick={handleSubmitRating}
+ disabled={rating === 0 || submitRatingMutation.isPending}>
                   {submitRatingMutation.isPending ? 'Submitting...' : 'Submit'}
-                </button>
-                <button
-                  className="btn-secondary"
-                  onClick={() => {
-                    setShowForm(false);
-                    setRating(0);
-                    setComment('');
-                  }}
-                  type="button"
-                >
+                </Button>
+                <Button
+ variant="secondary"
+ onClick={() => {
+ setShowForm(false);
+ setRating(0);
+ setComment('');
+ }}>
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           )}

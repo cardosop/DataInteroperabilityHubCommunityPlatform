@@ -17,11 +17,11 @@ test.describe('Phase 2 Catalog Journey', () => {
   test('complete journey: create asset → upload file → create dataset → create contract → activate', async ({
     page,
   }) => {
-    test.setTimeout(300000); // 5 minutes for complete journey
+    test.setTimeout(120000);
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+      contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
     });
 
     await waitForLoadingComplete(page, { timeout: 15000 });
@@ -137,7 +137,7 @@ test.describe('Phase 2 Catalog Journey', () => {
           if ((await success.count()) > 0) {
             console.log('✅ Upload success indicator found');
           }
-        } catch (e) {
+        } catch {
           console.log('⚠️ Timeout waiting for button to be enabled, checking state...');
           console.log('Upload logs:', uploadLogs.join('\n'));
 
@@ -203,9 +203,6 @@ test.describe('Phase 2 Catalog Journey', () => {
 
     // Wait for redirect to dataset detail
     await page.waitForURL(/\/datasets\/[^/]+$/, { timeout: 30000 });
-    const datasetUrl = page.url();
-    const datasetId = datasetUrl.split('/').pop()!;
-
     // Verify dataset was created - wait for dataset detail page to load
     await waitForAppMainReady(page, {
       timeout: 60000,
@@ -214,17 +211,13 @@ test.describe('Phase 2 Catalog Journey', () => {
 
     await page.waitForTimeout(2000); // Wait for React to render
 
-    // Assert on metadata (always present when dataset loads); h1 may be empty if backend omits name
+    // Assert dataset content loaded — error-display is NOT an acceptable outcome
     const datasetContent = page
       .locator('.dataset-detail-page .dataset-detail-metadata')
       .or(page.locator('.dataset-detail-page .dataset-detail-content'))
       .first();
-    const errorDisplay = page.locator('.error-display');
-    await expect(datasetContent.or(errorDisplay)).toBeVisible({ timeout: 10000 });
-    if (await errorDisplay.isVisible().catch(() => false)) {
-      const msg = (await errorDisplay.textContent().catch(() => '')) || '';
-      throw new Error(`Dataset detail failed to load: ${msg.slice(0, 300)}`);
-    }
+    await expect(datasetContent).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.error-display')).not.toBeVisible();
 
     // Step 4: Navigate to Contracts — client-side nav avoids auth race
     await navigateToRouteFromApp(page, '/contracts', {
@@ -373,7 +366,7 @@ test.describe('Phase 2 Catalog Journey', () => {
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) {
-      expect(page.url()).toContain('/login');
+      test.skip(true, 'Redirected to login — auth may have expired');
       return;
     }
 
@@ -431,7 +424,7 @@ test.describe('Phase 2 Catalog Journey', () => {
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) {
-      expect(page.url()).toContain('/login');
+      test.skip(true, 'Redirected to login — auth may have expired');
       return;
     }
 
@@ -479,7 +472,7 @@ test.describe('Phase 2 Catalog Journey', () => {
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) {
-      expect(page.url()).toContain('/login');
+      test.skip(true, 'Redirected to login — auth may have expired');
       return;
     }
 

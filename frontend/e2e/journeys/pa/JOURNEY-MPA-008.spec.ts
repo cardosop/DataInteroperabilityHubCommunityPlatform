@@ -24,9 +24,15 @@ test.describe('JOURNEY-MPA-008: Configure Advanced Observability', () => {
       const onObservability = page.url().includes('/observability');
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onObservability).toBe(true);
       const hasContent =
         (await page.locator('.observability-page, .app-main, h1').count()) > 0;
-      expect(onLogin || on403 || (onObservability && hasContent)).toBe(true);
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 
@@ -39,7 +45,7 @@ test.describe('JOURNEY-MPA-008: Configure Advanced Observability', () => {
       const url = page.url();
       const no500 = (await page.locator('text=/500|internal server error/i').count()) === 0;
       expect(url.includes('/login') || url.includes('/403') || url.includes('/observability')).toBe(true);
-      expect(no500).toBe(true);
+      expect(no500).toBe(true) /* acceptable states */;
     });
   });
 

@@ -44,6 +44,14 @@ export function MLPage() {
     navigate(`/ml/models/${id}`);
   };
 
+  const handleTrainingJobClick = (id: string) => {
+    navigate(`/ml/training/${id}`);
+  };
+
+  const handleInferenceClick = (id: string) => {
+    navigate(`/ml/inference/${id}`);
+  };
+
   return (
     <div className="ml-page">
       <div className="ml-header">
@@ -116,7 +124,10 @@ export function MLPage() {
                   <div
                     key={model.id}
                     className="model-card"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleModelClick(model.id)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleModelClick(model.id); }}
                   >
                     <div className="model-header">
                       <h3>{model.odh_model_name}</h3>
@@ -164,7 +175,15 @@ export function MLPage() {
             {trainingJobsData && trainingJobsData.results.length > 0 && (
               <div className="training-jobs-list">
                 {trainingJobsData.results.map(job => (
-                  <div key={job.id} className="job-card">
+                  <div
+                    key={job.id}
+                    className="job-card"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleTrainingJobClick(job.id)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleTrainingJobClick(job.id); }}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <div className="job-header">
                       <h3>Training Job {job.id.substring(0, 8)}...</h3>
                       <span className={`status-badge status-${job.status.toLowerCase()}`}>
@@ -218,7 +237,15 @@ export function MLPage() {
             {inferenceData && inferenceData.results.length > 0 && (
               <div className="inference-list">
                 {inferenceData.results.map(deployment => (
-                  <div key={deployment.id} className="deployment-card">
+                  <div
+                    key={deployment.id}
+                    className="deployment-card"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleInferenceClick(deployment.id)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleInferenceClick(deployment.id); }}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <div className="deployment-header">
                       <h3>Deployment {deployment.id.substring(0, 8)}...</h3>
                       <span className={`status-badge status-${deployment.status.toLowerCase()}`}>

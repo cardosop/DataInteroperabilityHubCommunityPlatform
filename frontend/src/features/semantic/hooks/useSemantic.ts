@@ -2,7 +2,8 @@
  * Semantic React Query Hooks
  */
 
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import type {
   SPARQLQueryRequest,
   SemanticResourceListFilters,
@@ -10,8 +11,10 @@ import type {
 import { semanticService } from '../services/semanticService';
 
 export function useSPARQLQuery() {
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: SPARQLQueryRequest) => semanticService.querySPARQL(data),
+    successMessage: 'SPARQL query executed',
+    errorMessage: 'Failed to execute SPARQL query',
   });
 }
 

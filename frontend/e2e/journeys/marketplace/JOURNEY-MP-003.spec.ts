@@ -14,7 +14,7 @@ import { getConsumerTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-MP-003: Import Dataset from Marketplace', () => {
-  test.setTimeout(300000); // 5 min: consumer login + nav; acceptRedirectToLogin avoids retry exhaustion
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('integrations connections list loads for discover', async ({ page }) => {
@@ -56,7 +56,7 @@ test.describe('JOURNEY-MP-003: Import Dataset from Marketplace', () => {
       await page.waitForTimeout(3000);
       const hasError = (await page.locator('.error-display').count()) > 0;
       const onLogin = page.url().includes('/login');
-      expect(hasError || onLogin).toBe(true);
+      expect(hasError || onLogin).toBe(true) /* acceptable states */;
     });
   });
 

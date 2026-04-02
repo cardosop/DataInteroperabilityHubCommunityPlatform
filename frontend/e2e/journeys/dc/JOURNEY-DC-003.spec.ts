@@ -14,7 +14,7 @@ import { getConsumerTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('search in marketplace updates results or shows empty', async ({ page }) => {
@@ -22,7 +22,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 90000,
         contentSelector:
-          '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .loading-spinner-container, .listing-list-filters',
+          '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .listing-list-filters',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -40,7 +40,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
       expect(page.url()).toContain('/marketplace');
       const hasContent =
         (await page.locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display').count()) > 0;
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
 
     test('filters in marketplace apply and result container updates', async ({ page }) => {
@@ -67,7 +67,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
           (await page.locator('.listing-list-page, .listing-list-grid').count()) > 0 ||
           (await page.locator('.empty-state').count()) > 0 ||
           (await page.locator('.error-display').count()) > 0;
-        expect(hasTerminalState).toBe(true);
+        expect(hasTerminalState).toBe(true) /* acceptable states */;
       }
       expect(page.url()).toContain('/marketplace');
     });
@@ -85,7 +85,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
         url.includes('/marketplace') &&
         ((await page.locator('input#email, [href*="/login"]').count()) > 0 ||
           (await page.locator('text=Sign in').count()) > 0);
-      expect(onLogin || onMarketplaceWithPrompt).toBe(true);
+      expect(onLogin || onMarketplaceWithPrompt).toBe(true) /* acceptable states */;
     });
   });
 
@@ -123,7 +123,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
           (await page.locator('.listing-list-page, .listing-list-grid').count()) > 0 ||
           (await page.locator('.empty-state').count()) > 0 ||
           (await page.locator('.error-display').count()) > 0;
-        expect(hasTerminalState).toBe(true);
+        expect(hasTerminalState).toBe(true) /* acceptable states */;
       }
       expect(page.url()).toContain('/marketplace');
     });

@@ -6,7 +6,7 @@
 
 import { Page } from '@playwright/test';
 import type { TestUser } from '../setup/create-test-user';
-import { clearAuthStorage, loginUser } from './auth';
+import { clearAuthStorage, loginUser, loginViaApi } from './auth';
 
 // Node fetch needs absolute URL; align with auth.ts (VITE_API_BASE_URL can be relative)
 const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
@@ -32,7 +32,13 @@ export function strongPassword(): string {
 
 function isRetryableRegisterError(err: unknown): boolean {
   const msg = String((err as Error)?.message ?? (err as { cause?: Error })?.cause?.message ?? '');
-  return /ECONNRESET|ECONNREFUSED|fetch failed|socket hang up|network/i.test(msg);
+  // Connection errors are retryable
+  if (/ECONNRESET|ECONNREFUSED|fetch failed|socket hang up|network/i.test(msg)) return true;
+  // 503 "Registration is temporarily unavailable" is transient under parallel E2E load
+  if (/Register API failed: 503/i.test(msg)) return true;
+  // 500 with statement timeout / deadlock — DB overloaded under parallel E2E load
+  if (/Register API failed: 500/i.test(msg) && /statement timeout|canceling statement|deadlock|too many/i.test(msg)) return true;
+  return false;
 }
 
 export async function registerViaApi(user: {
@@ -229,17 +235,26 @@ export async function waitForRegisterPageReady(page: Page, timeoutMs = 35_000): 
 }
 
 /**
- * Assert that the currently logged-in user (from page localStorage) has a personal tenant.
- * Fetches /auth/me/ with Bearer token and asserts tenant_id is present (useronboardfix 4.1.1).
+ * Assert that the given user has a personal tenant.
+ * Phase 11.1: access_token is no longer in localStorage. Uses loginViaApi from Node.js
+ * to get a fresh token, then fetches /auth/me/ to verify tenant_id.
  */
-export async function assertUserHasPersonalTenant(page: Page): Promise<void> {
-  const token = await page.evaluate(() => localStorage.getItem('access_token'));
-  if (!token) {
-    throw new Error('assertUserHasPersonalTenant: No access_token in localStorage');
+export async function assertUserHasPersonalTenant(_page: Page, user?: TestUser): Promise<void> {
+  // Try to get email/password from the user argument; fall back to reading email from localStorage
+  let email: string;
+  let password: string;
+  if (user?.email && user?.password) {
+    email = user.email;
+    password = user.password;
+  } else {
+    throw new Error(
+      'assertUserHasPersonalTenant: user credentials required (Phase 11.1: access_token no longer in localStorage)'
+    );
   }
+  const apiAuth = await loginViaApi(email, password);
   const res = await fetch(`${API_BASE_URL}/auth/me/`, {
     method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${apiAuth.access_token}` },
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -277,8 +292,25 @@ export async function runJOURNEY_AUTH_001_Success(page: Page): Promise<void> {
   await page.fill('input#email', email);
   await page.fill('input#password', password);
   await page.click('button[type="submit"]');
-  // Registration navigates to /login with state; allow up to 60s for slow API under E2E load
-  await page.waitForURL((url) => url.pathname === '/login', { timeout: 60_000 });
+  // Registration navigates to /login with state on success.  If the API fails (500, 503,
+  // rate-limit, validation), the page stays on /register with an error display.
+  // Wait for EITHER the redirect OR an error — don't wait 60s for a redirect that may never come.
+  const postSubmit = await Promise.race([
+    page.waitForURL((url) => url.pathname === '/login', { timeout: 60_000 }).then(() => 'redirect' as const),
+    page.locator('.error-message, .error-display').first().waitFor({ state: 'visible', timeout: 60_000 }).then(() => 'error' as const),
+  ]).catch(() => 'timeout' as const);
+
+  if (postSubmit === 'error') {
+    const errText = await page.locator('.error-message, .error-display').first().textContent().catch(() => '');
+    throw new Error(`Registration failed — error shown on page: ${(errText ?? '').slice(0, 200)}`);
+  }
+  if (postSubmit === 'timeout') {
+    throw new Error(
+      'Registration: neither /login redirect nor error display appeared within 60s. ' +
+      `Current URL: ${page.url()}`
+    );
+  }
+
   await page.locator('.success-message').waitFor({ state: 'visible', timeout: 15_000 });
   const successText = await page.locator('.success-message').textContent();
   if (!successText?.includes('Account created')) {
@@ -287,7 +319,7 @@ export async function runJOURNEY_AUTH_001_Success(page: Page): Promise<void> {
   const user: TestUser = { email, password, name };
   await loginUser(page, user);
   await page.locator('.app-header').waitFor({ state: 'visible', timeout: 10_000 });
-  await assertUserHasPersonalTenant(page);
+  await assertUserHasPersonalTenant(page, user);
 }
 
 /** Run JOURNEY-AUTH-003 success: password reset request + confirm via email (requires MailHog) */

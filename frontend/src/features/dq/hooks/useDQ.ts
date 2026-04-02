@@ -2,7 +2,8 @@
  * DQ React Query Hooks
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { dqService } from '../services/dqService';
 import type { DQRunCreateRequest, DQRunListFilters } from '../../../shared/types/dq';
 
@@ -51,8 +52,10 @@ export function useDQRunResults(id: string | null) {
 export function useCreateDQRun() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: DQRunCreateRequest) => dqService.create(data),
+    successMessage: 'DQ run created',
+    errorMessage: 'Failed to create DQ run',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dq', 'runs'] });
     },

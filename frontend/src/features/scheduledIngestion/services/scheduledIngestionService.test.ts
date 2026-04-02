@@ -46,7 +46,7 @@ import { apiClient } from '../../../shared/api/client';
 import { scheduledIngestionService } from './scheduledIngestionService';
 
 // Get the mock instance from axios.create
-const mockAxiosCreate = vi.mocked(axios.create);
+vi.mocked(axios.create);
 
 describe('scheduledIngestionService', () => {
   let mockAxiosInstance: AxiosInstance;
@@ -91,7 +91,7 @@ describe('scheduledIngestionService', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockResponse,
-      } as any);
+      } as never);
 
       const filters: ScheduledIngestionListFilters = {
         page: 1,
@@ -122,7 +122,7 @@ describe('scheduledIngestionService', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockResponse,
-      } as any);
+      } as never);
 
       const result = await scheduledIngestionService.list();
 
@@ -149,7 +149,7 @@ describe('scheduledIngestionService', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockIngestion,
-      } as any);
+      } as never);
 
       const result = await scheduledIngestionService.getById('ingestion-1');
 
@@ -187,7 +187,7 @@ describe('scheduledIngestionService', () => {
 
       vi.mocked(mockAxiosInstance.post).mockResolvedValue({
         data: mockCreatedIngestion,
-      } as any);
+      } as never);
 
       const result = await scheduledIngestionService.create(createRequest);
 
@@ -222,7 +222,7 @@ describe('scheduledIngestionService', () => {
 
       vi.mocked(mockAxiosInstance.patch).mockResolvedValue({
         data: mockUpdatedIngestion,
-      } as any);
+      } as never);
 
       const result = await scheduledIngestionService.update('ingestion-1', updateRequest);
 
@@ -239,7 +239,7 @@ describe('scheduledIngestionService', () => {
     it('should delete a scheduled ingestion', async () => {
       vi.mocked(mockAxiosInstance.delete).mockResolvedValue({
         status: 204,
-      } as any);
+      } as never);
 
       await scheduledIngestionService.delete('ingestion-1');
 
@@ -263,7 +263,7 @@ describe('scheduledIngestionService', () => {
 
       vi.mocked(mockAxiosInstance.post).mockResolvedValue({
         data: mockTriggerResponse,
-      } as any);
+      } as never);
 
       const result = await scheduledIngestionService.trigger('ingestion-1', triggerRequest);
 
@@ -285,7 +285,7 @@ describe('scheduledIngestionService', () => {
 
       vi.mocked(mockAxiosInstance.post).mockResolvedValue({
         data: mockTriggerResponse,
-      } as any);
+      } as never);
 
       const result = await scheduledIngestionService.trigger('ingestion-1');
 
@@ -319,7 +319,7 @@ describe('scheduledIngestionService', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockRuns,
-      } as any);
+      } as never);
 
       const result = await scheduledIngestionService.listRuns('ingestion-1');
 
@@ -346,7 +346,7 @@ describe('scheduledIngestionService', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockRun,
-      } as any);
+      } as never);
 
       const result = await scheduledIngestionService.getRunById('run-1');
 

@@ -18,7 +18,7 @@ import {
 
 test.describe('Phase 3 Quality Gates', () => {
   test('complete journey: run compliance + DQ → handle fail → rerun → pass', async ({ page }) => {
-    test.setTimeout(480000); // 8 min: full journey (asset+dataset+compliance+DQ); navigateToRouteFromApp first avoids redundant login
+    test.setTimeout(120000);
 
     // Login and navigate to assets
     const testUser = await getTestUser();
@@ -39,7 +39,7 @@ test.describe('Phase 3 Quality Gates', () => {
       .first();
     try {
       await createButton.waitFor({ state: 'visible', timeout: 45000 });
-    } catch (e) {
+    } catch {
       // Transient load/connection may delay content; retry page once
       console.log('Create Asset button not visible, reloading assets page...');
       await page.goto('/assets', { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -170,7 +170,7 @@ test.describe('Phase 3 Quality Gates', () => {
         try {
           await page.waitForSelector('.upload-success, .upload-complete', { timeout: 30000 });
           console.log('File upload completed');
-        } catch (e) {
+        } catch {
           // Upload might have completed but message not shown, check if button is enabled
           console.log('Upload success message not found, checking if button is enabled...');
         }
@@ -337,10 +337,10 @@ test.describe('Phase 3 Quality Gates', () => {
               console.log('Dataset successfully attached to asset');
             } else {
               // Check if dataset_id is in the asset data by inspecting the page
-              const assetData = await page
+              await page
                 .evaluate(() => {
                   // Try to get asset data from React Query cache or component state
-                  const reactFiber = (window as any).__REACT_QUERY_STATE__;
+                  const reactFiber = (window as unknown as Record<string, unknown>).__REACT_QUERY_STATE__;
                   return reactFiber;
                 })
                 .catch(() => null);
@@ -430,7 +430,7 @@ test.describe('Phase 3 Quality Gates', () => {
       try {
         await page.waitForSelector('.quality-gate-run-item', { timeout: 45000 });
         console.log('DQ run appeared in list');
-      } catch (e) {
+      } catch {
         // DQ run might not appear immediately, reload and check again
         console.log('DQ run not immediately visible, reloading page...');
         await page.reload();
@@ -510,7 +510,7 @@ test.describe('Phase 3 Quality Gates', () => {
             timeout: 5000,
           });
           console.log('DQ results summary found');
-        } catch (e) {
+        } catch {
           console.log('DQ results summary not found (may still be loading)');
         }
       } else {
@@ -647,7 +647,7 @@ test.describe('Phase 3 Quality Gates', () => {
     const dqContentSelector = '.dq-run-list-page, .dq-run-list-table, .empty-state, .error-display';
     try {
       await page.waitForSelector(dqContentSelector, { timeout: 25000 });
-    } catch (e) {
+    } catch {
       console.log('DQ page content wait timed out, retrying navigation...');
       await page.goto('/dq', { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(3000);
@@ -680,7 +680,7 @@ test.describe('Phase 3 Quality Gates', () => {
       '.compliance-run-list-page, .compliance-run-list-table, .empty-state, .error-display';
     try {
       await page.waitForSelector(complianceContentSelector, { timeout: 25000 });
-    } catch (e) {
+    } catch {
       // Transient connection reset may prevent load; retry navigation once
       console.log('Compliance page content wait timed out, retrying navigation...');
       await page.goto('/compliance', { waitUntil: 'domcontentloaded', timeout: 30000 });

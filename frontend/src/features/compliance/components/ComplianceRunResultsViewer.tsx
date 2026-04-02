@@ -123,7 +123,7 @@ export function ComplianceRunResultsViewer({ results }: ComplianceRunResultsView
       <div className="compliance-results-filters">
         <div className="filter-group">
           <label>Severity</label>
-          <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as any)}>
+          <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as 'ALL' | 'HIGH' | 'MEDIUM' | 'LOW')}>
             <option value="ALL">All Severities</option>
             <option value="HIGH">High</option>
             <option value="MEDIUM">Medium</option>
@@ -188,7 +188,7 @@ export function ComplianceRunResultsViewer({ results }: ComplianceRunResultsView
           </div>
           <div className="risk-item">
             <span className="risk-label">Risk Score:</span>
-            <span className="risk-value">{Math.round(results.risk_assessment.risk_score * 100)}%</span>
+            <span className="risk-value">{Math.round(results.risk_assessment.risk_score)}%</span>
           </div>
           <div className="risk-item">
             <span className="risk-label">Regulations Checked:</span>

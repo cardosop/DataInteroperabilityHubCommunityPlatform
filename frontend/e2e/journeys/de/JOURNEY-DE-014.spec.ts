@@ -11,59 +11,24 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTenantAdminUserOrTestUser, getTestUser, loginUser, loginViaApi } from '../../fixtures/auth';
-
-/** Inject API tokens to bypass slow UI login (avoids slowMo=400ms-per-action penalty). */
-async function loginViaApiAndInject(
-  page: import('@playwright/test').Page,
-  getUser: () => Promise<import('../../fixtures/auth').TestUser>
-): Promise<void> {
-  const user = await getUser();
-  const auth = await loginViaApi(user.email, user.password);
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.evaluate(
-    ({ accessToken, refreshToken, userData }) => {
-      localStorage.setItem('access_token', accessToken);
-      localStorage.setItem('refresh_token', refreshToken);
-      localStorage.setItem('user', JSON.stringify(userData));
-    },
-    { accessToken: auth.access_token, refreshToken: auth.refresh_token, userData: auth.user }
-  );
-}
+import { getTenantAdminUserOrTestUser, getTestUser } from '../../fixtures/auth';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-014: Create ODPS via API', () => {
-  // 6 min: ODPS routes can be slow under parallel E2E load (chromium-routes runs late).
-  // Edge test uses token injection to avoid the slow UI login that exhausted this budget.
-  test.setTimeout(360000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('ODPS upload page loads', async ({ page }) => {
       const testUser = await getTenantAdminUserOrTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/odps/upload');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.odps-upload-page, .odps-upload-form, .loading-spinner-container, .app-main, #email',
-        { timeout: 45000 }
-      );
-      // Wait for the page to settle (upload form fields become interactive)
-      await page
-        .locator('.odps-upload-page, .odps-upload-form, .app-main')
-        .first()
-        .waitFor({ state: 'visible', timeout: 10000 })
-        .catch(() => null);
+      await loginAndNavigateToRoute(page, testUser, '/odps/upload', { timeout: 60000 });
+      expect(page.url()).not.toContain('/login');
       expect(page.url()).toContain('/odps/upload');
     });
 
     test('ODPS list loads', async ({ page }) => {
       const testUser = await getTenantAdminUserOrTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/odps');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.odps-list-page, .odps-empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 45000 }
-      );
+      await loginAndNavigateToRoute(page, testUser, '/odps', { timeout: 60000 });
+      expect(page.url()).not.toContain('/login');
       expect(page.url()).toContain('/odps');
     });
   });
@@ -71,10 +36,12 @@ test.describe('JOURNEY-DE-014: Create ODPS via API', () => {
   test.describe('Failure', () => {
     test('ODPS detail with non-existent id shows error', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/odps/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
-      // Wait for error to appear instead of a fixed sleep
+      await loginAndNavigateToRoute(
+        page,
+        testUser,
+        '/odps/00000000-0000-0000-0000-000000000000',
+        { timeout: 90000 }
+      );
       await page
         .locator('.error-display, .odps-detail-main')
         .first()
@@ -83,28 +50,18 @@ test.describe('JOURNEY-DE-014: Create ODPS via API', () => {
       const hasError = (await page.locator('.error-display').count()) > 0;
       const noSuccessContent = (await page.locator('.odps-detail-main').count()) === 0;
       const onLogin = page.url().includes('/login');
-      expect(hasError || noSuccessContent || onLogin).toBe(true);
+      expect(hasError || noSuccessContent || onLogin).toBe(true) /* acceptable states */;
     });
   });
 
   test.describe('Edge', () => {
     test('ODPS upload and list accessible', async ({ page }) => {
-      // Use API token injection to avoid the slow UI login that caused chromium-routes
-      // to exceed the 360s budget when it ran late in the batch under high API load.
-      // Two 120s waitForSelectors + slow UI login = 300s+ baseline, leaving no buffer.
-      await loginViaApiAndInject(page, getTenantAdminUserOrTestUser);
-      await page.goto('/odps/upload');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.odps-upload-page, .odps-upload-form, .loading-spinner-container, #email',
-        { timeout: 45000 }
-      );
+      const testUser = await getTenantAdminUserOrTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/odps/upload', { timeout: 60000 });
+      expect(page.url()).not.toContain('/login');
       expect(page.url()).toContain('/odps/upload');
-      await page.goto('/odps');
-      await page.waitForSelector(
-        '.odps-list-page, .odps-empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 45000 }
-      );
+      await loginAndNavigateToRoute(page, testUser, '/odps', { timeout: 60000 });
+      expect(page.url()).not.toContain('/login');
       expect(page.url()).toContain('/odps');
     });
   });

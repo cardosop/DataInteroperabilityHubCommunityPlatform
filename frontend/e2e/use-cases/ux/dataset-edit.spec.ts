@@ -16,13 +16,13 @@ import {
 } from '../../fixtures/helpers';
 
 test.describe('Dataset Edit with Asset Link (UX)', () => {
-  test.setTimeout(180000); // 3 min
+  test.setTimeout(90000);
 
   test('dataset list loads and empty state shows create action', async ({ page }) => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/datasets', {
       timeout: 60000,
-      contentSelector: '[data-testid="dataset-list-page"], .empty-state, .error-display, .loading-spinner-container',
+      contentSelector: '[data-testid="dataset-list-page"], .empty-state',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -44,7 +44,7 @@ test.describe('Dataset Edit with Asset Link (UX)', () => {
     const datasetId = await createDatasetViaApi(testUser, { forceNew: true });
     await loginAndNavigateToRoute(page, testUser, `/datasets/${datasetId}`, {
       timeout: 60000,
-      contentSelector: '.dataset-detail-page, .error-display, .loading-spinner-container',
+      contentSelector: '.dataset-detail-page',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -58,7 +58,7 @@ test.describe('Dataset Edit with Asset Link (UX)', () => {
     const datasetId = await createDatasetViaApi(testUser, { forceNew: true });
     await loginAndNavigateToRoute(page, testUser, `/datasets/${datasetId}`, {
       timeout: 60000,
-      contentSelector: '.dataset-detail-page, .error-display, .loading-spinner-container',
+      contentSelector: '.dataset-detail-page',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -68,7 +68,7 @@ test.describe('Dataset Edit with Asset Link (UX)', () => {
     const hasEdit = (await editBtn.count()) > 0;
 
     if (!hasLinkToAsset && !hasEdit) {
-      test.skip();
+      test.skip(true, 'No asset link or edit button found — dataset detail precondition not met');
       return;
     }
 
@@ -87,7 +87,7 @@ test.describe('Dataset Edit with Asset Link (UX)', () => {
     const datasetId = await createDatasetViaApi(testUser, { forceNew: true });
     await loginAndNavigateToRoute(page, testUser, `/datasets/${datasetId}`, {
       timeout: 60000,
-      contentSelector: '.dataset-detail-page, .error-display, .loading-spinner-container',
+      contentSelector: '.dataset-detail-page',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 

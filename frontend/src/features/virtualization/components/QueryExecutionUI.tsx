@@ -6,7 +6,9 @@
 import { useState, useEffect } from 'react';
 import { useExecuteQuery, useQueryExecutions, useQueryExecution, useQueryExecutionProgress, useQueryExecutionResult, useCancelQueryExecution } from '../hooks/useVirtualization';
 import { QueryExecutionMode } from '../../../shared/types/virtualization';
+import { useToast } from '../../../shared/components/Toast';
 import './QueryExecutionUI.css';
+import { Button } from '../../../shared/components/Button';
 
 interface QueryExecutionUIProps {
   datasetId: string;
@@ -19,6 +21,7 @@ export function QueryExecutionUI({ datasetId }: QueryExecutionUIProps) {
   const [resultPage, setResultPage] = useState(1);
   const [resultPageSize] = useState(100);
   const [showHistory, setShowHistory] = useState(false);
+  const toast = useToast();
 
   const executeMutation = useExecuteQuery();
   const { data: executions } = useQueryExecutions({ virtual_dataset: datasetId, page_size: 10 });
@@ -37,7 +40,7 @@ export function QueryExecutionUI({ datasetId }: QueryExecutionUIProps) {
 
   const handleExecute = async () => {
     if (!query.trim()) {
-      alert('Please enter a query');
+      toast.error('Please enter a query');
       return;
     }
 
@@ -45,8 +48,8 @@ export function QueryExecutionUI({ datasetId }: QueryExecutionUIProps) {
       let params = {};
       try {
         params = JSON.parse(parameters || '{}');
-      } catch (e) {
-        alert('Invalid JSON in parameters');
+      } catch {
+        toast.error('Invalid JSON in parameters');
         return;
       }
 
@@ -60,7 +63,7 @@ export function QueryExecutionUI({ datasetId }: QueryExecutionUIProps) {
 
       setExecutionId(execution.id);
       setResultPage(1);
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -70,7 +73,7 @@ export function QueryExecutionUI({ datasetId }: QueryExecutionUIProps) {
     try {
       await cancelMutation.mutateAsync(executionId);
       setExecutionId(null);
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -89,8 +92,8 @@ export function QueryExecutionUI({ datasetId }: QueryExecutionUIProps) {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (err) {
-      alert('Failed to export result');
+    } catch {
+      toast.error('Failed to export result');
     }
   };
 
@@ -108,31 +111,25 @@ export function QueryExecutionUI({ datasetId }: QueryExecutionUIProps) {
         <div className="section-header">
           <h3>Query Editor</h3>
           <div className="editor-actions">
-            <button
-              onClick={handleExecute}
-              className="btn-primary"
-              type="button"
-              disabled={executeMutation.isPending || isRunning}
-            >
+            <Button
+ onClick={handleExecute}
+ variant="primary"
+ disabled={executeMutation.isPending || isRunning}>
               {executeMutation.isPending ? 'Executing...' : 'Execute Query'}
-            </button>
+            </Button>
             {isRunning && (
-              <button
-                onClick={handleCancel}
-                className="btn-danger"
-                type="button"
-                disabled={cancelMutation.isPending}
-              >
-                {cancelMutation.isPending ? 'Cancelling...' : 'Cancel'}
-              </button>
+              <Button
+ onClick={handleCancel}
+ variant="danger"
+ loading={cancelMutation.isPending}>
+                Cancel
+              </Button>
             )}
-            <button
-              onClick={() => setShowHistory(!showHistory)}
-              className="btn-secondary"
-              type="button"
-            >
+            <Button
+ onClick={() => setShowHistory(!showHistory)}
+ variant="secondary">
               {showHistory ? 'Hide' : 'Show'} History
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -178,12 +175,12 @@ export function QueryExecutionUI({ datasetId }: QueryExecutionUIProps) {
           <div className="section-header">
             <h3>Results</h3>
             <div className="result-actions">
-              <button onClick={() => handleExport('json')} className="btn-secondary" type="button">
+              <Button onClick={() => handleExport('json')} variant="secondary">
                 Export JSON
-              </button>
-              <button onClick={() => handleExport('csv')} className="btn-secondary" type="button">
+              </Button>
+              <Button onClick={() => handleExport('csv')} variant="secondary">
                 Export CSV
-              </button>
+              </Button>
               <span className="result-count">
                 {result.returned_count} of {result.total_count} rows
               </span>
@@ -203,9 +200,9 @@ export function QueryExecutionUI({ datasetId }: QueryExecutionUIProps) {
               </thead>
               <tbody>
                 {Array.isArray(result.data) ? (
-                  result.data.map((row: any, index: number) => (
+                  result.data.map((row: Record<string, unknown>, index: number) => (
                     <tr key={index}>
-                      {Object.values(row).map((value: any, colIndex: number) => (
+                      {Object.values(row).map((value: unknown, colIndex: number) => (
                         <td key={colIndex}>{String(value ?? '')}</td>
                       ))}
                     </tr>
@@ -221,25 +218,21 @@ export function QueryExecutionUI({ datasetId }: QueryExecutionUIProps) {
 
           {result.pagination && (
             <div className="results-pagination">
-              <button
-                onClick={() => setResultPage((p) => Math.max(1, p - 1))}
-                className="btn-secondary"
-                disabled={!result.pagination.has_previous}
-                type="button"
-              >
+              <Button
+ onClick={() => setResultPage((p) => Math.max(1, p - 1))}
+ variant="secondary"
+ disabled={!result.pagination.has_previous}>
                 Previous
-              </button>
+              </Button>
               <span>
                 Page {result.pagination.page} of {result.pagination.total_pages}
               </span>
-              <button
-                onClick={() => setResultPage((p) => p + 1)}
-                className="btn-secondary"
-                disabled={!result.pagination.has_next}
-                type="button"
-              >
+              <Button
+ onClick={() => setResultPage((p) => p + 1)}
+ variant="secondary"
+ disabled={!result.pagination.has_next}>
                 Next
-              </button>
+              </Button>
             </div>
           )}
         </div>

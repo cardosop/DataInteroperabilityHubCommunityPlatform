@@ -11,6 +11,7 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { useState } from 'react';
 import './DatasetVersionsPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function DatasetVersionsPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,7 +21,9 @@ export function DatasetVersionsPage() {
   const [compareMode, setCompareMode] = useState(false);
   const [version1, setVersion1] = useState<string>('');
   const [version2, setVersion2] = useState<string>('');
-  const [comparison, setComparison] = useState<any>(null);
+  const [comparison, setComparison] = useState<{
+    differences: Array<{ field: string; version1_value: unknown; version2_value: unknown }>;
+  } | null>(null);
   const [isComparing, setIsComparing] = useState(false);
 
   const handleCompare = async () => {
@@ -29,7 +32,7 @@ export function DatasetVersionsPage() {
     try {
       const result = await datasetService.compareVersions(id, version1, version2);
       setComparison(result);
-    } catch (err) {
+    } catch {
       // Handle error
     } finally {
       setIsComparing(false);
@@ -50,9 +53,9 @@ export function DatasetVersionsPage() {
           ]}
         />
         <div className="dataset-versions-header">
-          <button onClick={() => navigate(`/datasets/${id}`)} className="btn-back" type="button">
+          <Button onClick={() => navigate(`/datasets/${id}`)} variant="ghost">
             ← Back to Dataset
-          </button>
+          </Button>
           <h1>Versions</h1>
         </div>
         <p>No versions available for this dataset.</p>
@@ -71,17 +74,15 @@ export function DatasetVersionsPage() {
         ]}
       />
       <div className="dataset-versions-header">
-        <button onClick={() => navigate(`/datasets/${id}`)} className="btn-back" type="button">
+        <Button onClick={() => navigate(`/datasets/${id}`)} variant="ghost">
           ← Back to Dataset
-        </button>
+        </Button>
         <h1>Dataset Versions</h1>
-        <button
-          onClick={() => setCompareMode(!compareMode)}
-          className="btn-secondary"
-          type="button"
-        >
+        <Button
+ onClick={() => setCompareMode(!compareMode)}
+ variant="secondary">
           {compareMode ? 'View All' : 'Compare Versions'}
-        </button>
+        </Button>
       </div>
 
       {compareMode ? (
@@ -105,14 +106,12 @@ export function DatasetVersionsPage() {
                 </option>
               ))}
             </select>
-            <button
-              onClick={handleCompare}
-              disabled={!version1 || !version2 || isComparing}
-              className="btn-primary"
-              type="button"
-            >
+            <Button
+ onClick={handleCompare}
+ disabled={!version1 || !version2 || isComparing}
+ variant="primary">
               {isComparing ? 'Comparing...' : 'Compare'}
-            </button>
+            </Button>
           </div>
 
           {comparison && (
@@ -130,7 +129,7 @@ export function DatasetVersionsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {comparison.differences.map((diff: any, idx: number) => (
+                    {comparison.differences.map((diff: { field: string; version1_value: unknown; version2_value: unknown }, idx: number) => (
                       <tr key={idx}>
                         <td>{diff.field}</td>
                         <td>{String(diff.version1_value)}</td>

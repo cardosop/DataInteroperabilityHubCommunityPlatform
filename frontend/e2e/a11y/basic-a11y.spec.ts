@@ -21,15 +21,17 @@ async function assertNoA11yViolations(page: import('@playwright/test').Page): Pr
 test.describe('Accessibility (axe) — public / unauthenticated pages', () => {
   test.setTimeout(60000);
 
+  // Use 'domcontentloaded' (not default 'load') for all goto calls — the 'load' event
+  // waits for ALL sub-resources and never fires when the backend is slow under parallel
+  // E2E load. 'domcontentloaded' is sufficient: the DOM is ready for axe analysis.
+
   test('login page has no critical accessibility violations', async ({ page }) => {
-    await page.goto('/login');
-    await page.waitForLoadState('domcontentloaded');
+    await page.goto('/login', { waitUntil: 'domcontentloaded' });
     await assertNoA11yViolations(page);
   });
 
   test('register page has no critical accessibility violations', async ({ page }) => {
-    await page.goto('/register');
-    await page.waitForLoadState('domcontentloaded');
+    await page.goto('/register', { waitUntil: 'domcontentloaded' });
     // Allow redirect to /unavailable when registration is feature-flagged off
     await page
       .locator('h1, .register-page, .unavailable-page')
@@ -40,8 +42,7 @@ test.describe('Accessibility (axe) — public / unauthenticated pages', () => {
   });
 
   test('password-reset page has no critical accessibility violations', async ({ page }) => {
-    await page.goto('/password-reset');
-    await page.waitForLoadState('domcontentloaded');
+    await page.goto('/password-reset', { waitUntil: 'domcontentloaded' });
     await page
       .locator('h1, .password-reset-page, .unavailable-page')
       .first()
@@ -51,22 +52,19 @@ test.describe('Accessibility (axe) — public / unauthenticated pages', () => {
   });
 
   test('404 page has no critical accessibility violations', async ({ page }) => {
-    await page.goto('/this-route-definitely-does-not-exist-404-axe');
-    await page.waitForLoadState('domcontentloaded');
+    await page.goto('/this-route-definitely-does-not-exist-404-axe', { waitUntil: 'domcontentloaded' });
     await assertNoA11yViolations(page);
   });
 
   test('403 page has no critical accessibility violations', async ({ page }) => {
-    await page.goto('/403');
-    await page.waitForLoadState('domcontentloaded');
+    await page.goto('/403', { waitUntil: 'domcontentloaded' });
     await assertNoA11yViolations(page);
   });
 
   test('public page has no critical accessibility violations', async ({ page }) => {
-    await page.goto('/public');
-    await page.waitForLoadState('domcontentloaded');
+    await page.goto('/public', { waitUntil: 'domcontentloaded' });
     await page
-      .locator('h1, .public-page, #email')
+      .locator('h1, .public-page')
       .first()
       .waitFor({ state: 'visible', timeout: 15000 })
       .catch(() => null);
@@ -78,8 +76,7 @@ test.describe('Accessibility (axe) — authenticated pages', () => {
   test.setTimeout(90000);
 
   test('home page has no critical accessibility violations', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('domcontentloaded');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     // Wait for page to reach a stable terminal state (authenticated dashboard or landing page)
     await page
       .locator('[data-testid="home-page"], .home-page, [data-testid="landing-page"], .app-header')

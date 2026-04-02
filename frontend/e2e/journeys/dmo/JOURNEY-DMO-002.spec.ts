@@ -14,14 +14,14 @@ import { getDataMeshDomainOwnerUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DMO-002: Configure Federated Governance', () => {
-  test.setTimeout(300000); // 5 min: persona login + mesh/governance under parallel E2E load
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('mesh list loads for governance config', async ({ page }) => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .loading-spinner-container, .app-main',
+        contentSelector: '.mesh-domain-list-page, .empty-state, .app-main',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         throw new Error(`Unexpected redirect to ${page.url()} — verify DMO user has mesh access`);
@@ -34,7 +34,7 @@ test.describe('JOURNEY-DMO-002: Configure Federated Governance', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/governance', {
         timeout: 90000,
-        contentSelector: '.governance-access-request-list-page, .access-request-list-page, .app-main, .empty-state, .loading-spinner-container',
+        contentSelector: '.governance-access-request-list-page, .access-request-list-page, .app-main, .empty-state',
       });
       await page.waitForTimeout(3000);
       if (page.url().includes('/login')) {
@@ -43,8 +43,12 @@ test.describe('JOURNEY-DMO-002: Configure Federated Governance', () => {
       const url = page.url();
       const onGov = url.includes('/governance');
       const on403 = url.includes('/403');
-      // DMO may or may not have governance access — both /governance and /403 are valid outcomes
-      expect(onGov || on403).toBe(true);
+      if (on403) {
+        test.skip(true, 'Role gated — skipping success assertion');
+        return;
+      }
+      expect(onGov).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 

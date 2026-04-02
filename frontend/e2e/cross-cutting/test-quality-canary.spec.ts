@@ -49,7 +49,7 @@ test.describe('Test Quality Canary', () => {
       );
     }
 
-    expect(onLogin || onLanding || !stayedOnAssetsWithoutAuth).toBe(true);
+    expect(onLogin || onLanding).toBe(true) /* unauthenticated user must end up on login or landing */;
   });
 
   /**

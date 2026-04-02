@@ -9,7 +9,7 @@ import { clearAuthStorage, getPlatformAdminUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-PA-005: Manage Marketplace Configuration', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('platform admin can access marketplace config and see configurable options', async ({

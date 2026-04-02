@@ -18,6 +18,8 @@ export type ScheduleType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM_CRON';
 
 export type ScheduledIngestionStatus = 'ACTIVE' | 'PAUSED' | 'ERROR';
 
+export type DeploymentSyncStatus = 'SYNCED' | 'PENDING' | 'FAILED';
+
 export type ScheduledIngestionRunStatus =
   | 'PENDING'
   | 'RUNNING'

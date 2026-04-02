@@ -13,6 +13,7 @@ import {
 } from '../hooks/useScheduledIngestion';
 import type { SourceType, ScheduleType } from '../../../shared/types/scheduledIngestion';
 import './ScheduledIngestionEditPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ScheduledIngestionEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -69,17 +70,15 @@ export function ScheduledIngestionEditPage() {
   return (
     <div className="scheduled-ingestion-edit-page" data-testid="scheduled-ingestion-edit-page">
       <div className="scheduled-ingestion-edit-header">
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => navigate(`/scheduled-ingestions/${id}`)}
-        >
+        <Button
+ variant="secondary"
+ onClick={() => navigate(`/scheduled-ingestions/${id}`)}>
           ← Back to Detail
-        </button>
+        </Button>
         <h1>Edit Scheduled Ingestion</h1>
       </div>
 
-      {updateMutation.error && (
+      {!!updateMutation.error && (
         <ErrorDisplay
           error={updateMutation.error}
           title="Failed to update scheduled ingestion"
@@ -150,20 +149,17 @@ export function ScheduledIngestionEditPage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => navigate(`/scheduled-ingestions/${id}`)}
-          >
+          <Button
+ variant="secondary"
+ onClick={() => navigate(`/scheduled-ingestions/${id}`)}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={updateMutation.isPending || !name}
-          >
+          </Button>
+          <Button
+ type="submit"
+ variant="primary"
+ disabled={updateMutation.isPending || !name}>
             {updateMutation.isPending ? 'Updating...' : 'Update'}
-          </button>
+          </Button>
         </div>
       </form>
 

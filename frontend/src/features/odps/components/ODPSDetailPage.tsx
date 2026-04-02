@@ -6,12 +6,14 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useContract } from '../../contracts/hooks/useContracts';
 import { useODPSLinks, useExportODPS, useDownloadODPS } from '../hooks/useODPS';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { useState } from 'react';
 import './ODPSDetailPage.css';
+import { Button } from '../../../shared/components/Button';
+import { getContractLinkedAssetId } from '../../../shared/types/contracts';
 
 export function ODPSDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -82,7 +84,10 @@ export function ODPSDetailPage() {
       />
     );
   }
-  if (isLoading) return <LoadingSpinner message="Loading ODPS contract..." />;
+  if (isLoading) return <DetailPageSkeleton />;
+  if (!contract) return null;
+
+  const linkedAssetId = getContractLinkedAssetId(contract);
 
   // Verify contract is ODPS
   const isODPS = contract.original_spec_type?.toUpperCase() === 'ODPS';
@@ -90,14 +95,14 @@ export function ODPSDetailPage() {
   return (
     <div className="odps-detail-page">
       <div className="odps-detail-header">
-        <button onClick={() => navigate('/odps')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/odps')} variant="ghost">
           ← Back to ODPS
-        </button>
+        </Button>
         <div className="odps-detail-actions">
           {isODPS && (
-            <button onClick={() => navigate(`/odps/${id}/link`)} className="btn-secondary" type="button">
+            <Button onClick={() => navigate(`/odps/${id}/link`)} variant="secondary">
               Link ODCS
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -147,6 +152,24 @@ export function ODPSDetailPage() {
               <span>{new Date(contract.updated_at).toLocaleString()}</span>
             </div>
           </div>
+
+          {/* Linked Asset section */}
+          {linkedAssetId && (
+            <div className="odps-linked-asset" data-testid="odps-linked-asset">
+              <h2>Linked Asset</h2>
+              <div className="linked-asset-row">
+                <UuidWithCopy value={linkedAssetId} label="Asset ID" />
+                <button
+                  type="button"
+                  className="btn-link"
+                  onClick={() => navigate(`/assets/${linkedAssetId}`)}
+                  data-testid="odps-linked-asset-view"
+                >
+                  View Asset
+                </button>
+              </div>
+            </div>
+          )}
 
           {links && (links.odcs_link || links.odps_link) && (
             <div className="odps-links-section">
@@ -212,22 +235,18 @@ export function ODPSDetailPage() {
                   </select>
                 </div>
                 <div className="export-actions">
-                  <button
-                    onClick={handleExport}
-                    disabled={exportMutation.isPending}
-                    className="btn-secondary"
-                    type="button"
-                  >
-                    {exportMutation.isPending ? 'Exporting...' : 'Export'}
-                  </button>
-                  <button
-                    onClick={handleDownload}
-                    disabled={downloadMutation.isPending}
-                    className="btn-primary"
-                    type="button"
-                  >
-                    {downloadMutation.isPending ? 'Downloading...' : 'Download'}
-                  </button>
+                  <Button
+ onClick={handleExport}
+ loading={exportMutation.isPending}
+ variant="secondary">
+                    Export
+                  </Button>
+                  <Button
+ onClick={handleDownload}
+ loading={downloadMutation.isPending}
+ variant="primary">
+                    Download
+                  </Button>
                 </div>
               </div>
             </div>

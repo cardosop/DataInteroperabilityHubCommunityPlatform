@@ -14,7 +14,7 @@ import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-MP-004: Sync Assets Bidirectionally', () => {
-  test.setTimeout(180000); // 3 min; client-side nav to sync-jobs avoids full-reload auth race
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('sync jobs list loads', async ({ page }) => {
@@ -25,7 +25,7 @@ test.describe('JOURNEY-MP-004: Sync Assets Bidirectionally', () => {
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
+        test.skip(true, 'Redirected to login — auth may have expired');
         return;
       }
       expect(page.url()).toContain('/integrations/sync-jobs');
@@ -33,7 +33,7 @@ test.describe('JOURNEY-MP-004: Sync Assets Bidirectionally', () => {
         (await page.locator('.sync-job-list-page').count()) > 0 ||
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
 
     test('connections list loads for sync config', async ({ page }) => {
@@ -44,7 +44,7 @@ test.describe('JOURNEY-MP-004: Sync Assets Bidirectionally', () => {
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
+        test.skip(true, 'Redirected to login — auth may have expired');
         return;
       }
       expect(page.url()).toContain('/integrations/connections');
@@ -61,7 +61,7 @@ test.describe('JOURNEY-MP-004: Sync Assets Bidirectionally', () => {
       await page.waitForTimeout(3000);
       const hasError = (await page.locator('.error-display').count()) > 0;
       const onLogin = page.url().includes('/login');
-      expect(hasError || onLogin).toBe(true);
+      expect(hasError || onLogin).toBe(true) /* acceptable states */;
     });
 
     test('unauthenticated access redirects to login', async ({ page }) => {

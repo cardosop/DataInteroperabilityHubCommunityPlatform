@@ -10,6 +10,7 @@ import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { useCreateScheduledIngestion } from '../hooks/useScheduledIngestion';
 import type { SourceType, ScheduleType } from '../../../shared/types/scheduledIngestion';
 import './ScheduledIngestionCreatePage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ScheduledIngestionCreatePage() {
   const navigate = useNavigate();
@@ -63,17 +64,15 @@ export function ScheduledIngestionCreatePage() {
   return (
     <div className="scheduled-ingestion-create-page" data-testid="scheduled-ingestion-create-page">
       <div className="scheduled-ingestion-create-header">
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => navigate('/scheduled-ingestions')}
-        >
+        <Button
+ variant="secondary"
+ onClick={() => navigate('/scheduled-ingestions')}>
           ← Back to Scheduled Ingestion
-        </button>
+        </Button>
         <h1>Create Scheduled Ingestion</h1>
       </div>
 
-      {createMutation.error && (
+      {!!createMutation.error && (
         <ErrorDisplay
           error={createMutation.error}
           title="Failed to create scheduled ingestion"
@@ -146,20 +145,17 @@ export function ScheduledIngestionCreatePage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => navigate('/scheduled-ingestions')}
-          >
+          <Button
+ variant="secondary"
+ onClick={() => navigate('/scheduled-ingestions')}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={createMutation.isPending || !name}
-          >
+          </Button>
+          <Button
+ type="submit"
+ variant="primary"
+ disabled={createMutation.isPending || !name}>
             {createMutation.isPending ? 'Creating...' : 'Create'}
-          </button>
+          </Button>
         </div>
       </form>
 

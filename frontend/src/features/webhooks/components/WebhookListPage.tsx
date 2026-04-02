@@ -7,9 +7,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { useWebhooks } from '../hooks/useWebhooks';
 import './WebhookListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function WebhookListPage() {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ export function WebhookListPage() {
 
   const { data, isLoading, error, refetch } = useWebhooks({ page, page_size: pageSize });
 
-  if (isLoading) return <LoadingSpinner message="Loading webhooks..." />;
+  if (isLoading) return <ListPageSkeleton />;
   if (error) {
     return <ErrorDisplay error={error} title="Failed to load webhooks" onRetry={() => refetch()} />;
   }
@@ -31,13 +32,11 @@ export function WebhookListPage() {
       <div className="webhook-list-page">
         <div className="webhook-list-header">
           <h1>Webhooks</h1>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => navigate('/webhooks/create')}
-          >
+          <Button
+ variant="primary"
+ onClick={() => navigate('/webhooks/create')}>
             Create webhook
-          </button>
+          </Button>
         </div>
         <EmptyState
           title="No webhooks"
@@ -52,9 +51,9 @@ export function WebhookListPage() {
     <div className="webhook-list-page">
       <div className="webhook-list-header">
         <h1>Webhooks</h1>
-        <button type="button" className="btn-primary" onClick={() => navigate('/webhooks/create')}>
+        <Button variant="primary" onClick={() => navigate('/webhooks/create')}>
           Create webhook
-        </button>
+        </Button>
       </div>
 
       <div className="webhook-list-table-wrapper">

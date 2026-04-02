@@ -16,8 +16,9 @@ export interface Subscription {
   plan_name: string;
   plan_slug: string;
   plan_tier: string;
-  limits: Record<string, number | string | boolean>;
+  limits: Record<string, number | null>;
   status: string;
+  // Stripe IDs only present for TENANT_ADMIN / PLATFORM_ADMIN (Phase 113.F.2)
   stripe_subscription_id?: string | null;
   stripe_customer_id?: string | null;
   current_period_start?: string | null;
@@ -34,8 +35,12 @@ export interface TenantPlan {
   name: string;
   slug: string;
   tier: string;
-  limits_json: Record<string, number | string | boolean | null>;
+  order: number;
+  limits_json: Record<string, number | null>;
   is_active: boolean;
+  price_amount_cents: number;
+  price_currency: string;
+  billing_interval: string;
 }
 
 export interface Invoice {
@@ -43,7 +48,8 @@ export interface Invoice {
   tenant: string;
   subscription?: string | null;
   subscription_status?: string | null;
-  stripe_invoice_id: string;
+  // stripe_invoice_id only present for TENANT_ADMIN / PLATFORM_ADMIN (Phase 113.F.2)
+  stripe_invoice_id?: string;
   amount_due: string;
   amount_paid: string;
   currency: string;
@@ -63,6 +69,20 @@ export interface PaginatedResponse<T> {
   next: string | null;
   previous: string | null;
   results: T[];
+}
+
+/** Known error codes returned by the billing API */
+export type BillingErrorCode =
+  | 'plan_limit_exceeded'
+  | 'tenant_suspended'
+  | 'subscription_inactive'
+  | 'PLAN_HAS_ACTIVE_SUBSCRIPTIONS'
+  | 'STRIPE_ERROR';
+
+export interface BillingApiError {
+  error?: string;
+  code?: BillingErrorCode;
+  details?: Record<string, unknown>;
 }
 
 export const billingService = {
@@ -106,5 +126,26 @@ export const billingService = {
       .getClient()
       .get<PaginatedResponse<Invoice>>(`${BILLING_INVOICES_PATH}/`);
     return response.data.results;
+  },
+
+  /**
+   * Get invoice download URL (redirects via backend, not direct Stripe URL)
+   */
+  getInvoiceDownloadUrl(invoiceId: string): string {
+    return `/api/v1/${BILLING_INVOICES_PATH}/${invoiceId}/download/`;
+  },
+
+  /**
+   * Get ML add-on subscription for the tenant (if any)
+   */
+  async getMLSubscription(): Promise<Subscription | null> {
+    try {
+      const response = await apiClient
+        .getClient()
+        .get<Subscription>('billing/ml-subscription/current/');
+      return response.data;
+    } catch {
+      return null;
+    }
   },
 };

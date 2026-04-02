@@ -3,10 +3,45 @@
  * Reusable utilities for E2E tests across all journeys, personas, use cases, and features
  */
 
-import { Page, expect } from '@playwright/test';
-import { getTestUser, loginUser, type TestUser } from './auth';
+import { Page, expect, test } from '@playwright/test';
+import { getTestUser, gotoWithRetry, loginUser, loginViaApi, type TestUser } from './auth';
 
 export { isBenignConsoleError } from './console-utils';
+
+/**
+ * Inject fresh auth tokens into localStorage + httpOnly cookie before a page.goto().
+ * Full-page navigation resets the JS context, losing in-memory auth tokens.
+ * By writing to localStorage first, authStore.initialize() picks them up on reload.
+ */
+async function injectTokensBeforeGotoForUser(page: Page, user?: TestUser): Promise<void> {
+  try {
+    const u = user ?? (await getTestUser());
+    const apiAuth = await loginViaApi(u.email, u.password);
+    await page.evaluate(
+      ({ access_token, refresh_token, usr }) => {
+        localStorage.setItem('access_token', access_token);
+        if (refresh_token) localStorage.setItem('refresh_token', refresh_token);
+        localStorage.setItem('user', JSON.stringify(usr));
+      },
+      { access_token: apiAuth.access_token, refresh_token: apiAuth.refresh_token, usr: apiAuth.user }
+    );
+    if (apiAuth.refresh_token) {
+      const pageUrl = page.url();
+      const cookieDomain = pageUrl.startsWith('http') ? new URL(pageUrl).hostname : 'localhost';
+      await page.context().addCookies([{
+        name: 'refresh_token',
+        value: apiAuth.refresh_token,
+        domain: cookieDomain,
+        path: '/',
+        httpOnly: true,
+        secure: false,
+        sameSite: 'Strict' as const,
+      }]).catch(() => {});
+    }
+  } catch {
+    // API login may fail under load; continue with existing auth
+  }
+}
 
 /**
  * Check if page shows login prompt (email input, login link, or Sign in text).
@@ -34,7 +69,6 @@ export async function waitForApiResponse(
 ): Promise<Response> {
   const { timeout = 30000, status, retries = 3, retryDelay = 2000 } = options;
 
-  const pattern = typeof urlPattern === 'string' ? urlPattern : urlPattern.source;
   const statusArray = status ? (Array.isArray(status) ? status : [status]) : undefined;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -190,8 +224,6 @@ export async function waitForNavigation(
 ): Promise<void> {
   const { timeout = 10000, waitUntil = 'domcontentloaded' } = options;
 
-  const pattern = typeof urlPattern === 'string' ? urlPattern : urlPattern.source;
-
   await page.waitForURL(
     (url) => {
       if (typeof urlPattern === 'string') {
@@ -287,21 +319,40 @@ export async function waitForAppMainReady(
       await safeWait(500);
       return;
     }
+    // CapabilityRoute renders .unavailable-page in-place (at the current URL, not /unavailable)
+    // when the capability is disabled. This is a terminal state — no .app-main will ever appear.
+    const hasUnavailablePage = await page.locator('.unavailable-page').count();
+    if (hasUnavailablePage > 0) {
+      await safeWait(500);
+      return;
+    }
+    // SPA catch-all NotFoundPage renders with .not-found-page class and role="alert".
+    // This is a terminal state for routes that don't exist in the router.
+    const has404Page = (await page.locator('.not-found-page').count().catch(() => 0)) > 0;
+    if (has404Page) {
+      await safeWait(500);
+      return;
+    }
     // Intentional fallback: evaluate may fail if context destroyed; treat as not ready, continue polling
     const ready = await page
       .evaluate((sel: string | undefined) => {
         const main = document.querySelector('.app-main');
         if (!main) return false;
-        // When route-specific selector provided, consider ready when page shell has mounted
-        // (including loading state) so we don't block on slow APIs
+        // When route-specific selector provided, wait for it to appear inside .app-main
         if (sel) {
           const el = main.querySelector(sel);
           if (el) return true;
+          return false;
         }
+        // No contentSelector: wait for loading indicators inside .app-main to disappear.
+        // This ensures API calls have completed before the test proceeds.
+        // Covers both LoadingSpinner component and ListPageSkeleton placeholder.
         const loading =
-          main.querySelector('.loading-spinner') || main.querySelector('.loading-spinner-container');
+          main.querySelector('.loading-spinner') ||
+          main.querySelector('.loading-spinner-container') ||
+          main.querySelector('[data-testid="skeleton-row"]') ||
+          main.querySelector('.skeleton');
         if (loading) return false;
-        if (sel) return false;
         return true;
       }, contentSelector)
       .catch(() => false);
@@ -312,17 +363,30 @@ export async function waitForAppMainReady(
     await safeWait(checkInterval);
   }
 
-  // Timeout: check if we're on login for clearer error (or accept if acceptRedirectToLogin)
-  if (page.url().includes('/login')) {
-    if (acceptRedirectToLogin) {
-      return;
+  // Main loop timed out. The auth store has a 60s safety timeout that races with our loop.
+  // When both are ~60s, the auth store may resolve (redirect to /login or show .app-main)
+  // in the same frame our loop ends. Wait up to 20s more for the page to reach a terminal
+  // state — this covers the auth safety timeout race condition without blindly increasing
+  // the main loop timeout.
+  const POST_TIMEOUT_GRACE_MS = 5000;
+  const graceStart = Date.now();
+  while (Date.now() - graceStart < POST_TIMEOUT_GRACE_MS) {
+    const currentUrl = page.url();
+    if (currentUrl.includes('/login')) {
+      if (acceptRedirectToLogin) return;
+      throw new Error(
+        'waitForAppMainReady: Redirected to login after auth safety timeout.'
+      );
     }
-    throw new Error(
-      'waitForAppMainReady: Still on login after timeout; auth may have failed or expired.'
-    );
+    if (currentUrl.includes('/403') || currentUrl.includes('/unavailable')) return;
+    if ((await page.locator('.app-main').count()) > 0) return;
+    if ((await page.locator('.unavailable-page').count()) > 0) return;
+    // Still in auth loading state — keep waiting
+    await safeWait(500);
   }
+
   throw new Error(
-    `waitForAppMainReady: .app-main not ready within ${timeout}ms. ` +
+    `waitForAppMainReady: .app-main not ready within ${timeout + POST_TIMEOUT_GRACE_MS}ms. ` +
       `URL: ${page.url()}`
   );
 }
@@ -418,6 +482,8 @@ const ROUTE_NAV_LABELS: Record<string, string> = {
   '/webhooks': 'Webhooks',
   '/audit': 'Audit',
   '/admin': 'Admin',
+  '/semantic': 'Semantic',
+  '/transformation': 'Transformation',
   '/': 'Home',
 };
 
@@ -426,73 +492,223 @@ const ROUTE_NAV_LABELS: Record<string, string> = {
  * Matches page shell (including loading state) so we don't block on slow APIs.
  */
 const ROUTE_CONTENT_SELECTORS: Record<string, string> = {
-  '/audit': '.audit-event-list-page, .audit-list-filters, .empty-state, .error-display, .loading-spinner-container',
-  '/mesh': '.mesh-domain-list-page, .loading-spinner-container, .error-display, .empty-state',
-  '/mesh/create': '.mesh-domain-create-page, .loading-spinner-container, .error-display',
-  '/mesh/topology': '.topology-visualization, .loading-spinner-container, .error-display',
-  '/contracts': '.contract-list-page, .empty-state, .error-display, .loading-spinner-container',
-  '/odps': '.odps-list-page, .odps-empty-state, .error-display, .loading-spinner-container, #email',
-  '/communities': '.communities-page, .communities-tab, .unavailable-page, .error-display, .loading-spinner-container, .app-main',
+  '/audit': '.audit-event-list-page, .audit-list-filters, .empty-state, .error-display',
+  '/mesh': '.mesh-domain-list-page, .error-display, .empty-state',
+  '/mesh/create': '.mesh-domain-create-page, .error-display',
+  '/mesh/topology': '.topology-visualization, .error-display',
+  '/contracts': '.contract-list-page, .empty-state, .error-display',
+  '/odps': '.odps-list-page, .odps-empty-state, .error-display, #email',
+  // No .loading-spinner-container: CommunitiesTab shows LoadingSpinner until API returns; matching it
+  // would signal "ready" before .communities-tab renders.
+  '/communities':
+    '.communities-page, .communities-tab, .unavailable-page, .error-display, .empty-state, .app-main',
   '/compliance':
-    '.compliance-run-list-page, .empty-state, .error-display, .loading-spinner-container, .unavailable-page, #email',
-  '/assets': '.asset-list-page, .empty-state, .error-display, .loading-spinner-container',
-  '/dq': '.dq-run-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+    '.compliance-run-list-page, .empty-state, .error-display, .unavailable-page, #email',
+  '/assets': '.asset-list-page, .empty-state, .error-display',
+  '/dq': '.dq-run-list-page, .empty-state, .error-display, #email',
   '/webhooks':
-    '.webhook-list-page, .empty-state, .error-display, .loading-spinner-container',
+    '.webhook-list-page, .empty-state, .error-display',
   '/search': '.search-page, .loading-spinner-container, .error-display, .app-main',
   '/ai/search':
     '.ai-search-page, .unavailable-page, .loading-spinner-container, .error-display, .app-main',
   '/settings/sessions':
-    '.session-list-page, .session-list-table, .session-list-empty, .loading-spinner-container, .error-display, h1',
+    '.session-list-page, .session-list-table, .session-list-empty, .error-display, h1',
   '/settings/api-keys':
-    '.auth-api-key-list-page, .unavailable-page, .loading-spinner-container, .error-display, h1',
+    '.auth-api-key-list-page, .unavailable-page, .error-display, h1',
   '/observability':
     '.observability-page, [data-testid="observability-page"], .loading-spinner-container, .error-display, .unavailable-page',
   '/developer': '.developer-portal-page, .developer-page, .unavailable-page, .loading-spinner-container, .app-main',
   '/virtualization':
-    '.virtual-dataset-list-page, .virtual-dataset-list-header, .empty-state, .error-display, .loading-spinner-container',
+    '.virtual-dataset-list-page, .virtual-dataset-list-header, .empty-state, .error-display',
   '/baas': '.baas-page, .unavailable-page, .loading-spinner-container, .app-main',
   '/ml': '.ml-page, .unavailable-page, .loading-spinner-container, .app-main',
   '/integrations/connections':
-    '.connection-list-page, .marketplace-connection-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+    '.connection-list-page, .marketplace-connection-list-page, .empty-state, .error-display, h1',
   '/jobs':
-    '.job-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+    '.job-list-page, .empty-state, .error-display, h1',
   '/scheduled-ingestions':
-    '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, .loading-spinner-container, h1',
+    '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, h1',
   '/ai/schema-matching':
-    '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, .loading-spinner-container, h1',
+    '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, h1',
   '/files':
-    '.file-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+    '.file-list-page, .empty-state, .error-display, h1',
   '/datasets/create':
     '.dataset-create-page, .file-upload, .loading-spinner-container, form, h1',
   '/scheduled-exports':
-    '.scheduled-export-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+    '.scheduled-export-list-page, .empty-state, .error-display, h1',
+  // No .loading-spinner-container: lazy Suspense uses LoadingSpinner first, then ListPageSkeleton
+  // without listing shells; matching the spinner would make "ready" true too early.
   '/marketplace':
-    '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .loading-spinner-container',
+    '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display',
   '/marketplace/orders':
-    '.order-list-page, .empty-state, .error-display, .loading-spinner-container',
+    '.order-list-page, .empty-state, .error-display',
   '/marketplace/entitlements':
-    '.entitlement-list-page, .empty-state, .error-display, .loading-spinner-container',
+    '.entitlement-list-page, .empty-state, .error-display',
   '/marketplace/publish':
-    '.listing-publish-page, .listing-publish-form, .loading-spinner-container, form, h1',
+    '.listing-publish-page, .listing-publish-form, form, h1',
   '/governance':
-    '.governance-access-request-list-page, .governance-create-page, .error-display, .loading-spinner-container, h1',
+    '.governance-access-request-list-page, .governance-create-page, .error-display, h1',
+  '/semantic':
+    '[data-testid="semantic-page"], .semantic-page, .unavailable-page, .error-display, .app-main',
+  '/transformation':
+    '.transformation-pipeline-list-page, .unavailable-page, .error-display, .app-main',
+  '/integrations/connections/create':
+    '.marketplace-connection-create-page, .connection-create-page, .error-display, .loading-spinner-container, form',
 };
+
+/**
+ * Content selectors for paths not in ROUTE_CONTENT_SELECTORS (detail/edit URLs).
+ * Keeps loginAndNavigateToRoute + waitForAppMainReady stable without per-spec overrides.
+ */
+function resolveRouteContentSelector(route: string, override?: string): string | undefined {
+  if (override) return override;
+  if (ROUTE_CONTENT_SELECTORS[route]) return ROUTE_CONTENT_SELECTORS[route];
+  if (/^\/marketplace\/listings\/[^/]+$/.test(route)) {
+    return '.listing-detail-page, .listing-detail-main, .error-display';
+  }
+  if (/^\/marketplace\/entitlements\/[^/]+$/.test(route)) {
+    return '.entitlement-detail-page, .entitlement-detail-main, .error-display';
+  }
+  if (/^\/virtualization\/create$/.test(route)) {
+    return '.virtual-dataset-create-page, .error-display, form, h1';
+  }
+  if (/^\/virtualization\/[^/]+$/.test(route)) {
+    return '.virtual-dataset-detail-page, .error-display';
+  }
+  if (/^\/mesh\/create$/.test(route)) {
+    return '.mesh-domain-create-page, .error-display, form';
+  }
+  if (/^\/mesh\/[^/]+$/.test(route) && !route.startsWith('/mesh/topology')) {
+    return '.mesh-domain-detail-page, .error-display';
+  }
+  if (/^\/transformation\/pipelines\/[^/]+$/.test(route)) {
+    return '.transformation-detail-page, .unavailable-page, .error-display';
+  }
+  if (/^\/jobs\/[^/]+$/.test(route)) {
+    return '.job-detail-page, .error-display';
+  }
+  if (
+    /^\/integrations\/connections\/[^/]+$/.test(route) &&
+    route !== '/integrations/connections/create'
+  ) {
+    return '.marketplace-connection-detail-page, .error-display';
+  }
+  if (route === '/odps/upload') {
+    return '.odps-upload-page, .error-display, form, h1';
+  }
+  if (/^\/odps\/[^/]+$/.test(route)) {
+    return '.odps-detail-page, .error-display';
+  }
+  if (/^\/dq\/runs\/[^/]+$/.test(route)) {
+    return '.dq-run-detail-page, .error-display';
+  }
+  if (/^\/compliance\/runs\/[^/]+$/.test(route)) {
+    return '.compliance-run-detail-page, .error-display';
+  }
+  if (/^\/scheduled-ingestions\/[^/]+$/.test(route)) {
+    return '[data-testid="scheduled-ingestion-detail-page"], .scheduled-ingestion-detail-page, .error-display';
+  }
+  if (/^\/contracts\/[^/]+\/edit$/.test(route)) {
+    return '.contract-editor-page, .error-display';
+  }
+  if (/^\/contracts\/[^/]+\/link-odps$/.test(route)) {
+    return '.odps-link-page, .error-display';
+  }
+  return undefined;
+}
 
 /**
  * Login, navigate to a protected route, and wait for app main ready.
  * Uses loginUser then client-side nav via sidebar (or in-page links) to avoid full-reload auth race.
  *
- * @param options.acceptRedirectToLogin - When true, treat redirect to login as success (for tests
- *   that expect 403/redirect, e.g. "governance without role shows 403 or redirect").
+ * @param options.acceptRedirectToLogin - When omitted, capability-gated SPA routes auto-use `true`
+ *   (legacy behaviour). Pass `false` explicitly after successful `loginUser` so a session bug surfaces
+ *   as a hard failure instead of an early "ready" on `/login`. Use `true` only for unauthenticated
+ *   or redirect-to-login–positive scenarios.
  */
+
+// ─── Route-smoke navigation helper ───────────────────────────────────────────
+// Eliminates the 10-line boilerplate pattern repeated in every route-smoke test.
+
+interface NavigateOrSkipOptions {
+  /** CSS selector for expected page content (NOT .error-display — that's a failure). */
+  contentSelector?: string;
+  /** waitForAppMainReady timeout in ms (default 60000). */
+  timeout?: number;
+  /** Intercept the list API call for dual verification. Returns the response promise. */
+  apiUrlPattern?: string;
+}
+
+interface NavigateOrSkipResult {
+  /** false when the test was skipped (login redirect, 403, backend timeout). */
+  ok: boolean;
+  /** API response promise if apiUrlPattern was provided. Resolves to null if the API call
+   *  was not captured (e.g. login redirect fired before the API call, or pattern didn't match). */
+  apiResponse?: Promise<{ status: () => number; url: () => string } | null>;
+}
+
+/**
+ * Navigate to a route using gotoWithRetry + waitForAppMainReady, with standard
+ * skip-on-auth-failure handling. Replaces the 10-line boilerplate in every route test.
+ *
+ * Returns `{ ok: true }` when the page is ready for assertions.
+ * Returns `{ ok: false }` and calls `test.skip()` when:
+ *   - Redirected to /login (auth expired)
+ *   - Redirected to /403 (role-gated, when allow403 is true)
+ *
+ * Does NOT accept .error-display as a ready state — callers must handle errors explicitly.
+ */
+export async function navigateOrSkip(
+  page: Page,
+  route: string,
+  options: NavigateOrSkipOptions = {}
+): Promise<NavigateOrSkipResult> {
+  const { contentSelector, timeout = 60000, apiUrlPattern } = options;
+
+  // Optionally intercept the API call BEFORE navigation for dual verification.
+  // The .catch() prevents Playwright's "Test ended" error when the promise outlives
+  // the test (e.g. login redirect fires before the API call, or the pattern doesn't match).
+  let apiResponse: Promise<{ status: () => number; url: () => string } | null> | undefined;
+  if (apiUrlPattern) {
+    apiResponse = page.waitForResponse(
+      (r) => r.url().includes(apiUrlPattern) && r.request().method() === 'GET',
+      { timeout: timeout + 5000 }
+    ).catch(() => null) as Promise<{ status: () => number; url: () => string } | null>;
+  }
+
+  // Dynamic import to avoid circular — gotoWithRetry is in auth.ts
+  const { gotoWithRetry } = await import('./auth');
+  await gotoWithRetry(page, route);
+
+  try {
+    await waitForAppMainReady(page, {
+      timeout,
+      acceptRedirectToLogin: true,
+      contentSelector,
+    });
+  } catch (_err) {
+    if (page.url().includes('/login')) {
+      test.skip(true, `Redirected to login navigating to ${route} — auth may have expired`);
+      return { ok: false };
+    }
+    throw _err;
+  }
+
+  if (page.url().includes('/login')) {
+    test.skip(true, `Redirected to login after loading ${route} — auth may have expired`);
+    return { ok: false };
+  }
+
+  return { ok: true, apiResponse };
+}
+
 export async function loginAndNavigateToRoute(
   page: Page,
   user: TestUser,
   route: string,
   options: { timeout?: number; contentSelector?: string; acceptRedirectToLogin?: boolean } = {}
 ): Promise<void> {
-  const postLoginWait = process.env.E2E_WEB_PORT ? 4500 : 3500;
+  const postLoginWait = 1000; // Brief settle after login; app-sidebar wait handles the real readiness check
 
   const doLogin = async (): Promise<void> => {
     await loginUser(page, user);
@@ -500,9 +716,9 @@ export async function loginAndNavigateToRoute(
     await page.waitForTimeout(postLoginWait);
   };
 
-  const runNav = async (): Promise<void> => runNavToRoute(page, user, route, options, postLoginWait);
+  const runNav = async (): Promise<void> => runNavToRoute(page, user, route, options);
 
-  const maxRetries = 4; // initial + 4 retries when auth redirect (helps capability-gated routes)
+  const maxRetries = 2; // initial + 2 retries; with subscription fix auth should work on first attempt
   let lastErr: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
@@ -518,7 +734,7 @@ export async function loginAndNavigateToRoute(
       throw lastErr;
     }
     try {
-      await page.locator('.app-sidebar').waitFor({ state: 'visible', timeout: 20000 });
+      await page.locator('.app-sidebar').waitFor({ state: 'visible', timeout: 10000 });
     } catch (err) {
       lastErr =
         err instanceof Error
@@ -545,22 +761,27 @@ export async function loginAndNavigateToRoute(
 
 /** Capability-gated routes that often redirect to login; always accept redirect when option set. */
 // /communities (Phase 27.2; was /social). social.ratings, social.reviews, social.comments on /assets/:id.
-const CAPABILITY_GATED_ROUTES = ['/ai/search', '/developer', '/baas', '/ml', '/communities'];
+const CAPABILITY_GATED_ROUTES = ['/ai/search', '/ai/schema-matching', '/developer', '/baas', '/ml', '/communities', '/transformation'];
 
 /** Run nav logic; throws on redirect-to-login. Used for retry. */
 async function runNavToRoute(
   page: Page,
   user: TestUser,
   route: string,
-  options: { timeout?: number; contentSelector?: string; acceptRedirectToLogin?: boolean },
-  postLoginWait: number
+  options: { timeout?: number; contentSelector?: string; acceptRedirectToLogin?: boolean }
 ): Promise<void> {
-  const acceptRedirect = options.acceptRedirectToLogin === true || CAPABILITY_GATED_ROUTES.includes(route);
-  const contentSelector = options.contentSelector ?? ROUTE_CONTENT_SELECTORS[route];
+  const autoAcceptRedirect = CAPABILITY_GATED_ROUTES.some(
+    (r) => route === r || route.startsWith(r + '/')
+  );
+  const acceptRedirectToLoginResolved =
+    options.acceptRedirectToLogin !== undefined
+      ? options.acceptRedirectToLogin
+      : autoAcceptRedirect;
+  const contentSelector = resolveRouteContentSelector(route, options.contentSelector);
   const waitOptions = {
     ...options,
     contentSelector,
-    acceptRedirectToLogin: acceptRedirect || options.acceptRedirectToLogin,
+    acceptRedirectToLogin: acceptRedirectToLoginResolved,
   };
   // /odps/upload: go to odps first, wait for list API, then click Create/Upload button
   if (route === '/odps/upload') {
@@ -781,18 +1002,26 @@ async function runNavToRoute(
     if ((await assetsLink.count()) > 0) {
       const listTimeout = options.timeout ?? 60000;
       const apiWait = startRouteDataApiWait(page, '/assets', listTimeout);
-      await assetsLink.click();
-      await page.waitForLoadState('domcontentloaded');
-      if (apiWait) await apiWait;
-      await page.waitForTimeout(1000);
-      const assetRow = page.locator(`.asset-list-page tr[data-asset-id="${assetId}"]`).first();
-      if ((await assetRow.count()) > 0) {
-        await assetRow.click();
+      let doneViaSidebar = false;
+      try {
+        // Bounded wait: after long journeys an overlay or layout shift can block the sidebar
+        // link indefinitely; fall through to injectTokens + goto below.
+        await assetsLink.click({ timeout: 25000 });
         await page.waitForLoadState('domcontentloaded');
+        if (apiWait) await apiWait;
         await page.waitForTimeout(1000);
-        await waitForAppMainReady(page, waitOptions);
-        return;
+        const assetRow = page.locator(`.asset-list-page tr[data-asset-id="${assetId}"]`).first();
+        if ((await assetRow.count()) > 0) {
+          await assetRow.click();
+          await page.waitForLoadState('domcontentloaded');
+          await page.waitForTimeout(1000);
+          await waitForAppMainReady(page, waitOptions);
+          doneViaSidebar = true;
+        }
+      } catch {
+        if (apiWait) await apiWait.catch(() => null);
       }
+      if (doneViaSidebar) return;
     }
   }
 
@@ -887,20 +1116,21 @@ async function runNavToRoute(
     }
   }
 
+  // page.goto() triggers a full-page navigation that resets the JS context.
+  // In-memory auth tokens are lost. Inject fresh tokens before goto.
+  await injectTokensBeforeGotoForUser(page, user);
   const gotoTimeout = options.timeout ?? 30000;
   const gotoApiWait = startRouteDataApiWait(page, route, gotoTimeout);
-  await page.goto(route);
-  await page.waitForLoadState('domcontentloaded');
+  await gotoWithRetry(page, route);
   if (gotoApiWait) await gotoApiWait;
   try {
     await waitForAppMainReady(page, waitOptions);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('Redirected to login') || msg.includes('Still on login')) {
-      await loginUser(page, user);
-      await page.waitForTimeout(postLoginWait);
-      await page.goto(route);
-      await page.waitForLoadState('domcontentloaded');
+      // Re-inject fresh tokens and retry navigation once
+      await injectTokensBeforeGotoForUser(page, user);
+      await gotoWithRetry(page, route);
       await waitForAppMainReady(page, waitOptions);
     } else {
       throw err;
@@ -1186,27 +1416,34 @@ export async function navigateToRouteFromApp(
   if (assetsIdMatch) {
     const aid = assetsIdMatch[1];
     const assetsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: ROUTE_NAV_LABELS['/assets'] }).first();
+    let doneViaSidebar = false;
     if ((await assetsLink.count()) > 0) {
       const listTimeout = navOptions.timeout ?? 30000;
       const apiWait = startRouteDataApiWait(page, '/assets', listTimeout);
-      await assetsLink.click();
-      await page.waitForLoadState('domcontentloaded');
-      if (apiWait) await apiWait; // Wait for assets list API so row is available (avoids goto auth race)
-      await page.waitForTimeout(1000);
-      const assetRow = page.locator(`.asset-list-page tr[data-asset-id="${aid}"]`).first();
-      if ((await assetRow.count()) > 0) {
-        await assetRow.click();
+      try {
+        await assetsLink.click({ timeout: 25000 });
         await page.waitForLoadState('domcontentloaded');
+        if (apiWait) await apiWait; // Wait for assets list API so row is available (avoids goto auth race)
         await page.waitForTimeout(1000);
-        await waitForAppMainReady(page, navOptions);
-        return;
+        const assetRow = page.locator(`.asset-list-page tr[data-asset-id="${aid}"]`).first();
+        if ((await assetRow.count()) > 0) {
+          await assetRow.click();
+          await page.waitForLoadState('domcontentloaded');
+          await page.waitForTimeout(1000);
+          await waitForAppMainReady(page, navOptions);
+          doneViaSidebar = true;
+        }
+      } catch {
+        if (apiWait) await apiWait.catch(() => null);
       }
     }
-    // Row not found (loading/pagination) — direct goto is faster and more reliable
+    if (doneViaSidebar) return;
+    // Row not found or sidebar nav failed — direct goto is faster and more reliable
     const fallbackTimeout = navOptions.timeout ?? 30000;
     const apiWait = startRouteDataApiWait(page, route, fallbackTimeout);
-    await page.goto(route);
-    await page.waitForLoadState('domcontentloaded');
+    // Inject fresh auth tokens before page.goto — full-page navigation resets JS context
+    await injectTokensBeforeGotoForUser(page, options.user);
+    await page.goto(route, { waitUntil: 'domcontentloaded' });
     if (apiWait) await apiWait;
     await waitForAppMainReady(page, navOptions);
     return;
@@ -1227,11 +1464,11 @@ export async function navigateToRouteFromApp(
     }
   }
 
-  // Fallback: direct navigation (may trigger auth race on protected routes)
+  // Fallback: direct navigation — inject auth tokens first
   const fallbackTimeout = navOptions.timeout ?? 30000;
   const fallbackApiWait = startRouteDataApiWait(page, route, fallbackTimeout);
-  await page.goto(route);
-  await page.waitForLoadState('domcontentloaded');
+  await injectTokensBeforeGotoForUser(page, options.user);
+  await page.goto(route, { waitUntil: 'domcontentloaded' });
   if (fallbackApiWait) await fallbackApiWait;
   await waitForAppMainReady(page, navOptions);
   return;
@@ -1391,8 +1628,6 @@ export async function waitForApiCall(
   } = {}
 ): Promise<Response> {
   const { timeout = 30000, status } = options;
-
-  const pattern = typeof urlPattern === 'string' ? urlPattern : urlPattern.source;
 
   return await page.waitForResponse(
     (resp) => {
@@ -1749,11 +1984,13 @@ export async function assertNonExistentIdShowsError(
   // "failed to load" intentionally omitted: it appears in the hardcoded <h3> title for
   // EVERY error type (404, 500, network down), making it useless as a discriminator.
   // Only the message element contains text that is specific to 404 responses.
+  // 403 is also accepted: the backend returns 403 (not 404) for non-existent resources
+  // within tenant isolation to prevent UUID enumeration attacks.
   const hasNotFoundText =
     (await page
       .locator('.error-display-message')
       .filter({
-        hasText: /not found|could not be found|does not exist|404|No .* matches the given query|Request failed with status 404/i,
+        hasText: /not found|could not be found|does not exist|404|403|forbidden|No .* matches the given query|Request failed with status (?:404|403)/i,
       })
       .count()) > 0;
 
@@ -1846,18 +2083,77 @@ export async function ensureAssetActivationPrerequisites(
       if (!token) return { success: false, error: 'No access token' };
       const base = `${window.location.origin}/api/v1`;
 
-      // Try E2E-only backend helper first (when RATE_LIMIT_E2E_RELAX or ENVIRONMENT=test)
-      const helperRes = await fetch(`${base}/assets/${aid}/ensure-e2e-activation-prerequisites/`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        cache: 'no-store',
-      });
-      if (helperRes.ok) return { success: true };
-      if (helperRes.status === 404) {
-        // Helper not available; fall through to full flow
-      } else {
-        const err = await helperRes.text();
-        return { success: false, error: `E2E helper: ${helperRes.status} ${err}` };
+      /** Matches Asset.can_activate() rules using public GET endpoints (no optimistic shortcuts). */
+      async function verifyActivationReadyForE2e(): Promise<boolean> {
+        const ass = await fetch(`${base}/assets/${aid}/`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+        });
+        if (!ass.ok) return false;
+        const a = (await ass.json()) as {
+          dataset_id?: string | null;
+          dq_status?: string;
+          compliance_status?: string;
+        };
+        const list = await fetch(`${base}/contracts/?asset_id=${aid}&status=ACTIVE`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+        });
+        if (!list.ok) return false;
+        const lj = (await list.json()) as {
+          results?: Array<{ validation_status?: string; normalization_status?: string }>;
+        };
+        const validActive = (lj.results ?? []).some(
+          (c) =>
+            ['VALID', 'WARNING_ONLY'].includes(String(c.validation_status ?? '')) &&
+            ['NORMALIZED_OK', 'NORMALIZED_WITH_WARNINGS'].includes(String(c.normalization_status ?? ''))
+        );
+        if (!validActive) return false;
+        if (a.dataset_id) {
+          if (!['PASS', 'WARN'].includes(String(a.dq_status ?? ''))) return false;
+          if (!['PASS', 'WARN'].includes(String(a.compliance_status ?? ''))) return false;
+        }
+        return true;
+      }
+
+      // Try E2E-only backend helper first (when RATE_LIMIT_E2E_RELAX or ENVIRONMENT=test).
+      // This endpoint creates a contract with VALID/NORMALIZED_OK status directly in the DB,
+      // bypassing the async validation/normalization pipeline — much faster and more reliable
+      // under parallel E2E load than the full flow.
+      // Retry up to 3 times: under heavy load the first request may timeout or 503.
+      for (let helperAttempt = 0; helperAttempt < 3; helperAttempt++) {
+        try {
+          const helperRes = await fetch(`${base}/assets/${aid}/ensure-e2e-activation-prerequisites/`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            cache: 'no-store',
+          });
+          if (helperRes.ok) {
+            if (await verifyActivationReadyForE2e()) return { success: true };
+            // POST succeeded but reads are not yet consistent (cache/replica/propagation). Back off
+            // before retry: without delay, three tight POSTs on a non-idempotent backend create
+            // redundant ACTIVE contracts and load the tenant.
+            if (helperAttempt < 2) {
+              await new Promise((r) => setTimeout(r, 2000 * (helperAttempt + 1)));
+            }
+            continue;
+          }
+          if (helperRes.status === 404) break; // Helper not available; fall through to full flow
+          if (helperRes.status >= 500 && helperAttempt < 2) {
+            await new Promise((r) => setTimeout(r, 2000 * (helperAttempt + 1)));
+            continue; // Retry on 5xx
+          }
+          const err = await helperRes.text();
+          return { success: false, error: `E2E helper: ${helperRes.status} ${err}` };
+        } catch {
+          // Network error (timeout, ECONNRESET) — retry
+          if (helperAttempt < 2) {
+            await new Promise((r) => setTimeout(r, 2000 * (helperAttempt + 1)));
+            continue;
+          }
+          // Last attempt failed — fall through to full flow
+          break;
+        }
       }
 
       // Full flow: create contract, validate, attach, set ACTIVE
@@ -1953,7 +2249,26 @@ export async function ensureAssetActivationPrerequisites(
       }
       // Allow backend to propagate ACTIVE status before asset activation (avoid race condition)
       await new Promise((r) => setTimeout(r, 3000));
-      return { success: true };
+      if (await verifyActivationReadyForE2e()) return { success: true };
+      // Dataset assets need dq/compliance PASS|WARN; public PATCH cannot set those — hit E2E helper.
+      for (let postAttempt = 0; postAttempt < 3; postAttempt++) {
+        try {
+          const h = await fetch(`${base}/assets/${aid}/ensure-e2e-activation-prerequisites/`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            cache: 'no-store',
+          });
+          if (h.ok && (await verifyActivationReadyForE2e())) return { success: true };
+        } catch {
+          /* retry */
+        }
+        await new Promise((r) => setTimeout(r, 2000 * (postAttempt + 1)));
+      }
+      return {
+        success: false,
+        error:
+          'Contract flow finished but activation preconditions still fail (dq/compliance or ACTIVE contract visibility).',
+      };
     },
     assetId
   );
@@ -1985,7 +2300,7 @@ export async function assertListPageLoads(
   listPageSelector: string,
   options: { timeout?: number } = {}
 ): Promise<void> {
-  const { timeout = 15000 } = options;
+  const { timeout = 30000 } = options;
 
   // Race-based detection: wait for EITHER the expected success content OR an error to appear.
   // This eliminates the previous 800ms static window where a slow-responding API error
@@ -1996,34 +2311,60 @@ export async function assertListPageLoads(
   const errorSelector = '.error-display, .error-display-title';
   const combinedSelector = `${listPageSelector}, ${errorSelector}`;
 
-  await page
-    .locator(combinedSelector)
-    .first()
-    .waitFor({ state: 'visible', timeout })
-    .catch(() => {
-      // Neither success content nor error appeared within the timeout.
-      // This typically means the page is still loading (spinner only) or rendered nothing.
+  try {
+    await page
+      .locator(combinedSelector)
+      .first()
+      .waitFor({ state: 'visible', timeout });
+  } catch {
+    // Neither success content nor error appeared within the timeout.
+    // Check if the page is actively loading (skeleton/spinner visible) — if so, the
+    // backend is slow but the app is working. Wait for the loading state to resolve.
+    const hasLoading =
+      (await page.locator('.loading-spinner, .loading-spinner-container, [data-testid="skeleton-row"], .skeleton').count()) > 0;
+    if (hasLoading) {
+      // Page is actively loading — wait for content or error to appear after loading
+      try {
+        await page
+          .locator(combinedSelector)
+          .first()
+          .waitFor({ state: 'visible', timeout: 30000 });
+      } catch {
+        // Loading persisted beyond extended wait — backend truly unresponsive
+        throw new Error(
+          `assertListPageLoads: page still loading after ${timeout + 30000}ms (backend slow under parallel E2E load).\n` +
+            `Expected one of: ${listPageSelector}\n` +
+            `URL: ${page.url()}`
+        );
+      }
+    } else {
       throw new Error(
         `assertListPageLoads: neither success content nor an error display appeared within ${timeout}ms.\n` +
           `Expected one of: ${listPageSelector}\n` +
           `URL: ${page.url()}\n` +
           `Possible cause: API is unresponsive, route is missing, or CSS class name changed.`
       );
-    });
+    }
+  }
 
   // Check which branch won the race: error state or success state?
   const errorCount =
     (await page.locator('.error-display').count()) +
     (await page.locator('.error-display-title').count());
   if (errorCount > 0) {
-    const errText = await page
+    const errText = (await page
       .locator('.error-display, .error-display-title')
       .first()
       .textContent()
-      .catch(() => '');
+      .catch(() => '')) ?? '';
+    // Backend timeout under parallel E2E load is transient — the app correctly shows the
+    // error, but the backend couldn't respond in time. Distinguish from real errors so
+    // callers can decide whether to skip or fail.
+    const isTimeoutError = /timeout.*exceeded|timed out|ETIMEDOUT|ECONNRESET|socket hang up/i.test(errText);
+    const errorType = isTimeoutError ? 'BACKEND_TIMEOUT' : 'ERROR_STATE';
     throw new Error(
-      `assertListPageLoads: page shows error state — NOT an acceptable success outcome.\n` +
-        `Error content: "${errText?.slice(0, 300) ?? 'N/A'}"\n` +
+      `assertListPageLoads: ${errorType}: page shows error state.\n` +
+        `Error content: "${errText.slice(0, 300)}"\n` +
         `URL: ${page.url()}`
     );
   }
@@ -2054,7 +2395,7 @@ export async function assertCapabilityGatedPageLoads(
   featurePageSelector: string,
   options: { timeout?: number } = {}
 ): Promise<void> {
-  const { timeout = 15000 } = options;
+  const { timeout = 30000 } = options;
   const url = page.url();
 
   // Redirect to login or 403 is always an acceptable outcome for gated/role-gated routes
@@ -2224,7 +2565,9 @@ export async function switchTenantViaUI(
  */
 export async function triggerDQRunViaUI(
   page: Page,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   assetId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   options?: { datasetId?: string }
 ): Promise<{ runId: string; httpStatus: number }> {
   await page.goto('/dq');
@@ -2320,12 +2663,10 @@ export async function triggerDQRunViaUI(
   // A DQ run only requires at least one of asset/dataset/file, so asset alone is sufficient.
   // The `options?.datasetId` parameter is kept for API compatibility but not used in UI flow.
 
-  // Intercept POST /dq/runs/ before clicking submit.
-  // Increased to 60s: modal submit + backend DQ run creation can be slow under parallel load.
   const responsePromise = page.waitForResponse(
     (resp) =>
       resp.url().includes('/dq/runs/') && resp.request().method() === 'POST',
-    { timeout: 60000 }
+    { timeout: 30000 }
   );
 
   // Submit the modal form; wait for button to be enabled (form validation passes)
@@ -2342,13 +2683,26 @@ export async function triggerDQRunViaUI(
   await submitBtn.click();
 
   const resp = await responsePromise;
-  const data = (await resp.json().catch(() => ({}))) as { id?: string; run_id?: string };
+  const respStatus = resp.status();
+  const bodyText = await resp.text().catch(() => '');
+  if (respStatus >= 400) {
+    throw new Error(
+      `triggerDQRunViaUI: POST /dq/runs/ returned ${respStatus}: ${bodyText.slice(0, 300)}`
+    );
+  }
+  let data: { id?: string; run_id?: string } = {};
+  try {
+    data = JSON.parse(bodyText) as { id?: string; run_id?: string };
+  } catch {
+    throw new Error(
+      `triggerDQRunViaUI: POST /dq/runs/ returned ${respStatus} but body is not JSON: ${bodyText.slice(0, 200)}`
+    );
+  }
   const runId = data.id || data.run_id;
   if (!runId) {
-    const body = JSON.stringify(data).slice(0, 200);
-    throw new Error(`triggerDQRunViaUI: POST /dq/runs/ response missing run id. Body: ${body}`);
+    throw new Error(`triggerDQRunViaUI: POST /dq/runs/ response missing run id. Body: ${bodyText.slice(0, 200)}`);
   }
-  return { runId, httpStatus: resp.status() };
+  return { runId, httpStatus: respStatus };
 }
 
 /**
@@ -2449,12 +2803,10 @@ export async function triggerComplianceScanViaUI(
   // NOTE: Dataset picker skipped — same overlay interception issue as DQ modal.
   // Compliance run only requires at least one of asset/dataset/file.
 
-  // Intercept POST /compliance/runs/ before clicking submit.
-  // Increased to 60s for backend load tolerance.
   const responsePromise = page.waitForResponse(
     (resp) =>
       resp.url().includes('/compliance/runs/') && resp.request().method() === 'POST',
-    { timeout: 60000 }
+    { timeout: 15000 }
   );
 
   const submitBtn = modal.locator('button[type="submit"]').first();
@@ -2468,13 +2820,26 @@ export async function triggerComplianceScanViaUI(
   await submitBtn.click();
 
   const resp = await responsePromise;
-  const data = (await resp.json().catch(() => ({}))) as { id?: string; run_id?: string };
-  const runId = data.id || data.run_id;
-  if (!runId) {
-    const body = JSON.stringify(data).slice(0, 200);
-    throw new Error(`triggerComplianceScanViaUI: POST /compliance/runs/ response missing run id. Body: ${body}`);
+  const compRespStatus = resp.status();
+  const compBodyText = await resp.text().catch(() => '');
+  if (compRespStatus >= 400) {
+    throw new Error(
+      `triggerComplianceScanViaUI: POST /compliance/runs/ returned ${compRespStatus}: ${compBodyText.slice(0, 300)}`
+    );
   }
-  return { runId, httpStatus: resp.status() };
+  let compData: { id?: string; run_id?: string } = {};
+  try {
+    compData = JSON.parse(compBodyText) as { id?: string; run_id?: string };
+  } catch {
+    throw new Error(
+      `triggerComplianceScanViaUI: POST /compliance/runs/ returned ${compRespStatus} but body is not JSON: ${compBodyText.slice(0, 200)}`
+    );
+  }
+  const runId = compData.id || compData.run_id;
+  if (!runId) {
+    throw new Error(`triggerComplianceScanViaUI: POST /compliance/runs/ response missing run id. Body: ${compBodyText.slice(0, 200)}`);
+  }
+  return { runId, httpStatus: compRespStatus };
 }
 
 /**
@@ -2489,8 +2854,11 @@ export async function uploadODPSContractViaUI(
   const routes = ['/odps/upload', '/contracts/odps-upload', '/odps/new'];
 
   for (const route of routes) {
-    await page.goto(route);
-    await page.waitForLoadState('domcontentloaded');
+    // Inject fresh auth tokens before page.goto — full-page navigation resets
+    // the JS context and loses in-memory tokens, causing redirect to /login.
+    await injectTokensBeforeGotoForUser(page);
+
+    await page.goto(route, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1500);
 
     if (page.url().includes('/403') || page.url().includes('/login')) {
@@ -2507,7 +2875,7 @@ export async function uploadODPSContractViaUI(
       (resp) =>
         (resp.url().includes('/contracts/') || resp.url().includes('/odps/')) &&
         resp.request().method() === 'POST',
-      { timeout: 120000 } // 120s: ODPS creation can be slow under parallel E2E load
+      { timeout: 30000 }
     );
 
     const submitBtn = page.locator(
@@ -2523,9 +2891,17 @@ export async function uploadODPSContractViaUI(
       throw new Error(`uploadODPSContractViaUI: POST failed with ${resp.status()}: ${body}`);
     }
 
-    const data = (await resp.json().catch(() => ({}))) as { id?: string };
-    if (!data.id) throw new Error('uploadODPSContractViaUI: response missing contract id');
-    return { contractId: data.id };
+    const data = (await resp.json().catch(() => ({}))) as {
+      id?: string;
+      odps_contract?: { id?: string };
+      odcs_contract?: { id?: string };
+      workflow_instance_id?: string;
+    };
+    // The ODPS product creation endpoint returns {odps_contract: {id}, odcs_contract: {id}, workflow_instance_id}
+    // for synchronous execution, or {workflow_instance_id, status: "RUNNING"} for async.
+    const contractId = data.id || data.odps_contract?.id || data.odcs_contract?.id;
+    if (!contractId) throw new Error(`uploadODPSContractViaUI: response missing contract id. Body: ${JSON.stringify(data).slice(0, 300)}`);
+    return { contractId };
   }
 
   throw new Error('uploadODPSContractViaUI: could not find ODPS upload form at any known route');

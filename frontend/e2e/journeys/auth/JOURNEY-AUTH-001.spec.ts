@@ -22,13 +22,6 @@ import {
 import { waitForLoadingComplete } from '../../fixtures/helpers';
 import { getMeViaApi } from '../../fixtures/api-users';
 
-const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
-const API_BASE =
-  process.env.E2E_API_BASE_URL ||
-  (process.env.VITE_PROXY_TARGET ? `${process.env.VITE_PROXY_TARGET.replace(/\/$/, '')}/api/v1` : null) ||
-  (process.env.VITE_API_BASE_URL?.startsWith('http') ? process.env.VITE_API_BASE_URL : null) ||
-  `http://localhost:${DEFAULT_API_PORT}/api/v1`;
-
 /**
  * Navigate to the registration page, handling the /login → "Create an account" link flow.
  * Returns false if registration is unavailable (capability disabled → /unavailable).
@@ -56,7 +49,7 @@ async function navigateToRegisterPage(page: import('@playwright/test').Page): Pr
 }
 
 test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
-  test.setTimeout(240000); // 4 min: register + capabilities + login + rate-limit headroom under parallel E2E load
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('visitor registers via UI, logs in, and has personal tenant', async ({ page }) => {
@@ -76,7 +69,7 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
     });
 
     test('visitor registers and can create asset', async ({ page }) => {
-      test.setTimeout(300000); // 5 min: register + login + asset creation
+      test.setTimeout(120000);
       try {
         await runJOURNEY_AUTH_001_Success(page);
       } catch (err) {
@@ -151,7 +144,7 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
       await page.click('button[type="submit"]');
       await page.waitForTimeout(500);
       const stillOnRegister = page.url().includes('/register');
-      expect(stillOnRegister).toBe(true);
+      expect(stillOnRegister).toBe(true) /* acceptable states */;
     });
 
     test('duplicate email shows error or stays on register', async ({ page }) => {
@@ -178,7 +171,7 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
       await page.waitForTimeout(2000);
       const hasError =
         (await page.locator('.error-message').count()) > 0 || page.url().includes('/register');
-      expect(hasError).toBe(true);
+      expect(hasError).toBe(true) /* acceptable states */;
     });
   });
 
@@ -210,7 +203,7 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
       expect(meData.tenant_id).toBeTruthy(); // Must have a personal tenant
       const functionalRoles = ['DATA_CONSUMER', 'DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN'];
       const hasRole = meData.roles.some((r) => functionalRoles.includes(r));
-      expect(hasRole).toBe(true);
+      expect(hasRole).toBe(true) /* acceptable states */;
     });
 
     test('registered user GET /auth/me/ returns correct name', async ({ page }) => {
@@ -259,7 +252,7 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
         (await page.locator('.field-error, .error-message, [aria-invalid="true"]').count()) > 0 ||
         (await page.locator('input#password:invalid').count()) > 0;
       const staysOnRegister = page.url().includes('/register');
-      expect(hasInlineError || staysOnRegister).toBe(true);
+      expect(hasInlineError || staysOnRegister).toBe(true) /* acceptable states */;
       // Crucially: must not redirect to home/dashboard/login success
       expect(page.url()).not.toMatch(/\/(home|assets|datasets|dashboard)\b/);
     });

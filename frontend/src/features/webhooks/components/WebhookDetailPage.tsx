@@ -6,11 +6,12 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { useDeleteWebhook, useTestWebhook, useWebhook } from '../hooks/useWebhooks';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './WebhookDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function WebhookDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -51,34 +52,30 @@ export function WebhookDetailPage() {
   }
 
   if (isLoading || !webhook) {
-    return <LoadingSpinner message="Loading webhook..." />;
+    return <DetailPageSkeleton />;
   }
 
   return (
     <div className="webhook-detail-page">
       <div className="webhook-detail-header">
-        <button type="button" className="btn-back" onClick={() => navigate('/webhooks')}>
+        <Button variant="ghost" onClick={() => navigate('/webhooks')}>
           ← Back to Webhooks
-        </button>
+        </Button>
         <div className="webhook-detail-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => navigate(`/webhooks/${id}/edit`)}
-          >
+          <Button
+ variant="secondary"
+ onClick={() => navigate(`/webhooks/${id}/edit`)}>
             Edit
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={handleTest}
-            disabled={testMutation.isPending}
-          >
-            {testMutation.isPending ? 'Sending...' : 'Test'}
-          </button>
-          <button type="button" className="btn-danger" onClick={() => setShowDeleteConfirm(true)}>
+          </Button>
+          <Button
+ variant="secondary"
+ onClick={handleTest}
+ loading={testMutation.isPending}>
+            Test
+          </Button>
+          <Button variant="danger" onClick={() => setShowDeleteConfirm(true)}>
             Delete
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -137,21 +134,17 @@ export function WebhookDetailPage() {
               undone.
             </p>
             <div className="webhook-delete-actions">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowDeleteConfirm(false)}
-              >
+              <Button
+ variant="secondary"
+ onClick={() => setShowDeleteConfirm(false)}>
                 Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-danger"
-                onClick={handleDelete}
-                disabled={deleteMutation.isPending}
-              >
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-              </button>
+              </Button>
+              <Button
+ variant="danger"
+ onClick={handleDelete}
+ loading={deleteMutation.isPending}>
+                Delete
+              </Button>
             </div>
           </div>
         </div>

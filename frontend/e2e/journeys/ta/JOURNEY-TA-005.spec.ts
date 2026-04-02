@@ -42,7 +42,7 @@ test.describe('JOURNEY-TA-005: Configure Data Mesh Domains', () => {
       await loginAsPersona(page, getTenantAdminUser);
       await page.goto('/mesh/create');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.mesh-domain-create-page, .error-display, #email', {
+      await page.waitForSelector('.mesh-domain-create-page, .error-display', {
         timeout: 20000,
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {

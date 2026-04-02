@@ -28,7 +28,7 @@ test.describe('JOURNEY-AUD-002: Generate Audit Reports', () => {
       const hasContent =
         (await page.locator('.audit-event-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
       const hasServerError = await page.locator('text=/500|internal server error/i').count();
       expect(hasServerError).toBe(0);
     });
@@ -58,7 +58,7 @@ test.describe('JOURNEY-AUD-002: Generate Audit Reports', () => {
         const hasContent =
           (await page.locator('.audit-event-list-page').count()) > 0 ||
           (await page.locator('.empty-state').count()) > 0;
-        expect(hasContent).toBe(true);
+        expect(hasContent).toBe(true) /* acceptable states */;
       }
     });
   });

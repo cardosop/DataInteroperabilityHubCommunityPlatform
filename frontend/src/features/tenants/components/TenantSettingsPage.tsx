@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Button } from '../../../shared/components/Button';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type { ApiError } from '../../../shared/types/api';
@@ -85,9 +86,11 @@ export function TenantSettingsPage() {
     setLoading(false);
   };
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     loadAll();
   }, []);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
@@ -514,9 +517,9 @@ export function TenantSettingsPage() {
             </div>
 
             <div className="tenant-form-actions">
-              <button type="submit" className="btn-save" disabled={saving}>
-                {saving ? 'Saving...' : 'Save'}
-              </button>
+              <Button variant="primary" type="submit" loading={saving}>
+                Save
+              </Button>
             </div>
           </form>
           ) : (

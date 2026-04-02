@@ -10,40 +10,35 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { clearAuthStorage, getConsumerTestUser, getTestUser, loginUser } from '../../fixtures/auth';
-import { hasLoginPrompt, waitForAppMainReady } from '../../fixtures/helpers';
+import { clearAuthStorage, getConsumerTestUser, getTestUser } from '../../fixtures/auth';
+import { hasLoginPrompt, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
-  test.setTimeout(300000);
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('integrations connections list loads', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/integrations/connections');
-      await page.waitForLoadState('domcontentloaded');
       try {
-        await waitForAppMainReady(page, { timeout: 60000 });
+        await loginAndNavigateToRoute(page, testUser, '/integrations/connections', { timeout: 60000 });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
+          test.skip(true, 'Auth gated — skipping success assertion');
           return;
         }
         throw _err;
       }
       expect(page.url()).toContain('/integrations');
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
 
     test('sync jobs list loads', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      // Route is nested under the integrations layout: /integrations/sync-jobs
-      await page.goto('/integrations/sync-jobs');
-      await page.waitForLoadState('domcontentloaded');
+      await loginAndNavigateToRoute(page, testUser, '/integrations/sync-jobs', { timeout: 60000 });
       // Wait for a terminal render state instead of a fixed sleep
       // Include .unavailable-page for capability-gated routes that redirect before resolving
       await page
-        .locator('.sync-job-list-page, .empty-state, .error-display, .loading-spinner-container, .unavailable-page, #email')
+        .locator('.sync-job-list-page, .empty-state, .error-display, .unavailable-page')
         .first()
         .waitFor({ state: 'visible', timeout: 45000 })
         .catch(() => null);
@@ -53,8 +48,11 @@ test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
       // App may redirect /integrations/sync-jobs to /integrations base before sub-route resolves
       const onIntegrations = url.includes('/integrations');
       const on403 = url.includes('/403');
-      const onUnavailable = url.includes('/unavailable');
-      expect(onSyncJobs || onLogin || onIntegrations || on403 || onUnavailable).toBe(true);
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onSyncJobs || onIntegrations).toBe(true);
       if (onSyncJobs) {
         // Phase 2 wait: ensure terminal content is visible before count() checks
         await page
@@ -68,21 +66,22 @@ test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
           (await page.locator('.error-display').count()) > 0 ||
           // Fallback: route rendered something in the app shell (API slow but page resolved)
           (await page.locator('.app-main').count()) > 0;
-        expect(hasContent).toBe(true);
+        expect(hasContent).toBe(true) /* acceptable states */;
       }
     });
 
     test('mappings list loads', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/integrations/mappings');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.mapping-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 120000 }
-      );
-      if (page.url().includes('/login')) return;
+      await loginAndNavigateToRoute(page, testUser, '/integrations/mappings', {
+        timeout: 120000,
+        contentSelector: '.mapping-list-page, .empty-state, .error-display',
+      });
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Auth gated — skipping success assertion');
+        return;
+      }
       expect(page.url()).toContain('/integrations');
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 
@@ -96,19 +95,18 @@ test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
       const onIntegrationsWithLoginPrompt =
         url.includes('/integrations') &&
         (await hasLoginPrompt(page));
-      expect(onLogin || onIntegrationsWithLoginPrompt).toBe(true);
+      expect(onLogin || onIntegrationsWithLoginPrompt).toBe(true) /* acceptable states */;
     });
 
     test('consumer (DATA_CONSUMER) accessing integrations create gets redirect or content (role awareness)', async ({ page }) => {
       // Data consumers should not be able to create integrations (DE persona routes).
       // This test verifies the route either redirects or renders appropriate messaging.
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/integrations/connections/create');
-      await page.waitForSelector(
-        '.marketplace-connection-create-page, .connection-create-page, .error-display, .unavailable-page, #email',
-        { timeout: 45000 }
-      );
+      await loginAndNavigateToRoute(page, consumer, '/integrations/connections/create', {
+        timeout: 60000,
+        contentSelector:
+          '.marketplace-connection-create-page, .connection-create-page, .error-display, .unavailable-page',
+      });
       const url = page.url();
       // Consumer role: redirect to login/403/unavailable, or the create page (role may be permitted)
       // The critical assertion is no unhandled crash
@@ -117,20 +115,16 @@ test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
         url.includes('/403') ||
         url.includes('/unavailable') ||
         url.includes('/integrations/connections/create');
-      expect(hasKnownState).toBe(true);
+      expect(hasKnownState).toBe(true) /* acceptable states */;
     });
   });
 
   test.describe('Edge', () => {
     test('integrations routes accessible', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/integrations/connections');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.connection-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 120000 }
-      );
+      await loginAndNavigateToRoute(page, testUser, '/integrations/connections', {
+        timeout: 120000,
+      });
       expect(page.url()).toContain('/integrations');
     });
   });

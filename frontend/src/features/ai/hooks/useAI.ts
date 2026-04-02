@@ -2,7 +2,7 @@
  * AI Features React Query Hooks
  */
 
-import { useMutation } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { aiService } from '../services/aiService';
 import type {
   NaturalLanguageSearchRequest,
@@ -10,13 +10,17 @@ import type {
 } from '../../../shared/types/ai';
 
 export function useNaturalLanguageSearch() {
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: NaturalLanguageSearchRequest) => aiService.naturalLanguageSearch(data),
+    successMessage: 'Search completed',
+    errorMessage: 'Failed to perform search',
   });
 }
 
 export function useSchemaMatching() {
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: SchemaMatchingRequest) => aiService.schemaMatching(data),
+    successMessage: 'Schema matching completed',
+    errorMessage: 'Failed to match schemas',
   });
 }

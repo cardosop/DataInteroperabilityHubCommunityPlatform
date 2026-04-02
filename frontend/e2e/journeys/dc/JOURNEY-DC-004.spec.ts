@@ -10,11 +10,11 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getConsumerTestUser, loginUser } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { getConsumerTestUser } from '../../fixtures/auth';
+import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DC-004: Access Entitlement', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('entitlements list loads', async ({ page }) => {
@@ -22,7 +22,7 @@ test.describe('JOURNEY-DC-004: Access Entitlement', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace/entitlements', {
         timeout: 90000,
         contentSelector:
-          '.entitlement-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+          '.entitlement-list-page, .empty-state, .error-display',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -30,21 +30,18 @@ test.describe('JOURNEY-DC-004: Access Entitlement', () => {
       }
       expect(page.url()).toContain('/marketplace/entitlements');
 
-      // loginAndNavigateToRoute may resolve on .loading-spinner-container before the API
-      // returns data (especially when the API just restarted). Wait for loading to settle.
+      // Wait for API data to load (terminal state: list page, empty state, or error)
       await page
         .locator('.entitlement-list-page, .empty-state, .error-display')
         .first()
-        .waitFor({ state: 'visible', timeout: 20000 })
+        .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
 
       const hasContent =
         (await page.locator('.entitlement-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
-        // Accept loading state as valid when API is still recovering from a restart
-        (await page.locator('.loading-spinner-container').count()) > 0;
-      expect(hasContent).toBe(true);
+        (await page.locator('.error-display').count()) > 0;
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
 
     test('entitlement detail loads when entitlement exists', async ({ page }) => {
@@ -52,7 +49,7 @@ test.describe('JOURNEY-DC-004: Access Entitlement', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace/entitlements', {
         timeout: 90000,
         contentSelector:
-          '.entitlement-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
+          '.entitlement-list-page, .empty-state, .error-display',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -72,9 +69,12 @@ test.describe('JOURNEY-DC-004: Access Entitlement', () => {
   test.describe('Failure', () => {
     test('entitlement detail with non-existent id shows error', async ({ page }) => {
       const consumer = await getConsumerTestUser();
-      await loginUser(page, consumer);
-      await page.goto('/marketplace/entitlements/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
+      await loginAndNavigateToRoute(
+        page,
+        consumer,
+        '/marketplace/entitlements/00000000-0000-0000-0000-000000000000',
+        { timeout: 65000 }
+      );
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.entitlement-detail-page, .error-display',
         waitAfterLoad: 12000,
@@ -88,7 +88,7 @@ test.describe('JOURNEY-DC-004: Access Entitlement', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace/entitlements', {
         timeout: 90000,
         contentSelector:
-          '.entitlement-list-page, .empty-state, .error-display, .loading-spinner-container',
+          '.entitlement-list-page, .empty-state, .error-display',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');

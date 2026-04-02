@@ -91,7 +91,7 @@ export function DQRunResultsViewer({ results }: DQRunResultsViewerProps) {
       <div className="dq-results-filters">
         <div className="filter-group">
           <label>Severity</label>
-          <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as any)}>
+          <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value as 'ALL' | 'HIGH' | 'MEDIUM' | 'LOW')}>
             <option value="ALL">All Severities</option>
             <option value="HIGH">High</option>
             <option value="MEDIUM">Medium</option>
@@ -111,7 +111,7 @@ export function DQRunResultsViewer({ results }: DQRunResultsViewerProps) {
         </div>
         <div className="filter-group">
           <label>Status</label>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)}>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'ALL' | 'PASS' | 'FAIL' | 'WARN')}>
             <option value="ALL">All Statuses</option>
             <option value="PASS">Pass</option>
             <option value="FAIL">Fail</option>

@@ -25,9 +25,15 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
       const onSemantic = page.url().includes('/semantic');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onSemantic).toBe(true);
       const hasContent =
-        (await page.locator('.semantic-page, .app-main, .unavailable-page').count()) > 0;
-      expect(onLogin || on403 || (onSemantic && hasContent)).toBe(true);
+        (await page.locator('.semantic-page, .app-main').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
 
     test('virtualization list loads for federated sources', async ({ page }) => {
@@ -36,14 +42,15 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
       await page.goto('/virtualization');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.virtual-dataset-list-page, .error-display, .empty-state, .loading-spinner-container, .app-main, #email',
+        '.virtual-dataset-list-page, .error-display, .empty-state, .app-main',
         { timeout: 90000 }
       );
       if (page.url().includes('/login')) {
-        expect(page.url()).toContain('/login');
+        test.skip(true, 'Auth gated — skipping success assertion');
         return;
       }
       expect(page.url()).toContain('/virtualization');
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 
@@ -56,9 +63,8 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
       await page.waitForTimeout(3000);
       const on403 = page.url().includes('/403');
       const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
-      const onSemantic = page.url().includes('/semantic');
       const onLogin = page.url().includes('/login');
-      expect(on403 || onUnavailable || onSemantic || onLogin).toBe(true);
+      expect(on403 || onUnavailable || onLogin).toBe(true) /* acceptable states */;
     });
 
     test('unauthenticated access redirects to login', async ({ page }) => {

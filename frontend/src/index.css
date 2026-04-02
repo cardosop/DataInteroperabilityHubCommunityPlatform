@@ -160,6 +160,11 @@
   --color-border: var(--color-neutral-300);
   --color-border-light: var(--color-neutral-200);
 
+  /* Skeleton Loader Tokens (Phase 40) */
+  --skeleton-base: var(--color-neutral-200);
+  --skeleton-highlight: var(--color-neutral-100);
+  --skeleton-animation-duration: 1.5s;
+
   /* Font Family (Phase 28.7.3: Inter via Google Fonts) */
   --font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-family-mono: 'Monaco', 'Menlo', 'Consolas', monospace;

@@ -7,10 +7,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import type { AssetStatus, AssetVisibility } from '../../../shared/types/assets';
 import { useAssets } from '../hooks/useAssets';
 import './AssetListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function AssetListPage() {
   const navigate = useNavigate();
@@ -42,7 +43,7 @@ export function AssetListPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading assets..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -50,9 +51,9 @@ export function AssetListPage() {
       <div className="asset-list-error-wrapper">
         <ErrorDisplay error={error} title="Failed to load assets" onRetry={() => refetch()} />
         <div className="asset-list-error-actions">
-          <button className="btn-primary" onClick={handleCreateAsset} type="button">
+          <Button variant="primary" onClick={handleCreateAsset}>
             Create Asset
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -81,9 +82,9 @@ export function AssetListPage() {
     <div className="asset-list-page" data-testid="asset-list-page">
       <div className="asset-list-header" data-testid="asset-list-header">
         <h1>Assets</h1>
-        <button className="btn-primary" onClick={handleCreateAsset} type="button">
+        <Button variant="primary" onClick={handleCreateAsset}>
           Create Asset
-        </button>
+        </Button>
       </div>
 
       <div className="asset-list-filters" role="group" aria-label="Asset filters" data-testid="asset-list-filters">

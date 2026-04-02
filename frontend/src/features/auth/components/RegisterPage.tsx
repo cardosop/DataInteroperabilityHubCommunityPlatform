@@ -59,7 +59,7 @@ export function RegisterPage() {
   };
 
   return (
-    <div className="auth-page">
+    <div className="auth-page" role="main">
       <div className="auth-container">
         <h1>Create account</h1>
 

@@ -12,7 +12,7 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getComplianceOfficerUser, loginAsPersona } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { assertNonExistentIdShowsError, waitForAppMainReady, waitForLoadingComplete } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-CPO-008: Manage Consent Tracking', () => {
   test.setTimeout(120000);
@@ -42,6 +42,39 @@ test.describe('JOURNEY-CPO-008: Manage Consent Tracking', () => {
         (await page.locator('.compliance-run-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
       expect(hasContent).toBe(true);
+    });
+
+    test('governance page has consent or access request section', async ({ page }) => {
+      await loginAsPersona(page, getComplianceOfficerUser);
+      await page.goto('/governance');
+      await page.waitForLoadState('domcontentloaded');
+      try {
+        await waitForAppMainReady(page, { timeout: 60000 });
+      } catch (_err) {
+        if (page.url().includes('/login') || page.url().includes('/403')) {
+          test.skip(true, 'Login redirect or 403 — skipping success assertion');
+          return;
+        }
+        throw _err;
+      }
+      if (page.url().includes('/login') || page.url().includes('/403')) {
+        test.skip(true, 'Login redirect or 403 — skipping success assertion');
+        return;
+      }
+      await waitForLoadingComplete(page);
+
+      const consentText = page.getByText(/consent|privacy|access.request|data.subject/i);
+      const accessRequestLinks = page.locator('a[href*="/governance/access-requests"]');
+      const governanceContent = page.locator(
+        '.governance-page, .access-request-list-page, .governance-retention-policy-list-page, [class*="governance"]'
+      );
+
+      const hasConsentText = (await consentText.count()) > 0;
+      const hasAccessRequestLinks = (await accessRequestLinks.count()) > 0;
+      const hasGovernanceContent = (await governanceContent.count()) > 0;
+
+      expect(hasConsentText || hasAccessRequestLinks || hasGovernanceContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 

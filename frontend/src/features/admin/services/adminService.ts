@@ -41,6 +41,15 @@ export const adminService = {
   },
 
   /**
+   * Create a new organization tenant (Platform Admin only).
+   * POST /api/v1/tenants/
+   */
+  async createTenant(data: { name: string; slug: string; region?: string }): Promise<Tenant> {
+    const response = await apiClient.getClient().post<Tenant>(`${TENANTS_BASE_PATH}/`, data);
+    return response.data;
+  },
+
+  /**
    * Suspend a tenant (Platform Admin only).
    * POST /api/v1/tenants/{id}/suspend/
    */

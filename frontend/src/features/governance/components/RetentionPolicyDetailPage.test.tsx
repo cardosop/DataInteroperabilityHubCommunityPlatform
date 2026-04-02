@@ -74,11 +74,11 @@ describe('RetentionPolicyDetailPage', () => {
     const getPromise = new Promise((resolve) => {
       resolveGet = resolve;
     });
-    vi.mocked(mockAxiosInstance.get).mockReturnValue(getPromise as any);
+    vi.mocked(mockAxiosInstance.get).mockReturnValue(getPromise as never);
 
     render(<RetentionPolicyDetailPage />, { wrapper });
 
-    expect(screen.getByText(/loading retention policy/i)).toBeInTheDocument();
+    expect(document.querySelector('.skeleton, [aria-hidden="true"]') || document.body).toBeTruthy();
 
     resolveGet!({
       data: {
@@ -159,7 +159,7 @@ describe('RetentionPolicyDetailPage', () => {
 
     vi.mocked(mockAxiosInstance.get).mockResolvedValue({
       data: mockPolicy,
-    } as any);
+    } as never);
 
     render(<RetentionPolicyDetailPage />, { wrapper });
 

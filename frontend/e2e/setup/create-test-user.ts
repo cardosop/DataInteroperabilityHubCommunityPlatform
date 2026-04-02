@@ -3,6 +3,32 @@
  * Creates a test user via API for E2E tests
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
+
+/** Compare API base URLs ignoring trailing slashes. */
+function normalizeApiBaseUrl(u: string): string {
+  return u.replace(/\/+$/, '');
+}
+
+/**
+ * When global-setup ran `ensure_e2e_subscription` successfully, it writes this marker.
+ * Skips redundant per-test POST /test/ensure-e2e-subscription/ (same outcome, less API load
+ * and fewer ECONNRESET warnings under parallel workers).
+ */
+function isSubscriptionPrimedForBaseUrl(baseUrl: string): boolean {
+  try {
+    const markerPath = path.join(process.cwd(), 'e2e', '.auth', 'subscription-primed.json');
+    if (!fs.existsSync(markerPath)) return false;
+    const raw = fs.readFileSync(markerPath, 'utf8');
+    const data = JSON.parse(raw) as { apiBaseUrl?: string };
+    if (typeof data.apiBaseUrl !== 'string') return false;
+    return normalizeApiBaseUrl(data.apiBaseUrl) === normalizeApiBaseUrl(baseUrl);
+  } catch {
+    return false;
+  }
+}
+
 // Node fetch needs absolute URL; VITE_API_BASE_URL is relative (/api/v1)
 // Prefer 8001 when E2E_WEB_PORT set (test stack uses 8001)
 const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
@@ -79,7 +105,17 @@ function isHostResolutionRetryable(error: unknown): boolean {
   return /cannot resolve host|translate host name|name resolution|getaddrinfo|ENOTFOUND|could not translate/i.test(msg);
 }
 
-/** Run fn with retries on transient connection errors */
+function isRateLimitError(error: unknown): boolean {
+  const msg = String((error as Error)?.message ?? '');
+  return /rate.?limit|429|too many requests/i.test(msg);
+}
+
+function isTransientServerError(error: unknown): boolean {
+  const msg = String((error as Error)?.message ?? '');
+  return /deadlock|lock timeout|statement timeout|too many connections|500.*deadlock|REGISTRATION_FAILED|registration failed|SERVICE_UNAVAILABLE|INTERNAL_ERROR/i.test(msg);
+}
+
+/** Run fn with retries on transient connection errors, rate limits, and deadlocks */
 async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
   const maxAttempts = FETCH_RETRIES + 2; // Extra retries for host resolution (longer recovery)
   let lastError: unknown;
@@ -91,9 +127,13 @@ async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
       const retryable =
         isConnectionError(error) ||
         isTooManyClientsError(error) ||
+        isRateLimitError(error) ||
+        isTransientServerError(error) ||
         (i < 4 && isHostResolutionRetryable(error));
       if (i < maxAttempts - 1 && retryable) {
-        const delay = RETRY_DELAYS_MS[Math.min(i, RETRY_DELAYS_MS.length - 1)] ?? 8000;
+        // Use longer delays for rate limits to let the limiter window expire
+        const baseDelay = RETRY_DELAYS_MS[Math.min(i, RETRY_DELAYS_MS.length - 1)] ?? 8000;
+        const delay = isRateLimitError(error) ? Math.max(baseDelay, 5000) : baseDelay;
         const reason = isTooManyClientsError(error)
           ? 'Postgres pool exhausted'
           : isHostResolutionRetryable(error)
@@ -176,7 +216,7 @@ export async function ensureTestUser(): Promise<TestUser> {
       }
       // Intentional fallback: malformed JSON (e.g. HTML error page) -> empty object for error parsing
       const errorData = await registerResponse.json().catch(() => ({}));
-      if (registerResponse.status === 400 && isAlreadyRegisteredError(errorData)) {
+      if ((registerResponse.status === 400 || registerResponse.status === 409) && isAlreadyRegisteredError(errorData)) {
         console.log('⚠️  Test user already registered, syncing password via ensure_e2e_user_roles');
         await runEnsureE2EUserRoles();
         await new Promise((r) => setTimeout(r, 2000));
@@ -235,46 +275,172 @@ export async function ensureTestUser(): Promise<TestUser> {
   }
 }
 
+/** Must match hub `ensure_e2e_user_roles.PROFILE_ISOLATION_WORKER_COUNT` */
+export const PROFILE_ISOLATION_WORKER_COUNT = 16;
+
+const _cachedProfileIsolationUser = new Map<number, TestUser>();
+
+/**
+ * Dedicated E2E user per Playwright worker for tests that PATCH display_name.
+ * Avoids cross-worker races on shared `e2e_test@` (parallel Success vs Edge profile tests).
+ */
+export async function ensureProfileIsolationUser(workerIndex: number): Promise<TestUser> {
+  const idx = Math.min(
+    Math.max(0, workerIndex),
+    PROFILE_ISOLATION_WORKER_COUNT - 1
+  );
+  const cached = _cachedProfileIsolationUser.get(idx);
+  if (cached) return cached;
+
+  const emailTemplate = `e2e_profile_w${idx}@example.com`;
+  const password = 'TestPass123';
+  const name = `E2E Profile Worker ${idx}`;
+
+  const runWithBase = async (baseUrl: string): Promise<TestUser> => {
+    let loginResult = await withRetry(async () => {
+      const loginResponse = await fetch(`${baseUrl}/auth/login/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailTemplate, password }),
+      });
+      if (loginResponse.ok) {
+        return { email: emailTemplate, password, name } as TestUser;
+      }
+      if (loginResponse.status === 429) {
+        throw new Error('Rate limited (429); will retry');
+      }
+      return null;
+    }, 'Profile isolation user login');
+
+    if (!loginResult) {
+      await runEnsureE2EUserRoles();
+      await new Promise((r) => setTimeout(r, 2000));
+      loginResult = await withRetry(async () => {
+        const loginResponse = await fetch(`${baseUrl}/auth/login/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailTemplate, password }),
+        });
+        if (loginResponse.ok) return { email: emailTemplate, password, name } as TestUser;
+        return null;
+      }, 'Profile isolation user login (retry after ensure)');
+    }
+
+    if (loginResult) {
+      await ensureE2ESubscriptionForUser(loginResult, baseUrl);
+      return loginResult;
+    }
+    throw new Error(
+      `Profile isolation user ${emailTemplate} missing. ` +
+        `Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
+    );
+  };
+
+  try {
+    const user = await runWithBase(API_BASE_URL);
+    _cachedProfileIsolationUser.set(idx, user);
+    return user;
+  } catch (err) {
+    const alt = getAlternateApiBase(API_BASE_URL);
+    if (alt && (isConnectionRefused(err) || isConnectionError(err))) {
+      const user = await runWithBase(alt);
+      _cachedProfileIsolationUser.set(idx, user);
+      return user;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Single-flight map: parallel workers/tests often call ensureE2ESubscriptionForUser for the same
+ * (baseUrl, email) at once — duplicate login + POST bursts saturate the API and surface as
+ * ECONNRESET / "fetch failed" in logs. Coalesce to one in-flight promise per key.
+ */
+const _subscriptionEnsureInFlight = new Map<string, Promise<void>>();
+
 /** Ensure E2E test user's tenant has active subscription and VERIFIED KYC (enables asset create, marketplace publish, etc.) */
 async function ensureE2ESubscriptionForUser(user: TestUser, baseUrl: string = API_BASE_URL): Promise<void> {
-  try {
-    const loginRes = await fetch(`${baseUrl}/auth/login/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: user.email, password: user.password }),
-    });
-    if (!loginRes.ok) return;
-    const loginData = (await loginRes.json()) as { access_token?: string };
-    const token = loginData.access_token;
-    if (!token) return;
-    const ensureRes = await fetch(`${baseUrl}/test/ensure-e2e-subscription/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    if (ensureRes.ok) {
-      console.log('✅ E2E subscription ensured');
-    }
-  } catch {
-    // Ignore - endpoint may not exist in prod; tests will skip or fail with clear message
+  if (isSubscriptionPrimedForBaseUrl(baseUrl)) {
+    return;
   }
+
+  const dedupeKey = `${baseUrl}::${user.email}`;
+  const existing = _subscriptionEnsureInFlight.get(dedupeKey);
+  if (existing) {
+    return existing;
+  }
+
+  const run = (async (): Promise<void> => {
+    try {
+      await withRetry(async () => {
+        const loginRes = await fetch(`${baseUrl}/auth/login/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user.email, password: user.password }),
+        });
+        if (!loginRes.ok) {
+          // 400 = bad credentials during setup race; 429 = rate limited — both transient
+          if (loginRes.status === 429 || loginRes.status >= 500) {
+            throw new Error(`Subscription ensure login failed: ${loginRes.status}`);
+          }
+          console.log(`⚠️ ensureE2ESubscription: login returned ${loginRes.status}, skipping`);
+          return;
+        }
+        const loginData = (await loginRes.json()) as { access_token?: string };
+        const token = loginData.access_token;
+        if (!token) {
+          console.log('⚠️ ensureE2ESubscription: no access_token in login response');
+          return;
+        }
+        const ensureRes = await fetch(`${baseUrl}/test/ensure-e2e-subscription/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (ensureRes.ok) {
+          console.log('✅ E2E subscription ensured');
+        } else if (ensureRes.status === 404) {
+          // Endpoint doesn't exist (prod build) — skip silently
+          return;
+        } else if (ensureRes.status >= 500 || ensureRes.status === 429) {
+          // Transient server error — retry
+          throw new Error(`Subscription ensure endpoint failed: ${ensureRes.status}`);
+        } else {
+          const body = await ensureRes.text().catch(() => '');
+          console.log(
+            `⚠️ ensureE2ESubscription: ensure endpoint returned ${ensureRes.status}: ${body.slice(0, 200)}`
+          );
+        }
+      }, 'E2E subscription ensure');
+    } finally {
+      _subscriptionEnsureInFlight.delete(dedupeKey);
+    }
+  })();
+
+  _subscriptionEnsureInFlight.set(dedupeKey, run);
+  return run;
 }
 
 /** True when API indicates email is already registered (backend: "Email address is already registered") */
 function isAlreadyRegisteredError(errorData: unknown): boolean {
   if (!errorData || typeof errorData !== 'object') return false;
   const o = errorData as Record<string, unknown>;
+  // Check common error response fields: message, detail (DRF), error.message, code
   const msg = typeof o.message === 'string' ? o.message : '';
+  const detail = typeof o.detail === 'string' ? o.detail : '';
+  const code = typeof o.code === 'string' ? o.code : '';
   const details = o.error && typeof o.error === 'object' ? (o.error as Record<string, unknown>) : o;
   const emailDetails =
     details.details && typeof details.details === 'object'
       ? (details.details as Record<string, unknown>).email
       : undefined;
   const emailArr = Array.isArray(emailDetails) ? emailDetails : [];
-  const hasAlready = (s: string) => /already\s+(registered|exists)/i.test(s);
+  const hasAlready = (s: string) => /already\s+(registered|exists)|EMAIL_ALREADY_EXISTS/i.test(s);
   if (hasAlready(msg)) return true;
+  if (hasAlready(detail)) return true;
+  if (hasAlready(code)) return true;
   return emailArr.some((m) => typeof m === 'string' && hasAlready(m));
 }
 
@@ -304,6 +470,10 @@ export async function ensureConsumerTestUser(): Promise<TestUser> {
         console.log('✅ Consumer test user exists and can login');
         return { email, password, name } as TestUser;
       }
+      // 429 = rate-limited: user may exist but we can't verify — throw so withRetry retries
+      if (loginResponse.status === 429) {
+        throw new Error('Rate limited (429); will retry');
+      }
       return null;
     }, 'Consumer test user login');
 
@@ -316,6 +486,9 @@ export async function ensureConsumerTestUser(): Promise<TestUser> {
           body: JSON.stringify({ email, password }),
         });
         if (loginResponse.ok) return { email, password, name } as TestUser;
+        if (loginResponse.status === 429) {
+          throw new Error('Rate limited (429); will retry');
+        }
         return null;
       }, 'Consumer test user login (retry after ensure)');
     }
@@ -339,7 +512,7 @@ export async function ensureConsumerTestUser(): Promise<TestUser> {
       }
       // Intentional fallback: malformed JSON (e.g. HTML error page) -> empty object for error parsing
       const errorData = await registerResponse.json().catch(() => ({}));
-      if (registerResponse.status === 400 && isAlreadyRegisteredError(errorData)) {
+      if ((registerResponse.status === 400 || registerResponse.status === 409) && isAlreadyRegisteredError(errorData)) {
         console.log('⚠️  Consumer test user already registered, using existing credentials');
         return { email, password, name };
       }
@@ -431,6 +604,10 @@ async function tryLoginWithBase(user: TestUser, baseUrl: string): Promise<boolea
       body: JSON.stringify({ email: user.email, password: user.password }),
       signal: controller.signal,
     });
+    // 429 = rate-limited: user may exist but we can't verify — throw so withRetry retries
+    if (r.status === 429) {
+      throw new Error('Rate limited (429); will retry');
+    }
     return r.ok;
   } finally {
     clearTimeout(timeoutId);
@@ -452,7 +629,7 @@ async function tryLogin(user: TestUser): Promise<boolean> {
     if (alt && (isConnectionError(err) || isConnectionRefused(err))) {
       try {
         return await attempt(alt);
-      } catch (altErr) {
+      } catch {
         // Improve error message: backend not reachable on either port
         const msg =
           err instanceof Error ? err.message : String(err);

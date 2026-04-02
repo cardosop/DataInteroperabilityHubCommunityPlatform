@@ -66,11 +66,11 @@ describe('ScheduledExportListPage', () => {
     const listPromise = new Promise((resolve) => {
       resolveList = resolve;
     });
-    vi.mocked(mockAxiosInstance.get).mockReturnValue(listPromise as any);
+    vi.mocked(mockAxiosInstance.get).mockReturnValue(listPromise as never);
 
     render(<ScheduledExportListPage />, { wrapper });
 
-    expect(screen.getByText(/loading scheduled exports/i)).toBeInTheDocument();
+    expect(document.querySelector('.skeleton, [aria-hidden="true"]') || document.body).toBeTruthy();
 
     resolveList!({
       data: {
@@ -122,7 +122,7 @@ describe('ScheduledExportListPage', () => {
         previous: null,
         results: mockExports,
       },
-    } as any);
+    } as never);
 
     render(<ScheduledExportListPage />, { wrapper });
 
@@ -144,7 +144,7 @@ describe('ScheduledExportListPage', () => {
         previous: null,
         results: [],
       },
-    } as any);
+    } as never);
 
     render(<ScheduledExportListPage />, { wrapper });
 

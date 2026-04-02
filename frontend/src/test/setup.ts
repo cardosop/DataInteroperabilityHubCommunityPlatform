@@ -34,10 +34,10 @@ const ensureLocalStorage = () => {
   }
   if (
     typeof globalThis.window !== 'undefined' &&
-    (typeof (globalThis.window as any).localStorage === 'undefined' ||
-      typeof (globalThis.window as any).localStorage?.getItem !== 'function')
+    (typeof (globalThis.window as Window & typeof globalThis).localStorage === 'undefined' ||
+      typeof (globalThis.window as Window & typeof globalThis).localStorage?.getItem !== 'function')
   ) {
-    Object.defineProperty(globalThis.window as any, 'localStorage', {
+    Object.defineProperty(globalThis.window, 'localStorage', {
       value: localStore,
       writable: true,
     });

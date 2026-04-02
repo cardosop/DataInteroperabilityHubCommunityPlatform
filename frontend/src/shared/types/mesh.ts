@@ -18,10 +18,10 @@ export interface MeshDomain {
   owner_email?: string;
   tenant: string;
   tenant_name: string;
-  boundaries: Record<string, any>;
-  capabilities: Record<string, any>;
-  resource_quota: Record<string, any>;
-  resource_usage: Record<string, any>;
+  boundaries: Record<string, unknown>;
+  capabilities: Record<string, unknown>;
+  resource_quota: Record<string, unknown>;
+  resource_usage: Record<string, unknown>;
   status: DomainStatus;
   created_at: string;
   updated_at: string;
@@ -31,9 +31,9 @@ export interface MeshDomainCreateRequest {
   name: string;
   description?: string;
   owner_id?: string;
-  boundaries?: Record<string, any>;
-  capabilities?: Record<string, any>;
-  resource_quota?: Record<string, any>;
+  boundaries?: Record<string, unknown>;
+  capabilities?: Record<string, unknown>;
+  resource_quota?: Record<string, unknown>;
   status?: DomainStatus;
 }
 
@@ -41,9 +41,9 @@ export interface MeshDomainUpdateRequest {
   name?: string;
   description?: string;
   owner_id?: string;
-  boundaries?: Record<string, any>;
-  capabilities?: Record<string, any>;
-  resource_quota?: Record<string, any>;
+  boundaries?: Record<string, unknown>;
+  capabilities?: Record<string, unknown>;
+  resource_quota?: Record<string, unknown>;
   status?: DomainStatus;
 }
 
@@ -62,8 +62,8 @@ export interface DomainAnalytics {
   status: DomainStatus;
   created_at: string;
   updated_at: string;
-  resource_usage: Record<string, any>;
-  resource_quota: Record<string, any>;
+  resource_usage: Record<string, unknown>;
+  resource_quota: Record<string, unknown>;
   resource_usage_percentages: Record<string, number>;
   total_policies: number;
   applied_policies: number;
@@ -141,7 +141,7 @@ export interface PolicyApplication {
   policy_name?: string;
   applied_by_id?: string;
   applied_by_email?: string;
-  overrides: Record<string, any>;
+  overrides: Record<string, unknown>;
   status: string;
   applied_at?: string;
   created_at: string;
@@ -150,7 +150,7 @@ export interface PolicyApplication {
 
 export interface ApplyPolicyRequest {
   policy_id: string;
-  overrides?: Record<string, any>;
+  overrides?: Record<string, unknown>;
 }
 
 export interface ComplianceReport {
@@ -160,7 +160,7 @@ export interface ComplianceReport {
   asset_id?: string;
   asset_name?: string;
   compliance_status: string;
-  violations: Record<string, any>;
+  violations: Record<string, unknown>;
   violation_count: number;
   generated_at: string;
   created_at: string;

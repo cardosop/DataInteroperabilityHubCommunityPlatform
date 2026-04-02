@@ -152,3 +152,18 @@
 .pagination-info {
   color: var(--color-text-secondary);
 }
+
+/* ML Model category badge */
+.listing-category-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-left: 0.5rem;
+}
+
+.listing-category-ml {
+  background: var(--color-accent-50, #f0e6ff);
+  color: var(--color-accent-700, #6b21a8);
+}

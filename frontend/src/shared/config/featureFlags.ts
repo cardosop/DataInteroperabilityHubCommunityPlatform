@@ -16,11 +16,6 @@ export function parseBool(value: string | undefined): boolean {
   return v === 'true' || v === '1';
 }
 
-/** When false, Toast notifications are disabled (no-op). Default: true. */
-export const FEATURE_TOAST_ENABLED = parseBool(
-  import.meta.env.VITE_FEATURE_TOAST_ENABLED as string | undefined
-);
-
 /** When false, Breadcrumbs navigation is hidden. Default: true. */
 export const FEATURE_BREADCRUMBS_ENABLED = parseBool(
   import.meta.env.VITE_FEATURE_BREADCRUMBS_ENABLED as string | undefined

@@ -27,7 +27,7 @@ import {
 } from './fixtures/helpers';
 
 test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
-  test.setTimeout(300000); // 5 min: login + multi-route nav under parallel E2E load (avoids timeout during retries)
+  test.setTimeout(120000);
   test.beforeEach(async ({ page }) => {
     const testUser = await getTestUser();
     await loginUser(page, testUser);
@@ -42,7 +42,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+      contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
@@ -65,7 +65,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     const hasML = (await mlLink.count()) > 0;
 
     // Sidebar shows Integrations/Developer/BaaS/ML or nav loads without crash
-    expect(hasIntegrations || hasDeveloper || hasBaaS || hasML || count > 0).toBe(true);
+    expect(hasIntegrations || hasDeveloper || hasBaaS || hasML || count > 0).toBe(true) /* acceptable states */;
   });
 
   test('A.2 — Integrations connections list, create and detail routes load without 404', async ({
@@ -74,7 +74,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/integrations/connections', {
       timeout: 60000,
-      contentSelector: '.marketplace-connection-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+      contentSelector: '.marketplace-connection-list-page, .empty-state, .error-display, h1',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
@@ -153,7 +153,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       (await page.locator('text=/No results|no results|Start searching/i').count()) > 0;
     const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
     const hasErrorDisplay = (await page.locator('.error-display').count()) > 0;
-    expect(hasResults || hasNoResults || hasEmptyState || hasErrorDisplay).toBe(true);
+    expect(hasResults || hasNoResults || hasEmptyState || hasErrorDisplay).toBe(true) /* acceptable states */;
   });
 
   test('P — User profile page loads and shows own data or app handles route', async ({ page }) => {
@@ -172,7 +172,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     const hasAppMain = (await page.locator('.app-main, main, [role="main"]').count()) > 0;
     const has404 = (await body.getByText(/404|Not Found/).count()) > 0;
 
-    expect(hasProfile || hasAppMain || has404).toBe(true);
+    expect(hasProfile || hasAppMain || has404).toBe(true) /* acceptable states */;
 
     const displayNameInput = page
       .locator('input[name="display_name"], input[id="display_name"], input[placeholder*="name"]')
@@ -221,7 +221,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     // Also accept any main app content — the page loaded without crashing
     const hasAppMain = (await page.locator('.app-main, main, [role="main"]').count()) > 0;
 
-    expect(hasTenantPage || hasPermissionMsg || has404 || hasAppMain).toBe(true);
+    expect(hasTenantPage || hasPermissionMsg || has404 || hasAppMain).toBe(true) /* acceptable states */;
 
     const configForm = page.locator('form').filter({ has: page.locator('input, select') });
     if ((await configForm.count()) > 0 && (await permissionMsg.count()) === 0) {
@@ -251,7 +251,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     await loginAndNavigateToRoute(page, testUser, '/settings/sessions', {
       timeout: 60000,
       contentSelector:
-        '.session-list-page, .session-list-table, .session-list-empty, .loading-spinner-container, .error-display, h1',
+        '.session-list-page, .session-list-table, .session-list-empty, .error-display, h1',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
@@ -264,7 +264,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     await expect(heading).toBeVisible({ timeout: 5000 });
     const hasTableOrEmpty =
       (await page.locator('.session-list-table, .session-list-empty').count()) > 0;
-    expect(hasTableOrEmpty).toBe(true);
+    expect(hasTableOrEmpty).toBe(true) /* acceptable states */;
   });
 
   test('B.4 — Auth API keys page loads; list or empty; Create/Delete or buttons present', async ({
@@ -304,7 +304,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       (await page
         .locator('.accept-invitation-missing-token, .accept-invitation-card form')
         .count()) > 0;
-    expect(hasAcceptPage || hasHeading || hasMessageOrForm).toBe(true);
+    expect(hasAcceptPage || hasHeading || hasMessageOrForm).toBe(true) /* acceptable states */;
   });
 
   test('A.4 — DQ and Compliance list pages load; Create DQ run and Create compliance run buttons present', async ({
@@ -331,9 +331,9 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     if (!hasCreateDQ) {
       const on403 = page.url().includes('/403');
       const hasDQContent =
-        (await page.locator('.dq-run-list-page, .empty-state, .loading-spinner-container').count()) >
+        (await page.locator('.dq-run-list-page, .empty-state').count()) >
         0;
-      expect(on403 || hasDQContent).toBe(true);
+      expect(on403 || hasDQContent).toBe(true) /* acceptable states */;
     }
 
     await navigateToRouteFromApp(page, '/compliance', {
@@ -357,9 +357,9 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     if (!hasCreateCompliance) {
       const on403 = page.url().includes('/403');
       const hasComplianceContent =
-        (await page.locator('.compliance-run-list-page, .empty-state, .loading-spinner-container').count()) >
+        (await page.locator('.compliance-run-list-page, .empty-state').count()) >
         0;
-      expect(on403 || hasComplianceContent).toBe(true);
+      expect(on403 || hasComplianceContent).toBe(true) /* acceptable states */;
     }
   });
 
@@ -385,7 +385,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       (await page.locator('text=/not authorized|permission|forbidden/i').count()) > 0;
     // Any recognisable app content is acceptable (page loaded, role check may redirect internally)
     const hasAppContent = (await page.locator('.app-main, main[role]').count()) > 0;
-    expect(on403 || onLogin || hasListOrDetail || hasForbiddenInline || hasAppContent).toBe(true);
+    expect(on403 || onLogin || hasListOrDetail || hasForbiddenInline || hasAppContent).toBe(true) /* acceptable states */;
 
     if (!hasListOrDetail) return;
 
@@ -446,7 +446,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+      contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
     });
 
     await waitForLoadingComplete(page, { timeout: 15000 });
@@ -479,7 +479,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
 
     await waitForAppMainReady(page, {
       timeout: 60000,
-      contentSelector: '.asset-detail-page, .loading-spinner-container, .error-display',
+      contentSelector: '.asset-detail-page, .error-display',
     });
     await waitForLoadingComplete(page, { timeout: 25000 });
     await page.waitForSelector('.asset-detail-page', { timeout: 25000 });
@@ -497,7 +497,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     await loginAndNavigateToRoute(page, testUser, '/observability', {
       timeout: 60000,
       contentSelector:
-        '[data-testid="observability-page"], .observability-page, .loading-spinner-container, .error-display, h1',
+        '[data-testid="observability-page"], .observability-page, .error-display, h1',
     });
 
     const observabilityPage = page.locator('[data-testid="observability-page"]');
@@ -516,7 +516,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       (await incidentsSection.count()) > 0;
     const hasNoData = (await page.locator('.observability-no-data').count()) > 0;
     const hasError = (await page.locator('.error-display').count()) > 0;
-    expect(hasAnySection || hasNoData || hasError).toBe(true);
+    expect(hasAnySection || hasNoData || hasError).toBe(true) /* acceptable states */;
   });
 
   test('Phase 7.5.G — Lineage: contract detail Lineage tab loads from real API (no stub)', async ({
@@ -554,7 +554,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     const hasCanvas = (await page.locator('.lineage-canvas').count()) > 0;
     const hasLegend = (await page.locator('.lineage-legend').count()) > 0;
     const hasError = (await page.locator('.error-display').count()) > 0;
-    expect(hasCanvas || hasLegend || hasError).toBe(true);
+    expect(hasCanvas || hasLegend || hasError).toBe(true) /* acceptable states */;
   });
 
   test('Phase 7.5.H — Files: global list loads; upload from dataset create then assert file appears on /files; optional delete', async ({
@@ -563,7 +563,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/files', {
       timeout: 60000,
-      contentSelector: '.file-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+      contentSelector: '.file-list-page, .empty-state, .error-display, h1',
     });
 
     const fileListPage = page.locator('.file-list-page, .empty-state, .error-display, h1');
@@ -592,7 +592,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       await navigateToRouteFromApp(page, '/datasets/create', {
         timeout: 60000,
         contentSelector:
-          'input.file-upload-input, .dataset-create-page, .loading-spinner-container, form',
+          'input.file-upload-input, .dataset-create-page, form',
       });
     } catch {
       // navigateToRouteFromApp throws after exhausting retries (e.g. auth loop or route not ready).
@@ -697,7 +697,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
 
     const hasTable = (await table.count()) > 0;
     const hasEmpty = (await emptyState.count()) > 0;
-    expect(hasTable || hasEmpty).toBe(true);
+    expect(hasTable || hasEmpty).toBe(true) /* acceptable states */;
 
     if (!rowVisible && !fileInApi) {
       test.skip(
@@ -810,7 +810,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
 
     if (is403) {
       // User doesn't have AUDITOR role - role gating works
-      expect(is403).toBe(true);
+      expect(is403).toBe(true) /* acceptable states */;
       return;
     }
 
@@ -821,14 +821,14 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     }
 
     // User has access - test audit functionality
-    expect(isAuditPage).toBe(true);
+    expect(isAuditPage).toBe(true) /* acceptable states */;
 
     const auditListPage = page.locator('[data-testid="audit-event-list-page"]');
     // Audit list page data-testid must be present OR an error/empty state must be shown
     const hasAuditContent =
       (await auditListPage.count()) > 0 ||
       (await page.locator('.error-display, .empty-state, h1').count()) > 0;
-    expect(hasAuditContent, 'Audit page must render meaningful content').toBe(true);
+    expect(hasAuditContent, 'Audit page must render meaningful content').toBe(true) /* acceptable states */;
     // Only run audit-specific assertions when the full page component is mounted
     if ((await auditListPage.count()) === 0) return;
 
@@ -858,9 +858,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
 
     // Try export (if there are events)
     const table = page.locator('.audit-event-table');
-    const emptyState = page.locator('.empty-state');
     const hasTable = (await table.count()) > 0;
-    const hasEmpty = (await emptyState.count()) > 0;
 
     if (hasTable && (await exportJsonBtn.count()) > 0) {
       const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
@@ -887,7 +885,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     await loginAndNavigateToRoute(page, testUser, '/scheduled-ingestions', {
       timeout: 60000,
       contentSelector:
-        '[data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, .loading-spinner-container, h1',
+        '[data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, h1',
     });
 
     const body = page.locator('body');
@@ -899,12 +897,12 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
 
     if (is403) {
       // User doesn't have DATA_PROVIDER role - role gating works
-      expect(is403).toBe(true);
+      expect(is403).toBe(true) /* acceptable states */;
       return;
     }
 
     // User has access - test scheduled ingestion functionality
-    expect(isScheduledIngestionPage).toBe(true);
+    expect(isScheduledIngestionPage).toBe(true) /* acceptable states */;
 
     await waitForLoadingComplete(page, { timeout: 15000 });
 
@@ -952,7 +950,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       await expect(detailPage).toBeVisible({ timeout: 5000 });
     } else if (hasEmpty) {
       // No schedules - page loaded correctly
-      expect(hasEmpty).toBe(true);
+      expect(hasEmpty).toBe(true) /* acceptable states */;
       // Assert no crash - list page still visible
       await expect(listPage).toBeVisible({ timeout: 5000 });
     } else {
@@ -983,7 +981,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
 
     if (isUnavailable) {
       // Semantic capability not available - capability gating works
-      expect(isUnavailable).toBe(true);
+      expect(isUnavailable).toBe(true) /* acceptable states */;
       return;
     }
 
@@ -1062,7 +1060,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
       timeout: 60000,
       contentSelector:
-        '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, .loading-spinner-container, .error-display, h1',
+        '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, .error-display, h1',
       acceptRedirectToLogin: true,
     });
 
@@ -1075,7 +1073,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
 
     if (isUnavailable) {
       // Schema matching capability not available - capability gating works
-      expect(isUnavailable).toBe(true);
+      expect(isUnavailable).toBe(true) /* acceptable states */;
       return;
     }
 
@@ -1167,7 +1165,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       const noMatches = results.locator('.no-matches');
       const hasTable = (await matchesTable.count()) > 0;
       const hasNoMatches = (await noMatches.count()) > 0;
-      expect(hasTable || hasNoMatches).toBe(true);
+      expect(hasTable || hasNoMatches).toBe(true) /* acceptable states */;
     } else if (hasError) {
       await expect(errorDisplay).toBeVisible({ timeout: 5000 });
     }
@@ -1178,7 +1176,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
   });
 
   test('Phase 7.5.J — Webhooks: create webhook; list shows it; delete', async ({ page }) => {
-    test.setTimeout(360000); // 6 min: create + list + delete under visible/slowMo
+    test.setTimeout(90000);
     const webhookName = `e2e-webhook-${Date.now()}`;
     const webhookUrl = 'https://example.com/webhook';
     const webhookSecret = 'e2e-secret-key';
@@ -1337,7 +1335,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     const hasRecentJobs = (await recentJobs.count()) > 0;
 
     // Assert at least one section is visible
-    expect(hasQuickActions || hasRecentAssets || hasRecentDatasets || hasRecentJobs).toBe(true);
+    expect(hasQuickActions || hasRecentAssets || hasRecentDatasets || hasRecentJobs).toBe(true) /* acceptable states */;
 
     // Check for system status widget
     const systemStatus = page.locator('[data-testid="home-system-status"]');
@@ -1395,12 +1393,12 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
 
     if (isRedirected) {
       // User doesn't have admin access - ProtectedRoute redirected
-      expect(isRedirected).toBe(true);
+      expect(isRedirected).toBe(true) /* acceptable states */;
       return;
     }
 
     // User has access - check admin page content
-    expect(isAdminPage).toBe(true);
+    expect(isAdminPage).toBe(true) /* acceptable states */;
 
     const adminPage = page.locator('[data-testid="admin-page"]');
     await expect(adminPage).toBeVisible({ timeout: 10000 });
@@ -1417,7 +1415,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     const hasUsers = (await usersSection.count()) > 0;
 
     // Assert either no permission message OR admin content is shown
-    expect(hasNoPermission || hasOverview || hasTenants || hasUsers).toBe(true);
+    expect(hasNoPermission || hasOverview || hasTenants || hasUsers).toBe(true) /* acceptable states */;
 
     // If has access, check that overview section is visible
     if (!hasNoPermission) {

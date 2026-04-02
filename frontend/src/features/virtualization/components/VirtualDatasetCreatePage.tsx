@@ -7,9 +7,10 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCreateVirtualDataset } from '../hooks/useVirtualization';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { VirtualDatasetStatus, QueryType } from '../../../shared/types/virtualization';
+import { VirtualDatasetStatus, QueryType, type VirtualDatasetSource } from '../../../shared/types/virtualization';
 import { VirtualDatasetSourceBuilder, type SourceEntry } from './VirtualDatasetSourceBuilder';
 import './VirtualDatasetCreatePage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function VirtualDatasetCreatePage() {
   const navigate = useNavigate();
@@ -53,13 +54,13 @@ export function VirtualDatasetCreatePage() {
 
     try {
       JSON.parse(formData.schema || '{}');
-    } catch (e) {
+    } catch {
       newErrors.schema = 'Schema must be valid JSON';
     }
 
     try {
       JSON.parse(formData.sources || '[]');
-    } catch (e) {
+    } catch {
       newErrors.sources = 'Sources must be valid JSON array';
     }
     
@@ -76,17 +77,17 @@ export function VirtualDatasetCreatePage() {
 
     try {
       let schemaObj = {};
-      let sourcesArr: any[] = [];
+      let sourcesArr: VirtualDatasetSource[] = [];
 
       try {
         schemaObj = JSON.parse(formData.schema || '{}');
-      } catch (e) {
+      } catch {
         // Already validated
       }
 
       try {
         sourcesArr = JSON.parse(formData.sources || '[]');
-      } catch (e) {
+      } catch {
         // Already validated
       }
 
@@ -100,7 +101,7 @@ export function VirtualDatasetCreatePage() {
         status: formData.status,
       });
       navigate(`/virtualization/${dataset.id}`);
-    } catch (error) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -108,9 +109,9 @@ export function VirtualDatasetCreatePage() {
   return (
     <div className="virtual-dataset-create-page">
       <div className="virtual-dataset-create-header">
-        <button onClick={() => navigate('/virtualization')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/virtualization')} variant="ghost">
           ← Back to Datasets
-        </button>
+        </Button>
         <h1>Create Virtual Dataset</h1>
       </div>
 
@@ -220,21 +221,18 @@ export function VirtualDatasetCreatePage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            onClick={() => navigate('/virtualization')}
-            className="btn-secondary"
-            disabled={createMutation.isPending}
-          >
+          <Button
+ onClick={() => navigate('/virtualization')}
+ variant="secondary"
+ loading={createMutation.isPending}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={createMutation.isPending}
-          >
-            {createMutation.isPending ? 'Creating...' : 'Create Dataset'}
-          </button>
+          </Button>
+          <Button
+ type="submit"
+ variant="primary"
+ loading={createMutation.isPending}>
+            Create Dataset
+          </Button>
         </div>
       </form>
     </div>

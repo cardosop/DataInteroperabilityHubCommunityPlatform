@@ -11,6 +11,7 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import type { ReviewStatus } from '../../../shared/types/social';
 import './ReviewsTab.css';
+import { Button } from '../../../shared/components/Button';
 
 interface ReviewsTabProps {
   assetId: string | null;
@@ -19,7 +20,7 @@ interface ReviewsTabProps {
   assetIdOnly?: boolean;
 }
 
-export function ReviewsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnly = false }: ReviewsTabProps) {
+export function ReviewsTab({ assetId, assetIdOnly = false }: ReviewsTabProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(assetId);
 
   useEffect(() => {
@@ -51,7 +52,7 @@ export function ReviewsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnly
       setRating(undefined);
       setShowForm(false);
       refetch();
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -124,13 +125,11 @@ export function ReviewsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnly
       {effectiveAssetId && (
         <>
           {!showForm && (
-            <button
-              className="btn-primary"
-              onClick={() => setShowForm(true)}
-              type="button"
-            >
+            <Button
+ variant="primary"
+ onClick={() => setShowForm(true)}>
               Write Review
-            </button>
+            </Button>
           )}
 
           {showForm && (
@@ -164,25 +163,21 @@ export function ReviewsTab({ assetId, onAssetSelect: _onAssetSelect, assetIdOnly
                 {reviewText.length}/2000 characters
               </div>
               <div className="form-actions">
-                <button
-                  className="btn-primary"
-                  onClick={handleSubmitReview}
-                  disabled={reviewText.length < 10 || submitReviewMutation.isPending}
-                  type="button"
-                >
+                <Button
+ variant="primary"
+ onClick={handleSubmitReview}
+ disabled={reviewText.length < 10 || submitReviewMutation.isPending}>
                   {submitReviewMutation.isPending ? 'Submitting...' : 'Submit Review'}
-                </button>
-                <button
-                  className="btn-secondary"
-                  onClick={() => {
-                    setShowForm(false);
-                    setReviewText('');
-                    setRating(undefined);
-                  }}
-                  type="button"
-                >
+                </Button>
+                <Button
+ variant="secondary"
+ onClick={() => {
+ setShowForm(false);
+ setReviewText('');
+ setRating(undefined);
+ }}>
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           )}

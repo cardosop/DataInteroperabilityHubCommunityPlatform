@@ -4,6 +4,7 @@
 
 import { useEffect } from 'react';
 import { RouterProvider } from 'react-router-dom';
+import * as Sentry from '@sentry/react';
 import './App.css';
 import { AppProviders } from './app/providers/AppProviders';
 import { router } from './app/routes/routes';
@@ -22,6 +23,17 @@ function App() {
     // Initialize auth state from storage
     initialize();
   }, [initialize]);
+
+  // Forward unhandled promise rejections to Sentry (with cleanup on unmount)
+  useEffect(() => {
+    const handler = (event: PromiseRejectionEvent) => {
+      Sentry.captureException(event.reason, {
+        extra: { type: 'unhandledrejection' },
+      });
+    };
+    window.addEventListener('unhandledrejection', handler);
+    return () => window.removeEventListener('unhandledrejection', handler);
+  }, []);
 
   return (
     <ErrorBoundary>

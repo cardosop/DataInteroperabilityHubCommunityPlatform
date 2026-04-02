@@ -14,7 +14,7 @@ import { getExternalDeveloperUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DEV-005: Use Natural Language Search API', () => {
-  test.setTimeout(180000); // 3 min: external dev user + capability-gated routes
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('search page loads', async ({ page }) => {
@@ -25,8 +25,14 @@ test.describe('JOURNEY-DEV-005: Use Natural Language Search API', () => {
       });
       const onSearch = page.url().includes('/search');
       const onLogin = page.url().includes('/login');
+      if (onLogin) {
+        test.skip(true, 'Auth gated — skipping success assertion');
+        return;
+      }
+      expect(onSearch).toBe(true);
       const hasContent = (await page.locator('.search-page, .app-main').count()) > 0;
-      expect(onLogin || (onSearch && hasContent)).toBe(true);
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
 
     test('AI search page loads or redirects', async ({ page }) => {
@@ -38,9 +44,15 @@ test.describe('JOURNEY-DEV-005: Use Natural Language Search API', () => {
       const onAISearch = page.url().includes('/ai/search');
       const on403 = page.url().includes('/403');
       const onLogin = page.url().includes('/login');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onAISearch).toBe(true);
       const hasContent =
-        (await page.locator('.ai-search-page, .app-main, .unavailable-page').count()) > 0;
-      expect(onLogin || on403 || (onAISearch && hasContent)).toBe(true);
+        (await page.locator('.ai-search-page, .app-main').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 
@@ -62,7 +74,7 @@ test.describe('JOURNEY-DEV-005: Use Natural Language Search API', () => {
       if (url.includes('/ai/search')) {
         // If capability is enabled, page content must be present
         const hasContent = (await page.locator('.ai-search-page, .unavailable-page, .app-main').count()) > 0;
-        expect(hasContent).toBe(true);
+        expect(hasContent).toBe(true) /* acceptable states */;
       }
     });
   });

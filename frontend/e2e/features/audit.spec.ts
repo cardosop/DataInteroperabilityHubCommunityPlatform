@@ -16,19 +16,23 @@ test.describe('Feature: Audit', () => {
       const auditorUser = await getAuditorUser();
       await loginAndNavigateToRoute(page, auditorUser, '/audit', {
         timeout: 60000,
-        contentSelector: '.audit-log-page, .audit-page, .empty-state, .error-display, h1',
+        contentSelector: '.audit-log-page, .audit-page, .empty-state, h1',
         acceptRedirectToLogin: true,
       });
-      if (page.url().includes('/login')) return;
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Redirected to login — auth may have expired');
+        return;
+      }
 
       const url = page.url();
       expect(url).toMatch(/\/audit|\/403/);
 
+      // Success test must NOT accept .error-display
+      await expect(page.locator('.error-display')).not.toBeVisible();
       // Must render actual content — URL check alone does not prove the page loaded
       const hasContent =
         (await page.locator('.audit-log-page, .audit-page, .empty-state, h1').count()) > 0;
-      const hasError = (await page.locator('.error-display').count()) > 0;
-      expect(hasContent || hasError).toBe(true);
+      expect(hasContent).toBe(true);
     });
   });
 
@@ -60,7 +64,7 @@ test.describe('Feature: Audit', () => {
           '⚠️ Regular user can access /audit — verify role-based access control is enforced'
         );
       }
-      expect(on403 || hasForbiddenText || hasErrorDisplay || !hasUnrestrictedAuditContent).toBe(true);
+      expect(on403 || hasForbiddenText || hasErrorDisplay).toBe(true) /* regular user must see 403, forbidden text, or error */;
     });
   });
 });

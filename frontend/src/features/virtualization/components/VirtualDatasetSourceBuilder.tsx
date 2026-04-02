@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { VirtualDatasetSourceType, type OdbcSourceConfig } from '../../../shared/types/virtualization';
 import './VirtualDatasetSourceBuilder.css';
+import { Button } from '../../../shared/components/Button';
 
 export interface SourceEntry {
   type: string;
@@ -312,27 +313,23 @@ export function VirtualDatasetSourceBuilder({
           )}
 
           <div className="source-add-actions">
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => {
-                setShowAddForm(false);
-                resetOdbcForm();
-              }}
-            >
+            <Button
+ variant="secondary"
+ onClick={() => {
+ setShowAddForm(false);
+ resetOdbcForm();
+ }}>
               Cancel
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              data-testid="odbc-add-source-btn"
-              onClick={handleAddSource}
-              disabled={
-                newSourceType === VirtualDatasetSourceType.ODBC && !canAddOdbc()
-              }
-            >
+            </Button>
+            <Button
+ variant="primary"
+ data-testid="odbc-add-source-btn"
+ onClick={handleAddSource}
+ disabled={
+ newSourceType === VirtualDatasetSourceType.ODBC && !canAddOdbc()
+ }>
               Add
-            </button>
+            </Button>
           </div>
         </div>
       )}

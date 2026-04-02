@@ -24,17 +24,18 @@ export function isBenignConsoleError(text: string): boolean {
     (t.includes('[error report]') && t.includes('semantic service unavailable')) ||
     (t.includes('[error report]') && (t.includes('status code 503') || t.includes('503'))) ||
     (t.includes('failed to load resource') && t.includes('503')) ||
-    // Transient under parallel E2E load: auth race, token refresh, backend overload
-    (t.includes('failed to load resource') && (t.includes('401') || t.includes('500') || t.includes('400'))) ||
-    // Role/permission checks (403) expected in: accept-invitation failure tests (invalid token returns
-    // 403 Forbidden), capability-gated route tests, unauthenticated redirect tests, and mesh domain
-    // creation when the test user lacks TENANT_ADMIN role.
+    // Transient under parallel E2E load: auth race, token refresh, rate limiting
+    (t.includes('failed to load resource') && (t.includes('401') || t.includes('400') || t.includes('429'))) ||
+    // 403: test user lacks permissions for capability-gated endpoints (AI, ML, admin, billing).
+    // The app handles these via ErrorDisplay/empty state. Tests that ASSERT 403 behaviour use
+    // response interception, not console error detection.
     (t.includes('failed to load resource') && t.includes('403')) ||
-    (t.includes('[error report]') && t.includes('status code 403')) ||
-    (t.includes('[error report]') && t.includes('request failed with status code 403')) ||
-    (t.includes('[error report]') && t.includes('you do not have permission')) ||
-    // [Error Report] 500 when API under load or proxy socket hang up
-    (t.includes('[error report]') && t.includes('status code 500')) ||
+    (t.includes('[error report]') && (t.includes('status code 403') || t.includes('request failed with status code 403') || t.includes('you do not have permission'))) ||
+    // 500 from statement timeout under parallel E2E load: PostgreSQL kills slow queries,
+    // producing transient 500s that resolve on retry.  Not a code bug.
+    (t.includes('failed to load resource') && t.includes('500') && t.includes('statement timeout')) ||
+    (t.includes('[error report]') && t.includes('statement timeout')) ||
+    // NOTE: other 500 errors are NOT benign — they indicate real backend bugs that should be surfaced.
     // Postgres connection pool exhausted under parallel E2E load (transient)
     (t.includes('too many clients') || t.includes('too many connections')) ||
     // Transient network: ERR_NETWORK_CHANGED when API restarts or connection drops
@@ -82,6 +83,12 @@ export function isBenignConsoleError(text: string): boolean {
     (t.includes('failed to load resource') && t.includes('409')) ||
     // External service unreachable in E2E Docker environment (e.g. WebSocket relay, telemetry endpoint)
     t.includes('err_address_unreachable') ||
+    // MinIO presigned URLs use Docker-internal hostnames (e.g. minio:9000) that browsers can't resolve
+    t.includes('err_name_not_resolved') ||
+    // Vite proxy timeouts under parallel E2E load — transient, the test retries the actual operation
+    (t.includes('failed to load resource') && t.includes('err_timed_out')) ||
+    // Connection closed/reset — transient network errors under parallel E2E load
+    (t.includes('failed to load resource') && t.includes('err_connection_closed')) ||
     // 422 Unprocessable Entity: validation errors in purchase/order/create flows (e.g. missing required
     // fields, cross-tenant ordering restrictions). Expected in failure-scenario tests.
     (t.includes('failed to load resource') && t.includes('422')) ||

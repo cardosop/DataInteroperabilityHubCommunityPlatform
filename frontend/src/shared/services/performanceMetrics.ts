@@ -130,9 +130,20 @@ class PerformanceMetricsService {
 
 export const performanceMetricsService = new PerformanceMetricsService();
 
-// Start collecting Web Vitals on load
-if (typeof window !== 'undefined') {
-  window.addEventListener('load', () => {
+// Collect Web Vitals once when the document has loaded.
+// Called from AppProviders useEffect so the listener is tied to the React lifecycle.
+let _webVitalsInitialized = false;
+export function initWebVitals(): void {
+  if (_webVitalsInitialized || typeof window === 'undefined') return;
+  _webVitalsInitialized = true;
+
+  if (document.readyState === 'complete') {
     performanceMetricsService.collectWebVitals();
-  });
+  } else {
+    const onLoad = () => {
+      performanceMetricsService.collectWebVitals();
+      window.removeEventListener('load', onLoad);
+    };
+    window.addEventListener('load', onLoad);
+  }
 }

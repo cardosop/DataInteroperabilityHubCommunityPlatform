@@ -10,34 +10,26 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../../fixtures/auth';
-import { assertNonExistentIdShowsError } from '../../fixtures/helpers';
+import { getTestUser } from '../../fixtures/auth';
+import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-009: Set Up Data Virtualization', () => {
-  test.setTimeout(360000); // 6 min: visible/slowMo; virtualization API may be slow
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('virtualization list loads', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/virtualization');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.virtual-dataset-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 45000 }
-      );
+      await loginAndNavigateToRoute(page, testUser, '/virtualization', { timeout: 60000 });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
       }
       expect(page.url()).toContain('/virtualization');
-      // Phase 2: wait for loading spinner to resolve into a terminal state (spinner is transient)
       await page
         .locator('.virtual-dataset-list-page, .virtual-dataset-list-header, .empty-state, .error-display')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
-      // Spinner excluded: it is a transient loading indicator, not a valid terminal state
       const hasContent =
         (await page.locator('.virtual-dataset-list-page').count()) > 0 ||
         (await page.locator('.virtual-dataset-list-header').count()) > 0 ||
@@ -48,13 +40,7 @@ test.describe('JOURNEY-DE-009: Set Up Data Virtualization', () => {
 
     test('virtualization create page loads', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/virtualization/create');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.virtual-dataset-create-page, .error-display, .loading-spinner-container, #email',
-        { timeout: 45000 }
-      );
+      await loginAndNavigateToRoute(page, testUser, '/virtualization/create', { timeout: 60000 });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;
@@ -66,9 +52,12 @@ test.describe('JOURNEY-DE-009: Set Up Data Virtualization', () => {
   test.describe('Failure', () => {
     test('virtual dataset detail with non-existent id shows error', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/virtualization/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
+      await loginAndNavigateToRoute(
+        page,
+        testUser,
+        '/virtualization/00000000-0000-0000-0000-000000000000',
+        { timeout: 90000 }
+      );
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.virtual-dataset-detail-page',
         waitAfterLoad: 8000,
@@ -79,13 +68,7 @@ test.describe('JOURNEY-DE-009: Set Up Data Virtualization', () => {
   test.describe('Edge', () => {
     test('virtualization list loads with empty state', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/virtualization');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector(
-        '.virtual-dataset-list-page, .empty-state, .error-display, .loading-spinner-container, #email',
-        { timeout: 45000 }
-      );
+      await loginAndNavigateToRoute(page, testUser, '/virtualization', { timeout: 60000 });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
         return;

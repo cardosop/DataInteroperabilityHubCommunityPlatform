@@ -9,6 +9,7 @@ import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import './CommunitiesTab.css';
+import { Button } from '../../../shared/components/Button';
 
 export function CommunitiesTab() {
   const [showForm, setShowForm] = useState(false);
@@ -35,7 +36,7 @@ export function CommunitiesTab() {
       setIsPublic(true);
       setShowForm(false);
       refetch();
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -46,7 +47,7 @@ export function CommunitiesTab() {
         community_id: communityId,
       });
       refetch();
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -66,13 +67,11 @@ export function CommunitiesTab() {
       <div className="communities-tab-header">
         <h2>Data Communities</h2>
         {!showForm && (
-          <button
-            className="btn-primary"
-            onClick={() => setShowForm(true)}
-            type="button"
-          >
+          <Button
+ variant="primary"
+ onClick={() => setShowForm(true)}>
             Create Community
-          </button>
+          </Button>
         )}
       </div>
 
@@ -114,26 +113,22 @@ export function CommunitiesTab() {
             </label>
           </div>
           <div className="form-actions">
-            <button
-              className="btn-primary"
-              onClick={handleCreateCommunity}
-              disabled={communityName.length < 3 || createOrJoinMutation.isPending}
-              type="button"
-            >
+            <Button
+ variant="primary"
+ onClick={handleCreateCommunity}
+ disabled={communityName.length < 3 || createOrJoinMutation.isPending}>
               {createOrJoinMutation.isPending ? 'Creating...' : 'Create Community'}
-            </button>
-            <button
-              className="btn-secondary"
-              onClick={() => {
-                setShowForm(false);
-                setCommunityName('');
-                setCommunityDescription('');
-                setIsPublic(true);
-              }}
-              type="button"
-            >
+            </Button>
+            <Button
+ variant="secondary"
+ onClick={() => {
+ setShowForm(false);
+ setCommunityName('');
+ setCommunityDescription('');
+ setIsPublic(true);
+ }}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -165,16 +160,14 @@ export function CommunitiesTab() {
                     </span>
                   </div>
                 </div>
-                <button
-                  className="btn-secondary"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleJoinCommunity(community.id);
-                  }}
-                  type="button"
-                >
+                <Button
+ variant="secondary"
+ onClick={(e) => {
+ e.stopPropagation();
+ handleJoinCommunity(community.id);
+ }}>
                   Join
-                </button>
+                </Button>
               </div>
               {community.description && (
                 <p className="community-description">{community.description}</p>

@@ -8,9 +8,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useVirtualDataset, useUpdateVirtualDataset } from '../hooks/useVirtualization';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { VirtualDatasetStatus, QueryType } from '../../../shared/types/virtualization';
+import { VirtualDatasetStatus, QueryType, type VirtualDatasetSource } from '../../../shared/types/virtualization';
 import { VirtualDatasetSourceBuilder, type SourceEntry } from './VirtualDatasetSourceBuilder';
 import './VirtualDatasetCreatePage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function VirtualDatasetEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -72,13 +73,13 @@ export function VirtualDatasetEditPage() {
 
     try {
       JSON.parse(formData.schema || '{}');
-    } catch (e) {
+    } catch {
       newErrors.schema = 'Schema must be valid JSON';
     }
 
     try {
       JSON.parse(formData.sources || '[]');
-    } catch (e) {
+    } catch {
       newErrors.sources = 'Sources must be valid JSON array';
     }
 
@@ -92,7 +93,7 @@ export function VirtualDatasetEditPage() {
 
     try {
       let schemaObj: Record<string, unknown> = {};
-      let sourcesArr: unknown[] = [];
+      let sourcesArr: VirtualDatasetSource[] = [];
 
       try {
         schemaObj = JSON.parse(formData.schema || '{}') as Record<string, unknown>;
@@ -101,7 +102,7 @@ export function VirtualDatasetEditPage() {
       }
 
       try {
-        sourcesArr = JSON.parse(formData.sources || '[]') as unknown[];
+        sourcesArr = JSON.parse(formData.sources || '[]') as VirtualDatasetSource[];
       } catch {
         // Already validated
       }
@@ -135,9 +136,9 @@ export function VirtualDatasetEditPage() {
   return (
     <div className="virtual-dataset-create-page virtual-dataset-edit-page">
       <div className="virtual-dataset-create-header">
-        <button onClick={() => navigate('/virtualization')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/virtualization')} variant="ghost">
           ← Back to Datasets
-        </button>
+        </Button>
         <h1>Edit Virtual Dataset</h1>
       </div>
 
@@ -247,21 +248,18 @@ export function VirtualDatasetEditPage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            onClick={() => navigate(`/virtualization/${id}`)}
-            className="btn-secondary"
-            disabled={updateMutation.isPending}
-          >
+          <Button
+ onClick={() => navigate(`/virtualization/${id}`)}
+ variant="secondary"
+ loading={updateMutation.isPending}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={updateMutation.isPending}
-          >
-            {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-          </button>
+          </Button>
+          <Button
+ type="submit"
+ variant="primary"
+ loading={updateMutation.isPending}>
+            Save Changes
+          </Button>
         </div>
       </form>
     </div>

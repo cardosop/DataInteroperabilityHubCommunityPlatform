@@ -34,7 +34,7 @@ export const healthService = {
   async getAggregateHealth(): Promise<HealthStatus> {
     try {
       return await this.getHealth();
-    } catch (error) {
+    } catch {
       // Graceful degradation when health check fails
       return {
         status: 'degraded',

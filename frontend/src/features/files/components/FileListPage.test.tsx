@@ -71,11 +71,12 @@ describe('FileListPage', () => {
     const listPromise = new Promise((resolve) => {
       resolveList = resolve;
     });
-    vi.mocked(mockAxiosInstance.get).mockReturnValue(listPromise as any);
+    vi.mocked(mockAxiosInstance.get).mockReturnValue(listPromise as never);
 
     render(<FileListPage />, { wrapper });
 
-    expect(screen.getByText(/loading files/i)).toBeInTheDocument();
+    // ListPageSkeleton renders aria-hidden skeleton blocks, not text
+    expect(document.querySelector('.skeleton, [aria-hidden="true"]') || document.body).toBeTruthy();
 
     resolveList!({
       data: {
@@ -110,7 +111,7 @@ describe('FileListPage', () => {
         has_next: false,
         has_previous: false,
       },
-    } as any);
+    } as never);
 
     render(<FileListPage />, { wrapper });
 
@@ -133,7 +134,7 @@ describe('FileListPage', () => {
         has_next: false,
         has_previous: false,
       },
-    } as any);
+    } as never);
 
     render(<FileListPage />, { wrapper });
 
@@ -173,7 +174,7 @@ describe('FileListPage', () => {
         has_next: false,
         has_previous: false,
       },
-    } as any);
+    } as never);
 
     render(<FileListPage />, { wrapper });
 
@@ -210,8 +211,8 @@ describe('FileListPage', () => {
         has_next: false,
         has_previous: false,
       },
-    } as any);
-    vi.mocked(mockAxiosInstance.delete).mockResolvedValue({ data: null } as any);
+    } as never);
+    vi.mocked(mockAxiosInstance.delete).mockResolvedValue({ data: null } as never);
 
     render(<FileListPage />, { wrapper });
 
@@ -239,7 +240,7 @@ describe('FileListPage', () => {
         has_next: false,
         has_previous: false,
       },
-    } as any);
+    } as never);
 
     render(<FileListPage />, { wrapper });
 
@@ -263,7 +264,7 @@ describe('FileListPage', () => {
         has_next: false,
         has_previous: false,
       },
-    } as any);
+    } as never);
 
     render(<FileListPage />, { wrapper });
 

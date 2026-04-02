@@ -2,7 +2,8 @@
  * ML/ODH React Query Hooks
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { mlService } from '../services/mlService';
 import type {
   MLModelCreateRequest,
@@ -30,8 +31,10 @@ export function useMLModel(id: string | null) {
 export function useCreateMLModel() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: MLModelCreateRequest) => mlService.createModel(data),
+    successMessage: 'ML model created',
+    errorMessage: 'Failed to create ML model',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ml', 'models'] });
     },
@@ -41,9 +44,11 @@ export function useCreateMLModel() {
 export function useUpdateMLModel() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: MLModelUpdateRequest }) =>
       mlService.updateModel(id, data),
+    successMessage: 'ML model updated',
+    errorMessage: 'Failed to update ML model',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['ml', 'models'] });
       queryClient.invalidateQueries({ queryKey: ['ml', 'models', 'detail', variables.id] });
@@ -54,8 +59,10 @@ export function useUpdateMLModel() {
 export function useDeleteMLModel() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => mlService.deleteModel(id),
+    successMessage: 'ML model deleted',
+    errorMessage: 'Failed to delete ML model',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ml', 'models'] });
     },
@@ -80,8 +87,10 @@ export function useTrainingJob(id: string | null) {
 export function useSubmitTrainingJob() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: TrainingJobSubmitRequest) => mlService.submitTrainingJob(data),
+    successMessage: 'Training job submitted',
+    errorMessage: 'Failed to submit training job',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ml', 'training', 'jobs'] });
     },
@@ -91,8 +100,10 @@ export function useSubmitTrainingJob() {
 export function useCancelTrainingJob() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => mlService.cancelTrainingJob(id),
+    successMessage: 'Training job cancelled',
+    errorMessage: 'Failed to cancel training job',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ml', 'training', 'jobs'] });
     },
@@ -117,8 +128,10 @@ export function useInferenceDeployment(id: string | null) {
 export function useDeployInference() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: InferenceDeployRequest) => mlService.deployInference(data),
+    successMessage: 'Inference deployed',
+    errorMessage: 'Failed to deploy inference',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ml', 'inference', 'deployments'] });
     },
@@ -128,8 +141,10 @@ export function useDeployInference() {
 export function useUndeployInference() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => mlService.undeployInference(id),
+    successMessage: 'Inference undeployed',
+    errorMessage: 'Failed to undeploy inference',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ml', 'inference', 'deployments'] });
     },

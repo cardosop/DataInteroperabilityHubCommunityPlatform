@@ -27,7 +27,7 @@ function extractFirstDrfFieldError(obj: Record<string, unknown>): string | undef
 // Use relative URL in browser to leverage Vite proxy, or full URL if explicitly set
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
-  (typeof window !== 'undefined' ? '/api/v1' : 'http://localhost:8000/api/v1');
+  '/api/v1';
 
 export class ApiClient {
   private client: AxiosInstance;
@@ -43,6 +43,7 @@ export class ApiClient {
         'Content-Type': 'application/json',
       },
       timeout: 30000,
+      withCredentials: true,  // Phase 90: send httpOnly cookies with requests
     });
 
     this.setupInterceptors();
@@ -61,6 +62,18 @@ export class ApiClient {
     this.client.interceptors.request.use(
       (config) => {
         const startTime = performance.now();
+
+        // Add CSRF token for state-changing requests (Phase 50.7)
+        const method = config.method?.toUpperCase() ?? '';
+        if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+          const csrfToken = document.cookie
+            .split('; ')
+            .find(row => row.startsWith('csrftoken='))
+            ?.split('=')[1];
+          if (csrfToken) {
+            config.headers['X-CSRFToken'] = csrfToken;
+          }
+        }
 
         // Add auth token
         if (this.accessToken) {
@@ -150,18 +163,28 @@ export class ApiClient {
         }
 
         // Handle 401 Unauthorized - try refresh token
-        if (error.response?.status === 401 && !originalRequest._retry && this.refreshToken) {
+        // In cookie mode (Phase 90), refreshToken may be null since it's in httpOnly cookie,
+        // so we also attempt refresh when accessToken is null (cookie-based auth).
+        const canRefresh = this.refreshToken || !this.accessToken;
+        if (error.response?.status === 401 && !originalRequest._retry && canRefresh) {
           originalRequest._retry = true;
 
           try {
             const newAccessToken = await this.refreshAccessToken();
-            this.setAccessToken(newAccessToken);
-            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+            if (newAccessToken) {
+              this.setAccessToken(newAccessToken);
+              originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+            }
+            // In cookie mode, the browser sends the httpOnly cookie automatically
             return this.client(originalRequest);
           } catch (refreshError) {
-            // Refresh failed - clear tokens and redirect to login
+            // Refresh failed — clear in-memory tokens but do NOT hard-redirect to /login.
+            // Hard redirect via window.location.href causes a full page reload that races
+            // with authStore.initialize()'s proactive refresh, especially on initial load
+            // when storageState provides a refresh_token but no access_token (Phase 11.1).
+            // Instead, reject the promise so the caller (React Query, authStore) can handle
+            // the failure gracefully (show error display, redirect via React Router, etc.).
             this.clearTokens();
-            window.location.href = '/login';
             return Promise.reject(refreshError);
           }
         }
@@ -223,8 +246,9 @@ export class ApiClient {
           const drfFieldMsg = extractFirstDrfFieldError(r);
           normalizedError = {
             code: (r.code as string) || 'UNKNOWN_ERROR',
+            // Prefer human detail when both exist (e.g. Phase 204 login: error + code + detail)
             message:
-              errorMsg ?? detailMsg ?? drfFieldMsg ?? error.message ?? 'An error occurred',
+              detailMsg ?? errorMsg ?? drfFieldMsg ?? error.message ?? 'An error occurred',
             http_status: error.response?.status || 500,
             request_id: correlationId || 'unknown',
             timestamp: (r.timestamp as string) || new Date().toISOString(),
@@ -270,17 +294,23 @@ export class ApiClient {
 
     this.refreshPromise = (async () => {
       try {
-        const response = await axios.post<{ access_token: string; refresh_token: string }>(
+        const response = await axios.post<{ access_token?: string; refresh_token?: string }>(
           `${API_BASE_URL}/auth/refresh/`,
-          { refresh_token: this.refreshToken }
+          { refresh_token: this.refreshToken },
+          { withCredentials: true },  // Phase 90: send httpOnly cookies
         );
 
-        this.setAccessToken(response.data.access_token);
+        // If backend returns access_token in body (legacy mode), store it.
+        // When USE_HTTPONLY_AUTH_COOKIES is enabled, access_token is in httpOnly
+        // cookie and the browser handles it automatically via withCredentials.
+        if (response.data.access_token) {
+          this.setAccessToken(response.data.access_token);
+        }
         if (response.data.refresh_token) {
           this.setRefreshToken(response.data.refresh_token);
         }
 
-        return response.data.access_token;
+        return response.data.access_token || '';
       } finally {
         this.refreshPromise = null;
       }
@@ -289,7 +319,14 @@ export class ApiClient {
     return this.refreshPromise;
   }
 
+  getAccessToken(): string | null {
+    return this.accessToken;
+  }
+
   setAccessToken(token: string | null): void {
+    // Phase 11.1: access_token lives in JS module memory only (never in localStorage).
+    // When USE_HTTPONLY_AUTH_COOKIES is enabled, access_token is in httpOnly cookie
+    // and the browser handles it automatically via withCredentials.
     this.accessToken = token;
   }
 

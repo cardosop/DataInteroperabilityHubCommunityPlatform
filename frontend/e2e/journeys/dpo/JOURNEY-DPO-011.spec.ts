@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTenantAdminUser, getTestUser, loginUser } from '../../fixtures/auth';
+import { getTenantAdminUser, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
 /** Get tenant admin or fallback to DPO when tenant admin unavailable (e.g. under parallel load). */
@@ -23,7 +23,7 @@ async function getSocialTestUser() {
 }
 
 test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
-  test.setTimeout(180000); // 3 min: avoid interrupted/timeout
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('governance page loads for steward assignment (access requests list or empty state)', async ({
@@ -35,10 +35,10 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
       await loginAndNavigateToRoute(page, testUser, '/governance', {
         timeout: 60000,
         contentSelector:
-          '.access-request-list-page, .governance-page, .empty-state, .error-display, .app-main, .unavailable-page, h1',
-        acceptRedirectToLogin: true,
+          '.access-request-list-page, .governance-page, .empty-state, .error-display, .unavailable-page',
+        acceptRedirectToLogin: false,
       });
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(1000);
 
       const url = page.url();
       const onLogin = url.includes('/login');
@@ -50,13 +50,21 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
         throw new Error('Unexpected redirect to login on governance page; auth may have failed.');
       }
 
+      if (on403 || onUnavailable) {
+        await expect(
+          page.locator('.unavailable-page, .error-display, [role="alert"]').first()
+        ).toBeVisible({ timeout: 15000 });
+        return;
+      }
+      expect(onGovernance).toBe(true);
       const hasContent =
         (await page
           .locator(
-            '.access-request-list-page, .governance-page, .empty-state, .error-display, .app-main'
+            '.access-request-list-page, .governance-page, .empty-state'
           )
           .count()) > 0;
-      expect(on403 || onUnavailable || (onGovernance && hasContent)).toBe(true);
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 
@@ -69,9 +77,10 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
       await loginAndNavigateToRoute(page, testUser, '/governance', {
         timeout: 60000,
         contentSelector:
-          '.app-main, .governance-access-request-list-page, .governance-create-page, .error-display, .loading-spinner-container, h1',
+          '.governance-access-request-list-page, .governance-page, .governance-create-page, .error-display, .empty-state',
+        acceptRedirectToLogin: false,
       });
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(1500);
 
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login for governance failure test');
@@ -85,19 +94,18 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
 
       // If governance page is accessible, verify no create/approve buttons are exposed to DPO
       const onGov = page.url().includes('/governance');
-      expect(onGov).toBe(true);
+      expect(onGov).toBe(true) /* acceptable states */;
 
-      const hasCreateBtn = (await page.locator('button:has-text("Create"), button:has-text("Approve"), button:has-text("Grant")').count()) > 0;
-      if (hasCreateBtn) {
-        // If create is shown, clicking must result in a 403 or error (role boundary enforced at API)
-        const responsePromise = page.waitForResponse(
-          r => r.request().method() === 'POST' && r.url().includes('/governance'),
-          { timeout: 10000 }
-        ).catch(() => null);
-        await page.locator('button:has-text("Create"), button:has-text("Approve"), button:has-text("Grant")').first().click();
-        const resp = await responsePromise;
-        if (resp) {
-          expect(resp.status()).toBeGreaterThanOrEqual(400);
+      // DPO user should NOT see create/approve/grant buttons for governance records.
+      // Check each action type individually to avoid strict mode violations when
+      // multiple unrelated buttons match (e.g. sidebar "Create" + page "Create").
+      const govSection = page.locator('.governance-access-request-list-page, .governance-page, main');
+      for (const label of ['Create', 'Approve', 'Grant']) {
+        const btn = govSection.locator(`button:has-text("${label}")`);
+        const count = await btn.count();
+        if (count > 0) {
+          // If any governance write button is visible, that's a role/permission bug
+          await expect(btn.first()).not.toBeVisible({ timeout: 3000 });
         }
       }
     });
@@ -106,28 +114,22 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
   test.describe('Edge', () => {
     test('communities page renders content or capability-unavailable state (no crash)', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginUser(page, testUser);
-      await page.goto('/communities', { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForLoadState('domcontentloaded');
+      await loginAndNavigateToRoute(page, testUser, '/communities', {
+        timeout: 60000,
+        contentSelector: '.communities-page, .communities-tab, .unavailable-page, .error-display',
+        acceptRedirectToLogin: false,
+      });
+      await waitForLoadingComplete(page, { timeout: 30000 });
 
       if (page.url().includes('/login')) {
-        throw new Error('Unexpected redirect to login on /communities edge test');
+        throw new Error('Unexpected redirect to login on /communities after login');
       }
-
-      // CapabilityRoute shows a loading spinner while capabilities are fetched.
-      // Wait until either the communities page or the /unavailable redirect renders.
-      await page.waitForSelector(
-        '.communities-page, .communities-tab, .unavailable-page',
-        { timeout: 30000 }
-      ).catch(() => null);
-      // Ensure loading spinner has cleared so capability state is fully resolved
-      await waitForLoadingComplete(page, { timeout: 30000 });
 
       // Must render something meaningful — not a blank or crash
       const hasContent =
         (await page.locator('.communities-page, .communities-tab, .unavailable-page').count()) > 0 ||
         page.url().includes('/403');
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
 });

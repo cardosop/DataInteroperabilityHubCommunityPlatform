@@ -43,7 +43,7 @@ import { apiClient } from '../../../shared/api/client';
 import { governanceRetentionService } from './governanceRetentionService';
 
 // Get the mock instance from axios.create
-const mockAxiosCreate = vi.mocked(axios.create);
+vi.mocked(axios.create);
 
 describe('governanceRetentionService', () => {
   let mockAxiosInstance: AxiosInstance;
@@ -84,7 +84,7 @@ describe('governanceRetentionService', () => {
       };
 
       // Mock the get method on the axios instance
-      vi.mocked(mockAxiosInstance.get).mockResolvedValue(mockResponse as any);
+      vi.mocked(mockAxiosInstance.get).mockResolvedValue(mockResponse as never);
 
       const filters: RetentionPolicyListFilters = {
         page: 1,
@@ -120,7 +120,7 @@ describe('governanceRetentionService', () => {
       };
 
       // Mock the get method on the axios instance
-      vi.mocked(mockAxiosInstance.get).mockResolvedValue(mockResponse as any);
+      vi.mocked(mockAxiosInstance.get).mockResolvedValue(mockResponse as never);
 
       const result = await governanceRetentionService.listPolicies();
 

@@ -10,6 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { createODCSContractViaApi } from '../../fixtures/api-assets';
 import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
@@ -19,44 +20,40 @@ test.describe('UC-ODPS-002: Link ODPS to Contract', () => {
   test.describe('Success', () => {
     test('link-odps route loads when contract exists', async ({ page }) => {
       const user = await getTestUser();
-      await loginAndNavigateToRoute(page, user, '/contracts', {
+      const contractId = await createODCSContractViaApi(user);
+      await loginAndNavigateToRoute(page, user, `/contracts/${contractId}/link-odps`, {
         timeout: 60000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display',
+        contentSelector: '.odps-link-page, .error-display, [role="alert"]',
+        acceptRedirectToLogin: false,
       });
-      const row = page.locator('.contract-list-page tr.contract-row').first();
-      if ((await row.count()) > 0) {
-        await row.click();
-        await page.waitForURL(/\/contracts\/[^/]+$/, { timeout: 10000 });
-        const linkOdpsBtn = page.locator('a[href*="/link-odps"], button:has-text("Link ODPS")');
-        if ((await linkOdpsBtn.count()) > 0) {
-          await linkOdpsBtn.first().click();
-          await page.waitForLoadState('domcontentloaded');
-          expect(page.url()).toContain('/link-odps');
-        }
+      if (page.url().includes('/login')) {
+        throw new Error('Unexpected redirect to login on link-odps');
       }
-      expect(page.url()).toContain('/contracts');
+      expect(page.url()).toContain('/link-odps');
+      await expect(
+        page.locator('.odps-link-page, .error-display').first()
+      ).toBeVisible({ timeout: 15000 });
     });
   });
 
   test.describe('Failure', () => {
     test('link-odps with non-existent contract id shows error', async ({ page }) => {
       const user = await getTestUser();
-      await loginAndNavigateToRoute(page, user, '/', {
-        timeout: 60000,
-        contentSelector: '[data-testid="home-page"], .home-page, main',
-      });
-      await page.goto('/contracts/00000000-0000-0000-0000-000000000000/link-odps');
-      await page.waitForLoadState('domcontentloaded');
-      // Wait for the error display to appear — do NOT include .odps-link-page here as it
-      // renders before the 404 API response resolves, causing a false-ready return.
-      await page.waitForSelector(
-        '.error-display, [role="alert"]',
-        { timeout: 30000 }
-      ).catch(() => null);
+      // Navigate directly to the non-existent contract's link-odps page.
+      // ODPSLinkPage now renders ErrorDisplay BEFORE the loading spinner when
+      // contract fetch completes with no data.
+      await loginAndNavigateToRoute(
+        page,
+        user,
+        '/contracts/00000000-0000-0000-0000-000000000000/link-odps',
+        {
+          timeout: 60000,
+          contentSelector: '.error-display, [role="alert"], .odps-link-page',
+        }
+      );
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('[role="alert"]').count()) > 0 ||
-        (await page.locator('text=/not found|failed|403/i').count()) > 0;
+        (await page.locator('[role="alert"]').count()) > 0;
       expect(page.url().includes('/login') || page.url().includes('/403') || hasError).toBe(true);
     });
   });
@@ -69,6 +66,10 @@ test.describe('UC-ODPS-002: Link ODPS to Contract', () => {
         contentSelector: '.contract-list-page, .empty-state, .error-display',
       });
       expect(page.url()).toContain('/contracts');
+      const hasContent =
+        (await page.locator('.contract-list-page').count()) > 0 ||
+        (await page.locator('.empty-state').count()) > 0;
+      expect(hasContent).toBe(true);
     });
   });
 });

@@ -5,10 +5,10 @@
  * Uses UI login first (exercises proxy); falls back to API login + inject if UI fails.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type APIRequestContext } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getTestUser, loginViaApi } from '../fixtures/auth';
+import { getTestUser, gotoWithRetry, loginViaApi } from '../fixtures/auth';
 
 /** Wait for app shell after auth; allows up to 30s for capabilities and fetchUser. */
 async function waitForAppShell(page: import('@playwright/test').Page): Promise<boolean> {
@@ -44,11 +44,57 @@ async function injectAndReload(
 const AUTH_DIR = path.join(process.cwd(), 'e2e', '.auth');
 const STORAGE_STATE_PATH = path.join(AUTH_DIR, 'user.json');
 
+/**
+ * Wait until the dev server accepts TCP+HTTP (avoids setup-auth failing with ERR_CONNECTION_REFUSED when
+ * Playwright's webServer reuseExistingServer saw an earlier response but Vite died before this project runs).
+ */
+async function waitUntilFrontendAcceptsHttp(
+  request: APIRequestContext,
+  base: string,
+  maxMs: number
+): Promise<void> {
+  const origin = base.replace(/\/$/, '');
+  const start = Date.now();
+  let lastErr = 'unknown';
+  while (Date.now() - start < maxMs) {
+    try {
+      const res = await request.get(origin + '/', {
+        timeout: 12_000,
+        failOnStatusCode: false,
+      });
+      if (res.status() <= 0 || res.status() >= 600) {
+        lastErr = `HTTP ${res.status()}`;
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+      // Root route can answer while /login still stalls (SPA + proxy). Probe the path setup-auth uses.
+      const loginRes = await request.get(origin + '/login', {
+        timeout: 15_000,
+        failOnStatusCode: false,
+      });
+      if (loginRes.status() > 0 && loginRes.status() < 600) return;
+      lastErr = `GET /login HTTP ${loginRes.status()}`;
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message : String(e);
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error(
+    `Auth storage: frontend at ${origin} did not accept HTTP (/ and /login) within ${maxMs}ms (last: ${lastErr}). ` +
+      `Ensure Vite is running on the same port as PLAYWRIGHT baseURL (E2E_WEB_PORT / npm run dev).`
+  );
+}
+
 test.describe('Auth storage setup', () => {
-  test.setTimeout(300000); // 5 min: webServer startup + API login + inject + reload
-  test('save authenticated session for route specs', async ({ page, baseURL }) => {
+  // Budget must cover: HTTP probe (below), docker rate-limit reset, gotoWithRetry (up to ~4×30s),
+  // and UI login (selectors + /auth/login wait). A 120s cap was exceeded when the probe used 90s
+  // alone, starving page.goto /login under Playwright's test-wide timeout.
+  test.setTimeout(240_000);
+  test('save authenticated session for route specs', async ({ page, baseURL, request }) => {
     const user = await getTestUser();
     const base = baseURL || 'http://localhost:5173';
+
+    await waitUntilFrontendAcceptsHttp(request, base, 60_000);
 
     // Reset auth rate limits so login and fetchUser succeed (avoids 429 after prior runs)
     try {
@@ -63,19 +109,17 @@ test.describe('Auth storage setup', () => {
 
     // 1. Try UI login first (exercises proxy; API inject can fail if proxy misconfigured)
     const attemptLogin = async (): Promise<boolean> => {
-      await page.goto('/login', { waitUntil: 'domcontentloaded' });
-      await page.waitForSelector('h1', { timeout: 10000 });
-      await page.waitForSelector('input#email, input[type="email"]', { timeout: 10000 });
-      await page.waitForSelector('input#password, input[type="password"]', { timeout: 10000 });
-      const emailInput = page.locator('input#email').or(page.locator('input[type="email"]'));
-      const passwordInput = page
-        .locator('input#password')
-        .or(page.locator('input[type="password"]'));
+      // Use domcontentloaded so the HTML shell exists; 'commit' alone can return before React mounts
+      // the login form, making a short wait on h1 flake under cold Vite + hydration.
+      await gotoWithRetry(page, '/login', { waitUntil: 'domcontentloaded' });
+      const authRoot = page.locator('.auth-page');
+      const emailInput = authRoot.getByLabel('Email');
+      const passwordInput = authRoot.getByLabel('Password');
+      await emailInput.waitFor({ state: 'visible', timeout: 45_000 });
+      await passwordInput.waitFor({ state: 'visible', timeout: 20_000 });
       await emailInput.fill(user.email);
       await passwordInput.fill(user.password);
-      const submitButton = page
-        .locator('button[type="submit"]')
-        .or(page.locator('button.login-button'));
+      const submitButton = authRoot.locator('button[type="submit"]');
       await submitButton.waitFor({ state: 'visible', timeout: 10000 });
       const responsePromise = page.waitForResponse((r) => r.url().includes('/auth/login/'), {
         timeout: 60000,
@@ -92,9 +136,12 @@ test.describe('Auth storage setup', () => {
       await page
         .waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 })
         .catch(() => {});
+      // 11.1: access_token is no longer stored in localStorage after UI login;
+      // it lives in JS module memory. Check only for 'user' as the reliable
+      // session indicator after a successful login.
       const hasToken = await page
         .waitForFunction(
-          () => !!(localStorage.getItem('access_token') && localStorage.getItem('user')),
+          () => !!localStorage.getItem('user'),
           { timeout: 60000 }
         )
         .then(() => true)
@@ -127,8 +174,9 @@ test.describe('Auth storage setup', () => {
       }
     }
 
+    // 11.1: access_token lives in JS memory; 'user' is the reliable localStorage signal.
     const hasToken = await page.evaluate(
-      () => !!(localStorage.getItem('access_token') && localStorage.getItem('user'))
+      () => !!localStorage.getItem('user')
     );
     expect(hasToken).toBe(true);
 

@@ -39,11 +39,13 @@ test.describe('JOURNEY-MP-001: Connect to External Marketplace', () => {
         acceptRedirectToLogin: true,
       });
       await page.waitForTimeout(1000);
-      const onLogin = page.url().includes('/login');
-      const onCreate = page.url().includes('/integrations/connections/create');
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Redirected to /login — auth not available in this environment');
+      }
+      expect(page.url()).toContain('/integrations/connections/create');
       const hasContent =
         (await page.locator('.marketplace-connection-create-page, .connection-create-page, .app-main, form').count()) > 0;
-      expect(onLogin || (onCreate && hasContent)).toBe(true);
+      expect(hasContent).toBe(true);
     });
   });
 

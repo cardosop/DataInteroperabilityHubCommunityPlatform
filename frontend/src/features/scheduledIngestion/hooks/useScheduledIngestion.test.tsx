@@ -47,7 +47,7 @@ vi.mock('axios', () => {
 import axios from 'axios';
 import { apiClient } from '../../../shared/api/client';
 
-const mockAxiosCreate = vi.mocked(axios.create);
+vi.mocked(axios.create);
 
 describe('useScheduledIngestion hooks', () => {
   let queryClient: QueryClient;
@@ -96,7 +96,7 @@ describe('useScheduledIngestion hooks', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockResponse,
-      } as any);
+      } as never);
 
       const { result } = renderHook(() => useScheduledIngestions({ page: 1 }), { wrapper });
 
@@ -126,7 +126,7 @@ describe('useScheduledIngestion hooks', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockIngestion,
-      } as any);
+      } as never);
 
       const { result } = renderHook(() => useScheduledIngestion('ingestion-1'), { wrapper });
 
@@ -160,7 +160,7 @@ describe('useScheduledIngestion hooks', () => {
 
       vi.mocked(mockAxiosInstance.get).mockResolvedValue({
         data: mockRuns,
-      } as any);
+      } as never);
 
       const { result } = renderHook(() => useScheduledIngestionRuns('ingestion-1'), { wrapper });
 
@@ -206,7 +206,7 @@ describe('useScheduledIngestion hooks', () => {
 
       vi.mocked(mockAxiosInstance.post).mockResolvedValue({
         data: mockCreatedIngestion,
-      } as any);
+      } as never);
 
       const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
@@ -244,7 +244,7 @@ describe('useScheduledIngestion hooks', () => {
 
       vi.mocked(mockAxiosInstance.patch).mockResolvedValue({
         data: mockUpdatedIngestion,
-      } as any);
+      } as never);
 
       const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
@@ -268,7 +268,7 @@ describe('useScheduledIngestion hooks', () => {
     it('should delete scheduled ingestion and invalidate queries', async () => {
       vi.mocked(mockAxiosInstance.delete).mockResolvedValue({
         status: 204,
-      } as any);
+      } as never);
 
       const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
@@ -298,7 +298,7 @@ describe('useScheduledIngestion hooks', () => {
 
       vi.mocked(mockAxiosInstance.post).mockResolvedValue({
         data: mockTriggerResponse,
-      } as any);
+      } as never);
 
       const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 

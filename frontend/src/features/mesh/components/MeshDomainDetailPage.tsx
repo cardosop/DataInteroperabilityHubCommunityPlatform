@@ -8,13 +8,14 @@ import { useState } from 'react';
 import { useMeshDomain, useDeleteMeshDomain, useDomainAnalytics, useDomainPolicies, useComplianceReports, useCheckCompliance } from '../hooks/useMesh';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { useAssets, useUpdateAsset } from '../../assets/hooks/useAssets';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './MeshDomainDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function MeshDomainDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -43,7 +44,7 @@ export function MeshDomainDetailPage() {
       setSelectedAssetId('');
       setShowAssignAsset(false);
       refetch();
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -56,7 +57,7 @@ export function MeshDomainDetailPage() {
         data: { domain: '' },
       });
       refetch();
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -66,7 +67,7 @@ export function MeshDomainDetailPage() {
     try {
       await checkComplianceMutation.mutateAsync({ domainId: id });
       refetch();
-    } catch (err) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -89,22 +90,22 @@ export function MeshDomainDetailPage() {
   }
 
   if (isLoading || !domain) {
-    return <LoadingSpinner message="Loading domain..." />;
+    return <DetailPageSkeleton />;
   }
 
   return (
     <div className="mesh-domain-detail-page">
       <div className="mesh-domain-detail-header">
-        <button onClick={() => navigate('/mesh/domains')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/mesh/domains')} variant="ghost">
           ← Back to Domains
-        </button>
+        </Button>
         <div className="header-actions">
-          <button onClick={() => navigate(`/mesh/domains/${id}/edit`)} className="btn-secondary" type="button">
+          <Button onClick={() => navigate(`/mesh/domains/${id}/edit`)} variant="secondary">
             Edit
-          </button>
-          <button onClick={handleDeleteClick} className="btn-danger" type="button" disabled={deleteMutation.isPending}>
-            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-          </button>
+          </Button>
+          <Button onClick={handleDeleteClick} variant="danger" loading={deleteMutation.isPending}>
+            Delete
+          </Button>
         </div>
       </div>
 
@@ -176,9 +177,9 @@ export function MeshDomainDetailPage() {
         <div className="domain-assets-section">
           <div className="section-header">
             <h2>Assigned Assets</h2>
-            <button onClick={() => setShowAssignAsset(true)} className="btn-primary" type="button">
+            <Button onClick={() => setShowAssignAsset(true)} variant="primary">
               Assign Asset
-            </button>
+            </Button>
           </div>
           
           {showAssignAsset && (
@@ -191,12 +192,12 @@ export function MeshDomainDetailPage() {
                 <option value="">Select an asset...</option>
                 {/* Assets would be fetched from backend */}
               </select>
-              <button onClick={handleAssignAsset} className="btn-primary" type="button" disabled={!selectedAssetId}>
+              <Button onClick={handleAssignAsset} variant="primary" disabled={!selectedAssetId}>
                 Assign
-              </button>
-              <button onClick={() => setShowAssignAsset(false)} className="btn-secondary" type="button">
+              </Button>
+              <Button onClick={() => setShowAssignAsset(false)} variant="secondary">
                 Cancel
-              </button>
+              </Button>
             </div>
           )}
 
@@ -205,13 +206,11 @@ export function MeshDomainDetailPage() {
               {assetsData.results.map((asset) => (
                 <div key={asset.id} className="asset-item">
                   <span>{asset.name}</span>
-                  <button
-                    onClick={() => handleRemoveAsset(asset.id)}
-                    className="btn-link btn-danger"
-                    type="button"
-                  >
+                  <Button
+ onClick={() => handleRemoveAsset(asset.id)}
+ className="btn-link" variant="danger">
                     Remove
-                  </button>
+                  </Button>
                 </div>
               ))}
             </div>
@@ -223,9 +222,9 @@ export function MeshDomainDetailPage() {
         <div className="domain-governance-section">
           <div className="section-header">
             <h2>Governance</h2>
-            <button onClick={handleCheckCompliance} className="btn-secondary" type="button" disabled={checkComplianceMutation.isPending}>
-              {checkComplianceMutation.isPending ? 'Checking...' : 'Check Compliance'}
-            </button>
+            <Button onClick={handleCheckCompliance} variant="secondary" loading={checkComplianceMutation.isPending}>
+              Check Compliance
+            </Button>
           </div>
 
           {policies && policies.length > 0 ? (

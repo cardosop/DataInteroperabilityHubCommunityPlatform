@@ -14,7 +14,7 @@ import { getExternalDeveloperUser, loginAsPersona } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, waitForAppMainReady } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DEV-001: Build Custom Integration', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('developer page loads', async ({ page }) => {
@@ -22,16 +22,22 @@ test.describe('JOURNEY-DEV-001: Build Custom Integration', () => {
       await page.goto('/developer');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.developer-portal-page, .app-main, .unavailable-page, .loading-spinner-container, [role="status"]',
+        '.developer-portal-page, .app-main, .unavailable-page, [role="status"]',
         { timeout: 25000 }
       );
       await page.waitForTimeout(2000);
       const onDeveloper = page.url().includes('/developer');
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onDeveloper).toBe(true);
       const hasContent =
-        (await page.locator('.developer-portal-page, .app-main, .unavailable-page, .loading-spinner-container').count()) > 0;
-      expect(onLogin || on403 || (onDeveloper && hasContent)).toBe(true);
+        (await page.locator('.developer-portal-page, .app-main').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
 
     test('baas page loads', async ({ page }) => {
@@ -42,9 +48,15 @@ test.describe('JOURNEY-DEV-001: Build Custom Integration', () => {
       const onBaas = page.url().includes('/baas');
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onBaas).toBe(true);
       const hasContent =
-        (await page.locator('.baas-page, .app-main, .unavailable-page').count()) > 0;
-      expect(onLogin || on403 || (onBaas && hasContent)).toBe(true);
+        (await page.locator('.baas-page, .app-main').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
 
     test('webhooks list loads', async ({ page }) => {
@@ -54,7 +66,7 @@ test.describe('JOURNEY-DEV-001: Build Custom Integration', () => {
         await waitForAppMainReady(page, { timeout: 60000 });
       } catch (_err) {
         if (page.url().includes('/login') || page.url().includes('/403')) {
-          expect(page.url()).toMatch(/\/login|\/403/);
+          test.skip(true, 'Auth/role gated — skipping success assertion');
           return;
         }
         throw _err;
@@ -64,7 +76,7 @@ test.describe('JOURNEY-DEV-001: Build Custom Integration', () => {
         (await page.locator('.webhook-list-page').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0 ||
         (await page.locator('.error-display').count()) > 0;
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
 

@@ -28,26 +28,6 @@
   color: var(--color-text-primary);
 }
 
-.btn-primary {
-  padding: var(--spacing-sm) var(--spacing-lg);
-  background: var(--color-primary);
-  color: var(--color-text-on-primary);
-  border: none;
-  border-radius: var(--border-radius-md);
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.btn-primary:hover {
-  background: var(--color-primary-dark);
-}
-
-.btn-primary:active {
-  background: var(--color-primary-darker);
-}
-
 .asset-list-filters {
   display: flex;
   gap: var(--spacing-md);

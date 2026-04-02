@@ -2,7 +2,8 @@
  * ODPS React Query Hooks
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { odpsService } from '../services/odpsService';
 import type {
   ODPSProductCreateRequest,
@@ -42,8 +43,10 @@ export function useODPSWorkflowStatus(
 export function useCreateODPSProduct() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: ODPSProductCreateRequest) => odpsService.createProduct(data),
+    successMessage: 'ODPS product created',
+    errorMessage: 'Failed to create ODPS product',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
     },
@@ -56,9 +59,11 @@ export function useCreateODPSProduct() {
 export function useLinkODPS() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ odcsContractId, data }: { odcsContractId: string; data: ODPSLinkRequest }) =>
       odpsService.linkODPS(odcsContractId, data),
+    successMessage: 'ODPS linked',
+    errorMessage: 'Failed to link ODPS',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
       queryClient.invalidateQueries({ queryKey: ['contracts', 'detail', variables.odcsContractId] });
@@ -73,8 +78,10 @@ export function useLinkODPS() {
 export function useUnlinkODPS() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (odcsContractId: string) => odpsService.unlinkODPS(odcsContractId),
+    successMessage: 'ODPS unlinked',
+    errorMessage: 'Failed to unlink ODPS',
     onSuccess: (_, odcsContractId) => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
       queryClient.invalidateQueries({ queryKey: ['contracts', 'detail', odcsContractId] });
@@ -84,7 +91,7 @@ export function useUnlinkODPS() {
 }
 
 /**
- * Get contract links (ODPS ↔ ODCS)
+ * Get contract links (ODPS <-> ODCS)
  */
 export function useODPSLinks(contractId: string | null) {
   return useQuery({
@@ -104,9 +111,11 @@ export function useODPSLinks(contractId: string | null) {
  * Export ODPS contract
  */
 export function useExportODPS() {
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ contractId, params }: { contractId: string; params?: ODPSExportParams }) =>
       odpsService.exportODPS(contractId, params),
+    successMessage: 'ODPS exported',
+    errorMessage: 'Failed to export ODPS',
   });
 }
 
@@ -114,8 +123,10 @@ export function useExportODPS() {
  * Download ODPS contract
  */
 export function useDownloadODPS() {
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ contractId, params }: { contractId: string; params?: ODPSExportParams }) =>
       odpsService.downloadODPS(contractId, params),
+    successMessage: 'ODPS downloaded',
+    errorMessage: 'Failed to download ODPS',
   });
 }

@@ -17,7 +17,7 @@ test.describe('Feature: Integrations', () => {
         await waitForAppMainReady(page, { timeout: 60000 });
       } catch (_err) {
         if (page.url().includes('/login')) {
-          expect(page.url()).toContain('/login');
+          test.skip(true, 'Redirected to login — auth may have expired');
           return;
         }
         throw _err;
@@ -40,16 +40,17 @@ test.describe('Feature: Integrations', () => {
         return;
       }
       // Must render actual page state — not just a URL match
+      // Must NOT accept .error-display as a valid state
+      await expect(page.locator('.error-display')).not.toBeVisible();
       const hasContent =
         (await page
           .locator(
             '.integration-sync-jobs-page, .sync-jobs-page, .empty-state, .unavailable-page, h1'
           )
           .count()) > 0;
-      const hasError = (await page.locator('.error-display').count()) > 0;
       expect(
-        hasContent || hasError,
-        'Expected page content (.sync-jobs-page, .empty-state, .unavailable-page, h1, or .error-display)'
+        hasContent,
+        'Expected page content (.sync-jobs-page, .empty-state, .unavailable-page, or h1)'
       ).toBe(true);
     });
   });

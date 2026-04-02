@@ -24,7 +24,8 @@ test.describe('Feature: BaaS', () => {
       await page.goto('/baas');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
-      expect(page.url()).toBeDefined();
+      const url = page.url();
+      expect(url).toMatch(/\/(baas|login|403|unavailable)/);
     });
   });
 });

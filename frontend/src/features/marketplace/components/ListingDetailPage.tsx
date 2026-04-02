@@ -7,11 +7,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useListing } from '../hooks/useListings';
 import { useCreateOrder } from '../hooks/useOrders';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { PricingModel, ListingStatus } from '../../../shared/types/marketplace';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './ListingDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -27,24 +29,25 @@ export function ListingDetailPage() {
       const response = await createOrderMutation.mutateAsync({ listing_id: id });
       // Response may be {order: {...}, entitlement: {...}} for auto-approved orders
       // or just Order for regular orders
-      const order = (response as any).order || response;
-      if (order && order.id) {
-        navigate(`/marketplace/orders/${order.id}`);
+      const order = (response as Record<string, unknown & { id?: string }>).order || response;
+      const orderId = (order as { id?: string }).id;
+      if (order && orderId) {
+        navigate(`/marketplace/orders/${orderId}`);
       } else {
         console.error('Invalid order response:', response);
         throw new Error('Invalid order response from server');
       }
-    } catch (error) {
+    } catch {
       // Error handled by mutation
     }
   };
 
-  if (isLoading) {
-    return <LoadingSpinner message="Loading listing..." />;
-  }
-
   if (error) {
     return <ErrorDisplay error={error} title="Failed to load listing" onRetry={() => refetch()} />;
+  }
+
+  if (isLoading) {
+    return <DetailPageSkeleton />;
   }
 
   if (!listing) {
@@ -54,12 +57,15 @@ export function ListingDetailPage() {
   const canPurchase = listing.status === ListingStatus.PUBLISHED && 
     (listing.pricing_model === PricingModel.FREE || listing.pricing_model === PricingModel.FREE_AUTO_APPROVE || listing.pricing_model === PricingModel.REQUEST_APPROVAL);
 
+  const priceNum = listing.price_amount != null ? Number(listing.price_amount) : 0;
+  const needsPaidCheckout = priceNum > 0;
+
   return (
     <div className="listing-detail-page">
       <div className="listing-detail-header">
-        <button onClick={() => navigate('/marketplace')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/marketplace')} variant="ghost">
           ← Back to Marketplace
-        </button>
+        </Button>
         <div className="listing-detail-title-section">
           <h1>{listing.title || 'Untitled Listing'}</h1>
           <span className={`listing-status listing-status-${listing.status.toLowerCase()}`}>
@@ -136,23 +142,27 @@ export function ListingDetailPage() {
         <div className="listing-detail-sidebar">
           <div className="listing-actions-card">
             {canPurchase && (
-              <button
-                className="btn-primary btn-large"
-                onClick={handlePurchase}
-                disabled={createOrderMutation.isPending}
-                type="button"
-              >
+              <Button
+ variant="primary" className="btn-large"
+ onClick={
+                  needsPaidCheckout && id
+                    ? () => navigate(`/marketplace/checkout/${id}`)
+                    : handlePurchase
+                }
+ loading={createOrderMutation.isPending}>
                 {createOrderMutation.isPending ? (
                   <>
                     <LoadingSpinner size="small" />
                     Processing...
                   </>
+                ) : needsPaidCheckout ? (
+                  'Pay with card'
+                ) : listing.pricing_model === PricingModel.REQUEST_APPROVAL ? (
+                  'Request Access'
                 ) : (
-                  listing.pricing_model === PricingModel.REQUEST_APPROVAL
-                    ? 'Request Access'
-                    : 'Get Access'
+                  'Get Access'
                 )}
-              </button>
+              </Button>
             )}
             <div className="listing-meta">
               <div className="listing-meta-item">

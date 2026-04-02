@@ -6,7 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { getTenantAdminUser } from '../fixtures/auth';
-import { loginAndNavigateToRoute, waitForAppMainReady } from '../fixtures/helpers';
+import { loginAndNavigateToRoute } from '../fixtures/helpers';
 
 test.describe('Feature: Scheduled Ingestion', () => {
   test.setTimeout(120000);
@@ -17,14 +17,19 @@ test.describe('Feature: Scheduled Ingestion', () => {
       await loginAndNavigateToRoute(page, adminUser, '/scheduled-ingestions', {
         timeout: 60000,
         contentSelector:
-          '.scheduled-ingestion-list-page, .empty-state, .unavailable-page, .error-display, h1',
+          '.scheduled-ingestion-list-page, .empty-state, .unavailable-page, h1',
         acceptRedirectToLogin: true,
       });
-      if (page.url().includes('/login')) return;
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Redirected to login — auth may have expired');
+        return;
+      }
 
       const url = page.url();
       expect(url).toMatch(/\/scheduled-ingestions|\/403/);
 
+      // Success test must NOT accept .error-display
+      await expect(page.locator('.error-display')).not.toBeVisible();
       // Must render actual page content — URL match alone provides no signal
       const hasContent =
         (await page
@@ -32,8 +37,7 @@ test.describe('Feature: Scheduled Ingestion', () => {
             '.scheduled-ingestion-list-page, .empty-state, .unavailable-page, h1'
           )
           .count()) > 0;
-      const hasError = (await page.locator('.error-display').count()) > 0;
-      expect(hasContent || hasError).toBe(true);
+      expect(hasContent).toBe(true);
     });
   });
 

@@ -3,6 +3,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { emptyPaginatedResponse } from '../../../shared/types/api';
 import type {
   Asset,
@@ -42,8 +43,10 @@ export function useAsset(id: string | null) {
 export function useCreateAsset() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: AssetCreateRequest) => assetService.create(data),
+    successMessage: 'Asset created',
+    errorMessage: 'Failed to create asset',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assets'] });
     },
@@ -53,9 +56,11 @@ export function useCreateAsset() {
 export function useUpdateAsset() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: AssetUpdateRequest }) =>
       assetService.update(id, data),
+    successMessage: 'Asset updated',
+    errorMessage: 'Failed to update asset',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['assets'] });
       queryClient.invalidateQueries({ queryKey: ['assets', 'detail', variables.id] });
@@ -66,14 +71,21 @@ export function useUpdateAsset() {
 export function useDeleteAsset() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => assetService.delete(id),
+    successMessage: 'Asset deleted',
+    errorMessage: 'Failed to delete asset',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assets'] });
     },
   });
 }
 
+/**
+ * Activate asset mutation — uses raw useMutation (no auto-toast).
+ * Callers must handle success/error notifications themselves because activation
+ * can fail with ASSET_ACTIVATION_BLOCKED which needs a custom dialog, not a toast.
+ */
 export function useActivateAsset() {
   const queryClient = useQueryClient();
 
@@ -90,9 +102,11 @@ export function useActivateAsset() {
 export function useRetireAsset() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, version }: { id: string; version: number }) =>
       assetService.retire(id, version),
+    successMessage: 'Asset retired',
+    errorMessage: 'Failed to retire asset',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['assets'] });
       queryClient.invalidateQueries({ queryKey: ['assets', 'detail', variables.id] });
@@ -103,9 +117,11 @@ export function useRetireAsset() {
 export function useAttachContract() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: AttachContractRequest }) =>
       assetService.attachContract(id, data),
+    successMessage: 'Contract attached',
+    errorMessage: 'Failed to attach contract',
     onSuccess: (updatedAsset, variables) => {
       // Update the asset in cache with the response (which includes contract_id)
       queryClient.setQueryData(['assets', 'detail', variables.id], updatedAsset);
@@ -119,9 +135,11 @@ export function useAttachContract() {
 export function useAttachDataset() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: AttachDatasetRequest }) =>
       assetService.attachDataset(id, data),
+    successMessage: 'Dataset attached',
+    errorMessage: 'Failed to attach dataset',
     onSuccess: (updatedAsset, variables) => {
       // Update the asset in cache immediately (reduces refetch dependency)
       queryClient.setQueryData(['assets', 'detail', variables.id], updatedAsset);
@@ -146,9 +164,11 @@ export function useAssetHealthScore(
 
 export function useRecalculateHealthScore() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, breakdown }: { id: string; breakdown?: boolean }) =>
       assetService.getHealthScore(id, { recalculate: true, breakdown: breakdown ?? true }),
+    successMessage: 'Health score recalculated',
+    errorMessage: 'Failed to recalculate health score',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['assets', 'health-score', variables.id] });
       queryClient.invalidateQueries({ queryKey: ['assets', 'detail', variables.id] });
@@ -159,7 +179,7 @@ export function useRecalculateHealthScore() {
 export function useDataFirstAsset() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: {
       file_id: string;
       key: string;
@@ -167,6 +187,8 @@ export function useDataFirstAsset() {
       description?: string;
       domain?: string;
     }) => assetService.createDataFirst(data),
+    successMessage: 'Asset created',
+    errorMessage: 'Failed to create asset',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assets'] });
       queryClient.invalidateQueries({ queryKey: ['datasets'] });

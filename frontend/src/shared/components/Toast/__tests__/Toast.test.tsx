@@ -5,7 +5,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { ToastProvider, useToast } from '../ToastContext';
+import { ToastProvider } from '../ToastContext';
+import { useToast } from '../useToast';
 
 function TestConsumerSuccess() {
   const toast = useToast();
@@ -98,13 +99,16 @@ describe('Toast', () => {
     vi.useRealTimers();
   });
 
-  it('useToast throws when used outside provider', () => {
-    expect(() => {
-      render(
-        <div>
-          <TestConsumerSuccess />
-        </div>
-      );
-    }).toThrow('useToast must be used within ToastProvider');
+  it('useToast returns no-op when used outside provider (no crash)', () => {
+    // Should not throw — falls back to no-op toast
+    const { container } = render(
+      <div>
+        <TestConsumerSuccess />
+      </div>
+    );
+    expect(container.children.length).toBeGreaterThan(0);
+    // Click should not throw, but toast won't appear (no provider)
+    fireEvent.click(screen.getByRole('button', { name: /show success/i }));
+    expect(screen.queryByTestId('toast')).not.toBeInTheDocument();
   });
 });

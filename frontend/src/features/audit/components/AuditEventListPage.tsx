@@ -8,11 +8,13 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import type { AuditEventExportFormat } from '../../../shared/types/audit';
 import { useAuditEvents } from '../hooks/useAudit';
 import { auditService } from '../services/auditService';
+import { useToast } from '../../../shared/components/Toast';
 import './AuditEventListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 const RESOURCE_TYPES = [
   { value: '', label: 'All' },
@@ -38,6 +40,7 @@ const ACTIONS = [
 
 export function AuditEventListPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [page] = useState(1);
   const [pageSize] = useState(20);
   const [resourceTypeFilter, setResourceTypeFilter] = useState('');
@@ -98,14 +101,14 @@ export function AuditEventListPage() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Export failed:', err);
-      alert('Failed to export audit events. Please try again.');
+      toast.error('Failed to export audit events. Please try again.');
     } finally {
       setIsExporting(false);
     }
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading audit events..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -122,24 +125,20 @@ export function AuditEventListPage() {
       <div className="audit-list-header">
         <h1>Audit Events</h1>
         <div className="audit-export-buttons">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => handleExport('csv')}
-            disabled={isExporting || count === 0}
-            aria-label="Export CSV"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => handleExport('csv')}
+ disabled={isExporting || count === 0}
+ aria-label="Export CSV">
             {isExporting ? 'Exporting...' : 'Export CSV'}
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => handleExport('json')}
-            disabled={isExporting || count === 0}
-            aria-label="Export JSON"
-          >
+          </Button>
+          <Button
+ variant="secondary"
+ onClick={() => handleExport('json')}
+ disabled={isExporting || count === 0}
+ aria-label="Export JSON">
             {isExporting ? 'Exporting...' : 'Export JSON'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -295,28 +294,24 @@ export function AuditEventListPage() {
               {count} result{count !== 1 ? 's' : ''}
             </span>
             {data?.next && (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  // TODO: Implement pagination
-                  console.log('Next page');
-                }}
-              >
+              <Button
+ variant="secondary"
+ onClick={() => {
+ // TODO: Implement pagination
+ console.log('Next page');
+ }}>
                 Next
-              </button>
+              </Button>
             )}
             {data?.previous && (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  // TODO: Implement pagination
-                  console.log('Previous page');
-                }}
-              >
+              <Button
+ variant="secondary"
+ onClick={() => {
+ // TODO: Implement pagination
+ console.log('Previous page');
+ }}>
                 Previous
-              </button>
+              </Button>
             )}
           </div>
         </>

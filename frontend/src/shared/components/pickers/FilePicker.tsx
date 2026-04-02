@@ -37,22 +37,6 @@ export function FilePicker({
   datasetId,
   'data-testid': dataTestId = 'file-picker',
 }: FilePickerProps) {
-  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
-    return (
-      <div className="file-picker resource-picker" data-testid={dataTestId}>
-        <input
-          type="text"
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value.trim() || null)}
-          placeholder="Enter file ID (UUID)"
-          disabled={disabled}
-          className="resource-picker-input"
-          aria-label="File ID"
-        />
-      </div>
-    );
-  }
-
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
   const [isOpen, setIsOpen] = useState(false);
@@ -69,7 +53,7 @@ export function FilePicker({
     dataset_id: datasetId,
   };
 
-  const { data, isLoading, error, refetch } = useFiles(filters, { enabled: isOpen });
+  const { data, isLoading, error, refetch } = useFiles(filters, { enabled: isOpen && FEATURE_RESOURCE_PICKERS_ENABLED });
 
   const results = data?.results ?? [];
   const maxIndex = results.length - 1;
@@ -92,7 +76,7 @@ export function FilePicker({
   }, [onChange]);
 
   const selectedFromList = value ? results.find((f: FileItem) => f.id === value) : null;
-  const { data: selectedFileData } = useFile(value);
+  const { data: selectedFileData } = useFile(FEATURE_RESOURCE_PICKERS_ENABLED ? value : null);
   const selectedFile = selectedFromList ?? (value && selectedFileData ? selectedFileData : null);
 
   useEffect(() => {
@@ -139,6 +123,22 @@ export function FilePicker({
         break;
     }
   };
+
+  if (!FEATURE_RESOURCE_PICKERS_ENABLED) {
+    return (
+      <div className="file-picker resource-picker" data-testid={dataTestId}>
+        <input
+          type="text"
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value.trim() || null)}
+          placeholder="Enter file ID (UUID)"
+          disabled={disabled}
+          className="resource-picker-input"
+          aria-label="File ID"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="resource-picker" data-testid={dataTestId}>

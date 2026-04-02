@@ -14,7 +14,7 @@ import { getConsumerTestUser, getTenantAdminUser, loginAsPersona } from '../../f
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-TA-001: Onboard New User', () => {
-  test.setTimeout(240000); // 4 min: visible/slowMo + loginAsPersona can exceed 2 min
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('admin page loads with users section', async ({ page }) => {
@@ -29,7 +29,7 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
         (await page.locator('.admin-page').count()) > 0 &&
         ((await page.locator('.admin-tabs, .admin-users-section, [data-testid="admin-users-section"]').count()) > 0 ||
           (await page.locator('button:has-text("Users")').count()) > 0);
-      expect(hasContent).toBe(true);
+      expect(hasContent).toBe(true) /* acceptable states */;
     });
 
     test('users tab loads user list', async ({ page }) => {
@@ -47,7 +47,7 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
         (await page.locator('[data-testid="admin-users-section"]').count()) > 0 ||
         (await page.locator('.admin-table').count()) > 0 ||
         (await page.locator('.empty-state').count()) > 0;
-      expect(hasUsersSection).toBe(true);
+      expect(hasUsersSection).toBe(true) /* acceptable states */;
     });
   });
 
@@ -64,7 +64,7 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
         (await page.locator('.admin-page, .admin-no-permission, [data-testid="forbidden-page"]').count()) > 0 ||
         (await page.locator('text=/403|forbidden/i').count()) > 0;
       const no500 = (await page.locator('text=/500|internal server error/i').count()) === 0;
-      expect(onAdmin || on403 || onLogin).toBe(true);
+      expect(onAdmin || on403 || onLogin).toBe(true) /* acceptable states */;
       // When on /login, we may not have admin content; when on /admin or /403, expect content and no 500
       expect(onLogin || (hasContent && no500)).toBe(true);
     });

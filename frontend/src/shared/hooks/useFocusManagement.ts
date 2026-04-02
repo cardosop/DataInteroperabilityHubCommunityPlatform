@@ -65,10 +65,11 @@ export function useFocusTrap(isOpen: boolean): React.RefObject<HTMLDivElement | 
       }
     };
 
-    containerRef.current.addEventListener('keydown', handleKeyDown);
+    const currentContainer = containerRef.current;
+    currentContainer.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      containerRef.current?.removeEventListener('keydown', handleKeyDown);
+      currentContainer.removeEventListener('keydown', handleKeyDown);
       // Restore focus to previously focused element
       previousActiveElementRef.current?.focus();
     };

@@ -20,7 +20,7 @@ test.describe('Feature: Semantic', () => {
       try {
         await waitForAppMainReady(page, { timeout: 60000, acceptRedirectToLogin: true });
       } catch (_err) {
-        if (page.url().includes('/login') || page.url().includes('/403')) return;
+        if (page.url().includes('/login') || page.url().includes('/403')) { test.skip(true, 'Redirected to login/403 — auth or role gated'); return; }
         throw _err;
       }
       const url = page.url();
@@ -54,7 +54,7 @@ test.describe('Feature: Semantic', () => {
       const onUnavailable = url.includes('/unavailable');
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
-      expect(onSemantic || onUnavailable || onLogin || on403).toBe(true);
+      expect(onSemantic || onUnavailable || onLogin || on403).toBe(true) /* acceptable states */;
       if (onSemantic) {
         // Wait for the page content to become visible — lazy bundle may still be loading
         await page
@@ -64,7 +64,7 @@ test.describe('Feature: Semantic', () => {
           .catch(() => {});
         const hasContent =
           (await page.locator('[data-testid="semantic-page"], .semantic-page, .unavailable-page').count()) > 0;
-        expect(hasContent).toBe(true);
+        expect(hasContent).toBe(true) /* acceptable states */;
       } else if (onUnavailable) {
         await assertSuccessLoad(page, {
           successContentSelector: '[data-testid="unavailable-page"], .unavailable-page',

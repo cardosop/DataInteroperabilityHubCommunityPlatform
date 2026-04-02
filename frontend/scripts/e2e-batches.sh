@@ -4,8 +4,8 @@
 # Or: bash scripts/e2e-batches.sh [1|2|3|4|5|6|7|8]
 # Prerequisites: backend (docker compose), frontend dev server (npm run dev).
 #
-# By default runs ALL projects (chromium, visible, chromium-routes) to match full run.
-# Same unique tests run 3x across projects. Set E2E_PROJECT=chromium for faster runs.
+# By default runs chromium project only (each test runs once).
+# Set E2E_VISIBLE=1 to add the headed+slowMo visible project for interactive debugging.
 #
 # Intentionally excluded from all batches (testIgnored in playwright.config.ts):
 #   e2e/dimensions/  — network-failure/rate-limit tests; flaky by design; run manually
@@ -17,7 +17,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$FRONTEND_DIR"
 
-# Run all projects by default (matches npm run test:e2e). Use E2E_PROJECT=chromium for faster runs.
+# Default to chromium project only (each test runs once). Set E2E_ALL_PROJECTS=1 to run all 3.
+# e2e-detect-api.sh adds --project=chromium automatically when no --project flag is passed.
 PROJECT_ARGS=()
 if [[ -n "${E2E_PROJECT:-}" ]]; then
   PROJECT_ARGS=(--project="$E2E_PROJECT")
@@ -36,8 +37,14 @@ run_batch() {
 case "${1:-}" in
   1)
     # Auth, setup, cross-cutting, design system, tenant onboarding
+    # Reduce workers to 2: every test in this batch requires a full login cycle.
+    # 4 workers saturate the backend login/capabilities endpoints causing PostgreSQL
+    # statement timeouts (500) and rate-limit cascades (429) that fail 15+ tests.
     # Note: alternate-flows-failure.spec.ts is already included via cross-cutting/ glob.
+    # Enable authenticated a11y scans (axe on 10 routes) — batch 1 includes e2e/a11y/.
+    export E2E_A11Y=1
     run_batch 1 "auth, setup, cross-cutting, design-system, tenant" \
+      --workers=2 \
       e2e/auth-visitor-journeys.spec.ts \
       e2e/login-app-shell.spec.ts \
       e2e/features/auth.spec.ts \
@@ -46,7 +53,8 @@ case "${1:-}" in
       e2e/a11y/ \
       e2e/design-system/ \
       e2e/use-cases/auth/ \
-      e2e/journeys/tenant/
+      e2e/journeys/tenant/ \
+      e2e/security/
     ;;
   2)
     # Route-level smoke tests for all major feature areas
@@ -139,7 +147,7 @@ case "${1:-}" in
     ;;
   list)
     echo "E2E Batches (run with: npm run test:e2e:batchN or bash scripts/e2e-batches.sh N)"
-    echo "  1: auth, setup, cross-cutting, design-system, tenant onboarding (~100 tests)"
+    echo "  1: auth, setup, cross-cutting, design-system, tenant, security (~100 tests, workers=2)"
     echo "  2: routes - contracts, marketplace, dq, mesh, integrations, admin (~115 tests)"
     echo "  3: DPO journeys + asset/contract/ODPS use cases (~275 tests)"
     echo "  4: auth, DC, DE journeys + integrations use cases (~385 tests)"

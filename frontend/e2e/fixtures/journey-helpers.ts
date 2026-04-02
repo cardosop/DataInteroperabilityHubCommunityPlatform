@@ -49,9 +49,16 @@ export async function assertFailureRedirect(
     timeout?: number;
   } = {}
 ): Promise<void> {
-  const { expectedPaths = [/\/login/, /\/403/], timeout = 15000 } = options;
+  const { expectedPaths = [/\/login/, /\/403/] } = options;
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForTimeout(2000); // Allow redirect to complete
+  // Wait for redirect to complete via URL pattern match instead of fixed timeout
+  const patterns = expectedPaths.map((p) => (typeof p === 'string' ? new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) : p));
+  const combinedPattern = new RegExp(patterns.map((p) => p.source).join('|'));
+  try {
+    await page.waitForURL(combinedPattern, { timeout: options.timeout ?? 15000 });
+  } catch {
+    // URL didn't match — fall through to assertion which will produce a clear error message
+  }
   const url = page.url();
   const matches = expectedPaths.some((p) =>
     typeof p === 'string' ? url.includes(p) : p.test(url)

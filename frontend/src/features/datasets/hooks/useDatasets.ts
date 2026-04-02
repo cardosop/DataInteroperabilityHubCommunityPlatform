@@ -2,7 +2,8 @@
  * Datasets React Query Hooks
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { emptyPaginatedResponse } from '../../../shared/types/api';
 import { datasetService } from '../services/datasetService';
 import type {
@@ -48,8 +49,10 @@ export function useDatasetVersions(id: string | null) {
 export function useCreateDataset() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (data: DatasetCreateRequest) => datasetService.create(data),
+    successMessage: 'Dataset created',
+    errorMessage: 'Failed to create dataset',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['datasets'] });
     },
@@ -59,9 +62,11 @@ export function useCreateDataset() {
 export function useUpdateDataset() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: ({ id, data }: { id: string; data: DatasetUpdateRequest }) =>
       datasetService.update(id, data),
+    successMessage: 'Dataset updated',
+    errorMessage: 'Failed to update dataset',
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['datasets'] });
       queryClient.invalidateQueries({ queryKey: ['datasets', 'detail', variables.id] });
@@ -72,8 +77,10 @@ export function useUpdateDataset() {
 export function useDeleteDataset() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithNotification({
     mutationFn: (id: string) => datasetService.delete(id),
+    successMessage: 'Dataset deleted',
+    errorMessage: 'Failed to delete dataset',
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['datasets'] });
     },

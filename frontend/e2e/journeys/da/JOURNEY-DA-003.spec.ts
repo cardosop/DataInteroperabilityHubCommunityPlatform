@@ -23,7 +23,7 @@ test.describe('JOURNEY-DA-003: Query Virtual Dataset', () => {
       await page.goto('/virtualization');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.virtual-dataset-list-page, .empty-state, #email',
+        '.virtual-dataset-list-page, .empty-state',
         { timeout: 65000 }
       );
       if (page.url().includes('/login') || page.url().includes('/403')) {

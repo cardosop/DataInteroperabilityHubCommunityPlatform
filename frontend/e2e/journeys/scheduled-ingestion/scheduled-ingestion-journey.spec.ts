@@ -1,5 +1,11 @@
 /**
  * E2E: Scheduled Ingestion Journey (Phase 4)
+ *
+ * Use Cases: UC-INGEST-001 (Create Scheduled Ingestion), UC-INGEST-002 (Configure Ingestion Source),
+ * UC-INGEST-003 (Monitor Ingestion Runs)
+ * Journeys: JOURNEY-INGESTION-001, JOURNEY-INGESTION-003
+ * Reference: docs/USE_CASES.md, docs/USER_JOURNEYS.md, docs/CRITICAL_UC_JOURNEY_IDS.yaml
+ *
  * Create scheduled ingestion → trigger → wait for run completion (poll run status) → assert.
  * Real backend and real Prefect (or real backend with Prefect flow in test env).
  * No stubbing of API or Prefect; flakiness addressed by explicit wait for run status.
@@ -88,7 +94,7 @@ async function pollRunUntilTerminal(
   // Use page.request (Node.js) not page.evaluate (browser) to avoid CORS blocking on localhost:8084.
   try {
     await page.request.post(`${PREFECT_INTEGRATION_URL.replace(/\/$/, '')}/status/sync`, { timeout: 5000 }).catch(() => {});
-  } catch (e) {
+  } catch {
     // Ignore status sync errors - continue polling
   }
 
@@ -105,7 +111,7 @@ async function pollRunUntilTerminal(
         // Wait for the sync to process and update the database
         await page.waitForTimeout(2000);
         lastStatusSync = Date.now();
-      } catch (e) {
+      } catch {
         // Ignore status sync errors - continue polling
       }
     }
@@ -127,7 +133,7 @@ async function pollRunUntilTerminal(
     await page.request.post(`${PREFECT_INTEGRATION_URL.replace(/\/$/, '')}/status/sync`, { timeout: 5000 }).catch(() => {});
     // Wait longer for sync to process and database to update
     await page.waitForTimeout(3000);
-  } catch (e) {
+  } catch {
     // Ignore status sync errors
   }
 
@@ -169,7 +175,7 @@ async function pollRunUntilTerminal(
 
 test.describe('Scheduled Ingestion Journey', () => {
   // 8 min: login (~90s) + create + trigger (~60s) + poll (~240s) under parallel E2E load
-  test.setTimeout(900000); // 15 min: setup (up to 11 min under parallel load) + 4 min polling
+  test.setTimeout(90000);
 
   test.describe('Failure', () => {
     test('unauthenticated access to scheduled-ingestions redirects to login', async ({ page }) => {
@@ -181,11 +187,11 @@ test.describe('Scheduled Ingestion Journey', () => {
       const onRouteWithLoginPrompt =
         url.includes('/scheduled-ingestions') &&
         (await hasLoginPrompt(page));
-      expect(onLogin || onRouteWithLoginPrompt).toBe(true);
+      expect(onLogin || onRouteWithLoginPrompt).toBe(true) /* acceptable states */;
     });
   });
 
-  test.describe('Create, trigger, wait for run', () => {
+  test.describe('JOURNEY-INGESTION-001 (UC-INGEST-001 / UC-INGEST-002 / UC-INGEST-003): Create, trigger, wait for run', () => {
     test('create scheduled ingestion → trigger → poll run status → assert run outcome', async ({
       page,
     }) => {
@@ -216,7 +222,7 @@ test.describe('Scheduled Ingestion Journey', () => {
       await loginAndNavigateToRoute(page, testUser, '/scheduled-ingestions', {
         timeout: 60000,
         contentSelector:
-          '.scheduled-ingestion-list-page, .empty-state, .error-display, .loading-spinner-container, h1',
+          '.scheduled-ingestion-list-page, .empty-state, .error-display, h1',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         test.skip(
@@ -246,7 +252,7 @@ test.describe('Scheduled Ingestion Journey', () => {
             waitUntil: 'domcontentloaded',
           }
         );
-      } catch (err) {
+      } catch {
         const hasError = (await page.locator('.error-display').count()) > 0;
         const errText = hasError
           ? (await page.locator('.error-display').first().textContent().catch(() => '')) || ''
@@ -382,30 +388,27 @@ test.describe('Scheduled Ingestion Journey', () => {
         run = await pollRunUntilTerminal(page, runId);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        // Skip on any infrastructure-unavailable or transient error patterns.
-        // These indicate Prefect/backend issues, not test logic bugs.
-        if (
+        // D88: Only skip on Prefect worker health-check failures (worker not running, run never started).
+        // Auth errors, malformed responses, and 404s after trigger are real bugs — let them fail.
+        const isPrefectWorkerDown =
           msg.includes('not found within') ||
           msg.includes('did not reach terminal state') ||
-          msg.includes('Ensure Prefect worker') ||
-          msg.includes('Run not found') ||       // 404: run_id not found in backend DB
-          msg.includes('not found (404)') ||     // 404 from fetchRun
-          msg.includes('GET run failed') ||      // non-OK HTTP from fetchRun
-          msg.includes('Not authenticated') ||   // session expired during long poll
-          msg.includes('Trigger response missing run_id') // run_id not in trigger response
-        ) {
+          msg.includes('Ensure Prefect worker');
+        if (isPrefectWorkerDown) {
           test.skip(
             true,
-            `Prefect/backend infrastructure issue — skip. ` +
-              `Ensure Prefect stack is running: docker compose -f docker-compose.test.yml up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test. ` +
+            `Prefect worker not running — skip. ` +
+              `Start: docker compose -f docker-compose.test.yml up -d prefect-db-test prefect-server-test prefect-worker-test prefect-integration-service-test. ` +
               `Detail: ${msg.slice(0, 200)}`
           );
           return;
         }
+        // All other errors (Not authenticated, missing run_id, 404, GET failed) are real failures
         throw err;
       }
 
-      expect(['COMPLETED', 'FAILED', 'CANCELLED']).toContain(run.status);
+      // D88: Success flow must only accept COMPLETED. FAILED/CANCELLED are test failures.
+      expect(run.status).toBe('COMPLETED');
       if (run.status === 'COMPLETED') {
         // Fields are number | null — only assert type/value when backend populated them.
         if (run.files_processed !== null) {

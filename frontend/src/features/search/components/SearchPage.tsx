@@ -13,6 +13,7 @@ import type { SearchResponse, SearchResultType } from '../../../shared/types/sea
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { searchService } from '../services/searchService';
 import './SearchPage.css';
+import { Button } from '../../../shared/components/Button';
 
 const RESULT_TYPE_OPTIONS: { value: '' | SearchResultType; label: string }[] = [
   { value: '', label: 'All' },
@@ -79,9 +80,9 @@ export function SearchPage() {
             aria-label="Search query"
             className="search-page-query-input"
           />
-          <button type="submit" className="btn-primary" disabled={loading}>
+          <Button type="submit" variant="primary" disabled={loading}>
             {loading ? 'Searching...' : 'Search'}
-          </button>
+          </Button>
         </div>
         <div className="search-page-filters">
           <label htmlFor="search-type-filter">Type</label>

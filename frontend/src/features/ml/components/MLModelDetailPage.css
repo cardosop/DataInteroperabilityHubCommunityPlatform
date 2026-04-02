@@ -1,0 +1,200 @@
+.ml-detail-page {
+  padding: var(--spacing-lg);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.ml-back-btn {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: 0;
+  margin-bottom: var(--spacing-lg);
+}
+
+.ml-back-btn:hover {
+  text-decoration: underline;
+}
+
+.ml-detail-header {
+  margin-bottom: var(--spacing-xl);
+}
+
+.ml-detail-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xs);
+}
+
+.ml-detail-title-row h1 {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+}
+
+.ml-detail-subtitle {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+}
+
+.ml-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.ml-detail-card {
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-lg);
+}
+
+.ml-detail-card h2 {
+  margin: 0 0 var(--spacing-md);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.ml-detail-dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--spacing-sm) var(--spacing-lg);
+}
+
+.ml-detail-dl dt {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.ml-detail-dl dd {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.monospace {
+  font-family: monospace;
+}
+
+.ml-detail-dl a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.ml-detail-dl a:hover {
+  text-decoration: underline;
+}
+
+/* Inference metrics grid */
+.ml-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.ml-metric-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--spacing-md);
+  background: var(--color-background-primary);
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.ml-metric-value {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.ml-metric-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-top: var(--spacing-xs);
+}
+
+/* Status badges (shared with MLPage) */
+.ml-detail-page .status-badge {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.ml-detail-page .status-badge.status-training,
+.ml-detail-page .status-badge.status-deploying {
+  background: var(--color-warning-light);
+  color: var(--color-warning);
+}
+
+.ml-detail-page .status-badge.status-trained,
+.ml-detail-page .status-badge.status-deployed,
+.ml-detail-page .status-badge.status-completed {
+  background: var(--color-success-light);
+  color: var(--color-success);
+}
+
+.ml-detail-page .status-badge.status-failed,
+.ml-detail-page .status-badge.status-undeployed {
+  background: var(--color-error-light);
+  color: var(--color-error);
+}
+
+.ml-detail-page .status-badge.status-archived,
+.ml-detail-page .status-badge.status-cancelled {
+  background: var(--color-background-primary);
+  color: var(--color-text-secondary);
+}
+
+.ml-detail-page .status-badge.status-pending {
+  background: var(--color-info-light);
+  color: var(--color-info);
+}
+
+.ml-detail-page .status-badge.status-running {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+/* Action buttons */
+.ml-action-btn {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.ml-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ml-action-btn-danger {
+  background: var(--color-error);
+  color: white;
+}
+
+.ml-action-btn-danger:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+/* Error message */
+.ml-error-message {
+  color: var(--color-error);
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.ml-text-muted {
+  color: var(--color-text-secondary);
+  margin: 0;
+}

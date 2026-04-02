@@ -15,7 +15,7 @@ import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fi
 
 test.describe('JOURNEY-CM-003: Assign Data Stewards', () => {
   // 5 min: visible project uses slowMo:400 (adds ~400ms per action); login + nav can exceed 3 min under load
-  test.setTimeout(300000);
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('communities page loads for stewardship', async ({ page }) => {
@@ -27,11 +27,16 @@ test.describe('JOURNEY-CM-003: Assign Data Stewards', () => {
       const url = page.url();
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
-      const onUnavailable = url.includes('/unavailable');
       const onCommunities = url.includes('/communities');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onCommunities).toBe(true);
       const hasContent =
-        (await page.locator('.communities-page, .communities-tab, .app-main, .unavailable-page, .loading-spinner-container').count()) > 0;
-      expect(onLogin || on403 || onUnavailable || (onCommunities && hasContent)).toBe(true);
+        (await page.locator('.communities-page, .communities-tab, .app-main').count()) > 0;
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
 
     test('assets list loads for steward assignment', async ({ page }) => {

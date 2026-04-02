@@ -6,10 +6,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMarketplaceConnections } from '../hooks/useMarketplaceConnections';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import './MarketplaceConnectionListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function MarketplaceConnectionListPage() {
   const navigate = useNavigate();
@@ -33,7 +34,7 @@ export function MarketplaceConnectionListPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading connections..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -54,9 +55,9 @@ export function MarketplaceConnectionListPage() {
     <div className="connection-list-page">
       <div className="connection-list-header">
         <h1>Marketplace Connections</h1>
-        <button className="btn-primary" onClick={handleCreateConnection} type="button">
+        <Button variant="primary" onClick={handleCreateConnection}>
           Create Connection
-        </button>
+        </Button>
       </div>
 
       <div className="connection-list-grid">
@@ -92,25 +93,21 @@ export function MarketplaceConnectionListPage() {
 
       {data.count > pageSize && (
         <div className="connection-list-pagination">
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => Math.max(1, p - 1))}
+ disabled={page === 1}>
             Previous
-          </button>
+          </Button>
           <span className="pagination-info">
             Page {page} of {Math.ceil(data.count / pageSize)}
           </span>
-          <button
-            className="btn-secondary"
-            onClick={() => setPage((p) => p + 1)}
-            disabled={page >= Math.ceil(data.count / pageSize)}
-            type="button"
-          >
+          <Button
+ variant="secondary"
+ onClick={() => setPage((p) => p + 1)}
+ disabled={page>= Math.ceil(data.count / pageSize)}>
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>

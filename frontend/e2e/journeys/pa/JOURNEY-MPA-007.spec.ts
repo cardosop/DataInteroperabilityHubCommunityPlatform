@@ -24,9 +24,15 @@ test.describe('JOURNEY-MPA-007: Monitor Data Mesh Topology', () => {
       const onTopology = page.url().includes('/mesh/topology');
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
+      if (onLogin || on403) {
+        test.skip(true, 'Auth/role gated — skipping success assertion');
+        return;
+      }
+      expect(onTopology).toBe(true);
       const hasContent =
         (await page.locator('.topology-visualization, .app-main, .mesh-domain-list-page').count()) > 0;
-      expect(onLogin || on403 || (onTopology && hasContent)).toBe(true);
+      expect(hasContent).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible();
     });
   });
 

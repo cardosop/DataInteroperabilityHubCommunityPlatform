@@ -10,6 +10,7 @@ import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type { WebhookUpdateRequest } from '../../../shared/types/webhooks';
 import { useUpdateWebhook, useWebhook, useWebhookEventTypes } from '../hooks/useWebhooks';
 import './WebhookCreatePage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function WebhookEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -93,9 +94,9 @@ export function WebhookEditPage() {
 
   return (
     <div className="webhook-create-page">
-      <button type="button" className="btn-back" onClick={() => navigate(`/webhooks/${id}`)}>
+      <Button variant="ghost" onClick={() => navigate(`/webhooks/${id}`)}>
         ← Back to Webhook
-      </button>
+      </Button>
       <h1>Edit webhook</h1>
 
       <form className="webhook-create-form" onSubmit={handleSubmit}>
@@ -157,16 +158,14 @@ export function WebhookEditPage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => navigate(`/webhooks/${id}`)}
-          >
+          <Button
+ variant="secondary"
+ onClick={() => navigate(`/webhooks/${id}`)}>
             Cancel
-          </button>
-          <button type="submit" className="btn-primary" disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? 'Saving...' : 'Save'}
-          </button>
+          </Button>
+          <Button type="submit" variant="primary" loading={updateMutation.isPending}>
+            Save
+          </Button>
         </div>
       </form>
     </div>

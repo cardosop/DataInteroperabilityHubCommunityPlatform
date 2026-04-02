@@ -21,7 +21,7 @@ test.describe('UC-MKT-004: Access Entitlements', () => {
       const user = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, user, '/marketplace/entitlements', {
         timeout: 90000,
-        contentSelector: '.entitlement-list-page, .empty-state, .error-display',
+        contentSelector: '.entitlement-list-page, .empty-state',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');

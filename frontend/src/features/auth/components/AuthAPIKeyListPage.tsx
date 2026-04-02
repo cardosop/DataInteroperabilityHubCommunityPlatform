@@ -9,7 +9,7 @@ import type { ApiError } from '../../../shared/types/api';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { useToast } from '../../../shared/components/Toast';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import type {
   AuthAPIKey,
   AuthAPIKeyCreate,
@@ -18,6 +18,7 @@ import type {
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { authService } from '../services/authService';
 import './AuthAPIKeyListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function AuthAPIKeyListPage() {
   const [keys, setKeys] = useState<AuthAPIKey[]>([]);
@@ -52,9 +53,11 @@ export function AuthAPIKeyListPage() {
     }
   };
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     loadKeys();
   }, [page]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,7 +106,7 @@ export function AuthAPIKeyListPage() {
   };
 
   if (loading && keys.length === 0) {
-    return <LoadingSpinner message="Loading API keys..." />;
+    return <ListPageSkeleton />;
   }
 
   return (
@@ -115,9 +118,9 @@ export function AuthAPIKeyListPage() {
             Programmatic login keys for API access. These are <strong>not</strong> BaaS API keys.
           </p>
         </div>
-        <button type="button" className="btn-primary" onClick={() => setCreateModalOpen(true)}>
+        <Button variant="primary" onClick={() => setCreateModalOpen(true)}>
           Create API key
-        </button>
+        </Button>
       </div>
 
       {error && (
@@ -152,14 +155,12 @@ export function AuthAPIKeyListPage() {
                   <td>{key.last_used_at ? new Date(key.last_used_at).toLocaleString() : '—'}</td>
                   <td>{new Date(key.created_at).toLocaleString()}</td>
                   <td>
-                    <button
-                      type="button"
-                      className="btn-delete"
-                      onClick={() => handleDeleteClick(key.id)}
-                      disabled={deletingId === key.id}
-                    >
+                    <Button
+ variant="danger" size="sm"
+ onClick={() => handleDeleteClick(key.id)}
+ disabled={deletingId === key.id}>
                       {deletingId === key.id ? 'Deleting...' : 'Delete'}
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -206,9 +207,9 @@ export function AuthAPIKeyListPage() {
                   </button>
                 </div>
                 <div className="auth-api-key-modal-actions">
-                  <button type="button" className="btn-primary" onClick={handleCloseCreated}>
+                  <Button variant="primary" onClick={handleCloseCreated}>
                     Done
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : (
@@ -270,16 +271,14 @@ export function AuthAPIKeyListPage() {
                     </p>
                   )}
                   <div className="auth-api-key-modal-actions">
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => setCreateModalOpen(false)}
-                    >
+                    <Button
+ variant="secondary"
+ onClick={() => setCreateModalOpen(false)}>
                       Cancel
-                    </button>
-                    <button type="submit" className="btn-primary" disabled={createSubmitting}>
+                    </Button>
+                    <Button type="submit" variant="primary" disabled={createSubmitting}>
                       {createSubmitting ? 'Creating...' : 'Create'}
-                    </button>
+                    </Button>
                   </div>
                 </form>
               </>

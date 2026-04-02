@@ -14,7 +14,8 @@ test.describe('Feature: Workflows', () => {
       await page.goto('/');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
-      expect(page.url()).toBeDefined();
+      const url = page.url();
+      expect(url).toMatch(/\/(login|jobs|assets|403|unavailable)?$/);
     });
   });
 

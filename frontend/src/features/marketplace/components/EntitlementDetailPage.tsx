@@ -8,6 +8,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useEntitlement, useRevokeEntitlement } from '../hooks/useEntitlements';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
@@ -15,6 +16,7 @@ import { EntitlementStatus } from '../../../shared/types/marketplace';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import './EntitlementDetailPage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function EntitlementDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -37,7 +39,7 @@ export function EntitlementDetailPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading entitlement..." />;
+    return <DetailPageSkeleton />;
   }
 
   if (error) {
@@ -53,9 +55,9 @@ export function EntitlementDetailPage() {
   return (
     <div className="entitlement-detail-page">
       <div className="entitlement-detail-header">
-        <button onClick={() => navigate('/marketplace/entitlements')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/marketplace/entitlements')} variant="ghost">
           ← Back to Entitlements
-        </button>
+        </Button>
         <div className="entitlement-detail-title-section">
           <h1>Entitlement {entitlement.id.slice(0, 8)}</h1>
           <span className={`entitlement-status entitlement-status-${entitlement.status.toLowerCase()}`}>
@@ -158,12 +160,10 @@ export function EntitlementDetailPage() {
         <div className="entitlement-detail-sidebar">
           <div className="entitlement-actions-card">
             {canRevoke && (
-              <button
-                className="btn-secondary btn-large"
-                onClick={handleRevokeClick}
-                disabled={revokeMutation.isPending}
-                type="button"
-              >
+              <Button
+ variant="secondary" className="btn-large"
+ onClick={handleRevokeClick}
+ loading={revokeMutation.isPending}>
                 {revokeMutation.isPending ? (
                   <>
                     <LoadingSpinner size="small" />
@@ -172,7 +172,7 @@ export function EntitlementDetailPage() {
                 ) : (
                   'Revoke Entitlement'
                 )}
-              </button>
+              </Button>
             )}
             {entitlement.status === EntitlementStatus.ACTIVE && (
               <div className="entitlement-success-message">

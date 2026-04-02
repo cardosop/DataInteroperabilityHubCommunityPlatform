@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { useJobs } from '../hooks/useJobs';
 import './JobListPage.css';
 
@@ -19,7 +19,7 @@ export function JobListPage() {
     ordering: '-created_at',
   });
 
-  if (isLoading) return <LoadingSpinner message="Loading jobs..." />;
+  if (isLoading) return <ListPageSkeleton />;
   if (error)
     return <ErrorDisplay error={error} title="Failed to load jobs" onRetry={() => refetch()} />;
   if (!data || data.results.length === 0) {

@@ -7,10 +7,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import type { ScheduledIngestionStatus } from '../../../shared/types/scheduledIngestion';
 import { useScheduledIngestions } from '../hooks/useScheduledIngestion';
 import './ScheduledIngestionListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 const STATUS_OPTIONS: { value: '' | ScheduledIngestionStatus; label: string }[] = [
   { value: '', label: 'All' },
@@ -38,7 +39,7 @@ export function ScheduledIngestionListPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading scheduled ingestions..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -58,13 +59,11 @@ export function ScheduledIngestionListPage() {
     <div className="scheduled-ingestion-list-page" data-testid="scheduled-ingestion-list-page">
       <div className="scheduled-ingestion-list-header">
         <h1>Scheduled Ingestion</h1>
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={() => navigate('/scheduled-ingestions/create')}
-        >
+        <Button
+ variant="primary"
+ onClick={() => navigate('/scheduled-ingestions/create')}>
           Create Schedule
-        </button>
+        </Button>
       </div>
 
       <div className="scheduled-ingestion-list-filters">
@@ -142,28 +141,24 @@ export function ScheduledIngestionListPage() {
               {count} result{count !== 1 ? 's' : ''}
             </span>
             {data?.next && (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  // TODO: Implement pagination
-                  console.log('Next page');
-                }}
-              >
+              <Button
+ variant="secondary"
+ onClick={() => {
+ // TODO: Implement pagination
+ console.log('Next page');
+ }}>
                 Next
-              </button>
+              </Button>
             )}
             {data?.previous && (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  // TODO: Implement pagination
-                  console.log('Previous page');
-                }}
-              >
+              <Button
+ variant="secondary"
+ onClick={() => {
+ // TODO: Implement pagination
+ console.log('Previous page');
+ }}>
                 Previous
-              </button>
+              </Button>
             )}
           </div>
         </>

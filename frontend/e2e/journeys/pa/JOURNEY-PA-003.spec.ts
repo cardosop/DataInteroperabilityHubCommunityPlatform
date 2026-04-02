@@ -6,10 +6,10 @@
  */
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getPlatformAdminUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
+import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-PA-003: Configure Platform Settings', () => {
-  test.setTimeout(180000);
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('platform admin can navigate to tenant settings and save a change', async ({ page }) => {

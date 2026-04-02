@@ -14,7 +14,7 @@ import { getExternalDeveloperUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DEV-007: Build Custom Connector', () => {
-  test.setTimeout(300000); // 5 min: persona login + integrations under parallel E2E load
+  test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('integrations connections list loads', async ({ page }) => {

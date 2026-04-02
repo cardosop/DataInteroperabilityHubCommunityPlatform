@@ -21,7 +21,7 @@ test.describe('UC-MKT-001: Publish Asset to Marketplace', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/marketplace/publish', {
         timeout: 90000,
-        contentSelector: '.listing-publish-page, .error-display, h1',
+        contentSelector: '.listing-publish-page, h1',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');

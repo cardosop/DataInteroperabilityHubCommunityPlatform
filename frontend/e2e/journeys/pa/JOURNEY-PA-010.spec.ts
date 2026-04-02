@@ -17,7 +17,7 @@ import {
 } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-PA-010: Manage ODPS Products', () => {
-  test.setTimeout(180000); // 3 min: visible/slowMo makes ODPS list load slow
+  test.setTimeout(90000);
 
   test.describe('Success', () => {
     test('ODPS list loads', async ({ page }) => {

@@ -12,6 +12,7 @@ import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import type { AssetVisibility } from '../../../shared/types/assets';
 import './AssetCreatePage.css';
+import { Button } from '../../../shared/components/Button';
 
 export function AssetCreatePage() {
   const navigate = useNavigate();
@@ -72,9 +73,9 @@ export function AssetCreatePage() {
   return (
     <div className="asset-create-page">
       <div className="asset-create-header">
-        <button onClick={() => navigate('/assets')} className="btn-back" type="button">
+        <Button onClick={() => navigate('/assets')} variant="ghost">
           ← Back to Assets
-        </button>
+        </Button>
         <h1>Create Asset</h1>
       </div>
 
@@ -176,19 +177,16 @@ export function AssetCreatePage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            onClick={() => navigate('/assets')}
-            className="btn-secondary"
-            disabled={createMutation.isPending}
-          >
+          <Button
+ onClick={() => navigate('/assets')}
+ variant="secondary"
+ loading={createMutation.isPending}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={createMutation.isPending}
-          >
+          </Button>
+          <Button
+ type="submit"
+ variant="primary"
+ loading={createMutation.isPending}>
             {createMutation.isPending ? (
               <>
                 <LoadingSpinner size="small" />
@@ -197,7 +195,7 @@ export function AssetCreatePage() {
             ) : (
               'Create Asset'
             )}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

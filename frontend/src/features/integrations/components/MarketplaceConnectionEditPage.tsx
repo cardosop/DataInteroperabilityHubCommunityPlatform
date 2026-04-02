@@ -13,6 +13,7 @@ import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { MarketplaceType } from '../../../shared/types/integrations';
 import './MarketplaceConnectionCreatePage.css';
+import { Button } from '../../../shared/components/Button';
 
 const MARKETPLACE_TYPE_OPTIONS = Object.entries(MarketplaceType).map(([key, value]) => ({
   value,
@@ -57,7 +58,7 @@ export function MarketplaceConnectionEditPage() {
     }
     try {
       JSON.parse(formData.config_json || '{}');
-    } catch (e) {
+    } catch {
       newErrors.config_json = 'Config must be valid JSON';
     }
     setErrors(newErrors);
@@ -96,13 +97,11 @@ export function MarketplaceConnectionEditPage() {
   return (
     <div className="marketplace-connection-create-page marketplace-connection-edit-page">
       <div className="marketplace-connection-create-header">
-        <button
-          onClick={() => navigate(`/integrations/connections/${id}`)}
-          className="btn-back"
-          type="button"
-        >
+        <Button
+ onClick={() => navigate(`/integrations/connections/${id}`)}
+ variant="ghost">
           ← Back to Connection
-        </button>
+        </Button>
         <h1>Edit Marketplace Connection</h1>
       </div>
 
@@ -173,21 +172,18 @@ export function MarketplaceConnectionEditPage() {
         </div>
 
         <div className="form-actions">
-          <button
-            type="button"
-            onClick={() => navigate(`/integrations/connections/${id}`)}
-            className="btn-secondary"
-            disabled={updateMutation.isPending}
-          >
+          <Button
+ onClick={() => navigate(`/integrations/connections/${id}`)}
+ variant="secondary"
+ loading={updateMutation.isPending}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={updateMutation.isPending}
-          >
-            {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-          </button>
+          </Button>
+          <Button
+ type="submit"
+ variant="primary"
+ loading={updateMutation.isPending}>
+            Save Changes
+          </Button>
         </div>
       </form>
     </div>

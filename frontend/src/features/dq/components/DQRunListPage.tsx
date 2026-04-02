@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDQRuns, useCreateDQRun } from '../hooks/useDQ';
-import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { useToast } from '../../../shared/components/Toast';
@@ -16,6 +16,7 @@ import { DatasetPicker } from '../../../shared/components/pickers/DatasetPicker'
 import { FilePicker } from '../../../shared/components/pickers/FilePicker';
 import type { DQRunStatus } from '../../../shared/types/dq';
 import './DQRunListPage.css';
+import { Button } from '../../../shared/components/Button';
 
 const VALID_PROFILE_KEYS = ['intake_basic_gx', 'intake_basic_soda'];
 
@@ -129,12 +130,12 @@ export function DQRunListPage() {
           </div>
           {createError && <p className="dq-create-error" role="alert">{createError}</p>}
           <div className="dq-create-modal-actions">
-            <button type="button" className="btn-secondary" onClick={() => setCreateModalOpen(false)}>
+            <Button variant="secondary" onClick={() => setCreateModalOpen(false)}>
               Cancel
-            </button>
-            <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating...' : 'Create'}
-            </button>
+            </Button>
+            <Button type="submit" variant="primary" loading={createMutation.isPending}>
+              Create
+            </Button>
           </div>
         </form>
       </div>
@@ -142,7 +143,7 @@ export function DQRunListPage() {
   );
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading DQ runs..." />;
+    return <ListPageSkeleton />;
   }
 
   if (error) {
@@ -154,14 +155,12 @@ export function DQRunListPage() {
       <div className="dq-run-list-page">
         <div className="dq-run-list-header">
           <h1>Data Quality Runs</h1>
-          <button
-            type="button"
-            className="btn-primary dq-create-run-btn"
-            data-testid="btn-create-dq-run"
-            onClick={() => setCreateModalOpen(true)}
-          >
+          <Button
+ variant="primary" className="dq-create-run-btn"
+ data-testid="btn-create-dq-run"
+ onClick={() => setCreateModalOpen(true)}>
             Create DQ run
-          </button>
+          </Button>
         </div>
         <EmptyState
           title="No DQ runs found"
@@ -177,14 +176,12 @@ export function DQRunListPage() {
       <div className="dq-run-list-header">
         <h1>Data Quality Runs</h1>
         <div className="dq-run-list-header-actions">
-          <button
-            type="button"
-            className="btn-primary dq-create-run-btn"
-            data-testid="btn-create-dq-run"
-            onClick={() => setCreateModalOpen(true)}
-          >
+          <Button
+ variant="primary" className="dq-create-run-btn"
+ data-testid="btn-create-dq-run"
+ onClick={() => setCreateModalOpen(true)}>
             Create DQ run
-          </button>
+          </Button>
           <div className="dq-run-list-filters">
           <select
             value={statusFilter}

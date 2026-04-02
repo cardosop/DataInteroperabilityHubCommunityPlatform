@@ -21,7 +21,7 @@ test.describe('UC-COMP-001: Run Compliance Scan', () => {
       const user = await getComplianceOfficerUser();
       await loginAndNavigateToRoute(page, user, '/compliance', {
         timeout: 60000,
-        contentSelector: '.compliance-run-list-page, .empty-state, .loading-spinner-container',
+        contentSelector: '.compliance-run-list-page, .empty-state',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
@@ -61,7 +61,7 @@ test.describe('UC-COMP-001: Run Compliance Scan', () => {
       const user = await getComplianceOfficerUser();
       await loginAndNavigateToRoute(page, user, '/compliance', {
         timeout: 60000,
-        contentSelector: '.compliance-run-list-page, .empty-state, .loading-spinner-container',
+        contentSelector: '.compliance-run-list-page, .empty-state',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
