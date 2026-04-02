@@ -33,9 +33,10 @@ htmlcov/
 *~
 
 # Environment
-.env
-.env.local
-.env.*.local
+.env*
+
+# Secrets
+*.pem
 
 # Git
 .git/
@@ -57,3 +58,30 @@ npm-debug.log*
 # Docker
 docker-compose.override.yml
 
+# Local environments and CI artifacts — never COPY'd into images but default
+# compose `context: .` still hashes/sends them to the daemon (multi‑GB on dev machines).
+venv/
+.venv/
+venv-*/
+**/venv/
+test_reports_comprehensive/
+test_reports_integration/
+htmlcov/
+htmlcov-unit/
+awscliv2.zip
+backups/
+coverage.xml
+# Local AWS CLI bundle / artifacts — not COPY'd into images
+aws/
+
+# Terraform — provider/plugin cache under each module (often 500MB+ each). .tf files stay; tests
+# e.g. hub/apps/search/tests/test_fts_search.py read infrastructure/terraform/s3/main.tf.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+
+# Type-check / misc local caches (not needed in API/worker images)
+.mypy_cache/
+deployment_logs/
+test-results*.txt
+frontend/e2e-results*.txt

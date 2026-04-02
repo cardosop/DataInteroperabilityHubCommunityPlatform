@@ -1,9 +1,21 @@
-.PHONY: help setup install test lint format clean docker-up docker-down docker-logs migrate createsuperuser runserver
+.PHONY: help setup install test test-ci test-ci-backend test-ci-frontend test-ci-lint lint format clean docker-up docker-down docker-logs migrate createsuperuser runserver dev-env
 
 help: ## Show this help message
 	@echo "Interoperable Data Hub MVP - Makefile Commands"
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+dev-env: ## Generate .env.dev from .env.dev.template with random per-developer passwords
+	@if [ -f .env.dev ]; then \
+		cp .env.dev .env.dev.bak && echo "Backed up existing .env.dev to .env.dev.bak"; \
+	fi
+	@cp .env.dev.template .env.dev
+	@sed -i "s/__POSTGRES_PASSWORD__/$$(openssl rand -hex 8)/g" .env.dev
+	@sed -i "s/__MINIO_ROOT_PASSWORD__/$$(openssl rand -hex 8)/g" .env.dev
+	@sed -i "s/__FUSEKI_ADMIN_PASSWORD__/$$(openssl rand -hex 8)/g" .env.dev
+	@sed -i "s/__SECRET_KEY__/$$(openssl rand -hex 32)/g" .env.dev
+	@sed -i "s/__JWT_SECRET_KEY__/$$(openssl rand -hex 32)/g" .env.dev
+	@echo "Generated .env.dev with random passwords. Review before running docker compose."
 
 setup: ## Initial setup (install dependencies, create venv)
 	@./setup.sh
@@ -24,6 +36,12 @@ docker-up-all: ## Start all Docker services (infrastructure + microservices + AP
 	docker compose up -d postgres redis minio fuseki \
 		datacontract-service dq-service compliance-service semantic-service \
 		api-service worker-service
+
+mvp-up: ## Start core stack with MVP_MODE (compose overlay; build frontend for VITE_MVP_MODE)
+	docker compose -f docker-compose.yml -f docker-compose.mvp.yml up -d --build \
+		postgres redis-cache redis-queue redis-events redis-channels minio fuseki \
+		datacontract-service dq-service compliance-service semantic-service jaeger \
+		api-service worker-service frontend traefik
 
 docker-down: ## Stop all Docker services
 	docker compose down
@@ -48,6 +66,27 @@ runserver: ## Run Django development server
 
 test: ## Run tests
 	pytest
+
+# ── CI-parity targets ────────────────────────────────────────────────
+# Mirror the exact commands from .github/workflows/ci.yml so
+# "make test-ci" locally produces the same result as CI.
+
+test-ci: test-ci-lint test-ci-backend test-ci-frontend ## Run full CI suite locally (lint + backend + frontend)
+
+test-ci-lint: ## Run linters (same as CI lint job)
+	ruff check . --output-format=github
+	ruff format --check .
+
+test-ci-backend: ## Run backend tests in Docker (same as CI test-backend job)
+	docker compose -f docker-compose.test.yml up -d --build --wait
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -m pytest hub/apps/ hub/tests/test_mvp_mode.py --reuse-db -x -q --timeout=300; \
+	rc=$$?; \
+	docker compose -f docker-compose.test.yml down -v --remove-orphans; \
+	exit $$rc
+
+test-ci-frontend: ## Run frontend unit tests (same as CI test-frontend-unit job)
+	cd frontend && npm ci && npx vitest --run
 
 test-api-client-usage: ## Run API client usage search tests (validates JSON report structure)
 	@echo "Running API client usage search tests..."

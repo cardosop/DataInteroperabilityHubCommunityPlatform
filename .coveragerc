@@ -5,9 +5,10 @@
 source = hub
 # Fragment files that are not valid standalone modules (class-body only); omit to avoid "couldn't parse"
 omit =
-    hub/apps/integrations/services_mapping_methods.py
-    hub/apps/integrations/services_sync_methods.py
     hub/apps/notifications/business_rules_template_validation.py
+    # Phase 91: legacy backup files (kept for rollback reference only)
+    hub/apps/integrations/_services_legacy.py
+    hub/apps/virtualization/_services_legacy.py
 
 [report]
 exclude_lines =

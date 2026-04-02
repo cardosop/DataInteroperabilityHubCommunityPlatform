@@ -1,0 +1,14 @@
+{
+  "ignorePatterns": [
+    { "pattern": "^https?://localhost" },
+    { "pattern": "^https?://prometheus:" },
+    { "pattern": "^https?://grafana:" },
+    { "pattern": "^https?://fuseki:" },
+    { "pattern": "^https?://loki:" },
+    { "pattern": "^https?://\\$" },
+    { "pattern": "^https://meshant-internal.example.com" }
+  ],
+  "timeout": "10s",
+  "retryOn429": true,
+  "aliveStatusCodes": [200, 206, 301, 302]
+}

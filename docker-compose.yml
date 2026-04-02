@@ -5,11 +5,11 @@ services:
     container_name: hub-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-hub}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-hub}
       POSTGRES_INITDB_ARGS: "-E UTF8"
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -26,14 +26,51 @@ services:
       -c checkpoint_flush_after=256kB
       -c wal_compression=on
       -c max_connections=200
+      -c wal_level=replica
+      -c max_wal_senders=3
+      -c wal_keep_size=256MB
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hub}"]
       interval: 30s
       timeout: 10s
-      retries: 30
-      start_period: 1800s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     networks:
       - hub-net
+
+  # PostgreSQL Read Replica (Phase 17.5)
+  # Streaming-replication slave of the 'postgres' primary via bitnami/postgresql.
+  # Django PrimaryReplicaRouter routes reads for assets/contracts/marketplace/
+  # search to this replica when DATABASE_REPLICA_URL is set.
+  # Opt-in profile: docker compose --profile replica up postgres-replica
+  # For production use the AWS RDS Multi-AZ replica endpoint instead.
+  postgres-replica:
+    image: bitnami/postgresql:16
+    container_name: hub-postgres-replica
+    environment:
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_MASTER_HOST: postgres
+      POSTGRESQL_MASTER_PORT_NUMBER: "5432"
+      POSTGRESQL_REPLICATION_USER: replicator
+      POSTGRESQL_REPLICATION_PASSWORD: ${POSTGRES_REPLICATION_PASSWORD:-replicator}
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hub}"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - hub-net
+    profiles:
+      - replica
 
   # Redis Cache Instance - Response caching, contract caching, lineage caching
   redis-cache:
@@ -50,7 +87,7 @@ services:
       --timeout ${REDIS_TIMEOUT:-300}
       --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
     ports:
-      - "${REDIS_CACHE_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_CACHE_PORT:-6379}:6379"
     volumes:
       - redis-cache-data:/data
     healthcheck:
@@ -58,6 +95,10 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128m
     networks:
       - hub-net
     environment:
@@ -78,7 +119,7 @@ services:
       --timeout ${REDIS_TIMEOUT:-300}
       --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
     ports:
-      - "${REDIS_QUEUE_PORT:-6380}:6379"
+      - "127.0.0.1:${REDIS_QUEUE_PORT:-6380}:6379"
     volumes:
       - redis-queue-data:/data
     healthcheck:
@@ -86,6 +127,10 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128m
     networks:
       - hub-net
     environment:
@@ -106,7 +151,7 @@ services:
       --timeout ${REDIS_TIMEOUT:-300}
       --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
     ports:
-      - "${REDIS_EVENTS_PORT:-6381}:6379"
+      - "127.0.0.1:${REDIS_EVENTS_PORT:-6381}:6379"
     volumes:
       - redis-events-data:/data
     healthcheck:
@@ -114,6 +159,10 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128m
     networks:
       - hub-net
     environment:
@@ -132,7 +181,7 @@ services:
       --timeout ${REDIS_TIMEOUT:-300}
       --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
     ports:
-      - "${REDIS_CHANNELS_PORT:-6382}:6379"
+      - "127.0.0.1:${REDIS_CHANNELS_PORT:-6382}:6379"
     volumes:
       - redis-channels-data:/data
     healthcheck:
@@ -140,6 +189,10 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128m
     networks:
       - hub-net
     environment:
@@ -156,7 +209,7 @@ services:
       POSTGRES_DB: ${BAAS_POSTGRES_DB:-baas}
       POSTGRES_INITDB_ARGS: "-E UTF8"
     ports:
-      - "${BAAS_POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${BAAS_POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres-baas-data:/var/lib/postgresql/data
     command: postgres -c max_connections=100
@@ -175,7 +228,7 @@ services:
     container_name: hub-redis-baas
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
-      - "${BAAS_REDIS_PORT:-6383}:6379"
+      - "127.0.0.1:${BAAS_REDIS_PORT:-6383}:6379"
     volumes:
       - redis-baas-data:/data
     healthcheck:
@@ -188,7 +241,7 @@ services:
 
   # Redis Exporter for Cache Instance
   redis-exporter-cache:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.66.0
     container_name: hub-redis-exporter-cache
     command:
       - '--redis.addr=redis://redis-cache:6379'
@@ -200,11 +253,19 @@ services:
     depends_on:
       redis-cache:
         condition: service_healthy
-    # No healthcheck: oliver006/redis_exporter:latest is scratch (no shell/true), so CMD true fails. Status shows "Up" only.
+    # No healthcheck: oliver006/redis_exporter:v1.66.0 is scratch (no shell/true), so CMD true fails. Status shows "Up" only.
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+        reservations:
+          memory: 32M
+          cpus: '0.05'
 
   # Redis Exporter for Queue Instance
   redis-exporter-queue:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.66.0
     container_name: hub-redis-exporter-queue
     command:
       - '--redis.addr=redis://redis-queue:6379'
@@ -216,10 +277,18 @@ services:
     depends_on:
       redis-queue:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+        reservations:
+          memory: 32M
+          cpus: '0.05'
 
   # Redis Exporter for Events Instance
   redis-exporter-events:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.66.0
     container_name: hub-redis-exporter-events
     command:
       - '--redis.addr=redis://redis-events:6379'
@@ -231,10 +300,18 @@ services:
     depends_on:
       redis-events:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+        reservations:
+          memory: 32M
+          cpus: '0.05'
 
   # Redis Exporter for Channels Instance
   redis-exporter-channels:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.66.0
     container_name: hub-redis-exporter-channels
     command:
       - '--redis.addr=redis://redis-channels:6379'
@@ -246,18 +323,26 @@ services:
     depends_on:
       redis-channels:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+        reservations:
+          memory: 32M
+          cpus: '0.05'
 
   # MinIO (S3-compatible storage)
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-02-28T09-55-16Z
     container_name: hub-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
     ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio-data:/data
     healthcheck:
@@ -268,20 +353,52 @@ services:
     networks:
       - hub-net
 
+  # ClamAV daemon (Phase 203 — malware scanning for uploaded files).
+  # Needs ~2GB RAM while loading signature DB; persist DB to avoid long cold starts.
+  clamav:
+    image: clamav/clamav:1.3
+    container_name: hub-clamav
+    ports:
+      - "127.0.0.1:${CLAMAV_PORT:-3310}:3310"
+    volumes:
+      - clamav-db:/var/lib/clamav
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 1g
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1',3310)); s.close()\"",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - hub-net
+
   # Apache Jena Fuseki (Triple Store)
   fuseki:
-    image: stain/jena-fuseki:latest
+    image: stain/jena-fuseki:4.8.0
     container_name: hub-fuseki
     environment:
       FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
-      ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:-admin}
+      ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:?Set FUSEKI_ADMIN_PASSWORD in .env}
       FUSEKI_ENABLE_UPDATE: "true"
+      # Phase 27: increased heap for named-graph index growth + SHACL validation
+      JVM_ARGS: "-Xmx2g -Xms512m -XX:+UseG1GC"
     ports:
-      - "${FUSEKI_PORT:-3030}:3030"
+      - "127.0.0.1:${FUSEKI_PORT:-3030}:3030"
     volumes:
       - fuseki-data:/fuseki
+      # Phase 27: canonical config from infrastructure/fuseki/
+      - ./infrastructure/fuseki/config.ttl:/fuseki/configuration/hub.ttl:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3030/$/ping"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3030/$$/ping | grep -q '\"status\"'"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -299,7 +416,7 @@ services:
     environment:
       FUSEKI_URL: http://fuseki:3030
       FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
-      FUSEKI_ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:-admin}
+      FUSEKI_ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:?Set FUSEKI_ADMIN_PASSWORD in .env}
       HUB_DOMAIN: ${HUB_DOMAIN:-hub.example.com}
     volumes:
       - ./services/semantic-service:/app:ro
@@ -316,6 +433,10 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   # API Service (Django)
   api-service:
@@ -393,6 +514,10 @@ services:
       - REDIS_CHANNELS_URL=redis://redis-channels:6379/0
       # Legacy REDIS_URL for backward compatibility
       - REDIS_URL=redis://redis-cache:6379/0
+      # ClamAV (Phase 203 — file malware scan; RQ job on worker reads from MinIO and talks to clamd)
+      - CLAMAV_ENABLED=${CLAMAV_ENABLED:-true}
+      - CLAMAV_HOST=${CLAMAV_HOST:-clamav}
+      - CLAMAV_PORT=${CLAMAV_PORT:-3310}
       # BaaS dedicated instances (optional; leave unset to use main DB/Redis). See docs/runbooks/BAAS_INFRASTRUCTURE.md
       - BAAS_DATABASE_URL=${BAAS_DATABASE_URL:-}
       - BAAS_REDIS_URL=${BAAS_REDIS_URL:-}
@@ -400,6 +525,10 @@ services:
       - PREFECT_INTEGRATION_SERVICE_URL=${PREFECT_INTEGRATION_SERVICE_URL:-http://prefect-integration-service:8084}
       # Compliance Service URL (explicit so api-service can reach compliance-service by Docker network hostname)
       - COMPLIANCE_SERVICE_URL=http://compliance-service:8082
+      # Phase 26: Supported spec versions
+      - ODCS_VERSIONS_SUPPORTED=2.2.2,3.0.0,3.0.1,3.0.2,3.1.0
+      - ODPS_VERSIONS_SUPPORTED=1.x,2.x,3.x,4.0,4.1,4.2,bitol-0.9.0,bitol-1.0.0
+      - HUBCONTRACT_BACKFILL_BATCH_SIZE=200
       # E2E: set RATE_LIMIT_E2E_RELAX=true when running Playwright E2E against this API
       # so auth rate limit uses 20/min (platform max) instead of 5/min
       - RATE_LIMIT_E2E_RELAX=${RATE_LIMIT_E2E_RELAX:-false}
@@ -416,6 +545,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      clamav:
+        condition: service_healthy
       jaeger:
         condition: service_healthy
       # Test marketplace instances (optional - mock-server has no healthcheck)
@@ -430,6 +561,10 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   # MailHog (local email capture for dev/test)
   mailhog:
@@ -460,6 +595,12 @@ services:
         # Set to an absolute URL only for non-nginx deployments (e.g. CDN-hosted SPA).
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
         VITE_WS_BASE_URL: ${VITE_WS_BASE_URL:-}
+        VITE_MVP_MODE: ${VITE_MVP_MODE:-}
+        VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-}
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+        NPM_USE_PUBLIC_DNS: ${NPM_USE_PUBLIC_DNS:-0}
     container_name: hub-frontend
     ports:
       - "${FRONTEND_PORT:-3000}:80"
@@ -542,8 +683,14 @@ services:
       - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE:-}
       # Mock server for testing marketplace connectors
       - MOCK_SERVER_URL=${MOCK_SERVER_URL:-http://mock-server:8080}
+      # ClamAV (Phase 203 — malware scan jobs on job_default)
+      - CLAMAV_ENABLED=${CLAMAV_ENABLED:-true}
+      - CLAMAV_HOST=${CLAMAV_HOST:-clamav}
+      - CLAMAV_PORT=${CLAMAV_PORT:-3310}
       # Compliance Service URL (explicit so worker can reach compliance-service by Docker network hostname)
       - COMPLIANCE_SERVICE_URL=http://compliance-service:8082
+      # Phase 26: backfill batch size for renormalize_contracts_v310 task
+      - HUBCONTRACT_BACKFILL_BATCH_SIZE=200
     container_name: hub-worker
     # Process all priority queues: job_critical (HIGH) → job_default (NORMAL) → job_low (LOW)
     # Worker polls queues in priority order with reserved slots for HIGH priority
@@ -569,6 +716,8 @@ services:
         condition: service_healthy
       jaeger:
         condition: service_healthy
+      clamav:
+        condition: service_healthy
       compliance-service:
         condition: service_healthy
       # Test marketplace instances (optional - mock-server has no healthcheck)
@@ -582,68 +731,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-
-  # Workflow Engine Service
-  workflow-engine-service:
-    build:
-      context: .
-      dockerfile: services/workflow-engine/Dockerfile
-    environment:
-      # Database: use .env.dev (no override) so credentials match api-service and postgres when run with --env-file .env.dev
-      # Redis configuration (use same service names as api-service; no "redis" service exists)
-      - REDIS_CACHE_URL=redis://redis-cache:6379/0
-      - REDIS_QUEUE_URL=redis://redis-queue:6379/0
-      - REDIS_EVENTS_URL=redis://redis-events:6379/0
-      - REDIS_CHANNELS_URL=redis://redis-channels:6379/0
-      - REDIS_URL=redis://redis-cache:6379/0
-      # Workflow engine: app listens on 8088 inside container; host port is in ports (default 8098)
-      # Do not set WORKFLOW_ENGINE_HEALTH_PORT in env so main.py uses default 8088 for /healthz
-      - WORKFLOW_ENGINE_POLL_INTERVAL=${WORKFLOW_ENGINE_POLL_INTERVAL:-5}
-      - WORKFLOW_ENGINE_BATCH_SIZE=${WORKFLOW_ENGINE_BATCH_SIZE:-10}
-      # Django settings
-      - DJANGO_SETTINGS_MODULE=hub.settings
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
-      - DEBUG=${DEBUG:-False}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
-      # OpenTelemetry configuration
-      - OPENTELEMETRY_ENABLED=${OPENTELEMETRY_ENABLED:-true}
-      - OPENTELEMETRY_METRICS_ENABLED=${OPENTELEMETRY_METRICS_ENABLED:-true}
-      - JAEGER_AGENT_HOST=${JAEGER_AGENT_HOST:-jaeger}
-      - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - APP_VERSION=${APP_VERSION:-1.0.0}
-    container_name: hub-workflow-engine
-    # Process workflows continuously (polls for DRAFT and RUNNING workflows)
-    # Uses services/workflow-engine/main.py which includes health check HTTP server on port 8088
-    command: python services/workflow-engine/main.py --poll-interval ${WORKFLOW_ENGINE_POLL_INTERVAL:-5} --batch-size ${WORKFLOW_ENGINE_BATCH_SIZE:-10}
-    ports:
-      - "${WORKFLOW_ENGINE_HEALTH_PORT:-8098}:8088"  # Health check endpoints (/healthz, /ready, /metrics)
-    volumes:
-      - .:/app
-    env_file:
-      - .env.dev
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis-cache:
-        condition: service_healthy
-      redis-queue:
-        condition: service_healthy
-      redis-events:
-        condition: service_healthy
-      redis-channels:
-        condition: service_healthy
-      jaeger:
-        condition: service_healthy
-    networks:
-      - hub-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8088/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 45s
-
+    deploy:
+      resources:
+        limits:
+          memory: 512m
   # DataContract CLI Service
   datacontract-service:
     build:
@@ -654,6 +745,9 @@ services:
       - "${DATACONTRACT_PORT:-8080}:8080"
     networks:
       - hub-net
+    environment:
+      - ODCS_VERSIONS_SUPPORTED=2.2.2,3.0.0,3.0.1,3.0.2,3.1.0
+      - ODPS_VERSIONS_SUPPORTED=1.x,2.x,3.x,4.0,4.1,4.2,bitol-0.9.0,bitol-1.0.0
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -675,6 +769,61 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    environment:
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+      # shared/auth.py calls _load_key_at_startup() at module import time and
+      # raises ValueError immediately if this var is absent — the container
+      # crashes before accepting connections.  A predictable dev default is
+      # acceptable here; staging/production must inject the real secret.
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-api-key}
+      # Phase 19.14.1 — async scan worker configuration
+      # REDIS_QUEUE_URL must point to the same Redis instance that the hub
+      # worker reads from (redis-queue:6379/0) so jobs enqueued by the API
+      # are picked up by the same broker the compliance-service monitors.
+      REDIS_QUEUE_URL: redis://redis-queue:6379/0
+      # Number of concurrent threads used for in-process PII scans.
+      # Mirrors COMPLIANCE_WORKER_THREADS; set to 4 for dev parity with test.
+      COMPLIANCE_SCANNER_WORKERS: "4"
+    depends_on:
+      redis-queue:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  # Compliance RQ Worker — Phase 19.14.1
+  # Processes async scan jobs from the 'compliance-scan' Redis queue.
+  # Jobs are enqueued by compliance-service's POST /scan-file-async endpoint
+  # and results are stored in Redis for retrieval via GET /scan-result/{job_id}.
+  compliance-rq-worker:
+    build:
+      context: .
+      dockerfile: services/compliance-service/Dockerfile
+    container_name: hub-compliance-rq-worker
+    command: ["rq", "worker", "compliance-scan", "--url", "redis://redis-queue:6379/0"]
+    networks:
+      - hub-net
+    environment:
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-api-key}
+      REDIS_QUEUE_URL: redis://redis-queue:6379/0
+      COMPLIANCE_WORKER_THREADS: "4"
+    depends_on:
+      redis-queue:
+        condition: service_healthy
+      compliance-service:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
 
   # DQ Service
   dq-service:
@@ -694,6 +843,10 @@ services:
       timeout: 10s
       retries: 5
       start_period: 45s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   # Prefect Server
   prefect-server:
@@ -757,60 +910,48 @@ services:
     networks:
       - hub-net
 
-  # Prefect Workers
+  # Prefect Worker — local development (Phase 17.9)
+  #
+  # Uses the PROCESS work pool type (`--type process`).
+  # Flow runs execute as subprocesses inside this container, which means:
+  #   - No Docker-in-Docker required (no /var/run/docker.sock mount)
+  #   - No Docker SDK dependency
+  #   - Works identically whether the host is Linux, macOS, or CI
+  #
+  # Production distinction:
+  #   In production (Kubernetes) the worker uses `--type kubernetes` via the
+  #   Helm chart (helm/templates/prefect/worker-deployment.yaml, Phase 17.8).
+  #   The kubernetes work pool submits flow runs as K8s Jobs/Pods.
+  #   The process work pool is local-dev only.
   prefect-worker:
     image: prefecthq/prefect:3-python3.12
     container_name: hub-prefect-worker
-    command: prefect worker start --pool ${PREFECT_WORKER_POOL:-default} --type process
+    # Create the local-process-pool work pool (idempotent) then start the worker.
+    command: >
+      sh -c "prefect work-pool create --type process ${PREFECT_WORK_POOL_NAME:-local-process-pool}
+      2>/dev/null || true;
+      exec prefect worker start
+      --pool ${PREFECT_WORK_POOL_NAME:-local-process-pool}
+      --type process"
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_WORK_POOL_NAME: ${PREFECT_WORK_POOL_NAME:-local-process-pool}
       PREFECT_LOGGING_LEVEL: ${PREFECT_LOGGING_LEVEL:-INFO}
       PREFECT_API_KEY: ${PREFECT_API_KEY:-}
-      # Hub API configuration for scheduled ingestion worker API
       HUB_BASE_URL: ${HUB_BASE_URL:-http://api-service:8000}
       HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-}
+      # K8s-style resource env vars (no-op for process pool; used by deployment_sync)
+      PREFECT_K8S_NAMESPACE: ${PREFECT_K8S_NAMESPACE:-default}
+      PREFECT_K8S_CPU_REQUEST: ${PREFECT_K8S_CPU_REQUEST:-100m}
+      PREFECT_K8S_CPU_LIMIT: ${PREFECT_K8S_CPU_LIMIT:-1000m}
+      PREFECT_K8S_MEMORY_REQUEST: ${PREFECT_K8S_MEMORY_REQUEST:-256Mi}
+      PREFECT_K8S_MEMORY_LIMIT: ${PREFECT_K8S_MEMORY_LIMIT:-1Gi}
     volumes:
       - ./services/prefect-integration:/app:ro
     depends_on:
       prefect-server:
         condition: service_healthy
       api-service:
-        condition: service_healthy
-    networks:
-      - hub-net
-    healthcheck:
-      test:
-      - CMD
-      - python
-      - -c
-      - import sys; sys.exit(0)
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  # Docker work pool worker: runs flow.deploy(image=...) deployments
-  prefect-worker-docker:
-    build:
-      context: .
-      dockerfile: services/prefect-integration/Dockerfile.worker-docker
-    image: hub-prefect-worker-docker:latest
-    container_name: hub-prefect-worker-docker
-    command: sh -c "prefect work-pool create --type docker docker-pool 2>/dev/null || true; exec prefect worker start --pool docker-pool --type docker --limit ${PREFECT_WORKER_LIMIT:-2}"
-    environment:
-      PREFECT_API_URL: http://prefect-server:4200/api
-      PREFECT_LOGGING_LEVEL: ${PREFECT_LOGGING_LEVEL:-INFO}
-      PREFECT_API_KEY: ${PREFECT_API_KEY:-}
-      # Docker socket timeout optimizations (in seconds)
-      # Increase timeouts to handle slow Docker daemon operations
-      DOCKER_CLIENT_TIMEOUT: ${DOCKER_CLIENT_TIMEOUT:-120}
-      DOCKER_READ_TIMEOUT: ${DOCKER_READ_TIMEOUT:-120}
-      # Limit concurrent flow runs to reduce Docker daemon load
-      PREFECT_WORKER_LIMIT: ${PREFECT_WORKER_LIMIT:-2}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      prefect-server:
         condition: service_healthy
     networks:
       - hub-net
@@ -875,317 +1016,9 @@ services:
       timeout: 10s
       retries: 5
       start_period: 90s
-
-  # Search Service
-  search-service:
-    build:
-      context: .
-      dockerfile: services/search-service/Dockerfile
-    container_name: hub-search
-    ports:
-      - "${SEARCH_PORT:-8085}:8085"
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      SEARCH_INDEX_UPDATE_INTERVAL_SECONDS: ${SEARCH_INDEX_UPDATE_INTERVAL_SECONDS:-60}
-      SEARCH_RESULT_LIMIT: ${SEARCH_RESULT_LIMIT:-100}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - hub-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # Observability Service
-  observability-service:
-    build:
-      context: .
-      dockerfile: services/observability-service/Dockerfile
-    container_name: hub-observability
-    ports:
-      - "${OBSERVABILITY_PORT:-8086}:8086"
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
-      PROMETHEUS_URL: http://prometheus:9090
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      METRICS_UPDATE_INTERVAL_SECONDS: ${METRICS_UPDATE_INTERVAL_SECONDS:-60}
-      FRESHNESS_CHECK_INTERVAL_SECONDS: ${FRESHNESS_CHECK_INTERVAL_SECONDS:-300}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      prometheus:
-        condition: service_healthy
-    networks:
-      - hub-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # Webhook Service
-  webhook-service:
-    build:
-      context: .
-      dockerfile: services/webhook-service/Dockerfile
-    container_name: hub-webhook
-    ports:
-      - "${WEBHOOK_PORT:-8087}:8087"
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      WEBHOOK_RETRY_MAX_ATTEMPTS: ${WEBHOOK_RETRY_MAX_ATTEMPTS:-5}
-      WEBHOOK_RETRY_BACKOFF_SECONDS: ${WEBHOOK_RETRY_BACKOFF_SECONDS:-1,5,30,300,1800}
-      WEBHOOK_TIMEOUT_SECONDS: ${WEBHOOK_TIMEOUT_SECONDS:-30}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - hub-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8087/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # API Gateway Service
-  api-gateway:
-    build:
-      context: .
-      dockerfile: services/api-gateway/Dockerfile
-    container_name: hub-api-gateway
-    command: ["sh", "-c", "cd /app/services/api-gateway && PYTHONPATH=/app uvicorn main:app --host 0.0.0.0 --port 8088"]
-    ports:
-      - "${API_GATEWAY_PORT:-8094}:8088"
-    environment:
-      # Database configuration (for Django ORM access)
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=${POSTGRES_USER:-hub}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-hub}
-      - POSTGRES_DB=${POSTGRES_DB:-hub}
-      # Redis configuration
-      - REDIS_CACHE_URL=redis://redis-cache:6379/0
-      - REDIS_URL=redis://redis-cache:6379/0
-      # Django settings
-      - DJANGO_SETTINGS_MODULE=hub.settings
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
-      - DEBUG=${DEBUG:-False}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
-      # Service configuration
-      - BACKEND_SERVICE_URL=${BACKEND_SERVICE_URL:-http://api-service:8000}
-      - PORT=8088
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      # OpenTelemetry configuration
-      - OPENTELEMETRY_ENABLED=${OPENTELEMETRY_ENABLED:-true}
-      - JAEGER_AGENT_HOST=${JAEGER_AGENT_HOST:-jaeger}
-      - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
-      - APP_VERSION=${APP_VERSION:-1.0.0}
-    volumes:
-      - .:/app
-    env_file:
-      - .env.dev
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis-cache:
-        condition: service_healthy
-      api-service:
-        condition: service_started
-      jaeger:
-        condition: service_healthy
-    networks:
-      - hub-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # Event Bus Health Service
-  event-bus-health-service:
-    build:
-      context: .
-      dockerfile: services/event-bus/Dockerfile
-    container_name: hub-event-bus-health
-    ports:
-      - "${EVENT_BUS_HEALTH_PORT:-8090}:8090"
-    environment:
-      # Database configuration
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=${POSTGRES_USER:-hub}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-hub}
-      - POSTGRES_DB=${POSTGRES_DB:-hub}
-      # Redis configuration (use same service names as api-service)
-      - REDIS_CACHE_URL=redis://redis-cache:6379/0
-      - REDIS_QUEUE_URL=redis://redis-queue:6379/0
-      - REDIS_EVENTS_URL=redis://redis-events:6379/0
-      - REDIS_CHANNELS_URL=redis://redis-channels:6379/0
-      - REDIS_URL=redis://redis-cache:6379/0
-      # Event bus configuration
-      - EVENT_BUS_REDIS_POOL_SIZE=${EVENT_BUS_REDIS_POOL_SIZE:-50}
-      - EVENT_BUS_REDIS_MAX_CONNECTIONS=${EVENT_BUS_REDIS_MAX_CONNECTIONS:-100}
-      - EVENT_BUS_REDIS_SOCKET_TIMEOUT=${EVENT_BUS_REDIS_SOCKET_TIMEOUT:-5}
-      - EVENT_BUS_REDIS_SOCKET_CONNECT_TIMEOUT=${EVENT_BUS_REDIS_SOCKET_CONNECT_TIMEOUT:-5}
-      - EVENT_BUS_REDIS_RETRY_ON_TIMEOUT=${EVENT_BUS_REDIS_RETRY_ON_TIMEOUT:-true}
-      - EVENT_BUS_REDIS_HEALTH_CHECK_INTERVAL=${EVENT_BUS_REDIS_HEALTH_CHECK_INTERVAL:-30}
-      - EVENT_BUS_HEALTH_CHECK_INTERVAL=${EVENT_BUS_HEALTH_CHECK_INTERVAL:-30}
-      - EVENT_BUS_CHANNEL_PREFIX=${EVENT_BUS_CHANNEL_PREFIX:-events}
-      - EVENT_BUS_ENABLE_PERSISTENCE=${EVENT_BUS_ENABLE_PERSISTENCE:-true}
-      - EVENT_BUS_MAX_RETRIES=${EVENT_BUS_MAX_RETRIES:-3}
-      # Django settings
-      - DJANGO_SETTINGS_MODULE=hub.settings
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
-      - DEBUG=${DEBUG:-False}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
-      # Service configuration
-      - EVENT_BUS_HEALTH_PORT=${EVENT_BUS_HEALTH_PORT:-8090}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      # OpenTelemetry configuration
-      - OPENTELEMETRY_ENABLED=${OPENTELEMETRY_ENABLED:-true}
-      - JAEGER_AGENT_HOST=${JAEGER_AGENT_HOST:-jaeger}
-      - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
-      - APP_VERSION=${APP_VERSION:-1.0.0}
-    volumes:
-      - .:/app
-    env_file:
-      - .env.dev
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis-cache:
-        condition: service_healthy
-      redis-queue:
-        condition: service_healthy
-      redis-events:
-        condition: service_healthy
-      redis-channels:
-        condition: service_healthy
-      jaeger:
-        condition: service_healthy
-    networks:
-      - hub-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8090/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
-  # Event Schema Registry Service
-  event-schema-registry-service:
-    build:
-      context: .
-      dockerfile: services/event-schema-registry/Dockerfile
-    container_name: hub-event-schema-registry
-    ports:
-      - "${EVENT_SCHEMA_REGISTRY_PORT:-8091}:8091"
-    environment:
-      # Database configuration (for potential future schema persistence)
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=${POSTGRES_USER:-hub}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-hub}
-      - POSTGRES_DB=${POSTGRES_DB:-hub}
-      # Django settings
-      - DJANGO_SETTINGS_MODULE=hub.settings
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
-      - DEBUG=${DEBUG:-False}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
-      # Service configuration
-      - EVENT_SCHEMA_REGISTRY_PORT=${EVENT_SCHEMA_REGISTRY_PORT:-8091}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      # OpenTelemetry configuration
-      - OPENTELEMETRY_ENABLED=${OPENTELEMETRY_ENABLED:-true}
-      - JAEGER_AGENT_HOST=${JAEGER_AGENT_HOST:-jaeger}
-      - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
-      - APP_VERSION=${APP_VERSION:-1.0.0}
-    volumes:
-      - .:/app
-    env_file:
-      - .env.dev
-    depends_on:
-      postgres:
-        condition: service_healthy
-      jaeger:
-        condition: service_healthy
-    networks:
-      - hub-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
-  # Workflow Registry Service
-  workflow-registry-service:
-    build:
-      context: .
-      dockerfile: services/workflow-registry/Dockerfile
-    container_name: hub-workflow-registry
-    ports:
-      - "${WORKFLOW_REGISTRY_PORT:-8089}:8089"
-    environment:
-      # Database configuration
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=${POSTGRES_USER:-hub}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-hub}
-      - POSTGRES_DB=${POSTGRES_DB:-hub}
-      # Django settings
-      - DJANGO_SETTINGS_MODULE=hub.settings
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
-      - DEBUG=${DEBUG:-False}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
-      # Service configuration
-      - WORKFLOW_REGISTRY_PORT=${WORKFLOW_REGISTRY_PORT:-8089}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      # OpenTelemetry configuration
-      - OPENTELEMETRY_ENABLED=${OPENTELEMETRY_ENABLED:-true}
-      - JAEGER_AGENT_HOST=${JAEGER_AGENT_HOST:-jaeger}
-      - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
-      - APP_VERSION=${APP_VERSION:-1.0.0}
-    volumes:
-      - .:/app
-    env_file:
-      - .env.dev
-    depends_on:
-      postgres:
-        condition: service_healthy
-      jaeger:
-        condition: service_healthy
-    networks:
-      - hub-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8089/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
   # Prometheus
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.53.0
     container_name: hub-prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -1211,13 +1044,6 @@ services:
       - compliance-service
       - datacontract-service
       - prefect-integration-service
-      - search-service
-      - webhook-service
-      - api-gateway
-      - workflow-engine-service
-      - workflow-registry-service
-      - event-schema-registry-service
-      - event-bus-health-service
       - redis-exporter-cache
       - redis-exporter-queue
       - redis-exporter-events
@@ -1227,10 +1053,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
 
   # Grafana
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.1.0
     container_name: hub-grafana
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
@@ -1253,10 +1087,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
 
   # Jaeger (all-in-one)
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.58.0
     container_name: hub-jaeger
     environment:
       - COLLECTOR_OTLP_ENABLED=true
@@ -1272,10 +1114,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
 
   # Alertmanager
   alertmanager:
-    image: prom/alertmanager:latest
+    image: prom/alertmanager:v0.27.0
     container_name: hub-alertmanager
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
@@ -1294,6 +1144,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
 
   # CKAN Test Instance - Local CKAN server for testing marketplace connectors
   # NOTE: CKAN setup is complex and requires custom Docker image or manual setup
@@ -1397,7 +1255,7 @@ services:
   # MockServer image is distroless (no shell/curl), so no in-container healthcheck.
   # API and worker use condition: service_started so stack comes up without blocking.
   mock-server:
-    image: mockserver/mockserver:latest
+    image: mockserver/mockserver:5.15.0
     container_name: hub-mock-server
     command: -serverPort 8080 -logLevel INFO
     ports:
@@ -1488,6 +1346,14 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.traefik.rule=Host(`traefik.hub.local`)"
       - "traefik.http.routers.traefik.service=api@internal"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 64M
+          cpus: '0.1'
 
 networks:
   hub-net:
@@ -1513,4 +1379,5 @@ volumes:
   ckan-test-db-data:
   ckan-test-solr-data:
   ckan-test-redis-data:
+  clamav-db:
 

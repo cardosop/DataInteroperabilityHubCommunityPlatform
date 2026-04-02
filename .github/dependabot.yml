@@ -71,6 +71,28 @@ updates:
           - "faker"
 
   # ---------------------------------------------------------------------------
+  # DataContract service dependencies — track datacontract-cli bumps
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "pip"
+    directory: "/services/datacontract-service"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "python"
+      - "contract-standards"
+    commit-message:
+      prefix: "deps(datacontract)"
+      include: "scope"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # ---------------------------------------------------------------------------
   # Docker base images — weekly updates
   # ---------------------------------------------------------------------------
   - package-ecosystem: "docker"
