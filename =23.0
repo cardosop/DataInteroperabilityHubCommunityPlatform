@@ -1,9 +1,0 @@
-Collecting django-filter
-  Downloading django_filter-25.2-py3-none-any.whl.metadata (5.1 kB)
-Requirement already satisfied: Django>=5.2 in ./venv/lib/python3.14/site-packages (from django-filter) (6.0)
-Requirement already satisfied: asgiref>=3.9.1 in ./venv/lib/python3.14/site-packages (from Django>=5.2->django-filter) (3.11.0)
-Requirement already satisfied: sqlparse>=0.5.0 in ./venv/lib/python3.14/site-packages (from Django>=5.2->django-filter) (0.5.4)
-WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ReadTimeoutError("HTTPSConnectionPool(host='files.pythonhosted.org', port=443): Read timed out. (read timeout=15)")': /packages/c1/40/6a02495c5658beb1f31eb09952d8aa12ef3c2a66342331ce3a35f7132439/django_filter-25.2-py3-none-any.whl
-Downloading django_filter-25.2-py3-none-any.whl (94 kB)
-Installing collected packages: django-filter
-Successfully installed django-filter-25.2

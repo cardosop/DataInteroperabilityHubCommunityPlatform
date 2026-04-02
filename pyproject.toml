@@ -116,9 +116,4 @@ ignore_missing_imports = true
 module = "hub.apps.*.migrations.*"
 ignore_errors = true
 
-[tool.pytest.ini_options]
-testpaths = ["hub/apps", "tests"]
-python_files = ["tests.py", "test_*.py", "*_tests.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
 

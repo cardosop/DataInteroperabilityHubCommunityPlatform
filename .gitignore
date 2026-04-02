@@ -93,5 +93,6 @@ frontend/playwright-report/
 awscliv2.zip
 aws/
 
-# Pip version specifier artifact
+# Pip/npm empty version-specifier junk files at repo root (e.g. =1.2.3)
+=*.*.*
 =3.8
