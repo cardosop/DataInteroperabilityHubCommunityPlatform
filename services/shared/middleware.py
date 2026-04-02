@@ -42,7 +42,7 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                             f'{{"detail": "Request body exceeds'
                             f' {self._limit_mib} MiB limit"}}'
                         ),
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                         media_type="application/json",
                     )
             except ValueError:
@@ -62,7 +62,7 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                         f'{{"detail": "Request body exceeds'
                         f' {self._limit_mib} MiB limit"}}'
                     ),
-                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                     media_type="application/json",
                 )
             chunks.append(chunk)

@@ -99,24 +99,66 @@ def start_health_check_server(port=8080):
     return server
 
 
+# ---------------------------------------------------------------------------
+# WORKER_TYPE — selects which RQ queues this worker process joins (16.4).
+#
+# heavy  → job_critical only
+#          Use for: DQ scans, compliance runs, scheduled data ingestion,
+#          ODPS export / normalization (long-running, memory-intensive).
+#          Deploy as a separate Deployment with higher memory limits.
+#
+# light  → job_default + job_low
+#          Use for: webhook delivery, cache invalidation, search index
+#          updates, contract validation (short-lived, I/O-bound).
+#
+# all    → job_critical + job_default + job_low  (default, backward-compat)
+#          Suitable for development / single-node environments.
+#
+# Explicit queue args on the command line (sys.argv[1:]) always take
+# precedence over WORKER_TYPE so operator overrides are always respected.
+# ---------------------------------------------------------------------------
+_WORKER_TYPE_QUEUES: dict[str, list[str]] = {
+    "heavy": ["job_critical"],
+    "light": ["job_default", "job_low"],
+    "all":   ["job_critical", "job_default", "job_low"],
+}
+
+
 def main():
     """
     Main entry point for worker service.
-    
-    Processes jobs from priority queues: job_critical (HIGH), job_default (NORMAL), job_low (LOW).
-    Worker polls queues in priority order: job_critical first, then job_default, then job_low.
-    
-    Also starts a health check HTTP server on port 8080 for Kubernetes probes.
+
+    Reads WORKER_TYPE env var to select which RQ queues to join:
+      heavy → job_critical
+      light → job_default, job_low
+      all   → all three queues (default)
+
+    Also starts a health check HTTP server on port 8080 for k8s probes.
     """
     # Start health check server in background thread
     health_port = int(os.environ.get('WORKER_HEALTH_PORT', '8080'))
     start_health_check_server(port=health_port)
-    
-    # Default queues if none specified (process all priority queues)
-    queues = sys.argv[1:] if len(sys.argv) > 1 else ['job_critical', 'job_default', 'job_low']
-    
+
+    # Explicit queue args override WORKER_TYPE.
+    if len(sys.argv) > 1:
+        queues = sys.argv[1:]
+    else:
+        worker_type = os.environ.get('WORKER_TYPE', 'all').lower()
+        queues = _WORKER_TYPE_QUEUES.get(
+            worker_type, _WORKER_TYPE_QUEUES['all']
+        )
+        if worker_type not in _WORKER_TYPE_QUEUES:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Unknown WORKER_TYPE=%r — falling back to 'all'",
+                worker_type,
+            )
+
     # Use Django's call_command to run rqworker with proper options
-    call_command('rqworker', *queues, verbosity=1)
+    # --with-scheduler enables the built-in RQ scheduler so that
+    # enqueue_in() delayed jobs (e.g. poll_compliance_job retries) fire
+    # on time rather than waiting for manual promotion.
+    call_command('rqworker', *queues, verbosity=1, with_scheduler=True)
 
 
 if __name__ == '__main__':

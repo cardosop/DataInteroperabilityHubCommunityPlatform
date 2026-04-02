@@ -3,66 +3,92 @@ Shared Prometheus Metrics for FastAPI Services
 
 Provides common metrics collection utilities for all FastAPI services.
 """
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST, REGISTRY
 from typing import Optional
 import time
 from functools import wraps
 
 
+def _safe_counter(name, description, labelnames):
+    """Create a Counter, returning the existing one if already registered."""
+    try:
+        return Counter(name, description, labelnames)
+    except ValueError:
+        return REGISTRY._names_to_collectors[name]
+
+
+def _safe_histogram(name, description, labelnames, buckets=Histogram.DEFAULT_BUCKETS):
+    """Create a Histogram, returning the existing one if already registered."""
+    try:
+        return Histogram(name, description, labelnames, buckets=buckets)
+    except ValueError:
+        return REGISTRY._names_to_collectors[name]
+
+
+def _safe_gauge(name, description, labelnames=None):
+    """Create a Gauge, returning the existing one if already registered."""
+    try:
+        if labelnames:
+            return Gauge(name, description, labelnames)
+        return Gauge(name, description)
+    except ValueError:
+        return REGISTRY._names_to_collectors[name]
+
+
 # HTTP Request Metrics (for FastAPI services)
-http_requests_total = Counter(
+http_requests_total = _safe_counter(
     'http_requests_total',
     'Total number of HTTP requests',
     ['service', 'method', 'route', 'status_class']
 )
 
-http_request_duration_seconds = Histogram(
+http_request_duration_seconds = _safe_histogram(
     'http_request_duration_seconds',
     'HTTP request duration in seconds',
     ['service', 'method', 'route', 'status_class'],
     buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 )
 
-http_errors_total = Counter(
+http_errors_total = _safe_counter(
     'http_errors_total',
     'Total number of HTTP errors',
     ['service', 'method', 'route', 'status_code']
 )
 
 # Semantic Service Metrics
-sparql_queries_total = Counter(
+sparql_queries_total = _safe_counter(
     'sparql_queries_total',
     'Total number of SPARQL queries',
     ['service', 'status', 'tenant_id']
 )
 
-sparql_query_duration_seconds = Histogram(
+sparql_query_duration_seconds = _safe_histogram(
     'sparql_query_duration_seconds',
     'SPARQL query duration in seconds',
     ['service', 'status'],
     buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0)
 )
 
-mapping_operations_total = Counter(
+mapping_operations_total = _safe_counter(
     'mapping_operations_total',
     'Total number of mapping operations',
     ['service', 'operation_type', 'status', 'tenant_id']
 )
 
-mapping_operation_duration_seconds = Histogram(
+mapping_operation_duration_seconds = _safe_histogram(
     'mapping_operation_duration_seconds',
     'Mapping operation duration in seconds',
     ['service', 'operation_type', 'status'],
     buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0)
 )
 
-fuseki_interactions_total = Counter(
+fuseki_interactions_total = _safe_counter(
     'fuseki_interactions_total',
     'Total number of Fuseki interactions',
     ['service', 'operation', 'status']
 )
 
-fuseki_store_duration_seconds = Histogram(
+fuseki_store_duration_seconds = _safe_histogram(
     'fuseki_store_duration_seconds',
     'Fuseki graph storage duration in seconds (actual commit time)',
     ['service', 'operation'],
@@ -70,138 +96,208 @@ fuseki_store_duration_seconds = Histogram(
 )
 
 # Dataset existence check cache metrics
-dataset_existence_cache_hits_total = Counter(
+dataset_existence_cache_hits_total = _safe_counter(
     'dataset_existence_cache_hits_total',
     'Total number of dataset existence cache hits',
     ['service']
 )
 
-dataset_existence_cache_misses_total = Counter(
+dataset_existence_cache_misses_total = _safe_counter(
     'dataset_existence_cache_misses_total',
     'Total number of dataset existence cache misses',
     ['service']
 )
 
-dataset_existence_check_duration_seconds = Histogram(
+dataset_existence_check_duration_seconds = _safe_histogram(
     'dataset_existence_check_duration_seconds',
     'Duration of dataset existence checks in seconds',
     ['service', 'cache_status'],
     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0)
 )
 
+# Phase 29 — Semantic observability: SHACL, tenant isolation, cache
+shacl_violations_total = _safe_counter(
+    'shacl_violations_total',
+    'Total number of SHACL shape validation violations',
+    ['service', 'severity', 'shape']
+)
+
+tenant_isolation_violations_total = _safe_counter(
+    'tenant_isolation_violations_total',
+    'Total number of tenant isolation violations detected (SLO: must stay 0)',
+    ['service']
+)
+
+fuseki_insert_duration_seconds = _safe_histogram(
+    'fuseki_insert_duration_seconds',
+    'Duration of Fuseki triple insert operations in seconds',
+    ['service', 'operation'],
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0)
+)
+
+semantic_cache_hit_total = _safe_counter(
+    'semantic_cache_hit_total',
+    'Total number of semantic service Redis cache hits',
+    ['service']
+)
+
+semantic_cache_miss_total = _safe_counter(
+    'semantic_cache_miss_total',
+    'Total number of semantic service Redis cache misses',
+    ['service']
+)
+
 # Connection Pool Metrics (Task 9.10.2.5.7.1.5)
-http_connection_reuse_total = Counter(
+http_connection_reuse_total = _safe_counter(
     'http_connection_reuse_total',
     'Total number of HTTP connection reuses',
     ['service', 'operation']
 )
 
-http_connection_new_total = Counter(
+http_connection_new_total = _safe_counter(
     'http_connection_new_total',
     'Total number of new HTTP connections created',
     ['service', 'operation']
 )
 
-http_connection_pool_size = Gauge(
+http_connection_pool_size = _safe_gauge(
     'http_connection_pool_size',
     'Current HTTP connection pool size',
     ['service']
 )
 
 # DQ Service Metrics
-dq_runs_total = Counter(
+dq_runs_total = _safe_counter(
     'dq_runs_total',
     'Total number of DQ runs',
     ['service', 'status', 'engine', 'tenant_id']
 )
 
-dq_run_duration_seconds = Histogram(
+dq_run_duration_seconds = _safe_histogram(
     'dq_run_duration_seconds',
     'DQ run duration in seconds',
     ['service', 'status', 'engine'],
     buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0, 1800.0)
 )
 
-dq_success_rate = Gauge(
+dq_success_rate = _safe_gauge(
     'dq_success_rate',
     'DQ run success rate (0-1)',
     ['service', 'engine']
 )
 
 # Compliance Service Metrics
-compliance_runs_total = Counter(
+compliance_runs_total = _safe_counter(
     'compliance_runs_total',
     'Total number of compliance runs',
     ['service', 'status', 'risk_level', 'tenant_id']
 )
 
-compliance_run_duration_seconds = Histogram(
+compliance_run_duration_seconds = _safe_histogram(
     'compliance_run_duration_seconds',
     'Compliance run duration in seconds',
     ['service', 'status', 'risk_level'],
     buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0, 1800.0)
 )
 
-compliance_success_rate = Gauge(
+compliance_success_rate = _safe_gauge(
     'compliance_success_rate',
     'Compliance run success rate (0-1)',
     ['service']
 )
 
+# Phase 19.13.1 — Fine-grained compliance observability metrics
+
+compliance_audit_records_total = _safe_counter(
+    'compliance_audit_records_total',
+    'Total number of compliance audit records emitted',
+    ['service', 'tenant_id']
+)
+
+compliance_regulation_triggers_total = _safe_counter(
+    'compliance_regulation_triggers_total',
+    'Total number of individual regulation triggers detected during compliance scans',
+    ['service', 'regulation', 'tenant_id']
+)
+
+compliance_pii_categories_detected_total = _safe_counter(
+    'compliance_pii_categories_detected_total',
+    'Total number of PII category detections across all compliance scans',
+    ['service', 'category', 'tenant_id']
+)
+
+compliance_cross_border_alerts_total = _safe_counter(
+    'compliance_cross_border_alerts_total',
+    'Total number of cross-border data transfer alerts raised',
+    ['service', 'tenant_id']
+)
+
+compliance_localisation_alerts_total = _safe_counter(
+    'compliance_localisation_alerts_total',
+    'Total number of data localisation requirement alerts raised',
+    ['service', 'tenant_id']
+)
+
+compliance_async_queue_depth = _safe_gauge(
+    'compliance_async_queue_depth',
+    'Current number of compliance scan jobs waiting in or being processed by the async queue',
+    ['service']
+)
+
 # DataContract Service Metrics
-contract_validations_total = Counter(
+contract_validations_total = _safe_counter(
     'contract_validations_total',
     'Total number of contract validations',
     ['service', 'status', 'spec_type', 'tenant_id']
 )
 
-contract_validation_duration_seconds = Histogram(
+contract_validation_duration_seconds = _safe_histogram(
     'contract_validation_duration_seconds',
     'Contract validation duration in seconds',
     ['service', 'status', 'spec_type'],
     buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0)
 )
 
-contract_lint_operations_total = Counter(
+contract_lint_operations_total = _safe_counter(
     'contract_lint_operations_total',
     'Total number of contract lint operations',
     ['service', 'status', 'tenant_id']
 )
 
-contract_convert_operations_total = Counter(
+contract_convert_operations_total = _safe_counter(
     'contract_convert_operations_total',
     'Total number of contract convert operations',
     ['service', 'status', 'source_format', 'target_format', 'tenant_id']
 )
 
 # ODPS Semantic Mapping Metrics (Task 6.6.3)
-odps_semantic_mapping_duration_seconds = Histogram(
+odps_semantic_mapping_duration_seconds = _safe_histogram(
     'odps_semantic_mapping_duration_seconds',
     'ODPS semantic mapping duration in seconds',
     ['service', 'status'],
     buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0)
 )
 
-odps_semantic_mapping_total = Counter(
+odps_semantic_mapping_total = _safe_counter(
     'odps_semantic_mapping_total',
     'Total number of ODPS semantic mapping operations',
     ['service', 'status', 'tenant_id']
 )
 
-odps_semantic_mapping_success_rate = Gauge(
+odps_semantic_mapping_success_rate = _safe_gauge(
     'odps_semantic_mapping_success_rate',
     'ODPS semantic mapping success rate (0-1)',
     ['service', 'tenant_id']
 )
 
 # Semantic Service Retry Metrics (Task 9.10.2.5.7.1.1)
-semantic_uri_resolution_retries_total = Counter(
+semantic_uri_resolution_retries_total = _safe_counter(
     'semantic_uri_resolution_retries_total',
     'Total number of URI resolution retries',
     ['service', 'status_code', 'reason']
 )
 
-semantic_uri_resolution_retry_delay_seconds = Histogram(
+semantic_uri_resolution_retry_delay_seconds = _safe_histogram(
     'semantic_uri_resolution_retry_delay_seconds',
     'URI resolution retry delay in seconds',
     ['service', 'status_code'],
@@ -209,7 +305,7 @@ semantic_uri_resolution_retry_delay_seconds = Histogram(
 )
 
 # SPARQL query optimization metrics (Task 9.10.2.5.7.1.7 - ASK instead of SELECT)
-sparql_query_optimization_total = Counter(
+sparql_query_optimization_total = _safe_counter(
     'sparql_query_optimization_total',
     'Total number of SPARQL query optimizations applied',
     ['service', 'optimization_type', 'query_type']

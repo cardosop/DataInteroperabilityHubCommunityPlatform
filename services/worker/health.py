@@ -8,7 +8,7 @@ from django.db import connection
 from django.core.cache import cache
 from django.conf import settings
 from django.utils import timezone
-import redis
+from hub.apps.core.redis_pools import get_redis_queue_client
 
 
 def healthz(request=None):
@@ -65,7 +65,6 @@ def ready(request=None):
 
     # Check Redis queue connection (required for job queues)
     try:
-        from hub.apps.core.redis_pools import get_redis_queue_client
         r = get_redis_queue_client()
         r.ping()
         checks['redis_queue'] = 'ok'
