@@ -19,6 +19,7 @@ from hub.apps.rate_limiting.utils import (
 from hub.apps.rate_limiting.service import check_rate_limit
 from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -31,7 +32,7 @@ class RateLimitingEdgeCaseTest(TestCase):
         """Set up test fixtures"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -255,7 +256,7 @@ class RateLimitingEdgeCaseTest(TestCase):
         
         # Create another user
         user2 = User.objects.create_user(
-            email="user2@example.com",
+            email=f"user2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -326,7 +327,7 @@ class RateLimitingEdgeCaseTest(TestCase):
         allowed1, count1, reset1 = sliding_window_check(key, limit, window)
         
         # Make second request quickly (should use cache)
-        time.sleep(0.5)  # Within cache TTL
+        time.sleep(0.5)  # INTENTIONAL: test-specific delay  # Within cache TTL
         allowed2, count2, reset2 = sliding_window_check(key, limit, window)
         
         # Both should return valid results

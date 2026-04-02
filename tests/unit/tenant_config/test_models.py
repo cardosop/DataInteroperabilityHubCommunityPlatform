@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
 from hub.apps.tenants.models import Tenant, TenantConfig, TenantStatus, KYCStatus
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -18,8 +19,8 @@ class TenantConfigModelTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
     
     def test_create_tenant_config(self):
@@ -261,7 +262,7 @@ class TenantConfigModelTest(TestCase):
         self.assertEqual(config1.rate_limits["dq_runs"]["burst_per_10s"], 20)
         
         # Test only sustained_per_min
-        tenant2 = Tenant.objects.create(name="Test Tenant 2", slug="test-tenant-2")
+        tenant2 = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         config2 = TenantConfig.objects.create(
             tenant=tenant2,
             rate_limits={"dq_runs": {"sustained_per_min": 60}}
@@ -269,7 +270,7 @@ class TenantConfigModelTest(TestCase):
         self.assertEqual(config2.rate_limits["dq_runs"]["sustained_per_min"], 60)
         
         # Test only daily_cap
-        tenant3 = Tenant.objects.create(name="Test Tenant 3", slug="test-tenant-3")
+        tenant3 = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         config3 = TenantConfig.objects.create(
             tenant=tenant3,
             rate_limits={"dq_runs": {"daily_cap": 10000}}

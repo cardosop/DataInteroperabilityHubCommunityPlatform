@@ -1,6 +1,8 @@
 """
 E2E tests for error handling in custom actions.
 """
+import uuid
+
 import pytest
 from django.test import TestCase
 from rest_framework import status
@@ -41,13 +43,11 @@ class CustomActionsErrorHandlingE2ETest(E2ETestBase):
         )
         
         response = self.client.post(f'/api/v1/assets/{asset.id}/activate/', {'version': asset.version}, format='json')
-        
-        # Should either succeed (idempotent) or return an error
-        # The actual behavior depends on implementation
+
+        # Activating an already-active asset is a client error (bad request or conflict)
         self.assertIn(response.status_code, [
-            status.HTTP_200_OK,  # Idempotent
             status.HTTP_400_BAD_REQUEST,  # Already active
-            status.HTTP_404_NOT_FOUND  # Asset not found (if activation requirements not met)
+            status.HTTP_409_CONFLICT,  # Conflict - asset already in desired state
         ])
     
     def test_attach_dataset_to_nonexistent_asset(self):
@@ -92,12 +92,11 @@ class CustomActionsErrorHandlingE2ETest(E2ETestBase):
         )
         
         response = self.client.post(f'/api/v1/jobs/{job.id}/cancel/')
-        
-        # Should return an error since job is already completed, or 404 if not found
+
+        # Canceling an already-completed job is a client error (bad request or conflict)
         self.assertIn(response.status_code, [
             status.HTTP_400_BAD_REQUEST,  # Already completed
-            status.HTTP_409_CONFLICT,  # Conflict
-            status.HTTP_404_NOT_FOUND  # Job not found (tenant scoping)
+            status.HTTP_409_CONFLICT,  # Conflict - job already in terminal state
         ])
     
     def test_validate_nonexistent_contract(self):
@@ -152,11 +151,8 @@ class CustomActionsErrorHandlingE2ETest(E2ETestBase):
             format='json'
         )
         
-        # Should return 400 for invalid email or 404 if endpoint doesn't exist
-        self.assertIn(response.status_code, [
-            status.HTTP_400_BAD_REQUEST,  # Invalid email
-            status.HTTP_404_NOT_FOUND  # Endpoint not found (if routing issue)
-        ])
+        # Invalid email must return 400 (validation error)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
     
     def test_assign_role_to_nonexistent_user(self):
         """Test assigning role to non-existent user."""
@@ -171,10 +167,10 @@ class CustomActionsErrorHandlingE2ETest(E2ETestBase):
     def test_suspend_nonexistent_tenant(self):
         """Test suspending a non-existent tenant."""
         # Suspend requires IsPlatformAdmin; use platform admin to reach get_object (404)
-        platform_admin = User.objects.filter(email="e2e_platform_admin_tenant@example.com").first()
+        platform_admin = User.objects.filter(email=f"e2e_platform_admin_tenant-{uuid.uuid4().hex[:8]}@example.com").first()
         if platform_admin is None:
             platform_admin = User.objects.create_user(
-                email="e2e_platform_admin_tenant@example.com",
+                email=f"e2e_platform_admin_tenant-{uuid.uuid4().hex[:8]}@example.com",
                 password="testpass123",
                 tenant=None,
                 is_platform_admin=True,
@@ -189,10 +185,10 @@ class CustomActionsErrorHandlingE2ETest(E2ETestBase):
     def test_reactivate_nonexistent_tenant(self):
         """Test reactivating a non-existent tenant."""
         # Reactivate requires IsPlatformAdmin; use platform admin to reach get_object (404)
-        platform_admin = User.objects.filter(email="e2e_platform_admin_tenant@example.com").first()
+        platform_admin = User.objects.filter(email=f"e2e_platform_admin_tenant-{uuid.uuid4().hex[:8]}@example.com").first()
         if platform_admin is None:
             platform_admin = User.objects.create_user(
-                email="e2e_platform_admin_tenant@example.com",
+                email=f"e2e_platform_admin_tenant-{uuid.uuid4().hex[:8]}@example.com",
                 password="testpass123",
                 tenant=None,
                 is_platform_admin=True,

@@ -16,6 +16,7 @@ from hub.apps.tenants.serializers import (
     TenantConfigUpdateSerializer,
     RateLimitsSerializer,
 )
+import uuid
 from hub.apps.tenants.validators import (
     VALID_DQ_PROFILES,
     VALID_COMPLIANCE_REGIMES,
@@ -105,8 +106,8 @@ class TenantConfigSerializerTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
     
     # GAP-0.2.2.1: TenantConfigSerializer tests
@@ -290,8 +291,8 @@ class TenantConfigUpdateSerializerTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.config = TenantConfig.objects.create(
             tenant=self.tenant,

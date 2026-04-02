@@ -20,6 +20,7 @@ from hub.apps.marketplace.models import (
 from hub.apps.marketplace.access_utils import check_entitlement
 
 from .conftest import get_response_data
+import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 User = get_user_model()
@@ -41,7 +42,7 @@ class MarketplacePurchaseE2ETest(TestCase):
         ensure_e2e_tenant_ready(self.provider_tenant)
 
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.provider_tenant
         )
@@ -58,7 +59,7 @@ class MarketplacePurchaseE2ETest(TestCase):
         ensure_e2e_tenant_ready(self.consumer_tenant)
 
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.consumer_tenant
         )
@@ -107,7 +108,11 @@ class MarketplacePurchaseE2ETest(TestCase):
         )
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
         search_data = get_response_data(search_response) or {}
-        self.assertGreater(len(search_data.get('results', [])), 0)
+        results = search_data.get('results', [])
+        self.assertGreater(len(results), 0)
+        listing_ids_found = [r.get('id') for r in results]
+        self.assertIn(str(listing_id), listing_ids_found,
+            f"Search results should include our published listing {listing_id}")
         
         # Step 4: Consumer views listing details
         listing_detail_response = self.consumer_client.get(
@@ -137,6 +142,8 @@ class MarketplacePurchaseE2ETest(TestCase):
                 f'/api/v1/marketplace/orders/{order_id}/approve/',
                 format='json'
             )
+            self.assertEqual(approve_response.status_code, status.HTTP_200_OK,
+                f"Order approval should succeed: {get_response_data(approve_response)}")
             order.refresh_from_db()
         
         # Step 7: Verify entitlement is created
@@ -157,6 +164,7 @@ class MarketplacePurchaseE2ETest(TestCase):
                 provider_tenant_id=str(self.provider_tenant.id)
             )
             self.assertTrue(has_access)
+            self.assertIsNone(error_code, f"Error code should be None when access is granted, got: {error_code}")
         
         # Step 9: Consumer views their entitlements
         entitlements_response = self.consumer_client.get(

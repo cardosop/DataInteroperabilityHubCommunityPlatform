@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.4605839252471924
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-008-5eece06e",
+      "journey_name": "Manage Consent Tracking",
+      "persona": "Compliance Officer",
+      "status": "completed",
+      "start_time": 1774697038.3885906,
+      "end_time": 1774697038.8491745,
+      "duration": 0.4605839252471924,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset for Consent",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774697038.3886008,
+          "end_time": 1774697038.6688168,
+          "duration": 0.2802159786224365,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Consent Record",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774697038.6688287,
+          "end_time": 1774697038.8333652,
+          "duration": 0.1645364761352539,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "View Consent Records",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774697038.8333778,
+          "end_time": 1774697038.8398318,
+          "duration": 0.006453990936279297,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "View Consent Analytics",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774697038.8398397,
+          "end_time": 1774697038.8491719,
+          "duration": 0.00933218002319336,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T11:23:58.849248"
+}

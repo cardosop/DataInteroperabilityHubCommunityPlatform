@@ -124,7 +124,7 @@ class WebhookReceiverHandler(BaseHTTPRequestHandler):
         pass
 
 
-class TestWebhookServer:
+class WebhookTestServer:
     """Test HTTP server for receiving webhook deliveries."""
 
     def __init__(self, port: int = 0):
@@ -737,7 +737,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         # Reset webhook-delivery circuit breaker so delivery is attempted (avoids OPEN state from prior tests)
         reset_circuit_breaker_by_name("webhook-delivery")
         # Start webhook receiver server
-        with TestWebhookServer() as server:
+        with WebhookTestServer() as server:
             # Create webhook subscription
             webhook = Webhook.objects.create(
                 tenant=self.tenant,
@@ -805,7 +805,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
             subscriber._handle_odps_event(event_data)
 
             # Wait for webhook delivery
-            time.sleep(2.0)
+            time.sleep(2.0)  # INTENTIONAL: e2e/integration test polling real services
 
             # Verify webhook was delivered
             deliveries = WebhookDelivery.objects.filter(webhook=webhook)
@@ -851,7 +851,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         Verifies end-to-end consistency across all integration points.
         """
         # Start webhook receiver server
-        with TestWebhookServer() as server:
+        with WebhookTestServer() as server:
             # Create webhook subscription
             webhook = Webhook.objects.create(
                 tenant=self.tenant,
@@ -1022,7 +1022,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                 subscriber._handle_odps_event(event_data)
 
                 # 7. Wait for webhook delivery
-                time.sleep(2.0)
+                time.sleep(2.0)  # INTENTIONAL: e2e/integration test polling real services
 
                 # 8. Verify webhook delivery
                 deliveries = WebhookDelivery.objects.filter(webhook=webhook)

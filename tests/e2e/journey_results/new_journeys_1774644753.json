@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.02904486656188965
+  },
+  "journeys": [
+    {
+      "journey_id": "CM-001-4049cd6e",
+      "journey_name": "Manage Data Community",
+      "persona": "Community Manager",
+      "status": "completed",
+      "start_time": 1774644753.9511547,
+      "end_time": 1774644753.9801996,
+      "duration": 0.02904486656188965,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Community",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644753.964843,
+          "end_time": 1774644753.9648495,
+          "duration": 6.4373016357421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "ReturnDict"
+          }
+        },
+        {
+          "step_name": "Configure Community Settings",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644753.9735098,
+          "end_time": 1774644753.9735165,
+          "duration": 6.67572021484375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "ReturnDict"
+          }
+        },
+        {
+          "step_name": "Manage Members",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644753.9801934,
+          "end_time": 1774644753.980198,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-27T20:52:33.980260"
+}

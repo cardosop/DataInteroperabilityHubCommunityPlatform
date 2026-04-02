@@ -12,7 +12,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
+from hub.apps.users.models import UserStatus, UserTenantMembership
 
 User = get_user_model()
 
@@ -33,5 +33,8 @@ class InjectionTestBase(TestCase):
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
+        )
+        UserTenantMembership.objects.get_or_create(
+            user=self.user, tenant=self.tenant,
         )
         self.client.force_authenticate(user=self.user)

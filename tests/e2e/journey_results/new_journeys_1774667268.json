@@ -1,0 +1,83 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-011-52360d10",
+      "journey_name": "Purchase Asset with Usage-Based Pricing",
+      "persona": "Data Consumer",
+      "status": "failed",
+      "start_time": 1774667266.8577864,
+      "end_time": 1774667268.363239,
+      "duration": 1.5054526329040527,
+      "completion_rate": 75.0,
+      "success_rate": 75.0,
+      "error_message": "Step 'Purchase Asset' returned HTTP 400: {'error': 'Cannot order your own listing.'}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774667266.8590856,
+          "end_time": 1774667268.326366,
+          "duration": 1.467280387878418,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "View Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774667268.3263752,
+          "end_time": 1774667268.3423555,
+          "duration": 0.015980243682861328,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Publish Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774667268.3423622,
+          "end_time": 1774667268.3565052,
+          "duration": 0.014142990112304688,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Purchase Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774667268.356511,
+          "end_time": 1774667268.3632302,
+          "duration": 0.006719112396240234,
+          "error_message": "Step 'Purchase Asset' returned HTTP 400: {'error': 'Cannot order your own listing.'}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T03:07:48.363410"
+}

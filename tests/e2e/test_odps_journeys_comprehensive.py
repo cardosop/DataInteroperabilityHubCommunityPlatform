@@ -21,6 +21,8 @@ import uuid
 from typing import Any, Dict, Optional
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from rest_framework import status
 
@@ -197,10 +199,10 @@ class ODPSJourneyTestBase(E2ETestBase):
                     WorkflowStatus.ROLLED_BACK,
                 ]:
                     return instance
-                time.sleep(check_interval)
+                time.sleep(check_interval)  # INTENTIONAL: e2e/integration test polling real services
             except WorkflowInstance.DoesNotExist:
                 # Workflow instance might not exist yet or was cleaned up
-                time.sleep(check_interval)
+                time.sleep(check_interval)  # INTENTIONAL: e2e/integration test polling real services
                 continue
 
         # Return the instance even if not completed (for test verification)

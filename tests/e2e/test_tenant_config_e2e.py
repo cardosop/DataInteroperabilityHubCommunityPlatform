@@ -10,6 +10,8 @@ Covers:
 Uses REAL services (no mocks).
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import uuid
 from django.test import TestCase
 from django.contrib.auth import get_user_model
@@ -44,8 +46,8 @@ class TenantConfigE2ETest(E2ETestBase):
         
         # Create additional tenants for cross-tenant tests
         self.tenant2 = Tenant.objects.create(
-            name="Test Tenant 2",
-            slug="test-tenant-2",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         
@@ -73,7 +75,7 @@ class TenantConfigE2ETest(E2ETestBase):
         
         # Create platform admin
         self.platform_admin = User.objects.create_user(
-            email="platform-admin@example.com",
+            email=f"platform-admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status=UserStatus.ACTIVE,
@@ -82,7 +84,7 @@ class TenantConfigE2ETest(E2ETestBase):
         
         # Create tenant admin for tenant1
         self.tenant1_admin = User.objects.create_user(
-            email="tenant1-admin@example.com",
+            email=f"tenant1-admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -91,7 +93,7 @@ class TenantConfigE2ETest(E2ETestBase):
         
         # Create tenant admin for tenant2
         self.tenant2_admin = User.objects.create_user(
-            email="tenant2-admin@example.com",
+            email=f"tenant2-admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant2,
             status=UserStatus.ACTIVE
@@ -105,7 +107,7 @@ class TenantConfigE2ETest(E2ETestBase):
         
         # Create DATA_PROVIDER user
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -114,7 +116,7 @@ class TenantConfigE2ETest(E2ETestBase):
         
         # Create DATA_CONSUMER user
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -123,7 +125,7 @@ class TenantConfigE2ETest(E2ETestBase):
         
         # Create AUDITOR user
         self.auditor_user = User.objects.create_user(
-            email="auditor@example.com",
+            email=f"auditor-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -288,75 +290,79 @@ class TenantConfigE2ETest(E2ETestBase):
         response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
     
-    # Configuration Usage Journey Tests
+    # Configuration Persistence Tests — verify config is stored and
+    # retrievable via API.  Downstream enforcement (DQ profile selection,
+    # compliance regimes, file size limits, job concurrency) is tested
+    # in dedicated integration tests.
+
     @override_settings(DQ_SERVICE_URL='http://localhost:8083')
-    def test_config_affects_dq_profile_selection(self):
-        """Configuration affects DQ profile selection in DQ runs"""
-        # Create tenant config with default_dq_profile
+    def test_config_stores_dq_profile_selection(self):
+        """Verify default_dq_profile is persisted and retrievable via API"""
         TenantConfig.objects.create(
             tenant=self.tenant,
             default_dq_profile="intake_basic_soda"
         )
-        
-        # Verify DQ service would use tenant's default profile
-        # This is tested via integration tests, but we verify config is set correctly
+
+        # Verify DB persistence
         config = TenantConfig.objects.get(tenant=self.tenant)
         self.assertEqual(config.default_dq_profile, "intake_basic_soda")
-        
-        # In a real scenario, when DQ run is created without profile,
-        # it should use config.default_dq_profile
-        # This is verified in integration tests (test_tenant_config_dq_integration.py)
-    
+
+        # Verify API returns the config
+        response = self.client.get(f'/api/v1/tenants/{self.tenant.id}/config/')
+        self.assertEqual(response.status_code, 200)
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('default_dq_profile'), "intake_basic_soda")
+
     @override_settings(COMPLIANCE_SERVICE_URL='http://localhost:8082')
-    def test_config_affects_compliance_regimes(self):
-        """Configuration affects compliance regimes in compliance runs"""
-        # Create tenant config with default_compliance_regimes
+    def test_config_stores_compliance_regimes(self):
+        """Verify compliance regimes are persisted and retrievable via API"""
         TenantConfig.objects.create(
             tenant=self.tenant,
             allowed_compliance_regimes=["GDPR", "LGPD", "CCPA"],
             default_compliance_regimes=["GDPR", "LGPD"]
         )
-        
-        # Verify config is set correctly
+
         config = TenantConfig.objects.get(tenant=self.tenant)
         self.assertEqual(config.default_compliance_regimes, ["GDPR", "LGPD"])
-        
-        # In a real scenario, when compliance run is created without regimes,
-        # it should use config.default_compliance_regimes
-        # This is verified in integration tests (test_tenant_config_compliance_integration.py)
-    
-    def test_config_affects_file_size_limit(self):
-        """Configuration affects file size limit for uploads"""
-        # Create tenant config with max_file_size_bytes = 5GB
+
+        response = self.client.get(f'/api/v1/tenants/{self.tenant.id}/config/')
+        self.assertEqual(response.status_code, 200)
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('default_compliance_regimes'), ["GDPR", "LGPD"])
+
+    def test_config_stores_file_size_limit(self):
+        """Verify max_file_size_bytes is persisted and retrievable via API"""
         max_size = 5 * 1024 * 1024 * 1024  # 5GB
         TenantConfig.objects.create(
             tenant=self.tenant,
             max_file_size_bytes=max_size
         )
-        
-        # Verify config is set correctly
+
         config = TenantConfig.objects.get(tenant=self.tenant)
         self.assertEqual(config.max_file_size_bytes, max_size)
-        
-        # In a real scenario, file upload would check config.max_file_size_bytes
-        # This is verified in integration tests (test_tenant_config_file_upload_integration.py)
-    
-    def test_config_affects_job_concurrency(self):
-        """Configuration affects job concurrency limits"""
-        # Create tenant config with max_job_concurrency = 2
+
+        response = self.client.get(f'/api/v1/tenants/{self.tenant.id}/config/')
+        self.assertEqual(response.status_code, 200)
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('max_file_size_bytes'), max_size)
+
+    def test_config_stores_job_concurrency(self):
+        """Verify job concurrency limits are persisted and retrievable via API"""
         TenantConfig.objects.create(
             tenant=self.tenant,
             max_job_concurrency=2,
             max_queued_jobs=10
         )
-        
-        # Verify config is set correctly
+
         config = TenantConfig.objects.get(tenant=self.tenant)
         self.assertEqual(config.max_job_concurrency, 2)
         self.assertEqual(config.max_queued_jobs, 10)
-        
-        # In a real scenario, job creation would check config.max_job_concurrency
-        # This is verified in integration tests (test_tenant_config_job_integration.py)
+
+        response = self.client.get(f'/api/v1/tenants/{self.tenant.id}/config/')
+        self.assertEqual(response.status_code, 200)
+        data = get_response_data(response) or {}
+        self.assertEqual(data.get('max_job_concurrency'), 2)
+        self.assertEqual(data.get('max_queued_jobs'), 10)
     
     # Edge Case Tests
     def test_config_with_all_fields_set(self):
@@ -561,8 +567,8 @@ class TenantConfigE2ETest(E2ETestBase):
         """Test config deletion cascade when tenant is deleted"""
         # Create a tenant without users to test cascade delete
         test_tenant = Tenant.objects.create(
-            name="Test Tenant for Deletion",
-            slug="test-tenant-deletion",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         

@@ -12,6 +12,7 @@ Usage
 Environment variables
 ---------------------
     SMOKE_BASE_URL          Base URL of the deployed API (overridden by --base-url CLI option)
+    SMOKE_EXPECT_MVP_MODE   When 1/true/yes, tests/smoke/test_mvp_features.py asserts MVP gated 404s
     SMOKE_ADMIN_EMAIL       Admin account email for authenticated tests
     SMOKE_ADMIN_PASSWORD    Admin account password for authenticated tests
     SMOKE_TEST_TIMEOUT      HTTP request timeout in seconds (default: 30)

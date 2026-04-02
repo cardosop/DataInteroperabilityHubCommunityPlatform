@@ -12,6 +12,8 @@ Tests all search endpoints with 50+ test cases covering:
 All tests use real services (no mocks/stubs) and run against Docker Compose instances.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import time
 import json
 import uuid
@@ -62,12 +64,12 @@ class TestSearchAPI(TestCase):
 
         # Create users
         self.user_a = UserFactory.create_user(
-            email="user_a@example.com",
+            email=f"user_a-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_a,
             status=UserStatus.ACTIVE.value
         )
         self.user_b = UserFactory.create_user(
-            email="user_b@example.com",
+            email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_b,
             status=UserStatus.ACTIVE.value
         )
@@ -540,7 +542,7 @@ class TestSearchAPI(TestCase):
             times.append(elapsed)
 
             # Small delay to avoid rate limiting
-            time.sleep(0.1)
+            time.sleep(0.1)  # INTENTIONAL: e2e/integration test polling real services
 
         if times:
             # Calculate p95
@@ -720,7 +722,7 @@ class TestSearchAPI(TestCase):
     def test_search_user_without_tenant(self):
         """Test search when user has no tenant"""
         user_no_tenant = UserFactory.create_user(
-            email="no_tenant@example.com",
+            email=f"no_tenant-{uuid.uuid4().hex[:8]}@example.com",
             tenant=None,
             status=UserStatus.ACTIVE.value
         )

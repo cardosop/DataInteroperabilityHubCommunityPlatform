@@ -9,18 +9,17 @@ Covers:
 Uses REAL services (no mocks).
 """
 
-import html
 import json
 import uuid
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.middleware.csrf import get_token
-from django.test import TestCase
 from rest_framework import status
-from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.assets.models import Asset
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 
@@ -42,8 +41,11 @@ class InputValidationE2ETest(E2ETestBase):
 
     def test_sql_injection_prevention_in_queries(self):
         """Test SQL injection prevention in database queries"""
-        # Create a test asset
+        # Create a test asset with a known key
         asset_id = self.create_asset(key="test-asset", name="Test Asset")
+
+        # Count total assets before injection attempts
+        asset_count_before = Asset.objects.filter(tenant_id=self.tenant.id).count()
 
         # Try SQL injection in query parameters
         malicious_inputs = [
@@ -66,9 +68,41 @@ class InputValidationE2ETest(E2ETestBase):
                 f"SQL injection attempt '{malicious_input}' should be handled safely",
             )
 
+            # If 200, verify no SQL was executed: the response must
+            # be valid JSON with no database error indicators.
+            # Note: the ?key= param is NOT a recognised filter on
+            # this endpoint (only ?search= is), so the endpoint
+            # returns all tenant assets regardless of the value.
+            # Getting results back is FINE -- Django's ORM safely
+            # parameterises all queries.
+            if response.status_code == status.HTTP_200_OK:
+                data = get_response_data(response) or {}
+                # Verify response does not contain database error
+                # messages (which would indicate injection success)
+                response_str = json.dumps(
+                    data, default=str,
+                ).lower()
+                for error_indicator in [
+                    "syntax error", "relation", "column",
+                ]:
+                    self.assertNotIn(
+                        error_indicator,
+                        response_str,
+                        f"Response should not contain DB error "
+                        f"'{error_indicator}'",
+                    )
+
             # Verify asset still exists (not deleted)
             asset = Asset.objects.filter(id=asset_id).first()
             self.assertIsNotNone(asset, "Asset should not be deleted by SQL injection")
+
+        # Verify no data was deleted or corrupted
+        asset_count_after = Asset.objects.filter(tenant_id=self.tenant.id).count()
+        self.assertEqual(
+            asset_count_before,
+            asset_count_after,
+            "SQL injection should not delete or corrupt any data",
+        )
 
     def test_sql_injection_prevention_in_path_parameters(self):
         """Test SQL injection prevention in path parameters"""
@@ -132,8 +166,7 @@ class InputValidationE2ETest(E2ETestBase):
     # ========== XSS Prevention Tests ==========
 
     def test_xss_prevention_in_output(self):
-        """Test XSS prevention in API output"""
-        # Create asset with potentially malicious input
+        """Test XSS prevention in API output - payloads stored as literal text, not executed"""
         xss_payloads = [
             "<script>alert('XSS')</script>",
             "<img src=x onerror=alert('XSS')>",
@@ -143,24 +176,39 @@ class InputValidationE2ETest(E2ETestBase):
         ]
 
         for payload in xss_payloads:
-            # Create asset with XSS payload
+            # Create asset with XSS payload in name
             asset_id = self.create_asset(key=f"xss-test-{uuid.uuid4().hex[:8]}", name=payload)
 
             # Retrieve asset
             response = self.client.get(f"/api/v1/assets/{asset_id}/")
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-            if response.status_code == status.HTTP_200_OK:
-                # Check that response is JSON (not HTML)
-                self.assertEqual(response.get("Content-Type"), "application/json")
+            # Content-Type MUST be application/json to prevent browser execution
+            content_type = response.get("Content-Type", "")
+            self.assertIn(
+                "application/json",
+                content_type,
+                f"Content-Type must be application/json to prevent XSS, got '{content_type}'",
+            )
 
-                # Check that payload is properly encoded in JSON
-                data = get_response_data(response) or {}
-                if "name" in data:
-                    name = data["name"]
-                    # Name should be the literal string (JSON-encoded), not executed
-                    self.assertIsInstance(name, str)
-                    # Should contain the payload as a string (not executed)
-                    self.assertIn(payload, name)
+            # Verify the payload is stored as-is (literal string, not executed/stripped)
+            data = get_response_data(response) or {}
+            self.assertIn("name", data, "Response must include the 'name' field")
+            name = data["name"]
+            self.assertIsInstance(name, str)
+            self.assertEqual(
+                name,
+                payload,
+                f"XSS payload must be stored as literal text. Expected '{payload}', got '{name}'",
+            )
+
+            # Verify the raw response body has the payload JSON-escaped (not raw HTML)
+            raw_body = response.content.decode("utf-8")
+            # In JSON, angle brackets should appear literally or as unicode escapes
+            # They must NOT appear as unescaped HTML outside of JSON string values
+            # Verify the raw body is valid JSON (not HTML)
+            parsed = json.loads(raw_body)
+            self.assertIsInstance(parsed, dict, "Response body must be valid JSON, not HTML")
 
     def test_xss_prevention_in_json_responses(self):
         """Test XSS prevention in JSON responses"""
@@ -190,23 +238,45 @@ class InputValidationE2ETest(E2ETestBase):
                 self.assertIn("<script>", name)
 
     def test_xss_prevention_html_escaping(self):
-        """Test HTML escaping for XSS prevention"""
-        # Test various XSS payloads
-        test_cases = [
-            ("<script>", "&lt;script&gt;"),
-            ("&", "&amp;"),
-            ('"', "&quot;"),
-            ("'", "&#x27;"),
+        """Test that XSS payloads sent to API are not rendered as executable HTML"""
+        # Send XSS payloads via the API and verify they are safely stored/returned
+        xss_payloads = [
+            "<script>alert('xss')</script>",
+            '<img src=x onerror="alert(1)">',
+            "<<SCRIPT>alert('xss');//<</SCRIPT>",
+            '"><script>alert(1)</script>',
         ]
 
-        for input_char, expected_escaped in test_cases:
-            # HTML escape should work
-            escaped = html.escape(input_char)
-            # Verify HTML escaping works
-            self.assertNotEqual(escaped, input_char)
-            # Escaped should contain the expected escape sequence
-            if expected_escaped:
-                self.assertIn(expected_escaped[:5], escaped)
+        for payload in xss_payloads:
+            asset_id = self.create_asset(
+                key=f"html-esc-{uuid.uuid4().hex[:8]}",
+                name=payload,
+            )
+
+            response = self.client.get(f"/api/v1/assets/{asset_id}/")
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+            data = get_response_data(response) or {}
+            self.assertIn("name", data)
+
+            # The API must either:
+            # 1. Store the payload as-is (safe because Content-Type is JSON), OR
+            # 2. HTML-escape it (safe for any rendering context)
+            # Either way, the raw response must be valid JSON, not executable HTML
+            raw_body = response.content.decode("utf-8")
+            parsed = json.loads(raw_body)
+            self.assertIsInstance(parsed, dict, "Response must be valid JSON")
+
+            # Content-Type must prevent browser HTML interpretation
+            content_type = response.get("Content-Type", "")
+            self.assertIn("application/json", content_type)
+
+            # If the name was HTML-escaped, verify the escaping is correct
+            name = data["name"]
+            if name != payload:
+                # It was escaped - verify dangerous chars are neutralized
+                self.assertNotIn("<script>", name.lower(),
+                                 "If HTML-escaped, <script> tags must not remain literal")
 
     # ========== CSRF Prevention Tests ==========
 
@@ -222,33 +292,55 @@ class InputValidationE2ETest(E2ETestBase):
         )
 
     def test_csrf_token_generation(self):
-        """Test CSRF token generation"""
+        """Test CSRF token generation produces a valid token"""
         # Get a response to generate CSRF token
         response = self.client.get("/api/v1/assets/")
 
         # CSRF token should be available in request
-        if hasattr(response, "wsgi_request"):
-            csrf_token = get_token(response.wsgi_request)
-            # Token should be generated (may be None for API endpoints that are exempt)
-            # But the mechanism should be available
-            self.assertIsNotNone(
-                get_token(response.wsgi_request) or True,
-                "CSRF token generation should be available",
-            )
+        self.assertTrue(
+            hasattr(response, "wsgi_request"),
+            "Response must have wsgi_request attribute for CSRF token extraction",
+        )
+
+        csrf_token = get_token(response.wsgi_request)
+        # Token must be a non-empty string
+        self.assertIsNotNone(csrf_token, "CSRF token must not be None")
+        self.assertIsInstance(csrf_token, str, "CSRF token must be a string")
+        # Django CSRF tokens are 64 characters (masked) or 32 characters (unmasked)
+        self.assertGreaterEqual(
+            len(csrf_token),
+            32,
+            f"CSRF token must be at least 32 chars, got {len(csrf_token)}",
+        )
 
     def test_csrf_cookie_settings(self):
         """Test CSRF cookie security settings"""
         from django.conf import settings
 
         # CSRF cookie should have security settings
-        # HttpOnly, SameSite, Secure (in production)
-        self.assertIsNotNone(settings.CSRF_COOKIE_SAMESITE)
-        # SameSite should be 'Lax', 'Strict', or 'None'
+        # SameSite must be set to a valid value
+        self.assertTrue(
+            hasattr(settings, "CSRF_COOKIE_SAMESITE"),
+            "CSRF_COOKIE_SAMESITE must be configured",
+        )
+        self.assertIsNotNone(
+            settings.CSRF_COOKIE_SAMESITE,
+            "CSRF_COOKIE_SAMESITE must not be None",
+        )
         self.assertIn(
             settings.CSRF_COOKIE_SAMESITE,
             ["Lax", "Strict", "None"],
-            "CSRF cookie SameSite should be set",
+            f"CSRF cookie SameSite should be Lax, Strict, or None, "
+            f"got '{settings.CSRF_COOKIE_SAMESITE}'",
         )
+
+        # Verify CSRF_COOKIE_HTTPONLY is configured
+        if hasattr(settings, "CSRF_COOKIE_HTTPONLY"):
+            self.assertIsInstance(
+                settings.CSRF_COOKIE_HTTPONLY,
+                bool,
+                "CSRF_COOKIE_HTTPONLY must be a boolean",
+            )
 
 
 class DataAccessControlsE2ETest(E2ETestBase):
@@ -259,16 +351,31 @@ class DataAccessControlsE2ETest(E2ETestBase):
         super().setUp()
 
         # Create another tenant for isolation tests
+        _suffix = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_suffix}",
+            slug=f"other-tenant-{_suffix}",
             kyc_status=KYCStatus.VERIFIED,
         )
+        # Ensure other tenant has active subscription so billing middleware allows writes
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.other_tenant)
+
         self.other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.other_tenant,
             status=UserStatus.ACTIVE,
+        )
+        # Assign TENANT_ADMIN role so the user can create assets
+        from hub.apps.users.models import Role, UserRole
+        other_role, _ = Role.objects.get_or_create(
+            tenant=self.other_tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(
+            user=self.other_user, role=other_role,
         )
 
     # ========== Multi-Tenant Isolation Tests ==========
@@ -307,53 +414,81 @@ class DataAccessControlsE2ETest(E2ETestBase):
         )
 
     def test_tenant_isolation_list_queries(self):
-        """Test tenant isolation in list queries"""
-        # Create multiple assets in current tenant
-        for i in range(5):
-            self.create_asset(key=f"asset-{i}", name=f"Asset {i}")
+        """Test tenant isolation in list queries - each tenant sees only its own assets"""
+        # Create assets in the FIRST (default) tenant
+        tenant1_asset_ids = []
+        for i in range(3):
+            aid = self.create_asset(key=f"t1-asset-{i}", name=f"Tenant1 Asset {i}")
+            tenant1_asset_ids.append(str(aid))
 
-        # Switch to other tenant
+        # Switch to second tenant and create assets there
         self.client.force_authenticate(user=self.other_user)
+        tenant2_asset_ids = []
+        for i in range(2):
+            aid = self.create_asset(key=f"t2-asset-{i}", name=f"Tenant2 Asset {i}")
+            tenant2_asset_ids.append(str(aid))
 
-        # List assets (should only see other tenant's assets, which is none)
+        # List assets as second tenant
         response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        # Should not see current tenant's assets
         data = get_response_data(response) or {}
-        if "results" in data:
-            results = data["results"]
-            asset_ids = [r.get("id") for r in results if isinstance(r, dict)]
-            # Should not contain any assets from other tenant
-            for asset_id in asset_ids:
-                asset = Asset.objects.filter(id=asset_id).first()
-                if asset:
-                    self.assertEqual(
-                        asset.tenant_id,
-                        self.other_tenant.id,
-                        "List query should only return assets from authenticated tenant",
-                    )
+        results = data.get("results", [])
+        returned_ids = [str(r.get("id")) for r in results if isinstance(r, dict)]
+
+        # Second tenant MUST see its own assets
+        for t2_id in tenant2_asset_ids:
+            self.assertIn(
+                t2_id,
+                returned_ids,
+                f"Tenant 2 should see its own asset {t2_id}",
+            )
+
+        # Second tenant MUST NOT see first tenant's assets
+        for t1_id in tenant1_asset_ids:
+            self.assertNotIn(
+                t1_id,
+                returned_ids,
+                f"Tenant 2 should NOT see tenant 1's asset {t1_id}",
+            )
 
     def test_tenant_isolation_database_queries(self):
-        """Test tenant isolation in database queries"""
-        # Create asset in current tenant
+        """Test tenant isolation via API - other tenant cannot access or find the asset"""
+        # Create asset in current (first) tenant
         asset_id = self.create_asset(key="db-isolation", name="DB Isolation Test")
-
-        # Verify asset belongs to current tenant
-        asset = Asset.objects.get(id=asset_id)
-        self.assertEqual(asset.tenant_id, self.tenant.id)
 
         # Switch to other tenant
         self.client.force_authenticate(user=self.other_user)
 
-        # Try to query asset directly (should not find it due to tenant filtering)
-        # Note: In real implementation, queries should be tenant-scoped
-        # This test verifies that tenant_id filtering is applied
-        other_tenant_assets = Asset.objects.filter(tenant_id=self.other_tenant.id)
+        # Direct access by ID via API should return 404
+        response = self.client.get(f"/api/v1/assets/{asset_id}/")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_404_NOT_FOUND,
+            "Other tenant must not access asset by ID via API",
+        )
+
+        # Listing via API should not include the first tenant's asset
+        response = self.client.get("/api/v1/assets/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = get_response_data(response) or {}
+        results = data.get("results", [])
+        returned_ids = [str(r.get("id")) for r in results if isinstance(r, dict)]
         self.assertNotIn(
-            asset_id,
-            [str(a.id) for a in other_tenant_assets],
-            "Asset should not be in other tenant's query results",
+            str(asset_id),
+            returned_ids,
+            "Other tenant's list query must not include first tenant's asset",
+        )
+
+        # Searching/filtering by the asset's key via API should also return nothing
+        response = self.client.get("/api/v1/assets/", {"key": "db-isolation"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = get_response_data(response) or {}
+        results = data.get("results", [])
+        self.assertEqual(
+            len(results),
+            0,
+            "Filtering by key should return no results for other tenant",
         )
 
     # ========== Field-Level Access Tests ==========
@@ -379,24 +514,51 @@ class DataAccessControlsE2ETest(E2ETestBase):
             # This test verifies that field-level access is enforced
 
     def test_sensitive_data_not_exposed(self):
-        """Test that sensitive data is not exposed"""
+        """Test that sensitive data is not exposed in API responses"""
         # Create asset
         asset_id = self.create_asset(key="sensitive-test", name="Sensitive Test")
 
-        # Get asset
+        # Get asset detail
         response = self.client.get(f"/api/v1/assets/{asset_id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        if response.status_code == status.HTTP_200_OK:
-            data = get_response_data(response) or {}
-            # Should not expose internal IDs or sensitive fields
-            # Verify response doesn't contain unexpected sensitive data
-            # Convert data to string for checking (handle UUIDs and other non-serializable types)
-            response_str = json.dumps(data, default=str)
-            # Should not contain raw database IDs or internal paths
-            self.assertNotIn("/var/", response_str)
-            self.assertNotIn("/usr/", response_str)
-            self.assertNotIn("password", response_str.lower())
-            self.assertNotIn("secret", response_str.lower())
+        data = get_response_data(response) or {}
+        response_str = json.dumps(data, default=str)
+        response_lower = response_str.lower()
+
+        # Should not contain internal filesystem paths
+        for path in ["/var/", "/usr/", "/etc/", "/home/", "/opt/"]:
+            self.assertNotIn(path, response_str, f"Response must not expose internal path '{path}'")
+
+        # Should not contain sensitive field values
+        sensitive_patterns = [
+            ("password", "password field or value"),
+            ("secret", "secret key or value"),
+            ("private_key", "private key material"),
+            ("connection_string", "database connection string"),
+            ("bearer ", "bearer token"),
+            ("aws_access_key", "AWS credentials"),
+            ("aws_secret", "AWS secret key"),
+            ("database_url", "database URL"),
+            ("dsn", "data source name / sentry DSN"),
+        ]
+        for pattern, description in sensitive_patterns:
+            self.assertNotIn(
+                pattern,
+                response_lower,
+                f"Response must not expose {description}",
+            )
+
+        # Also check the list endpoint
+        response = self.client.get("/api/v1/assets/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        list_str = json.dumps(get_response_data(response) or {}, default=str).lower()
+        for pattern, description in sensitive_patterns:
+            self.assertNotIn(
+                pattern,
+                list_str,
+                f"List response must not expose {description}",
+            )
 
     # ========== Data Masking Tests ==========
 

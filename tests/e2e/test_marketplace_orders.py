@@ -12,6 +12,8 @@ Covers:
 
 Uses REAL services (no mocks).
 """
+import uuid
+
 import pytest
 import hashlib
 from django.test import TestCase
@@ -50,7 +52,7 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
 
         ensure_e2e_tenant_ready(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
-            email='consumer@example.com',
+            email=f'consumer-{uuid.uuid4().hex[:8]}@example.com',
             password='testpass123',
             tenant=self.consumer_tenant
         )
@@ -154,8 +156,11 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         order_id = (data.get('order') or data).get('id')
         self.assertIsNotNone(order_id, "Order response missing id")
         order = Order.objects.get(id=order_id)
-        # May be APPROVED immediately or REQUESTED depending on implementation
-        self.assertIn(order.status, [OrderStatus.APPROVED, OrderStatus.REQUESTED])
+        # Free auto-approve listing should auto-approve or fulfill order.
+        # Auto-approval may be async (via on_commit callback) which doesn't
+        # fire inside Django TestCase, so REQUESTED is acceptable.
+        self.assertIn(order.status, [OrderStatus.APPROVED, OrderStatus.FULFILLED, OrderStatus.REQUESTED],
+            f"Free auto-approve listing order should be APPROVED/FULFILLED/REQUESTED, got {order.status}")
         
         if order.status == OrderStatus.APPROVED:
             # Verify entitlement created
@@ -412,6 +417,10 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
             filtered_orders = data if isinstance(data, list) else []
         order_statuses = {o['status'] for o in filtered_orders}
         self.assertEqual(order_statuses, {OrderStatus.REQUESTED})
+        # Verify filter only returned matching orders
+        for order_item in filtered_orders:
+            self.assertEqual(order_item.get('status'), OrderStatus.REQUESTED,
+                f"Filter should only return REQUESTED orders, got {order_item.get('status')}")
     
     def test_get_order_details(self):
         """Test retrieving order details"""
@@ -438,6 +447,8 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         self.assertEqual(data.get('id'), str(order_id))
         self.assertEqual(data.get('status'), OrderStatus.REQUESTED)
         self.assertIn('listing', data)
+        self.assertIsNotNone(data.get('listing'), "Order should include listing details")
+        self.assertIn('status', data, "Order should include status")
     
     def test_order_fulfillment_creates_entitlement(self):
         """Test that order fulfillment creates entitlement"""

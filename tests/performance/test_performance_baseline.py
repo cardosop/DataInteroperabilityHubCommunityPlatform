@@ -8,6 +8,8 @@ to detect performance regressions.
 All tests use real services (no mocks/stubs) and follow TDD principles.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import time
 import statistics
 from django.test import TestCase, Client
@@ -21,6 +23,7 @@ from hub.apps.assets.models import Asset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.datasets.models import Dataset
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -33,9 +36,9 @@ class PerformanceBaselineTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.client = Client()
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )

@@ -19,6 +19,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from hub.apps.assets.models import Asset
 from tests.factories import TenantFactory
+import uuid
 
 User = get_user_model()
 
@@ -33,7 +34,7 @@ class APIVersionCompatibilityTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -72,7 +73,7 @@ class APIBackwardCompatibilityTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -120,7 +121,7 @@ class APIResponseFormatCompatibilityTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -180,7 +181,7 @@ class APIErrorFormatCompatibilityTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -223,7 +224,7 @@ class APIContractsMaintainedTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

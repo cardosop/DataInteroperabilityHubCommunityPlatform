@@ -1,0 +1,72 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.0006799697875976562
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-005-c1589886",
+      "journey_name": "Audit Access Logs",
+      "persona": "Compliance & Privacy Officer",
+      "status": "completed",
+      "start_time": 1774697348.9937553,
+      "end_time": 1774697348.9944353,
+      "duration": 0.0006799697875976562,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "List Audit Logs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774697348.9937584,
+          "end_time": 1774697348.9944239,
+          "duration": 0.0006654262542724609,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Filter Logs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774697348.9944272,
+          "end_time": 1774697348.9944305,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Export Logs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774697348.9944322,
+          "end_time": 1774697348.9944344,
+          "duration": 2.1457672119140625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "logs_count": 0,
+        "filtered_count": 0
+      }
+    }
+  ],
+  "exported_at": "2026-03-28T11:29:08.994500"
+}

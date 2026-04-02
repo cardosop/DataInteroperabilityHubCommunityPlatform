@@ -16,6 +16,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, Role, UserRole, UserStatus
 from hub.apps.rate_limiting.service import check_rate_limit
 from tests.e2e.conftest import E2ETestBase, get_response_data
+import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
 User = get_user_model()
@@ -37,7 +38,7 @@ class DataConsumerPersonaTest(E2ETestBase):
         
         # Create data consumer user
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -82,8 +83,7 @@ class DataConsumerPersonaTest(E2ETestBase):
             api_key_id=None
         )
         
-        result = {"allowed": allowed, "results": results}
-        self.assertIn("allowed", result)
+        self.assertTrue(allowed, "DATA_CONSUMER should be allowed under normal rate limits")
     
     def test_data_consumer_rate_limit_headers(self):
         """Test rate limit headers are present for DATA_CONSUMER"""
@@ -134,10 +134,8 @@ class DataConsumerPersonaTest(E2ETestBase):
             api_key_id=str(api_key.id)
         )
         
-        result = {"allowed": allowed, "results": results}
-        
-        self.assertIn("allowed", result)
-    
+        self.assertTrue(allowed, "DATA_CONSUMER API key should be allowed under normal rate limits")
+
     def test_data_consumer_can_use_cli_for_contracts(self):
         """Test DATA_CONSUMER can use CLI for contract operations"""
         response = self.client.get("/api/v1/contracts/")
@@ -192,10 +190,8 @@ class DataConsumerPersonaTest(E2ETestBase):
             api_key_id=None
         )
         
-        result = {"allowed": allowed, "results": results}
-        
-        self.assertIn("allowed", result)
-    
+        self.assertTrue(allowed, "DATA_CONSUMER should be allowed under tenant-specific rate limits")
+
     def test_data_consumer_rate_limit_platform_defaults(self):
         """Test platform defaults apply when tenant config not set"""
         from hub.apps.tenants.models import TenantConfig
@@ -217,8 +213,7 @@ class DataConsumerPersonaTest(E2ETestBase):
             api_key_id=None
         )
         
-        result = {"allowed": allowed, "results": results}
-        self.assertIn("allowed", result)
+        self.assertTrue(allowed, "DATA_CONSUMER should be allowed under normal rate limits")
     
     def test_data_consumer_cannot_modify_tenant_config_via_cli(self):
         """Test DATA_CONSUMER cannot modify tenant config even via CLI"""
@@ -251,6 +246,8 @@ class DataConsumerPersonaTest(E2ETestBase):
         
         if response and response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
             self.assertIn("Retry-After", response.headers or {})
+        else:
+            self.skipTest("Did not reach rate limit after 20 requests")
     
     def test_data_consumer_rate_limit_error_format(self):
         """Test rate limit error format for DATA_CONSUMER"""
@@ -270,7 +267,7 @@ class DataConsumerPersonaTest(E2ETestBase):
     def test_data_consumer_rate_limit_per_user(self):
         """Test rate limits are enforced per user for DATA_CONSUMER"""
         other_consumer = User.objects.create_user(
-            email="other_consumer@example.com",
+            email=f"other_consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

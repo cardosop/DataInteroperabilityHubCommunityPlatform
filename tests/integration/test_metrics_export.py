@@ -9,6 +9,7 @@ import re
 from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 from hub.apps.tenants.models import Tenant
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -22,8 +23,8 @@ class MetricsExportTest(TestCase):
         """Set up test data"""
         self.client = Client()
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
     
     def test_api_service_metrics_endpoint(self):

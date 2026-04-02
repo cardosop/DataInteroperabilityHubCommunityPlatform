@@ -82,7 +82,7 @@ class _RefResolverTestHTTPServer:
         self.port = self.server.server_address[1]
         self.thread = Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
-        time.sleep(0.15)
+        time.sleep(0.15)  # INTENTIONAL: test-specific delay
 
     def stop(self) -> None:
         if self.server:

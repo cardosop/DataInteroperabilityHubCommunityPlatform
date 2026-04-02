@@ -1,0 +1,56 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.01701068878173828
+  },
+  "journeys": [
+    {
+      "journey_id": "CM-004-43386d56",
+      "journey_name": "Manage Activity Feeds",
+      "persona": "Community Manager",
+      "status": "completed",
+      "start_time": 1774662094.8344316,
+      "end_time": 1774662094.8514423,
+      "duration": 0.01701068878173828,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Activity Feeds",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774662094.8455346,
+          "end_time": 1774662094.845548,
+          "duration": 1.33514404296875e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Filter Activities",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774662094.8514342,
+          "end_time": 1774662094.8514407,
+          "duration": 6.4373016357421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T01:41:34.851504"
+}

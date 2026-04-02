@@ -1,0 +1,83 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-006-4b57f757",
+      "journey_name": "Configure Automated Compliance",
+      "persona": "Compliance Officer",
+      "status": "failed",
+      "start_time": 1774696184.3033354,
+      "end_time": 1774696184.6741984,
+      "duration": 0.3708629608154297,
+      "completion_rate": 75.0,
+      "success_rate": 75.0,
+      "error_message": "Step 'Create Compliance Certification' returned HTTP 500: {'error': {'code': 'INTERNAL_ERROR', 'message': 'null value in column \"tenant_id\" of relation \"access_certifications\" violates not-null constraint\\nDETAIL:  Failing row contains (7f36f93a-62ea-458a-a320-23579d3e64a5, ASSET_LEVEL, PENDING, null, 2027-03-28 11:09:44.657401+00, null, 2026-03-28 11:09:44.663665+00, 2026-03-28 11:09:44.663668+00, 49e324c2-c36a-41a3-861c-75d04e94363d, null, null, null, be66cf57-e4ec-43b7-ab44-c0af8b71ed61).\\n', 'http_status': 500, 'request_id': 'fbc24b46-1279-41db-a974-d145dc923c93', 'timestamp': '2026-03-28T11:09:44.664846+00:00'}}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Create Asset for Compliance",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696184.303344,
+          "end_time": 1774696184.6319594,
+          "duration": 0.3286154270172119,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Run Compliance Check",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696184.6319716,
+          "end_time": 1774696184.6490805,
+          "duration": 0.017108917236328125,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Review Compliance Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696184.6490963,
+          "end_time": 1774696184.6573913,
+          "duration": 0.008295059204101562,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Create Compliance Certification",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774696184.6574135,
+          "end_time": 1774696184.674192,
+          "duration": 0.01677846908569336,
+          "error_message": "Step 'Create Compliance Certification' returned HTTP 500: {'error': {'code': 'INTERNAL_ERROR', 'message': 'null value in column \"tenant_id\" of relation \"access_certifications\" violates not-null constraint\\nDETAIL:  Failing row contains (7f36f93a-62ea-458a-a320-23579d3e64a5, ASSET_LEVEL, PENDING, null, 2027-03-28 11:09:44.657401+00, null, 2026-03-28 11:09:44.663665+00, 2026-03-28 11:09:44.663668+00, 49e324c2-c36a-41a3-861c-75d04e94363d, null, null, null, be66cf57-e4ec-43b7-ab44-c0af8b71ed61).\\n', 'http_status': 500, 'request_id': 'fbc24b46-1279-41db-a974-d145dc923c93', 'timestamp': '2026-03-28T11:09:44.664846+00:00'}}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T11:09:44.674316"
+}

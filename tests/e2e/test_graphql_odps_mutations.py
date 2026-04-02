@@ -189,10 +189,9 @@ class GraphQLODPSMutationsE2ETest(E2ETestBase):
         result = data["data"].get("linkODPS")
         self.assertIsNotNone(result, "linkODPS mutation returned no result")
         errors = result.get("errors") if result else []
-        # May have errors if contracts are not compatible, but should attempt linking
-        if len(errors) == 0:
-            self.assertIsNotNone(result.get("odpsContract"))
-            self.assertIsNotNone(result.get("odcsContract"))
+        self.assertEqual(len(errors), 0, f"linkODPS errors: {errors}")
+        self.assertIsNotNone(result.get("odpsContract"), "linkODPS should return odpsContract")
+        self.assertIsNotNone(result.get("odcsContract"), "linkODPS should return odcsContract")
 
     def test_unlink_odps_workflow(self):
         """Test complete workflow: Unlink ODPS from ODCS via GraphQL"""
@@ -228,7 +227,7 @@ class GraphQLODPSMutationsE2ETest(E2ETestBase):
         result = data["data"].get("unlinkODPS")
         self.assertIsNotNone(result, "unlinkODPS mutation returned no result")
         # Should succeed even if no link exists
-        self.assertIsNotNone(result.get("success"))
+        self.assertTrue(result.get("success"), "unlinkODPS should return success=True")
 
     def test_export_odps_workflow(self):
         """Test complete workflow: Export ODPS contract via GraphQL"""
@@ -388,17 +387,17 @@ class GraphQLODPSMutationsE2ETest(E2ETestBase):
         self.assertIsNotNone(create_result.get("contract"), "createODPS returned no contract")
         odps_contract_id = create_result["contract"]["id"]
 
-        # Step 2: Create ODCS contract (for linking)
-        odcs_contract = Contract.objects.create(
-            tenant=self.tenant,
-            asset=self.asset if hasattr(self, "asset") else None,
-            version=1,
-            status=ContractStatus.DRAFT,
-            original_spec_type=OriginalSpecType.ODCS,
-            original_spec_version="3.0.2",
-            original_format=OriginalFormat.JSON,
+        # Step 2: Create ODCS contract via service (so it gets
+        # normalized -- hub_contract_json is required for linking)
+        from hub.apps.contracts.services import ContractService
+        contract_service = ContractService(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+        odcs_contract = contract_service.create_contract(
             original_raw=json.dumps(self.sample_odcs),
-            created_by=self.user,
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODCS,
         )
 
         # Step 3: Link ODPS to ODCS
@@ -423,6 +422,14 @@ class GraphQLODPSMutationsE2ETest(E2ETestBase):
 
         response = self._graphql_mutation(link_mutation, link_variables)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        link_data = json.loads(response.content)
+        link_result = link_data.get("data", {}).get("linkODPS")
+        self.assertIsNotNone(link_result, "linkODPS mutation returned no result")
+        link_errors = link_result.get("errors") if link_result else []
+        self.assertEqual(len(link_errors), 0, f"linkODPS errors: {link_errors}")
+        self.assertIsNotNone(link_result.get("odpsContract"), "linkODPS should return odpsContract with id")
+        self.assertIsNotNone(link_result.get("odcsContract"), "linkODPS should return odcsContract with id")
 
         # Step 4: Export ODPS
         export_mutation = """

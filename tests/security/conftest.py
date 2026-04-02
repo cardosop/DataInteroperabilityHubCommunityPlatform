@@ -11,6 +11,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus, UserTenantMembership
+import uuid
 
 User = get_user_model()
 
@@ -27,13 +28,13 @@ def two_tenant_setup(db):
         slug="security-tenant-b",
     )
     user_a = User.objects.create_user(
-        email="security-a@example.com",
+        email=f"security-a-{uuid.uuid4().hex[:8]}@example.com",
         password="testpass123",
         tenant=tenant_a,
         status=UserStatus.ACTIVE,
     )
     user_b = User.objects.create_user(
-        email="security-b@example.com",
+        email=f"security-b-{uuid.uuid4().hex[:8]}@example.com",
         password="testpass123",
         tenant=tenant_b,
         status=UserStatus.ACTIVE,

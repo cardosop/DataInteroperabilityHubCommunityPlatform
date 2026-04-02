@@ -27,6 +27,7 @@ from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
 from tests.factories import TenantFactory
+import uuid
 
 User = get_user_model()
 
@@ -56,7 +57,7 @@ class APIServiceDjango6Test(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -116,7 +117,7 @@ class WorkerServiceDjango6Test(TestCase):
         """Set up test fixtures"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -333,7 +334,7 @@ class MicroservicesIntegrationTest(TestCase):
         self.tenant = TenantFactory.create_tenant()
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

@@ -23,7 +23,7 @@ class TestRedisAlerts:
     def test_redis_alerts_loaded(self, prometheus_url):
         """Test that Redis alerts are loaded in Prometheus."""
         # Wait for Prometheus to load rules
-        time.sleep(5)
+        time.sleep(5)  # INTENTIONAL: e2e/integration test polling real services
 
         try:
             response = requests.get(f"{prometheus_url}/api/v1/rules", timeout=15)
@@ -108,7 +108,7 @@ class TestRedisAlerts:
 
     def test_redis_metrics_available_for_alerts(self, prometheus_url):
         """Test that Redis metrics are available for alert evaluation."""
-        time.sleep(15)
+        time.sleep(15)  # INTENTIONAL: e2e/integration test polling real services
         metrics_to_check = [
             'redis_memory_used_bytes',
             'redis_memory_max_bytes',

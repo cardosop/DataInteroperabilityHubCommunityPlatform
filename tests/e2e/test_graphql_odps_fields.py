@@ -36,7 +36,10 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        self.contract_service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.contract_service = ContractService(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
 
     def _graphql_query(self, query, variables=None):
         """Helper to execute GraphQL query"""
@@ -259,6 +262,8 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
     def test_pricing_plans_field_e2e(self):
         """Test pricingPlans field via GraphQL API with real ODPS contract"""
         # Create ODPS contract with pricing plans (dataSchema required by ODPS business rules)
+        # NOTE: pricingPlans must be under product.marketplace (not top-level)
+        # because the ODPS normalizer reads product.get("marketplace").
         odps_content = json.dumps({
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -269,10 +274,9 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "name": "E2E Test Product"
                     }
                 },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}
-            },
-            "marketplace": {
-                "pricingPlans": [
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+                "marketplace": {
+                    "pricingPlans": [
                     {
                         "planID": "basic",
                         "name": {
@@ -298,7 +302,8 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "billingUnit": "per user",
                         "isDefault": False
                     }
-                ]
+                    ]
+                }
             }
         })
 
@@ -334,24 +339,30 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
         self.assertIn("data", data)
         contract = data["data"]["contract"]
         pricing_plans = contract["pricingPlans"]
-        # Pricing plans may or may not be present depending on normalization
-        # Just verify the query doesn't error and returns a list
         self.assertIsInstance(pricing_plans, list)
+        self.assertGreater(
+            len(pricing_plans), 0,
+            "Pricing plans should be extracted from ODPS contract",
+        )
 
-        # Find basic plan (may not be present if normalization didn't extract it)
-        basic_plan = next((p for p in pricing_plans if p.get("planId") == "basic"), None)
-        if basic_plan:
-            self.assertEqual(basic_plan["name"], "Basic Plan")
-            self.assertEqual(basic_plan["price"], 9.99)
-            self.assertEqual(basic_plan["currency"], "USD")
-            self.assertEqual(basic_plan["isDefault"], True)
-        else:
-            # If pricing plans are not normalized/extracted, just verify query doesn't error
-            self.assertIsInstance(pricing_plans, list)
+        # Find basic plan
+        basic_plan = next(
+            (p for p in pricing_plans
+             if p.get("planId") == "basic"), None,
+        )
+        self.assertIsNotNone(
+            basic_plan,
+            "Basic plan should be found in pricing plans",
+        )
+        self.assertEqual(basic_plan["name"], "Basic Plan")
+        self.assertEqual(basic_plan["price"], 9.99)
+        self.assertEqual(basic_plan["currency"], "USD")
+        self.assertEqual(basic_plan["isDefault"], True)
 
     def test_access_methods_field_e2e(self):
         """Test accessMethods field via GraphQL API with real ODPS contract"""
-        # Create ODPS contract with access methods (dataSchema required by ODPS business rules)
+        # Create ODPS contract with access methods
+        # NOTE: accessMethods must be under product.marketplace
         odps_content = json.dumps({
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -362,10 +373,12 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "name": "E2E Test Product"
                     }
                 },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}
-            },
-            "marketplace": {
-                "accessMethods": {
+                "dataSchema": {"fields": [
+                    {"name": "id", "type": "string"},
+                    {"name": "name", "type": "string"},
+                ]},
+                "marketplace": {
+                    "accessMethods": {
                     "api": {
                         "type": "REST API",
                         "name": {
@@ -388,6 +401,7 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "description": {
                             "en": "Download as CSV file"
                         }
+                    }
                     }
                 }
             }
@@ -424,23 +438,31 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
         self.assertIn("data", data)
         contract = data["data"]["contract"]
         access_methods = contract["accessMethods"]
-        # Access methods may or may not be present depending on normalization
-        # Just verify the query doesn't error and returns a list
         self.assertIsInstance(access_methods, list)
+        self.assertGreater(
+            len(access_methods), 0,
+            "Access methods should be extracted from ODPS",
+        )
 
-        # Find API method (may not be present if normalization didn't extract it)
-        api_method = next((m for m in access_methods if m.get("methodId") == "api"), None)
-        if api_method:
-            self.assertEqual(api_method["type"], "REST API")
-            self.assertEqual(api_method["name"], "REST API Access")
-            self.assertEqual(api_method["endpoint"], "https://api.example.com/v1")
-        else:
-            # If access methods are not normalized/extracted, just verify query doesn't error
-            self.assertIsInstance(access_methods, list)
+        # Find API method
+        api_method = next(
+            (m for m in access_methods
+             if m.get("methodId") == "api"), None,
+        )
+        self.assertIsNotNone(
+            api_method,
+            "API access method should be found",
+        )
+        self.assertEqual(api_method["type"], "REST API")
+        self.assertEqual(api_method["name"], "REST API Access")
+        self.assertEqual(
+            api_method["endpoint"],
+            "https://api.example.com/v1",
+        )
 
     def test_payment_gateways_field_e2e(self):
-        """Test paymentGateways field via GraphQL API with real ODPS contract"""
-        # Create ODPS contract with payment gateways
+        """Test paymentGateways field via GraphQL API"""
+        # NOTE: paymentGateways must be under product.marketplace
         odps_content = json.dumps({
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -451,18 +473,21 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "name": "E2E Test Product"
                     }
                 },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}
-            },
-            "marketplace": {
-                "paymentGateways": {
-                    "stripe": {
-                        "name": "Stripe",
-                        "type": "stripe",
-                        "enabled": True,
-                        "config": {
-                            "publishableKey": "pk_test_123"
-                        },
-                        "webhookUrl": "https://api.example.com/webhooks/stripe"
+                "dataSchema": {"fields": [
+                    {"name": "id", "type": "string"},
+                    {"name": "name", "type": "string"},
+                ]},
+                "marketplace": {
+                    "paymentGateways": {
+                        "stripe": {
+                            "name": "Stripe",
+                            "type": "stripe",
+                            "enabled": True,
+                            "config": {
+                                "publishableKey": "pk_test_123"
+                            },
+                            "webhookUrl": "https://api.example.com/webhooks/stripe"
+                        }
                     }
                 }
             }
@@ -498,11 +523,15 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
         self.assertIn("data", data)
         contract = data["data"]["contract"]
         payment_gateways = contract["paymentGateways"]
-        self.assertGreaterEqual(len(payment_gateways), 0)  # May or may not be present depending on normalization
+        self.assertGreater(
+            len(payment_gateways), 0,
+            "Payment gateways should be extracted",
+        )
 
     def test_product_strategy_field_e2e(self):
-        """Test productStrategy field via GraphQL API with real ODPS contract"""
-        # Create ODPS contract with product strategy
+        """Test productStrategy field via GraphQL API"""
+        # NOTE: productStrategy is under product.productStrategy
+        # (the normalizer reads product.get("productStrategy"))
         odps_content = json.dumps({
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -513,20 +542,22 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "name": "E2E Test Product"
                     }
                 },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}
-            },
-            "productStrategy": {
-                "objectives": {
-                    "en": ["Increase data accessibility", "Improve data quality"]
-                },
-                "strategicAlignment": {
-                    "en": "Align with company data strategy"
-                },
-                "productKPIs": {
-                    "en": {
-                        "adoptionRate": ">80%",
-                        "satisfactionScore": ">4.5"
-                    }
+                "dataSchema": {"fields": [
+                    {"name": "id", "type": "string"},
+                    {"name": "name", "type": "string"},
+                ]},
+                "productStrategy": {
+                    "objectives": [
+                        "Increase data accessibility",
+                        "Improve data quality",
+                    ],
+                    "strategicAlignment": [
+                        "Align with company data strategy",
+                    ],
+                    "productKPIs": [
+                        "adoptionRate: >80%",
+                        "satisfactionScore: >4.5",
+                    ]
                 }
             }
         })
@@ -559,7 +590,7 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
         contract = data["data"]["contract"]
         # Product strategy may or may not be present depending on normalization
         # Just verify the query doesn't error
-        self.assertIsNotNone(contract.get("productStrategy") or True)
+        self.assertIsNotNone(contract.get("productStrategy"), "productStrategy should not be None for ODPS contract with strategy data")
 
     def test_product_details_field_e2e(self):
         """Test productDetails field via GraphQL API with real ODPS contract"""
@@ -615,9 +646,11 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
         self.assertIn("data", data)
         contract = data["data"]["contract"]
         product_details = contract.get("productDetails")
-        if product_details:  # May or may not be present depending on normalization
-            self.assertEqual(product_details.get("productId"), product_id)
-            self.assertIsNotNone(product_details.get("name"))
+        self.assertIsNotNone(product_details, "productDetails should not be None for ODPS contract with details data")
+        self.assertEqual(product_details.get("productId"), product_id)
+        self.assertEqual(product_details.get("name"), "E2E Test Product")
+        self.assertEqual(product_details.get("description"), "Test product description")
+        self.assertEqual(product_details.get("productVersion"), "1.0.0")
 
         # Test custom language (fi)
         query_fi = f"""
@@ -641,8 +674,9 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
         self.assertIn("data", data_fi)
         contract_fi = data_fi["data"]["contract"]
         product_details_fi = contract_fi.get("productDetails")
-        if product_details_fi:  # May or may not be present depending on normalization
-            self.assertIsNotNone(product_details_fi.get("name"))
+        self.assertIsNotNone(product_details_fi, "productDetails for 'fi' language should not be None")
+        self.assertEqual(product_details_fi.get("name"), "Testituote")
+        self.assertEqual(product_details_fi.get("description"), "Testituotteen kuvaus")
 
     def test_all_odps_fields_together_e2e(self):
         """Test querying all ODPS fields together via GraphQL API"""
@@ -659,24 +693,27 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
                         "description": "Comprehensive test product"
                     }
                 },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}
-            },
-            "marketplace": {
-                "pricingPlans": [
-                    {
-                        "planID": "basic",
-                        "name": {"en": "Basic Plan"},
-                        "price": 9.99,
-                        "currency": "USD",
-                        "billingPeriod": "monthly",
-                        "isDefault": True
-                    }
-                ],
-                "accessMethods": {
-                    "api": {
-                        "type": "REST API",
-                        "name": {"en": "REST API Access"},
-                        "endpoint": "https://api.example.com/v1"
+                "dataSchema": {"fields": [
+                    {"name": "id", "type": "string"},
+                    {"name": "name", "type": "string"},
+                ]},
+                "marketplace": {
+                    "pricingPlans": [
+                        {
+                            "planID": "basic",
+                            "name": {"en": "Basic Plan"},
+                            "price": 9.99,
+                            "currency": "USD",
+                            "billingPeriod": "monthly",
+                            "isDefault": True
+                        }
+                    ],
+                    "accessMethods": {
+                        "api": {
+                            "type": "REST API",
+                            "name": {"en": "REST API Access"},
+                            "endpoint": "https://api.example.com/v1"
+                        }
                     }
                 }
             }
@@ -724,6 +761,7 @@ class GraphQLODPSFieldsE2ETest(E2ETestBase):
         self.assertIn("data", data)
         contract = data["data"]["contract"]
         self.assertEqual(contract["odpsVersion"], "4.1")
-        # Other fields may or may not be present depending on normalization
-        # Just verify the query executes successfully
+        # Verify fields that were explicitly provided in the contract data
+        self.assertIsNotNone(contract.get("pricingPlans"), "pricingPlans should be present for ODPS contract with pricing data")
+        self.assertIsNotNone(contract.get("accessMethods"), "accessMethods should be present for ODPS contract with access method data")
 

@@ -4,6 +4,8 @@ E2E tests for Data Observability
 End-to-end tests for complete observability workflows.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -91,26 +93,34 @@ class ObservabilityE2ETest(E2ETestBase):
         # Step 2: Get freshness dashboard
         url = reverse('observability-get-freshness-dashboard')
         response = self.client.get(url)
-        
+
         data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('results', data)
-        
+        # Verify results contain the recorded metric data
+        results = data['results']
+        self.assertIsInstance(results, list)
+        self.assertGreater(len(results), 0, "Freshness dashboard should contain the recorded metric")
+        first_result = results[0]
+        self.assertIn('dataset_id', first_result)
+        self.assertEqual(str(first_result['dataset_id']), str(self.dataset.id))
+
         # Step 3: Aggregate volume trends
         VolumeMonitor.aggregate_daily_trends(
             tenant_id=str(self.tenant.id),
             dataset_id=str(self.dataset.id),
             days=30
         )
-        
+
         # Step 4: Get volume dashboard
         url = reverse('observability-get-volume-dashboard')
         response = self.client.get(url, {'period_type': 'DAILY'})
-        
+
         data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('results', data)
-        
+        self.assertIsInstance(data['results'], list)
+
         # Step 5: Detect schema drift
         new_schema = {
             "fields": [
@@ -119,23 +129,27 @@ class ObservabilityE2ETest(E2ETestBase):
                 {"name": "age", "type": "integer", "nullable": True}  # New field
             ]
         }
-        
+
         drift = SchemaDriftDetector.detect_drift(
             tenant_id=str(self.tenant.id),
             dataset=self.dataset,
             current_schema_json=new_schema
         )
-        
+
         self.assertIsNotNone(drift)
         self.assertIn("age", drift.new_fields)
-        
+
         # Step 6: Get schema drift dashboard
         url = reverse('observability-get-schema-drift-dashboard')
         response = self.client.get(url)
-        
+
         data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('results', data)
+        # Verify drift results contain the detected drift
+        drift_results = data['results']
+        self.assertIsInstance(drift_results, list)
+        self.assertGreater(len(drift_results), 0, "Schema drift dashboard should contain the detected drift")
     
     def test_stale_data_detection_workflow(self):
         """Test stale data detection workflow"""
@@ -155,14 +169,26 @@ class ObservabilityE2ETest(E2ETestBase):
         
         self.assertGreater(len(stale_data), 0)
         self.assertTrue(stale_data[0]["freshness_age_seconds"] > 3600)
-        
+        # Verify the stale data entry references the correct dataset
+        self.assertEqual(
+            str(stale_data[0]["dataset_id"]), str(self.dataset.id),
+            "Stale data entry must reference the recorded dataset",
+        )
+
         # Get stale data via API
         url = reverse('observability-get-stale-data')
         response = self.client.get(url)
-        
+
         data = get_response_data(response)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsInstance(data, list)
+        self.assertGreater(len(data), 0, "API should return stale data entries")
+        # Verify the API response contains the stale dataset
+        stale_dataset_ids = [str(entry.get("dataset_id")) for entry in data]
+        self.assertIn(
+            str(self.dataset.id), stale_dataset_ids,
+            "Stale data API response must include the recorded stale dataset",
+        )
     
     def test_volume_anomaly_detection_workflow(self):
         """Test volume anomaly detection workflow"""
@@ -190,8 +216,24 @@ class ObservabilityE2ETest(E2ETestBase):
             days=30
         )
         
-        # Check for anomalies
-        anomalies = [t for t in trends if t.is_anomaly]
-        # May or may not detect depending on baseline, but should process correctly
-        self.assertIsInstance(anomalies, list)
+        # Verify trends were aggregated
+        self.assertIsInstance(trends, list)
+        self.assertGreater(
+            len(trends), 0,
+            "Volume trends should be aggregated from metrics",
+        )
+
+        # Verify trend structure has expected attributes.
+        # Note: all metrics are recorded within the same test run
+        # (same day), so there is only one daily trend point.
+        # Anomaly detection requires multiple historical days to
+        # establish a baseline, so we do NOT assert anomalies are
+        # found -- only that the structure is correct.
+        first_trend = trends[0]
+        self.assertTrue(hasattr(first_trend, 'is_anomaly'))
+        self.assertTrue(
+            hasattr(first_trend, 'avg_row_count')
+            or hasattr(first_trend, 'row_count')
+            or hasattr(first_trend, 'total_row_count'),
+        )
 

@@ -7,6 +7,8 @@ import json
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from hub.apps.contracts.models import (
     Contract,
     NormalizationStatus,

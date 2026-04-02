@@ -16,6 +16,8 @@ import uuid
 from datetime import timedelta
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -31,7 +33,7 @@ from hub.apps.users.models import UserStatus
 from tests.fixtures.test_data_factories import TenantFactory, JobFactory
 
 # Use regular django_db marker - TestCase handles transactions efficiently
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
@@ -46,7 +48,7 @@ class TestJobListAPI(TestCase):
         self.client = APIClient()
         # Create tenant and user fresh for each test (better isolation)
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
@@ -242,14 +244,14 @@ class TestJobListAPI(TestCase):
             status=JobStatus.PENDING,
             created_by=self.user,
         )
-        time.sleep(0.01)
+        time.sleep(0.01)  # INTENTIONAL: e2e/integration test polling real services
         job2 = JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
             created_by=self.user,
         )
-        time.sleep(0.01)
+        time.sleep(0.01)  # INTENTIONAL: e2e/integration test polling real services
         job3 = JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
@@ -283,7 +285,7 @@ class TestJobListAPI(TestCase):
             status=JobStatus.PENDING,
             created_by=self.user,
         )
-        time.sleep(0.01)
+        time.sleep(0.01)  # INTENTIONAL: e2e/integration test polling real services
         job2 = JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
@@ -449,7 +451,7 @@ class TestJobRetrieveAPI(TestCase):
 
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
@@ -643,7 +645,7 @@ class TestJobCancelAPI(TestCase):
 
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )

@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase, TransactionTestCase
 
 from hub.apps.tenants.models import Tenant
@@ -158,7 +160,7 @@ class TestBaaSPlatformConcurrentPerformance(BaaSPlatformCLISDKPerformanceTestBas
             try:
                 start_time = time.time()
                 # Simulate API key creation
-                time.sleep(0.01)  # Simulate network delay
+                time.sleep(0.01)  # INTENTIONAL: test-specific delay  # Simulate network delay
                 duration = time.time() - start_time
 
                 with lock:

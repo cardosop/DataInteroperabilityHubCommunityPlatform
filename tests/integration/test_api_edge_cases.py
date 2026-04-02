@@ -335,7 +335,7 @@ class APIEdgeCaseTest(TransactionTestCase):
 
         # Create second user
         user2 = User.objects.create_user(
-            email="user2@example.com",
+            email=f"user2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -408,7 +408,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         mapping_thread.start()
 
         # Try to update while mapping
-        time.sleep(0.1)  # Small delay
+        time.sleep(0.1)  # INTENTIONAL: test-specific delay  # Small delay
 
         current_hub = contract.hub_contract_json.copy()
         current_hub["info"]["name"] = "Updated During Mapping"
@@ -491,7 +491,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         # Create user from different tenant
         other_tenant = TenantFactory.create_tenant()
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE,

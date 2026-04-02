@@ -14,6 +14,7 @@ from rest_framework import status
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, Role, UserRole, UserStatus
 from tests.e2e.conftest import E2ETestBase, get_response_data
+import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
 User = get_user_model()
@@ -35,7 +36,7 @@ class AuditorPersonaTest(E2ETestBase):
         
         # Create auditor user
         self.auditor_user = User.objects.create_user(
-            email="auditor@example.com",
+            email=f"auditor-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -85,20 +86,14 @@ class AuditorPersonaTest(E2ETestBase):
             format="json"
         )
         
-        # Should be forbidden (403) or validation error (400) if permissions not implemented
-        # If permissions are not implemented, the request will succeed (201) or fail validation (400)
-        # For now, accept that if permissions aren't implemented, we get 201 or 400
-        # The test documents the expected behavior: AUDITOR should not be able to create contracts
-        if response.status_code == status.HTTP_201_CREATED:
-            # Permissions not implemented - this is a test failure
-            self.fail("AUDITOR was able to create contract - role-based permissions not implemented")
-        elif response.status_code == status.HTTP_400_BAD_REQUEST:
-            # Validation error - permissions might not be checked if validation fails first
-            # This is acceptable if permissions aren't implemented
-            pass
-        else:
-            # Should be 403 if permissions are implemented
-            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        # AUDITOR should not be able to create contracts — expect 403 or 400
+        # (400 can occur if validation rejects before permission check)
+        self.assertNotEqual(response.status_code, status.HTTP_201_CREATED,
+            "AUDITOR was able to create contract - role-based permissions not implemented")
+        self.assertIn(response.status_code, [
+            status.HTTP_403_FORBIDDEN,
+            status.HTTP_400_BAD_REQUEST,
+        ], f"Expected 403 or 400, got {response.status_code}")
     
     def test_auditor_cannot_update_contracts(self):
         """Test AUDITOR cannot update contracts"""
@@ -225,12 +220,14 @@ class AuditorPersonaTest(E2ETestBase):
             format="json"
         )
         
-        # Should be forbidden or not allowed
+        # Audit logs must be immutable — write must be rejected (403/405) or not exist (404)
         self.assertIn(response.status_code, [
             status.HTTP_403_FORBIDDEN,
+            status.HTTP_404_NOT_FOUND,
             status.HTTP_405_METHOD_NOT_ALLOWED,
-            status.HTTP_404_NOT_FOUND
-        ])
+        ], f"Audit immutability: write should be rejected, got {response.status_code}")
+        # 201/200 would mean audit logs are writable — that's the real failure
+        self.assertNotEqual(response.status_code, status.HTTP_201_CREATED)
     
     def test_auditor_read_only_access_summary(self):
         """Test AUDITOR has read-only access to most resources"""

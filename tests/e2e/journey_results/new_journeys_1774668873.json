@@ -1,0 +1,95 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 2.2556774616241455
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-009-2d62bd02",
+      "journey_name": "Configure Automated Retention Policies",
+      "persona": "Compliance Officer",
+      "status": "completed",
+      "start_time": 1774668870.7784073,
+      "end_time": 1774668873.0340848,
+      "duration": 2.2556774616241455,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset for Retention",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668870.7784145,
+          "end_time": 1774668872.9985564,
+          "duration": 2.220141887664795,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Retention Policy",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668872.9985807,
+          "end_time": 1774668873.0102096,
+          "duration": 0.011628866195678711,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Verify Policy Details",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668873.0102167,
+          "end_time": 1774668873.0171814,
+          "duration": 0.006964683532714844,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Enable Policy",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668873.017191,
+          "end_time": 1774668873.0276058,
+          "duration": 0.010414838790893555,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "List Retention Policies",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668873.0276105,
+          "end_time": 1774668873.034082,
+          "duration": 0.006471395492553711,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T03:34:33.034161"
+}

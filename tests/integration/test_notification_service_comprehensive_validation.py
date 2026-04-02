@@ -75,7 +75,7 @@ class NotificationDeliveryVerificationTest(TestCase):
             kyc_status="UNVERIFIED"
         )
         self.user = User.objects.create_user(
-            email="notification_test@example.com",
+            email=f"notification_test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -379,7 +379,7 @@ class NotificationTemplateTest(TestCase):
             kyc_status="UNVERIFIED"
         )
         self.user = User.objects.create_user(
-            email="template_test@example.com",
+            email=f"template_test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -449,7 +449,7 @@ class NotificationTemplateTest(TestCase):
 
         # Test with different user
         user2 = User.objects.create_user(
-            email="template_test2@example.com",
+            email=f"template_test2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -571,7 +571,7 @@ class NotificationChannelTest(TestCase):
             kyc_status="UNVERIFIED"
         )
         self.user = User.objects.create_user(
-            email="channel_test@example.com",
+            email=f"channel_test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -692,7 +692,7 @@ class NotificationFailureHandlingTest(TestCase):
             kyc_status="UNVERIFIED"
         )
         self.user = User.objects.create_user(
-            email="failure_test@example.com",
+            email=f"failure_test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

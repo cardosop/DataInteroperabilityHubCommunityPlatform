@@ -6,7 +6,7 @@ Covers:
 - ON_READ migration strategy
 - BACKGROUND migration strategy
 - Migration version conflicts
-- Migration rollback
+- Migration does not corrupt original contract
 
 Uses REAL services (no mocks).
 """
@@ -19,7 +19,7 @@ from hub.apps.contracts.migration import MigrationStrategy
 from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus
 from hub.apps.jobs.models import Job, JobStatus, JobType
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e1]
 
@@ -39,6 +39,9 @@ class ContractMigrationE2ETest(E2ETestBase):
             original_raw='{"id": "test", "name": "Test Contract", "schema": {"fields": [{"name": "id", "type": "string"}]}}',
         )
 
+        # Ensure contract is normalized before testing migration
+        self.prepare_contract_for_activation(contract_id)
+
         # Update contract (should trigger ON_WRITE migration via normalization)
         response = self.client.patch(
             f"/api/v1/contracts/{contract_id}/",
@@ -48,20 +51,10 @@ class ContractMigrationE2ETest(E2ETestBase):
             format="json",
         )
 
-        # Contract update may fail if normalization fails - check response
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            error_data = response.data if hasattr(response, "data") else {}
-            error_msg = str(error_data.get("error", error_data.get("detail", "Unknown error")))
-            # Skip if normalization failed (this is acceptable for some contract structures)
-            if "normalization" in error_msg.lower() or "validation" in error_msg.lower():
-                pytest.skip(f"Contract update failed due to normalization/validation: {error_msg}")
-            else:
-                self.fail(f"Contract update failed: {response.status_code} - {error_data}")
-
         self.assertEqual(
             response.status_code,
             status.HTTP_200_OK,
-            f"Contract update failed: {response.status_code} - {response.data if hasattr(response, 'data') else 'No data'}",
+            f"Contract update failed: {response.status_code} - {get_response_data(response)}",
         )
 
         # Verify migration occurred (hub_contract_json should be populated)
@@ -81,40 +74,11 @@ class ContractMigrationE2ETest(E2ETestBase):
             original_raw='{"id": "test", "name": "Test Contract", "schema": {"fields": []}}',
         )
 
-        # Contracts are normalized during creation, but ensure it's properly set
+        # Ensure contract is normalized
+        self.prepare_contract_for_activation(contract_id)
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
-
-        # If contract wasn't normalized during creation, normalize it now
-        if not contract.hub_contract_json or not contract.hub_contract_version:
-            self.prepare_contract_for_activation(contract_id)
-            contract.refresh_from_db()
-
-        # Verify contract is normalized
-        if not contract.hub_contract_json:
-            # Try manual normalization
-            from hub.apps.contracts.normalization import normalize_contract
-
-            hub_contract, spec_type, spec_version, norm_status, norm_errors, norm_warnings = (
-                normalize_contract(
-                    raw_contract=contract.original_raw, format=contract.original_format.lower()
-                )
-            )
-            if hub_contract:
-                contract.hub_contract_json = hub_contract
-                contract.hub_contract_version = "1.0.0"
-                contract.normalization_status = norm_status
-                contract.save(
-                    update_fields=[
-                        "hub_contract_json",
-                        "hub_contract_version",
-                        "normalization_status",
-                    ]
-                )
-                contract.refresh_from_db()
-
-        if not contract.hub_contract_json:
-            pytest.skip("Contract could not be normalized - cannot test migration")
+        self.assertIsNotNone(contract.hub_contract_json, "Contract should have hub_contract_json after preparation")
 
         # Trigger ON_READ migration via migrate endpoint
         response = self.client.post(
@@ -126,17 +90,14 @@ class ContractMigrationE2ETest(E2ETestBase):
         # Check for specific error messages
         if response.status_code == status.HTTP_400_BAD_REQUEST:
             error_msg = response.data.get("error", "") if hasattr(response, "data") else ""
-            if "not normalized" in str(error_msg).lower():
-                pytest.skip(f"Contract not normalized: {error_msg}")
-            elif (
+            if (
                 "already at target version" in str(error_msg).lower()
                 or "not needed" in str(error_msg).lower()
             ):
-                # Contract is already at target version - this is valid
-                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                # Contract is already at target version - this is valid, test passes
                 return
             else:
-                pytest.skip(f"Migration endpoint returned 400: {error_msg}")
+                self.fail(f"Migration endpoint returned 400: {error_msg}")
 
         if response.status_code in [
             status.HTTP_404_NOT_FOUND,
@@ -160,40 +121,11 @@ class ContractMigrationE2ETest(E2ETestBase):
             original_raw='{"id": "test", "name": "Test Contract", "schema": {"fields": []}}',
         )
 
-        # Contracts are normalized during creation, but ensure it's properly set
+        # Ensure contract is normalized
+        self.prepare_contract_for_activation(contract_id)
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
-
-        # If contract wasn't normalized during creation, normalize it now
-        if not contract.hub_contract_json or not contract.hub_contract_version:
-            self.prepare_contract_for_activation(contract_id)
-            contract.refresh_from_db()
-
-        # Verify contract is normalized
-        if not contract.hub_contract_json:
-            # Try manual normalization
-            from hub.apps.contracts.normalization import normalize_contract
-
-            hub_contract, spec_type, spec_version, norm_status, norm_errors, norm_warnings = (
-                normalize_contract(
-                    raw_contract=contract.original_raw, format=contract.original_format.lower()
-                )
-            )
-            if hub_contract:
-                contract.hub_contract_json = hub_contract
-                contract.hub_contract_version = "1.0.0"
-                contract.normalization_status = norm_status
-                contract.save(
-                    update_fields=[
-                        "hub_contract_json",
-                        "hub_contract_version",
-                        "normalization_status",
-                    ]
-                )
-                contract.refresh_from_db()
-
-        if not contract.hub_contract_json:
-            pytest.skip("Contract could not be normalized - cannot test migration")
+        self.assertIsNotNone(contract.hub_contract_json, "Contract should have hub_contract_json after preparation")
 
         # Trigger BACKGROUND migration
         response = self.client.post(
@@ -205,10 +137,14 @@ class ContractMigrationE2ETest(E2ETestBase):
         # Check for specific error messages
         if response.status_code == status.HTTP_400_BAD_REQUEST:
             error_msg = response.data.get("error", "") if hasattr(response, "data") else ""
-            if "not normalized" in str(error_msg).lower():
-                pytest.skip(f"Contract not normalized: {error_msg}")
+            if (
+                "already at target version" in str(error_msg).lower()
+                or "not needed" in str(error_msg).lower()
+            ):
+                # Contract is already at target version - this is valid
+                return
             else:
-                pytest.skip(f"Migration endpoint returned 400: {error_msg}")
+                self.fail(f"Migration endpoint returned 400: {error_msg}")
         elif response.status_code == status.HTTP_200_OK:
             # Contract is already at target version - this is valid
             # Background migration returns 200 OK if migration not needed
@@ -274,26 +210,36 @@ class ContractMigrationE2ETest(E2ETestBase):
             format="json",
         )
 
-        # Should succeed or return warnings about version conflict
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
-
+        # Version conflict should either succeed with migration or fail with conflict error
         if response.status_code == status.HTTP_200_OK:
-            # May include migration warnings
-            if "migration_warnings" in response.data:
-                warnings = response.data["migration_warnings"]
-                # May warn about version conflicts
+            # Migration succeeded despite version
+            pass
+        else:
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST,
+                f"Version conflict should return 400, got {response.status_code}")
+            error_data = get_response_data(response) or {}
+            error_msg = str(error_data).lower()
+            self.assertTrue(
+                'version' in error_msg or 'conflict' in error_msg
+                or 'migration' in error_msg or 'not supported' in error_msg,
+                f"Error should mention version/conflict/migration issue, got: {error_data}")
 
-    def test_migration_rollback(self):
-        """Test migration rollback (if supported)"""
+    def test_migration_does_not_corrupt_original_contract(self):
+        """Verify that migration preserves the original contract data (original_raw unchanged)"""
         asset_id = self.create_asset(key="rollback-test", name="Rollback Test")
         contract_id = self.create_contract(
             asset_id,
             original_raw='{"id": "test", "name": "Test Contract", "schema": {"fields": []}}',
         )
 
-        # Migrate contract
+        # Store original state before migration
         contract = Contract.objects.get(id=contract_id)
-        original_hub_contract = contract.hub_contract_json
+        contract.refresh_from_db()
+        original_raw_before = contract.original_raw
+
+        # Ensure contract is normalized
+        self.prepare_contract_for_activation(contract_id)
+        contract.refresh_from_db()
 
         # Perform migration
         response = self.client.post(
@@ -303,13 +249,13 @@ class ContractMigrationE2ETest(E2ETestBase):
         )
 
         if response.status_code == status.HTTP_200_OK:
-            # Verify migration occurred
+            # Verify migration did not corrupt original_raw
             contract.refresh_from_db()
-            migrated_hub_contract = contract.hub_contract_json
-
-            # Note: Rollback may not be directly supported
-            # This test verifies migration can be performed
-            # Rollback would require storing previous version
+            self.assertEqual(
+                contract.original_raw,
+                original_raw_before,
+                "Migration should not modify original_raw",
+            )
 
     def test_migration_with_invalid_contract_fails(self):
         """Test migration with invalid contract fails gracefully"""
@@ -325,21 +271,19 @@ class ContractMigrationE2ETest(E2ETestBase):
             format="json",
         )
 
-        # May fail or return warnings
-        self.assertIn(
-            response.status_code,
-            [
-                status.HTTP_200_OK,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
-        )
-
+        # The normalizer may succeed even with extra/unknown fields (placing them
+        # in extensions).  If migration succeeds (200), verify the response
+        # indicates no actual migration was needed.  If it fails (400/422),
+        # that's the expected rejection of truly invalid data.
         if response.status_code == status.HTTP_200_OK:
-            # May include migration warnings or errors
-            if "migration_warnings" in response.data:
-                warnings = response.data["migration_warnings"]
-                self.assertGreater(len(warnings), 0)
+            data = get_response_data(response) or {}
+            # Contract was normalized despite extra fields — verify it flagged this
+            migration_details = data.get('migration_details', {})
+            self.assertIn('already at target version', str(migration_details).lower() + str(data.get('migration_applied', '')).lower(),
+                f"Migration of 'invalid' contract should indicate no migration needed, got: {migration_details}")
+        else:
+            self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY],
+                f"Invalid contract migration should fail with 400/422, got {response.status_code}")
 
     def test_migration_strategy_default(self):
         """Test default migration strategy (ON_WRITE)"""
@@ -349,40 +293,11 @@ class ContractMigrationE2ETest(E2ETestBase):
             original_raw='{"id": "test", "name": "Test Contract", "schema": {"fields": []}}',
         )
 
-        # Contracts are normalized during creation, but ensure it's properly set
+        # Ensure contract is normalized
+        self.prepare_contract_for_activation(contract_id)
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
-
-        # If contract wasn't normalized during creation, normalize it now
-        if not contract.hub_contract_json or not contract.hub_contract_version:
-            self.prepare_contract_for_activation(contract_id)
-            contract.refresh_from_db()
-
-        # Verify contract is normalized
-        if not contract.hub_contract_json:
-            # Try manual normalization
-            from hub.apps.contracts.normalization import normalize_contract
-
-            hub_contract, spec_type, spec_version, norm_status, norm_errors, norm_warnings = (
-                normalize_contract(
-                    raw_contract=contract.original_raw, format=contract.original_format.lower()
-                )
-            )
-            if hub_contract:
-                contract.hub_contract_json = hub_contract
-                contract.hub_contract_version = "1.0.0"
-                contract.normalization_status = norm_status
-                contract.save(
-                    update_fields=[
-                        "hub_contract_json",
-                        "hub_contract_version",
-                        "normalization_status",
-                    ]
-                )
-                contract.refresh_from_db()
-
-        if not contract.hub_contract_json:
-            pytest.skip("Contract could not be normalized - cannot test migration")
+        self.assertIsNotNone(contract.hub_contract_json, "Contract should have hub_contract_json after preparation")
 
         # Migrate without specifying strategy (should default to ON_WRITE)
         response = self.client.post(f"/api/v1/contracts/{contract_id}/migrate/", {}, format="json")
@@ -390,17 +305,14 @@ class ContractMigrationE2ETest(E2ETestBase):
         # Check for specific error messages
         if response.status_code == status.HTTP_400_BAD_REQUEST:
             error_msg = response.data.get("error", "") if hasattr(response, "data") else ""
-            if "not normalized" in str(error_msg).lower():
-                pytest.skip(f"Contract not normalized: {error_msg}")
-            elif (
+            if (
                 "already at target version" in str(error_msg).lower()
                 or "not needed" in str(error_msg).lower()
             ):
-                # Contract is already at target version - this is valid
-                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                # Contract is already at target version - this is valid, test passes
                 return
             else:
-                pytest.skip(f"Migration endpoint returned 400: {error_msg}")
+                self.fail(f"Migration endpoint returned 400: {error_msg}")
 
         if response.status_code in [
             status.HTTP_404_NOT_FOUND,
@@ -442,36 +354,10 @@ class ContractMigrationE2ETest(E2ETestBase):
         contract.refresh_from_db()
         original_raw = contract.original_raw
 
-        # Contracts are normalized during creation, but ensure it's properly set
-        if not contract.hub_contract_json or not contract.hub_contract_version:
-            self.prepare_contract_for_activation(contract_id)
-            contract.refresh_from_db()
-
-        # Verify contract is normalized
-        if not contract.hub_contract_json:
-            # Try manual normalization
-            from hub.apps.contracts.normalization import normalize_contract
-
-            hub_contract, spec_type, spec_version, norm_status, norm_errors, norm_warnings = (
-                normalize_contract(
-                    raw_contract=contract.original_raw, format=contract.original_format.lower()
-                )
-            )
-            if hub_contract:
-                contract.hub_contract_json = hub_contract
-                contract.hub_contract_version = "1.0.0"
-                contract.normalization_status = norm_status
-                contract.save(
-                    update_fields=[
-                        "hub_contract_json",
-                        "hub_contract_version",
-                        "normalization_status",
-                    ]
-                )
-                contract.refresh_from_db()
-
-        if not contract.hub_contract_json:
-            pytest.skip("Contract could not be normalized - cannot test migration")
+        # Ensure contract is normalized
+        self.prepare_contract_for_activation(contract_id)
+        contract.refresh_from_db()
+        self.assertIsNotNone(contract.hub_contract_json, "Contract should have hub_contract_json after preparation")
 
         # Migrate contract
         response = self.client.post(
@@ -483,16 +369,14 @@ class ContractMigrationE2ETest(E2ETestBase):
         # Check for specific error messages
         if response.status_code == status.HTTP_400_BAD_REQUEST:
             error_msg = response.data.get("error", "") if hasattr(response, "data") else ""
-            if "not normalized" in str(error_msg).lower():
-                pytest.skip(f"Contract not normalized: {error_msg}")
-            elif (
+            if (
                 "already at target version" in str(error_msg).lower()
                 or "not needed" in str(error_msg).lower()
             ):
-                # Contract is already at target version - this is valid
-                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                # Contract is already at target version - this is valid, test passes
+                pass
             else:
-                pytest.skip(f"Migration endpoint returned 400: {error_msg}")
+                self.fail(f"Migration endpoint returned 400: {error_msg}")
         elif response.status_code in [
             status.HTTP_404_NOT_FOUND,
             status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -519,40 +403,11 @@ class ContractMigrationE2ETest(E2ETestBase):
             original_raw='{"id": "test", "name": "Test Contract", "schema": {"fields": []}}',
         )
 
-        # Contracts are normalized during creation, but ensure it's properly set
+        # Ensure contract is normalized
+        self.prepare_contract_for_activation(contract_id)
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
-
-        # If contract wasn't normalized during creation, normalize it now
-        if not contract.hub_contract_json or not contract.hub_contract_version:
-            self.prepare_contract_for_activation(contract_id)
-            contract.refresh_from_db()
-
-        # Verify contract is normalized
-        if not contract.hub_contract_json:
-            # Try manual normalization
-            from hub.apps.contracts.normalization import normalize_contract
-
-            hub_contract, spec_type, spec_version, norm_status, norm_errors, norm_warnings = (
-                normalize_contract(
-                    raw_contract=contract.original_raw, format=contract.original_format.lower()
-                )
-            )
-            if hub_contract:
-                contract.hub_contract_json = hub_contract
-                contract.hub_contract_version = "1.0.0"
-                contract.normalization_status = norm_status
-                contract.save(
-                    update_fields=[
-                        "hub_contract_json",
-                        "hub_contract_version",
-                        "normalization_status",
-                    ]
-                )
-                contract.refresh_from_db()
-
-        if not contract.hub_contract_json:
-            pytest.skip("Contract could not be normalized - cannot test migration")
+        self.assertIsNotNone(contract.hub_contract_json, "Contract should have hub_contract_json after preparation")
 
         # Migrate contract
         response = self.client.post(
@@ -564,10 +419,14 @@ class ContractMigrationE2ETest(E2ETestBase):
         # Check for specific error messages
         if response.status_code == status.HTTP_400_BAD_REQUEST:
             error_msg = response.data.get("error", "") if hasattr(response, "data") else ""
-            if "not normalized" in str(error_msg).lower():
-                pytest.skip(f"Contract not normalized: {error_msg}")
+            if (
+                "already at target version" in str(error_msg).lower()
+                or "not needed" in str(error_msg).lower()
+            ):
+                # Contract is already at target version - valid, check version exists
+                pass
             else:
-                pytest.skip(f"Migration endpoint returned 400: {error_msg}")
+                self.fail(f"Migration endpoint returned 400: {error_msg}")
         elif response.status_code in [
             status.HTTP_404_NOT_FOUND,
             status.HTTP_500_INTERNAL_SERVER_ERROR,

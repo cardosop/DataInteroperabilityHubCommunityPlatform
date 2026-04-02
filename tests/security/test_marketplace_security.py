@@ -35,6 +35,7 @@ from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.rate_limiting.service import check_rate_limit
 from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.users.models import User, UserStatus, Role, UserRole
+import uuid
 
 # Validation-like exceptions: service/Django/DRF ValidationError, ValueError (input validation), IntegrityError (DB constraint)
 _VALIDATION_LIKE = (
@@ -79,7 +80,7 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="security-test@example.com",
+            email=f"security-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -400,7 +401,7 @@ class MarketplaceAuthorizationSecurityTest(TestCase):
             kyc_status=KYCStatus.VERIFIED
         )
         self.user1 = User.objects.create_user(
-            email="security-user1@example.com",
+            email=f"security-user1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE
@@ -422,7 +423,7 @@ class MarketplaceAuthorizationSecurityTest(TestCase):
             kyc_status=KYCStatus.VERIFIED
         )
         self.user2 = User.objects.create_user(
-            email="security-user2@example.com",
+            email=f"security-user2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant2,
             status=UserStatus.ACTIVE
@@ -563,7 +564,7 @@ class MarketplaceAuthorizationSecurityTest(TestCase):
         """Test that unauthorized users cannot create connections"""
         # Create user without required role
         unauthorized_user = User.objects.create_user(
-            email="unauthorized@example.com",
+            email=f"unauthorized-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE
@@ -606,7 +607,7 @@ class MarketplaceAuthorizationSecurityTest(TestCase):
 
         # Create user without required role
         unauthorized_user = User.objects.create_user(
-            email="unauthorized@example.com",
+            email=f"unauthorized-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE
@@ -644,7 +645,7 @@ class MarketplaceInputValidationSecurityTest(TestCase):
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="security-test@example.com",
+            email=f"security-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -875,7 +876,7 @@ class MarketplaceCredentialEncryptionSecurityTest(TestCase):
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="security-test@example.com",
+            email=f"security-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -1041,7 +1042,7 @@ class MarketplaceRateLimitingSecurityTest(TestCase):
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="security-test@example.com",
+            email=f"security-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -1178,7 +1179,7 @@ class MarketplaceSecureConfigurationStorageTest(TestCase):
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="security-test@example.com",
+            email=f"security-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

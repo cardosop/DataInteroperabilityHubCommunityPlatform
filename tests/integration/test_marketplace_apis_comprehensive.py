@@ -13,6 +13,8 @@ All tests use real services (no mocks/stubs) and run against Docker Compose inst
 """
 
 import pytest
+
+pytestmark = pytest.mark.slow
 import time
 import uuid
 from datetime import timedelta
@@ -32,7 +34,7 @@ from hub.apps.audit.models import AuditEvent
 from tests.fixtures.test_data_factories import TenantFactory, AssetFactoryEnhanced, ListingFactory
 
 # Use regular django_db marker - TestCase handles transactions efficiently
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

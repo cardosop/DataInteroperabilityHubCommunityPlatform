@@ -1,0 +1,121 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.2702946662902832
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-013-8303f6a3",
+      "journey_name": "Configure Data Mesh Domain",
+      "persona": "Data Engineer",
+      "status": "completed",
+      "start_time": 1774659716.676528,
+      "end_time": 1774659716.9468226,
+      "duration": 0.2702946662902832,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Domain",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774659716.6765459,
+          "end_time": 1774659716.85146,
+          "duration": 0.17491412162780762,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Configure Infrastructure",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774659716.8514733,
+          "end_time": 1774659716.8687131,
+          "duration": 0.017239809036254883,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Set Up Self-Serve",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774659716.8687234,
+          "end_time": 1774659716.88504,
+          "duration": 0.016316652297973633,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Configure Resource Quotas",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774659716.88505,
+          "end_time": 1774659716.9007766,
+          "duration": 0.015726566314697266,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Set Up Governance",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774659716.9007866,
+          "end_time": 1774659716.9169934,
+          "duration": 0.016206741333007812,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Deploy Domain",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774659716.9170043,
+          "end_time": 1774659716.9316518,
+          "duration": 0.014647483825683594,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Monitor Domain",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774659716.9316623,
+          "end_time": 1774659716.946818,
+          "duration": 0.015155792236328125,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T01:01:56.946930"
+}

@@ -8,6 +8,8 @@ Phase 28.1.2: Admin user edit flow (PUT/PATCH /users/{id}/).
 import uuid
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -34,7 +36,7 @@ class TestUsersAPIsComprehensiveIntegration:
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="users_integ@example.com",
+            email=f"users_integ-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

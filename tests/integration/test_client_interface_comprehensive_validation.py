@@ -817,7 +817,7 @@ class PythonSDKComprehensiveTest(TransactionTestCase):
                     return
                 except IntegrityError:
                     if attempt < 2:
-                        time.sleep(0.5)
+                        time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
                     else:
                         raise
         if hasattr(self, "user"):
@@ -1849,7 +1849,7 @@ class WebhookComprehensiveTest(TransactionTestCase):
             )
 
             # Give server time to receive request and delivery to complete
-            time.sleep(1.0)
+            time.sleep(1.0)  # INTENTIONAL: e2e/integration test polling real services
 
             # Verify webhook was triggered
             self.assertGreater(
@@ -1997,7 +1997,7 @@ class WebhookComprehensiveTest(TransactionTestCase):
             )
 
             # Give servers time to receive requests
-            time.sleep(0.5)
+            time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
 
             # Verify filtering works
             odps_created_deliveries = WebhookDelivery.objects.filter(
@@ -2145,7 +2145,7 @@ class WebhookComprehensiveTest(TransactionTestCase):
             # Verify authentication headers were sent (check received request)
             import time
 
-            time.sleep(0.5)  # Give server time to receive request
+            time.sleep(0.5)  # Give server time to receive request  # INTENTIONAL: test-specific timing
             received_request = server.get_received_request()
             if received_request:
                 headers = received_request.get("headers", {})

@@ -12,6 +12,8 @@ Coverage:
 """
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -23,6 +25,7 @@ from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus
 from hub.apps.users.models import User, UserStatus, Role, UserRole
 
 from .conftest import get_response_data
+import uuid
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -47,7 +50,7 @@ class Phase25BillingE2ETest(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="billinge2e@example.com",
+            email=f"billinge2e-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -131,8 +134,8 @@ class Phase25BillingE2ETest(TestCase):
             format="json",
         )
 
-        # Should succeed (may be 400 if missing required fields, but not 403 subscription error)
-        self.assertNotEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        # Should succeed with ACTIVE subscription
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_past_due_subscription_blocks_mutations(self):
         """Test that PAST_DUE subscription blocks non-read mutations"""
@@ -186,7 +189,6 @@ class Phase25BillingE2ETest(TestCase):
         error_str = str(data.get("error", "")).lower()
         self.assertTrue("tenant" in error_str or "suspended" in error_str)
 
-        # Read operations should still work (or be blocked depending on implementation)
+        # Read operations should still work even for suspended tenants
         response = self.client.get("/api/v1/assets/")
-        # May return 403 or 200 depending on implementation
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

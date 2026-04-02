@@ -28,6 +28,8 @@ Tests all dataset endpoints with 80+ test cases covering:
 All tests use real services (no mocks/stubs) and run against Docker Compose instances.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import time
 import json
 import uuid
@@ -52,7 +54,7 @@ from tests.fixtures.test_data_factories import UserFactory, TenantFactory
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 # Use default transaction=False so TenantSuspensionMiddleware sees subscription from setUp
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
@@ -82,12 +84,12 @@ class TestDatasetListAPI(TestCase):
 
         # Create users
         self.user_a = UserFactory.create_user(
-            email="user_a@example.com",
+            email=f"user_a-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_a,
             status=UserStatus.ACTIVE.value
         )
         self.user_b = UserFactory.create_user(
-            email="user_b@example.com",
+            email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_b,
             status=UserStatus.ACTIVE.value
         )
@@ -317,7 +319,7 @@ class TestDatasetListAPI(TestCase):
             kyc_status=KYCStatus.VERIFIED.value
         )
         user_empty = UserFactory.create_user(
-            email="empty@example.com",
+            email=f"empty-{uuid.uuid4().hex[:8]}@example.com",
             tenant=tenant_empty,
             status=UserStatus.ACTIVE.value
         )
@@ -394,7 +396,7 @@ class TestDatasetCreateAPI(TestCase):
         self.client = APIClient()
 
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
@@ -402,7 +404,7 @@ class TestDatasetCreateAPI(TestCase):
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
@@ -603,7 +605,7 @@ class TestDatasetCreateAPI(TestCase):
     def test_create_dataset_user_without_tenant(self):
         """Test creating dataset when user has no tenant"""
         user_no_tenant = UserFactory.create_user(
-            email="no_tenant@example.com",
+            email=f"no_tenant-{uuid.uuid4().hex[:8]}@example.com",
             tenant=None,
             status=UserStatus.ACTIVE.value
         )
@@ -702,12 +704,12 @@ class TestDatasetRetrieveAPI(TestCase):
         ensure_tenant_has_active_subscription(self.tenant_b)
 
         self.user_a = UserFactory.create_user(
-            email="user_a@example.com",
+            email=f"user_a-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_a,
             status=UserStatus.ACTIVE.value
         )
         self.user_b = UserFactory.create_user(
-            email="user_b@example.com",
+            email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_b,
             status=UserStatus.ACTIVE.value
         )
@@ -812,7 +814,7 @@ class TestDatasetUpdateAPI(TestCase):
         self.client = APIClient()
 
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
@@ -820,7 +822,7 @@ class TestDatasetUpdateAPI(TestCase):
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
@@ -904,7 +906,7 @@ class TestDatasetUpdateAPI(TestCase):
         )
         ensure_tenant_has_active_subscription(tenant_b)
         user_b = UserFactory.create_user(
-            email="user_b@example.com",
+            email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=tenant_b,
             status=UserStatus.ACTIVE.value
         )
@@ -954,12 +956,12 @@ class TestDatasetDeleteAPI(TestCase):
         ensure_tenant_has_active_subscription(self.tenant_b)
 
         self.user_a = UserFactory.create_user(
-            email="user_a@example.com",
+            email=f"user_a-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_a,
             status=UserStatus.ACTIVE.value
         )
         self.user_b = UserFactory.create_user(
-            email="user_b@example.com",
+            email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_b,
             status=UserStatus.ACTIVE.value
         )

@@ -27,6 +27,7 @@ from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.dq.models import DQRun, DQRunStatus
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.marketplace.models import Listing, ListingStatus
+import uuid
 
 User = get_user_model()
 
@@ -44,7 +45,7 @@ class DatabaseOperationsRegressionTest(TestCase):
             slug="db-test-tenant"
         )
         self.user = User.objects.create_user(
-            email="db@example.com",
+            email=f"db-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

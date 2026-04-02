@@ -18,7 +18,7 @@ DQ_SERVICE_URL = os.getenv("DQ_SERVICE_URL", "http://dq-service-test:8083")
 SEMANTIC_SERVICE_URL = os.getenv("SEMANTIC_SERVICE_URL", "http://semantic-service-test:8081")
 PREFECT_INTEGRATION_SERVICE_URL = os.getenv("PREFECT_INTEGRATION_SERVICE_URL", "http://prefect-integration-service-test:8084")
 SEARCH_SERVICE_URL = os.getenv("SEARCH_SERVICE_URL", "http://search-service-test:8085")
-OBSERVABILITY_SERVICE_URL = os.getenv("OBSERVABILITY_SERVICE_URL", "http://observability-service-test:8086")
+# observability-service removed — metrics now via OpenTelemetry SDK in api-service
 WEBHOOK_SERVICE_URL = os.getenv("WEBHOOK_SERVICE_URL", "http://webhook-service-test:8087")
 
 
@@ -33,7 +33,6 @@ class TestServiceHealth:
         (SEMANTIC_SERVICE_URL, "semantic-service"),
         (PREFECT_INTEGRATION_SERVICE_URL, "prefect-integration-service"),
         (SEARCH_SERVICE_URL, "search-service"),
-        (OBSERVABILITY_SERVICE_URL, "observability-service"),
         (WEBHOOK_SERVICE_URL, "webhook-service"),
     ])
     def test_service_health(self, service_url: str, service_name: str):

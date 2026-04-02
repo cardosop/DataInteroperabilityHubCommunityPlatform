@@ -5,6 +5,8 @@ End-to-end tests for complete workflows including semantic versioning,
 version tagging, and version diff visualization.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework import status

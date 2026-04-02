@@ -8,7 +8,11 @@ Covers:
 - Failure scenarios (unauthorized access, order rejection, listing suspension)
 - Edge cases (free vs paid listings, auto-approval vs manual approval)
 """
+import uuid
+
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from rest_framework import status
 
@@ -41,7 +45,7 @@ class MarketplacePublishTests(E2ETestBase):
         ensure_e2e_tenant_ready(self.provider_tenant)
 
         self.provider_user = self.user.__class__.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.provider_tenant
         )
@@ -100,7 +104,7 @@ class MarketplacePublishTests(E2ETestBase):
         ensure_tenant_has_active_subscription(unverified_tenant)
 
         unverified_user = self.user.__class__.objects.create_user(
-            email="unverified@example.com",
+            email=f"unverified-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=unverified_tenant
         )
@@ -129,9 +133,27 @@ class MarketplacePublishTests(E2ETestBase):
             format='json'
         )
         
-        # Should fail with appropriate error
-        if listing_response.status_code != status.HTTP_201_CREATED:
-            self.assertIn('kyc', str(get_response_data(listing_response) or {}).lower() or 'verified')
+        # Should fail at creation or at publish
+        if listing_response.status_code == status.HTTP_201_CREATED:
+            # API allowed creation but should block publishing
+            listing_id = (get_response_data(listing_response) or {}).get('id')
+            publish_response = unverified_client.patch(
+                f'/api/v1/marketplace/listings/{listing_id}/',
+                {'status': ListingStatus.PUBLISHED},
+                format='json'
+            )
+            self.assertNotEqual(publish_response.status_code, status.HTTP_200_OK,
+                "Unverified tenant should not be able to publish listings")
+            error_data = str(get_response_data(publish_response) or {}).lower()
+            self.assertTrue('kyc' in error_data or 'verified' in error_data or 'unverified' in error_data,
+                f"Error should mention KYC/verification status, got: {error_data}")
+        else:
+            # Creation itself was rejected — good
+            self.assertNotEqual(listing_response.status_code, status.HTTP_201_CREATED,
+                "Unverified tenant should not be able to create/publish listings")
+            error_data = str(get_response_data(listing_response) or {}).lower()
+            self.assertTrue('kyc' in error_data or 'verified' in error_data or 'unverified' in error_data,
+                f"Error should mention KYC/verification status, got: {error_data}")
     
     def test_publish_inactive_asset_fails(self):
         """Test that inactive assets cannot be published"""
@@ -158,8 +180,11 @@ class MarketplacePublishTests(E2ETestBase):
         )
         
         # Should fail with appropriate error
-        if listing_response.status_code != status.HTTP_201_CREATED:
-            self.assertIn('active', str(get_response_data(listing_response) or {}).lower())
+        self.assertNotEqual(listing_response.status_code, status.HTTP_201_CREATED,
+            "Inactive/DRAFT asset should not be listable")
+        error_data = str(get_response_data(listing_response) or {}).lower()
+        self.assertTrue('active' in error_data or 'draft' in error_data or 'status' in error_data,
+            f"Error should mention asset status requirement, got: {error_data}")
 
 
 class MarketplaceBrowseTests(E2ETestBase):
@@ -179,7 +204,7 @@ class MarketplaceBrowseTests(E2ETestBase):
         ensure_e2e_tenant_ready(self.provider_tenant)
 
         self.provider_user = self.user.__class__.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.provider_tenant
         )
@@ -196,7 +221,7 @@ class MarketplaceBrowseTests(E2ETestBase):
         ensure_e2e_tenant_ready(self.consumer_tenant)
 
         self.consumer_user = self.user.__class__.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.consumer_tenant
         )
@@ -256,6 +281,9 @@ class MarketplaceBrowseTests(E2ETestBase):
             }
         )
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
+        search_data = get_response_data(search_response) or {}
+        results = search_data.get('results', [])
+        self.assertIsInstance(results, list, "Search should return a list of results")
 
 
 class MarketplacePurchaseTests(E2ETestBase):
@@ -275,7 +303,7 @@ class MarketplacePurchaseTests(E2ETestBase):
         ensure_e2e_tenant_ready(self.provider_tenant)
 
         self.provider_user = self.user.__class__.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.provider_tenant
         )
@@ -292,7 +320,7 @@ class MarketplacePurchaseTests(E2ETestBase):
         ensure_e2e_tenant_ready(self.consumer_tenant)
 
         self.consumer_user = self.user.__class__.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.consumer_tenant
         )
@@ -359,8 +387,11 @@ class MarketplacePurchaseTests(E2ETestBase):
         )
         
         # Should fail with appropriate error
-        if order_response.status_code != status.HTTP_201_CREATED:
-            self.assertIn('own', str(get_response_data(order_response) or {}).lower() or 'provider')
+        self.assertNotEqual(order_response.status_code, status.HTTP_201_CREATED,
+            "Provider should not be able to purchase their own listing")
+        error_data = str(get_response_data(order_response) or {}).lower()
+        self.assertTrue('own' in error_data or 'provider' in error_data or 'self' in error_data,
+            f"Error should mention self-purchase restriction, got: {error_data}")
     
     def test_purchase_unpublished_listing_fails(self):
         """Test that unpublished listings cannot be purchased"""
@@ -394,8 +425,8 @@ class MarketplacePurchaseTests(E2ETestBase):
         )
         
         # Should fail with appropriate error
-        if order_response.status_code != status.HTTP_201_CREATED:
-            self.assertIn('published', str(get_response_data(order_response) or {}).lower() or 'available')
+        self.assertNotEqual(order_response.status_code, status.HTTP_201_CREATED,
+            "Unpublished listing should not be purchasable")
     
     def test_access_asset_with_entitlement_success(self):
         """Test accessing asset with valid entitlement"""
@@ -430,6 +461,7 @@ class MarketplacePurchaseTests(E2ETestBase):
                     provider_tenant_id=str(self.provider_tenant.id)
                 )
                 self.assertTrue(has_access)
+                self.assertIsNone(error_code, "Active entitlement should not return an error code")
     
     def test_access_asset_without_entitlement_fails(self):
         """Test that accessing asset without entitlement fails"""
@@ -442,20 +474,35 @@ class MarketplacePurchaseTests(E2ETestBase):
             provider_tenant_id=str(self.provider_tenant.id)
         )
         
-        # Should return False if no entitlement exists
-        # (This depends on whether asset is public or requires entitlement)
-        # For marketplace assets, entitlement is typically required
-        pass
+        # For marketplace assets, entitlement is required
+        self.assertFalse(has_access, "Should not have access without entitlement")
+        self.assertIsNotNone(error_code, "Should return an error code when no entitlement")
 
 
 class MarketplaceEdgeCasesTests(E2ETestBase):
     """Test marketplace edge cases"""
     
     def test_listing_with_multiple_assets(self):
-        """Test listing behavior with multiple assets"""
-        # This test would verify behavior when listing references multiple assets
-        # (if supported by the model)
-        pass
+        """Test that each listing is associated with exactly one asset"""
+        from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+        provider_tenant = Tenant.objects.create(name="Multi-Asset Provider", slug="multi-asset-provider", kyc_status=KYCStatus.VERIFIED)
+        ensure_e2e_tenant_ready(provider_tenant)
+        provider_user = self.user.__class__.objects.create_user(email=f"multi-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=provider_tenant)
+        provider_client = self.client.__class__()
+        provider_client.force_authenticate(user=provider_user)
+
+        asset1 = Asset.objects.create(tenant=provider_tenant, key="multi-asset-1", name="Asset 1", status=AssetStatus.ACTIVE, created_by=provider_user)
+        asset2 = Asset.objects.create(tenant=provider_tenant, key="multi-asset-2", name="Asset 2", status=AssetStatus.ACTIVE, created_by=provider_user)
+
+        listing1_resp = provider_client.post('/api/v1/marketplace/listings/', {'asset_id': str(asset1.id), 'title': 'Listing 1', 'short_description': 'First', 'pricing_model': PricingModel.FREE_AUTO_APPROVE, 'price_amount': 0.0}, format='json')
+        self.assertEqual(listing1_resp.status_code, status.HTTP_201_CREATED)
+
+        listing2_resp = provider_client.post('/api/v1/marketplace/listings/', {'asset_id': str(asset2.id), 'title': 'Listing 2', 'short_description': 'Second', 'pricing_model': PricingModel.FREE_AUTO_APPROVE, 'price_amount': 0.0}, format='json')
+        self.assertEqual(listing2_resp.status_code, status.HTTP_201_CREATED)
+
+        listing1_data = get_response_data(listing1_resp) or {}
+        listing2_data = get_response_data(listing2_resp) or {}
+        self.assertNotEqual(listing1_data.get('id'), listing2_data.get('id'), "Each asset should get its own listing")
     
     def test_listing_price_validation(self):
         """Test listing price validation"""
@@ -469,7 +516,7 @@ class MarketplaceEdgeCasesTests(E2ETestBase):
         ensure_e2e_tenant_ready(provider_tenant)
 
         provider_user = self.user.__class__.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=provider_tenant
         )
@@ -499,8 +546,8 @@ class MarketplaceEdgeCasesTests(E2ETestBase):
         )
         
         # Should fail with validation error
-        if listing_response.status_code != status.HTTP_201_CREATED:
-            self.assertIn('price', str(get_response_data(listing_response) or {}).lower())
+        self.assertNotEqual(listing_response.status_code, status.HTTP_201_CREATED,
+            "Negative price should be rejected")
 
 
 class MarketplaceEdgeCasesE2ETest(E2ETestBase):
@@ -558,8 +605,10 @@ class MarketplaceEdgeCasesE2ETest(E2ETestBase):
                 f'/api/v1/assets/{asset_id}/activate/',
                 format='json'
             )
-        except Exception:
-            pass  # Best-effort activation
+        except Exception as exc:
+            # Activation is best-effort; log but don't fail the test
+            import logging
+            logging.getLogger(__name__).warning("Asset activation failed (best-effort): %s", exc)
 
         response = self.client.get('/api/v1/marketplace/listings/')
         self.assertEqual(

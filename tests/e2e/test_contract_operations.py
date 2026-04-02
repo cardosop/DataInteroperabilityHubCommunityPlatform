@@ -160,6 +160,11 @@ schema:
         self.assertIn(str(contract1), contract_ids)
         self.assertIn(str(contract2), contract_ids)
 
+        # Verify all returned contracts belong to the filtered asset
+        for contract_item in data.get("results", []):
+            self.assertEqual(str(contract_item.get("asset_id", contract_item.get("asset"))), str(asset_id),
+                "Filter should only return contracts for the specified asset")
+
     def test_get_contract_details(self):
         """Test retrieving contract details"""
         asset_id = self.create_asset(key="get-contract-test", name="Get Contract Test")
@@ -174,6 +179,7 @@ schema:
         self.assertEqual(data["id"], str(contract_id))
         self.assertEqual(data["status"], ContractStatus.DRAFT)
         self.assertIn("original_raw", data)
+        self.assertTrue(len(data["original_raw"]) > 0, "original_raw should not be empty")
 
     def test_update_contract(self):
         """Test updating contract"""
@@ -223,15 +229,12 @@ schema:
         # Verify validation occurred
         contract = Contract.objects.get(id=contract_id)
         # Service is available, so validation should have completed
-        # Note: ERROR status can occur if validation fails due to service issues despite health check
-        # This is acceptable as it indicates the service was contacted but returned an error
         self.assertIn(
             contract.validation_status,
             [
                 ValidationStatus.VALID,
                 ValidationStatus.INVALID,
                 ValidationStatus.WARNING_ONLY,
-                ValidationStatus.ERROR,
             ],
         )
 
@@ -257,9 +260,10 @@ schema:
         )
 
         # Should return job ID for async validation
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
+        data = get_response_data(response) or {}
         if response.status_code == status.HTTP_202_ACCEPTED:
-            data = get_response_data(response) or {}
-            self.assertIn("job_id", data)
+            self.assertIn('job_id', data, "Async validation should return a job_id")
             job_id = data["job_id"]
 
             # Wait for job completion
@@ -286,9 +290,10 @@ schema:
         # Verify validation failed or returned warnings
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
-        # May be INVALID or have validation errors
-        if contract.validation_status == ValidationStatus.INVALID:
-            self.assertIsNotNone(contract.validation_errors)
+        # After validation of invalid contract, status should be INVALID
+        self.assertEqual(contract.validation_status, ValidationStatus.INVALID,
+            f"Invalid contract should have INVALID validation_status, got {contract.validation_status}")
+        self.assertIsNotNone(contract.validation_errors, "Invalid contract should have validation errors")
 
     def test_lint_contract_success(self):
         """Test contract linting"""
@@ -305,8 +310,6 @@ schema:
         response = self.client.post(f"/api/v1/contracts/{contract_id}/lint/", format="json")
 
         # Service is available, so linting should work
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
-
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = get_response_data(response) or {}
         self.assertIn("issues", data)
@@ -410,28 +413,10 @@ schema:
         # Verify normalization occurred
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
-        # If normalization failed or is None, manually set it for test purposes
-        if contract.normalization_status in [
-            None,
-            NormalizationStatus.NORMALIZATION_FAILED,
-            NormalizationStatus.NOT_NORMALIZED,
-        ]:
-            # Set minimal hub_contract_json and status for test
-            if not contract.hub_contract_json:
-                contract.hub_contract_json = {"hub_contract_version": 1, "id": "test", "schema": {}}
-            # Ensure hub_contract_version field is set (separate from JSON key)
-            if not contract.hub_contract_version:
-                contract.hub_contract_version = "1.0.0"
-            contract.normalization_status = NormalizationStatus.NORMALIZED_OK
-            contract.save(
-                update_fields=["normalization_status", "hub_contract_json", "hub_contract_version"]
-            )
-            contract.refresh_from_db()
-
-        # Final verification - ensure both fields are set
         self.assertIn(
             contract.normalization_status,
             [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+            f"Normalization should succeed, got {contract.normalization_status}",
         )
         self.assertIsNotNone(
             contract.hub_contract_json, "hub_contract_json should not be None after normalization"
@@ -492,13 +477,11 @@ schema:
         # Delete contract (soft delete - sets status to RETIRED)
         response = self.client.delete(f"/api/v1/contracts/{contract_id}/")
 
-        # Delete may return 204 or 404 (if already deleted)
-        self.assertIn(response.status_code, [status.HTTP_204_NO_CONTENT, status.HTTP_404_NOT_FOUND])
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
         # Verify contract soft deleted (status set to RETIRED, not actually deleted)
-        if response.status_code == status.HTTP_204_NO_CONTENT:
-            contract = Contract.objects.get(id=contract_id)
-            self.assertEqual(contract.status, ContractStatus.RETIRED)
+        contract = Contract.objects.get(id=contract_id)
+        self.assertEqual(contract.status, ContractStatus.RETIRED)
 
         # Verify audit log created
         self.verify_audit_log(
@@ -547,14 +530,8 @@ schema:
             f"/api/v1/contracts/{contract_id}/", {"status": ContractStatus.ACTIVE}, format="json"
         )
 
-        # If status update fails due to requirements, manually set it for test
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            contract.refresh_from_db()
-            contract.status = ContractStatus.ACTIVE
-            contract.save(update_fields=["status"])
-            contract.refresh_from_db()
-        else:
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_200_OK,
+            f"Status transition to ACTIVE should succeed, got {response.status_code}: {get_response_data(response)}")
         contract.refresh_from_db()
         self.assertEqual(contract.status, ContractStatus.ACTIVE)
 
@@ -592,8 +569,12 @@ schema:
         validate_response2 = self.validate_contract(contract_id, async_mode=False)
 
         # Both should succeed
-        contract.refresh_from_db()
+        contract2 = Contract.objects.get(id=contract_id)
         self.assertIn(
-            contract.validation_status,
+            contract2.validation_status,
             [ValidationStatus.VALID, ValidationStatus.INVALID, ValidationStatus.WARNING_ONLY],
         )
+
+        # Both validations should return same status (caching consistency)
+        self.assertEqual(contract.validation_status, contract2.validation_status,
+            "Cached validation should return same status")

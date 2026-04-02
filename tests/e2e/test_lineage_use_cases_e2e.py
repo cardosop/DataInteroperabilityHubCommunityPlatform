@@ -12,6 +12,8 @@ All tests use real implementations without mocks/stubs.
 import json
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient

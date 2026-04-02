@@ -17,6 +17,7 @@ from rest_framework.test import APIClient
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory
+import uuid
 
 User = get_user_model()
 
@@ -31,7 +32,7 @@ class PythonSDKCompatibilityTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -85,7 +86,7 @@ class JavaScriptSDKCompatibilityTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -128,7 +129,7 @@ class CLIToolCompatibilityTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -174,7 +175,7 @@ class SDKAPICompatibilityTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -216,7 +217,7 @@ class SDKFunctionalityMaintainedTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

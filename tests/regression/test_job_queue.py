@@ -16,12 +16,17 @@ from rest_framework.test import APIClient
 from rest_framework import status
 import time
 
+from datetime import timedelta
+from django.utils import timezone
+
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from hub.apps.jobs.models import Job, JobStatus, JobType
-from django.utils import timezone
-from datetime import timedelta
 from hub.apps.assets.models import Asset
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.billing.tests.plan_fixtures import get_pro_plan
+from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
+import uuid
 
 User = get_user_model()
 
@@ -34,16 +39,26 @@ class JobQueueRegressionTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
+        plan = get_pro_plan()
         self.tenant = Tenant.objects.create(
             name="Job Queue Test Tenant",
-            slug="job-queue-test-tenant"
+            slug="job-queue-test-tenant",
+            plan=plan,
+        )
+        Subscription.objects.create(
+            tenant=self.tenant,
+            plan=plan,
+            status=SubscriptionStatus.ACTIVE,
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now() + timedelta(days=30),
         )
         self.user = User.objects.create_user(
-            email="jobqueue@example.com",
+            email=f"jobqueue-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+        ensure_user_has_tenant_admin_role(self.user)
         self.client.force_authenticate(user=self.user)
 
         self.asset = Asset.objects.create(

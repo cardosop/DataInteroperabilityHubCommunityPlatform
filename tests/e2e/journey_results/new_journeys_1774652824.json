@@ -1,0 +1,174 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-007-c224ef77",
+      "journey_name": "Use AI Schema Matching for Asset Creation",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1774652823.501419,
+      "end_time": 1774652824.8513463,
+      "duration": 1.3499271869659424,
+      "completion_rate": 90.9090909090909,
+      "success_rate": 90.9090909090909,
+      "error_message": "Failed to attach contract to asset: 400 - {'error': 'Contract attachment validation failed', 'errors': ['Contract validation_status must be VALID or WARNING_ONLY (current: SKIPPED)'], 'warnings': [], 'details': {'asset_id': '06d2af14-3f2b-403a-9ca6-e26457737555', 'contract_id': 'fda4444d-6881-4b3f-95ab-c481d208f4b4', 'validation_checks': {'validation_status': {'validation_status': 'SKIPPED', 'status_valid': False}, 'normalization_status': {'normalization_status': 'NORMALIZED_OK', 'status_valid': True}, 'tenant_ownership': {'asset_tenant_id': '7fb1acd1-0cc5-4dbf-bace-6be2ec2daba8', 'contract_tenant_id': '7fb1acd1-0cc5-4dbf-bace-6be2ec2daba8', 'tenant_match': True}, 'version_compatibility': {'current_version': 1, 'proposed_version': 2, 'version_valid': True, 'latest_version': 0, 'version_update': True}}}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Upload Data File",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774652823.5014446,
+          "end_time": 1774652824.2031527,
+          "duration": 0.7017080783843994,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Complete File Upload",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774652824.2031665,
+          "end_time": 1774652824.2918165,
+          "duration": 0.08864998817443848,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774652824.2918353,
+          "end_time": 1774652824.397963,
+          "duration": 0.10612773895263672,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Dataset (Schema Inference)",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774652824.3979743,
+          "end_time": 1774652824.4357224,
+          "duration": 0.037748098373413086,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "AI Schema Matching Analysis",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774652824.435733,
+          "end_time": 1774652824.4469922,
+          "duration": 0.011259078979492188,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Review Suggested Field Mappings",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774652824.447004,
+          "end_time": 1774652824.4470115,
+          "duration": 7.3909759521484375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Accept/Reject Mappings",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774652824.4470134,
+          "end_time": 1774652824.4470165,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Contract Draft",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774652824.447026,
+          "end_time": 1774652824.4733033,
+          "duration": 0.02627730369567871,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Review Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774652824.4733129,
+          "end_time": 1774652824.4871542,
+          "duration": 0.013841390609741211,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Validate Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774652824.4871635,
+          "end_time": 1774652824.833716,
+          "duration": 0.34655237197875977,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Attach Contract to Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774652824.8337257,
+          "end_time": 1774652824.8513405,
+          "duration": 0.01761484146118164,
+          "error_message": "Failed to attach contract to asset: 400 - {'error': 'Contract attachment validation failed', 'errors': ['Contract validation_status must be VALID or WARNING_ONLY (current: SKIPPED)'], 'warnings': [], 'details': {'asset_id': '06d2af14-3f2b-403a-9ca6-e26457737555', 'contract_id': 'fda4444d-6881-4b3f-95ab-c481d208f4b4', 'validation_checks': {'validation_status': {'validation_status': 'SKIPPED', 'status_valid': False}, 'normalization_status': {'normalization_status': 'NORMALIZED_OK', 'status_valid': True}, 'tenant_ownership': {'asset_tenant_id': '7fb1acd1-0cc5-4dbf-bace-6be2ec2daba8', 'contract_tenant_id': '7fb1acd1-0cc5-4dbf-bace-6be2ec2daba8', 'tenant_match': True}, 'version_compatibility': {'current_version': 1, 'proposed_version': 2, 'version_valid': True, 'latest_version': 0, 'version_update': True}}}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('06d2af14-3f2b-403a-9ca6-e26457737555', 'fda4444d-6881-4b3f-95ab-c481d208f4b4')",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-27T23:07:04.851507"
+}

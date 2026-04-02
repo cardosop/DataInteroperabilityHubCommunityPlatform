@@ -232,7 +232,7 @@ def _map_product_to_rdf(
         except (httpx.ConnectError, httpx.ReadTimeout) as e:
             last_error = e
             if attempt < retries - 1:
-                time.sleep(RETRY_DELAY)
+                time.sleep(RETRY_DELAY)  # INTENTIONAL: e2e/integration test polling real services
                 continue
             pytest.skip(f"Semantic service not available at {SEMANTIC_SERVICE_URL} after {retries} attempts: {e}")
 
@@ -244,13 +244,13 @@ def _map_product_to_rdf(
                     return result
                 # If no triples and we have retries left, retry
                 if attempt < retries - 1:
-                    time.sleep(RETRY_DELAY)
+                    time.sleep(RETRY_DELAY)  # INTENTIONAL: e2e/integration test polling real services
                     continue
             return result
         else:
             # Non-200 status - retry if it's a server error (5xx), otherwise fail
             if response.status_code >= 500 and attempt < retries - 1:
-                time.sleep(RETRY_DELAY)
+                time.sleep(RETRY_DELAY)  # INTENTIONAL: e2e/integration test polling real services
                 continue
             pytest.skip(f"Failed to map product to RDF: {response.status_code} - {response.text}")
 
@@ -303,19 +303,19 @@ def _map_odcs_contract_to_rdf(
                     if result.get("triples_count", 0) > 0:
                         return result
                     if attempt < retries - 1:
-                        time.sleep(RETRY_DELAY)
+                        time.sleep(RETRY_DELAY)  # INTENTIONAL: e2e/integration test polling real services
                         continue
                 return result
             else:
                 if response.status_code >= 500 and attempt < retries - 1:
-                    time.sleep(RETRY_DELAY)
+                    time.sleep(RETRY_DELAY)  # INTENTIONAL: e2e/integration test polling real services
                     continue
                 pytest.skip(f"Failed to map ODCS contract to RDF: {response.status_code} - {response.text}")
 
         except (httpx.ConnectError, httpx.ReadTimeout) as e:
             last_error = e
             if attempt < retries - 1:
-                time.sleep(RETRY_DELAY)
+                time.sleep(RETRY_DELAY)  # INTENTIONAL: e2e/integration test polling real services
                 continue
             pytest.skip(f"Semantic service not available at {SEMANTIC_SERVICE_URL} after {retries} attempts: {e}")
 
@@ -493,7 +493,7 @@ class TestODPSToRDFMapping:
                         break
                 except Exception:
                     pass
-                time.sleep(RETRY_DELAY)
+                time.sleep(RETRY_DELAY)  # INTENTIONAL: e2e/integration test polling real services
             if len(bindings) < 1:
                 pytest.skip(
                     "Product strategy not queryable after retries (Fuseki or mapping timing)"
@@ -875,7 +875,7 @@ class TestProductContractLinking:
             pytest.skip("Fuseki not available - skipping linking query tests but mappings verified")
 
         # Allow Fuseki time to commit both mappings before querying (3s for two mappings)
-        time.sleep(3.0)
+        time.sleep(3.0)  # INTENTIONAL: e2e/integration test polling real services
 
         # Test query products linked to contracts (filter by our contract for reliable results)
         query = ODPSProductQueryBuilder.query_products_linked_to_odcs_contracts(
@@ -898,7 +898,7 @@ class TestProductContractLinking:
                             break
             if link_found:
                 break
-            time.sleep(2.0)  # 2s between retries for Fuseki commit
+            time.sleep(2.0)  # 2s between retries for Fuseki commit  # INTENTIONAL: test-specific timing
 
         # If link not found after retries, verify mappings succeeded then skip (eventual consistency)
         if not link_found:
@@ -920,7 +920,7 @@ class TestProductContractLinking:
                     break
             except Exception:
                 bindings = []
-            time.sleep(2.0)
+            time.sleep(2.0)  # INTENTIONAL: e2e/integration test polling real services
         assert len(bindings) > 0, "Contracts linked to products query should return results"
 
         # Verify bidirectional link

@@ -13,6 +13,8 @@ Coverage:
 """
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -33,6 +35,8 @@ class Phase25TenantOnboardingE2ETest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.users.models import Role, UserRole
+
         self.client = APIClient()
 
         # Get or create FREE plan
@@ -45,6 +49,31 @@ class Phase25TenantOnboardingE2ETest(TestCase):
                 "is_active": True,
             },
         )
+
+        # Create a platform admin tenant + user for onboarding requests.
+        # The onboarding endpoint requires IsAuthenticated + PLATFORM_ADMIN role.
+        platform_tenant, _ = Tenant.objects.get_or_create(
+            slug="platform-admin-tenant",
+            defaults={"name": "Platform Admin Tenant", "status": TenantStatus.ACTIVE},
+        )
+        self.platform_admin = User.objects.create_user(
+            email="platform-admin-e2e@example.com",
+            password="PlatformAdmin123!",
+            tenant=platform_tenant,
+            status=UserStatus.ACTIVE,
+        )
+        self.platform_admin.is_superuser = True
+        self.platform_admin.save(update_fields=["is_superuser"])
+        # Also create the PLATFORM_ADMIN role for explicit role check
+        pa_role, _ = Role.objects.get_or_create(
+            tenant=platform_tenant,
+            name="PLATFORM_ADMIN",
+            defaults={"description": "Platform Administrator"},
+        )
+        UserRole.objects.get_or_create(
+            user=self.platform_admin, role=pa_role,
+        )
+        self.client.force_authenticate(user=self.platform_admin)
 
     def test_complete_tenant_onboarding_workflow(self):
         """Test complete tenant onboarding workflow"""
@@ -62,8 +91,8 @@ class Phase25TenantOnboardingE2ETest(TestCase):
 
         response = self.client.post("/api/v1/tenants/onboarding/", data, format="json")
 
-        # Should succeed
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        # Onboarding should succeed
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         if response.status_code == status.HTTP_201_CREATED:
             tenant_id = response.data.get("tenant", {}).get("id")
@@ -106,12 +135,12 @@ class Phase25TenantOnboardingE2ETest(TestCase):
             self.assertEqual(assets_response.status_code, status.HTTP_200_OK)
             self.assertIn("results", assets_response.data)
 
-            # Step 6: Verify subscription created (if Stripe configured)
+            # Step 6: Verify subscription created
             subscriptions = Subscription.objects.filter(tenant_id=tenant.id)
-            if subscriptions.exists():
-                subscription = subscriptions.first()
-                self.assertEqual(subscription.plan_id, self.free_plan.id)
-                self.assertEqual(subscription.status, SubscriptionStatus.ACTIVE)
+            self.assertTrue(subscriptions.exists(), "Onboarding must create a subscription")
+            subscription = subscriptions.first()
+            self.assertEqual(subscription.plan_id, self.free_plan.id)
+            self.assertEqual(subscription.status, SubscriptionStatus.ACTIVE)
 
     def test_tenant_onboarding_duplicate_slug_fails(self):
         """Test that duplicate tenant slug fails"""
@@ -151,47 +180,41 @@ class Phase25TenantOnboardingE2ETest(TestCase):
 
         response = self.client.post("/api/v1/tenants/onboarding/", data, format="json")
 
-        if response.status_code == status.HTTP_201_CREATED:
-            tenant_id = response.data.get("tenant", {}).get("id")
-            user_id = response.data.get("user", {}).get("id")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-            # Log in as onboarded user
-            login_response = self.client.post(
-                "/api/v1/auth/login/",
-                {"email": "isolation@example.com", "password": "SecurePass123!"},
-                format="json",
-            )
+        tenant_id = response.data.get("tenant", {}).get("id")
+        user_id = response.data.get("user", {}).get("id")
+        self.assertIsNotNone(tenant_id)
+        self.assertIsNotNone(user_id)
 
-            if login_response.status_code == status.HTTP_200_OK:
-                # Login response may have 'access' or 'access_token' key
-                access_token = login_response.data.get("access") or login_response.data.get(
-                    "access_token"
-                )
-                if access_token:
-                    self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        # Switch to the newly onboarded user.
+        # force_authenticate takes priority over credentials headers in DRF,
+        # so we must switch it to the new user (not just set a Bearer token).
+        onboarded_user = User.objects.get(id=user_id)
+        self.client.force_authenticate(user=onboarded_user)
 
-                # Create asset in this tenant
-                asset_response = self.client.post(
-                    "/api/v1/assets/",
-                    {
-                        "key": "isolation-asset",
-                        "name": "Isolation Asset",
-                        "status": "ACTIVE",
-                    },
-                    format="json",
-                )
+        # Create asset in the new tenant
+        asset_response = self.client.post(
+            "/api/v1/assets/",
+            {
+                "key": "isolation-asset",
+                "name": "Isolation Asset",
+                "status": "ACTIVE",
+            },
+            format="json",
+        )
 
-                # Should succeed (may be 400 if missing required fields)
-                self.assertIn(
-                    asset_response.status_code,
-                    [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST],
-                )
+        # Should succeed (may be 400 if missing required fields)
+        self.assertIn(
+            asset_response.status_code,
+            [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST],
+        )
 
-                # Verify asset belongs to correct tenant
-                if asset_response.status_code == status.HTTP_201_CREATED:
-                    asset_id = asset_response.data["id"]
-                    from hub.apps.assets.models import Asset
+        # Verify asset belongs to correct tenant
+        if asset_response.status_code == status.HTTP_201_CREATED:
+            asset_id = asset_response.data["id"]
+            from hub.apps.assets.models import Asset
 
-                    asset = Asset.objects.get(id=asset_id)
-                    # Convert UUID to string for comparison
-                    self.assertEqual(str(asset.tenant_id), str(tenant_id))
+            asset = Asset.objects.get(id=asset_id)
+            # Convert UUID to string for comparison
+            self.assertEqual(str(asset.tenant_id), str(tenant_id))

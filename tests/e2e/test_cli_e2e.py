@@ -6,6 +6,8 @@ asset management, contract management, file management, job management, and edge
 Uses real API (no mocks).
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import sys
 import tempfile
 import os
@@ -33,6 +35,7 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract, ContractStatus
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
 from tests.factories import TenantFactory
+import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
 User = get_user_model()
@@ -56,7 +59,7 @@ def test_user_and_tenant():
     """Create test user and tenant"""
     tenant = TenantFactory.create_tenant()
     user = User.objects.create_user(
-        email="cli_e2e@example.com",
+        email=f"cli_e2e-{uuid.uuid4().hex[:8]}@example.com",
         password="testpass123",
         tenant=tenant,
         status=UserStatus.ACTIVE

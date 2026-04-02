@@ -7,7 +7,11 @@ Pytest configuration and shared fixtures
 import logging
 import os
 import sys
+import threading
 import time
+
+# Phase 95: thread-local flags for patch coordination (replaces inspect.getouterframes)
+_conftest_flags = threading.local()
 
 # Early progress so users see output immediately (avoids "hanging" perception)
 # Unit tests: collection can take 30s-2min for ~18k tests; integration/E2E: similar
@@ -28,6 +32,22 @@ _patch_logger.setLevel(
 _handler = logging.StreamHandler()
 _handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 _patch_logger.addHandler(_handler)
+
+
+def _patch_failure_is_missing_django(exc: BaseException) -> bool:
+    """True when a patch failed only because Django is not installed (wrong interpreter)."""
+    if isinstance(exc, ModuleNotFoundError):
+        name = exc.name or ""
+        return name == "django" or name.startswith("django.")
+    return "no module named 'django" in str(exc).lower()
+
+
+def _log_patch_failure(operation: str, exc: BaseException) -> None:
+    """WARN for real failures; DEBUG when the active interpreter simply has no Django."""
+    if _patch_failure_is_missing_django(exc):
+        _patch_logger.debug("Skipping %s patch (Django not installed): %s", operation, exc)
+    else:
+        _patch_logger.warning("✗ Could not patch %s: %s", operation, exc)
 
 
 def _log_patch(name, applied=True):
@@ -257,47 +277,13 @@ if True:  # Always apply patches
 
             FIX: cursor is optional (defaults to None) to match Django's signature.
             """
-            # Check call stack to see if we're being called from sync_apps or during teardown
-            import inspect
-            import traceback
-
-            try:
-                frame = inspect.currentframe()
-                stack = inspect.getouterframes(frame)
-                stack_str = " ".join([f.filename + ":" + str(f.lineno) for f in stack[:10]])
-                called_from_sync_apps = "sync_apps" in stack_str
-                called_from_flush = "flush.py" in stack_str or "sql_flush" in stack_str
-
-                if called_from_sync_apps:
-                    _patch_logger.info(
-                        "✓ table_names: Called from sync_apps - returning empty list (ROOT CAUSE FIX)"
-                    )
-                    return []
-
-                # During teardown (flush), if cursor is None, we need to get it from connection
-                # django_table_names calls table_names(include_views=include_views) without cursor
-                if called_from_flush and cursor is None:
-                    # Try to get cursor from connection if available
-                    if hasattr(self, "connection") and hasattr(self.connection, "cursor"):
-                        try:
-                            # Get cursor (not using context manager, Django manages cursor lifecycle)
-                            cursor = self.connection.cursor()
-                            _patch_logger.debug("✓ table_names: Got cursor for flush operation")
-                        except Exception as e:
-                            # If we can't get cursor, return empty list for flush operations
-                            _patch_logger.info(
-                                f"✓ table_names: Called from flush without cursor - returning empty list (error: {e})"
-                            )
-                            return []
-                    else:
-                        # No connection available, return empty list
-                        _patch_logger.info(
-                            "✓ table_names: Called from flush without connection - returning empty list"
-                        )
-                        return []
-            except:
-                # If we can't determine context, be safe and call original
-                pass
+            # Phase 95: replaced inspect.getouterframes() with thread-local flag
+            called_from_sync_apps = getattr(_conftest_flags, 'in_sync_apps', False)
+            if called_from_sync_apps:
+                _patch_logger.info(
+                    "table_names: called from sync_apps — returning empty list"
+                )
+                return []
 
             # For non-sync_apps contexts (like MigrationRecorder), call original
             _patch_logger.debug("✓ table_names: Calling original (non-sync_apps context)")
@@ -328,7 +314,7 @@ if True:  # Always apply patches
                 pg_introspection.DatabaseIntrospection.__init__ = _patched_introspection_init
                 _log_patch("DatabaseIntrospection.__init__ (table_names patching)")
         except Exception as e:
-            _patch_logger.warning(f"✗ Could not patch DatabaseIntrospection.__init__: {e}")
+            _log_patch_failure("DatabaseIntrospection.__init__", e)
             import traceback
 
             _patch_logger.debug(traceback.format_exc())
@@ -363,7 +349,7 @@ if True:  # Always apply patches
             pg_operations.DatabaseOperations.sql_flush = _patched_sql_flush
             _log_patch("DatabaseOperations.sql_flush (CASCADE)")
     except Exception as e:
-        _patch_logger.warning(f"✗ Could not patch sql_flush: {e}")
+        _log_patch_failure("sql_flush", e)
         import traceback
 
         _patch_logger.debug(traceback.format_exc())
@@ -383,16 +369,14 @@ if True:  # Always apply patches
                 This patch makes sync_apps a no-op that always returns immediately, preventing any table queries.
                 Migrations will create all tables, so sync_apps doesn't need to run.
                 """
-                _patch_logger.info("=" * 80)
-                _patch_logger.info(
-                    f"✓ sync_apps (main): CALLED but suppressed (apps={len(apps) if apps else 0})"
-                )
-                _patch_logger.info(
-                    f"✓ sync_apps (main): ROOT CAUSE FIX - returning immediately without SQL"
-                )
-                _patch_logger.info("=" * 80)
-                # Always return immediately - migrations will create tables
-                return
+                _conftest_flags.in_sync_apps = True
+                try:
+                    _patch_logger.info(
+                        "sync_apps: suppressed (Phase 95 thread-local flag)"
+                    )
+                    return  # no-op
+                finally:
+                    _conftest_flags.in_sync_apps = False
 
             # Patch at class level using MethodType
             migrate_module.Command.sync_apps = types.MethodType(
@@ -506,7 +490,7 @@ if True:  # Always apply patches
                             "✓ Patched MigrationLoader.load_disk to clear unmigrated_apps"
                         )
                 except Exception as e:
-                    _patch_logger.warning(f"✗ Could not patch MigrationLoader.load_disk: {e}")
+                    _log_patch_failure("MigrationLoader.load_disk", e)
                     import traceback
 
                     _patch_logger.debug(traceback.format_exc())
@@ -749,7 +733,7 @@ if True:  # Always apply patches
             pass
         _log_patch("create_contenttypes (idempotent when TEST_DB_SUFFIX set)")
     except Exception as e:
-        _patch_logger.warning(f"✗ Could not patch create_contenttypes: {e}")
+        _log_patch_failure("create_contenttypes", e)
 
     # CRITICAL: Patch create_permissions to be idempotent when TEST_DB_SUFFIX is set.
     # ROOT CAUSE: When hub_test_test_phase13 is pre-migrated then conftest runs migrate again,
@@ -852,7 +836,7 @@ if True:  # Always apply patches
             pass
         _log_patch("create_permissions (idempotent when TEST_DB_SUFFIX set)")
     except Exception as e:
-        _patch_logger.warning(f"✗ Could not patch create_permissions: {e}")
+        _log_patch_failure("create_permissions", e)
 
     # CRITICAL: Patch PostgreSQL _create_test_db (internal) to handle DuplicateDatabase when TEST_DB_SUFFIX set.
     # ROOT CAUSE: hub_test_test_phase13 is pre-created by run_phase28_2; when keepdb=False (e.g. --reuse-db
@@ -886,7 +870,7 @@ if True:  # Always apply patches
         pg_creation_module.DatabaseCreation._create_test_db = _patched_create_test_db_internal
         _log_patch("PostgreSQL _create_test_db (DuplicateDatabase when TEST_DB_SUFFIX)")
     except Exception as e:
-        _patch_logger.warning(f"✗ Could not patch PostgreSQL _create_test_db: {e}")
+        _log_patch_failure("PostgreSQL _create_test_db", e)
 
     # CRITICAL: Patch BaseDatabaseCreation.create_test_db AND PostgreSQL-specific DatabaseCreation
     # ROOT CAUSE FIX: Django's create_test_db explicitly sets run_syncdb=True at line 59-61
@@ -961,52 +945,119 @@ if True:  # Always apply patches
                     settings.DATABASES[self.connection.alias]["NAME"] = test_database_name
                     self.connection.settings_dict["NAME"] = test_database_name
                     self.connection.ensure_connection()
-                    # When TEST_DB_SUFFIX is set, DB was created from hub_test template by migrate-test-dbs.sh.
-                    # Skip migrate entirely to avoid sync_apps/pg_type/duplicate-permission conflicts.
-                    if not os.getenv("TEST_DB_SUFFIX"):
-                        _reapply_contenttypes_permissions_patches()
-                        _patch_logger.debug("create_test_db: keepdb path, running migrate to ensure schema current")
+                    # Run migrate in keepdb path only when the DB is NOT already migrated.
+                    # _reapply patches prevent duplicate-key errors from the
+                    # post_migrate signal (create_contenttypes / create_permissions).
+                    # For shared DBs (TEST_DB_SUFFIX set) we never drop on error; for private DBs
+                    # a pg_type UniqueViolation triggers a drop-and-recreate via the full path.
+                    _reapply_contenttypes_permissions_patches()
+
+                    # Fast path: if the DB is already migrated, skip the
+                    # expensive migrate command entirely.  This avoids the
+                    # statement_timeout / deadlock issues on shared DBs.
+                    _already_migrated = False
+                    try:
+                        with self.connection.cursor() as _mc:
+                            _mc.execute("SELECT 1 FROM django_migrations LIMIT 1")
+                            _already_migrated = _mc.fetchone() is not None
+                    except Exception:
+                        _already_migrated = False
+                        # Reset connection after failed query
                         try:
-                            current_call_command(
-                                "migrate",
-                                verbosity=max(verbosity - 1, 0),
-                                interactive=False,
-                                database=self.connection.alias,
-                                run_syncdb=False,
+                            self.connection.close()
+                            self.connection.ensure_connection()
+                        except Exception:
+                            pass
+
+                    if _already_migrated:
+                        _patch_logger.debug("create_test_db: fast path (DB already migrated, skipping migrate)")
+                        # Restore timeout, run createcachetable, and return
+                        try:
+                            current_call_command("createcachetable", database=self.connection.alias)
+                        except Exception:
+                            pass
+                        self.connection.ensure_connection()
+                        return test_database_name
+
+                    _patch_logger.debug("create_test_db: keepdb path, running migrate to ensure schema current")
+
+                    # Temporarily disable statement_timeout for migrate. The
+                    # default 60s timeout is too short for schema migrations on
+                    # shared DBs with concurrent access (causes statement
+                    # cancellation → InFailedSqlTransaction cascade).
+                    try:
+                        with self.connection.cursor() as _tc:
+                            _tc.execute("SET statement_timeout = '0'")
+                            _tc.execute("SET lock_timeout = '120s'")
+                    except Exception:
+                        pass
+
+                    try:
+                        current_call_command(
+                            "migrate",
+                            verbosity=max(verbosity - 1, 0),
+                            interactive=False,
+                            database=self.connection.alias,
+                            run_syncdb=False,
+                        )
+                    except Exception as migrate_err:
+                        err_str = str(migrate_err).lower()
+                        if os.getenv("TEST_DB_SUFFIX"):
+                            # Shared DB — cannot drop it; log warning and continue.
+                            _patch_logger.warning(
+                                "create_test_db: migrate warning on shared DB (%s), continuing",
+                                migrate_err,
                             )
-                        except Exception as migrate_err:
-                            # pg_type UniqueViolation when DB has stale schema: drop and recreate via full path.
-                            err_str = str(migrate_err).lower()
-                            if "pg_type_typname_nsp_index" in err_str or "duplicate key" in err_str:
-                                _patch_logger.warning(
-                                    "create_test_db: migrate failed (stale schema), dropping DB and using full create path"
-                                )
+                            # CRITICAL: Reset the DB connection after migration failure.
+                            # A failed migration leaves the PostgreSQL connection in an
+                            # aborted transaction state (InFailedSqlTransaction).  All
+                            # subsequent SQL on this connection would fail.  Closing and
+                            # reconnecting gives us a clean connection.
+                            try:
                                 self.connection.close()
-                                import psycopg2
-                                from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
-                                db = settings.DATABASES[self.connection.alias]
-                                conn = psycopg2.connect(
-                                    dbname="postgres",
-                                    user=db["USER"],
-                                    password=db["PASSWORD"],
-                                    host=db.get("HOST", "localhost"),
-                                    port=db.get("PORT", "5432"),
-                                )
-                                conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-                                try:
-                                    with conn.cursor() as cur:
-                                        cur.execute(
-                                            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                                            "WHERE datname = %s AND pid <> pg_backend_pid()",
-                                            [test_database_name],
-                                        )
-                                        cur.execute('DROP DATABASE IF EXISTS "{}"'.format(test_database_name))
-                                finally:
-                                    conn.close()
-                                keepdb = False
-                                # Fall through to full path - will create fresh DB
-                            else:
-                                raise
+                                self.connection.ensure_connection()
+                            except Exception:
+                                pass  # Best effort — ensure_connection may re-raise
+                        elif "pg_type_typname_nsp_index" in err_str or "duplicate key" in err_str:
+                            # pg_type UniqueViolation when DB has stale schema: drop and recreate via full path.
+                            _patch_logger.warning(
+                                "create_test_db: migrate failed (stale schema), dropping DB and using full create path"
+                            )
+                            self.connection.close()
+                            import psycopg2
+                            from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+                            db = settings.DATABASES[self.connection.alias]
+                            conn = psycopg2.connect(
+                                dbname="postgres",
+                                user=db["USER"],
+                                password=db["PASSWORD"],
+                                host=db.get("HOST", "localhost"),
+                                port=db.get("PORT", "5432"),
+                            )
+                            conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+                            try:
+                                with conn.cursor() as cur:
+                                    cur.execute(
+                                        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                                        "WHERE datname = %s AND pid <> pg_backend_pid()",
+                                        [test_database_name],
+                                    )
+                                    cur.execute('DROP DATABASE IF EXISTS "{}"'.format(test_database_name))
+                            finally:
+                                conn.close()
+                            keepdb = False
+                            # Fall through to full path - will create fresh DB
+                        else:
+                            raise
+                    # Restore statement_timeout after migrate (success or failure)
+                    try:
+                        if self.connection.connection and not self.connection.connection.closed:
+                            with self.connection.cursor() as _tc:
+                                _tc.execute("SET statement_timeout = '120s'")
+                                _tc.execute("SET lock_timeout = '30s'")
+                    except Exception:
+                        pass
+
                     if keepdb:
                         current_call_command("createcachetable", database=self.connection.alias)
                         return test_database_name
@@ -1095,7 +1146,7 @@ if True:  # Always apply patches
         except Exception as e:
             _patch_logger.debug(f"Could not patch DatabaseCreation.__init__: {e}")
     except Exception as e:
-        _patch_logger.warning(f"✗ Could not patch create_test_db: {e}")
+        _log_patch_failure("create_test_db", e)
         import traceback
 
         _patch_logger.debug(traceback.format_exc())
@@ -1394,53 +1445,8 @@ def pytest_configure(config):
                 keepdb = True
                 _patch_logger.info("✓ TEST_DB_SUFFIX set: forcing keepdb=True to reuse existing DB")
 
-            # CRITICAL: Check if we should skip database creation (for SDK tests using production DB)
-            use_production_db = os.getenv("USE_PRODUCTION_DB_FOR_SDK_TESTS", "").lower() == "1"
-            if use_production_db:
-                _patch_logger.info("=" * 80)
-                _patch_logger.info("✓ SKIPPING test database creation - using production database")
-                _patch_logger.info("=" * 80)
-
-                # CRITICAL: Ensure database name is set to production database
-                # Django might have cached settings with test database name
-                from django.conf import settings
-                from django.utils.functional import empty
-
-                # Force reload settings if they're cached
-                if hasattr(settings, "_wrapped") and settings._wrapped is not empty:
-                    # Clear the wrapped settings to force reload
-                    settings._wrapped = empty
-                    # Reload settings
-                    settings._setup()
-
-                # Get production database name from environment
-                postgres_db = os.getenv("POSTGRES_DB", "hub")
-
-                # Override database name in settings
-                if "default" in settings.DATABASES:
-                    original_name = settings.DATABASES["default"].get("NAME", "")
-                    settings.DATABASES["default"]["NAME"] = postgres_db
-                    _patch_logger.info(
-                        f"✓ Overrode database name: {original_name} -> {postgres_db}"
-                    )
-
-                # CRITICAL: Ensure database connection is established
-                # Even though we're not creating a test database, we need to ensure
-                # the connection to the production database is set up
-                from django.db import connections
-
-                try:
-                    connection = connections["default"]
-                    connection.ensure_connection()
-                    _patch_logger.info("✓ Database connection established to production database")
-                except Exception as e:
-                    _patch_logger.warning(f"⚠ Could not establish database connection: {e}")
-
-                # Return empty dict to indicate no test databases were created
-                # pytest-django expects a dict mapping alias -> (db_name, destroy) tuple
-                # But since we're using production DB, we return empty dict
-                # The warning about unpacking is expected and harmless
-                return {}
+            # Phase 95: USE_PRODUCTION_DB_FOR_SDK_TESTS removed — see hub/test_runner.py
+            # safeguard that prevents accidental production DB usage.
 
             # CRITICAL: Re-apply create_test_db patch BEFORE Django creates any DatabaseCreation instances
             # This ensures that when Django creates instances, they use our patched method
@@ -1527,15 +1533,32 @@ def pytest_configure(config):
                         e,
                         delay,
                     )
-                    time.sleep(delay)
+                    time.sleep(delay)  # INTENTIONAL: test infrastructure startup wait
             if last_exc is not None:
                 raise last_exc
 
         django.test.utils.setup_databases = _patched_setup_databases
         _log_patch("setup_databases")
         _patch_logger.info("✓ setup_databases patch applied")
+
+        # Mirror keepdb for teardown: shared DBs (TEST_DB_SUFFIX) stay open for other services
+        # and xdist workers; destroying them raises "database is being accessed by other users".
+        _original_teardown_databases = django.test.utils.teardown_databases
+
+        def _patched_teardown_databases(old_config, verbosity, parallel=0, keepdb=False):
+            if os.getenv("TEST_DB_SUFFIX"):
+                keepdb = True
+                _patch_logger.info(
+                    "✓ TEST_DB_SUFFIX set: teardown_databases using keepdb=True (no DROP)"
+                )
+            return _original_teardown_databases(
+                old_config, verbosity, parallel=parallel, keepdb=keepdb
+            )
+
+        django.test.utils.teardown_databases = _patched_teardown_databases
+        _patch_logger.info("✓ teardown_databases patch applied")
     except Exception as e:
-        _patch_logger.warning(f"✗ Could not patch setup_databases: {e}")
+        _log_patch_failure("setup_databases", e)
         import traceback
 
         _patch_logger.debug(traceback.format_exc())
@@ -1629,21 +1652,21 @@ def pytest_sessionstart(session):
                         _patch_logger.info(
                             f"PostgreSQL is still starting up... (waited {elapsed}s)"
                         )
-                    time.sleep(retry_interval)
+                    time.sleep(retry_interval)  # INTENTIONAL: test infrastructure startup wait
                     continue
                 else:
                     # Non-starting-up error - log and continue (may be connection refused, etc.)
                     elapsed = int(time.time() - start_time)
                     if elapsed % 10 == 0:
                         _patch_logger.warning(f"PostgreSQL connection error (will retry): {e}")
-                    time.sleep(retry_interval)
+                    time.sleep(retry_interval)  # INTENTIONAL: test infrastructure startup wait
                     continue
             except Exception as e:
                 # Other errors - log and continue
                 elapsed = int(time.time() - start_time)
                 if elapsed % 10 == 0:
                     _patch_logger.warning(f"PostgreSQL connection error (will retry): {e}")
-                time.sleep(retry_interval)
+                time.sleep(retry_interval)  # INTENTIONAL: test infrastructure startup wait
                 continue
         else:
             # Timeout reached
@@ -1717,7 +1740,7 @@ def test_user(db):
     """Create a test user"""
     User = _get_user_model()
     return User.objects.create_user(
-        email="test@example.com", password="testpass123", display_name="Test User"
+        email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", display_name="Test User"
     )
 
 
@@ -1850,7 +1873,7 @@ def wait_for_service_health(url: str, timeout: int = 30, interval: float = 1.0) 
                             return True
                 except Exception:
                     pass
-                time.sleep(interval)
+                time.sleep(interval)  # INTENTIONAL: test infrastructure startup wait
             return False
         except ImportError:
             pytest.skip("httpx or requests required for service health checks")
@@ -1870,7 +1893,7 @@ def wait_for_service_health(url: str, timeout: int = 30, interval: float = 1.0) 
                     return True
         except Exception:
             pass
-        time.sleep(interval)
+        time.sleep(interval)  # INTENTIONAL: test infrastructure startup wait
     return False
 
 
@@ -2097,8 +2120,8 @@ def tenant_with_plan(db):
 
     # Create plan
     plan = TenantPlan.objects.create(
-        name="Test Plan",
-        slug="test-plan",
+        name=f"Test Plan {uuid.uuid4().hex[:8]}",
+        slug=f"test-plan-{uuid.uuid4().hex[:8]}",
         tier=PlanTier.FREE,
         limits_json={
             "max_assets": 10,

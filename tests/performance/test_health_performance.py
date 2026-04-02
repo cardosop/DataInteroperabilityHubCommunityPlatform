@@ -8,6 +8,8 @@ import statistics
 import time
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import Client, TestCase
 
 from tests.performance.performance_test_base import calculate_percentile

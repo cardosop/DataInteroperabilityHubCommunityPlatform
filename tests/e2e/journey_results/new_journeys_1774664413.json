@@ -1,0 +1,109 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-008-7155f43a",
+      "journey_name": "Create Transformation Pipeline for Asset",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1774664411.7107553,
+      "end_time": 1774664413.4198017,
+      "duration": 1.7090463638305664,
+      "completion_rate": 83.33333333333334,
+      "success_rate": 83.33333333333334,
+      "error_message": "Step 'Execute Pipeline' returned HTTP 400: {'error': {'code': 'VALIDATION_ERROR', 'message': \"{'asset_id': ErrorDetail(string='This field is required.', code='invalid')}\", 'http_status': 400, 'request_id': '7e52737a-a0a0-4e1c-8679-8da0460ad055', 'timestamp': '2026-03-28T02:20:13.408083+00:00', 'details': {'asset_id': ErrorDetail(string='This field is required.', code='invalid')}}, 'asset_id': 'This field is required.'}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774664411.7107627,
+          "end_time": 1774664413.2410145,
+          "duration": 1.5302517414093018,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774664413.2410338,
+          "end_time": 1774664413.285449,
+          "duration": 0.04441523551940918,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Validate Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774664413.2854629,
+          "end_time": 1774664413.358272,
+          "duration": 0.07280921936035156,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Preview Transformation Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774664413.358281,
+          "end_time": 1774664413.399905,
+          "duration": 0.04162406921386719,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Save Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774664413.3999145,
+          "end_time": 1774664413.3999195,
+          "duration": 5.0067901611328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Execute Pipeline",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774664413.399922,
+          "end_time": 1774664413.419797,
+          "duration": 0.019875049591064453,
+          "error_message": "Step 'Execute Pipeline' returned HTTP 400: {'error': {'code': 'VALIDATION_ERROR', 'message': \"{'asset_id': ErrorDetail(string='This field is required.', code='invalid')}\", 'http_status': 400, 'request_id': '7e52737a-a0a0-4e1c-8679-8da0460ad055', 'timestamp': '2026-03-28T02:20:13.408083+00:00', 'details': {'asset_id': ErrorDetail(string='This field is required.', code='invalid')}}, 'asset_id': 'This field is required.'}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T02:20:13.419927"
+}

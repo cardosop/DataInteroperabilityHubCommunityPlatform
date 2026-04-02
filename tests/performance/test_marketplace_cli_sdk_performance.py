@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.conf import settings
 from django.test import TestCase, TransactionTestCase, override_settings
 

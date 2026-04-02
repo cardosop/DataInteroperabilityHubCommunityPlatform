@@ -42,14 +42,14 @@ class JobStatusTrackingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -244,14 +244,14 @@ class JobCancellationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -397,14 +397,14 @@ class JobTimeoutHandlingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -557,14 +557,14 @@ class JobRetryLogicTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -705,14 +705,14 @@ class JobResultStorageTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -815,8 +815,8 @@ class JobResultStorageTest(TestCase):
         # Create two tenants
         tenant1 = self.tenant
         tenant2 = Tenant.objects.create(
-            name="Test Tenant 2",
-            slug="test-tenant-2",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
@@ -832,7 +832,7 @@ class JobResultStorageTest(TestCase):
         job1.mark_completed(result_json={'tenant': 'tenant1', 'data': 'secret1'})
 
         user2 = User.objects.create_user(
-            email="user2@example.com",
+            email=f"user2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE
@@ -862,14 +862,14 @@ class JobProgressTrackingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

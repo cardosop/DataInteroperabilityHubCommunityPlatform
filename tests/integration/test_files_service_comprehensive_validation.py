@@ -1030,7 +1030,7 @@ class FilesODPSIntegrationTest(TransactionTestCase):
                 # Close any stale connections before retry
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
+                    time.sleep(retry_delay * (2 ** attempt))  # INTENTIONAL: test-specific delay  # Exponential backoff
                 
                 self.tenant = TenantFactory.create_tenant()
                 unique_id = uuid.uuid4().hex[:8]

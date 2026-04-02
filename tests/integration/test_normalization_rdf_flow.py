@@ -19,6 +19,7 @@ from hub.apps.semantic.service_client import SemanticServiceClient
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -43,14 +44,14 @@ class NormalizationRDFFlowTest(TestCase):
         if not check_semantic_service_available():
             pytest.skip("Semantic service not available")
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -367,7 +368,7 @@ class NormalizationRDFFlowTest(TestCase):
             if triples_count > 0:
                 break
             reset_circuit_breaker_by_name("semantic-service")
-            time.sleep(1.5 * (attempt + 1))
+            time.sleep(1.5 * (attempt + 1))  # INTENTIONAL: e2e/integration test polling real services
 
         self.assertIsNotNone(semantic_resource)
         triples_count = semantic_resource.metadata_json.get("triples_count", 0) or 0

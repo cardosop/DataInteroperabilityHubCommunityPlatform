@@ -49,7 +49,7 @@ class JobProcessorsTest(TestCase):
         
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

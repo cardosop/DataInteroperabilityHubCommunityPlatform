@@ -14,7 +14,7 @@ import json
 
 import pytest
 
-pytestmark = pytest.mark.workflow_e2e
+pytestmark = [pytest.mark.slow, pytest.mark.workflow_e2e]
 import uuid
 
 from django.test import TestCase
@@ -253,10 +253,12 @@ class TestWorkflowSecurityInputValidationE2E(E2ETestBase):
         # Either rejected (400) or created with escaped/sanitized value (201)
         self.assertIn(response.status_code, (status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST))
         if response.status_code == status.HTTP_201_CREATED:
-            # Must not be executable: stored as literal
             data = get_response_data(response) or {}
-            self.assertIsNotNone(data.get("id"))
-            self.assertIn("script", (data.get("name") or "").lower() or "")
+            asset_id = data.get("id")
+            self.assertIsNotNone(asset_id)
+            # Verify stored name is the exact literal (Django ORM doesn't execute)
+            asset = Asset.objects.get(id=asset_id)
+            self.assertEqual(asset.name, "<script>alert(1)</script>")
 
     def test_contract_create_with_sql_injection_like_in_raw_rejected_or_stored_safely(self):
         """SQL injection-like string in original_raw: expect 400 or stored as literal (ORM prevents execution)."""
@@ -272,7 +274,10 @@ class TestWorkflowSecurityInputValidationE2E(E2ETestBase):
         if response.status_code == status.HTTP_201_CREATED:
             data = get_response_data(response) or {}
             c = Contract.objects.get(id=data["id"])
-            self.assertIn("DROP", c.original_raw or "")
+            # Verify SQL was stored as literal string, not executed
+            self.assertEqual(c.original_raw, "'; DROP TABLE contracts; --")
+            # Verify the contracts table is intact
+            self.assertTrue(Contract.objects.exists())
 
     def test_path_traversal_like_in_asset_name_rejected_or_stored_safely(self):
         """Path traversal-like in asset name: expect 400 or stored as literal."""
@@ -284,7 +289,8 @@ class TestWorkflowSecurityInputValidationE2E(E2ETestBase):
         self.assertIn(response.status_code, (status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST))
         if response.status_code == status.HTTP_201_CREATED:
             data = get_response_data(response) or {}
-            self.assertIsNotNone(data.get("id"))
+            asset = Asset.objects.get(id=data["id"])
+            self.assertEqual(asset.name, "../../../etc/passwd")
 
 
 # --- 6.6.2 Business rules validation ---

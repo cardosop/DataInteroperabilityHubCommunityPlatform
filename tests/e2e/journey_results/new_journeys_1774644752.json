@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.029465675354003906
+  },
+  "journeys": [
+    {
+      "journey_id": "DS-004-8a7eef7d",
+      "journey_name": "Tune Recommendation Engine",
+      "persona": "Data Scientist",
+      "status": "completed",
+      "start_time": 1774644752.8086812,
+      "end_time": 1774644752.838147,
+      "duration": 0.029465675354003906,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Current Model",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644752.813077,
+          "end_time": 1774644752.81308,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Note: Model Tuning Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644752.8320036,
+          "end_time": 1774644752.8320081,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Model Testing Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644752.838142,
+          "end_time": 1774644752.8381455,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-27T20:52:32.838205"
+}

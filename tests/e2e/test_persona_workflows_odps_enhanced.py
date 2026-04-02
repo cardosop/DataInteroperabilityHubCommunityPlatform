@@ -1199,7 +1199,7 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
         )
         ensure_e2e_tenant_ready(self.provider_tenant)
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.provider_tenant,
             status=UserStatus.ACTIVE
@@ -1220,7 +1220,7 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
         )
         ensure_e2e_tenant_ready(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.consumer_tenant,
             status=UserStatus.ACTIVE

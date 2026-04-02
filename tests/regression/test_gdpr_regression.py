@@ -13,6 +13,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
+import uuid
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -29,7 +30,7 @@ class GDPRRegressionTestBase(TestCase):
             slug="gdpr-regression",
         )
         self.user = User.objects.create_user(
-            email="gdpr@example.com",
+            email=f"gdpr-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

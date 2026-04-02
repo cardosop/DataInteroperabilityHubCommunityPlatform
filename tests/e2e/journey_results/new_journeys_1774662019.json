@@ -1,0 +1,70 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-010-15d7432a",
+      "journey_name": "Publish Asset with Usage-Based Pricing",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1774662017.6347709,
+      "end_time": 1774662019.3743246,
+      "duration": 1.739553689956665,
+      "completion_rate": 66.66666666666666,
+      "success_rate": 66.66666666666666,
+      "error_message": "Step 'Create Listing' returned HTTP 400: {'error': {'code': 'VALIDATION_ERROR', 'message': \"{'short_description': [ErrorDetail(string='This field is required.', code='required')]}\", 'http_status': 400, 'request_id': '7bc831bc-ab1a-4a4a-855c-b51bbc7f3be8', 'timestamp': '2026-03-28T01:40:19.371169+00:00', 'details': {'short_description': [ErrorDetail(string='This field is required.', code='required')]}}, 'short_description': 'This field is required.'}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774662017.6347837,
+          "end_time": 1774662019.3473208,
+          "duration": 1.7125370502471924,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Usage-Based Pricing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774662019.3554423,
+          "end_time": 1774662019.3678122,
+          "duration": 0.012369871139526367,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Create Listing",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774662019.3678212,
+          "end_time": 1774662019.3743203,
+          "duration": 0.006499052047729492,
+          "error_message": "Step 'Create Listing' returned HTTP 400: {'error': {'code': 'VALIDATION_ERROR', 'message': \"{'short_description': [ErrorDetail(string='This field is required.', code='required')]}\", 'http_status': 400, 'request_id': '7bc831bc-ab1a-4a4a-855c-b51bbc7f3be8', 'timestamp': '2026-03-28T01:40:19.371169+00:00', 'details': {'short_description': [ErrorDetail(string='This field is required.', code='required')]}}, 'short_description': 'This field is required.'}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T01:40:19.374415"
+}

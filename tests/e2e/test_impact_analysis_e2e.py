@@ -4,6 +4,7 @@ E2E tests for Impact Analysis
 End-to-end tests for complete impact analysis workflows.
 """
 import pytest
+
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework import status
@@ -19,7 +20,7 @@ from hub.apps.assets.models import Asset, AssetStatus
 from .conftest import E2ETestBase, get_response_data
 
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
+pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
 
 class ImpactAnalysisE2ETest(E2ETestBase):
@@ -106,14 +107,15 @@ class ImpactAnalysisE2ETest(E2ETestBase):
         self.assertIsInstance(paths, list)
         
         # Step 5: Test notification (would require email configuration)
-        # For now, just verify the function exists and can be called
         notification_sent = ImpactNotifier.send_impact_notification(
             impact_result=impact_result,
             recipients=["test@example.com"],
             change_description="Test change",
             change_type="UPDATE"
         )
-        # May be False if severity is too low, which is expected behavior
+        # Notification may return False if severity is below threshold,
+        # but the function must return a boolean (not None or raise)
+        self.assertIsInstance(notification_sent, bool)
     
     def test_impact_analysis_api_workflow(self):
         """Test impact analysis via API (use direct path to avoid NoReverseMatch in E2E urlconf)."""

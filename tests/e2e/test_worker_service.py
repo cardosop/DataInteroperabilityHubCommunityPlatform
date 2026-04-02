@@ -36,14 +36,14 @@ class WorkerServiceE2ETest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status="ACTIVE"
@@ -153,7 +153,7 @@ class WorkerServiceE2ETest(TestCase):
             job.refresh_from_db()
             if job.status in [JobStatus.COMPLETED, JobStatus.FAILED]:
                 break
-            time.sleep(1)
+            time.sleep(1)  # INTENTIONAL: e2e/integration test polling real services
         
         # Verify job was processed or is still pending (worker may be slow)
         job.refresh_from_db()
@@ -216,7 +216,7 @@ class WorkerServiceE2ETest(TestCase):
         )
         
         # Wait for jobs to be processed
-        time.sleep(10)
+        time.sleep(10)  # INTENTIONAL: e2e/integration test polling real services
         
         # Verify high priority job processed first (or at least started)
         high_priority_job.refresh_from_db()
@@ -235,8 +235,15 @@ class WorkerServiceE2ETest(TestCase):
                 # Normal priority still pending - high priority processed first
                 pass
     
+    @pytest.mark.timeout(300)  # 5 min: DQ_RUN retry backoff starts at 60s, so observing a retry needs ≥90s
     def test_job_retry_with_real_worker(self):
-        """Test job retry logic with real worker service"""
+        """Test job retry logic with real worker service.
+
+        Creates a DQ_RUN job whose file has a non-existent storage path,
+        causing the worker to fail and (if the error is transient) retry
+        with exponential backoff (initial delay = 60 s).  The polling
+        window must exceed the retry delay.
+        """
         self._check_worker_service_available()
         # Create job first
         job = create_job(
@@ -260,26 +267,27 @@ class WorkerServiceE2ETest(TestCase):
         job.resource_id = str(dq_run.id)
         job.details_json = {'dq_run_id': str(dq_run.id)}
         job.save()
-        
-        # Wait for job to be processed (may fail and retry)
-        max_wait = 120  # 2 minutes for retry
+
+        # Wait for job to be processed (may fail and retry).
+        # DQ_RUN retry initial delay is 60 s (exponential backoff), so we
+        # need enough time for: worker pickup + first attempt + retry delay
+        # + second attempt ≈ 90-120 s.  Set max_wait to 240 s (well within
+        # the 300 s pytest timeout) to cover slow worker pickup under load.
+        max_wait = 240
         start_time = time.time()
-        
+
         while time.time() - start_time < max_wait:
             job.refresh_from_db()
             if job.status in [JobStatus.COMPLETED, JobStatus.FAILED]:
-                # Check if retry occurred
-                if job.details_json and job.details_json.get('retry_count', 0) > 0:
-                    # Job was retried
-                    self.assertGreater(job.details_json.get('retry_count'), 0)
                 break
-            time.sleep(2)
-        
+            time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+
         # Verify final state
         job.refresh_from_db()
-        # Accept PENDING if worker service is available but hasn't processed yet
+        # Accept PENDING/RUNNING if worker service is available but hasn't
+        # finished processing (queue backlog from earlier tests).
         self.assertIn(job.status, [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.PENDING, JobStatus.RUNNING])
-        
+
         # If retried, verify retry count is tracked
         if job.details_json and job.details_json.get('retry_count', 0) > 0:
             self.assertGreater(job.details_json.get('retry_count'), 0)

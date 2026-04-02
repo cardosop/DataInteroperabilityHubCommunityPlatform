@@ -1,36 +1,31 @@
 """
 Comprehensive Developer Experience New Use Cases Test Suite (Task 10.1.53.10)
 
-Tests all new Developer Experience use cases (UC-DEV-001 through UC-DEV-009):
+Tests all new Developer Experience use cases:
 - UC-DEV-001: Install Plugin
 - UC-DEV-002: Create Custom Plugin
 - UC-DEV-003: Use CLI Tool
 - UC-DEV-004: Access Developer Portal
-- UC-DEV-007: Build Custom Connector (connector framework API)
-- UC-DEV-008: Use Plugin System (plugins list/retrieve)
-- UC-DEV-009: Integrate with Developer Portal (SDK docs, plugins)
+- UC-DEV-007: Build Custom Connector
+- UC-DEV-008: Use Plugin System
+- UC-DEV-009: Integrate with Developer Portal
 
-Features:
-- Success scenarios
-- Alternate flows and edge cases
-- Performance targets
-- Real implementations (no mocks/stubs)
-- Root cause fixes
-- Engineering-grade test coverage
-
-Total: 50+ test cases
+All tests hit real endpoints -- no mocks/stubs.
 """
 
 import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TransactionTestCase
+from django.test import TestCase
+from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.tenants.models import KYCStatus, TenantStatus
+from hub.apps.testing.billing_support import (
+    ensure_tenant_has_active_subscription,
+)
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     TenantFactory,
@@ -41,8 +36,9 @@ from tests.utils.test_data_management import TestDatabaseIsolationMixin
 User = get_user_model()
 
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.integration,
+    pytest.mark.slow,
     pytest.mark.uc("UC-DEV-001"),
     pytest.mark.uc("UC-DEV-002"),
     pytest.mark.uc("UC-DEV-003"),
@@ -53,70 +49,69 @@ pytestmark = [
 ]
 
 
-class DeveloperExperienceNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):
-    """Base test class for Developer Experience new use cases"""
-
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for integration tests.
-
-        TransactionTestCase tries to flush the database between tests, but this
-        can hang (>600s) with post_migrate/create_permissions under load. We use
-        transaction rollback instead which provides isolation without flushing.
-        """
-        pass
+class DevExpTestBase(TestCase, TestDatabaseIsolationMixin):
+    """Base test class for Developer Experience use cases."""
 
     def setUp(self):
-        """Set up test fixtures"""
         super().setUp()
         self.client = APIClient()
 
-        # Create tenant (use unique name/slug to avoid conflicts between tests)
-        unique_id = str(uuid.uuid4())[:8]
+        uid = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
-            name=f"Test Tenant {unique_id}",
-            slug=f"test-tenant-{unique_id}",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
-        # Create roles
         self.data_provider_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="DATA_PROVIDER",
             defaults={"description": "Data Provider"},
         )
 
-        # Create users (use unique emails to avoid conflicts between tests)
         self.dev_user = UserFactory.create_user(
             tenant=self.tenant,
-            email=f"dev-{unique_id}@example.com",
+            email=f"dev-{uid}@example.com",
         )
-        UserRole.objects.get_or_create(user=self.dev_user, role=self.data_provider_role)
+        UserRole.objects.get_or_create(
+            user=self.dev_user, role=self.data_provider_role,
+        )
 
 
-class UCDEV001InstallPluginTest(DeveloperExperienceNewUseCasesTestBase):
-    """UC-DEV-001: Install Plugin — discover plugins from marketplace (first step of install flow)."""
+class UCDEV001InstallPluginTest(DevExpTestBase):
+    """UC-DEV-001: Install Plugin -- discover plugins."""
 
-    def test_plugin_marketplace_discovery_success(self):
-        """User navigates to plugin marketplace; list returns available plugins (real API)."""
+    def test_plugin_marketplace_list(self):
+        """GET /plugins/ -> 200 with list of plugins."""
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.get("/api/v1/developer/plugins/")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
         data = response.json()
-        results = data.get("results", data) if isinstance(data, dict) else data
-        self.assertIsInstance(results, list, "Plugin list must return list of plugins")
+        results = (
+            data.get("results", data)
+            if isinstance(data, dict) else data
+        )
+        self.assertIsInstance(results, list)
+
+    def test_plugin_list_allows_anonymous_access(self):
+        """Plugin marketplace is public (AllowAny) -> 200."""
+        self.client.logout()
+        response = self.client.get("/api/v1/developer/plugins/")
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+            "Plugin list is a public endpoint (AllowAny)",
+        )
 
 
-class UCDEV002CreateCustomPluginTest(DeveloperExperienceNewUseCasesTestBase):
-    """UC-DEV-002: Create Custom Plugin — backend not implemented; plugin creation API absent."""
+class UCDEV002CreateCustomPluginTest(DevExpTestBase):
+    """UC-DEV-002: Create Custom Plugin -- not implemented."""
 
-    def test_plugin_creation_api_not_implemented(self):
-        """POST to plugins returns 405 (ReadOnlyModelViewSet; create path not implemented per USE_CASES)."""
+    def test_plugin_creation_returns_405(self):
+        """POST to plugins -> 405 (ReadOnlyModelViewSet)."""
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.post(
             "/api/v1/developer/plugins/",
@@ -126,172 +121,212 @@ class UCDEV002CreateCustomPluginTest(DeveloperExperienceNewUseCasesTestBase):
         self.assertEqual(
             response.status_code,
             status.HTTP_405_METHOD_NOT_ALLOWED,
-            "Plugin creation API not implemented; POST must return 405",
         )
 
 
-class UCDEV003UseCLIToolTest(DeveloperExperienceNewUseCasesTestBase):
-    """UC-DEV-003: Use CLI Tool"""
+class UCDEV003UseCLIToolTest(DevExpTestBase):
+    """UC-DEV-003: Use CLI Tool
 
-    def test_use_cli_tool_success(self):
-        """Test successful CLI tool usage"""
-        # This test verifies the use case is documented
-        # CLI tool testing would be done in separate CLI test suite
-        # This integration test verifies API endpoints that CLI uses
-        from django.urls import reverse
+    Verifies the API endpoints that the CLI tool relies on:
+    asset list, contract list, and DQ runs.
+    """
 
+    def test_cli_asset_list_endpoint(self):
+        """GET /assets/ -> 200 (primary CLI endpoint)."""
         self.client.force_authenticate(user=self.dev_user)
+        url = reverse("asset-list")
+        response = self.client.get(url)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
+        data = response.json()
+        results = data.get("results", data)
+        self.assertIsInstance(results, list)
 
-        # Test that CLI-accessible endpoints work
-        assets_url = reverse("asset-list")
-        response = self.client.get(assets_url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+    def test_cli_contract_list_endpoint(self):
+        """GET /contracts/ -> 200 (CLI contracts command)."""
+        self.client.force_authenticate(user=self.dev_user)
+        url = reverse("contract-list")
+        response = self.client.get(url)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
 
-        self.assertTrue(True, "UC-DEV-003 use case documented")
+    def test_cli_dq_runs_endpoint(self):
+        """GET /dq/runs/ -> 200 (CLI dq command)."""
+        self.client.force_authenticate(user=self.dev_user)
+        url = reverse("dq-run-list")
+        response = self.client.get(url)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
 
 
-class UCDEV004AccessDeveloperPortalTest(DeveloperExperienceNewUseCasesTestBase):
-    """UC-DEV-004: Access Developer Portal — SDK docs, plugins, API schema."""
+class UCDEV004AccessDeveloperPortalTest(DevExpTestBase):
+    """UC-DEV-004: Access Developer Portal."""
 
-    def test_developer_portal_plugins_accessible(self):
-        """User navigates to developer portal; plugins list is accessible (real API)."""
+    def test_developer_portal_plugins(self):
+        """GET /plugins/ -> 200 with list."""
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.get("/api/v1/developer/plugins/")
-        # 200 = endpoint available and returns plugin list; 404 = endpoint not registered in minimal env
-        self.assertIn(
-            response.status_code,
-            (status.HTTP_200_OK, status.HTTP_404_NOT_FOUND),
-            f"GET /api/v1/developer/plugins/ returned {response.status_code}",
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
         )
-        if response.status_code == status.HTTP_200_OK:
-            data = getattr(response, "data", None)
-            if data is None and hasattr(response, "content") and response.content:
-                import json
-                try:
-                    data = json.loads(response.content)
-                except Exception:
-                    pass
-            if data is not None:
-                results = data.get("results", data) if isinstance(data, dict) else data
-                self.assertIsInstance(results, list)
 
-    def test_developer_portal_sdk_docs_accessible(self):
-        """User reviews API documentation; SDK docs endpoint is accessible (real API)."""
+    def test_developer_portal_sdk_docs(self):
+        """GET /sdk/ -> 200 with sdks key."""
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.get("/api/v1/developer/sdk/")
-        self.assertIn(response.status_code, (status.HTTP_200_OK, status.HTTP_404_NOT_FOUND))
-        if response.status_code == status.HTTP_200_OK:
-            data = response.json()
-            self.assertIn("sdks", data)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
+        data = response.json()
+        self.assertIn("sdks", data)
+        self.assertIsInstance(data["sdks"], list)
 
-    def test_developer_portal_openapi_schema_accessible(self):
-        """OpenAPI schema endpoint is accessible for API documentation."""
+    def test_developer_portal_openapi_schema(self):
+        """GET /openapi.json -> 200 with OpenAPI structure."""
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.get("/api/v1/openapi.json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
         data = response.json()
         self.assertIn("openapi", data)
         self.assertIn("paths", data)
 
 
-class UCDEV007BuildCustomConnectorTest(DeveloperExperienceNewUseCasesTestBase):
-    """UC-DEV-007: Build Custom Connector — connector framework API (integrations_marketplace_connectors_retrieve)."""
+class UCDEV007BuildCustomConnectorTest(DevExpTestBase):
+    """UC-DEV-007: Build Custom Connector."""
 
-    def test_list_connectors_success(self):
-        """List available marketplace connector types (framework for building custom connectors)."""
+    def test_list_connectors(self):
+        """GET connectors -> 200 with connectors list."""
         self.client.force_authenticate(user=self.dev_user)
-        response = self.client.get("/api/v1/integrations/marketplace/connectors/")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        url = "/api/v1/integrations/marketplace/connectors/"
+        response = self.client.get(url)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
         data = response.json()
         self.assertIn("connectors", data)
-        connectors = data["connectors"]
-        self.assertIsInstance(connectors, list)
-        # At least CKAN or Snowflake should be registered
-        connector_types = [c.get("type") for c in connectors if isinstance(c, dict)]
-        self.assertTrue(
-            len(connector_types) >= 1,
-            f"Expected at least one connector type, got: {connector_types}",
+        self.assertIsInstance(data["connectors"], list)
+        self.assertGreaterEqual(
+            len(data["connectors"]), 1,
+            "At least one connector type must be registered",
         )
 
-    def test_get_connector_info_success(self):
-        """Retrieve detailed info for a specific connector type (framework docs for custom build)."""
+    def test_get_connector_detail(self):
+        """GET connectors/{type}/ -> 200 with type field."""
         self.client.force_authenticate(user=self.dev_user)
-        list_resp = self.client.get("/api/v1/integrations/marketplace/connectors/")
-        self.assertEqual(list_resp.status_code, status.HTTP_200_OK)
-        connectors = list_resp.json().get("connectors", [])
-        self.assertGreater(len(connectors), 0, "At least one connector must be registered")
-        connector_type = connectors[0].get("type")
-        self.assertIsNotNone(connector_type)
-        response = self.client.get(
-            f"/api/v1/integrations/marketplace/connectors/{connector_type}/"
+        url = "/api/v1/integrations/marketplace/connectors/"
+        list_resp = self.client.get(url)
+        self.assertEqual(
+            list_resp.status_code, status.HTTP_200_OK,
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.json()
-        self.assertIn("type", data)
-        self.assertEqual(data["type"], connector_type)
+        connectors = list_resp.json().get("connectors", [])
+        self.assertGreater(len(connectors), 0)
+        ctype = connectors[0].get("type")
+        self.assertIsNotNone(ctype)
+
+        detail_resp = self.client.get(f"{url}{ctype}/")
+        self.assertEqual(
+            detail_resp.status_code, status.HTTP_200_OK,
+        )
+        self.assertEqual(detail_resp.json()["type"], ctype)
 
 
-class UCDEV008UsePluginSystemTest(DeveloperExperienceNewUseCasesTestBase):
-    """UC-DEV-008: Use Plugin System — discover and use plugins from developer portal."""
+class UCDEV008UsePluginSystemTest(DevExpTestBase):
+    """UC-DEV-008: Use Plugin System."""
 
-    def test_plugins_list_success(self):
-        """List plugins (discover plugins from developer portal)."""
+    def test_plugins_list(self):
+        """GET /plugins/ -> 200 with list."""
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.get("/api/v1/developer/plugins/")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.json()
-        results = data.get("results", data) if isinstance(data, dict) else data
-        self.assertIsInstance(results, list)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
 
-    def test_plugins_list_filter_by_category(self):
-        """List plugins filtered by category."""
+    def test_plugins_filter_by_category(self):
+        """GET /plugins/?category=CONNECTOR -> 200."""
         self.client.force_authenticate(user=self.dev_user)
-        response = self.client.get("/api/v1/developer/plugins/?category=CONNECTOR")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        response = self.client.get(
+            "/api/v1/developer/plugins/?category=CONNECTOR",
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
 
-    def test_plugins_retrieve_success(self):
-        """Retrieve a specific plugin by ID (if any plugins exist)."""
-        from hub.apps.developer.models import Plugin, PluginStatus
+    def test_plugins_retrieve(self):
+        """GET /plugins/{id}/ -> 200 with matching id."""
+        from hub.apps.developer.models import (
+            Plugin, PluginCategory, PluginStatus,
+        )
 
         self.client.force_authenticate(user=self.dev_user)
-        plugin = Plugin.objects.filter(status=PluginStatus.AVAILABLE).first()
-        if plugin:
-            response = self.client.get(f"/api/v1/developer/plugins/{plugin.id}/")
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
-            self.assertEqual(response.json().get("id"), str(plugin.id))
-        else:
-            # No plugins in DB — list still works
-            response = self.client.get("/api/v1/developer/plugins/")
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
+        plugin = Plugin.objects.filter(
+            status=PluginStatus.AVAILABLE,
+        ).first()
+        if not plugin:
+            plugin = Plugin.objects.create(
+                name="Test Plugin for Retrieve",
+                description="Created by test suite",
+                category=PluginCategory.CONNECTOR,
+                status=PluginStatus.AVAILABLE,
+                version="1.0.0",
+                author="test-suite",
+            )
+        response = self.client.get(
+            f"/api/v1/developer/plugins/{plugin.id}/",
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
+        self.assertEqual(
+            response.json().get("id"), str(plugin.id),
+        )
 
 
-class UCDEV009IntegrateWithDeveloperPortalTest(DeveloperExperienceNewUseCasesTestBase):
-    """UC-DEV-009: Integrate with Developer Portal — SDK docs, plugins, examples."""
+class UCDEV009IntegrateWithDeveloperPortalTest(DevExpTestBase):
+    """UC-DEV-009: Integrate with Developer Portal."""
 
-    def test_sdk_documentation_list_success(self):
-        """Get SDK documentation (get_sdk_documentation)."""
+    def test_sdk_documentation_list(self):
+        """GET /sdk/ -> 200 with sdks list."""
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.get("/api/v1/developer/sdk/")
-        self.assertIn(response.status_code, (status.HTTP_200_OK, status.HTTP_404_NOT_FOUND))
-        if response.status_code == status.HTTP_200_OK:
-            data = response.json()
-            self.assertIn("sdks", data)
-            self.assertIsInstance(data["sdks"], list)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
+        data = response.json()
+        self.assertIn("sdks", data)
+        self.assertIsInstance(data["sdks"], list)
 
     def test_sdk_documentation_by_language(self):
-        """Get SDK documentation for specific language."""
+        """GET /sdk/?language=python -> 200 or data-dependent 404."""
         self.client.force_authenticate(user=self.dev_user)
-        response = self.client.get("/api/v1/developer/sdk/?language=python")
-        self.assertIn(response.status_code, (status.HTTP_200_OK, status.HTTP_404_NOT_FOUND))
+        response = self.client.get(
+            "/api/v1/developer/sdk/?language=python",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND],
+        )
+        data = response.json()
         if response.status_code == status.HTTP_200_OK:
-            data = response.json()
             self.assertIn("language", data)
             self.assertIn("sdk_name", data)
+        else:
+            self.assertTrue(
+                "detail" in data or "error" in data,
+            )
 
-    def test_developer_portal_plugins_and_sdk_accessible(self):
-        """Verify both plugins and SDK docs are accessible (portal integration)."""
+    def test_portal_plugins_and_sdk_accessible(self):
+        """Both plugins and SDK docs are accessible."""
         self.client.force_authenticate(user=self.dev_user)
-        plugins_resp = self.client.get("/api/v1/developer/plugins/")
-        sdk_resp = self.client.get("/api/v1/developer/sdk/")
-        self.assertEqual(plugins_resp.status_code, status.HTTP_200_OK)
-        self.assertIn(sdk_resp.status_code, (status.HTTP_200_OK, status.HTTP_404_NOT_FOUND))
+        p_resp = self.client.get("/api/v1/developer/plugins/")
+        s_resp = self.client.get("/api/v1/developer/sdk/")
+        self.assertEqual(
+            p_resp.status_code, status.HTTP_200_OK,
+        )
+        self.assertEqual(
+            s_resp.status_code, status.HTTP_200_OK,
+        )

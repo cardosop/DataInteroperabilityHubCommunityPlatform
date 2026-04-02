@@ -11,15 +11,12 @@ Uses REAL services (no mocks).
 
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pytest
-from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
@@ -117,8 +114,15 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
             self.assertNotIn("DoesNotExist", message)
             self.assertNotIn("Exception:", message)
 
-            # Should be non-empty
-            self.assertGreater(len(message), 0)
+            # Should be a meaningful message (at least 6 chars, not just "error")
+            self.assertGreater(len(message), 5, "Error message should be meaningful, not a stub")
+
+            # Should not contain raw exception class names
+            self.assertNotIn("ValueError", message)
+            self.assertNotIn("KeyError", message)
+            self.assertNotIn("TypeError", message)
+            self.assertNotIn("AttributeError", message)
+            self.assertNotIn("NoneType", message)
 
     def test_error_response_details(self):
         """Test error details structure for validation errors"""
@@ -161,19 +165,20 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
 
         response = self.client.get(f"/api/v1/assets/{fake_id}/")
 
-        if "error" in response.data:
-            error = response.data["error"]
-            self.assertIn("request_id", error)
-            request_id = error["request_id"]
+        self.assertIn("error", response.data, "Error response must have 'error' key")
+        error = response.data["error"]
+        self.assertIn("request_id", error)
+        request_id = error["request_id"]
 
-            # Should be a valid UUID string
-            self.assertIsNotNone(request_id)
-            self.assertIsInstance(request_id, str)
-            # Try to parse as UUID to verify format
-            try:
-                uuid.UUID(request_id)
-            except ValueError:
-                self.fail(f"request_id '{request_id}' is not a valid UUID")
+        # Should be a valid UUID string
+        self.assertIsNotNone(request_id)
+        self.assertIsInstance(request_id, str)
+        self.assertGreater(len(request_id), 0, "request_id must not be empty")
+
+        # Must be a valid UUID -- unconditional assertion, no try/except swallowing
+        parsed = uuid.UUID(request_id)  # raises ValueError on invalid UUID
+        self.assertEqual(str(parsed), request_id.lower().strip(),
+                         "request_id must be a canonical UUID string")
 
     def test_error_response_timestamp(self):
         """Test error response includes timestamp"""
@@ -283,10 +288,10 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         """Test forbidden error format"""
         # Create another tenant and user
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}", slug=f"other-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE,
@@ -352,34 +357,38 @@ class ErrorRecoveryE2ETest(E2ETestBase):
     # ========== Retry Logic Tests ==========
 
     def test_job_retry_on_transient_failure(self):
-        """Test job retries on transient failures"""
+        """Test is_transient_failure correctly classifies transient vs non-transient errors"""
         from hub.apps.jobs.utils import get_job_max_retries, is_transient_failure
 
-        # Create a job
-        job = Job.objects.create(
-            tenant=self.tenant,
-            type=JobType.DQ_RUN,
-            status=JobStatus.PENDING,
-            created_by=self.user,
-            resource_type="ASSET",
-            resource_id=uuid.uuid4(),
-        )
+        # Transient errors: should return True
+        transient_cases = [
+            ConnectionError("Service temporarily unavailable"),
+            TimeoutError("Request timed out"),
+            ConnectionError("Network unreachable"),
+            OSError("Service unavailable"),
+        ]
+        for err in transient_cases:
+            self.assertTrue(
+                is_transient_failure(err),
+                f"is_transient_failure should return True for {type(err).__name__}: {err}",
+            )
 
-        # Simulate transient failure
-        transient_error = ConnectionError("Service temporarily unavailable")
+        # Non-transient errors: should return False
+        non_transient_cases = [
+            ValueError("Invalid input data"),
+            KeyError("missing_field"),
+            TypeError("expected str, got int"),
+        ]
+        for err in non_transient_cases:
+            self.assertFalse(
+                is_transient_failure(err),
+                f"is_transient_failure should return False for {type(err).__name__}: {err}",
+            )
 
-        # Check if error is transient (core retry logic)
-        self.assertTrue(is_transient_failure(transient_error))
-
-        # Verify job has retry configuration
-        max_retries = get_job_max_retries(str(job.type))
-        self.assertGreater(max_retries, 0, "Job should have retries configured")
-
-        # Verify job can be retried (check retry count logic)
-        if job.details_json is None:
-            job.details_json = {}
-        retry_count = job.details_json.get("retry_count", 0)
-        self.assertLess(retry_count, max_retries, "Job should have retries remaining")
+        # Verify retry configuration is accessible for a real job type
+        max_retries = get_job_max_retries(str(JobType.DQ_RUN))
+        self.assertGreater(max_retries, 0, "DQ_RUN job type should have retries configured")
+        self.assertIsInstance(max_retries, int)
 
     def test_job_no_retry_on_non_transient_failure(self):
         """Test job does not retry on non-transient failures"""
@@ -406,23 +415,32 @@ class ErrorRecoveryE2ETest(E2ETestBase):
         # The retry_job function checks this first and returns False for non-transient errors
 
     def test_job_retry_exponential_backoff(self):
-        """Test job retry uses exponential backoff"""
+        """Test job retry uses exponential backoff with increasing delays"""
         from hub.apps.jobs.utils import calculate_retry_delay
 
-        # Test exponential backoff calculation
-        retry_0_delay = calculate_retry_delay(0)
-        retry_1_delay = calculate_retry_delay(1)
-        retry_2_delay = calculate_retry_delay(2)
+        # Verify the function is importable and callable
+        self.assertTrue(callable(calculate_retry_delay))
 
-        # Should increase exponentially
-        self.assertLess(retry_0_delay, retry_1_delay)
-        self.assertLess(retry_1_delay, retry_2_delay)
+        # Calculate delays for several retry attempts
+        delays = [calculate_retry_delay(i) for i in range(5)]
 
-        # Verify formula: base_delay * (2 ^ retry_count)
+        # All delays must be positive integers
+        for i, delay in enumerate(delays):
+            self.assertIsInstance(delay, int, f"Delay for retry {i} should be int")
+            self.assertGreater(delay, 0, f"Delay for retry {i} should be positive")
+
+        # Each delay must be >= 2x the previous (exponential growth)
+        for i in range(1, len(delays)):
+            self.assertGreaterEqual(
+                delays[i], delays[i - 1] * 2,
+                f"Delay at retry {i} ({delays[i]}s) should be >= 2x retry {i-1} ({delays[i-1]}s)",
+            )
+
+        # Verify formula: base_delay * (2 ^ retry_count) for default (no job_type)
         base_delay = 60  # Default base delay
-        self.assertEqual(retry_0_delay, base_delay * (2**0))
-        self.assertEqual(retry_1_delay, base_delay * (2**1))
-        self.assertEqual(retry_2_delay, base_delay * (2**2))
+        self.assertEqual(delays[0], base_delay * (2**0))
+        self.assertEqual(delays[1], base_delay * (2**1))
+        self.assertEqual(delays[2], base_delay * (2**2))
 
     def test_job_retry_max_retries(self):
         """Test job respects max retry limits"""
@@ -458,62 +476,112 @@ class ErrorRecoveryE2ETest(E2ETestBase):
     # ========== Fallback Mechanisms Tests ==========
 
     def test_service_client_retry_logic(self):
-        """Test service client retry logic"""
-        from hub.apps.core.services.cross_service_access import ServiceClient
+        """Test service client retry configuration has sensible values"""
+        from hub.apps.core.services.cross_service_access import RetryStrategy, ServiceClient
 
         # Create service client (use service_url, not base_url)
         client = ServiceClient(service_name="test-service", service_url="http://invalid-url")
 
-        # Service client should have retry configuration
-        # Verify retry settings exist
-        self.assertIsNotNone(client.retry_count)
-        self.assertGreater(client.retry_count, 0, "Service client should have retries")
-        self.assertIsNotNone(client.retry_delay)
-        self.assertGreater(client.retry_delay, 0, "Service client should have retry delay")
-        self.assertIsNotNone(client.retry_strategy)
+        # Verify retry_count is a positive integer
+        self.assertIsInstance(client.retry_count, int)
+        self.assertGreater(client.retry_count, 0, "Service client should have at least 1 retry")
+        self.assertLessEqual(client.retry_count, 20, "Retry count should be reasonable (<=20)")
+
+        # Verify retry_delay is a positive number
+        self.assertIsInstance(client.retry_delay, (int, float))
+        self.assertGreater(client.retry_delay, 0, "Retry delay must be positive")
+        self.assertLessEqual(client.retry_delay, 300, "Retry delay should be reasonable (<=300s)")
+
+        # Verify retry_strategy is a valid RetryStrategy enum member
+        self.assertIsInstance(client.retry_strategy, RetryStrategy,
+                              f"retry_strategy should be RetryStrategy enum, got {type(client.retry_strategy)}")
+
+        # Verify max delay cap exists and is sensible
+        self.assertIsInstance(client.retry_max_delay, (int, float))
+        self.assertGreater(client.retry_max_delay, 0)
 
     def test_event_bus_retry_logic(self):
-        """Test event bus retry logic"""
+        """Test event bus retry configuration has sensible values"""
         from hub.apps.core.events.bus import get_event_bus
 
         event_bus = get_event_bus()
 
-        # Event bus should have retry configuration
+        # max_retries must be a positive integer
         self.assertIsNotNone(event_bus.max_retries)
+        self.assertIsInstance(event_bus.max_retries, int)
+        self.assertGreater(event_bus.max_retries, 0,
+                           "Event bus should have at least 1 retry configured")
+        self.assertLessEqual(event_bus.max_retries, 20,
+                             "Event bus max_retries should be reasonable (<=20)")
+
+        # Persistence should be enabled so failed events are not lost
+        self.assertTrue(
+            event_bus.enable_persistence,
+            "Event bus persistence should be enabled to prevent event loss",
+        )
 
     # ========== Notification Tests ==========
 
     def test_job_failure_notification(self):
-        """Test job failure triggers notification"""
+        """Test job failure creates an audit event for notification"""
+        from hub.apps.audit.models import AuditEvent
+        from hub.apps.audit.utils import create_audit_event
         from hub.apps.jobs.models import Job, JobStatus, JobType
 
-        # Create a job
+        # Create a job and mark it as failed
+        resource_id = uuid.uuid4()
         job = Job.objects.create(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.RUNNING,
             created_by=self.user,
             resource_type="ASSET",
-            resource_id=uuid.uuid4(),
+            resource_id=resource_id,
         )
 
-        # Mark job as failed
+        error_msg = "Test transient error: service unavailable"
         job.status = JobStatus.FAILED
-        job.error_message = "Test error message"
+        job.error_message = error_msg
         job.save()
 
-        # Check if notification task exists (job failure notifications are sent asynchronously)
-        # The actual notification sending is handled by signals or tasks
-        # For E2E test, we verify the job is in failed state
+        # Create audit event as the real task infrastructure does (tasks_base.py)
+        create_audit_event(
+            resource_type="JOB",
+            action="JOB_FAILED",
+            actor_user=job.created_by,
+            tenant=job.tenant,
+            resource_id=str(job.id),
+            result="FAILURE",
+            details={"job_type": str(job.type), "error": error_msg},
+        )
+
+        # Verify job is in failed state
         job.refresh_from_db()
         self.assertEqual(job.status, JobStatus.FAILED)
-        self.assertIsNotNone(job.error_message)
+        self.assertEqual(job.error_message, error_msg)
+
+        # Verify audit event was created for this job failure
+        audit_events = AuditEvent.objects.filter(
+            resource_type="JOB",
+            action="JOB_FAILED",
+            resource_id=job.id,
+            tenant=self.tenant,
+        )
+        self.assertGreater(
+            audit_events.count(), 0,
+            "A JOB_FAILED audit event should exist for the failed job",
+        )
+        event = audit_events.first()
+        self.assertEqual(event.result, "FAILURE")
+        self.assertIn("error", event.details_json)
+        self.assertEqual(event.details_json["error"], error_msg)
 
     def test_error_notification_format(self):
-        """Test error notifications have proper format"""
-        # This test verifies that when errors occur, notifications are properly formatted
-        # Actual notification sending is async, so we test the job state
+        """Test job failure audit event has proper format for notification"""
+        from hub.apps.audit.models import AuditEvent
+        from hub.apps.audit.utils import create_audit_event
 
+        error_msg = "Test error for notification format validation"
         job = Job.objects.create(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
@@ -521,13 +589,42 @@ class ErrorRecoveryE2ETest(E2ETestBase):
             created_by=self.user,
             resource_type="ASSET",
             resource_id=uuid.uuid4(),
-            error_message="Test error for notification",
+            error_message=error_msg,
         )
 
-        # Verify job has error information needed for notification
-        self.assertIsNotNone(job.error_message)
-        self.assertEqual(job.status, JobStatus.FAILED)
-        self.assertIsNotNone(job.created_by)  # Needed for notification recipient
+        # Create audit event as the real task infrastructure does
+        create_audit_event(
+            resource_type="JOB",
+            action="JOB_FAILED",
+            actor_user=job.created_by,
+            tenant=job.tenant,
+            resource_id=str(job.id),
+            result="FAILURE",
+            details={
+                "job_type": str(job.type),
+                "error": error_msg,
+                "error_type": "TransientError",
+            },
+        )
+
+        # Verify the audit event has all fields needed for a notification
+        event = AuditEvent.objects.filter(
+            resource_type="JOB", action="JOB_FAILED", resource_id=job.id,
+        ).first()
+        self.assertIsNotNone(event, "Audit event should exist for failed job")
+
+        # Required notification fields
+        self.assertIsNotNone(event.actor_user, "Audit event must have actor for notification recipient")
+        self.assertEqual(event.actor_user.id, self.user.id)
+        self.assertIsNotNone(event.tenant)
+        self.assertEqual(event.result, "FAILURE")
+
+        # Details must contain job_type and error for the notification body
+        self.assertIsInstance(event.details_json, dict)
+        self.assertIn("job_type", event.details_json)
+        self.assertIn("error", event.details_json)
+        self.assertEqual(event.details_json["error"], error_msg)
+        self.assertIn("error_type", event.details_json)
 
 
 class ErrorLoggingE2ETest(E2ETestBase):
@@ -540,24 +637,37 @@ class ErrorLoggingE2ETest(E2ETestBase):
     # ========== Log Format Tests ==========
 
     def test_error_logging_format(self):
-        """Test error logging uses structured format"""
-        import structlog
-
-        logger = structlog.get_logger(__name__)
-
-        # Log an error
+        """Test error responses contain structured fields for log correlation"""
         fake_id = uuid.uuid4()
         response = self.client.get(f"/api/v1/assets/{fake_id}/")
 
-        # Error should be logged (verified by checking response has request_id)
-        if "error" in response.data:
-            error = response.data["error"]
-            self.assertIn("request_id", error)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("error", response.data, "Error response must have 'error' key")
 
-            # Request ID should be in logs (we can't directly verify logs in E2E test,
-            # but we verify the request_id exists which is used for log correlation)
-            request_id = error["request_id"]
-            self.assertIsNotNone(request_id)
+        error = response.data["error"]
+
+        # Must have request_id for log correlation
+        self.assertIn("request_id", error)
+        request_id = error["request_id"]
+        self.assertIsNotNone(request_id)
+        self.assertIsInstance(request_id, str)
+
+        # request_id must be a valid UUID
+        parsed = uuid.UUID(request_id)
+        self.assertEqual(str(parsed), request_id.lower().strip(),
+                         "request_id must be a canonical UUID")
+
+        # Must have structured error fields
+        self.assertIn("code", error)
+        self.assertIsInstance(error["code"], str)
+        self.assertGreater(len(error["code"]), 0)
+
+        self.assertIn("message", error)
+        self.assertIsInstance(error["message"], str)
+        self.assertGreater(len(error["message"]), 0)
+
+        self.assertIn("http_status", error)
+        self.assertEqual(error["http_status"], 404)
 
     def test_error_logging_levels(self):
         """Test error logging uses appropriate levels"""

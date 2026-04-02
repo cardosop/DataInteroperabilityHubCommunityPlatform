@@ -18,6 +18,8 @@ Uses REAL services (no mocks/stubs):
 Target: 100% journey coverage with comprehensive error scenarios.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import json
 import time
 import uuid
@@ -49,6 +51,7 @@ pytestmark = [
     pytest.mark.journey("JOURNEY-DE-004"),
     pytest.mark.journey("JOURNEY-DE-005"),
     pytest.mark.journey("JOURNEY-DE-006"),
+    pytest.mark.journey("JOURNEY-DE-015"),
 ]
 
 
@@ -106,12 +109,12 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
                 {'async': False},
                 format='json'
             )
-            # May return 500 if DataContract service unavailable
-            self.assertIn(validate_response.status_code, [
-                status.HTTP_200_OK,
-                status.HTTP_202_ACCEPTED,
-                status.HTTP_500_INTERNAL_SERVER_ERROR  # Service unavailable
-            ])
+            # 500 is a server bug, not acceptable even if service is down
+            self.assertIn(
+                validate_response.status_code,
+                [status.HTTP_200_OK, status.HTTP_202_ACCEPTED, status.HTTP_503_SERVICE_UNAVAILABLE],
+                f"Validation returned {validate_response.status_code} — 500 indicates unhandled error",
+            )
 
         # Step 5: Create asset
         asset_data = {
@@ -157,10 +160,11 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
         dataset_id = dataset_response.data['id']
 
         # Step 9: Poll compliance job (may fail if service unavailable)
+        # Use short timeout: worker may not be running in e2e env, and pytest
+        # timeout is 60s total for this test.
         try:
             compliance_run_id = self.run_compliance_check(file_id, dataset_id, asset_id)
-            # Wait for compliance job to complete
-            self.wait_for_job_completion(compliance_run_id, timeout=120)
+            self.wait_for_job_completion(compliance_run_id, timeout=15)
         except Exception as e:
             # Service may be unavailable - log but continue
             import logging
@@ -169,8 +173,7 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
         # Step 10: Poll DQ job (may fail if service unavailable)
         try:
             dq_run_id = self.run_dq_check(file_id, dataset_id, asset_id)
-            # Wait for DQ job to complete
-            self.wait_for_job_completion(dq_run_id, timeout=120)
+            self.wait_for_job_completion(dq_run_id, timeout=15)
         except Exception as e:
             # Service may be unavailable - log but continue
             import logging
@@ -265,21 +268,22 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             {'async': False},
             format='json'
         )
-        # Validation may fail due to service unavailability, return warnings, or succeed
+        # 500 is a server bug — service unavailable should return 503
         self.assertIn(validate_response.status_code, [
             status.HTTP_200_OK,
             status.HTTP_202_ACCEPTED,
             status.HTTP_400_BAD_REQUEST,
-            status.HTTP_500_INTERNAL_SERVER_ERROR  # Service unavailable
+            status.HTTP_503_SERVICE_UNAVAILABLE,
         ])
 
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
-        # Contract may be marked as INVALID or have validation errors
-        if hasattr(contract, 'validation_status'):
+        # Contract with intentionally bad data should not validate as VALID
+        if hasattr(contract, 'validation_status') and contract.validation_status is not None:
             self.assertIn(
                 contract.validation_status,
-                [ValidationStatus.INVALID, ValidationStatus.ERROR, ValidationStatus.WARNING_ONLY, ValidationStatus.VALID, None]
+                [ValidationStatus.INVALID, ValidationStatus.ERROR, ValidationStatus.WARNING_ONLY, ValidationStatus.SKIPPED],
+                f"Bad contract should not be VALID, got: {contract.validation_status}",
             )
 
     def test_error_schema_inference_failure(self):
@@ -382,11 +386,11 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             {'async': False},
             format='json'
         )
-        # May fail if DataContract service unavailable
+        # 500 is a server bug — service unavailable should return 503
         self.assertIn(validate_response.status_code, [
             status.HTTP_200_OK,
             status.HTTP_202_ACCEPTED,
-            status.HTTP_500_INTERNAL_SERVER_ERROR  # Service unavailable
+            status.HTTP_503_SERVICE_UNAVAILABLE,
         ])
 
 
@@ -446,13 +450,13 @@ class TestJOURNEYDE002ExternalComplianceScan(E2ETestBase):
             # Step 3: Poll compliance run status (since Redis may be unavailable, jobs won't process)
             # Wait for compliance run to reach a terminal state or timeout
             import time
-            max_wait = 120
+            max_wait = 15
             wait_time = 0
             while wait_time < max_wait:
                 run = ComplianceRun.objects.get(id=compliance_run_id)
                 if run.status in [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED]:
                     break
-                time.sleep(2)
+                time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
                 wait_time += 2
             # Accept current status even if not terminal (Redis unavailable means job won't process)
 
@@ -498,13 +502,13 @@ class TestJOURNEYDE002ExternalComplianceScan(E2ETestBase):
 
             # Wait for compliance run status (since Redis may be unavailable, jobs won't process)
             import time
-            max_wait = 120
+            max_wait = 15
             wait_time = 0
             while wait_time < max_wait:
                 run = ComplianceRun.objects.get(id=compliance_run_id)
                 if run.status in [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED]:
                     break
-                time.sleep(2)
+                time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
                 wait_time += 2
 
             # Check if scan failed or completed
@@ -560,14 +564,16 @@ class TestJOURNEYDE003ScheduledIngestionSetup(E2ETestBase):
             ingestion_data,
             format='json'
         )
-        # May return 400 if validation fails, 500 if connection test fails, or 201 if successful
+        # 201 = full success, 207 = created but Prefect deployment sync failed
+        # 400 = validation error, 500 = connection test exception
         self.assertIn(response.status_code, [
             status.HTTP_201_CREATED,
-            status.HTTP_400_BAD_REQUEST,  # May fail validation
-            status.HTTP_500_INTERNAL_SERVER_ERROR  # May fail if connection test throws exception
+            207,  # Multi-Status: resource created, Prefect sync failed
+            status.HTTP_400_BAD_REQUEST,
         ])
-        if response.status_code == status.HTTP_201_CREATED:
-            ingestion_id = response.data['id']
+        if response.status_code in [status.HTTP_201_CREATED, 207]:
+            data = response.data.get('resource', response.data) if response.status_code == 207 else response.data
+            ingestion_id = data['id']
 
             # Verify scheduled ingestion was created
             ingestion = ScheduledIngestion.objects.get(id=ingestion_id)
@@ -615,15 +621,17 @@ class TestJOURNEYDE003ScheduledIngestionSetup(E2ETestBase):
                 ingestion_data,
                 format='json'
             )
-        # May return 500 if connection test throws exception, 400 if validation fails
+        # 201 = full success, 207 = created but Prefect deployment sync failed
+        # 400 = validation error, 405 = endpoint misconfigured, 500 = connection test exception
         self.assertIn(response.status_code, [
             status.HTTP_201_CREATED,
-            status.HTTP_400_BAD_REQUEST,  # Validation error
-            status.HTTP_405_METHOD_NOT_ALLOWED,  # Endpoint configuration issue
-            status.HTTP_500_INTERNAL_SERVER_ERROR  # Connection test exception
+            207,  # Multi-Status: resource created, Prefect sync failed
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
         ])
-        if response.status_code == status.HTTP_201_CREATED:
-            ingestion_id = response.data.get('id') or response.data.get('uuid')
+        if response.status_code in [status.HTTP_201_CREATED, 207]:
+            data = response.data.get('resource', response.data) if response.status_code == 207 else response.data
+            ingestion_id = data.get('id') or data.get('uuid')
             ingestion = ScheduledIngestion.objects.get(id=ingestion_id)
             self.assertEqual(ingestion.source_type, 'HTTP')
             self.assertEqual(ingestion.status, ScheduledIngestionStatus.ACTIVE)
@@ -668,7 +676,7 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
                     ingestion_data,
                     format='json'
                 )
-            if create_response.status_code == status.HTTP_201_CREATED:
+            if create_response.status_code in [status.HTTP_201_CREATED, 207]:
                 created_count += 1
 
         # Skip if endpoint not available
@@ -719,9 +727,10 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
                 ingestion_data,
                 format='json'
             )
-        if create_response.status_code != status.HTTP_201_CREATED:
+        if create_response.status_code not in [status.HTTP_201_CREATED, 207]:
             pytest.skip(f"Scheduled ingestion endpoint not available: {create_response.status_code}")
-        ingestion_id = create_response.data.get('id') or create_response.data.get('uuid')
+        resp_data = create_response.data.get('resource', create_response.data) if create_response.status_code == 207 else create_response.data
+        ingestion_id = resp_data.get('id') or resp_data.get('uuid')
 
         # Get details
         detail_response = client.get(
@@ -767,9 +776,10 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
                 ingestion_data,
                 format='json'
             )
-        if create_response.status_code != status.HTTP_201_CREATED:
+        if create_response.status_code not in [status.HTTP_201_CREATED, 207]:
             pytest.skip(f"Scheduled ingestion endpoint not available: {create_response.status_code}")
-        ingestion_id = create_response.data.get('id') or create_response.data.get('uuid')
+        resp_data = create_response.data.get('resource', create_response.data) if create_response.status_code == 207 else create_response.data
+        ingestion_id = resp_data.get('id') or resp_data.get('uuid')
 
         # List runs (may be empty if no runs yet)
         runs_response = client.get(
@@ -816,9 +826,10 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
                 ingestion_data,
                 format='json'
             )
-        if create_response.status_code != status.HTTP_201_CREATED:
+        if create_response.status_code not in [status.HTTP_201_CREATED, 207]:
             pytest.skip(f"Scheduled ingestion endpoint not available: {create_response.status_code}")
-        ingestion_id = create_response.data.get('id') or create_response.data.get('uuid')
+        resp_data = create_response.data.get('resource', create_response.data) if create_response.status_code == 207 else create_response.data
+        ingestion_id = resp_data.get('id') or resp_data.get('uuid')
 
         # Trigger manually
         trigger_response = client.post(
@@ -883,11 +894,11 @@ class TestJOURNEYDE005CICDIntegration(E2ETestBase):
             {'async': False},
             format='json'
         )
-        # May fail if DataContract service unavailable
+        # 500 is a server bug — service unavailable should return 503
         self.assertIn(validate_response.status_code, [
             status.HTTP_200_OK,
             status.HTTP_202_ACCEPTED,
-            status.HTTP_500_INTERNAL_SERVER_ERROR  # Service unavailable
+            status.HTTP_503_SERVICE_UNAVAILABLE,
         ])
 
         # Check validation status (CI/CD decision point)
@@ -1100,4 +1111,67 @@ class TestJOURNEYDE006SchemaEvolution(E2ETestBase):
             status.HTTP_202_ACCEPTED,
             status.HTTP_404_NOT_FOUND
         ])
+
+
+@pytest.mark.journey("JOURNEY-DE-015")
+@pytest.mark.uc("UC-FILE-UPLOAD")
+class TestJOURNEYDE015FileUpload(E2ETestBase):
+    """JOURNEY-DE-015: File Upload
+
+    Verifies data engineer can initiate file uploads via the files API.
+    Endpoint: POST /api/v1/files/init/
+    """
+
+    FILES_INIT_URL = "/api/v1/files/init/"
+
+    def test_upload_file_success(self):
+        """POST /files/init/ with valid data → 200/201."""
+        response = self.client.post(
+            self.FILES_INIT_URL,
+            {
+                "name": f"test-upload-{uuid.uuid4().hex[:8]}.csv",
+                "content_type": "text/csv",
+                "size": 1024,
+            },
+            format="json",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_201_CREATED],
+            f"File init returned {response.status_code}: {getattr(response, 'data', '')}",
+        )
+
+    def test_upload_file_failure_missing_name(self):
+        """POST /files/init/ without name → 400."""
+        response = self.client.post(
+            self.FILES_INIT_URL,
+            {"content_type": "text/csv", "size": 1024},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_upload_file_failure_unauthorized(self):
+        """Unauthenticated file upload → 401/403."""
+        self.client.logout()
+        response = self.client.post(
+            self.FILES_INIT_URL,
+            {"name": "test.csv", "content_type": "text/csv", "size": 1024},
+            format="json",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+        )
+
+    def test_upload_file_edge_empty_file(self):
+        """POST /files/init/ with size=0 → 200/201 or 400."""
+        response = self.client.post(
+            self.FILES_INIT_URL,
+            {"name": "empty.csv", "content_type": "text/csv", "size": 0},
+            format="json",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST],
+        )
 

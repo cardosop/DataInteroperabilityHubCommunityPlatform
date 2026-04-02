@@ -21,6 +21,7 @@ from hub.apps.assets.models import Asset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.datasets.models import Dataset
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -33,11 +34,11 @@ class Django6JSONFieldWorkflowTest(TestCase):
     def setUp(self):
         """Set up test fixtures. Use DRF APIClient so /api/v1/ endpoints get auth (JWT/APIKey only, no session)."""
         self.client = DRFAPIClient()
-        self.tenant = Tenant.objects.create(name="Test Tenant JSONField", slug="test-tenant-jsonfield")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test-jsonfield@example.com",
+            email=f"test-jsonfield-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -86,11 +87,15 @@ class Django6JSONFieldWorkflowTest(TestCase):
             created_by=self.user
         )
         
-        # Verify JSONField data is stored correctly
+        # Verify JSONField data survives DB round-trip
         contract.refresh_from_db()
         self.assertEqual(contract.hub_contract_json['info']['title'], "Test Contract")
         self.assertEqual(contract.hub_contract_json['info']['tags'], ["tag1", "tag2"])
         self.assertEqual(contract.hub_contract_json['quality']['default_profile_key'], "great_expectations")
+
+        # Second refresh to verify repeated DB round-trip consistency
+        contract.refresh_from_db()
+        self.assertEqual(contract.hub_contract_json['info']['title'], "Test Contract")
     
     def test_jsonfield_query_by_tags(self):
         """Test querying contracts by tags using JSONField."""
@@ -309,11 +314,11 @@ class Django6MiddlewareWorkflowTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.client = DRFAPIClient()
-        self.tenant = Tenant.objects.create(name="Test Tenant Middleware", slug="test-tenant-middleware")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test-middleware@example.com",
+            email=f"test-middleware-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -329,9 +334,15 @@ class Django6MiddlewareWorkflowTest(TestCase):
         """Test tenant scoping middleware works correctly."""
         response = self.client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, 200)
-        
-        # Verify tenant is scoped correctly
-        # (This is tested by the fact that we only see tenant's assets)
+
+        # Verify response data only contains the current tenant's assets
+        data = getattr(response, "data", None) or (response.json() if response.content else {})
+        for result in data.get('results', []):
+            self.assertEqual(
+                str(result.get('tenant_id', result.get('tenant', ''))),
+                str(self.tenant.id),
+                f"Asset {result.get('id')} belongs to wrong tenant"
+            )
     
     def test_request_id_middleware(self):
         """Test request ID middleware works correctly."""
@@ -348,11 +359,11 @@ class Django6APICompatibilityTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.client = DRFAPIClient()
-        self.tenant = Tenant.objects.create(name="Test Tenant API", slug="test-tenant-api")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test-api@example.com",
+            email=f"test-api-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -439,11 +450,11 @@ class Django6DatabaseOperationsTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant DB", slug="test-tenant-db")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test-db@example.com",
+            email=f"test-db-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )

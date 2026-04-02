@@ -1,0 +1,109 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-008-bee223cb",
+      "journey_name": "Create Transformation Pipeline for Asset",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1774668384.3236554,
+      "end_time": 1774668385.7535086,
+      "duration": 1.4298532009124756,
+      "completion_rate": 83.33333333333334,
+      "success_rate": 83.33333333333334,
+      "error_message": "Step 'Execute Pipeline' returned HTTP 500: {'error': {'code': 'SERVICE_ERROR', 'message': 'Pipeline 7b7062f8-8a74-4913-a409-11a8eb3cc445 cannot be executed. Status: DRAFT', 'http_status': 500, 'request_id': '86ffcaa5-7a6d-43e2-9a1b-fc1fd282c40c', 'timestamp': '2026-03-28T03:26:25.740900+00:00'}}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668384.323663,
+          "end_time": 1774668385.5968893,
+          "duration": 1.273226261138916,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668385.5969086,
+          "end_time": 1774668385.6337001,
+          "duration": 0.03679156303405762,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Validate Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668385.6337147,
+          "end_time": 1774668385.6874292,
+          "duration": 0.05371451377868652,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Preview Transformation Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668385.687439,
+          "end_time": 1774668385.7286854,
+          "duration": 0.04124641418457031,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Save Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668385.7286956,
+          "end_time": 1774668385.7287016,
+          "duration": 5.9604644775390625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Execute Pipeline",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774668385.7287042,
+          "end_time": 1774668385.753504,
+          "duration": 0.024799823760986328,
+          "error_message": "Step 'Execute Pipeline' returned HTTP 500: {'error': {'code': 'SERVICE_ERROR', 'message': 'Pipeline 7b7062f8-8a74-4913-a409-11a8eb3cc445 cannot be executed. Status: DRAFT', 'http_status': 500, 'request_id': '86ffcaa5-7a6d-43e2-9a1b-fc1fd282c40c', 'timestamp': '2026-03-28T03:26:25.740900+00:00'}}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T03:26:25.753642"
+}

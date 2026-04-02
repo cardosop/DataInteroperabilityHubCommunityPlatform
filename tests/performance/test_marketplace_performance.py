@@ -16,6 +16,8 @@ import os
 import time
 import logging
 import pytest
+
+pytestmark = pytest.mark.slow
 import statistics
 import psutil
 import threading
@@ -79,7 +81,7 @@ class MarketplaceConnectorPerformanceTest(TestCase):
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="perf-test@example.com",
+            email=f"perf-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -236,7 +238,7 @@ class MarketplaceSyncJobPerformanceTest(TransactionTestCase):
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="perf-test@example.com",
+            email=f"perf-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -415,7 +417,7 @@ class MarketplaceAPIPerformanceTest(TestCase):
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="perf-test@example.com",
+            email=f"perf-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -547,7 +549,7 @@ class MarketplaceAPIPerformanceTest(TestCase):
             if response.status_code == status.HTTP_200_OK:
                 successful_count += 1
             # Small delay to avoid rate limiting (0.1s = 10 req/s max)
-            time.sleep(0.1)
+            time.sleep(0.1)  # INTENTIONAL: test-specific delay
 
         elapsed = time.time() - start_time
         if elapsed > 0:
@@ -570,7 +572,7 @@ class MarketplaceConcurrentSyncJobsTest(TransactionTestCase):
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="perf-test@example.com",
+            email=f"perf-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -695,7 +697,7 @@ class MarketplaceMemoryUsageTest(TestCase):
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="perf-test@example.com",
+            email=f"perf-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -798,7 +800,7 @@ class MarketplaceDatabaseQueryPerformanceTest(TestCase):
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="perf-test@example.com",
+            email=f"perf-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

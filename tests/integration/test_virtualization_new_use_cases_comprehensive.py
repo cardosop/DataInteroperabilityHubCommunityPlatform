@@ -25,7 +25,7 @@ from typing import Any, Dict, List
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -45,28 +45,14 @@ from tests.utils.test_data_management import TestDatabaseIsolationMixin
 User = get_user_model()
 
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.integration,
     pytest.mark.slow,  # Mark as slow due to TransactionTestCase
 ]
 
 
-class VirtualizationNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):
+class VirtualizationNewUseCasesTestBase(TestCase, TestDatabaseIsolationMixin):
     """Base test class for Virtualization new use cases"""
-
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for integration tests.
-
-        TransactionTestCase tries to flush the database between tests, but this
-        fails with foreign key constraints. We use transaction rollback instead
-        which provides isolation without flushing.
-        """
-        # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -184,10 +170,17 @@ class UCVIRT001CreateVirtualDatasetTest(VirtualizationNewUseCasesTestBase):
         self.assertIn("id", response.data)
         self.assertEqual(response.data["name"], virtual_dataset_data["name"])
         self.assertEqual(response.data["status"], VirtualDatasetStatus.DRAFT)
+        # Assert additional fields beyond name/status
+        self.assertEqual(response.data.get("query"), virtual_dataset_data["query"])
+        self.assertEqual(response.data.get("query_type"), virtual_dataset_data["query_type"])
+        if "sources" in response.data:
+            self.assertIsInstance(response.data["sources"], list)
+            self.assertGreaterEqual(len(response.data["sources"]), 1)
 
         # Verify dataset was created
         dataset = VirtualDataset.objects.get(id=response.data["id"])
         self.assertEqual(dataset.name, virtual_dataset_data["name"])
+        self.assertEqual(dataset.query, virtual_dataset_data["query"])
         self.assertEqual(dataset.tenant, self.tenant)
 
     def test_create_virtual_dataset_validation_failure(self):
@@ -229,8 +222,11 @@ class UCVIRT001CreateVirtualDatasetTest(VirtualizationNewUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        # Performance threshold adjusted for test environment (Docker Compose overhead)
-        self.assertLess(elapsed_time, 15000, f"Dataset creation took {elapsed_time}ms, exceeds 15000ms threshold")
+        self.assertLess(
+            elapsed_time, 5000,
+            f"Dataset creation took {elapsed_time:.0f}ms, "
+            f"exceeds 5000ms",
+        )
 
 
 class UCVIRT002ExecuteFederatedQueryTest(VirtualizationNewUseCasesTestBase):
@@ -275,8 +271,18 @@ class UCVIRT002ExecuteFederatedQueryTest(VirtualizationNewUseCasesTestBase):
         query_url = reverse("virtual-dataset-execute-query", kwargs={"id": dataset_id})
         query_response = self.client.post(query_url, query_data, format="json")
 
-        # Query execution may be async, so accept 201 or 202
+        # Query execution may be async (202) or synchronous (201); both are legitimate
         self.assertIn(query_response.status_code, [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED])
+        # Verify response body contains relevant fields
+        self.assertIsNotNone(query_response.data)
+        if query_response.status_code == status.HTTP_201_CREATED:
+            self.assertIn("id", query_response.data)
+        elif query_response.status_code == status.HTTP_202_ACCEPTED:
+            # Async response should contain a query/job ID for polling
+            self.assertTrue(
+                "id" in query_response.data or "query_id" in query_response.data,
+                f"Async 202 response should contain id or query_id, got: {list(query_response.data.keys())}",
+            )
 
     @pytest.mark.performance
     def test_execute_federated_query_performance(self):
@@ -321,25 +327,75 @@ class UCVIRT002ExecuteFederatedQueryTest(VirtualizationNewUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertIn(query_response.status_code, [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED])
-        # Allow buffer for query execution
-        self.assertLess(elapsed_time, 15000, f"Query execution took {elapsed_time}ms, exceeds 15000ms threshold")
+        # 202 = request accepted (not full execution time)
+        self.assertLess(
+            elapsed_time, 5000,
+            f"Query acceptance took {elapsed_time:.0f}ms, "
+            f"exceeds 5000ms",
+        )
+        # Verify response body
+        self.assertIsNotNone(query_response.data)
+        self.assertTrue(
+            "id" in query_response.data or "query_id" in query_response.data,
+            f"Response should contain id or query_id, got: {list(query_response.data.keys())}",
+        )
 
 
 class UCVIRT003ManageFederationTopologyTest(VirtualizationNewUseCasesTestBase):
     """UC-VIRT-003: Manage Federation Topology"""
 
-    def test_manage_federation_topology_success(self):
-        """Test successful federation topology management"""
-        # This test verifies the use case is documented
-        # In real implementation, would test topology management endpoints
-        self.assertTrue(True, "UC-VIRT-003 use case documented")
+    def test_federation_topology_list(self):
+        """GET /api/v1/virtualization/topology/ → 200."""
+        self.client.force_authenticate(user=self.dpo_user)
+        response = self.client.get("/api/v1/virtualization/topology/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_federation_topology_unauthorized(self):
+        """Unauthenticated topology → 401/403."""
+        self.client.logout()
+        response = self.client.get("/api/v1/virtualization/topology/")
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
 
 class UCVIRT004MonitorVirtualizationPerformanceTest(VirtualizationNewUseCasesTestBase):
     """UC-VIRT-004: Monitor Virtualization Performance"""
 
-    def test_monitor_virtualization_performance_success(self):
-        """Test successful virtualization performance monitoring"""
-        # This test verifies the use case is documented
-        # In real implementation, would test performance monitoring endpoints
-        self.assertTrue(True, "UC-VIRT-004 use case documented")
+    def test_virtualization_datasets_list(self):
+        """GET /virtualization/datasets/ -> 200 with list."""
+        self.client.force_authenticate(user=self.dpo_user)
+        response = self.client.get(
+            "/api/v1/virtualization/datasets/",
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
+        data = response.json()
+        results = data.get("results", data)
+        self.assertIsInstance(results, list)
+
+    def test_virtualization_queries_list(self):
+        """GET /virtualization/queries/ -> 200 with list."""
+        self.client.force_authenticate(user=self.dpo_user)
+        response = self.client.get(
+            "/api/v1/virtualization/queries/",
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
+        data = response.json()
+        results = data.get("results", data)
+        self.assertIsInstance(results, list)
+
+    def test_virtualization_datasets_unauthorized(self):
+        """Unauthenticated datasets -> 401/403."""
+        self.client.logout()
+        response = self.client.get(
+            "/api/v1/virtualization/datasets/",
+        )
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_401_UNAUTHORIZED,
+                status.HTTP_403_FORBIDDEN,
+            ],
+        )

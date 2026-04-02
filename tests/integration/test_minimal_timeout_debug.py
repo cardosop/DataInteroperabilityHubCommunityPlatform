@@ -3,7 +3,7 @@ Minimal test to debug timeout issues
 """
 import json
 import time
-from django.test import TransactionTestCase
+from django.test import TestCase
 from django.test.utils import override_settings
 from rest_framework.test import APIClient
 from rest_framework import status
@@ -24,7 +24,7 @@ post_save.disconnect(asset_saved, sender=Asset)
 post_save.disconnect(create_default_roles, sender=Tenant)
 
 
-class MinimalTimeoutTest(TransactionTestCase):
+class MinimalTimeoutTest(TestCase):
     """Minimal test to debug timeout"""
 
     reset_sequences = False

@@ -15,6 +15,8 @@ import time
 import uuid
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from rest_framework import status

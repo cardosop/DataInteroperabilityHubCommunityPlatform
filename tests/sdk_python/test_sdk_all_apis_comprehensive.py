@@ -19,6 +19,8 @@ import json
 import uuid
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from asgiref.sync import sync_to_async
 
 # Try to import SDK

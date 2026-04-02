@@ -15,6 +15,7 @@ from rest_framework import status
 from hub.apps.contracts.models import Contract, OriginalFormat, OriginalSpecType
 
 from .base_idor import IDORTestBase
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -62,7 +63,7 @@ class ContractSecurity401Test:
         User = get_user_model()
         tenant = Tenant.objects.create(name="Temp Tenant", slug="temp-tenant-dc")
         user = User.objects.create_user(
-            email="temp-dc@example.com",
+            email=f"temp-dc-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant,
             status=UserStatus.ACTIVE,

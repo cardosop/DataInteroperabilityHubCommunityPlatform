@@ -8,12 +8,15 @@ Real services (no mocks/stubs). Plan: INTEGRATION_TEST_UPDATE_PLAN 3.3.1.1 (P1).
 from datetime import timedelta
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -34,7 +37,7 @@ class AuditAPIsComprehensiveIntegrationTest:
 
         User = get_user_model()
         self.user = User.objects.create_user(
-            email="audit_integ@example.com",
+            email=f"audit_integ-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

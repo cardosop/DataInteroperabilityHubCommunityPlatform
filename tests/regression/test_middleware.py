@@ -41,7 +41,7 @@ class MiddlewareRegressionTest(TestCase):
             slug="middleware-test-tenant"
         )
         self.user = User.objects.create_user(
-            email="middleware@example.com",
+            email=f"middleware-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -53,32 +53,44 @@ class TenantScopingMiddlewareTest(MiddlewareRegressionTest):
     
     def test_tenant_scoping_with_authenticated_user(self):
         """Test tenant scoping with authenticated user"""
+        from django.db import connection
+        connection.ensure_connection()
+
         self.client.force_authenticate(user=self.user)
-        
-        # Make a request
         response = self.client.get('/api/v1/assets/')
-        
-        # Should succeed (tenant should be set by middleware)
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN])
+
+        # 500 from statement_timeout is a transient DB issue, not a middleware bug
+        self.assertNotEqual(
+            response.status_code, 500,
+            f"Server error (likely DB timeout): {getattr(response, 'data', '')}",
+        )
+        self.assertIn(response.status_code, [
+            status.HTTP_200_OK, status.HTTP_403_FORBIDDEN,
+        ])
     
     def test_tenant_scoping_with_api_key(self):
         """Test tenant scoping with API key"""
-        # API keys must be user-scoped (not tenant-scoped)
-        api_key_obj = APIKey.objects.create(
+        from django.db import connection
+        connection.ensure_connection()
+
+        APIKey.objects.create(
             tenant=self.tenant,
-            user=self.user,  # User-scoped API key required
+            user=self.user,
             name="Test API Key",
             key_hash=APIKey.hash_key("test-key-123")
         )
-        
-        # Make request with API key
         response = self.client.get(
             '/api/v1/assets/',
             HTTP_AUTHORIZATION="ApiKey test-key-123"
         )
-        
-        # Should succeed (tenant should be set by middleware)
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN])
+
+        self.assertNotEqual(
+            response.status_code, 500,
+            f"Server error (likely DB timeout): {getattr(response, 'data', '')}",
+        )
+        self.assertIn(response.status_code, [
+            status.HTTP_200_OK, status.HTTP_403_FORBIDDEN,
+        ])
     
     def test_tenant_scoping_without_authentication(self):
         """Test tenant scoping without authentication"""
@@ -181,17 +193,21 @@ class RateLimitMiddlewareTest(MiddlewareRegressionTest):
             self.assertIn('X-RateLimit-Remaining', response.headers)
     
     def test_rate_limit_exceeded_response(self):
-        """Test rate limit exceeded response"""
+        """Test rate limit headers are present and requests don't crash."""
         self.client.force_authenticate(user=self.user)
-        
-        # Make many requests to potentially exceed rate limit
-        # This depends on rate limit configuration
+
+        got_429 = False
         for _ in range(100):
             response = self.client.get('/api/v1/assets/')
+            self.assertNotEqual(response.status_code, 500)
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
-                # Rate limit exceeded
-                self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+                got_429 = True
                 break
+
+        # Rate limiting may be relaxed in test env (RATE_LIMIT_E2E_RELAX).
+        # Either 429 was hit, or all requests succeeded — both are valid.
+        if got_429:
+            self.assertIn(response.status_code, [429])
 
 
 class RequestIDMiddlewareTest(MiddlewareRegressionTest):
@@ -215,20 +231,20 @@ class RequestIDMiddlewareTest(MiddlewareRegressionTest):
                 self.fail(f"Request ID {request_id} is not a valid UUID")
     
     def test_request_id_from_header(self):
-        """Test that request ID from header is used"""
+        """Test that provided X-Request-ID is echoed back."""
         self.client.force_authenticate(user=self.user)
-        
+
         custom_request_id = str(uuid.uuid4())
-        
-        # Make request with custom request ID
+
         response = self.client.get(
             '/api/v1/assets/',
             HTTP_X_REQUEST_ID=custom_request_id
         )
-        
-        # If middleware is active, should use custom request ID
-        if 'X-Request-ID' in response.headers:
-            self.assertEqual(response.headers['X-Request-ID'], custom_request_id)
+        self.assertIn(
+            'X-Request-ID', response.headers,
+            "RequestIDMiddleware must set X-Request-ID in response",
+        )
+        self.assertEqual(response.headers['X-Request-ID'], custom_request_id)
 
 
 class MetricsMiddlewareTest(MiddlewareRegressionTest):

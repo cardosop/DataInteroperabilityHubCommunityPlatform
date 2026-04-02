@@ -25,6 +25,7 @@ from hub.apps.marketplace.models import (
 from hub.apps.marketplace.access_utils import check_entitlement
 
 from .conftest import E2ETestBase, get_response_data
+import uuid
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
@@ -48,7 +49,7 @@ class MarketplacePublicationUseCasesTest(E2ETestBase):
         ensure_e2e_tenant_ready(self.provider_tenant)
 
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.provider_tenant
         )
@@ -277,7 +278,7 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
         ensure_e2e_tenant_ready(self.provider_tenant)
 
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.provider_tenant
         )
@@ -294,7 +295,7 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
         ensure_e2e_tenant_ready(self.consumer_tenant)
 
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.consumer_tenant
         )
@@ -515,7 +516,7 @@ class MarketplaceEntitlementUseCasesTest(E2ETestBase):
         ensure_e2e_tenant_ready(self.provider_tenant)
 
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.provider_tenant
         )
@@ -532,7 +533,7 @@ class MarketplaceEntitlementUseCasesTest(E2ETestBase):
         ensure_e2e_tenant_ready(self.consumer_tenant)
 
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.consumer_tenant
         )

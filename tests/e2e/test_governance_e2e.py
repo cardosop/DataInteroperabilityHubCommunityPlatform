@@ -5,6 +5,8 @@ End-to-end tests for compliance reporting, ABAC, and data masking workflows.
 """
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from django.utils import timezone
 
@@ -163,10 +165,18 @@ class GovernanceE2ETest(E2ETestBase):
             access_type="READ",
         )
 
-        # Verify masking
-        self.assertNotEqual(masked_row["email"], row["email"])
-        self.assertNotEqual(masked_row["ssn"], row["ssn"])
-        self.assertEqual(masked_row["name"], row["name"])  # No policy for name
+        # Verify masking changed the sensitive fields
+        self.assertNotEqual(masked_row["email"], row["email"],
+                            "Email should be masked")
+        self.assertNotEqual(masked_row["ssn"], row["ssn"],
+                            "SSN should be masked")
+        self.assertEqual(masked_row["name"], row["name"],
+                         "Name should NOT be masked (no policy)")
+        # Verify masked values are not empty — masking should produce redacted output
+        self.assertTrue(len(masked_row["email"]) > 0,
+                        "Masked email should not be empty")
+        self.assertTrue(len(masked_row["ssn"]) > 0,
+                        "Masked SSN should not be empty")
 
         # Step 7: Generate compliance report
         report = ReportScheduler.generate_and_save_report(
@@ -197,3 +207,6 @@ class GovernanceE2ETest(E2ETestBase):
 
         self.assertIn("generated", results)
         self.assertIn("emailed", results)
+        # Verify at least one report was generated (our scheduled report should trigger)
+        self.assertGreaterEqual(results["generated"], 1,
+                                "At least one scheduled report should be generated")

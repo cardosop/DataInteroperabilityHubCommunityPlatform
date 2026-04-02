@@ -18,7 +18,7 @@ from hub.apps.notifications.tasks import send_email_async
 from hub.apps.tenants.models import Tenant
 from tests.factories import EmailDeliveryFactory
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

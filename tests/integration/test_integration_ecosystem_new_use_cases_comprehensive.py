@@ -1,42 +1,30 @@
 """
 Comprehensive Integration Ecosystem New Use Cases Test Suite (Task 10.1.53.9)
 
-Tests all new Integration Ecosystem use cases (UC-INT-001 through UC-INT-005):
+Tests all new Integration Ecosystem use cases:
 - UC-INT-001: Install Pre-built Connector
 - UC-INT-002: Create Custom Connector
 - UC-INT-003: Integrate BI Tool
 - UC-INT-004: Set Up Reverse ETL
 - UC-INT-005: Integrate CI/CD Pipeline
 
-Features:
-- Success scenarios
-- Alternate flows and edge cases
-- Performance targets
-- Real implementations (no mocks/stubs)
-- Root cause fixes
-- Engineering-grade test coverage
-
-Total: 50+ test cases
+All tests hit real endpoints -- no mocks/stubs.
 """
 
-import json
-import time
 import uuid
-from typing import Any, Dict, List
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
-from django.utils import timezone
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.tenants.models import KYCStatus, TenantStatus
+from hub.apps.testing.billing_support import (
+    ensure_tenant_has_active_subscription,
+)
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
-    AssetFactory,
     TenantFactory,
     UserFactory,
 )
@@ -45,8 +33,9 @@ from tests.utils.test_data_management import TestDatabaseIsolationMixin
 User = get_user_model()
 
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.integration,
+    pytest.mark.slow,
     pytest.mark.uc("UC-INT-001"),
     pytest.mark.uc("UC-INT-002"),
     pytest.mark.uc("UC-INT-003"),
@@ -55,34 +44,33 @@ pytestmark = [
 ]
 
 
-class IntegrationEcosystemNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):
-    """Base test class for Integration Ecosystem new use cases"""
+class IntegrationEcosystemTestBase(
+    TestCase, TestDatabaseIsolationMixin,
+):
+    """Base test class for Integration Ecosystem use cases."""
 
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for integration tests."""
-        pass
+    CONNECTORS_URL = (
+        "/api/v1/integrations/marketplace/connectors/"
+    )
+    CONNECTIONS_URL = (
+        "/api/v1/integrations/marketplace/connections/"
+    )
+    SYNC_URL = "/api/v1/integrations/marketplace/sync/"
+    API_KEYS_URL = "/api/v1/developer/api-keys/"
 
     def setUp(self):
-        """Set up test fixtures"""
         super().setUp()
         self.client = APIClient()
 
-        # Create tenant (use unique name/slug to avoid conflicts between tests;
-        # _fixture_teardown skips flush so data persists across tests)
-        unique_id = str(uuid.uuid4())[:8]
+        uid = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
-            name=f"Test Tenant {unique_id}",
-            slug=f"test-tenant-{unique_id}",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
-        # Create roles
         self.data_provider_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="DATA_PROVIDER",
@@ -94,168 +82,227 @@ class IntegrationEcosystemNewUseCasesTestBase(TransactionTestCase, TestDatabaseI
             defaults={"description": "Tenant Admin"},
         )
 
-        # Create users (use unique emails to avoid conflicts between tests)
         self.dpo_user = UserFactory.create_user(
             tenant=self.tenant,
-            email=f"dpo-{unique_id}@example.com",
+            email=f"dpo-{uid}@example.com",
         )
-        UserRole.objects.get_or_create(user=self.dpo_user, role=self.data_provider_role)
+        UserRole.objects.get_or_create(
+            user=self.dpo_user, role=self.data_provider_role,
+        )
 
         self.admin_user = UserFactory.create_user(
             tenant=self.tenant,
-            email=f"admin-{unique_id}@example.com",
+            email=f"admin-{uid}@example.com",
         )
-        UserRole.objects.get_or_create(user=self.admin_user, role=self.tenant_admin_role)
+        UserRole.objects.get_or_create(
+            user=self.admin_user, role=self.tenant_admin_role,
+        )
 
 
-class UCINT001InstallPrebuiltConnectorTest(IntegrationEcosystemNewUseCasesTestBase):
+class UCINT001InstallPrebuiltConnectorTest(
+    IntegrationEcosystemTestBase,
+):
     """UC-INT-001: Install Pre-built Connector"""
 
-    def test_install_prebuilt_connector_success(self):
-        """Test successful pre-built connector installation"""
-        from django.urls import reverse
-        from django.urls.exceptions import NoReverseMatch
-
+    def test_list_available_connectors(self):
+        """GET connectors -> 200 with connectors list."""
         self.client.force_authenticate(user=self.dpo_user)
+        response = self.client.get(self.CONNECTORS_URL)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
+        body = response.json()
+        self.assertIn("connectors", body)
+        self.assertIsInstance(body["connectors"], list)
 
-        connector_data = {
-            "connector_id": "snowflake-connector",
-            "configuration": {
-                "account": "test_account",
+    def test_retrieve_specific_connector(self):
+        """GET connectors/{type}/ -> 200 with connector detail."""
+        self.client.force_authenticate(user=self.dpo_user)
+        list_resp = self.client.get(self.CONNECTORS_URL)
+        self.assertEqual(
+            list_resp.status_code, status.HTTP_200_OK,
+        )
+        connectors = list_resp.json().get("connectors", [])
+        if connectors:
+            ctype = connectors[0].get("type")
+            detail_resp = self.client.get(
+                f"{self.CONNECTORS_URL}{ctype}/",
+            )
+            self.assertEqual(
+                detail_resp.status_code, status.HTTP_200_OK,
+            )
+            self.assertEqual(
+                detail_resp.json()["type"], ctype,
+            )
+
+    def test_connectors_unauthorized(self):
+        """Unauthenticated connectors -> 401/403."""
+        self.client.logout()
+        response = self.client.get(self.CONNECTORS_URL)
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_401_UNAUTHORIZED,
+                status.HTTP_403_FORBIDDEN,
+            ],
+        )
+
+
+class UCINT002CreateCustomConnectorTest(
+    IntegrationEcosystemTestBase,
+):
+    """UC-INT-002: Create Custom Connector"""
+
+    def test_list_connections(self):
+        """GET connections -> 200 with list."""
+        self.client.force_authenticate(user=self.dpo_user)
+        response = self.client.get(self.CONNECTIONS_URL)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
+        body = response.json()
+        results = body.get("results", body)
+        self.assertIsInstance(results, list)
+
+    def test_create_connection(self):
+        """POST connection -> 201 with id and name."""
+        self.client.force_authenticate(user=self.dpo_user)
+        data = {
+            "name": f"Test Connection {uuid.uuid4().hex[:8]}",
+            "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE",
+            "config": {
+                "account": "test",
                 "database": "test_db",
             },
         }
-        # Try to get the endpoint, handle if it doesn't exist
-        try:
-            connector_url = reverse("integrations-connectors-install")
-            response = self.client.post(connector_url, connector_data, format="json")
-            # If endpoint exists, test it
-            if response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED, status.HTTP_404_NOT_FOUND]:
-                self.assertTrue(True, "UC-INT-001 use case documented")
-        except NoReverseMatch:
-            # Endpoint not implemented yet - verify use case is documented
-            self.assertTrue(True, "UC-INT-001 use case documented")
+        response = self.client.post(
+            self.CONNECTIONS_URL, data, format="json",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_201_CREATED, status.HTTP_200_OK],
+        )
+        body = response.json()
+        self.assertIn("id", body)
+        self.assertIn("name", body)
 
-
-class UCINT002CreateCustomConnectorTest(IntegrationEcosystemNewUseCasesTestBase):
-    """UC-INT-002: Create Custom Connector"""
-
-    def test_create_custom_connector_success(self):
-        """Test successful custom connector creation"""
-        from django.urls import reverse
-        from django.urls.exceptions import NoReverseMatch
-
+    def test_create_connection_missing_name_returns_400(self):
+        """POST connection without name -> 400."""
         self.client.force_authenticate(user=self.dpo_user)
+        response = self.client.post(
+            self.CONNECTIONS_URL,
+            {"marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE"},
+            format="json",
+        )
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
 
-        connector_data = {
-            "name": "Custom Test Connector",
-            "type": "data_source",
-            "implementation": {
-                "connection_type": "REST_API",
-                "endpoint": "https://api.example.com",
-            },
-        }
-        # Try to get the endpoint, handle if it doesn't exist
-        try:
-            connector_url = reverse("integrations-connectors-list")
-            response = self.client.post(connector_url, connector_data, format="json")
-            # If endpoint exists, test it
-            if response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED, status.HTTP_404_NOT_FOUND]:
-                self.assertTrue(True, "UC-INT-002 use case documented")
-        except NoReverseMatch:
-            # Endpoint not implemented yet - verify use case is documented
-            self.assertTrue(True, "UC-INT-002 use case documented")
+    def test_connections_unauthorized(self):
+        """Unauthenticated connections -> 401/403."""
+        self.client.logout()
+        response = self.client.get(self.CONNECTIONS_URL)
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_401_UNAUTHORIZED,
+                status.HTTP_403_FORBIDDEN,
+            ],
+        )
 
 
-class UCINT003IntegrateBIToolTest(IntegrationEcosystemNewUseCasesTestBase):
-    """UC-INT-003: Integrate BI Tool"""
+class UCINT003IntegrateBIToolTest(
+    IntegrationEcosystemTestBase,
+):
+    """UC-INT-003: Integrate BI Tool
 
-    def test_integrate_bi_tool_success(self):
-        """Test successful BI tool integration"""
-        from django.urls import reverse
-        from django.urls.exceptions import NoReverseMatch
+    BI tool integration uses connections with BI-specific types.
+    """
 
+    def test_bi_integration_via_connections(self):
+        """GET connections -> 200 with list structure."""
         self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get(self.CONNECTIONS_URL)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
+        body = response.json()
+        results = body.get("results", body)
+        self.assertIsInstance(results, list)
 
-        bi_data = {
-            "bi_tool": "TABLEAU",
-            "connection_config": {
-                "server": "tableau.example.com",
-                "site": "default",
-            },
-            "data_sources": [],
-        }
-        # Try to get the endpoint, handle if it doesn't exist
-        try:
-            bi_url = reverse("integrations-bi-integrate")
-            response = self.client.post(bi_url, bi_data, format="json")
-            # If endpoint exists, test it
-            if response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED, status.HTTP_404_NOT_FOUND]:
-                self.assertTrue(True, "UC-INT-003 use case documented")
-        except NoReverseMatch:
-            # Endpoint not implemented yet - verify use case is documented
-            self.assertTrue(True, "UC-INT-003 use case documented")
+    def test_bi_integration_unauthorized(self):
+        """Unauthenticated BI integration -> 401/403."""
+        self.client.logout()
+        response = self.client.get(self.CONNECTIONS_URL)
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_401_UNAUTHORIZED,
+                status.HTTP_403_FORBIDDEN,
+            ],
+        )
 
 
-class UCINT004SetUpReverseETLTest(IntegrationEcosystemNewUseCasesTestBase):
-    """UC-INT-004: Set Up Reverse ETL"""
+class UCINT004SetUpReverseETLTest(
+    IntegrationEcosystemTestBase,
+):
+    """UC-INT-004: Set Up Reverse ETL
 
-    def test_set_up_reverse_etl_success(self):
-        """Test successful reverse ETL setup"""
-        from django.urls import reverse
-        from django.urls.exceptions import NoReverseMatch
+    Reverse ETL uses marketplace sync jobs for data push.
+    """
 
+    def test_reverse_etl_sync_jobs_list(self):
+        """GET sync/ -> 200 with list structure."""
         self.client.force_authenticate(user=self.dpo_user)
+        response = self.client.get(self.SYNC_URL)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
+        body = response.json()
+        results = body.get("results", body)
+        self.assertIsInstance(results, list)
 
-        reverse_etl_data = {
-            "source_asset_id": str(uuid.uuid4()),
-            "destination": {
-                "type": "CRM",
-                "system": "SALESFORCE",
-                "config": {},
-            },
-            "schedule": {
-                "frequency": "daily",
-                "time": "02:00",
-            },
-        }
-        # Try to get the endpoint, handle if it doesn't exist
-        try:
-            reverse_etl_url = reverse("integrations-reverse-etl")
-            response = self.client.post(reverse_etl_url, reverse_etl_data, format="json")
-            # If endpoint exists, test it
-            if response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED, status.HTTP_404_NOT_FOUND]:
-                self.assertTrue(True, "UC-INT-004 use case documented")
-        except NoReverseMatch:
-            # Endpoint not implemented yet - verify use case is documented
-            self.assertTrue(True, "UC-INT-004 use case documented")
+    def test_reverse_etl_unauthorized(self):
+        """Unauthenticated reverse ETL -> 401/403."""
+        self.client.logout()
+        response = self.client.get(self.SYNC_URL)
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_401_UNAUTHORIZED,
+                status.HTTP_403_FORBIDDEN,
+            ],
+        )
 
 
-class UCINT005IntegrateCICDPipelineTest(IntegrationEcosystemNewUseCasesTestBase):
-    """UC-INT-005: Integrate CI/CD Pipeline"""
+class UCINT005IntegrateCICDPipelineTest(
+    IntegrationEcosystemTestBase,
+):
+    """UC-INT-005: Integrate CI/CD Pipeline
 
-    def test_integrate_cicd_pipeline_success(self):
-        """Test successful CI/CD pipeline integration"""
-        from django.urls import reverse
-        from django.urls.exceptions import NoReverseMatch
+    CI/CD integration uses developer API keys.
+    """
 
+    def test_cicd_api_keys_list(self):
+        """GET api-keys/ -> 200 with list structure."""
         self.client.force_authenticate(user=self.dpo_user)
+        response = self.client.get(self.API_KEYS_URL)
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
+        body = response.json()
+        results = body.get("results", body)
+        self.assertIsInstance(results, list)
 
-        cicd_data = {
-            "cicd_system": "GITHUB_ACTIONS",
-            "workflow_config": {
-                "contract_validation": True,
-                "on_push": True,
-                "on_pull_request": True,
-            },
-        }
-        # Try to get the endpoint, handle if it doesn't exist
-        try:
-            cicd_url = reverse("integrations-cicd-integrate")
-            response = self.client.post(cicd_url, cicd_data, format="json")
-            # If endpoint exists, test it
-            if response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED, status.HTTP_404_NOT_FOUND]:
-                self.assertTrue(True, "UC-INT-005 use case documented")
-        except NoReverseMatch:
-            # Endpoint not implemented yet - verify use case is documented
-            self.assertTrue(True, "UC-INT-005 use case documented")
+    def test_cicd_unauthorized(self):
+        """Unauthenticated developer API -> 401/403."""
+        self.client.logout()
+        response = self.client.get(self.API_KEYS_URL)
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_401_UNAUTHORIZED,
+                status.HTTP_403_FORBIDDEN,
+            ],
+        )

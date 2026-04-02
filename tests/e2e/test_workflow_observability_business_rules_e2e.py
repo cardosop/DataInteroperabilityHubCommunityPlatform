@@ -14,7 +14,7 @@ InMemorySpanExporter for span assertion.
 
 import pytest
 
-pytestmark = pytest.mark.workflow_e2e
+pytestmark = [pytest.mark.slow, pytest.mark.workflow_e2e]
 
 import json
 import re
@@ -468,10 +468,8 @@ class TestWorkflowStructuredLoggingBusinessRulesE2E(WorkflowE2ETestBase):
             self.create_start_and_execute(ContractCreationWorkflow.WORKFLOW_NAME, input_data)
         log_output = "\n".join(log_ctx.output).lower()
         self.assertTrue(
-            "validation" in log_output
-            or "business_rules" in log_output
-            or "workflow" in log_output,
-            "Workflow execution logs should contain validation or workflow context",
+            "validation" in log_output or "business_rules" in log_output,
+            "Workflow execution logs should contain validation or business_rules context",
         )
 
     def test_validation_errors_warnings_in_error_logs(self):
@@ -510,13 +508,8 @@ class TestWorkflowStructuredLoggingBusinessRulesE2E(WorkflowE2ETestBase):
             self.create_start_and_execute(ContractCreationWorkflow.WORKFLOW_NAME, input_data)
         log_output = "\n".join(log_ctx.output)
         self.assertTrue(
-            "workflow" in log_output.lower() or "step" in log_output.lower(),
-            "Logs should contain workflow or step context",
-        )
-        # Task 6.4.3: validation duration is in logs (engine logs duration_seconds at DEBUG)
-        self.assertTrue(
-            "duration" in log_output.lower() or "validation" in log_output.lower(),
-            "Logs should contain validation duration or validation context",
+            "step" in log_output.lower() and ("duration" in log_output.lower() or "validation" in log_output.lower()),
+            "Logs should contain step context with duration or validation info",
         )
 
     def test_validation_failure_logs_error_with_rule_context(self):
@@ -541,14 +534,15 @@ class TestWorkflowStructuredLoggingBusinessRulesE2E(WorkflowE2ETestBase):
             except Exception:
                 pass
         log_output = "\n".join(log_ctx.output).lower()
-        # Engine logs either "Workflow validation failed" or "Error executing step"
+        # Engine logs "Workflow validation failed" (validation path) or
+        # "Error executing step" (task exception path) at ERROR level.
         self.assertTrue(
             "validation" in log_output
             or "business" in log_output
             or "rule" in log_output
-            or "error" in log_output
-            or "failed" in log_output,
-            "Workflow failure should produce error logs with validation/rule/error context",
+            or "executing step" in log_output,
+            f"Workflow failure error logs should reference validation/business/rule "
+            f"or step execution context, got: {log_output[:500]}",
         )
 
 

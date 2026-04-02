@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.14193105697631836
+  },
+  "journeys": [
+    {
+      "journey_id": "AUD-005-e249e149",
+      "journey_name": "Audit Transformation Pipelines",
+      "persona": "Auditor",
+      "status": "completed",
+      "start_time": 1774645761.4709744,
+      "end_time": 1774645761.6129055,
+      "duration": 0.14193105697631836,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View All Pipelines",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774645761.5154643,
+          "end_time": 1774645761.5154734,
+          "duration": 9.059906005859375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Review Pipeline Executions",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774645761.5552862,
+          "end_time": 1774645761.5552948,
+          "duration": 8.58306884765625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Audit Report",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774645761.612864,
+          "end_time": 1774645761.6129029,
+          "duration": 3.886222839355469e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-27T21:09:21.612985"
+}

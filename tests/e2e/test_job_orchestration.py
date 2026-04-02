@@ -68,23 +68,19 @@ class JobOrchestrationE2ETest(E2ETestBase):
         self.assertEqual(job.status, JobStatus.PENDING)
         self.assertEqual(job.resource_type, "DQ_RUN")
 
-        # Verify job completion (may take time for async processing)
-        # If job doesn't complete in time, check if it's at least running
-        try:
-            self.verify_job_completion(job.id, JobStatus.COMPLETED, max_wait=180)
-        except AssertionError:
-            # Job didn't complete - check if it's at least running (service is working)
-            job.refresh_from_db()
-            # Accept PENDING/RUNNING as valid - job was created successfully, just processing
-            # The test verifies job creation, not necessarily completion
-            self.assertIn(
-                job.status,
-                [JobStatus.PENDING, JobStatus.RUNNING, JobStatus.COMPLETED, JobStatus.FAILED],
-            )
+        # Execute job inline (transaction.on_commit never fires in TestCase)
+        from hub.apps.dq.models import DQRun
+        self._execute_run_job_inline(DQRun, dq_run_id, "DQ_RUN")
+
+        job.refresh_from_db()
+        # Job MUST have left PENDING — proves execution actually ran
+        self.assertNotEqual(
+            job.status, JobStatus.PENDING,
+            "Job should transition from PENDING after inline execution"
+        )
 
     def test_job_creation_for_compliance_run(self):
         """Test job creation for compliance run"""
-        # Create file and dataset
         test_content = b"col1,col2\nval1,val2\nval3,val4"
         content_hash = hashlib.sha256(test_content).hexdigest()
 
@@ -96,34 +92,28 @@ class JobOrchestrationE2ETest(E2ETestBase):
         asset_id = self.create_asset(key="compliance-job-test", name="Compliance Job Test")
         dataset_id = self.create_dataset(file_id, asset_id)
 
-        # Run compliance check (creates job)
         compliance_run_id = self.run_compliance_check(file_id, dataset_id, asset_id)
 
-        # If service unavailable, skip test
         if compliance_run_id is None:
             pytest.skip("Compliance service unavailable - cannot create compliance run")
 
-        # Verify job was created
         job = Job.objects.filter(type=JobType.COMPLIANCE_RUN, resource_id=compliance_run_id).first()
 
-        self.assertIsNotNone(job)
+        self.assertIsNotNone(job, "Job should be created for compliance run")
         self.assertEqual(job.type, JobType.COMPLIANCE_RUN)
         self.assertEqual(job.status, JobStatus.PENDING)
         self.assertEqual(job.resource_type, "COMPLIANCE_RUN")
 
-        # Verify job completion (may take time for async processing)
-        # If job doesn't complete in time, check if it's at least running
-        try:
-            self.verify_job_completion(job.id, JobStatus.COMPLETED, max_wait=180)
-        except AssertionError:
-            # Job didn't complete - check if it's at least running (service is working)
-            job.refresh_from_db()
-            # Accept PENDING/RUNNING as valid - job was created successfully, just processing
-            # The test verifies job creation, not necessarily completion
-            self.assertIn(
-                job.status,
-                [JobStatus.PENDING, JobStatus.RUNNING, JobStatus.COMPLETED, JobStatus.FAILED],
-            )
+        # Execute job inline (transaction.on_commit never fires in TestCase)
+        from hub.apps.compliance.models import ComplianceRun
+        self._execute_run_job_inline(ComplianceRun, compliance_run_id, "COMPLIANCE_RUN")
+
+        job.refresh_from_db()
+        # Job MUST have left PENDING — proves execution actually ran
+        self.assertNotEqual(
+            job.status, JobStatus.PENDING,
+            "Job should transition from PENDING after inline execution"
+        )
 
     def test_job_creation_for_contract_validation(self):
         """Test job creation for contract validation"""
@@ -141,13 +131,22 @@ class JobOrchestrationE2ETest(E2ETestBase):
         # Validate contract (may create job if async)
         validate_response = self.validate_contract(contract_id, async_mode=True)
 
-        # Check if job was created (if validation is async)
-        job = Job.objects.filter(type=JobType.CONTRACT_VALIDATION, resource_id=contract_id).first()
+        # Check if async validation created a job
+        job = Job.objects.filter(
+            type=JobType.CONTRACT_VALIDATION, resource_id=contract_id
+        ).first()
 
         if job:
+            # Async path: verify job metadata
             self.assertEqual(job.type, JobType.CONTRACT_VALIDATION)
-            self.assertEqual(job.status, JobStatus.PENDING)
             self.assertEqual(job.resource_type, "CONTRACT")
+        else:
+            # Sync path: validation ran inline — verify the contract was validated
+            # by checking the validate_contract response
+            self.assertIsNotNone(
+                validate_response,
+                "Contract validation should return a response (sync or async)"
+            )
 
     def test_job_status_tracking(self):
         """Test job status transitions"""
@@ -243,13 +242,15 @@ class JobOrchestrationE2ETest(E2ETestBase):
         job.mark_started()
         job.mark_completed(result_json={"status": "success"})
 
-        # Try to cancel completed job
+        # Try to cancel completed job — must be rejected
         response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/", format="json")
 
-        # Should fail or be no-op
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_200_OK])
+        self.assertEqual(
+            response.status_code, status.HTTP_400_BAD_REQUEST,
+            "Cancelling a completed job must return 400, not succeed silently"
+        )
 
-        # Verify job still completed
+        # Verify job remains completed (not mutated)
         job.refresh_from_db()
         self.assertEqual(job.status, JobStatus.COMPLETED)
 
@@ -345,19 +346,21 @@ class JobOrchestrationE2ETest(E2ETestBase):
         job.started_at = timezone.now() - timedelta(seconds=61)
         job.save(update_fields=["started_at"])
 
-        # Check timeout (this would be done by a background task in real scenario)
-        # For E2E test, we verify timeout logic exists
-        self.assertIsNotNone(job.timeout_seconds)
+        # Verify timeout_seconds is stored
         self.assertEqual(job.timeout_seconds, 60)
 
-        # In real scenario, background task would mark job as FAILED
-        # For test, we manually verify timeout detection
-        if job.started_at:
-            elapsed = (timezone.now() - job.started_at).total_seconds()
-            if elapsed > job.timeout_seconds:
-                job.mark_failed(error_message="Job timeout")
-                job.refresh_from_db()
-                self.assertEqual(job.status, JobStatus.FAILED)
+        # Verify the job is elapsed past its timeout
+        job.refresh_from_db()
+        self.assertIsNotNone(job.started_at)
+        elapsed = (timezone.now() - job.started_at).total_seconds()
+        self.assertGreater(elapsed, job.timeout_seconds,
+                           "Simulated start time should be past timeout threshold")
+
+        # Simulate what the background recovery task would do
+        job.mark_failed(error_message="Job timeout")
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobStatus.FAILED)
+        self.assertEqual(job.error_message, "Job timeout")
 
     def test_job_retry_on_failure(self):
         """Test job retry on failure"""
@@ -410,7 +413,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
                 user=self.user,
             )
             jobs.append(job)
-            time.sleep(0.1)  # Small delay to ensure different timestamps
+            time.sleep(0.1)  # INTENTIONAL: test-specific delay  # Small delay to ensure different timestamps
 
         # List jobs (should be ordered by creation time, newest first typically)
         response = self.client.get("/api/v1/jobs/")

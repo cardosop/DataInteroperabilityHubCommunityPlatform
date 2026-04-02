@@ -11,7 +11,7 @@ import os
 os.environ["USE_PRODUCTION_DB_FOR_SDK_TESTS"] = "1"
 
 import pytest
-from django.test import TransactionTestCase
+from django.test import TestCase
 from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant
@@ -113,7 +113,7 @@ def api_base_url():
     return get_api_base_url()
 
 
-class SDKTestBase(TransactionTestCase):
+class SDKTestBase(TestCase):
     """
     Base test class for SDK tests using existing API service.
 

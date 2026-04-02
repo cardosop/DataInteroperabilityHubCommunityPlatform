@@ -1,0 +1,111 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.7892673015594482
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-008-9bce0f8b",
+      "journey_name": "Create Transformation Pipeline for Asset",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1774668848.9132586,
+      "end_time": 1774668850.7025259,
+      "duration": 1.7892673015594482,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668848.9132652,
+          "end_time": 1774668850.4482026,
+          "duration": 1.5349373817443848,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668850.44822,
+          "end_time": 1774668850.4827495,
+          "duration": 0.03452944755554199,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Validate Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668850.4827635,
+          "end_time": 1774668850.536286,
+          "duration": 0.053522586822509766,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Preview Transformation Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668850.5362945,
+          "end_time": 1774668850.5764081,
+          "duration": 0.04011368751525879,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Activate Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668850.57642,
+          "end_time": 1774668850.5963633,
+          "duration": 0.0199432373046875,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Execute Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668850.5963717,
+          "end_time": 1774668850.7025208,
+          "duration": 0.10614919662475586,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "ad4dfbe1-c91c-48f1-92a9-024f5c1c41fe",
+        "pipeline_id": "eae4a6d6-6c28-4d2f-9935-4188ba0e7675"
+      }
+    }
+  ],
+  "exported_at": "2026-03-28T03:34:10.702618"
+}

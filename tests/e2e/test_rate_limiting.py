@@ -10,33 +10,51 @@ Covers:
 
 Uses REAL services (no mocks).
 """
-import pytest
 import time
-from django.test import TestCase
+import uuid
+
+import pytest
+from django.test import override_settings
 from rest_framework import status
 
 from .conftest import E2ETestBase, get_response_data
 
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e3]
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.e2e3,
+]
 
 
+@override_settings(RATE_LIMIT_ENABLED=True)
 class RateLimitingE2ETest(E2ETestBase):
     """Test rate limiting operations"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-    
+        self._rl_ctx = self.settings(RATE_LIMIT_ENABLED=True)
+        self._rl_ctx.__enter__()
+        self.addCleanup(self._rl_ctx.__exit__, None, None, None)
+        # Fresh APIClient without force_authenticate baggage
+        # so JWT tokens are processed by TenantScopingMiddleware.
+        from rest_framework.test import APIClient
+        self.client = APIClient()
+        self._authenticate_with_jwt(self.user)
+
+    def _authenticate_with_jwt(self, user):
+        """Authenticate the test client via JWT bearer token."""
+        from hub.apps.auth.jwt_utils import JWTTokenGenerator
+        access_token = JWTTokenGenerator.generate_access_token(user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+
     def test_rate_limit_headers_present(self):
         """Test rate limit headers are present in responses"""
         response = self.client.get('/api/v1/assets/')
-        
-        # Check for rate limit headers (may be optional)
+
         headers = response.headers
-        # Common rate limit headers:
-        # X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
-        rate_limit_headers = [
+        # Check both standard and X- prefixed headers
+        rl_headers = [
             'X-RateLimit-Limit',
             'X-RateLimit-Remaining',
             'X-RateLimit-Reset',
@@ -44,200 +62,298 @@ class RateLimitingE2ETest(E2ETestBase):
             'RateLimit-Remaining',
             'RateLimit-Reset',
         ]
-        
-        # At least one rate limit header should be present (if implemented)
-        has_rate_limit_header = any(h in headers for h in rate_limit_headers)
-        # This is informational - rate limiting may not be fully implemented yet
-    
+
+        has_header = any(h in headers for h in rl_headers)
+        self.assertTrue(
+            has_header,
+            "At least one rate limit header should be "
+            "present in the response",
+        )
+
     def test_rate_limit_enforcement(self):
-        """Test rate limit enforcement"""
-        # Make multiple rapid requests
+        """Test rate limit enforcement triggers after many requests"""
+        from tests.factories import TenantConfigFactory
+        TenantConfigFactory.create_tenant_config(
+            tenant=self.tenant,
+            rate_limits={
+                'catalog_read': {
+                    '10': 5,
+                },
+            },
+        )
+
         endpoint = '/api/v1/assets/'
         responses = []
-        
-        # Make many requests quickly
-        for i in range(100):  # High number to potentially trigger rate limit
+        rate_limited = False
+
+        for i in range(20):
             response = self.client.get(endpoint)
             responses.append(response)
-            
-            # If rate limit is hit, should return 429
+
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
-                # Verify error format
+                rate_limited = True
                 data = get_response_data(response) or {}
                 if 'error' in data:
-                    error = data['error'] if isinstance(data.get('error'), dict) else {}
+                    error = (
+                        data['error']
+                        if isinstance(data.get('error'), dict)
+                        else {}
+                    )
                     self.assertIn('code', error)
                     code = error.get('code', '').upper()
                     self.assertIn('RATE_LIMIT', code)
                 break
-        
-        # If rate limiting is implemented, at least one request should be rate limited
-        # Otherwise, all requests should succeed
-        rate_limited = any(r.status_code == status.HTTP_429_TOO_MANY_REQUESTS for r in responses)
-        # This is informational - rate limiting may not be fully implemented yet
-    
+
+        self.assertTrue(
+            rate_limited,
+            "Rate limiting should trigger after "
+            "many rapid requests",
+        )
+
     def test_rate_limit_per_tenant(self):
         """Test rate limits are per-tenant"""
         from hub.apps.tenants.models import Tenant
-        from hub.apps.users.models import User, UserStatus
-        
-        # Create another tenant
-        other_tenant = Tenant.objects.create(name='Other Tenant', slug='other-tenant')
-        other_user = User.objects.create_user(
-            email='other@example.com',
-            password='testpass123',
-            tenant=other_tenant
+        from hub.apps.users.models import User  # noqa: F811
+        from hub.apps.testing.billing_support import (
+            ensure_tenant_has_active_subscription,
         )
-        
+
+        _suffix = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(
+            name=f'Other Tenant {_suffix}',
+            slug=f'other-tenant-{_suffix}',
+        )
+        ensure_tenant_has_active_subscription(other_tenant)
+        other_user = User.objects.create_user(
+            email=f'other-{_suffix}@example.com',
+            password='testpass123',
+            tenant=other_tenant,
+            status='ACTIVE',
+        )
+
         endpoint = '/api/v1/assets/'
-        
-        # Make requests from current tenant
+
         response1 = self.client.get(endpoint)
-        
-        # Switch to other tenant
-        self.client.force_authenticate(user=other_user)
+        self.assertEqual(
+            response1.status_code, status.HTTP_200_OK,
+        )
+
+        self._authenticate_with_jwt(other_user)
         response2 = self.client.get(endpoint)
-        
-        # Both should succeed (rate limits are separate per tenant)
-        self.assertEqual(response1.status_code, status.HTTP_200_OK)
-        self.assertEqual(response2.status_code, status.HTTP_200_OK)
-        
-        # Rate limit headers should be independent per tenant
-        # (if rate limiting is implemented)
-    
+        self.assertEqual(
+            response2.status_code, status.HTTP_200_OK,
+        )
+
     def test_rate_limit_exceeded_response(self):
         """Test rate limit exceeded response format"""
+        from tests.factories import TenantConfigFactory
+        TenantConfigFactory.create_tenant_config(
+            tenant=self.tenant,
+            rate_limits={
+                'catalog_read': {
+                    '10': 3,
+                },
+            },
+        )
+
         endpoint = '/api/v1/assets/'
-        
-        # Make many requests to potentially trigger rate limit
+
         rate_limited_response = None
-        for i in range(200):  # Very high number
+        for i in range(20):
             response = self.client.get(endpoint)
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 rate_limited_response = response
                 break
-            # Small delay to avoid overwhelming the system
+            # INTENTIONAL: e2e test polling real services
             time.sleep(0.01)
-        
-        if rate_limited_response:
-            # Verify error format
-            self.assertEqual(rate_limited_response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
-            data = get_response_data(rate_limited_response) or {}
-            if 'error' in data:
-                error = data['error'] if isinstance(data.get('error'), dict) else {}
-                self.assertIn('code', error)
-                code = error.get('code', '').upper()
-                self.assertIn('RATE_LIMIT', code)
-                self.assertIn('message', error)
-    
+
+        self.assertIsNotNone(
+            rate_limited_response,
+            "Should trigger rate limit after "
+            "rapid requests",
+        )
+
+        self.assertEqual(
+            rate_limited_response.status_code,
+            status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+        data = get_response_data(rate_limited_response) or {}
+        self.assertIn('error', data)
+        error = (
+            data['error']
+            if isinstance(data.get('error'), dict)
+            else {}
+        )
+        self.assertIn('code', error)
+        code = error.get('code', '').upper()
+        self.assertIn('RATE_LIMIT', code)
+        self.assertIn('message', error)
+
     def test_rate_limit_headers_consistency(self):
         """Test rate limit headers are consistent across requests"""
         endpoint = '/api/v1/assets/'
-        
+
         responses = []
         for i in range(10):
             response = self.client.get(endpoint)
             responses.append(response)
-            time.sleep(0.1)  # Small delay
-        
-        # Check that rate limit headers are consistent (if present)
+            # INTENTIONAL: test-specific timing
+            time.sleep(0.1)
+
         rate_limit_headers = []
         for response in responses:
             headers = response.headers
-            for header_name in ['X-RateLimit-Limit', 'RateLimit-Limit']:
+            for header_name in (
+                'X-RateLimit-Limit',
+                'RateLimit-Limit',
+            ):
                 if header_name in headers:
-                    rate_limit_headers.append(headers[header_name])
-        
-        # If headers are present, limit should be consistent
-        if rate_limit_headers:
-            unique_limits = set(rate_limit_headers)
-            # Limit should be the same across requests
-            self.assertEqual(len(unique_limits), 1)
-    
+                    rate_limit_headers.append(
+                        headers[header_name],
+                    )
+
+        self.assertGreater(
+            len(rate_limit_headers), 0,
+            "Rate limit headers should be present "
+            "in at least one response",
+        )
+        unique_limits = set(rate_limit_headers)
+        self.assertEqual(
+            len(unique_limits), 1,
+            "Rate limit should be the same across "
+            "all requests",
+        )
+
     def test_rate_limit_reset_header(self):
-        """Test rate limit reset header"""
+        """Test rate limit reset header is present and valid"""
         response = self.client.get('/api/v1/assets/')
-        
+
         headers = response.headers
-        reset_headers = ['X-RateLimit-Reset', 'RateLimit-Reset']
-        
+        reset_headers = [
+            'X-RateLimit-Reset',
+            'RateLimit-Reset',
+        ]
+
+        found = False
         for header_name in reset_headers:
             if header_name in headers:
+                found = True
                 reset_value = headers[header_name]
-                # Should be a timestamp (Unix timestamp or ISO 8601)
                 self.assertIsNotNone(reset_value)
-                # Can be validated as numeric or ISO 8601 format
-    
+                # Verify it is a valid numeric timestamp
+                reset_int = int(reset_value)
+                self.assertGreater(
+                    reset_int, 0,
+                    "Reset timestamp should be positive",
+                )
+                break
+
+        self.assertTrue(
+            found,
+            "At least one reset header should be present",
+        )
+
     def test_rate_limit_remaining_decreases(self):
         """Test rate limit remaining decreases with requests"""
         endpoint = '/api/v1/assets/'
-        
+
         remaining_values = []
         for i in range(10):
             response = self.client.get(endpoint)
             headers = response.headers
-            
-            for header_name in ['X-RateLimit-Remaining', 'RateLimit-Remaining']:
+
+            for header_name in (
+                'X-RateLimit-Remaining',
+                'RateLimit-Remaining',
+            ):
                 if header_name in headers:
                     remaining = int(headers[header_name])
                     remaining_values.append(remaining)
                     break
-            
+
+            # INTENTIONAL: e2e test polling real services
             time.sleep(0.1)
-        
-        # If rate limiting is implemented, remaining should decrease
-        if len(remaining_values) > 1:
-            # Remaining should decrease or stay the same (if limit is high)
-            self.assertTrue(
-                remaining_values[-1] <= remaining_values[0],
-                "Rate limit remaining should decrease or stay the same"
-            )
-    
+
+        self.assertGreater(
+            len(remaining_values), 1,
+            "Should have multiple remaining readings",
+        )
+        self.assertLess(
+            remaining_values[-1], remaining_values[0],
+            "Rate limit remaining should strictly "
+            "decrease across requests: "
+            f"first={remaining_values[0]}, "
+            f"last={remaining_values[-1]}",
+        )
+
     def test_rate_limit_per_endpoint(self):
-        """Test rate limits may vary per endpoint"""
+        """Test rate limits are present per endpoint"""
         endpoints = [
             '/api/v1/assets/',
             '/api/v1/contracts/',
             '/api/v1/datasets/',
         ]
-        
+
         limits = {}
         for endpoint in endpoints:
             response = self.client.get(endpoint)
             headers = response.headers
-            
-            for header_name in ['X-RateLimit-Limit', 'RateLimit-Limit']:
+
+            for header_name in (
+                'X-RateLimit-Limit',
+                'RateLimit-Limit',
+            ):
                 if header_name in headers:
                     limits[endpoint] = int(headers[header_name])
                     break
-        
-        # If rate limiting is implemented, limits may vary per endpoint
-        # This is informational - limits may be the same or different
-    
+
+        self.assertGreater(
+            len(limits), 0,
+            "At least one endpoint should have "
+            "rate limit headers",
+        )
+        for ep, limit in limits.items():
+            self.assertGreater(
+                limit, 0,
+                f"Rate limit for {ep} should be positive",
+            )
+
     def test_rate_limit_retry_after_header(self):
         """Test Retry-After header on rate limit exceeded"""
+        from tests.factories import TenantConfigFactory
+        TenantConfigFactory.create_tenant_config(
+            tenant=self.tenant,
+            rate_limits={
+                'catalog_read': {
+                    '10': 3,
+                },
+            },
+        )
+
         endpoint = '/api/v1/assets/'
-        
-        # Make many requests to potentially trigger rate limit
+
         rate_limited_response = None
-        for i in range(200):
+        for i in range(20):
             response = self.client.get(endpoint)
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 rate_limited_response = response
                 break
+            # INTENTIONAL: e2e test polling real services
             time.sleep(0.01)
-        
-        if rate_limited_response:
-            # Should have Retry-After header
-            headers = rate_limited_response.headers
-            if 'Retry-After' in headers:
-                retry_after = headers['Retry-After']
-                # Should be a number (seconds)
-                self.assertIsNotNone(retry_after)
-                try:
-                    retry_seconds = int(retry_after)
-                    self.assertGreater(retry_seconds, 0)
-                except ValueError:
-                    # May be in HTTP date format
-                    pass
 
+        self.assertIsNotNone(
+            rate_limited_response,
+            "Should trigger rate limit after rapid "
+            "requests",
+        )
+        self.assertIn(
+            'Retry-After', rate_limited_response.headers,
+            "Retry-After header must be present on 429",
+        )
+        retry_after = rate_limited_response.headers['Retry-After']
+        self.assertIsNotNone(retry_after)
+        retry_seconds = int(retry_after)
+        self.assertGreater(
+            retry_seconds, 0,
+            "Retry-After should be a positive number",
+        )

@@ -11,7 +11,7 @@ Root-cause fixes only; engineering-grade coverage.
 
 import pytest
 
-pytestmark = pytest.mark.workflow_e2e
+pytestmark = [pytest.mark.slow, pytest.mark.workflow_e2e]
 
 import json
 import uuid
@@ -437,20 +437,18 @@ class TestValidationBehaviorServiceFailureE2E(WorkflowE2ETestBase):
         self.assertEqual(failed_steps.count(), 1)
 
 
-class TestValidationBehaviorNetworkFailureE2E(WorkflowE2ETestBase):
+class TestValidationBehaviorMissingResourceE2E(WorkflowE2ETestBase):
     """
-    6.7.2 — Validation behavior during network failures.
+    6.7.2 — Validation behavior when a referenced resource does not exist.
 
-    When a step would fail due to network unavailability (e.g. connection refused),
-    workflow fails with consistent state. We verify using step failure (same consistency
-    as would apply to real network failure).
+    When a step fails because a referenced resource (e.g. asset) does not exist,
+    workflow fails with consistent state.
     """
 
     workflow_classes = [ContractCreationWorkflow]
 
-    def test_validation_behavior_when_network_unavailable_during_step(self):
-        """Verify workflow fails with consistent state when step fails (network-like failure)."""
-        # Step failure (e.g. from unreachable service) leaves workflow FAILED and state consistent
+    def test_validation_behavior_when_step_fails_on_missing_resource(self):
+        """Tests workflow state consistency when a step fails due to a referenced resource (asset) not existing."""
         input_data = {
             "original_raw": _minimal_odcs_raw(),
             "original_format": OriginalFormat.JSON,
@@ -474,23 +472,19 @@ class TestValidationBehaviorNetworkFailureE2E(WorkflowE2ETestBase):
         self.assertGreaterEqual(instance.steps.filter(status=StepStatus.FAILED).count(), 1)
 
 
-class TestValidationBehaviorDatabaseFailureE2E(WorkflowE2ETestBase):
+class TestValidationBehaviorInvalidInputE2E(WorkflowE2ETestBase):
     """
-    6.7.2 — Validation behavior during database failures.
+    6.7.2 — Validation behavior when a step receives invalid input data.
 
-    When the database is unavailable during execution, the workflow step fails with a real
-    OperationalError; we verify workflow state is consistent (FAILED) and validation
-    ran before the failing step where applicable.
+    When a step fails because input data is invalid (e.g. non-UUID asset_id),
+    workflow fails with consistent state.
     """
 
     workflow_classes = [ContractCreationWorkflow]
 
-    def test_validation_behavior_when_database_unavailable_during_step(self):
-        """Verify workflow fails with consistent state when DB raises OperationalError during a step."""
-        # We cannot safely close the connection in the middle of a multi-step workflow without
-        # breaking the test transaction. Instead we verify that when a step does a DB operation
-        # that would fail (e.g. invalid FK), we get a real DB-related error and state is consistent.
-        # Use asset_id that is not a valid UUID to trigger a real DB/validation error in create_contract_record.
+    def test_validation_behavior_when_step_fails_on_invalid_input(self):
+        """Tests workflow state consistency when a step fails due to invalid input data (non-UUID asset_id)."""
+        # Use asset_id that is not a valid UUID to trigger a real validation error in create_contract_record.
         input_data = {
             "original_raw": _minimal_odcs_raw(),
             "original_format": OriginalFormat.JSON,
@@ -517,23 +511,18 @@ class TestValidationBehaviorDatabaseFailureE2E(WorkflowE2ETestBase):
         self.assertGreaterEqual(failed_count, 1)
 
 
-class TestValidationBehaviorTimeoutScenarioE2E(WorkflowE2ETestBase):
+class TestValidationBehaviorNonexistentResourceE2E(WorkflowE2ETestBase):
     """
-    6.7.2 — Validation behavior during timeout scenarios.
+    6.7.2 — Validation behavior when execution fails due to a non-existent referenced resource.
 
-    When a step raises TimeoutError (or runs too long), workflow fails and state is consistent.
-    We use a real task that raises TimeoutError (no mock) to simulate timeout.
+    When a step fails because a referenced resource does not exist, workflow fails
+    and state is consistent.
     """
 
     workflow_classes = [ContractCreationWorkflow]
 
-    def test_validation_behavior_when_step_times_out(self):
-        """Verify workflow fails with consistent state when a step raises TimeoutError."""
-        # Contract creation workflow does not have a built-in timeout-raising step.
-        # We verify that when any step raises an error (e.g. ValueError from validation),
-        # the workflow fails and state is consistent. For a true timeout we would need
-        # a workflow with a step that sleeps then raises TimeoutError; that would require
-        # registering a test-only task. Here we assert consistent failure on task error.
+    def test_validation_behavior_when_step_fails_on_nonexistent_resource(self):
+        """Tests workflow state consistency when execution fails due to a non-existent referenced resource."""
         input_data = {
             "original_raw": _minimal_odcs_raw(),
             "original_format": OriginalFormat.JSON,

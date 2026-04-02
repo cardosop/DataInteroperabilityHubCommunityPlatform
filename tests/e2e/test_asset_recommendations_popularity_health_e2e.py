@@ -7,6 +7,8 @@ End-to-end tests for complete workflows.
 from datetime import timedelta
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -26,6 +28,7 @@ from hub.apps.testing.billing_support import ensure_tenant_has_active_subscripti
 from hub.apps.users.models import User, UserStatus
 
 from tests.e2e.conftest import get_response_data
+import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
@@ -49,11 +52,11 @@ class AssetRecommendationsE2ETest(TestCase):
             pass
 
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -142,12 +145,12 @@ class AssetPopularityE2ETest(TestCase):
             pass
 
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -218,11 +221,11 @@ class AssetHealthScoreE2ETest(TestCase):
             pass
 
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

@@ -10,6 +10,8 @@ All tests use REAL implementations - no mocks/stubs.
 Tests gracefully handle service unavailability (skip when services not running).
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import httpx
 import time
 import logging

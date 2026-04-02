@@ -51,7 +51,7 @@ class WorkflowConflictsTest(WorkflowConcurrencyTestBase):
             self.assertIsNotNone(inst)
             self.assertIn(inst.status, (WorkflowStatus.RUNNING, WorkflowStatus.COMPLETED))
         finally:
-        try:
-            connection.close()
-        except Exception:
-            pass  # Ignore connection close errors in teardown
+            try:
+                connection.close()
+            except Exception:
+                pass  # Ignore connection close errors in teardown

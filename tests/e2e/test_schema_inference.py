@@ -243,7 +243,7 @@ class SchemaInferenceE2ETest(E2ETestBase):
         
         fields = dataset.schema_json['fields']
         # Should have all 100 columns
-        self.assertGreaterEqual(len(fields), 90)  # Allow some tolerance
+        self.assertEqual(len(fields), 100)  # Require all columns
     
     def test_schema_inference_empty_file_handling(self):
         """Test schema inference with empty file"""

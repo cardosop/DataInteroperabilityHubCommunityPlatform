@@ -1,0 +1,23 @@
+apiVersion: odcs.io/v3.0.2
+kind: DataContract
+id: fixture-v302-reference
+name: ODCS v3.0.2 Reference Fixture
+version: 1.0.0
+schema:
+  - name: customers
+    fields:
+      - name: id
+        type: string
+        nullable: false
+      - name: email
+        type: string
+        nullable: false
+      - name: created_at
+        type: timestamp
+        nullable: true
+contact:
+  name: QA Team
+  email: qa@example.com
+terms:
+  usage: Internal testing only
+  limitations: Not for production

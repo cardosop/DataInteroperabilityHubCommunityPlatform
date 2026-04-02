@@ -15,6 +15,7 @@ from django.middleware.csrf import get_token
 from django.test import Client, TestCase
 
 from hub.apps.tenants.models import Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -26,9 +27,9 @@ class SecurityFeaturesTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = Client(enforce_csrf_checks=True)
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_csrf_protection(self):
@@ -54,7 +55,7 @@ class SecurityFeaturesTest(TestCase):
         # Create user with password
         password = "testpass123"
         user = User.objects.create_user(
-            email="hashtest@example.com", password=password, tenant=self.tenant
+            email=f"hashtest-{uuid.uuid4().hex[:8]}@example.com", password=password, tenant=self.tenant
         )
 
         # Verify password is hashed (not plain text)
@@ -122,9 +123,9 @@ class SecurityFeaturesTest(TestCase):
         self.assertEqual(self.user.tenant, self.tenant)
 
         # Test tenant isolation
-        tenant2 = Tenant.objects.create(name="Test Tenant 2", slug="test-tenant-2")
+        tenant2 = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         user2 = User.objects.create_user(
-            email="test2@example.com", password="testpass123", tenant=tenant2
+            email=f"test2-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=tenant2
         )
 
         # Users should be isolated by tenant

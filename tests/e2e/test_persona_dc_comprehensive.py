@@ -12,6 +12,8 @@ All tests use REAL services (no mocks/stubs) and follow TDD approach.
 Target: 100% journey coverage for all DC journeys.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import hashlib
 import time
 import uuid
@@ -41,6 +43,8 @@ pytestmark = [
     pytest.mark.journey("JOURNEY-DC-003"),
     pytest.mark.journey("JOURNEY-DC-004"),
     pytest.mark.journey("JOURNEY-DC-005"),
+    pytest.mark.uc("UC-DC-006"),
+    pytest.mark.uc("UC-DC-008"),
 ]
 
 
@@ -59,7 +63,7 @@ class JourneyDC001DiscoverAndPurchaseTests(E2ETestBase):
         )
         ensure_tenant_has_active_subscription(self.provider_tenant)
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.provider_tenant,
             status=UserStatus.ACTIVE
@@ -80,7 +84,7 @@ class JourneyDC001DiscoverAndPurchaseTests(E2ETestBase):
         )
         ensure_tenant_has_active_subscription(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.consumer_tenant,
             status=UserStatus.ACTIVE
@@ -409,7 +413,7 @@ class JourneyDC002RequestAccessTests(E2ETestBase):
         )
         ensure_tenant_has_active_subscription(self.provider_tenant)
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.provider_tenant,
             status=UserStatus.ACTIVE
@@ -428,7 +432,7 @@ class JourneyDC002RequestAccessTests(E2ETestBase):
         )
         ensure_tenant_has_active_subscription(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.consumer_tenant,
             status=UserStatus.ACTIVE
@@ -497,7 +501,7 @@ class JourneyDC003DownloadPurchasedDataTests(E2ETestBase):
         )
         ensure_tenant_has_active_subscription(self.provider_tenant)
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.provider_tenant,
             status=UserStatus.ACTIVE
@@ -516,7 +520,7 @@ class JourneyDC003DownloadPurchasedDataTests(E2ETestBase):
         )
         ensure_tenant_has_active_subscription(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.consumer_tenant,
             status=UserStatus.ACTIVE
@@ -603,27 +607,27 @@ class JourneyDC003DownloadPurchasedDataTests(E2ETestBase):
         # Get entitlement first to verify it exists
         # For FREE_AUTO_APPROVE, entitlement should be in the order response
         entitlement_from_order = response.data.get('entitlement')
-        if entitlement_from_order:
-            # Entitlement was created and returned in order response
-            self.assertEqual(entitlement_from_order.get('asset_id'), str(asset_id))
-        else:
-            # Fallback: check entitlements endpoint
-            response = self.client.get('/api/v1/marketplace/entitlements/')
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
-            entitlements = response.data.get('results', [])
-            # EntitlementSerializer returns 'asset' (UUID), not 'asset_id'
-            our_entitlement = next((e for e in entitlements if e.get('asset') == str(asset_id)), None)
-            self.assertIsNotNone(our_entitlement, "Entitlement should exist for purchased asset")
+        self.assertIsNotNone(
+            entitlement_from_order,
+            "FREE_AUTO_APPROVE order response must include an entitlement"
+        )
+        # Validate entitlement has expected fields
+        self.assertIn('id', entitlement_from_order, "Entitlement missing 'id' field")
+        self.assertIn('status', entitlement_from_order, "Entitlement missing 'status' field")
+        self.assertEqual(
+            str(entitlement_from_order.get('asset_id', entitlement_from_order.get('asset', ''))),
+            str(asset_id),
+            "Entitlement asset should match purchased asset"
+        )
         
-        # Try to download file (may fail if entitlement check not implemented in file download endpoint)
+        # Download file - consumer has a valid entitlement so this should succeed
         response = self.client.get(f'/api/v1/files/{file_id}/download/')
-        # Should succeed if entitlement check passes, or fail if not implemented
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_302_FOUND,  # Redirect to S3
-            status.HTTP_403_FORBIDDEN,  # If entitlement check implemented
-            status.HTTP_404_NOT_FOUND  # If file not accessible across tenants
-        ])
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_302_FOUND],
+            f"Download should succeed (200 or 302 redirect) for entitled consumer, got {response.status_code}: "
+            f"{getattr(response, 'data', response.content)}"
+        )
     
     def test_download_without_entitlement_fails(self):
         """Test that downloading without entitlement fails"""
@@ -671,7 +675,7 @@ class JourneyDC004ExploreAssetLineageTests(E2ETestBase):
         )
         ensure_tenant_has_active_subscription(self.provider_tenant)
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.provider_tenant,
             status=UserStatus.ACTIVE
@@ -690,7 +694,7 @@ class JourneyDC004ExploreAssetLineageTests(E2ETestBase):
         )
         ensure_tenant_has_active_subscription(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.consumer_tenant,
             status=UserStatus.ACTIVE
@@ -749,7 +753,7 @@ class JourneyDC005ReviewAssetQualityTests(E2ETestBase):
         )
         ensure_tenant_has_active_subscription(self.provider_tenant)
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.provider_tenant,
             status=UserStatus.ACTIVE
@@ -768,7 +772,7 @@ class JourneyDC005ReviewAssetQualityTests(E2ETestBase):
         )
         ensure_tenant_has_active_subscription(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.consumer_tenant,
             status=UserStatus.ACTIVE
@@ -792,12 +796,13 @@ class JourneyDC005ReviewAssetQualityTests(E2ETestBase):
             description='Asset with quality metrics'
         )
         
-        # Get health score (may return 500 if observability service unavailable)
+        # Get health score — 500 is a server bug, not acceptable
         response = self.client.get(f'/api/v1/assets/{asset_id}/health-score/?breakdown=true')
         self.assertIn(
             response.status_code,
-            [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN, status.HTTP_500_INTERNAL_SERVER_ERROR],
-            f"Unexpected status {response.status_code}: {getattr(response, 'data', response.content)}",
+            [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND],
+            f"Health score returned {response.status_code} — 500/403 indicate bugs: "
+            f"{getattr(response, 'data', response.content)}",
         )
         if response.status_code == status.HTTP_200_OK:
             health_data = response.data
@@ -807,10 +812,9 @@ class JourneyDC005ReviewAssetQualityTests(E2ETestBase):
         self.client.force_authenticate(user=self.consumer_user)
         
         response = self.client.get(f'/api/v1/assets/{asset_id}/health-score/')
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_404_NOT_FOUND,
-            status.HTTP_403_FORBIDDEN,
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-        ])
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND],
+            f"Health score returned {response.status_code} — 500/403 indicate bugs",
+        )
 

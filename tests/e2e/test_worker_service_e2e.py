@@ -6,6 +6,7 @@ starvation prevention, concurrency limits, cancellation, timeout, and edge cases
 Uses real services (no mocks).
 """
 import pytest
+
 import time
 import uuid
 from django.test import TestCase
@@ -38,6 +39,7 @@ from tests.factories import TenantFactory, TenantConfigFactory, JobFactory
 from tests.e2e.conftest import E2ETestBase
 
 pytestmark = [
+    pytest.mark.slow,
     pytest.mark.django_db(transaction=True),
     pytest.mark.e2e,
     pytest.mark.e2e_batch2,
@@ -442,15 +444,21 @@ class WorkerServiceE2ETest(E2ETestBase):
         self.assertEqual(job.status, JobStatus.PENDING)
         self.assertTrue(job.can_cancel())
         
-        # Cancel job
-        job.status = JobStatus.CANCELLED
-        job.save()
-        
+        # Cancel job using production method
+        queued_before = get_tenant_job_counter(str(self.tenant.id), "queued")
+        job.mark_cancelled()
+        decrement_tenant_job_counter(str(self.tenant.id), "queued")
+
         # Verify job is cancelled
         job.refresh_from_db()
         self.assertEqual(job.status, JobStatus.CANCELLED)
+        self.assertIsNotNone(job.completed_at)
         self.assertFalse(job.can_cancel())
-    
+
+        # Verify queued counter was decremented
+        queued_after = get_tenant_job_counter(str(self.tenant.id), "queued")
+        self.assertEqual(queued_after, queued_before - 1)
+
     def test_job_cancellation_running_e2e(self):
         """Test job cancellation in RUNNING state E2E"""
         # Create and start job
@@ -463,19 +471,26 @@ class WorkerServiceE2ETest(E2ETestBase):
             details_json={'dq_run_id': str(uuid.uuid4())}
         )
         job.mark_started()
-        
+        increment_tenant_job_counter(str(self.tenant.id), "running")
+        decrement_tenant_job_counter(str(self.tenant.id), "queued")
+
         # Verify job is RUNNING
         self.assertEqual(job.status, JobStatus.RUNNING)
         self.assertTrue(job.can_cancel())
-        
-        # Cancel job
-        job.status = JobStatus.CANCELLED
-        job.save()
-        
+
+        # Cancel job using production method and release concurrency slot
+        job.mark_cancelled()
+        decrement_tenant_job_counter(str(self.tenant.id), "running")
+
         # Verify job is cancelled
         job.refresh_from_db()
         self.assertEqual(job.status, JobStatus.CANCELLED)
+        self.assertIsNotNone(job.completed_at)
         self.assertFalse(job.can_cancel())
+
+        # Verify running counter was decremented
+        running_after = get_tenant_job_counter(str(self.tenant.id), "running")
+        self.assertEqual(running_after, 0)
     
     # Job Timeout E2E Tests
     def test_job_timeout_configuration_e2e(self):
@@ -505,14 +520,32 @@ class WorkerServiceE2ETest(E2ETestBase):
         timeout_time = job.started_at + timezone.timedelta(seconds=job.timeout_seconds)
         self.assertTrue(timezone.now() > timeout_time)
         
-        # Job should be marked as failed due to timeout
-        # (This would be done by a timeout checker, but we verify the logic)
-        if timezone.now() > timeout_time:
-            job.mark_failed(
-                error_message=f"Job exceeded timeout of {job.timeout_seconds} seconds",
-                result_json={'timeout': True, 'timeout_seconds': job.timeout_seconds}
+        # Verify the job is identifiable as timed out
+        self.assertTrue(timezone.now() > timeout_time, "Job should have exceeded timeout")
+
+        # Test production detection query: find running jobs past their timeout
+        from django.db.models import F, ExpressionWrapper, DurationField
+        timed_out_jobs = Job.objects.filter(
+            status=JobStatus.RUNNING,
+            timeout_seconds__gt=0,
+            started_at__isnull=False,
+        ).annotate(
+            deadline=ExpressionWrapper(
+                F('started_at') + F('timeout_seconds') * timezone.timedelta(seconds=1),
+                output_field=DurationField(),
             )
-        
+        ).filter(
+            started_at__lt=timezone.now() - timezone.timedelta(seconds=1),
+        )
+        # Our job should appear in the timed-out set
+        timed_out_ids = list(timed_out_jobs.values_list('id', flat=True))
+        self.assertIn(job.id, timed_out_ids, "Job should be detected as timed out")
+
+        # Now mark it failed (as a timeout handler would)
+        job.mark_failed(
+            error_message=f"Job exceeded timeout of {job.timeout_seconds} seconds",
+            result_json={'timeout': True, 'timeout_seconds': job.timeout_seconds}
+        )
         job.refresh_from_db()
         self.assertEqual(job.status, JobStatus.FAILED)
         self.assertIn("timeout", job.error_message.lower())
@@ -585,13 +618,13 @@ class WorkerServiceE2ETest(E2ETestBase):
         tenant2 = TenantFactory.create_tenant(name="Tenant 2", slug="tenant-2")
         
         user1 = User.objects.create_user(
-            email="user1@example.com",
+            email=f"user1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant1,
             status=UserStatus.ACTIVE
         )
         user2 = User.objects.create_user(
-            email="user2@example.com",
+            email=f"user2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE

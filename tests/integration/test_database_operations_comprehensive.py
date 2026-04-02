@@ -11,11 +11,13 @@ Tests all database operations:
 """
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.db import connection, transaction
 from django.db.models import Count, F, Q, Sum
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
@@ -36,7 +38,7 @@ class DatabaseQueriesTest(TestCase):
         """Set up test fixtures"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -82,7 +84,7 @@ class DatabaseQueriesTest(TestCase):
             self.assertIsNotNone(tenant.user_count)
 
 
-class DatabaseTransactionsTest(TransactionTestCase):
+class DatabaseTransactionsTest(TestCase):
     """Test all database transactions"""
 
     reset_sequences = False
@@ -193,7 +195,7 @@ class JSONFieldOperationsTest(TestCase):
         """Set up test fixtures"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

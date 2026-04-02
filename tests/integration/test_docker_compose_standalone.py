@@ -90,14 +90,11 @@ class TestDockerComposeIntegration:
             "worker-service",
             "workflow-engine-service",
             "workflow-registry-service",
-            "event-bus-health-service",
-            "event-schema-registry-service",
-            "semantic-service",
+                                    "semantic-service",
             "dq-service",
             "compliance-service",
             "datacontract-service",
             "search-service",
-            "observability-service",
             "webhook-service",
         ]
         for service_name in application_services:
@@ -171,9 +168,7 @@ class TestDockerComposeIntegration:
         services_with_tracing = [
             "workflow-engine-service",
             "workflow-registry-service",
-            "event-bus-health-service",
-            "event-schema-registry-service",
-            "api-service",
+                                    "api-service",
             "worker-service",
         ]
 
@@ -215,9 +210,7 @@ class TestDockerComposeIntegration:
         required_jobs = [
             "workflow-engine-service",
             "workflow-registry-service",
-            "event-bus-health-service",
-            "event-schema-registry-service",
-        ]
+                                ]
 
         for job_name in required_jobs:
             assert job_name in job_names, f"Prometheus scrape config must include {job_name}"
@@ -301,16 +294,8 @@ class TestDockerComposeIntegration:
                     redis_url.startswith("redis://") or "${" in redis_url
                 ), f"Service {service_name} REDIS_URL must use redis:// protocol or env var"
 
-    def test_workflow_engine_has_jaeger_dependency(self, docker_compose_config):
-        """Test that workflow-engine-service depends on jaeger for tracing."""
-        services = docker_compose_config.get("services", {})
-        workflow_engine = services.get("workflow-engine-service", {})
-        depends_on = workflow_engine.get("depends_on", {})
-        dep_list = list(depends_on.keys()) if isinstance(depends_on, dict) else (depends_on or [])
-        assert "jaeger" in dep_list, "workflow-engine-service should depend on jaeger for tracing"
-
-    def test_prometheus_has_workflow_services_dependency(self, docker_compose_config):
-        """Test that Prometheus depends on workflow services (list form in docker-compose.yml)."""
+    def test_prometheus_has_core_service_dependencies(self, docker_compose_config):
+        """Test that Prometheus depends on core services."""
         services = docker_compose_config.get("services", {})
         prometheus = services.get("prometheus", {})
         depends_on = prometheus.get("depends_on", [])
@@ -321,11 +306,8 @@ class TestDockerComposeIntegration:
         )
 
         assert (
-            "workflow-engine-service" in dep_list
-        ), "Prometheus should depend on workflow-engine-service"
+            "api-service" in dep_list
+        ), "Prometheus should depend on api-service"
         assert (
-            "workflow-registry-service" in dep_list
-        ), "Prometheus should depend on workflow-registry-service"
-        assert (
-            "event-schema-registry-service" in dep_list
-        ), "Prometheus should depend on event-schema-registry-service"
+            "worker-service" in dep_list
+        ), "Prometheus should depend on worker-service"

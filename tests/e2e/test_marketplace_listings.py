@@ -22,7 +22,7 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.contracts.models import Contract
 
-from .conftest import E2ETestBase
+from .conftest import E2ETestBase, get_response_data
 
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
@@ -258,10 +258,9 @@ class MarketplaceListingsE2ETest(E2ETestBase):
                 listing.status = ListingStatus.UNLISTED
                 listing.save(update_fields=['status'])
         
-        if response.status_code != status.HTTP_404_NOT_FOUND:
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
-            if 'status' in response.data:
-                self.assertEqual(response.data['status'], ListingStatus.UNLISTED)
+        self.assertNotEqual(response.status_code, status.HTTP_404_NOT_FOUND,
+            "Unlist endpoint should exist")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify listing unlisted
         listing = Listing.objects.get(id=listing_id)
@@ -342,17 +341,19 @@ class MarketplaceListingsE2ETest(E2ETestBase):
             results = response.data['results']
         else:
             results = response.data if isinstance(response.data, list) else []
-        # Search may not be fully implemented, so be lenient
-        # At minimum, the listing should exist in the regular list
+        # Search indexing may be async — if search returns 0 results,
+        # verify the listing exists in the full listing endpoint instead.
         if len(results) == 0:
-            # Verify listing exists in regular list
             list_response = self.client.get('/api/v1/marketplace/listings/')
-            if list_response.status_code == status.HTTP_200_OK:
-                all_listings = list_response.data.get('results', []) if isinstance(list_response.data, dict) else list_response.data
-                listing_ids = [l.get('id') for l in all_listings if isinstance(l, dict)]
-                self.assertIn(listing_id, listing_ids, "Listing should exist even if search doesn't find it")
+            self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+            all_data = get_response_data(list_response) or {}
+            all_listings = all_data.get('results', all_data) if isinstance(all_data, dict) else all_data
+            listing_ids = [str(l.get('id', '')) for l in all_listings if isinstance(l, dict)]
+            self.assertIn(str(listing_id), listing_ids,
+                f"Published listing {listing_id} should exist in listing endpoint even if search index is lagging")
         else:
-            self.assertGreaterEqual(len(results), 1)
+            self.assertGreaterEqual(len(results), 1,
+                f"Search should find at least the published listing {listing_id}")
     
     def test_listing_with_pricing(self):
         """Test creating listing with pricing"""
@@ -381,29 +382,19 @@ class MarketplaceListingsE2ETest(E2ETestBase):
             format='json'
         )
         
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED,
+            f"Listing creation should succeed: {response.data}")
         # API may return pricing_model as string or enum value
-        # Also, API might default to FREE if pricing_model is not properly handled
         pricing_model = response.data.get('pricing_model') or response.data.get('price_model')
         if isinstance(pricing_model, str):
-            # Accept string value if it matches, or be lenient if API defaults to FREE
             pricing_upper = pricing_model.upper()
-            if pricing_upper not in [PricingModel.REQUEST_APPROVAL.upper(), 'REQUEST_APPROVAL']:
-                # API might not support REQUEST_APPROVAL yet or defaults to FREE
-                # Verify that at least price_amount and currency are set if pricing_model is supported
-                if pricing_upper == 'FREE':
-                    # If API defaults to FREE, skip this test as pricing model handling may not be fully implemented
-                    pytest.skip(f"API returned FREE instead of REQUEST_APPROVAL - pricing model handling may not be fully implemented")
-                else:
-                    self.assertIn(pricing_upper, [PricingModel.REQUEST_APPROVAL.upper(), 'REQUEST_APPROVAL'])
+            self.assertIn(pricing_upper, [PricingModel.REQUEST_APPROVAL.upper(), 'REQUEST_APPROVAL'],
+                f"Pricing model should be REQUEST_APPROVAL, got {pricing_model}")
         else:
-            if pricing_model != PricingModel.REQUEST_APPROVAL:
-                pytest.skip(f"API returned {pricing_model} instead of REQUEST_APPROVAL - pricing model handling may not be fully implemented")
-            self.assertEqual(pricing_model, PricingModel.REQUEST_APPROVAL)
-        # Only check price_amount and currency if pricing_model was correctly set
-        if pricing_model and (isinstance(pricing_model, str) and pricing_model.upper() in [PricingModel.REQUEST_APPROVAL.upper(), 'REQUEST_APPROVAL']) or pricing_model == PricingModel.REQUEST_APPROVAL:
-            self.assertEqual(float(response.data.get('price_amount', 0)), 99.99)
-            self.assertEqual(response.data.get('currency'), 'USD')
+            self.assertEqual(pricing_model, PricingModel.REQUEST_APPROVAL,
+                f"Pricing model should be REQUEST_APPROVAL, got {pricing_model}")
+        self.assertEqual(float(response.data.get('price_amount', 0)), 99.99)
+        self.assertEqual(response.data.get('currency'), 'USD')
     
     def test_update_listing(self):
         """Test updating a listing"""

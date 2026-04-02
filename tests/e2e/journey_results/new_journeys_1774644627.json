@@ -1,0 +1,70 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-007-cd268efb",
+      "journey_name": "Use AI Schema Matching for Asset Creation",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1774644616.7315676,
+      "end_time": 1774644627.5324616,
+      "duration": 10.800894021987915,
+      "completion_rate": 66.66666666666666,
+      "success_rate": 66.66666666666666,
+      "error_message": "Failed to create asset: 500 - {'error': {'code': 'INTERNAL_ERROR', 'message': 'current transaction is aborted, commands ignored until end of transaction block\\n', 'http_status': 500, 'request_id': 'c7399142-b9a6-45a5-8595-6b6c7ae09d47', 'timestamp': '2026-03-27T20:50:27.247984+00:00'}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Upload Data File",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644616.7315915,
+          "end_time": 1774644617.9140334,
+          "duration": 1.1824419498443604,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Complete File Upload",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644617.9140463,
+          "end_time": 1774644625.8686411,
+          "duration": 7.954594850540161,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774644625.8686578,
+          "end_time": 1774644627.5324562,
+          "duration": 1.6637983322143555,
+          "error_message": "Failed to create asset: 500 - {'error': {'code': 'INTERNAL_ERROR', 'message': 'current transaction is aborted, commands ignored until end of transaction block\\n', 'http_status': 500, 'request_id': 'c7399142-b9a6-45a5-8595-6b6c7ae09d47', 'timestamp': '2026-03-27T20:50:27.247984+00:00'}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{'key': 'customer-data-81073f68', 'name': 'Customer Data', 'description': 'Customer data for schema matching test'}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-27T20:50:27.532596"
+}

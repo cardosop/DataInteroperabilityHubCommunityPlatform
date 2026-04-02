@@ -20,6 +20,8 @@ import uuid
 
 import pytest
 
+pytestmark = [pytest.mark.slow, pytest.mark.workflow_e2e]
+
 from hub.apps.orchestration.models import WorkflowStatus
 from hub.apps.orchestration.workflow_engine import WorkflowExecutionError
 from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflow
@@ -29,8 +31,6 @@ from hub.apps.orchestration.workflows.marketplace_publication import (
 )
 from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
-
-pytestmark = pytest.mark.workflow_e2e
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, ValidationStatus
 from hub.apps.orchestration.workflows.dataset_creation import DatasetCreationWorkflow
@@ -148,7 +148,7 @@ class TestProductCreationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
         self.assert_workflow_failed(instance)
         self.assert_workflow_error_details_contain_validation(instance)
         if err:
-            self.assertIsInstance(err, (WorkflowExecutionError, ValueError, Exception))
+            self.assertIsInstance(err, (WorkflowExecutionError, ValueError))
 
     def test_validation_results_stored_in_state_data_on_success(self):
         """Verify validation results are stored in state_data (duration/cached)."""
@@ -334,13 +334,9 @@ class TestMarketplacePublicationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
         instance, err = self.create_start_and_execute(
             MarketplacePublicationWorkflow.WORKFLOW_NAME, mp_input
         )
-        if err is None:
-            self.assert_workflow_completed(instance)
-            self.assert_validation_results_in_state_data(instance)
-        else:
-            instance.refresh_from_db()
-            self.assert_workflow_failed(instance)
-            self.assert_workflow_error_details_contain_validation(instance)
+        self.assertIsNone(err, f"Marketplace workflow should succeed for eligible asset, got: {err}")
+        self.assert_workflow_completed(instance)
+        self.assert_validation_results_in_state_data(instance)
 
     def test_validation_failure_when_ineligible(self):
         """Invalid asset_id or ineligible asset: workflow fails with validation/error."""
@@ -399,12 +395,12 @@ class TestScheduledIngestionWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
         instance = self.start_workflow_instance(str(instance.id))
         try:
             instance = self.execute_workflow_instance(str(instance.id))
-        except Exception:
+        except WorkflowExecutionError:
             instance.refresh_from_db()
         instance.refresh_from_db()
         self.assertIn(
             instance.status,
-            (WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK, WorkflowStatus.RUNNING),
+            (WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK),
         )
         if instance.status == WorkflowStatus.COMPLETED:
             self.assert_validation_results_in_state_data(instance)

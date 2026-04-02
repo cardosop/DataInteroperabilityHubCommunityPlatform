@@ -15,6 +15,7 @@ from django.http import HttpResponse
 from django.test import Client, TestCase, override_settings
 
 from hub.apps.tenants.models import Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -26,9 +27,9 @@ class CSPImplementationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = Client()
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.client.force_login(self.user)
 
@@ -80,9 +81,9 @@ class XSSPreventionTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = Client()
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.client.force_login(self.user)
 
@@ -132,9 +133,9 @@ class EmailAPITest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_email_sending_functionality(self):
@@ -146,7 +147,7 @@ class EmailAPITest(TestCase):
         mail.send_mail(
             subject="Test Subject",
             message="Test message",
-            from_email="from@example.com",
+            from_email=f"from-{uuid.uuid4().hex[:8]}@example.com",
             recipient_list=["to@example.com"],
             fail_silently=False,
         )
@@ -169,7 +170,7 @@ class EmailAPITest(TestCase):
         email = EmailMultiAlternatives(
             subject="Test HTML Email",
             body="This is plain text",
-            from_email="from@example.com",
+            from_email=f"from-{uuid.uuid4().hex[:8]}@example.com",
             to=["to@example.com"],
         )
         email.attach_alternative("<html><body>This is HTML</body></html>", "text/html")
@@ -189,7 +190,7 @@ class EmailAPITest(TestCase):
         email = EmailMessage(
             subject="Test Email with Attachment",
             body="Test message",
-            from_email="from@example.com",
+            from_email=f"from-{uuid.uuid4().hex[:8]}@example.com",
             to=["to@example.com"],
         )
         email.attach("test.txt", "Test attachment content", "text/plain")
@@ -207,9 +208,9 @@ class SecurityHeadersTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = Client()
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.client.force_login(self.user)
 

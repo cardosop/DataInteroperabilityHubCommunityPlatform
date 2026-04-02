@@ -4,6 +4,8 @@ E2E tests for DQ Alerting Rules, Scorecards, and Root Cause Analysis
 End-to-end tests for complete workflows.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from django.utils import timezone
 from datetime import timedelta
@@ -21,6 +23,7 @@ from hub.apps.users.models import User, UserStatus
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
+import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
@@ -31,14 +34,14 @@ class DQAlertingE2ETest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -141,14 +144,14 @@ class DQScorecardsE2ETest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -242,28 +245,36 @@ class DQScorecardsE2ETest(TestCase):
         self.assertIn("score_distribution", dashboard)
         self.assertIn("trend_summary", dashboard)
         self.assertEqual(dashboard["summary"]["total_runs"], 20)
-        
+        # Verify summary has meaningful aggregation, not just key presence
+        self.assertIn("avg_quality_score", dashboard["summary"])
+
         # Step 4: Generate asset scorecard
         scorecard = DQScorecardService.get_asset_scorecard(
             str(self.asset.id),
             str(self.tenant.id),
             days=30
         )
-        
+
         self.assertIn("metrics", scorecard)
         self.assertIn("recent_runs", scorecard)
         self.assertIn("trends", scorecard)
-        
+        # Verify recent_runs contains actual run data
+        self.assertGreater(len(scorecard["recent_runs"]), 0,
+                           "Scorecard recent_runs should contain at least one run")
+
         # Step 5: Test drill-down
         drill_down = DQScorecardService.drill_down(
             str(self.tenant.id),
             asset_id=str(self.asset.id),
             days=30
         )
-        
+
         self.assertIn("metrics", drill_down)
         self.assertIn("run_history", drill_down)
         self.assertEqual(drill_down["metrics"]["total_runs"], 20)
+        # Verify run_history has actual data
+        self.assertGreater(len(drill_down["run_history"]), 0,
+                           "Drill-down run_history should contain actual run data")
 
 
 class DQRootCauseE2ETest(TestCase):
@@ -272,14 +283,14 @@ class DQRootCauseE2ETest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -423,16 +434,25 @@ class DQRootCauseE2ETest(TestCase):
         self.assertIn("primary_cause", analysis)
         self.assertIn("recommendations", analysis)
         self.assertGreater(len(analysis["root_causes"]), 0)
-        
+        # Primary cause should reference the null-value check failure
+        self.assertIsNotNone(analysis["primary_cause"],
+                             "Root cause analysis must identify a primary cause")
+        # Recommendations should be non-empty
+        self.assertGreater(len(analysis["recommendations"]), 0,
+                           "Root cause analysis must produce at least one recommendation")
+
         # Step 5: Generate report
         report = RootCauseAnalyzer.generate_root_cause_report(
             str(self.tenant.id),
             asset_id=str(self.asset.id),
             days=30
         )
-        
+
         self.assertIn("summary", report)
         self.assertIn("analyses", report)
         self.assertIn("common_recommendations", report)
         self.assertGreater(report["summary"]["total_failed_runs"], 0)
+        # Verify analyses contains actual analysis data
+        self.assertGreater(len(report["analyses"]), 0,
+                           "Report analyses should contain at least one analysis entry")
 

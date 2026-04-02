@@ -21,6 +21,8 @@ from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.scheduled_export.models import DestinationType, ScheduledExport, ScheduledExportStatus
 from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus
 from hub.apps.users.models import User, UserStatus
+from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -41,7 +43,7 @@ class Phase25PlanLimitsRegressionTest(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="planlimits@example.com",
+            email=f"planlimits-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -49,7 +51,7 @@ class Phase25PlanLimitsRegressionTest(TestCase):
 
         # Create plan with low limits
         self.limited_plan = TenantPlan.objects.create(
-            name="Limited Plan",
+            name=f"Limited Plan {uuid.uuid4().hex[:8]}",
             slug="limited-plan",
             tier="FREE",
             limits_json={
@@ -76,6 +78,7 @@ class Phase25PlanLimitsRegressionTest(TestCase):
         )
 
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_tenant_admin_role(self.user)
 
     def test_plan_limit_asset_creation_enforcement(self):
         """Test plan limit enforcement for asset creation"""
@@ -109,7 +112,8 @@ class Phase25PlanLimitsRegressionTest(TestCase):
         )
         error_str = str(error_data).lower()
         self.assertTrue(
-            "limit" in error_str or "plan" in error_str or "plan_limit_exceeded" in error_str
+            "limit" in error_str or "plan_limit_exceeded" in error_str,
+            f"Expected plan limit error, got: {error_str}",
         )
 
     def test_plan_limit_scheduled_export_enforcement(self):
@@ -156,7 +160,8 @@ class Phase25PlanLimitsRegressionTest(TestCase):
         )
         error_str = str(error_data).lower()
         self.assertTrue(
-            "limit" in error_str or "plan" in error_str or "plan_limit_exceeded" in error_str
+            "limit" in error_str or "plan_limit_exceeded" in error_str,
+            f"Expected plan limit error, got: {error_str}",
         )
 
 
@@ -176,7 +181,7 @@ class Phase25SubscriptionStateRegressionTest(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="subscriptionstate@example.com",
+            email=f"subscriptionstate-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -184,8 +189,8 @@ class Phase25SubscriptionStateRegressionTest(TestCase):
 
         # Create plan
         self.plan = TenantPlan.objects.create(
-            name="Test Plan",
-            slug="test-plan",
+            name=f"Test Plan {uuid.uuid4().hex[:8]}",
+            slug=f"test-plan-{uuid.uuid4().hex[:8]}",
             tier="PRO",
             limits_json={"max_assets": 10},
             is_active=True,
@@ -207,6 +212,7 @@ class Phase25SubscriptionStateRegressionTest(TestCase):
         )
 
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_tenant_admin_role(self.user)
 
     def test_past_due_subscription_blocks_mutations(self):
         """Test that PAST_DUE subscription blocks mutations"""
@@ -312,7 +318,7 @@ class Phase25TenantSuspensionRegressionTest(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="suspension@example.com",
+            email=f"suspension-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -342,6 +348,7 @@ class Phase25TenantSuspensionRegressionTest(TestCase):
         )
 
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_tenant_admin_role(self.user)
 
     def test_suspended_tenant_blocks_mutations(self):
         """Test that SUSPENDED tenant blocks mutations"""
@@ -379,7 +386,10 @@ class Phase25TenantSuspensionRegressionTest(TestCase):
                 or ""
             )
         error_str = str(error_data).lower()
-        self.assertTrue("tenant" in error_str or "suspended" in error_str)
+        self.assertTrue(
+            "suspended" in error_str or "tenant_suspended" in error_str,
+            f"Expected tenant suspended error, got: {error_str}",
+        )
 
     def test_resumed_tenant_allows_mutations(self):
         """Test that resumed tenant allows mutations"""
@@ -420,7 +430,7 @@ class Phase25APIVersionHeadersRegressionTest(TestCase):
         )
 
         self.user = User.objects.create_user(
-            email="versionheaders@example.com",
+            email=f"versionheaders-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -450,6 +460,7 @@ class Phase25APIVersionHeadersRegressionTest(TestCase):
         )
 
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_tenant_admin_role(self.user)
 
     def test_api_version_headers_present(self):
         """Test that API version headers are present in responses"""

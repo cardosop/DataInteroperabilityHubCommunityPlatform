@@ -34,6 +34,12 @@ pytestmark = [
     pytest.mark.e2e,
     pytest.mark.scheduled_export,
     pytest.mark.requires_prefect,
+    pytest.mark.journey("JOURNEY-EXPORT-001"),
+    pytest.mark.journey("JOURNEY-EXPORT-002"),
+    pytest.mark.uc("UC-EXPORT-001"),
+    pytest.mark.uc("UC-EXPORT-002"),
+    pytest.mark.uc("UC-EXPORT-003"),
+    pytest.mark.uc("UC-EXPORT-004"),
 ]
 
 
@@ -50,7 +56,7 @@ def _prefect_integration_reachable(max_attempts=10, delay_seconds=5) -> bool:
         except Exception:
             pass
         if attempt < max_attempts - 1:
-            time.sleep(delay_seconds)
+            time.sleep(delay_seconds)  # INTENTIONAL: e2e/integration test polling real services
     return False
 
 
@@ -63,15 +69,15 @@ class ScheduledExportE2ETest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Create plan and assign to tenant
         from hub.apps.tenants.models import TenantPlan
 
         self.plan = TenantPlan.objects.create(
-            name="Test Plan",
-            slug="test-plan",
+            name=f"Test Plan {uuid.uuid4().hex[:8]}",
+            slug=f"test-plan-{uuid.uuid4().hex[:8]}",
             tier="FREE",
             limits_json={"max_scheduled_exports": 5, "max_export_runs_per_month": 100},
             is_active=True,
@@ -92,7 +98,7 @@ class ScheduledExportE2ETest(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -140,10 +146,12 @@ class ScheduledExportE2ETest(TestCase):
 
         response = self.client.post("/api/v1/scheduled-exports/", data, format="json")
 
-        # Creation should succeed even if Prefect is not available
+        # Creation should succeed even if Prefect is not available.
+        # 201 = full success, 207 = resource created but Prefect deployment
+        # sync failed (Phase 25.5.1), 503 = service completely unavailable.
         self.assertIn(
             response.status_code,
-            [status.HTTP_201_CREATED, status.HTTP_503_SERVICE_UNAVAILABLE],
+            [status.HTTP_201_CREATED, 207, status.HTTP_503_SERVICE_UNAVAILABLE],
         )
 
         if response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
@@ -151,8 +159,10 @@ class ScheduledExportE2ETest(TestCase):
             pytest.skip("Prefect service not available - skipping export lifecycle test")
             return
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         data = get_response_data(response) or {}
+        # 207 Multi-Status wraps resource data under "resource" key
+        if response.status_code == 207:
+            data = data.get("resource", data)
         export_id = data["id"]
 
         # Step 2: Verify export created
@@ -228,13 +238,17 @@ class ScheduledExportE2ETest(TestCase):
             f"/api/v1/scheduled-exports/{export_id}/", update_data, format="json"
         )
 
-        # Update should succeed even if Prefect sync fails
+        # Update should succeed even if Prefect sync fails.
+        # 200 = full success, 207 = resource updated but deployment sync
+        # failed (Phase 25.5.1), 503 = service completely unavailable.
         self.assertIn(
             response.status_code,
-            [status.HTTP_200_OK, status.HTTP_503_SERVICE_UNAVAILABLE],
+            [status.HTTP_200_OK, 207, status.HTTP_503_SERVICE_UNAVAILABLE],
         )
-        if response.status_code == status.HTTP_200_OK:
+        if response.status_code in [status.HTTP_200_OK, 207]:
             data = get_response_data(response) or {}
+            if response.status_code == 207:
+                data = data.get("resource", data)
             self.assertEqual(data["name"], "Updated Export Name")
             self.assertIn("schedule_config", data)
 
@@ -259,9 +273,10 @@ class ScheduledExportE2ETest(TestCase):
         (ImportError is caught and logged).
         """
         # Create second tenant
+        _suffix = uuid.uuid4().hex[:8]
         tenant2 = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_suffix}",
+            slug=f"other-tenant-{_suffix}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
@@ -291,7 +306,7 @@ class ScheduledExportE2ETest(TestCase):
         )
 
         user2 = User.objects.create_user(
-            email="user2@example.com",
+            email=f"user2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE,
@@ -322,8 +337,10 @@ class ScheduledExportE2ETest(TestCase):
             pytest.skip("Prefect service not available - skipping tenant isolation test")
             return
 
-        self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
+        self.assertIn(response1.status_code, [status.HTTP_201_CREATED, 207])
         data1_resp = get_response_data(response1) or {}
+        if response1.status_code == 207:
+            data1_resp = data1_resp.get("resource", data1_resp)
         export1_id = data1_resp["id"]
 
         # Create test asset for tenant2
@@ -353,8 +370,10 @@ class ScheduledExportE2ETest(TestCase):
             pytest.skip("Prefect service not available - skipping tenant isolation test")
             return
 
-        self.assertEqual(response2.status_code, status.HTTP_201_CREATED)
+        self.assertIn(response2.status_code, [status.HTTP_201_CREATED, 207])
         data2 = get_response_data(response2) or {}
+        if response2.status_code == 207:
+            data2 = data2.get("resource", data2)
         export2_id = data2["id"]
 
         # List exports for tenant1 - should only see tenant1's

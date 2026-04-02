@@ -20,6 +20,7 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.scheduled_export.models import DestinationType, ScheduledExport, ScheduledExportStatus
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -40,7 +41,7 @@ class Phase26CLISDKRegressionTest(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="clisdk@example.com",
+            email=f"clisdk-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

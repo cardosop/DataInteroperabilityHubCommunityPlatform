@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 2.2774431705474854
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-008-a879c8b3",
+      "journey_name": "Rate and Review Asset",
+      "persona": "Data Consumer",
+      "status": "completed",
+      "start_time": 1774644753.1017866,
+      "end_time": 1774644755.3792298,
+      "duration": 2.2774431705474854,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Navigate to Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644753.1017938,
+          "end_time": 1774644755.149997,
+          "duration": 2.048203229904175,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Rate Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644755.150008,
+          "end_time": 1774644755.3100176,
+          "duration": 0.16000962257385254,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Write Review",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644755.3100295,
+          "end_time": 1774644755.379225,
+          "duration": 0.06919550895690918,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "2acd962f-acd0-49a9-aa4f-96b7b358965e"
+      }
+    }
+  ],
+  "exported_at": "2026-03-27T20:52:35.379310"
+}

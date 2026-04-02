@@ -1,0 +1,83 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-008-64229a61",
+      "journey_name": "Create Transformation Pipeline for Asset",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1774660839.310327,
+      "end_time": 1774660844.961664,
+      "duration": 5.651336908340454,
+      "completion_rate": 75.0,
+      "success_rate": 75.0,
+      "error_message": "Step 'Preview Transformation Results' returned HTTP 400: {'error': {'code': 'VALIDATION_ERROR', 'message': \"{'asset_id': ErrorDetail(string='This field is required.', code='invalid')}\", 'http_status': 400, 'request_id': 'a81bfa0a-0a7e-40d2-9a5e-58d4f34528d0', 'timestamp': '2026-03-28T01:20:44.948443+00:00', 'details': {'asset_id': ErrorDetail(string='This field is required.', code='invalid')}}, 'asset_id': 'This field is required.'}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660839.3103354,
+          "end_time": 1774660844.844458,
+          "duration": 5.534122705459595,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660844.844477,
+          "end_time": 1774660844.8825538,
+          "duration": 0.03807687759399414,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Validate Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660844.8825712,
+          "end_time": 1774660844.9387722,
+          "duration": 0.05620098114013672,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Preview Transformation Results",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774660844.9387836,
+          "end_time": 1774660844.961658,
+          "duration": 0.02287435531616211,
+          "error_message": "Step 'Preview Transformation Results' returned HTTP 400: {'error': {'code': 'VALIDATION_ERROR', 'message': \"{'asset_id': ErrorDetail(string='This field is required.', code='invalid')}\", 'http_status': 400, 'request_id': 'a81bfa0a-0a7e-40d2-9a5e-58d4f34528d0', 'timestamp': '2026-03-28T01:20:44.948443+00:00', 'details': {'asset_id': ErrorDetail(string='This field is required.', code='invalid')}}, 'asset_id': 'This field is required.'}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T01:20:44.961779"
+}

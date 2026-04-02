@@ -23,6 +23,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Set
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.db import transaction
 from django.test import TestCase, TransactionTestCase
 
@@ -149,7 +151,7 @@ class ConcurrentODPSCreationTestBase(TransactionTestCase):
                     break
                 except OperationalError as e:
                     if "deadlock" in str(e).lower() and attempt < 2:
-                        time.sleep(0.1 * (attempt + 1))
+                        time.sleep(0.1 * (attempt + 1))  # INTENTIONAL: test-specific delay
                         continue
                     raise
 

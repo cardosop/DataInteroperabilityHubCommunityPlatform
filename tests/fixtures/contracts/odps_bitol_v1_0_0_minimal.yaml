@@ -1,0 +1,25 @@
+schema: https://bitol-io.github.io/open-data-product-standard/v1.0.0/schema.json
+kind: DataProduct
+apiVersion: v1.0.0
+product:
+  details:
+    en:
+      productID: fixture-bitol-v100
+      name: Bitol ODPS v1.0.0 Minimal Fixture
+      description: Minimal Bitol ODPS fixture for CI conformance testing
+  dataSchema:
+    fields:
+      - name: event_id
+        type: string
+      - name: timestamp
+        type: timestamp
+outputPorts:
+  - name: api-out
+    contractId: fixture-v310-relationships
+    tags:
+      - production
+team:
+  members:
+    - name: Carol
+      email: carol@example.com
+      role: owner

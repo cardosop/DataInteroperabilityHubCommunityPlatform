@@ -4,13 +4,14 @@ This test isolates the issue to see if execute_start itself is hanging
 """
 import json
 import time
-from django.test import TransactionTestCase
+from django.test import TestCase
 
 from hub.apps.contracts.models import Contract
 from hub.apps.orchestration.models import WorkflowInstance
 from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 
 def create_valid_odps_document(product_id: str = None) -> dict:
@@ -52,7 +53,7 @@ def create_valid_odps_document(product_id: str = None) -> dict:
     }
 
 
-class MinimalWorkflowExecutionTest(TransactionTestCase):
+class MinimalWorkflowExecutionTest(TestCase):
     """Minimal test to verify execute_start returns quickly"""
 
     reset_sequences = False
@@ -62,7 +63,7 @@ class MinimalWorkflowExecutionTest(TransactionTestCase):
         """Set up test fixtures"""
         # Create test tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug="test",
             status="ACTIVE",
             kyc_status="VERIFIED",
@@ -70,7 +71,7 @@ class MinimalWorkflowExecutionTest(TransactionTestCase):
 
         # Create test user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="test-password-123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

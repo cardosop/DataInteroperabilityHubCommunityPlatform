@@ -17,12 +17,14 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 
 # Import signals to disable them in tests (root cause fix for semantic service timeouts)
 from django.db.models.signals import post_save
-from django.test import TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -50,7 +52,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
-class ContractLineageTest(TransactionTestCase):
+class ContractLineageTest(TestCase):
     """
     Contract Lineage Testing (10.1.35.1).
 
@@ -294,7 +296,7 @@ class ContractLineageTest(TransactionTestCase):
         super().tearDown()
 
 
-class FieldLineageTest(TransactionTestCase):
+class FieldLineageTest(TestCase):
     """
     Field Lineage Testing (10.1.35.2).
 
@@ -332,7 +334,7 @@ class FieldLineageTest(TransactionTestCase):
             try:
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))
+                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: e2e/integration test polling real services
 
                 self.tenant = TenantFactory.create_tenant()
                 self.user = UserFactory.create_user(tenant=self.tenant, status=UserStatus.ACTIVE)
@@ -573,7 +575,7 @@ class FieldLineageTest(TransactionTestCase):
         super().tearDown()
 
 
-class HierarchicalLineageTest(TransactionTestCase):
+class HierarchicalLineageTest(TestCase):
     """
     Hierarchical Lineage Testing (10.1.35.3).
 
@@ -611,7 +613,7 @@ class HierarchicalLineageTest(TransactionTestCase):
             try:
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))
+                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: e2e/integration test polling real services
 
                 self.tenant = TenantFactory.create_tenant()
                 self.user = UserFactory.create_user(tenant=self.tenant, status=UserStatus.ACTIVE)
@@ -894,7 +896,7 @@ class HierarchicalLineageTest(TransactionTestCase):
         super().tearDown()
 
 
-class LineageImpactAnalysisTest(TransactionTestCase):
+class LineageImpactAnalysisTest(TestCase):
     """
     Lineage Impact Analysis Testing (10.1.35.4).
 
@@ -1180,7 +1182,7 @@ class LineageImpactAnalysisTest(TransactionTestCase):
         super().tearDown()
 
 
-class LineageODPSIntegrationTest(TransactionTestCase):
+class LineageODPSIntegrationTest(TestCase):
     """
     Lineage Service Integration with ODPS (10.1.35.5).
 
@@ -1218,7 +1220,7 @@ class LineageODPSIntegrationTest(TransactionTestCase):
             try:
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))
+                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: e2e/integration test polling real services
 
                 self.tenant = TenantFactory.create_tenant()
                 self.user = UserFactory.create_user(tenant=self.tenant, status=UserStatus.ACTIVE)

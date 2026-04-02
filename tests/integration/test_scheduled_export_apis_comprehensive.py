@@ -14,7 +14,9 @@ Coverage:
 """
 
 import pytest
-from django.test import TransactionTestCase
+
+pytestmark = pytest.mark.slow
+from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -31,14 +33,14 @@ from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.integration,
     pytest.mark.scheduled_export,
     pytest.mark.timeout(600),  # Allow time for test DB setup on first run
 ]
 
 
-class ScheduledExportAPIsComprehensiveTest(TransactionTestCase):
+class ScheduledExportAPIsComprehensiveTest(TestCase):
     """Comprehensive scheduled export API integration tests using TransactionTestCase to avoid TRUNCATE locks"""
 
     reset_sequences = False

@@ -20,6 +20,7 @@ from hub.apps.billing.models import Invoice, Subscription, SubscriptionStatus
 from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
 from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus
 from hub.apps.users.models import Role, User, UserRole, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -45,13 +46,13 @@ class Phase25BillingSecurityTest(TestCase):
 
         # Create users
         self.user1 = User.objects.create_user(
-            email="billingsec1@example.com",
+            email=f"billingsec1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE,
         )
         self.user2 = User.objects.create_user(
-            email="billingsec2@example.com",
+            email=f"billingsec2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant2,
             status=UserStatus.ACTIVE,
@@ -154,7 +155,7 @@ class Phase25PlatformAdminSecurityTest(TestCase):
 
         # Create regular user
         self.regular_user = User.objects.create_user(
-            email="regular@example.com",
+            email=f"regular-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -162,7 +163,7 @@ class Phase25PlatformAdminSecurityTest(TestCase):
 
         # Create platform admin user (is_platform_admin is a boolean field on User model)
         self.platform_admin = User.objects.create_user(
-            email="platformadmin@example.com",
+            email=f"platformadmin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -243,13 +244,13 @@ class Phase25ErasureSecurityTest(TestCase):
 
         # Create users
         self.user1 = User.objects.create_user(
-            email="erasuresec1@example.com",
+            email=f"erasuresec1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE,
         )
         self.user2 = User.objects.create_user(
-            email="erasuresec2@example.com",
+            email=f"erasuresec2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant2,
             status=UserStatus.ACTIVE,
@@ -257,7 +258,7 @@ class Phase25ErasureSecurityTest(TestCase):
 
         # Create platform admin
         self.platform_admin = User.objects.create_user(
-            email="platformadmin2@example.com",
+            email=f"platformadmin2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE,
@@ -387,7 +388,7 @@ class Phase25ScheduledExportWorkerAPISecurityTest(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="workerapi@example.com",
+            email=f"workerapi-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -477,7 +478,7 @@ class Phase25ScheduledIngestionWorkerAPISecurityTest(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="schedingestworker@example.com",
+            email=f"schedingestworker-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

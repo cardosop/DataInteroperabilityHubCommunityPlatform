@@ -13,7 +13,9 @@ Coverage:
 """
 
 import pytest
-from django.test import TransactionTestCase
+
+pytestmark = pytest.mark.slow
+from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -24,14 +26,14 @@ from hub.apps.users.models import Role, User, UserRole, UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.integration,
     pytest.mark.saas_platform,
     pytest.mark.timeout(600),  # Allow time for test DB setup on first run
 ]
 
 
-class BillingAPIsComprehensiveTest(TransactionTestCase):
+class BillingAPIsComprehensiveTest(TestCase):
     """Comprehensive billing API integration tests using TransactionTestCase to avoid TRUNCATE locks"""
 
     reset_sequences = False

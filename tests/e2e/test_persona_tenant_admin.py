@@ -12,6 +12,7 @@ from rest_framework import status
 from hub.apps.tenants.models import Tenant, TenantConfig, KYCStatus
 from hub.apps.users.models import User, Role, UserRole, UserStatus
 from tests.e2e.conftest import E2ETestBase, get_response_data
+import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
 User = get_user_model()
@@ -33,7 +34,7 @@ class TenantAdminPersonaTest(E2ETestBase):
         
         # Create tenant admin user
         self.tenant_admin = User.objects.create_user(
-            email="tenant_admin@example.com",
+            email=f"tenant_admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -41,9 +42,10 @@ class TenantAdminPersonaTest(E2ETestBase):
         UserRole.objects.create(user=self.tenant_admin, role=self.tenant_admin_role)
         
         # Create another tenant for isolation tests (subscription so config PATCH is allowed)
+        _ot_suffix = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_ot_suffix}",
+            slug=f"other-tenant-{_ot_suffix}",
             status="ACTIVE",
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -57,7 +59,7 @@ class TenantAdminPersonaTest(E2ETestBase):
             defaults={"description": "Tenant Administrator"}
         )
         self.other_tenant_admin = User.objects.create_user(
-            email="other_admin@example.com",
+            email=f"other_admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.other_tenant,
             status=UserStatus.ACTIVE
@@ -441,7 +443,7 @@ class TenantAdminPersonaTest(E2ETestBase):
         
         # Wait a moment and update
         import time
-        time.sleep(0.1)
+        time.sleep(0.1)  # INTENTIONAL: e2e/integration test polling real services
         
         data = {"default_dq_profile": "intake_basic_soda"}
         response2 = self.client.patch(

@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.2863647937774658
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-010-beace1e3",
+      "journey_name": "Publish Asset with Usage-Based Pricing",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1774660121.671703,
+      "end_time": 1774660121.958068,
+      "duration": 0.2863647937774658,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660121.6717079,
+          "end_time": 1774660121.9308438,
+          "duration": 0.2591359615325928,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Usage-Based Pricing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660121.9385638,
+          "end_time": 1774660121.9510274,
+          "duration": 0.012463569641113281,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Create Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660121.9510365,
+          "end_time": 1774660121.9580646,
+          "duration": 0.007028102874755859,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "eb65f52f-4a1b-4d66-9b36-e9688c4d1d2d"
+      }
+    }
+  ],
+  "exported_at": "2026-03-28T01:08:41.958127"
+}

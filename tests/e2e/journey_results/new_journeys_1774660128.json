@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.0062181949615478516
+  },
+  "journeys": [
+    {
+      "journey_id": "DA-004-a40b68c1",
+      "journey_name": "Execute Federated Query",
+      "persona": "Data Analyst",
+      "status": "completed",
+      "start_time": 1774660128.6777475,
+      "end_time": 1774660128.6839657,
+      "duration": 0.0062181949615478516,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Build Federated Query",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660128.6777527,
+          "end_time": 1774660128.683964,
+          "duration": 0.006211280822753906,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T01:08:48.684010"
+}

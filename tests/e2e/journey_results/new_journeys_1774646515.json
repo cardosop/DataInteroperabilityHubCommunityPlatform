@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.09852337837219238
+  },
+  "journeys": [
+    {
+      "journey_id": "CM-004-6716715d",
+      "journey_name": "Manage Activity Feeds",
+      "persona": "Community Manager",
+      "status": "completed",
+      "start_time": 1774646515.8486094,
+      "end_time": 1774646515.9471328,
+      "duration": 0.09852337837219238,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Activity Feeds",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774646515.9020803,
+          "end_time": 1774646515.902088,
+          "duration": 7.62939453125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Filter Activities",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774646515.9471111,
+          "end_time": 1774646515.947123,
+          "duration": 1.1920928955078125e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Note: No Activities to Moderate",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774646515.9471278,
+          "end_time": 1774646515.947131,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-27T21:21:55.947235"
+}

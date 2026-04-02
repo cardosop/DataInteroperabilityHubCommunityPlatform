@@ -23,6 +23,7 @@ from hub.apps.jobs.utils import (
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 from tests.factories import TenantFactory, JobFactory
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -36,7 +37,7 @@ class JobTimeoutsTest(TestCase):
         
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

@@ -20,6 +20,8 @@ from datetime import timedelta
 
 import jwt
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -39,7 +41,7 @@ from hub.apps.users.models import UserStatus
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory
 
 # Use regular django_db marker - TestCase handles transactions efficiently
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
@@ -59,7 +61,7 @@ class TestAuthRegisterAPI(TestCase):
         self.client = APIClient()
         # Create tenant fresh for each test (better isolation)
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.UNVERIFIED.value,
@@ -87,7 +89,7 @@ class TestAuthRegisterAPI(TestCase):
         self.assertIsNotNone(response.data["tenant_id"])
 
         # Verify user was created with personal tenant
-        user = User.objects.get(email="newuser@example.com")
+        user = User.objects.get(email=f"newuser-{uuid.uuid4().hex[:8]}@example.com")
         self.assertEqual(user.display_name, "New User")
         self.assertEqual(user.status, UserStatus.ACTIVE.value)
         self.assertIsNotNone(user.tenant_id)
@@ -110,7 +112,7 @@ class TestAuthRegisterAPI(TestCase):
         self.assertEqual(response.data["tenant_id"], str(self.tenant.id))
 
         # Verify user was created with tenant
-        user = User.objects.get(email="tenantuser@example.com")
+        user = User.objects.get(email=f"tenantuser-{uuid.uuid4().hex[:8]}@example.com")
         self.assertEqual(user.tenant.id, self.tenant.id)
 
     def test_register_success_email_verification_not_required(self):
@@ -123,7 +125,7 @@ class TestAuthRegisterAPI(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        user = User.objects.get(email="verified@example.com")
+        user = User.objects.get(email=f"verified-{uuid.uuid4().hex[:8]}@example.com")
         self.assertEqual(user.status, UserStatus.ACTIVE.value)
 
     # ========== VALIDATION ERRORS ==========
@@ -326,7 +328,7 @@ class TestAuthRegisterAPI(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        user = User.objects.get(email="passwordhash@example.com")
+        user = User.objects.get(email=f"passwordhash-{uuid.uuid4().hex[:8]}@example.com")
 
         # Password should be hashed (not stored in plaintext)
         self.assertNotEqual(user.password, password)
@@ -532,7 +534,7 @@ class TestAuthMeAPI(TestCase):
         self.client = APIClient()
         # Create tenant and user fresh for each test (better isolation)
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
@@ -935,7 +937,7 @@ class TestAuthLoginAPI(TestCase):
         self.client = APIClient()
         # Create tenant and user fresh for each test (better isolation)
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
@@ -1161,7 +1163,7 @@ class TestAuthLogoutAPI(TestCase):
         self.client = APIClient()
         # Create tenant and user fresh for each test (better isolation)
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
@@ -1321,7 +1323,7 @@ class TestAuthRefreshAPI(TestCase):
         self.client = APIClient()
         # Create tenant and user fresh for each test (better isolation)
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )

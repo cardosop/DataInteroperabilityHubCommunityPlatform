@@ -26,6 +26,7 @@ from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -47,7 +48,7 @@ class ErasureWorkflowIntegrationTest(TestCase):
 
         # Create user to be erased
         self.user_to_erase = User.objects.create_user(
-            email="eraseme@example.com",
+            email=f"eraseme-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -68,7 +69,7 @@ class ErasureWorkflowIntegrationTest(TestCase):
 
         # Create another user (admin) to request erasure
         self.admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -135,7 +136,7 @@ class ErasureWorkflowIntegrationTest(TestCase):
             status=TenantStatus.ACTIVE,
         )
         user2 = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE,

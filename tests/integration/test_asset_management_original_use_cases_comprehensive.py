@@ -84,7 +84,7 @@ from tests.utils.test_data_management import TestDatabaseIsolationMixin
 User = get_user_model()
 
 if HAS_PYTEST:
-    pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.integration]
+    pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
 class AssetManagementOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):

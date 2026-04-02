@@ -62,7 +62,7 @@ class SampleTestData:
         """Create a sample user"""
         return UserFactory.create_user(
             tenant=tenant,
-            email="sample.user@example.com",
+            email=f"sample.user-{uuid.uuid4().hex[:8]}@example.com",
             display_name="Sample User",
         )
 
@@ -71,7 +71,7 @@ class SampleTestData:
         """Create a sample admin user"""
         return UserFactory.create_user(
             tenant=tenant,
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             display_name="Admin User",
         )
 

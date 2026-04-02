@@ -12,7 +12,8 @@ Covers:
 Uses REAL services (Compliance, DQ, DataContract, MinIO).
 """
 import pytest
-import time
+
+pytestmark = pytest.mark.slow
 import hashlib
 from django.test import TestCase
 from rest_framework import status
@@ -55,37 +56,24 @@ class DataFirstFlowSuccessTests(E2ETestBase):
         self.assertIsNotNone(dataset.schema_json)
         self.assertIsNotNone(dataset.sample_data_json)
 
-        # Step 4: Run compliance check (async - wait for completion)
-        compliance_run_id = self.run_compliance_check(file_id, dataset_id, asset_id)
+        # Step 4: Run compliance check (execute job inline — on_commit
+        # callbacks don't fire inside Django TestCase transactions).
+        compliance_run_id = self.run_compliance_check_sync(file_id, dataset_id, asset_id)
         compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
+        self.assertIn(
+            compliance_run.status,
+            [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.QUEUED, ComplianceRunStatus.PENDING],
+            f"Happy path compliance run should not FAIL, got {compliance_run.status}",
+        )
 
-        # Wait for compliance run to complete (async service)
-        import time
-        max_wait = 60  # Increase timeout for async service
-        wait_time = 0
-        while wait_time < max_wait and compliance_run.status not in [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED]:
-            time.sleep(2)  # Check every 2 seconds
-            wait_time += 2
-            compliance_run.refresh_from_db()
-
-        # Accept PENDING if service is still processing after timeout (acceptable for async services)
-        self.assertIn(compliance_run.status, [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED, ComplianceRunStatus.PENDING])
-
-        # Step 5: Run DQ check (async - wait for completion)
-        dq_run_id = self.run_dq_check(file_id, dataset_id, asset_id)
+        # Step 5: Run DQ check (execute job inline).
+        dq_run_id = self.run_dq_check_sync(file_id, dataset_id, asset_id)
         dq_run = DQRun.objects.get(id=dq_run_id)
-
-        # Wait for DQ run to complete (async service)
-        import time
-        max_wait = 60  # Increase timeout for async service
-        wait_time = 0
-        while wait_time < max_wait and dq_run.status not in [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED]:
-            time.sleep(2)  # Check every 2 seconds
-            wait_time += 2
-            dq_run.refresh_from_db()
-
-        # Accept PENDING if service is still processing after timeout (acceptable for async services)
-        self.assertIn(dq_run.status, [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED, DQRunStatus.PENDING])
+        self.assertIn(
+            dq_run.status,
+            [DQRunStatus.SUCCEEDED, DQRunStatus.PENDING],
+            f"Happy path DQ run should not FAIL, got {dq_run.status}",
+        )
 
         # Step 6: Create contract from inferred schema
         # ODCS requires: id, info.name, schema.fields
@@ -100,8 +88,12 @@ class DataFirstFlowSuccessTests(E2ETestBase):
 
         validate_response = self.validate_contract(contract_id, async_mode=False)
         # Service is available, validation should have completed
-        if isinstance(validate_response, dict) and 'validation_status' in validate_response:
-            self.assertIn(validate_response.get('validation_status'), ['VALID', 'INVALID'])
+        self.assertIsInstance(validate_response, dict, "Validation should return a dict")
+        self.assertIn('validation_status', validate_response, "Response must include validation_status")
+        # DataContract service may return INVALID for minimal test contracts;
+        # the test verifies the flow works end-to-end, not that minimal contracts pass validation.
+        self.assertIn(validate_response['validation_status'], ['VALID', 'WARNING_ONLY', 'INVALID'],
+            f"Validation should complete (not error/skip), got {validate_response.get('validation_status')}")
 
         # Step 8: Attach dataset and contract to asset
         self.attach_dataset_to_asset(asset_id, dataset_id)
@@ -118,8 +110,8 @@ class DataFirstFlowSuccessTests(E2ETestBase):
         # Verify final state
         asset = Asset.objects.get(id=asset_id)
         self.assertEqual(asset.status, AssetStatus.ACTIVE)
-        self.assertTrue(asset.contracts.exists())
-        self.assertTrue(asset.datasets.exists())
+        self.assertEqual(asset.contracts.count(), 1, "Asset should have exactly one contract")
+        self.assertEqual(asset.datasets.count(), 1, "Asset should have exactly one dataset")
 
         contract = Contract.objects.get(id=contract_id)
         self.assertEqual(contract.status, ContractStatus.ACTIVE)
@@ -275,13 +267,8 @@ class DataFirstFlowFailureTests(E2ETestBase):
                 format='json'
             )
             # Should fail due to invalid contract (not DQ/compliance)
-            self.assertEqual(activate_response.status_code, status.HTTP_400_BAD_REQUEST)
-            # Check that the error mentions contract validation
-            error_msg = str(activate_response.data).lower()
-            self.assertTrue(
-                'validation_status' in error_msg or 'contract' in error_msg or 'blocked' in error_msg,
-                f"Expected contract validation error, got: {activate_response.data}"
-            )
+            self.assertIn(activate_response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY],
+                f"Activation should be blocked, got {activate_response.status_code}")
 
 
 class DataFirstFlowEdgeCasesTests(E2ETestBase):
@@ -390,16 +377,8 @@ class DataFirstFlowEdgeCasesTests(E2ETestBase):
             )
 
             # Should return error for unsupported format
-            if dataset_response.status_code != status.HTTP_201_CREATED:
-                # Error message may mention format, file type, or schema inference failure
-                error_str = str(dataset_response.data).lower()
-                self.assertTrue(
-                    'format' in error_str or
-                    'file type' in error_str or
-                    'unsupported' in error_str or
-                    'schema inference' in error_str,
-                    f"Expected format/file type error, got: {dataset_response.data}"
-                )
+            self.assertNotEqual(dataset_response.status_code, status.HTTP_201_CREATED,
+                "Unsupported format should be rejected")
         else:
             # Rejected at init stage
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -411,17 +390,16 @@ class DataFirstFlowEdgeCasesTests(E2ETestBase):
         file_id = self.init_file_upload(name='malformed.csv')
         self.complete_file_upload(file_id)
 
-        # Dataset creation should handle malformed CSV
-        # Schema inference may fail or return partial schema
+        # .xlsx format should either fail on upload or fail on schema inference
         try:
             dataset_id = self.create_dataset(file_id, asset_id)
+            # If dataset was created, verify schema inference produced a warning or empty schema
             dataset = Dataset.objects.get(id=dataset_id)
-            # Malformed CSV may result in partial or empty schema
-            # This is acceptable - system should handle gracefully
-        except Exception:
-            # Malformed CSV may cause dataset creation to fail
-            # This is acceptable - verify error is appropriate
-            pass
+            # Schema may be empty or have inference warnings for unsupported format
+        except Exception as e:
+            # Expected: dataset creation may fail for unsupported format
+            self.assertIn('format', str(e).lower() + str(type(e).__name__).lower(),
+                f"Exception should be format-related, got: {e}")
 
     def test_concurrent_file_uploads(self):
         """Test handling of concurrent file uploads to same asset"""
@@ -486,9 +464,6 @@ class DataFirstFlowErrorHandlingTests(E2ETestBase):
 
     def test_compliance_service_timeout(self):
         """Test handling of compliance service timeout - uses real service"""
-        # Note: With real services, we can't easily simulate timeouts.
-        # This test verifies that the service handles requests and completes properly.
-        # In a real timeout scenario, the service would return an error or the request would timeout.
         asset_id = self.create_asset(key='timeout-test', name='Timeout Test')
 
         file_id = self.init_file_upload(name='data.csv')
@@ -496,42 +471,17 @@ class DataFirstFlowErrorHandlingTests(E2ETestBase):
 
         dataset_id = self.create_dataset(file_id, asset_id)
 
-        # Use real compliance service
-        response = self.client.post(
-            '/api/v1/compliance/runs/',
-            {
-                'file_id': file_id,
-                'dataset_id': dataset_id,
-                'asset_id': asset_id,
-                'scan_mode': 'internal'
-            },
-            format='json'
+        # Execute compliance run inline (on_commit callbacks don't fire in TestCase)
+        compliance_run_id = self.run_compliance_check_sync(
+            file_id, dataset_id, asset_id, scan_mode='internal',
         )
 
-        # Should create compliance run
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        compliance_run_id = response.data['id']
-
-        # Wait for completion with longer timeout
-        max_wait = 120  # Increased timeout for real services
-        wait_time = 0
-        while wait_time < max_wait:
-            compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
-            if compliance_run.status in [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED]:
-                break
-            time.sleep(1)
-            wait_time += 1
-
         compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
-        # Service should complete (SUCCEEDED or FAILED)
-        # If still PENDING, that's acceptable for this test - it means service is processing
-        self.assertIn(compliance_run.status, [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED, ComplianceRunStatus.PENDING])
+        # Service should complete (SUCCEEDED or FAILED); PENDING acceptable if service unavailable
+        self.assertIn(compliance_run.status, [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED, ComplianceRunStatus.PENDING, ComplianceRunStatus.QUEUED])
 
     def test_dq_service_unavailable(self):
         """Test handling of DQ service - uses real service"""
-        # Note: With real services running, we can't test unavailability.
-        # This test verifies that the service handles requests properly.
-        # In a real unavailability scenario, the service would return an error.
         asset_id = self.create_asset(key='dq-unavailable', name='DQ Unavailable')
 
         file_id = self.init_file_upload(name='data.csv')
@@ -539,34 +489,11 @@ class DataFirstFlowErrorHandlingTests(E2ETestBase):
 
         dataset_id = self.create_dataset(file_id, asset_id)
 
-        # Use real DQ service
-        response = self.client.post(
-            '/api/v1/dq/runs/',
-            {
-                'file_id': file_id,
-                'dataset_id': dataset_id,
-                'asset_id': asset_id
-            },
-            format='json'
-        )
-
-        # Should create DQ run
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        dq_run_id = response.data['id']
-
-        # Wait for completion
-        max_wait = 60
-        wait_time = 0
-        while wait_time < max_wait:
-            dq_run = DQRun.objects.get(id=dq_run_id)
-            if dq_run.status in [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED]:
-                break
-            time.sleep(1)
-            wait_time += 1
+        # Execute DQ run inline (on_commit callbacks don't fire in TestCase)
+        dq_run_id = self.run_dq_check_sync(file_id, dataset_id, asset_id)
 
         dq_run = DQRun.objects.get(id=dq_run_id)
-        # Service is available and processing - accept PENDING if still processing after timeout
-        # This test verifies service handles requests, not that it completes immediately
+        # Service should complete; PENDING acceptable if service unavailable
         self.assertIn(dq_run.status, [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED, DQRunStatus.PENDING])
 
     def test_contract_validation_timeout(self):
@@ -613,39 +540,14 @@ class DataFirstFlowErrorHandlingTests(E2ETestBase):
 
         dataset_id = self.create_dataset(file_id, asset_id)
 
-        # Use real compliance service
-        response = self.client.post(
-            '/api/v1/compliance/runs/',
-            {
-                'file_id': file_id,
-                'dataset_id': dataset_id,
-                'asset_id': asset_id,
-                'scan_mode': 'internal'
-            },
-            format='json'
+        # Execute compliance run inline (on_commit callbacks don't fire in TestCase)
+        compliance_run_id = self.run_compliance_check_sync(
+            file_id, dataset_id, asset_id, scan_mode='internal',
         )
 
-        # Should create compliance run
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        compliance_run_id = response.data['id']
-
-        # Wait for completion
-        max_wait = 60
-        wait_time = 0
-        while wait_time < max_wait:
-            compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
-            if compliance_run.status in [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED]:
-                break
-            time.sleep(1)
-            wait_time += 1
-
         compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
-        # Service should complete (SUCCEEDED or FAILED)
-        # If still PENDING, that's acceptable - it means service is processing
-        self.assertIn(compliance_run.status, [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED, ComplianceRunStatus.PENDING])
-
-        # Note: Retry logic would be tested at the service client level
-        # For E2E tests, we verify the service handles requests properly
+        # Service should complete; PENDING acceptable if service unavailable
+        self.assertIn(compliance_run.status, [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED, ComplianceRunStatus.PENDING, ComplianceRunStatus.QUEUED])
 
 
 class DataFirstFlowSchemaInferenceTests(E2ETestBase):

@@ -13,6 +13,7 @@ Uses real services (no mocks).
 """
 
 import pytest
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import status
@@ -40,7 +41,7 @@ from tests.e2e.conftest import (
 )
 from tests.factories import TenantConfigFactory, TenantFactory
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
+pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 User = get_user_model()
 
 
@@ -91,26 +92,47 @@ class CrossCapabilityE2ETest(E2ETestBase):
         self.assertIn("concurrent", reason.lower())
 
     def test_tenant_config_affects_rate_limiting(self):
-        """Test that tenant config affects rate limiting"""
-        # Create tenant config with custom rate limits
+        """Test that tenant config affects rate limiting.
+
+        Rate limiting is disabled in test mode (RATE_LIMIT_ENABLED=False).
+        We enable it with override_settings and set a very low burst limit
+        so the middleware triggers 429 or adds X-RateLimit-* headers.
+        """
+        from django.test import override_settings
+
+        # Create tenant config with very low burst limit (3 requests / 60s)
         TenantConfigFactory.create_tenant_config(
             tenant=self.tenant,
             rate_limits={
-                "api": {
-                    "burst": {"requests": 10, "window_seconds": 10},
-                    "sustained": {"requests": 50, "window_seconds": 60},
+                "CONTRACT": {
+                    "burst": {"requests": 3, "window_seconds": 60},
+                    "sustained": {"requests": 10, "window_seconds": 60},
                 }
             },
         )
 
-        # Make API requests - rate limiting should use tenant config
         self.client.force_authenticate(user=self.user)
 
-        # Make multiple requests
-        for i in range(5):
-            response = self.client.get("/api/v1/contracts/")
-            # Should succeed (within limits)
-            self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
+        # Enable rate limiting (disabled by default in test env)
+        with override_settings(RATE_LIMIT_ENABLED=True):
+            got_rate_limited = False
+            has_rate_limit_headers = False
+
+            for i in range(10):
+                response = self.client.get("/api/v1/contracts/")
+                if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+                    got_rate_limited = True
+                    break
+                if "X-RateLimit-Remaining" in response or "X-RateLimit-Limit" in response:
+                    has_rate_limit_headers = True
+
+        # Either rate limiting kicked in with 429, or rate-limit headers are present
+        self.assertTrue(
+            got_rate_limited or has_rate_limit_headers,
+            "Rate limiting not enforced: no 429 response and no X-RateLimit-* headers "
+            "found after 10 requests with burst limit of 3. "
+            "Ensure RateLimitMiddleware is in MIDDLEWARE and reads RATE_LIMIT_ENABLED.",
+        )
 
     def test_contract_normalization_affects_semantic_mapping(self):
         """Test that contract normalization affects semantic mapping"""
@@ -155,11 +177,13 @@ class CrossCapabilityE2ETest(E2ETestBase):
         # Map to semantic (should use normalized HubContract)
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
-        # Semantic mapping should succeed if service available
-        # (may be None if service unavailable, which is OK)
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
-            self.assertEqual(semantic_resource.resource_type, "CONTRACT")
+        # Semantic mapping must return a result; skip if service unavailable
+        if semantic_resource is None:
+            self.skipTest(
+                "Semantic service unavailable - map_contract_to_semantic returned None"
+            )
+        self.assertIsNotNone(semantic_resource)
+        self.assertEqual(semantic_resource.resource_type, "CONTRACT")
 
     def test_quality_rules_affect_dq_service(self):
         """Test that quality rules from contract affect DQ service"""
@@ -255,6 +279,8 @@ class CrossCapabilityE2ETest(E2ETestBase):
 
     def test_marketplace_policy_affects_marketplace_service(self):
         """Test that marketplace policy from contract affects marketplace service"""
+        from hub.apps.marketplace.contract_integration import ContractMarketplacePolicyExtractor
+
         # Create contract with marketplace policy
         hub_contract = {
             "hub_contract_version": 1,
@@ -268,35 +294,7 @@ class CrossCapabilityE2ETest(E2ETestBase):
             },
         }
 
-        # Marketplace service should be able to read policy
-        marketplace_policy = hub_contract.get("marketplace", {})
-
-        self.assertIsNotNone(marketplace_policy)
-        self.assertEqual(marketplace_policy.get("license_summary"), "MIT License")
-        self.assertIn("analytics", marketplace_policy.get("intended_use", []))
-        self.assertIn("resale", marketplace_policy.get("restricted_use", []))
-
-    def test_schema_inference_affects_contract_creation(self):
-        """Test that schema inference affects contract creation"""
-        # Create contract with inferred schema
-        hub_contract = {
-            "hub_contract_version": 1,
-            "id": "test",
-            "info": {"name": "Test"},
-            "schema": {
-                "fields": [
-                    {
-                        "name": "email",
-                        "data_type": "string",
-                        "semantic_type": "EMAIL",
-                        "format": "email",
-                        "pattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
-                    }
-                ]
-            },
-        }
-
-        # Create contract with inferred schema
+        # Create contract instance in DB
         contract = Contract.objects.create(
             tenant=self.tenant,
             original_spec_type=OriginalSpecType.ODCS,
@@ -307,15 +305,99 @@ class CrossCapabilityE2ETest(E2ETestBase):
             created_by=self.user,
         )
 
-        # Verify schema fields are present
-        self.assertIsNotNone(contract.hub_contract_json)
-        schema_fields = contract.hub_contract_json.get("schema", {}).get("fields", [])
-        self.assertGreater(len(schema_fields), 0)
+        # Use the real extractor to read marketplace policy from the Contract
+        policy = ContractMarketplacePolicyExtractor.extract_marketplace_policy(contract)
 
-        # Verify field has semantic type
-        email_field = next((f for f in schema_fields if f.get("name") == "email"), None)
-        self.assertIsNotNone(email_field)
-        self.assertEqual(email_field.get("semantic_type"), "EMAIL")
+        self.assertIsNotNone(policy)
+        self.assertEqual(policy.get("license_summary"), "MIT License")
+        self.assertIn("analytics", policy.get("intended_use", []))
+        self.assertIn("resale", policy.get("restricted_use", []))
+
+        # Also verify convenience methods work on the real Contract object
+        license_summary = ContractMarketplacePolicyExtractor.get_license_summary(contract)
+        self.assertEqual(license_summary, "MIT License")
+
+        intended_use = ContractMarketplacePolicyExtractor.get_intended_use(contract)
+        self.assertIn("analytics", intended_use)
+        self.assertIn("reporting", intended_use)
+
+        restricted_use = ContractMarketplacePolicyExtractor.get_restricted_use(contract)
+        self.assertIn("resale", restricted_use)
+
+        # Verify usage restriction validation
+        is_allowed, error = ContractMarketplacePolicyExtractor.validate_usage_restrictions(
+            contract, "analytics"
+        )
+        self.assertTrue(is_allowed)
+        self.assertIsNone(error)
+
+        is_allowed, error = ContractMarketplacePolicyExtractor.validate_usage_restrictions(
+            contract, "resale"
+        )
+        self.assertFalse(is_allowed)
+        self.assertIn("restricted", error)
+
+    def test_schema_inference_affects_contract_creation(self):
+        """Test that schema inference detects semantic types and formats from CSV data"""
+        from hub.apps.datasets.schema_inference import (
+            infer_schema_from_csv,
+        )
+
+        # Create a CSV with email, phone, and timestamp columns
+        csv_content = (
+            b"email,phone,created_at,amount\n"
+            b"alice@example.com,+1-555-123-4567,2024-01-15T10:30:00Z,99.99\n"
+            b"bob@example.org,+1-555-987-6543,2024-02-20T14:45:00Z,149.50\n"
+            b"carol@test.net,+1-555-222-3333,2024-03-10T08:00:00Z,250.00\n"
+        )
+
+        # Run real schema inference on CSV data
+        inferred = infer_schema_from_csv(csv_content)
+
+        self.assertIsNotNone(inferred)
+        fields = inferred.get("fields", [])
+        self.assertGreater(len(fields), 0)
+
+        # Verify that inference detected semantic_type for the email column
+        email_field = next((f for f in fields if f.get("name") == "email"), None)
+        self.assertIsNotNone(email_field, "Schema inference should detect 'email' field")
+        self.assertEqual(
+            email_field.get("semantic_type"), "EMAIL",
+            "Schema inference should detect EMAIL semantic type from field name and data",
+        )
+
+        # Verify format detection for email
+        self.assertEqual(email_field.get("format"), "email")
+
+        # Now create a contract using the inferred schema fields
+        # (convert inferred fields to hub_contract schema format)
+        hub_contract = {
+            "hub_contract_version": 1,
+            "id": "test-inferred",
+            "info": {"name": "Inferred Schema Contract"},
+            "schema": {"fields": [
+                {"name": f["name"], "data_type": f["data_type"],
+                 **({"semantic_type": f["semantic_type"]} if "semantic_type" in f else {}),
+                 **({"format": f["format"]} if "format" in f else {})}
+                for f in fields
+            ]},
+        }
+
+        contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id": "test-inferred"}',
+            hub_contract_json=hub_contract,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            created_by=self.user,
+        )
+
+        # Verify the contract was stored with the inferred semantic types
+        stored_fields = contract.hub_contract_json.get("schema", {}).get("fields", [])
+        stored_email = next((f for f in stored_fields if f.get("name") == "email"), None)
+        self.assertIsNotNone(stored_email)
+        self.assertEqual(stored_email.get("semantic_type"), "EMAIL")
 
     def test_job_completion_triggers_email(self):
         """Test that job completion triggers email notification"""
@@ -350,25 +432,24 @@ class CrossCapabilityE2ETest(E2ETestBase):
             job.result_json = {"status": "completed", "checks_passed": 10}
             job.save()  # This triggers post_save signal
 
-            # The signal should have enqueued the email task
-            # In a real scenario, the task would be processed by a worker
-            # For testing, we can call the task directly or check that it was enqueued
-            # Since we're using real services, let's verify the signal was triggered
-            # by checking if the email task would be called
-
-            # Actually call the email task to verify it works
+            # Call the email task directly to verify it creates an EmailDelivery record
             try:
                 send_job_completion_email(str(job.id))
-                # Check that email delivery record was created
-                email_deliveries = EmailDelivery.objects.filter(
-                    email_type=EmailType.JOB_COMPLETION, to_email=self.user.email
-                )
-                # Email should be sent (or at least attempted)
-                self.assertGreaterEqual(email_deliveries.count(), initial_email_count)
             except Exception as e:
-                # Email service may not be configured - that's OK for this test
-                # We're testing that the signal triggers the email task, not that email actually sends
-                pass
+                self.skipTest(
+                    f"Email service not available, cannot verify job completion email: {e}"
+                )
+
+            # Check that email delivery record was created
+            email_deliveries = EmailDelivery.objects.filter(
+                email_type=EmailType.JOB_COMPLETION, to_email=self.user.email
+            )
+            # Email must have been sent (or at least attempted) - strict check
+            self.assertGreater(
+                email_deliveries.count(),
+                initial_email_count,
+                "send_job_completion_email should create an EmailDelivery record",
+            )
 
     def test_cli_respects_rate_limits(self):
         """Test that CLI API client raises ClickException on 429 (no mocks)."""
@@ -424,7 +505,10 @@ class CrossCapabilityE2ETest(E2ETestBase):
         }
 
         # Test that each service exposes /metrics endpoint
-        # Note: Services may not be running in test environment, so we check gracefully
+        # Track which services responded successfully
+        reachable_services = []
+        unreachable_services = []
+
         for service_name, base_url in services.items():
             try:
                 metrics_url = f"{base_url.rstrip('/')}/metrics"
@@ -437,28 +521,40 @@ class CrossCapabilityE2ETest(E2ETestBase):
                     self.assertIn("text/plain", content_type)
                     # Should contain some metrics
                     self.assertGreater(len(response.text), 0)
+                    reachable_services.append(service_name)
+                else:
+                    unreachable_services.append(service_name)
             except (requests.exceptions.RequestException, requests.exceptions.Timeout):
-                # Service not available - that's OK for this test
-                # We're testing that monitoring configuration covers all services
-                pass
+                unreachable_services.append(service_name)
 
-        # Verify Prometheus configuration includes all services
+        # At least one service must be reachable for the test to be meaningful
+        if not reachable_services:
+            self.skipTest(
+                f"No services reachable for monitoring test. "
+                f"Unreachable: {unreachable_services}"
+            )
+
+        # Verify Prometheus configuration includes all services (unconditional)
         prometheus_config_path = "monitoring/prometheus/prometheus.yml"
-        if os.path.exists(prometheus_config_path):
-            with open(prometheus_config_path, "r") as f:
-                config_content = f.read()
+        self.assertTrue(
+            os.path.exists(prometheus_config_path),
+            f"Prometheus config file not found at {prometheus_config_path}",
+        )
 
-            # Verify all services are in Prometheus config
-            expected_services = [
-                "api-service",
-                "worker-service",
-                "semantic-service",
-                "dq-service",
-                "compliance-service",
-                "datacontract-service",
-            ]
+        with open(prometheus_config_path, "r") as f:
+            config_content = f.read()
 
-            for service in expected_services:
-                self.assertIn(
-                    service, config_content, f"Service {service} not found in Prometheus config"
-                )
+        # Verify all services are in Prometheus config
+        expected_services = [
+            "api-service",
+            "worker-service",
+            "semantic-service",
+            "dq-service",
+            "compliance-service",
+            "datacontract-service",
+        ]
+
+        for service in expected_services:
+            self.assertIn(
+                service, config_content, f"Service {service} not found in Prometheus config"
+            )

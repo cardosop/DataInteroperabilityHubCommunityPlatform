@@ -13,6 +13,7 @@ Features:
 """
 import os
 import logging
+import uuid
 from typing import List, Optional, Dict, Any, Set
 from django.db import transaction, connection
 from django.core.management import call_command
@@ -48,6 +49,11 @@ logger = logging.getLogger(__name__)
 class TestDataManager:
     """
     Comprehensive test data management utility.
+    """
+
+    __test__ = False  # Not a test class — prevent pytest collection warning
+
+    """
 
     Provides methods for:
     - Cleaning up test data
@@ -380,7 +386,7 @@ def seed_test_data(
     for i in range(tenant_count):
         manager = TestDataManager()
         tenant = manager.create_complete_tenant_data(
-            tenant_name=f"Test Tenant {i+1}",
+            tenant_name=f"Test Tenant {i+1} {uuid.uuid4().hex[:8]}",
             asset_count=assets_per_tenant,
             contract_count=contracts_per_tenant,
             dataset_count=datasets_per_tenant,

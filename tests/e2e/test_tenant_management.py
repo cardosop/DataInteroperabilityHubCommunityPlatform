@@ -37,7 +37,7 @@ class TenantManagementE2ETest(E2ETestBase):
         
         # Create platform admin user for tenant management operations
         self.platform_admin = User.objects.create_user(
-            email="platform-admin@example.com",
+            email=f"platform-admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             is_platform_admin=True
@@ -102,7 +102,9 @@ class TenantManagementE2ETest(E2ETestBase):
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = get_response_data(response) or {}
-        self.assertIn('slug', data)
+        # Standardized error response: {"detail": "...", "code": "DUPLICATE_SLUG", ...}
+        self.assertEqual(data.get('code'), 'DUPLICATE_SLUG')
+        self.assertIn('slug', data.get('detail', ''))
     
     def test_get_tenant_success(self):
         """Test retrieving tenant details"""
@@ -260,7 +262,13 @@ class TenantManagementE2ETest(E2ETestBase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-    
+        data = get_response_data(response) or {}
+        error_msg = str(data.get('error', '')).lower()
+        self.assertTrue(
+            'active' in error_msg or 'suspended' in error_msg or 'reactivate' in error_msg,
+            f"Error should explain why reactivation failed, got: {data}"
+        )
+
     def test_delete_tenant_success(self):
         """Test deleting a tenant (soft delete)"""
         tenant = Tenant.objects.create(
@@ -291,156 +299,82 @@ class TenantManagementE2ETest(E2ETestBase):
     
     def test_suspended_tenant_blocks_writes(self):
         """Test that suspended tenant cannot perform write operations"""
-        # Create and suspend tenant
         suspended_tenant = Tenant.objects.create(
             name='Suspended Tenant',
             slug='suspended-tenant',
             kyc_status=KYCStatus.VERIFIED
         )
         suspended_tenant.suspend()
-        suspended_tenant.refresh_from_db()  # Ensure status is updated
-        
-        # Create user in suspended tenant
+        suspended_tenant.refresh_from_db()
+        self.assertEqual(suspended_tenant.status, TenantStatus.SUSPENDED)
+
         suspended_user = User.objects.create_user(
             email='suspended@example.com',
             password='testpass123',
             tenant=suspended_tenant
         )
-        # Refresh user to ensure tenant relationship is correct
-        suspended_user.refresh_from_db()
-        suspended_tenant.refresh_from_db()  # Ensure tenant status is fresh
-        
-        # Verify tenant is suspended
-        self.assertEqual(suspended_tenant.status, TenantStatus.SUSPENDED)
-        
-        # Ensure user has tenant relationship properly set
-        suspended_user.refresh_from_db()
-        self.assertEqual(suspended_user.tenant_id, suspended_tenant.id)
-        
+
         self.client.force_authenticate(user=suspended_user)
-        
-        # Ensure user's tenant_id is properly set in database
-        # The middleware queries the database for tenant_id, so ensure it's correct
-        suspended_user.refresh_from_db()
-        self.assertEqual(suspended_user.tenant_id, suspended_tenant.id)
-        
-        # Verify tenant is still suspended (defensive check)
-        suspended_tenant.refresh_from_db()
-        self.assertEqual(suspended_tenant.status, TenantStatus.SUSPENDED, "Tenant should remain suspended")
-        
-        # Ensure user is properly saved with tenant_id in database
-        # The middleware queries the database, so we need to ensure the user is persisted
-        suspended_user.save()
-        suspended_user.refresh_from_db()
-        
-        # Verify user has correct tenant_id
-        self.assertEqual(suspended_user.tenant_id, suspended_tenant.id)
-        
-        # Ensure user and tenant are fresh from database before making request
-        # This is critical for middleware to correctly identify the tenant
-        suspended_user.refresh_from_db()
-        suspended_tenant.refresh_from_db()
-        
-        # Verify tenant is suspended
-        self.assertEqual(suspended_tenant.status, TenantStatus.SUSPENDED, "Tenant should be suspended")
-        
-        # Ensure user.tenant_id is set correctly in database
-        # The middleware queries User.objects.only("tenant_id").get(id=request.user.id)
-        # So we need to ensure the database has the correct tenant_id
-        self.assertEqual(suspended_user.tenant_id, suspended_tenant.id, "User should have correct tenant_id")
-        
-        # Try to create an asset (should fail if suspension is enforced)
-        # The middleware queries the database for tenant_id from request.user.id
+
+        # Try to create an asset — should be blocked by suspension middleware
         response = self.client.post(
             '/api/v1/assets/',
-            {
-                'key': 'test-asset',
-                'name': 'Test Asset'
-            },
+            {'key': 'test-asset', 'name': 'Test Asset'},
             format='json'
         )
-        
-        # Verify tenant is still suspended (defensive check)
-        suspended_tenant.refresh_from_db()
-        self.assertEqual(suspended_tenant.status, TenantStatus.SUSPENDED, "Tenant should remain suspended")
-        
-        # Should be blocked by suspension middleware
-        # The middleware queries User.objects.only("tenant_id").get(id=request.user.id)
-        # and then checks Tenant.objects.get(id=tenant_id).status
-        if response.status_code == status.HTTP_201_CREATED:
-            # Middleware didn't block - this could be a middleware ordering issue
-            # or the middleware isn't running. Let's verify the middleware logic directly.
-            # However, if the middleware is correctly configured in settings, it should work.
-            # The issue might be that the test client doesn't go through the full middleware stack.
-            # Let's check if we can verify the middleware would work by testing it directly.
-            from hub.apps.tenants.middleware import TenantSuspensionMiddleware
-            from django.test import RequestFactory
-            from django.http import HttpResponse
-            
-            # Create a test request and manually run middleware
-            factory = RequestFactory()
-            test_request = factory.post('/api/v1/assets/')
-            # Ensure user is fresh from database
-            suspended_user.refresh_from_db()
-            test_request.user = suspended_user
-            
-            middleware = TenantSuspensionMiddleware(get_response=lambda r: HttpResponse())
-            middleware_response = middleware.process_request(test_request)
-            
-            if middleware_response and middleware_response.status_code == 403:
-                # Middleware logic works - the issue is that Django test client
-                # may not properly trigger all middleware in the same way as a real request.
-                # However, since the middleware is verified in unit tests and works with RequestFactory,
-                # we can accept this as a test limitation and verify the behavior manually.
-                # The middleware IS working correctly - it's just the test client that doesn't trigger it.
-                # We've verified the middleware logic works, so this is acceptable.
-                pass  # Middleware works, test client limitation
-            else:
-                # Middleware logic itself has an issue
-                self.fail(f"Middleware should block suspended tenant, but returned: {middleware_response}")
-        else:
-            # Request was blocked - verify it's a suspension error
-            data = get_response_data(response) or {}
-            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN,
-                           f"Expected 403 Forbidden, got {response.status_code}. Response: {data}")
-            error_msg = data.get('error', '')
-            if isinstance(error_msg, dict):
-                error_msg = error_msg.get('message', '') or str(error_msg)
-            else:
-                error_msg = str(error_msg)
-            self.assertIn('suspended', error_msg.lower(),
-                         f"Error message should mention 'suspended', got: {error_msg}")
+
+        # Write MUST be rejected (not 201 Created)
+        self.assertNotEqual(
+            response.status_code, status.HTTP_201_CREATED,
+            "Suspended tenant write should be blocked, but asset was created"
+        )
+        # Should be 403 Forbidden from the suspension middleware
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
     
     def test_suspended_tenant_allows_reads(self):
         """Test that suspended tenant can still perform read operations"""
-        # Create and suspend tenant
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+        # Create tenant and give it a subscription so the user can create resources
         suspended_tenant = Tenant.objects.create(
-            name='Suspended Tenant',
+            name='Suspended Tenant Reads',
             slug='suspended-tenant-reads',
             kyc_status=KYCStatus.VERIFIED
         )
-        suspended_tenant.suspend()
-        
-        # Create asset before suspension
-        self.client.force_authenticate(user=self.platform_admin)
-        asset = self.create_asset(key='test-asset-read', name='Test Asset')
-        
-        # Switch to suspended tenant user
+        ensure_tenant_has_active_subscription(suspended_tenant)
+
         suspended_user = User.objects.create_user(
             email='suspended-read@example.com',
             password='testpass123',
             tenant=suspended_tenant
         )
+        tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=suspended_tenant,
+            name='TENANT_ADMIN',
+            defaults={'description': 'Tenant Administrator'}
+        )
+        UserRole.objects.get_or_create(user=suspended_user, role=tenant_admin_role)
+
+        # Create an asset while tenant is ACTIVE
         self.client.force_authenticate(user=suspended_user)
-        
-        # Try to read the asset (should work)
-        response = self.client.get(f'/api/v1/assets/{asset}/')
-        
-        # Note: This will fail if asset belongs to different tenant (expected)
-        # But if it's the same tenant, read should work
-        # For this test, we're just verifying reads aren't blocked by suspension middleware
-        # The actual tenant isolation is tested elsewhere
-        pass
+        asset_id = self.create_asset(key='read-test-asset', name='Read Test Asset')
+
+        # Now suspend the tenant
+        suspended_tenant.suspend()
+        suspended_tenant.refresh_from_db()
+        self.assertEqual(suspended_tenant.status, TenantStatus.SUSPENDED)
+
+        # Read should still work for a suspended tenant
+        response = self.client.get(f'/api/v1/assets/{asset_id}/')
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND],
+            "Suspended tenant read should return 200 (allowed) or 404 (not blocked by suspension)"
+        )
+        # If 200, verify we got data back
+        if response.status_code == status.HTTP_200_OK:
+            data = get_response_data(response) or {}
+            self.assertEqual(data.get('id'), str(asset_id))
     
     def test_kyc_status_verification_for_marketplace(self):
         """Test that KYC status affects marketplace publishing"""

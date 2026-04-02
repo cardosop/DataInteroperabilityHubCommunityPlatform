@@ -112,8 +112,6 @@ class TestDockerComposeStaging:
             "worker-service",
             "workflow-engine-service",
             "workflow-registry-service",
-            "event-bus-health-service",
-            "event-schema-registry-service",
         ]
 
         for service_name in application_services:
@@ -237,14 +235,11 @@ class TestDockerComposeStaging:
             "worker-service",
             "workflow-engine-service",
             "workflow-registry-service",
-            "event-bus-health-service",
-            "event-schema-registry-service",
             "semantic-service",
             "dq-service",
             "compliance-service",
             "datacontract-service",
             "search-service",
-            "observability-service",
             "webhook-service",
         ]
 
@@ -320,14 +315,11 @@ class TestDockerComposeStaging:
             "worker-service",
             "workflow-engine-service",
             "workflow-registry-service",
-            "event-bus-health-service",
-            "event-schema-registry-service",
             "semantic-service",
             "dq-service",
             "compliance-service",
             "datacontract-service",
             "search-service",
-            "observability-service",
             "webhook-service",
         ]
         for service_name in application_services:

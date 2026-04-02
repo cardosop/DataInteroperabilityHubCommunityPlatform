@@ -15,6 +15,7 @@ from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
 from hub.apps.semantic.utils import map_contract_to_semantic
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -54,14 +55,14 @@ class SPARQLStandardVocabulariesTest(TestCase):
         if not check_semantic_service_available():
             pytest.skip("Semantic service not available")
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

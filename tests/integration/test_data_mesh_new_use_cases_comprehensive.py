@@ -26,7 +26,7 @@ from typing import Any, Dict, List
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -46,23 +46,14 @@ from tests.utils.test_data_management import TestDatabaseIsolationMixin
 User = get_user_model()
 
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.integration,
     pytest.mark.slow,  # Mark as slow due to TransactionTestCase
 ]
 
 
-class DataMeshNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):
+class DataMeshNewUseCasesTestBase(TestCase, TestDatabaseIsolationMixin):
     """Base test class for Data Mesh new use cases"""
-
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for integration tests."""
-        # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -201,9 +192,14 @@ class UCMESH001CreateDataMeshDomainTest(DataMeshNewUseCasesTestBase):
         response = self.client.post(domain_url, domain_data, format="json")
         elapsed_time = (time.time() - start_time) * 1000
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        # Allow buffer for workflow execution
-        self.assertLess(elapsed_time, 15000, f"Domain creation took {elapsed_time}ms, exceeds 15000ms threshold")
+        self.assertEqual(
+            response.status_code, status.HTTP_201_CREATED,
+        )
+        self.assertLess(
+            elapsed_time, 5000,
+            f"Domain creation took {elapsed_time:.0f}ms, "
+            f"exceeds 5000ms",
+        )
 
 
 class UCMESH002ConfigureFederatedGovernanceTest(DataMeshNewUseCasesTestBase):
@@ -226,44 +222,44 @@ class UCMESH002ConfigureFederatedGovernanceTest(DataMeshNewUseCasesTestBase):
         self.assertEqual(domain_response.status_code, status.HTTP_201_CREATED)
         domain_id = domain_response.data["id"]
 
-        # Configure governance policies
-        governance_data = {
-            "policies": [
-                {
-                    "type": "data_quality",
-                    "rule": "quality_score >= 0.8",
-                    "enforcement": "strict",
-                },
-                {
-                    "type": "access_control",
-                    "rule": "role == DATA_PROVIDER",
-                    "enforcement": "moderate",
-                },
-            ],
-        }
-        # Governance is handled via policies endpoint
-        # Try to apply a policy to test governance configuration
-        try:
-            governance_url = reverse("domain-apply-policy", kwargs={"pk": domain_id})
-            governance_response = self.client.post(governance_url, governance_data, format="json")
+        # Create an access policy to apply to the domain
+        from hub.apps.governance.models import AccessPolicy
+        policy = AccessPolicy.objects.create(
+            tenant=self.tenant,
+            name=f"Test Policy {uuid.uuid4().hex[:8]}",
+            description="Integration test policy",
+            conditions={"role": "DATA_PROVIDER"},
+            effect="ALLOW",
+        )
 
-            # If governance endpoint exists and works, verify it
-            if governance_response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]:
-                self.assertIn("id", governance_response.data or {})
-        except Exception:
-            # If endpoint doesn't exist or URL name is different, verify use case is documented
-            # Governance policies can be applied via the policies endpoint when available
-            self.assertTrue(True, "UC-MESH-002 use case documented - governance policies can be configured")
+        # Apply the policy to the domain
+        governance_url = reverse("domain-apply-policy", kwargs={"id": domain_id})
+        governance_data = {"policy_id": str(policy.id)}
+        governance_response = self.client.post(governance_url, governance_data, format="json")
+
+        self.assertIn(
+            governance_response.status_code,
+            [status.HTTP_200_OK, status.HTTP_201_CREATED],
+        )
+        body = governance_response.data or {}
+        self.assertTrue(
+            "id" in body or "policy_id" in body,
+            f"Expected 'id' or 'policy_id' in response: {body}",
+        )
 
 
 class UCMESH003ManageDomainTopologyTest(DataMeshNewUseCasesTestBase):
     """UC-MESH-003: Manage Domain Topology"""
 
-    def test_manage_domain_topology_success(self):
-        """Test successful domain topology management"""
-        # This test verifies the use case is documented
-        # In real implementation, would test topology management endpoints
-        self.assertTrue(True, "UC-MESH-003 use case documented")
+    def test_manage_domain_topology_list(self):
+        """GET /api/v1/mesh/topology/ -> 200 with structure."""
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get("/api/v1/mesh/topology/")
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK,
+        )
+        body = response.json()
+        self.assertIsInstance(body, dict)
 
 
 class UCMESH004AssignDomainOwnershipTest(DataMeshNewUseCasesTestBase):
@@ -292,13 +288,9 @@ class UCMESH004AssignDomainOwnershipTest(DataMeshNewUseCasesTestBase):
         ownership_url = reverse("domain-transfer-ownership", kwargs={"id": domain_id})
         ownership_response = self.client.post(ownership_url, ownership_data, format="json")
 
-        # If ownership assignment works, verify it
-        if ownership_response.status_code == status.HTTP_200_OK:
-            domain = DataMeshDomain.objects.get(id=domain_id)
-            self.assertEqual(str(domain.owner_id), str(self.dpo_user.id))
-        else:
-            # If endpoint doesn't work, verify use case is documented
-            self.assertTrue(True, "UC-MESH-004 use case documented - ownership can be assigned via transfer-ownership endpoint")
+        self.assertEqual(ownership_response.status_code, status.HTTP_200_OK)
+        domain = DataMeshDomain.objects.get(id=domain_id)
+        self.assertEqual(str(domain.owner_id), str(self.dpo_user.id))
 
 
 class UCMESH005MonitorMeshHealthTest(DataMeshNewUseCasesTestBase):
@@ -324,7 +316,6 @@ class UCMESH005MonitorMeshHealthTest(DataMeshNewUseCasesTestBase):
         health_url = reverse("topology-health")
         health_response = self.client.get(health_url)
 
-        # If health endpoint exists, test it
-        # Otherwise, verify the use case is documented
-        if health_response.status_code in [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND]:
-            self.assertTrue(True, "UC-MESH-005 use case documented")
+        self.assertEqual(health_response.status_code, status.HTTP_200_OK)
+        body = health_response.json()
+        self.assertIsInstance(body, dict)

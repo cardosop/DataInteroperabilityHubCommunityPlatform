@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-009-9afcfb4c",
+      "journey_name": "Configure Automated Retention Policies",
+      "persona": "Compliance Officer",
+      "status": "failed",
+      "start_time": 1774664555.746921,
+      "end_time": 1774664555.7538006,
+      "duration": 0.006879568099975586,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Step 'Configure Retention Policy' returned HTTP 400: {'detail': 'At least one of asset_id, dataset_id, or file_id must be provided', 'code': 'VALIDATION_ERROR', 'details': {'asset_id': None, 'dataset_id': None, 'file_id': None}}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Configure Retention Policy",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774664555.746928,
+          "end_time": 1774664555.7537975,
+          "duration": 0.00686955451965332,
+          "error_message": "Step 'Configure Retention Policy' returned HTTP 400: {'detail': 'At least one of asset_id, dataset_id, or file_id must be provided', 'code': 'VALIDATION_ERROR', 'details': {'asset_id': None, 'dataset_id': None, 'file_id': None}}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T02:22:35.753860"
+}

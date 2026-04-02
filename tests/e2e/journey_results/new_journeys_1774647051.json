@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.18292737007141113
+  },
+  "journeys": [
+    {
+      "journey_id": "DMO-001-6cea7365",
+      "journey_name": "Create Data Mesh Domain",
+      "persona": "Data Mesh Domain Owner",
+      "status": "completed",
+      "start_time": 1774647051.014428,
+      "end_time": 1774647051.1973553,
+      "duration": 0.18292737007141113,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Domain",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774647051.0144346,
+          "end_time": 1774647051.1973512,
+          "duration": 0.18291664123535156,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-27T21:30:51.197412"
+}

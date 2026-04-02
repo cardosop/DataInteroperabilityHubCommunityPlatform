@@ -12,6 +12,8 @@ Verifies: workflow execution with business rules, all steps validate, workflow c
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 pytestmark = [
     pytest.mark.uc_journey_persona,
     pytest.mark.workflow_e2e,
@@ -597,17 +599,20 @@ class TestAllDataProductOwnerJourneysThatUseWorkflowsE2E(WorkflowE2ETestBase):
     ]
 
     def test_all_dpo_workflow_journeys_covered(self):
-        """Assert that key DPO workflow journeys are covered by E2E tests."""
-        covered = [
-            "JOURNEY-DPO-001",  # contract_creation
-            "JOURNEY-DPO-002",  # marketplace_publication
-            "JOURNEY-DPO-015",  # product_creation
-        ]
-        self.assertGreaterEqual(len(covered), 3)
-        for journey_id in covered:
+        """Verify DPO workflow classes are importable and have WORKFLOW_NAME."""
+        expected_workflows = {
+            "contract_creation": ContractCreationWorkflow,
+            "marketplace_publication": MarketplacePublicationWorkflow,
+            "product_creation": ProductCreationWorkflow,
+        }
+        for name, cls in expected_workflows.items():
+            self.assertEqual(
+                cls.WORKFLOW_NAME, name,
+                f"{cls.__name__}.WORKFLOW_NAME must be '{name}'",
+            )
             self.assertTrue(
-                journey_id.startswith("JOURNEY-DPO-"),
-                f"{journey_id} should be a DPO journey",
+                hasattr(cls, 'register_workflow'),
+                f"{cls.__name__} must have register_workflow method",
             )
 
 
@@ -621,14 +626,13 @@ class TestAllDataEngineerJourneysThatUseWorkflowsE2E(WorkflowE2ETestBase):
     workflow_classes = [ContractCreationWorkflow, ProductCreationWorkflow]
 
     def test_all_de_workflow_journeys_covered(self):
-        """Assert that key DE workflow journeys are covered by E2E tests."""
-        covered = [
-            "JOURNEY-DE-001",  # contract_creation
-            "JOURNEY-DE-014",  # product_creation
-        ]
-        self.assertGreaterEqual(len(covered), 2)
-        for journey_id in covered:
-            self.assertTrue(
-                journey_id.startswith("JOURNEY-DE-"),
-                f"{journey_id} should be a DE journey",
+        """Verify DE workflow classes are importable and have WORKFLOW_NAME."""
+        expected_workflows = {
+            "contract_creation": ContractCreationWorkflow,
+            "product_creation": ProductCreationWorkflow,
+        }
+        for name, cls in expected_workflows.items():
+            self.assertEqual(
+                cls.WORKFLOW_NAME, name,
+                f"{cls.__name__}.WORKFLOW_NAME must be '{name}'",
             )

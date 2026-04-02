@@ -17,6 +17,8 @@ import uuid
 from datetime import timedelta
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase, override_settings
@@ -642,7 +644,7 @@ class FederatedQueryExecutionTest(TestCase):
         while execution.status not in [QueryExecutionStatus.COMPLETED, QueryExecutionStatus.FAILED]:
             if time.time() - start_time > timeout:
                 break
-            time.sleep(0.5)
+            time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
             execution.refresh_from_db()
 
         # If completed, check that result aggregation occurred
@@ -673,7 +675,7 @@ class FederatedQueryExecutionTest(TestCase):
         ]:
             if time.time() - start_time > timeout:
                 break
-            time.sleep(0.5)
+            time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
             execution.refresh_from_db()
 
         # Execution should eventually fail or be cancelled due to timeout
@@ -1145,7 +1147,7 @@ class VirtualizationPerformanceTest(TestCase):
         while execution.status not in [QueryExecutionStatus.COMPLETED, QueryExecutionStatus.FAILED]:
             if time.time() - start_wait > timeout:
                 break
-            time.sleep(0.1)
+            time.sleep(0.1)  # INTENTIONAL: e2e/integration test polling real services
             execution.refresh_from_db()
 
         execution_time = time.time() - start_time
@@ -1261,7 +1263,7 @@ class VirtualizationPerformanceTest(TestCase):
         while execution.status not in [QueryExecutionStatus.COMPLETED, QueryExecutionStatus.FAILED]:
             if time.time() - start_time > timeout:
                 break
-            time.sleep(0.5)
+            time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
             execution.refresh_from_db()
 
         # If completed, check result handling
@@ -1306,7 +1308,7 @@ class VirtualizationPerformanceTest(TestCase):
         ]:
             if time.time() - start_time > timeout:
                 break
-            time.sleep(0.1)
+            time.sleep(0.1)  # INTENTIONAL: e2e/integration test polling real services
             execution1.refresh_from_db()
 
         # Execute same query again (should use cache if available)
@@ -1360,7 +1362,7 @@ class VirtualizationPerformanceTest(TestCase):
         while execution.status not in [QueryExecutionStatus.COMPLETED, QueryExecutionStatus.FAILED]:
             if time.time() - start_time > timeout:
                 break
-            time.sleep(0.5)
+            time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
             execution.refresh_from_db()
 
         # Check performance metrics

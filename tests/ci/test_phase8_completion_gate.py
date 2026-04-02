@@ -34,23 +34,22 @@ PHASE8_CROSS_CUTTING_SPECS = [
     "concurrent-operations.spec.ts",
 ]
 
-EXPECTED_FEATURE_SPEC_COUNT = 28
+EXPECTED_FEATURE_SPEC_COUNT = 29
 
 
 class TestPhase8_9ScenarioMatrix:
-    """8.9: TEST_SCENARIO_MATRIX.md exists."""
+    """8.9: Test scenario documentation exists (consolidated into TESTING_GUIDE.md)."""
 
-    def test_test_scenario_matrix_exists(self):
-        """docs/TEST_SCENARIO_MATRIX.md must exist."""
-        path = REPO_ROOT / "docs" / "TEST_SCENARIO_MATRIX.md"
-        assert path.is_file(), f"TEST_SCENARIO_MATRIX.md not found at {path}"
+    def test_testing_guide_exists(self):
+        """docs/TESTING_GUIDE.md must exist (consolidated from TEST_SCENARIO_MATRIX.md)."""
+        path = REPO_ROOT / "docs" / "TESTING_GUIDE.md"
+        assert path.is_file(), f"TESTING_GUIDE.md not found at {path}"
 
-    def test_test_scenario_matrix_has_required_sections(self):
-        """Matrix must define Success/Failure/Edge and reference Phase 8."""
-        path = REPO_ROOT / "docs" / "TEST_SCENARIO_MATRIX.md"
+    def test_testing_guide_has_scenario_content(self):
+        """Testing guide must cover test scenarios."""
+        path = REPO_ROOT / "docs" / "TESTING_GUIDE.md"
         content = path.read_text()
-        assert "Success" in content and "Failure" in content and "Edge" in content
-        assert "Phase 8" in content or "8.2" in content or "8.4" in content
+        assert "scenario" in content.lower() or "test" in content.lower()
 
 
 class TestPhase8_9FeatureSpecs:

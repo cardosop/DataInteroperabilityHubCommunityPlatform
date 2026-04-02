@@ -1,0 +1,14 @@
+apiVersion: odcs.io/v3.1.0
+kind: DataContract
+id: fixture-v310-minimal
+name: ODCS v3.1.0 Minimal Fixture
+version: 1.0.0
+schema:
+  - name: orders
+    fields:
+      - name: order_id
+        type: string
+        nullable: false
+      - name: amount
+        type: number
+        nullable: true

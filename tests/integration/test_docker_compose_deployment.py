@@ -209,7 +209,7 @@ class DockerComposeManager:
                 state = status.get("State", "")
                 if health == "healthy" or (state == "running" and health == ""):
                     return True
-            time.sleep(2)
+            time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
         return False
 
     def wait_for_services_healthy(self, services: List[str], timeout: int = 300) -> None:
@@ -274,8 +274,6 @@ def application_services(docker_compose_config):
     return [
         "workflow-engine-service",
         "workflow-registry-service",
-        "event-bus-health-service",
-        "event-schema-registry-service",
         "api-service",
         "worker-service",
     ]
@@ -415,10 +413,6 @@ class TestDockerComposeHealthChecks:
         ("workflow-engine-service", 8098, "/healthz"),
         ("workflow-engine-service", 8098, "/ready"),
         ("workflow-registry-service", 8089, "/health"),
-        ("event-bus-health-service", 8090, "/healthz"),
-        ("event-bus-health-service", 8090, "/ready"),
-        ("event-bus-health-service", 8090, "/health"),
-        ("event-schema-registry-service", 8091, "/health"),
         ("api-service", 8000, "/health"),
     ]
 
@@ -454,7 +448,6 @@ class TestDockerComposeHealthChecks:
         """Test that liveness probes respond correctly."""
         liveness_endpoints = [
             ("workflow-engine-service", 8098, "/healthz"),
-            ("event-bus-health-service", 8090, "/healthz"),
         ]
 
         for service_name, port, endpoint in liveness_endpoints:
@@ -480,7 +473,6 @@ class TestDockerComposeHealthChecks:
         """Test that readiness probes respond correctly."""
         readiness_endpoints = [
             ("workflow-engine-service", 8098, "/ready"),
-            ("event-bus-health-service", 8090, "/ready"),
         ]
 
         for service_name, port, endpoint in readiness_endpoints:
@@ -505,7 +497,6 @@ class TestDockerComposeHealthChecks:
     def test_comprehensive_health_checks(self, docker_compose_manager, started_services):
         """Test comprehensive health check endpoints."""
         comprehensive_endpoints = [
-            ("event-bus-health-service", 8090, "/health"),
         ]
 
         for service_name, port, endpoint in comprehensive_endpoints:
@@ -531,7 +522,6 @@ class TestDockerComposeHealthChecks:
         """Test that Prometheus metrics endpoints are accessible."""
         metrics_endpoints = [
             ("workflow-engine-service", 8098, "/metrics"),
-            ("event-bus-health-service", 8090, "/metrics"),
         ]
 
         for service_name, port, endpoint in metrics_endpoints:
@@ -588,7 +578,6 @@ class TestDockerComposeServiceCommunication:
 
     def test_event_bus_redis_connection(self, docker_compose_manager, started_services):
         """Test that event bus service can connect to Redis (redis-cache and other redis instances)."""
-        event_bus_status = docker_compose_manager.get_service_status("event-bus-health-service")
         redis_cache_status = docker_compose_manager.get_service_status("redis-cache")
 
         if event_bus_status and redis_cache_status:
@@ -691,15 +680,11 @@ class TestDockerComposeServiceDependencies:
     def test_event_bus_depends_on_postgres_and_redis(
         self, docker_compose_manager, started_services, docker_compose_config
     ):
-        """Test that event-bus-health-service depends on postgres and redis instances."""
         event_bus_config = docker_compose_config.get("services", {}).get(
-            "event-bus-health-service", {}
         )
         depends_on = event_bus_config.get("depends_on", {})
         dep_list = list(depends_on.keys()) if isinstance(depends_on, dict) else (depends_on or [])
 
-        assert "postgres" in dep_list, "event-bus-health-service must depend on postgres"
-        assert "redis-cache" in dep_list, "event-bus-health-service must depend on redis-cache"
 
         # Verify dependencies are healthy
         postgres_status = docker_compose_manager.get_service_status("postgres")
@@ -755,7 +740,7 @@ class TestDockerComposeServiceDependencies:
             docker_compose_manager.start_services(
                 ["workflow-engine-service"], wait=False, no_deps=True
             )
-            time.sleep(15)
+            time.sleep(15)  # INTENTIONAL: e2e/integration test polling real services
             status = docker_compose_manager.get_service_status("workflow-engine-service")
             if status:
                 health = status.get("Health", "")

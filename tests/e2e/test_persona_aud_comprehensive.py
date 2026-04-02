@@ -10,6 +10,8 @@ All tests use REAL services (no mocks/stubs) and follow TDD approach.
 Target: 100% journey coverage for all AUD journeys.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import time
 import uuid
 import json
@@ -56,7 +58,7 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         )
         
         self.auditor_user = User.objects.create_user(
-            email="auditor@example.com",
+            email=f"auditor-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -160,10 +162,13 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         else:
             events = data.get('results', [])
         
+        # Filter should return at least 1 ASSET event (we created 2 in setUp)
+        self.assertGreater(len(events), 0, "ASSET filter should return at least one event")
         # All events should be ASSET type
         for event in events:
+            self.assertIn('resource_type', event, "Event missing 'resource_type' key")
             self.assertEqual(event['resource_type'], 'ASSET')
-        
+
         # Filter by CONTRACT
         response = self.client.get('/api/v1/audit/audit-events/?resource_type=CONTRACT')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -175,8 +180,11 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         else:
             events = data.get('results', [])
         
+        # Filter should return at least 1 CONTRACT event (we created 1 in setUp)
+        self.assertGreater(len(events), 0, "CONTRACT filter should return at least one event")
         # All events should be CONTRACT type
         for event in events:
+            self.assertIn('resource_type', event, "Event missing 'resource_type' key")
             self.assertEqual(event['resource_type'], 'CONTRACT')
     
     def test_filter_audit_logs_by_action(self):
@@ -194,8 +202,11 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         else:
             events = data.get('results', [])
         
+        # Filter should return at least 1 ASSET_CREATED event (we created 1 in setUp)
+        self.assertGreater(len(events), 0, "ASSET_CREATED filter should return at least one event")
         # All events should have ASSET_CREATED action
         for event in events:
+            self.assertIn('action', event, "Event missing 'action' key")
             self.assertEqual(event['action'], 'ASSET_CREATED')
     
     def test_filter_audit_logs_by_time_range(self):
@@ -259,18 +270,19 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         else:
             events = data.get('results', [])
         
-        if events:
-            event_id = events[0]['id']
-            
-            # Get event details
-            response = self.client.get(f'/api/v1/audit/audit-events/{event_id}/')
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
-            data = get_response_data(response) or {}
-            self.assertEqual(data['id'], event_id)
-            self.assertIn('timestamp', data)
-            self.assertIn('resource_type', data)
-            self.assertIn('action', data)
-            self.assertIn('details_json', data)
+        self.assertGreater(len(events), 0, "Expected audit events to be available for detail retrieval")
+
+        event_id = events[0]['id']
+
+        # Get event details
+        response = self.client.get(f'/api/v1/audit/audit-events/{event_id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = get_response_data(response) or {}
+        self.assertEqual(data['id'], event_id)
+        self.assertIn('timestamp', data)
+        self.assertIn('resource_type', data)
+        self.assertIn('action', data)
+        self.assertIn('details_json', data)
     
     def test_audit_logs_are_read_only(self):
         """
@@ -287,28 +299,29 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         else:
             events = data.get('results', [])
         
-        if events:
-            event_id = events[0]['id']
-            
-            # Try to update (should fail - read-only)
-            response = self.client.patch(
-                f'/api/v1/audit/audit-events/{event_id}/',
-                {'action': 'MODIFIED'},
-                format='json'
-            )
-            # Should return 405 Method Not Allowed or 403 Forbidden
-            self.assertIn(response.status_code, [
-                status.HTTP_405_METHOD_NOT_ALLOWED,
-                status.HTTP_403_FORBIDDEN
-            ])
-            
-            # Try to delete (should fail - read-only)
-            response = self.client.delete(f'/api/v1/audit/audit-events/{event_id}/')
-            # Should return 405 Method Not Allowed or 403 Forbidden
-            self.assertIn(response.status_code, [
-                status.HTTP_405_METHOD_NOT_ALLOWED,
-                status.HTTP_403_FORBIDDEN
-            ])
+        self.assertGreater(len(events), 0, "Expected audit events to be available for read-only test")
+
+        event_id = events[0]['id']
+
+        # Try to update (should fail - read-only)
+        response = self.client.patch(
+            f'/api/v1/audit/audit-events/{event_id}/',
+            {'action': 'MODIFIED'},
+            format='json'
+        )
+        # Should return 405 Method Not Allowed or 403 Forbidden
+        self.assertIn(response.status_code, [
+            status.HTTP_405_METHOD_NOT_ALLOWED,
+            status.HTTP_403_FORBIDDEN
+        ])
+
+        # Try to delete (should fail - read-only)
+        response = self.client.delete(f'/api/v1/audit/audit-events/{event_id}/')
+        # Should return 405 Method Not Allowed or 403 Forbidden
+        self.assertIn(response.status_code, [
+            status.HTTP_405_METHOD_NOT_ALLOWED,
+            status.HTTP_403_FORBIDDEN
+        ])
     
     def test_error_access_nonexistent_audit_log(self):
         """
@@ -470,9 +483,9 @@ class JourneyAUD002GenerateAuditReportsTests(E2ETestBase):
         else:
             created_events = data.get('results', [])
         
-        # Verify filters work
-        self.assertGreaterEqual(len(asset_events), 0)
-        self.assertGreaterEqual(len(created_events), 0)
+        # Verify filters return results (we created 5 ASSET and 5 ASSET_CREATED events in setUp)
+        self.assertGreater(len(asset_events), 0, "ASSET filter should return at least one event")
+        self.assertGreater(len(created_events), 0, "ASSET_CREATED filter should return at least one event")
     
     def test_error_invalid_time_range(self):
         """
@@ -743,15 +756,14 @@ class AuditorUseCasesTests(E2ETestBase):
             asset_events = data
         else:
             asset_events = data.get('results', [])
-        self.assertGreaterEqual(len(asset_events), 0)
-        
+        self.assertGreater(len(asset_events), 0, "ASSET filter should return at least one event in workflow")
+
         # Step 3: Get details of specific event
-        if asset_events:
-            event_id = asset_events[0]['id']
-            response = self.client.get(f'/api/v1/audit/audit-events/{event_id}/')
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
-            data = get_response_data(response) or {}
-            self.assertEqual(data['id'], event_id)
+        event_id = asset_events[0]['id']
+        response = self.client.get(f'/api/v1/audit/audit-events/{event_id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = get_response_data(response) or {}
+        self.assertEqual(data['id'], event_id)
         
         # Step 4: Export filtered events
         response = self.client.get(
@@ -778,8 +790,11 @@ class AuditorUseCasesTests(E2ETestBase):
         else:
             events = data.get('results', [])
         
-        # Verify all events match filters
+        # Verify filter returns results and all events match filters
+        self.assertGreater(len(events), 0, "Multi-filter search should return at least one event")
         for event in events:
+            self.assertIn('resource_type', event, "Event missing 'resource_type' key")
+            self.assertIn('action', event, "Event missing 'action' key")
             self.assertEqual(event['resource_type'], 'ASSET')
             self.assertEqual(event['action'], 'ASSET_CREATED')
     
@@ -904,16 +919,17 @@ class AuditorErrorScenariosTests(E2ETestBase):
         Test error scenario: Auditor cannot access audit logs from other tenants
         """
         # Create another tenant
+        _suffix = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_suffix}",
+            slug=f"other-tenant-{_suffix}",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+
         # Create audit event for other tenant
         from hub.apps.audit.utils import create_audit_event
         other_user = User.objects.create_user(
-            email="other@tenant.com",
+            email=f"other-{_suffix}@tenant.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE

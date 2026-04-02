@@ -18,7 +18,7 @@ from hub.apps.notifications.templates import (
 from hub.apps.tenants.models import Tenant
 from hub.apps.jobs.models import Job, JobType, JobStatus
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

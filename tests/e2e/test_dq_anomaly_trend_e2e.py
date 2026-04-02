@@ -4,11 +4,13 @@ E2E tests for DQ Anomaly Detection and Trend Analysis
 End-to-end tests for complete workflows including anomaly detection and trend analysis.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from django.utils import timezone
 from datetime import timedelta
 
-from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine, DQAnomaly, DQTrend
+from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine, DQAnomaly, DQAnomalySeverity, DQTrend
 from hub.apps.dq.anomaly_detection import AnomalyDetector
 from hub.apps.dq.trend_analysis import TrendAnalyzer
 from hub.apps.jobs.models import Job, JobStatus, JobType
@@ -17,6 +19,7 @@ from hub.apps.users.models import User, UserStatus, Role, UserRole
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
+import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
@@ -37,7 +40,7 @@ class DQAnomalyDetectionE2ETest(TestCase):
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="dq-anomaly-test@example.com",
+            email=f"dq-anomaly-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
         )
@@ -150,10 +153,19 @@ class DQAnomalyDetectionE2ETest(TestCase):
         # Verify anomaly details
         anomaly = saved_anomalies.first()
         self.assertEqual(anomaly.metric_type, "quality_score")
+        # Expected value should approximate the baseline mean (~90.0)
         self.assertIsNotNone(anomaly.expected_value)
+        self.assertGreater(anomaly.expected_value, 50.0,
+                           "Expected value should reflect baseline (~90), not be near 0")
         self.assertEqual(anomaly.actual_value, 30.0)
+        # Deviation should be negative (actual < expected)
         self.assertIsNotNone(anomaly.deviation)
+        self.assertLess(anomaly.deviation, 0,
+                        "Deviation should be negative when actual < expected")
+        # Severity should be HIGH or CRITICAL for a 60-point drop
         self.assertIsNotNone(anomaly.severity)
+        self.assertIn(anomaly.severity, ["HIGH", "CRITICAL", DQAnomalySeverity.HIGH, DQAnomalySeverity.CRITICAL],
+                       "A 60-point quality drop should be HIGH or CRITICAL severity")
 
 
 class DQTrendAnalysisE2ETest(TestCase):
@@ -162,14 +174,14 @@ class DQTrendAnalysisE2ETest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -253,18 +265,28 @@ class DQTrendAnalysisE2ETest(TestCase):
             asset=self.asset
         )
         self.assertGreater(saved_trends.count(), 0)
-        
+
+        # Verify trend data reflects the improving quality scores (70 → 99)
+        first_trend = saved_trends.order_by('period_start').first()
+        self.assertIsNotNone(first_trend.metric_type)
+        self.assertIsNotNone(first_trend.current_value)
+
         # Step 4: Generate visualizations
         json_viz = TrendAnalyzer.get_trend_visualization(trends, format="json")
         chart_viz = TrendAnalyzer.get_trend_visualization(trends, format="chart_data")
-        
-        # Verify visualizations
+
+        # Verify JSON visualization structure and content
         self.assertIsInstance(json_viz, list)
         self.assertGreater(len(json_viz), 0)
-        
+
+        # Verify chart visualization structure and content
         self.assertIsInstance(chart_viz, dict)
         self.assertIn("labels", chart_viz)
         self.assertIn("datasets", chart_viz)
         self.assertGreater(len(chart_viz["labels"]), 0)
         self.assertGreater(len(chart_viz["datasets"]), 0)
+        # Datasets should contain actual data points
+        first_dataset = chart_viz["datasets"][0]
+        self.assertIn("data", first_dataset,
+                       "Chart dataset should have a 'data' key with values")
 

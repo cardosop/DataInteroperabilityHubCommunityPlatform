@@ -24,6 +24,7 @@ from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
 from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import Job, JobType, JobStatus
 from tests.factories import TenantFactory
+import uuid
 
 User = get_user_model()
 
@@ -38,7 +39,7 @@ class ContractCreationWorkflowTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -91,7 +92,7 @@ class AssetOnboardingWorkflowTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -156,7 +157,7 @@ class DataQualityChecksTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -196,7 +197,7 @@ class ComplianceChecksTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -236,7 +237,7 @@ class SemanticMappingTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -263,7 +264,7 @@ class MarketplaceFunctionalityTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -295,7 +296,7 @@ class UserWorkflowsTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

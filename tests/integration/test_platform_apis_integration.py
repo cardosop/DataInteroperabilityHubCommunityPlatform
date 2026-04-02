@@ -11,6 +11,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
+import uuid
 
 User = get_user_model()
 
@@ -28,7 +29,7 @@ class TestPlatformAPIsIntegration:
             slug="platform-integration-tenant",
         )
         self.admin = User.objects.create_user(
-            email="platform_admin@example.com",
+            email=f"platform_admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -90,7 +91,7 @@ class TestPlatformAPIsIntegration:
         from hub.apps.audit.models import AuditEvent
 
         regular_user = User.objects.create_user(
-            email="regular_platform_erasure@example.com",
+            email=f"regular_platform_erasure-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

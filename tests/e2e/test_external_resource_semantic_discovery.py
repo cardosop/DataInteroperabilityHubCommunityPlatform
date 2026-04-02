@@ -126,7 +126,7 @@ class ExternalResourceSemanticDiscoveryE2ETest(E2ETestBase):
         self.assertEqual(semantic_resource.resource_id, federated_asset.id)
 
         # Wait for semantic service to process and store in Fuseki
-        time.sleep(2)
+        time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
 
         # Query semantic layer to discover federated assets with external resources
         client = SemanticServiceClient()
@@ -148,7 +148,7 @@ class ExternalResourceSemanticDiscoveryE2ETest(E2ETestBase):
         LIMIT 100
         """
 
-        discovery_result = client.query_sparql(query=discovery_query, output_format="json")
+        discovery_result = client.query_sparql(query=discovery_query, output_format="json", tenant_id=str(self.tenant.id))
         # Handle circuit breaker failures gracefully
         if "error" in discovery_result:
             error_msg = discovery_result.get("error", "").lower()
@@ -181,7 +181,7 @@ class ExternalResourceSemanticDiscoveryE2ETest(E2ETestBase):
         LIMIT 100
         """
 
-        metadata_result = client.query_sparql(query=metadata_query, output_format="json")
+        metadata_result = client.query_sparql(query=metadata_query, output_format="json", tenant_id=str(self.tenant.id))
         # Handle circuit breaker failures gracefully
         if "error" in metadata_result:
             error_msg = metadata_result.get("error", "").lower()
@@ -210,7 +210,7 @@ class ExternalResourceSemanticDiscoveryE2ETest(E2ETestBase):
         LIMIT 100
         """
 
-        filter_result = client.query_sparql(query=filter_query, output_format="json")
+        filter_result = client.query_sparql(query=filter_query, output_format="json", tenant_id=str(self.tenant.id))
         # Handle circuit breaker failures gracefully
         if "error" in filter_result:
             error_msg = filter_result.get("error", "").lower()

@@ -5,6 +5,8 @@ Tests performance of API endpoints, database queries, JSONField queries,
 middleware, job queue operations, file storage operations, and compares with baseline metrics.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import time
 from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
@@ -21,6 +23,7 @@ from hub.apps.assets.models import Asset
 from hub.apps.jobs.utils import create_job
 from hub.apps.files.storage import S3StorageClient
 from django.conf import settings
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -33,9 +36,9 @@ class PerformanceTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = Client()
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )

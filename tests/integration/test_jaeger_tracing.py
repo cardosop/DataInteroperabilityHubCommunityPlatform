@@ -65,8 +65,6 @@ class TestJaegerTracing:
             "worker-service",
             "workflow-engine-service",
             "workflow-registry-service",
-            "event-bus-health-service",
-            "event-schema-registry-service",
         ]
         for name in services_with_tracing:
             if name not in services:

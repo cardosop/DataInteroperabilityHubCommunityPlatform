@@ -10,6 +10,7 @@ Features:
 - Proper relationships between models
 - Configurable defaults
 """
+import time
 import uuid
 from typing import Dict, Any, List, Optional
 from django.contrib.auth import get_user_model
@@ -118,6 +119,10 @@ class TenantFactory:
         """
         Create a Tenant instance.
 
+        Retries up to 3 times on deadlock / aborted-transaction errors caused
+        by a concurrent process (e.g. the API service) holding an
+        AccessExclusiveLock on the shared test database.
+
         Args:
             name: Tenant name (default: auto-generated)
             slug: Tenant slug (default: auto-generated from name)
@@ -135,20 +140,57 @@ class TenantFactory:
         if slug is None:
             slug = name.lower().replace(" ", "-")[:50]
             # Ensure slug is unique
-            base_slug = slug
             counter = 1
             while Tenant.objects.filter(slug=slug).exists():
-                slug = f"{base_slug}-{counter}"
+                slug = f"{slug}-{counter}"
                 counter += 1
 
-        return Tenant.objects.create(
-            name=name,
-            slug=slug,
-            status=status,
-            kyc_status=kyc_status,
-            region=region,
-            **kwargs
-        )
+        base_slug = slug  # Always set for retry slug regeneration
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                return Tenant.objects.create(
+                    name=name,
+                    slug=slug,
+                    status=status,
+                    kyc_status=kyc_status,
+                    region=region,
+                    **kwargs
+                )
+            except Exception as exc:
+                err = str(exc).lower()
+                is_retryable = (
+                    "deadlock" in err
+                    or "current transaction is aborted" in err
+                    or "canceling statement" in err
+                    or "lock timeout" in err
+                )
+                if is_retryable and attempt < max_retries - 1:
+                    # Reset the DB connection (deadlock poisons the transaction)
+                    try:
+                        from django.db import connection as _conn
+                        try:
+                            if _conn.connection and not _conn.connection.closed:
+                                _conn.connection.rollback()
+                        except Exception:
+                            pass
+                        _conn.needs_rollback = False
+                        _conn.in_atomic_block = False
+                        _conn.savepoint_ids = []
+                        _conn.atomic_blocks = []
+                        try:
+                            _conn.close()
+                        except Exception:
+                            _conn.connection = None
+                        _conn.ensure_connection()
+                    except Exception:
+                        pass
+                    # Regenerate unique slug (previous attempt may have partially committed)
+                    slug = f"{base_slug}-{uuid.uuid4().hex[:4]}"
+                    time.sleep(0.5 * (attempt + 1))  # backoff
+                    continue
+                raise
 
     @staticmethod
     def create_verified_tenant(**kwargs) -> Tenant:

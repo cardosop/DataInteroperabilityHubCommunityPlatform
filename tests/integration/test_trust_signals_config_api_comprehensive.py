@@ -13,7 +13,9 @@ Coverage:
 import uuid
 
 import pytest
-from django.test import TransactionTestCase
+
+pytestmark = pytest.mark.slow
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -22,7 +24,7 @@ from hub.apps.users.models import User, UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.integration,
     pytest.mark.marketplace,
     pytest.mark.timeout(120),
@@ -31,7 +33,7 @@ pytestmark = [
 ]
 
 
-class TrustSignalsConfigAPIsComprehensiveTest(TransactionTestCase):
+class TrustSignalsConfigAPIsComprehensiveTest(TestCase):
     """Integration tests for /api/v1/marketplace/config/trust-signals/ CRUD and tenant isolation."""
 
     reset_sequences = False

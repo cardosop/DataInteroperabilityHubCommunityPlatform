@@ -14,6 +14,7 @@ from rest_framework.test import APIClient
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
+import uuid
 
 User = get_user_model()
 
@@ -31,7 +32,7 @@ class AuditHealthRegressionTestBase(TestCase):
             slug="audit-health-regression",
         )
         self.user = User.objects.create_user(
-            email="audithealth@example.com",
+            email=f"audithealth-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

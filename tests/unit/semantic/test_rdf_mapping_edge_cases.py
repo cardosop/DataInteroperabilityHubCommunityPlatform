@@ -15,6 +15,7 @@ from hub.apps.contracts.models import Contract, ContractStatus, NormalizationSta
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
 from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -41,7 +42,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         """Set up test fixtures"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

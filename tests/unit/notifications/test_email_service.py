@@ -18,7 +18,7 @@ from hub.apps.notifications.services import (
     get_email_service
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class EmailServiceBaseTest(TestCase):

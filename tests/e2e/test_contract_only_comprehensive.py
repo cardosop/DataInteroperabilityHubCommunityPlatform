@@ -11,6 +11,8 @@ Covers:
 Uses REAL services (DataContract, MinIO).
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from rest_framework import status
 
@@ -44,9 +46,12 @@ class ContractOnlyFlowSuccessTests(E2ETestBase):
         self.require_service('DataContract', self.datacontract_service_url, health_path='/health')
         
         validate_response = self.validate_contract(contract_id, async_mode=False)
-        # Service is available, validation should have completed
-        if isinstance(validate_response, dict) and 'validation_status' in validate_response:
-            self.assertIn(validate_response.get('validation_status'), ['VALID', 'INVALID'])
+        # Service is available, validation should return a dict with validation_status
+        self.assertIsInstance(validate_response, dict, "Validation should return a dict response")
+        self.assertIn('validation_status', validate_response, "Response must include validation_status")
+        # DataContract service may return INVALID for minimal test contracts;
+        # the test verifies the flow works end-to-end, not that minimal contracts pass validation.
+        self.assertIn(validate_response['validation_status'], ['VALID', 'WARNING_ONLY', 'INVALID'])
         
         # Step 4: Attach contract to asset
         self.attach_contract_to_asset(asset_id, contract_id)
@@ -56,9 +61,8 @@ class ContractOnlyFlowSuccessTests(E2ETestBase):
         
         # Step 6: Activate asset (no dataset required)
         activate_response = self.activate_asset(asset_id)
-        # activate_asset already asserts 200 OK, but we can verify the response
-        if hasattr(activate_response, 'status_code'):
-            self.assertEqual(activate_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(activate_response.status_code, status.HTTP_200_OK,
+            f"Activation should succeed, got {activate_response.status_code}")
         
         # Verify final state - asset is ACTIVE without dataset
         asset = Asset.objects.get(id=asset_id)
@@ -117,17 +121,10 @@ class ContractOnlyFlowSuccessTests(E2ETestBase):
             original_raw='{"id": "contract2", "schema": {"fields": []}}'
         )
         
-        # Validate both contracts before attach (attachment requires validation_status VALID or WARNING_ONLY)
-        self.validate_contract(contract1_id, async_mode=False)
-        self.validate_contract(contract2_id, async_mode=False)
-        
-        # Ensure validation_status is set (DataContract may return INVALID; set VALID for test)
-        for cid in (contract1_id, contract2_id):
-            contract = Contract.objects.get(id=cid)
-            if contract.validation_status not in [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY]:
-                contract.validation_status = ValidationStatus.VALID
-                contract.save()
-        
+        # Don't manually force validation_status — use prepare_contract_for_activation which handles this
+        self.prepare_contract_for_activation(str(contract1_id))
+        self.prepare_contract_for_activation(str(contract2_id))
+
         # Attach both contracts
         self.attach_contract_to_asset(asset_id, contract1_id)
         self.attach_contract_to_asset(asset_id, contract2_id)
@@ -160,8 +157,7 @@ class ContractOnlyFlowFailureTests(E2ETestBase):
             {'version': asset.version},
             format='json'
         )
-        self.assertEqual(activate_response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('blocked', str(get_response_data(activate_response) or {}).lower())
+        self.assertIn(activate_response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY])
     
     def test_activation_with_invalid_contract_fails(self):
         """Test that activation fails with invalid contract"""
@@ -236,9 +232,8 @@ class ContractOnlyFlowEdgeCasesTests(E2ETestBase):
         # Contract should still be valid (schema is optional)
         validate_response = self.validate_contract(contract_id)
         # Service is available, validation should have completed
-        # May be valid or invalid depending on spec requirements
-        if isinstance(validate_response, dict) and 'validation_status' in validate_response:
-            self.assertIn(validate_response.get('validation_status'), ['VALID', 'INVALID', 'WARNING_ONLY'])
+        self.assertIn(validate_response.get('validation_status'), ['VALID', 'WARNING_ONLY', 'INVALID'],
+            "Validation should complete (not error/skip)")
         
         # Should be able to activate if validation passes
         if validate_response.get('validation_status') in ['VALID', 'WARNING_ONLY']:

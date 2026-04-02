@@ -20,6 +20,8 @@ from enum import Enum
 from unittest import TestCase
 
 import pytest
+
+pytestmark = pytest.mark.slow
 import requests
 from django.conf import settings
 from django.db import connection
@@ -186,7 +188,7 @@ class ServiceAvailabilityChecker:
 
             # Wait before retry (except on last attempt)
             if attempt < retries - 1:
-                time.sleep(retry_delay)
+                time.sleep(retry_delay)  # INTENTIONAL: e2e/integration test polling real services
 
         return ServiceCheckResult(
             service_name=config.name,
@@ -245,7 +247,7 @@ class ServiceAvailabilityChecker:
 
             # Wait before retry (except on last attempt)
             if attempt < retries - 1:
-                time.sleep(retry_delay)
+                time.sleep(retry_delay)  # INTENTIONAL: e2e/integration test polling real services
 
         return ServiceCheckResult(
             service_name=config.name,
@@ -315,7 +317,7 @@ class ServiceAvailabilityChecker:
 
             # Wait before retry (except on last attempt)
             if attempt < retries - 1:
-                time.sleep(retry_delay)
+                time.sleep(retry_delay)  # INTENTIONAL: e2e/integration test polling real services
 
         return ServiceCheckResult(
             service_name=config.name,
@@ -392,7 +394,7 @@ class ServiceAvailabilityChecker:
 
             # Wait before retry (except on last attempt)
             if attempt < retries - 1:
-                time.sleep(retry_delay)
+                time.sleep(retry_delay)  # INTENTIONAL: e2e/integration test polling real services
 
         return ServiceCheckResult(
             service_name=config.name,
@@ -510,7 +512,7 @@ class ServiceAvailabilityChecker:
 
             # Wait before retry (except on last attempt)
             if attempt < retries - 1:
-                time.sleep(retry_delay)
+                time.sleep(retry_delay)  # INTENTIONAL: e2e/integration test polling real services
 
         return ServiceCheckResult(
             service_name=config.name,

@@ -41,7 +41,7 @@ class DataProviderPersonaTest(E2ETestBase):
         
         # Create data provider user
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -72,9 +72,10 @@ class DataProviderPersonaTest(E2ETestBase):
     
     def test_data_provider_cannot_access_other_tenant_config(self):
         """Test DATA_PROVIDER cannot access other tenant configuration"""
+        _suffix = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_suffix}",
+            slug=f"other-tenant-{_suffix}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
@@ -162,7 +163,7 @@ class DataProviderPersonaTest(E2ETestBase):
         for i in range(3):
             response = self.client.get("/api/v1/contracts/")
             responses.append(response.status_code)
-            time.sleep(0.1)  # Small delay
+            time.sleep(0.1)  # INTENTIONAL: test-specific delay  # Small delay
         
         # Should handle sustained requests
         self.assertTrue(len(responses) > 0)
@@ -416,7 +417,7 @@ class DataProviderPersonaTest(E2ETestBase):
         """Test rate limits are enforced per user for DATA_PROVIDER"""
         # Create another provider user
         other_provider = User.objects.create_user(
-            email="other_provider@example.com",
+            email=f"other_provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

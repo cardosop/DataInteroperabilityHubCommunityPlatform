@@ -1,0 +1,56 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.015274763107299805
+  },
+  "journeys": [
+    {
+      "journey_id": "CM-002-0da4cbcd",
+      "journey_name": "Moderate Reviews and Ratings",
+      "persona": "Community Manager",
+      "status": "completed",
+      "start_time": 1774668893.048841,
+      "end_time": 1774668893.0641158,
+      "duration": 0.015274763107299805,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Pending Reviews",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668893.058511,
+          "end_time": 1774668893.0585167,
+          "duration": 5.7220458984375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "View Reviews Audit",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668893.064109,
+          "end_time": 1774668893.064114,
+          "duration": 5.0067901611328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T03:34:53.064171"
+}

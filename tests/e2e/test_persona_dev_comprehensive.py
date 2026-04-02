@@ -11,6 +11,8 @@ All tests use REAL services (no mocks/stubs) and follow TDD approach.
 Target: 100% journey coverage for all DEV journeys.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import time
 import uuid
 import json
@@ -60,7 +62,7 @@ class JourneyDEV001BuildCustomIntegrationTests(E2ETestBase):
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.developer_user = User.objects.create_user(
-            email="developer@example.com",
+            email=f"developer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -603,10 +605,11 @@ class JourneyDEV004SetUpWebhooksTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Verify test delivery was created (may take a moment)
-        time.sleep(0.5)
+        time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
         deliveries = WebhookDelivery.objects.filter(webhook=webhook)
         # At least one delivery should exist (the test one)
-        self.assertGreaterEqual(deliveries.count(), 0)  # May be async
+        self.assertGreaterEqual(deliveries.count(), 1,
+            "Expected at least 1 webhook delivery after test trigger")
 
     def test_view_webhook_delivery_history(self):
         """
@@ -818,7 +821,7 @@ class ExternalDeveloperUseCasesTests(E2ETestBase):
         asset_id = asset_response.data['id']
 
         # Step 3: Verify webhook delivery was created (may be async)
-        time.sleep(0.5)
+        time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
         webhook = Webhook.objects.get(id=webhook_id)
         deliveries = WebhookDelivery.objects.filter(webhook=webhook)
         # Delivery may be async, so we just verify webhook exists and is active
@@ -1019,7 +1022,7 @@ class ExternalDeveloperErrorScenariosTests(E2ETestBase):
             status=WebhookStatus.ACTIVE
         )
 
-        # Try to create duplicate (may or may not be allowed)
+        # Try to create duplicate — should be rejected as URL already registered
         response = self.client.post(
             '/api/v1/webhooks/webhooks/',
             {
@@ -1029,7 +1032,6 @@ class ExternalDeveloperErrorScenariosTests(E2ETestBase):
             },
             format='json'
         )
-        # May succeed (if duplicates allowed) or fail (if constraint exists)
-        # We just verify the request is handled
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST,
+            "Duplicate webhook URL should be rejected with 400")
 

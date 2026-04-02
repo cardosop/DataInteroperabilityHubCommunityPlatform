@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase, TransactionTestCase
 
 from hub.apps.tenants.models import Tenant
@@ -159,7 +161,7 @@ class TestODHIntegrationConcurrentPerformance(ODHIntegrationCLISDKPerformanceTes
             try:
                 start_time = time.time()
                 # Simulate model listing with progress tracking
-                time.sleep(0.05)  # Simulate network delay
+                time.sleep(0.05)  # INTENTIONAL: test-specific delay  # Simulate network delay
                 duration = time.time() - start_time
 
                 with lock:

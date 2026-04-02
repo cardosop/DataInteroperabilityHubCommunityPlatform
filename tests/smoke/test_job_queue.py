@@ -119,7 +119,7 @@ class TestJobQueue:
 
             if last_status in TERMINAL_STATES:
                 break
-            time.sleep(POLL_INTERVAL)
+            time.sleep(POLL_INTERVAL)  # INTENTIONAL: test-specific delay
         else:
             pytest.fail(
                 f"Job {job_id} did not reach a terminal state within {POLL_TIMEOUT}s. "

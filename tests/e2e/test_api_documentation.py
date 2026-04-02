@@ -99,3 +99,17 @@ class APIDocumentationE2ETest(E2ETestBase):
         self.assertTrue(any('/contracts' in key for key in path_keys), f"Contracts not found in {path_keys[:5]}")
         self.assertTrue(any('/marketplace/listings' in key for key in path_keys), f"Marketplace listings not found in {path_keys[:5]}")
 
+        # Verify each found path has at least one HTTP method documented
+        http_methods = {'get', 'post', 'put', 'patch', 'delete', 'head', 'options'}
+        undocumented_paths = []
+        for path_key, path_spec in paths.items():
+            if not isinstance(path_spec, dict):
+                continue
+            documented_methods = [m for m in path_spec if m.lower() in http_methods]
+            if not documented_methods:
+                undocumented_paths.append(path_key)
+        self.assertEqual(
+            undocumented_paths, [],
+            f"Paths with no HTTP methods documented: {undocumented_paths}",
+        )
+

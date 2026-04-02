@@ -18,6 +18,8 @@ import time
 import uuid
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -33,7 +35,7 @@ from hub.apps.users.models import UserStatus
 from tests.fixtures.test_data_factories import TenantFactory
 
 # Use regular django_db marker - TestCase handles transactions efficiently
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
@@ -48,7 +50,7 @@ class TestFileInitUploadAPI(TestCase):
         self.client = APIClient()
         # Create tenant and user fresh for each test (better isolation)
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
@@ -374,7 +376,7 @@ class TestFileInitUploadAPI(TestCase):
             ).count()
             if new_count > initial_count:
                 break
-            time.sleep(0.2)
+            time.sleep(0.2)  # INTENTIONAL: e2e/integration test polling real services
 
         # Verify audit event was created if available
         # Note: Audit events are created synchronously, so they should be available immediately
@@ -436,7 +438,7 @@ class TestFileCompleteUploadAPI(TestCase):
 
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
@@ -680,7 +682,7 @@ class TestFileGetInfoAPI(TestCase):
 
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
@@ -778,7 +780,7 @@ class TestFileDownloadAPI(TestCase):
 
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
@@ -930,7 +932,7 @@ class TestFileDeleteAPI(TestCase):
 
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )

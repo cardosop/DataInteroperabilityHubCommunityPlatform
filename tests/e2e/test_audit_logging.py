@@ -10,6 +10,8 @@ Covers:
 
 Uses REAL services (no mocks).
 """
+import uuid
+
 import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
@@ -70,19 +72,33 @@ class AuditLoggingE2ETest(E2ETestBase):
         """Test that PII is redacted in audit logs"""
         # Create asset with potentially sensitive data
         asset_id = self.create_asset(key='pii-test', name='PII Test')
-        
+
         # Get audit event
         audit_event = AuditEvent.objects.filter(
             action='ASSET_CREATED',
             resource_type='ASSET',
             resource_id=asset_id
         ).first()
-        
-        if audit_event and audit_event.details_json:
-            # Verify PII is redacted in details_json
+
+        self.assertIsNotNone(audit_event, "Audit event must be created for ASSET_CREATED")
+
+        if audit_event.details_json:
+            import re
             details_str = str(audit_event.details_json)
-            # Should not contain raw email addresses, SSNs, etc.
-            # This depends on PII redaction implementation
+            # Must not contain raw email addresses
+            email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+            emails_found = email_pattern.findall(details_str)
+            self.assertEqual(
+                emails_found, [],
+                f"PII leak: raw email addresses found in audit details_json: {emails_found}",
+            )
+            # Must not contain SSN patterns
+            ssn_pattern = re.compile(r'\b\d{3}-\d{2}-\d{4}\b')
+            ssns_found = ssn_pattern.findall(details_str)
+            self.assertEqual(
+                ssns_found, [],
+                f"PII leak: SSN-like patterns found in audit details_json: {ssns_found}",
+            )
     
     def test_list_audit_events_with_filters(self):
         """Test listing audit events with filters"""
@@ -144,13 +160,30 @@ class AuditLoggingE2ETest(E2ETestBase):
             pytest.skip("Export endpoint requires different permissions")
         
         # Should return CSV
-        self.assertEqual(response.status_code, status.HTTP_200_OK, 
+        self.assertEqual(response.status_code, status.HTTP_200_OK,
                         f"Expected 200 OK, got {response.status_code}. Response: {response.content[:200] if hasattr(response, 'content') else 'N/A'}")
         # Content-Type may vary slightly, check if it contains csv
         content_type = response.get('Content-Type', '')
-        self.assertIn('csv', content_type.lower(), 
+        self.assertIn('csv', content_type.lower(),
                      f"Expected CSV content type, got: {content_type}")
         self.assertIn('Content-Disposition', response)
+
+        # Verify CSV content is non-empty and has expected structure
+        csv_content = response.content.decode('utf-8', errors='replace')
+        csv_lines = [line for line in csv_content.strip().split('\n') if line.strip()]
+        self.assertGreaterEqual(
+            len(csv_lines), 2,
+            f"CSV export should have at least a header row and one data row, got {len(csv_lines)} lines",
+        )
+        # Verify header row contains expected audit columns
+        header = csv_lines[0].lower()
+        # CSV headers use spaces (e.g. "resource type") not
+        # underscores.
+        for expected_col in ['action', 'resource type', 'timestamp']:
+            self.assertIn(
+                expected_col, header,
+                f"CSV header missing expected column '{expected_col}'. Header: {csv_lines[0]}",
+            )
     
     def test_audit_event_time_range_filtering(self):
         """Test filtering audit events by time range"""
@@ -177,14 +210,15 @@ class AuditLoggingE2ETest(E2ETestBase):
         asset_id1 = self.create_asset(key='tenant-isolation-1', name='Tenant Isolation 1')
         
         # Create another tenant
+        _suffix = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name='Other Tenant',
-            slug='other-tenant',
+            name=f'Other Tenant {_suffix}',
+            slug=f'other-tenant-{_suffix}',
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(other_tenant)
         other_user = User.objects.create_user(
-            email='other@example.com',
+            email=f'other-{_suffix}@example.com',
             password='testpass123',
             tenant=other_tenant,
             status=UserStatus.ACTIVE

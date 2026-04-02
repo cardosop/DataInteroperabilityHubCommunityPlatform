@@ -66,7 +66,7 @@ class TenantConfigAPIIntegrationTest(TestCase):
         
         # Create users
         self.tenant1_admin = User.objects.create_user(
-            email="admin1@example.com",
+            email=f"admin1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE
@@ -74,7 +74,7 @@ class TenantConfigAPIIntegrationTest(TestCase):
         UserRole.objects.create(user=self.tenant1_admin, role=self.admin_role)
         
         self.tenant1_provider = User.objects.create_user(
-            email="provider1@example.com",
+            email=f"provider1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE
@@ -83,7 +83,7 @@ class TenantConfigAPIIntegrationTest(TestCase):
         
         # Create platform admin
         self.platform_admin = User.objects.create_user(
-            email="platform@example.com",
+            email=f"platform-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,  # Platform admin has no tenant
             status=UserStatus.ACTIVE,

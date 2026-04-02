@@ -28,6 +28,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from hub.apps.auth.models import APIKey
 from tests.factories import TenantFactory
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -57,7 +58,7 @@ def test_user_and_tenant(django_api_client):
     """Create test user and tenant"""
     tenant = TenantFactory.create_tenant()
     user = User.objects.create_user(
-        email="cli_test@example.com",
+        email=f"cli_test-{uuid.uuid4().hex[:8]}@example.com",
         password="testpass123",
         tenant=tenant,
         status=UserStatus.ACTIVE

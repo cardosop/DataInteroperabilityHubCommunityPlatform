@@ -4,6 +4,8 @@ E2E tests for Search Functionality
 End-to-end tests for complete search workflows.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -115,6 +117,13 @@ class SearchE2ETest(E2ETestBase):
         data = get_response_data(response) or {}
         self.assertGreater(data.get('total', 0), 0)
         self.assertGreater(len(data.get('results', [])), 0)
+        # Verify search results contain the expected search term in any field
+        results = data.get('results', [])
+        term_found = any(
+            'test' in str(r).lower()
+            for r in results
+        )
+        self.assertTrue(term_found, "Search term 'test' not found in any result field")
         
         # Step 3: Get suggestions
         url = reverse('search-suggestions')
@@ -161,7 +170,10 @@ class SearchE2ETest(E2ETestBase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = get_response_data(response) or {}
-        for result in data.get('results', []):
+        results = data.get('results', [])
+        # Classification filter may return 0 results if the search backend
+        # does not support classification filtering; only validate when results exist.
+        for result in results:
             self.assertEqual(result['classification'], ClassificationCategory.PII.value)
     
     def test_search_index_update_job(self):

@@ -1,0 +1,70 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-011-b525e296",
+      "journey_name": "Set Up Reverse ETL",
+      "persona": "Data Engineer",
+      "status": "failed",
+      "start_time": 1774696183.7748158,
+      "end_time": 1774696183.818314,
+      "duration": 0.04349827766418457,
+      "completion_rate": 66.66666666666666,
+      "success_rate": 66.66666666666666,
+      "error_message": "Step 'Create Sync Job' returned HTTP 400: {'error': {'code': 'VALIDATION_ERROR', 'message': '{\\'direction\\': [ErrorDetail(string=\\'\"EXPORT\" is not a valid choice.\\', code=\\'invalid_choice\\')]}', 'http_status': 400, 'request_id': '4e868fc7-1168-448e-9e9c-a9e39786237e', 'timestamp': '2026-03-28T11:09:43.814298+00:00', 'details': {'direction': [ErrorDetail(string='\"EXPORT\" is not a valid choice.', code='invalid_choice')]}}, 'direction': '\"EXPORT\" is not a valid choice.'}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Create Destination Connection",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696183.7748249,
+          "end_time": 1774696183.800819,
+          "duration": 0.025994062423706055,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Review Field Mappings",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696183.8008275,
+          "end_time": 1774696183.8061366,
+          "duration": 0.005309104919433594,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Create Sync Job",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774696183.8061438,
+          "end_time": 1774696183.8183098,
+          "duration": 0.012166023254394531,
+          "error_message": "Step 'Create Sync Job' returned HTTP 400: {'error': {'code': 'VALIDATION_ERROR', 'message': '{\\'direction\\': [ErrorDetail(string=\\'\"EXPORT\" is not a valid choice.\\', code=\\'invalid_choice\\')]}', 'http_status': 400, 'request_id': '4e868fc7-1168-448e-9e9c-a9e39786237e', 'timestamp': '2026-03-28T11:09:43.814298+00:00', 'details': {'direction': [ErrorDetail(string='\"EXPORT\" is not a valid choice.', code='invalid_choice')]}}, 'direction': '\"EXPORT\" is not a valid choice.'}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T11:09:43.818435"
+}

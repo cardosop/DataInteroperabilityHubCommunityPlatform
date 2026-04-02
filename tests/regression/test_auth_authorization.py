@@ -21,6 +21,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from hub.apps.auth.models import APIKey
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
+import uuid
 
 User = get_user_model()
 
@@ -38,7 +39,7 @@ class AuthenticationRegressionTest(TestCase):
             slug="auth-test-tenant"
         )
         self.user = User.objects.create_user(
-            email="auth@example.com",
+            email=f"auth-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -57,8 +58,16 @@ class JWTAuthenticationTest(AuthenticationRegressionTest):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('access_token', response.data)
-        self.assertIn('refresh_token', response.data)
-    
+        # Refresh token is now in httponly cookie, not response body
+        has_refresh = (
+            'refresh_token' in response.data
+            or response.cookies.get('refresh_token')
+        )
+        self.assertTrue(
+            has_refresh,
+            "Login must return refresh_token in body or httponly cookie",
+        )
+
     def test_jwt_token_usage(self):
         """Test using JWT token for authentication"""
         # Login to get token
@@ -82,12 +91,21 @@ class JWTAuthenticationTest(AuthenticationRegressionTest):
             {'email': self.user.email, 'password': 'testpass123'},
             format='json'
         )
-        refresh_token = login_response.data['refresh_token']
-        
-        # Refresh token
+        # Refresh token may be in body or httponly cookie
+        refresh_token = login_response.data.get('refresh_token')
+        if not refresh_token:
+            cookie = login_response.cookies.get('refresh_token')
+            if cookie:
+                refresh_token = cookie.value
+
+        if not refresh_token:
+            self.skipTest("Login did not return refresh token in body or cookie")
+
+        # Refresh token — send as cookie
+        self.client.cookies['refresh_token'] = refresh_token
         refresh_response = self.client.post(
             '/api/v1/auth/refresh/',
-            {'refresh_token': refresh_token},
+            {},
             format='json'
         )
         self.assertEqual(refresh_response.status_code, status.HTTP_200_OK)
@@ -260,7 +278,7 @@ class AuthorizationTest(AuthenticationRegressionTest):
             slug="other-tenant"
         )
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE

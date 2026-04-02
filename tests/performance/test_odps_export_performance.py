@@ -30,6 +30,8 @@ except ImportError:
     psutil = None
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase, TransactionTestCase
 
 from hub.apps.contracts.models import Contract

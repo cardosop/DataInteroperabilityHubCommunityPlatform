@@ -14,6 +14,7 @@ Uses REAL services (no mocks).
 import pytest
 import json
 import hashlib
+import uuid
 from django.test import TestCase
 from rest_framework import status
 
@@ -67,7 +68,9 @@ class GraphQLAPIE2ETest(E2ETestBase):
         self.assertNotIn('errors', data)
         self.assertIn('data', data)
         self.assertIn('me', data['data'])
-        self.assertEqual(data['data']['me']['email'], self.user.email)
+        me = data['data']['me']
+        self.assertEqual(me['email'], self.user.email)
+        self.assertEqual(me['id'], str(self.user.id))
     
     def test_me_query_unauthenticated_fails(self):
         """Test GraphQL me query without authentication fails"""
@@ -180,6 +183,7 @@ class GraphQLAPIE2ETest(E2ETestBase):
         # Should only return assets matching search
         asset_names = [a['name'] for a in assets]
         self.assertIn('Searchable Asset', asset_names)
+        self.assertNotIn('Other Asset', asset_names, "Search should exclude non-matching assets")
     
     def test_asset_query_success(self):
         """Test GraphQL single asset query"""
@@ -223,8 +227,9 @@ class GraphQLAPIE2ETest(E2ETestBase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        # Should return null for non-existent asset
+        # Should return null for non-existent asset without GraphQL errors
+        if 'errors' in data:
+            self.fail(f"Non-existent asset query should not produce GraphQL errors: {data['errors']}")
         self.assertIsNone(data['data']['asset'])
     
     def test_asset_query_cross_tenant_isolation(self):
@@ -233,12 +238,13 @@ class GraphQLAPIE2ETest(E2ETestBase):
         asset_id = self.create_asset(key='tenant-isolation-asset', name='Tenant Isolation Asset')
         
         # Create other tenant (subscription needed for GraphQL POST requests)
-        other_tenant = Tenant.objects.create(name='Other Tenant', slug='other-tenant')
+        _suffix = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f'Other Tenant {_suffix}', slug=f'other-tenant-{_suffix}')
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
         from hub.apps.users.models import User
 
         ensure_tenant_has_active_subscription(other_tenant)
-        other_user = User.objects.create_user(email='other@example.com', password='testpass123', tenant=other_tenant)
+        other_user = User.objects.create_user(email=f'other-{_suffix}@example.com', password='testpass123', tenant=other_tenant)
         
         # Switch to other user
         self.client.force_authenticate(user=other_user)
@@ -431,16 +437,15 @@ class GraphQLAPIE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
         
-        # If complexity exceeded, should have error
-        # If query has errors for other reasons (like missing field), skip complexity check
+        # Query should succeed or fail with complexity error - verify either way
         if 'errors' in data:
             error_message = data['errors'][0].get('message', '').lower()
-            if 'complexity' in error_message:
-                # Complexity limit was hit - test passes
-                return
-            else:
-                # Other error (e.g., field doesn't exist) - complexity limit may not be implemented
-                pytest.skip(f"GraphQL query returned error (not complexity-related): {error_message}")
+            self.assertIn('complexity', error_message,
+                          f"GraphQL error should be complexity-related, got: {error_message}")
+        else:
+            # Query succeeded without hitting complexity limit - verify valid response
+            self.assertIn('data', data)
+            self.assertIn('assets', data['data'])
     
     def test_graphql_schema_introspection(self):
         """Test GraphQL schema introspection"""
@@ -514,9 +519,9 @@ class GraphQLAPIE2ETest(E2ETestBase):
         data = json.loads(response.content)
         self.assertNotIn('errors', data)
         assets = data['data']['assets']
-        # Should return only 2 items due to pagination
-        self.assertLessEqual(len(assets['items']), 2)
-        self.assertEqual(assets['totalCount'], 5)
+        # Should return exactly 2 items due to pagination (5 created, page size 2)
+        self.assertEqual(len(assets['items']), 2, "Pagination should return exactly 2 items")
+        self.assertGreaterEqual(assets['totalCount'], 5)
     
     def test_graphql_query_error_handling(self):
         """Test GraphQL query error handling"""
@@ -543,9 +548,10 @@ class GraphQLAPIE2ETest(E2ETestBase):
         asset_id2 = self.create_asset(key='tenant-scope-2', name='Tenant Scope 2')
         
         # Create other tenant
-        other_tenant = Tenant.objects.create(name='Other Tenant', slug='other-tenant')
+        _suffix = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f'Other Tenant {_suffix}', slug=f'other-tenant-{_suffix}')
         from hub.apps.users.models import User
-        other_user = User.objects.create_user(email='other@example.com', password='testpass123', tenant=other_tenant)
+        other_user = User.objects.create_user(email=f'other-{_suffix}@example.com', password='testpass123', tenant=other_tenant)
         
         # Create asset in other tenant (switch to other user)
         self.client.force_authenticate(user=other_user)

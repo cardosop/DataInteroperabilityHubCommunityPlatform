@@ -19,11 +19,13 @@ import time
 from typing import Any, Dict, List, Optional
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import transaction, connection
 from django.db.models.signals import post_save
-from django.test import TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -55,7 +57,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
-class ODPSIntegrationTestBase(TransactionTestCase):
+class ODPSIntegrationTestBase(TestCase):
     """Base test class for ODPS integration tests."""
 
     reset_sequences = False
@@ -80,7 +82,7 @@ class ODPSIntegrationTestBase(TransactionTestCase):
             try:
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))
+                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: e2e/integration test polling real services
 
                 self.tenant = TenantFactory.create_tenant()
                 self.user = UserFactory.create_user(tenant=self.tenant, status=UserStatus.ACTIVE)
@@ -294,7 +296,7 @@ class ContractsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         odps_contract = self._create_odps_contract()
 
         # Wait for normalization (if async)
-        time.sleep(0.5)
+        time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
 
         # Refresh from database
         odps_contract.refresh_from_db()

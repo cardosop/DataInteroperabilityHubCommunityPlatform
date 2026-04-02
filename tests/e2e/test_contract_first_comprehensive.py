@@ -11,6 +11,8 @@ Covers:
 Uses REAL services (Compliance, DQ, DataContract, MinIO).
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from rest_framework import status
 
@@ -49,10 +51,13 @@ class ContractFirstFlowSuccessTests(E2ETestBase):
         self.require_service('DataContract', self.datacontract_service_url, health_path='/health')
         
         validate_response = self.validate_contract(contract_id, async_mode=False)
-        # Service is available, validation should have completed
-        if isinstance(validate_response, dict) and 'validation_status' in validate_response:
-            self.assertIn(validate_response.get('validation_status'), ['VALID', 'INVALID'])
-        
+        # Service is available, validation should return a dict with validation_status
+        self.assertIsInstance(validate_response, dict, "Validation should return a dict response")
+        self.assertIn('validation_status', validate_response, "Response must include validation_status")
+        # DataContract service may return INVALID for minimal test contracts;
+        # the test verifies the flow works end-to-end, not that minimal contracts pass validation.
+        self.assertIn(validate_response['validation_status'], ['VALID', 'WARNING_ONLY', 'INVALID'])
+
         # Step 4: Upload data file
         file_id = self.init_file_upload(
             name='products.csv',
@@ -86,11 +91,7 @@ class ContractFirstFlowSuccessTests(E2ETestBase):
         self.assertEqual(asset.status, AssetStatus.ACTIVE)
         self.assertTrue(asset.contracts.exists())
         self.assertTrue(asset.datasets.exists())
-    
-        # Service is available, validation should have completed
-        if isinstance(validate_response, dict) and 'validation_status' in validate_response:
-            self.assertIn(validate_response.get('validation_status'), ['VALID', 'INVALID'])
-    
+
     def test_contract_first_with_yaml_format(self):
         """Test contract-first flow with YAML format"""
         asset_id = self.create_asset(key='yaml-contract', name='YAML Contract')
@@ -182,12 +183,14 @@ class ContractFirstFlowFailureTests(E2ETestBase):
         # Validate contract
         validate_response = self.validate_contract(contract_id)
         
+        # Contract validated against real service should be INVALID for intentionally bad contract
         contract = Contract.objects.get(id=contract_id)
-        if contract.validation_status == ValidationStatus.INVALID:
-            # Contract should not be activatable
-            can_activate, reason = contract.can_activate()
-            self.assertFalse(can_activate)
-            self.assertIn('validation_status', reason.lower())
+        self.assertIn(contract.validation_status, [ValidationStatus.INVALID, ValidationStatus.ERROR],
+            f"Intentionally invalid contract should not be VALID, got {contract.validation_status}")
+        # Contract should not be activatable
+        can_activate, reason = contract.can_activate()
+        self.assertFalse(can_activate)
+        self.assertIn('validation_status', reason.lower())
     
     def test_schema_mismatch_warning(self):
         """Test handling of schema mismatch between contract and data"""
@@ -225,8 +228,12 @@ class ContractFirstFlowFailureTests(E2ETestBase):
         # If normalization failed or not attempted, that's also acceptable - test is about schema mismatch detection
     
     def test_contract_validation_timeout_handling(self):
-        """Test contract validation - uses real DataContract service"""
-        # Note: This test uses real service. To test timeout, service would need to be slow or stopped.
+        """Test contract validation against real DataContract service.
+
+        Despite the name, this test verifies service availability and basic
+        validation behaviour rather than timeout handling. A true timeout test
+        would require the service to be artificially slowed or stopped.
+        """
         asset_id = self.create_asset(key='validation-timeout', name='Validation Timeout')
         
         contract_id = self.create_contract(asset_id)
@@ -283,7 +290,9 @@ class ContractFirstFlowSchemaReconciliationTests(E2ETestBase):
         # Contract schema is source of truth
         # Extra fields in data should be allowed with warnings
         dataset = Dataset.objects.get(id=dataset_id)
-        self.assertIsNotNone(dataset.schema_json)
+        self.assertIsNotNone(dataset.schema_json, "Schema should be inferred")
+        self.assertIn('fields', dataset.schema_json, "Schema should contain fields")
+        self.assertGreater(len(dataset.schema_json.get('fields', [])), 0, "Schema should have at least one field")
     
     def test_schema_reconciliation_with_missing_fields(self):
         """Test schema reconciliation when data has missing fields"""
@@ -304,7 +313,9 @@ class ContractFirstFlowSchemaReconciliationTests(E2ETestBase):
         # System should detect missing field
         # May require contract update or mark as warning
         dataset = Dataset.objects.get(id=dataset_id)
-        self.assertIsNotNone(dataset.schema_json)
+        self.assertIsNotNone(dataset.schema_json, "Schema should be inferred")
+        self.assertIn('fields', dataset.schema_json, "Schema should contain fields")
+        self.assertGreater(len(dataset.schema_json.get('fields', [])), 0, "Schema should have at least one field")
     
     def test_schema_reconciliation_with_type_mismatch(self):
         """Test schema reconciliation when data types don't match"""
@@ -325,7 +336,9 @@ class ContractFirstFlowSchemaReconciliationTests(E2ETestBase):
         # System should detect type mismatch
         # May require contract update or data transformation
         dataset = Dataset.objects.get(id=dataset_id)
-        self.assertIsNotNone(dataset.schema_json)
+        self.assertIsNotNone(dataset.schema_json, "Schema should be inferred")
+        self.assertIn('fields', dataset.schema_json, "Schema should contain fields")
+        self.assertGreater(len(dataset.schema_json.get('fields', [])), 0, "Schema should have at least one field")
 
 
 class ContractFirstFlowEdgeCasesTests(E2ETestBase):
@@ -347,9 +360,11 @@ class ContractFirstFlowEdgeCasesTests(E2ETestBase):
         # Schema will be inferred from data
         validate_response = self.validate_contract(contract_id)
         # Service is available, validation should have completed
-        # Empty schema may be valid or invalid depending on spec requirements
-        if isinstance(validate_response, dict) and 'validation_status' in validate_response:
-            self.assertIn(validate_response.get('validation_status'), ['VALID', 'INVALID', 'WARNING_ONLY'])
+        self.assertIsInstance(validate_response, dict, "Validation should return a dict response")
+        self.assertIn('validation_status', validate_response, "Response must include validation_status")
+        # Empty schema may be VALID (schema optional), INVALID (schema required by spec), or
+        # WARNING_ONLY (accepted with warnings) — all three are acceptable edge-case outcomes
+        self.assertIn(validate_response['validation_status'], ['VALID', 'INVALID', 'WARNING_ONLY'])
     
     def test_contract_with_complex_nested_schema(self):
         """Test contract with complex nested schema structures"""
@@ -384,8 +399,11 @@ class ContractFirstFlowEdgeCasesTests(E2ETestBase):
         # Contract should handle nested structures
         validate_response = self.validate_contract(contract_id)
         # Service is available, validation should have completed
-        if isinstance(validate_response, dict) and 'validation_status' in validate_response:
-            self.assertIn(validate_response.get('validation_status'), ['VALID', 'INVALID', 'WARNING_ONLY'])
+        self.assertIsInstance(validate_response, dict, "Validation should return a dict response")
+        self.assertIn('validation_status', validate_response, "Response must include validation_status")
+        # Complex nested schemas may be VALID, INVALID (unsupported nesting), or
+        # WARNING_ONLY (partial support) — all three are acceptable edge-case outcomes
+        self.assertIn(validate_response['validation_status'], ['VALID', 'INVALID', 'WARNING_ONLY'])
     
     def test_contract_normalization_failure_handling(self):
         """Test handling of contract normalization failures"""

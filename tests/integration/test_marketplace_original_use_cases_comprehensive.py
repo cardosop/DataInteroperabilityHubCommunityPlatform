@@ -26,6 +26,8 @@ import uuid
 from typing import Any, Dict, List
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
@@ -51,7 +53,7 @@ from tests.utils.test_data_management import TestDatabaseIsolationMixin
 
 User = get_user_model()
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.integration]
+pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
 class MarketplaceOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):

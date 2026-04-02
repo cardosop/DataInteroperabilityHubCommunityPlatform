@@ -31,6 +31,7 @@ from hub.apps.marketplace.models import (
 from hub.apps.tenants.models import KYCStatus, Tenant
 
 from .conftest import E2ETestBase, get_response_data
+import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 
@@ -54,7 +55,7 @@ class EntitlementsE2ETest(E2ETestBase):
 
         ensure_e2e_tenant_ready(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com", password="testpass123", tenant=self.consumer_tenant
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.consumer_tenant
         )
 
     def test_entitlement_creation_from_order(self):
@@ -176,12 +177,6 @@ class EntitlementsE2ETest(E2ETestBase):
 
         # Verify entitlement is expired (is_active should return False for expired entitlements)
         self.assertFalse(entitlement.is_active())
-        # Status may still be ACTIVE, but is_active() checks expiration
-        if entitlement.expires_at and entitlement.expires_at < timezone.now():
-            # Manually set status to EXPIRED if needed
-            entitlement.status = EntitlementStatus.EXPIRED
-            entitlement.save(update_fields=["status"])
-            entitlement.refresh_from_db()
         self.assertEqual(entitlement.status, EntitlementStatus.EXPIRED)
 
     def test_entitlement_revocation(self):
@@ -291,18 +286,10 @@ class EntitlementsE2ETest(E2ETestBase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         entitlement_statuses = {e["status"] for e in (get_response_data(response) or {}).get("results", [])}
-        # Filter may not be strictly enforced, so just check that ACTIVE is in results if any exist
-        if len(entitlement_statuses) > 0:
-            # If filter is working, all should be ACTIVE, but if not, at least ACTIVE should be present
-            if EntitlementStatus.ACTIVE not in entitlement_statuses:
-                # Verify we have ACTIVE entitlements in database
-                db_active = Entitlement.objects.filter(
-                    tenant=self.consumer_tenant, status=EntitlementStatus.ACTIVE
-                ).count()
-                self.assertGreater(db_active, 0, "Should have ACTIVE entitlements in database")
-            else:
-                # If ACTIVE is present, that's good enough
-                self.assertIn(EntitlementStatus.ACTIVE, entitlement_statuses)
+        # All returned entitlements should have ACTIVE status
+        for ent in (get_response_data(response) or {}).get("results", []):
+            self.assertEqual(ent.get("status"), EntitlementStatus.ACTIVE,
+                f"Filter should only return ACTIVE entitlements, got {ent.get('status')}")
 
     def test_get_entitlement_details(self):
         """Test retrieving entitlement details"""
@@ -382,7 +369,8 @@ class EntitlementsE2ETest(E2ETestBase):
             pytest.skip("Entitlement access check endpoint not available")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue((get_response_data(response) or {}).get("has_access"))
+        access_data = get_response_data(response) or {}
+        self.assertTrue(access_data.get("has_access"), f"Should have access with valid entitlement, got: {access_data}")
         self.assertEqual((get_response_data(response) or {}).get("asset_id"), str(asset_id))
 
     def test_entitlement_cross_tenant_isolation(self):
@@ -412,12 +400,12 @@ class EntitlementsE2ETest(E2ETestBase):
 
         # Create another tenant (no entitlement)
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}", slug=f"other-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         from hub.apps.users.models import User
 
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
         )
 
         # Switch to other user (no entitlement)

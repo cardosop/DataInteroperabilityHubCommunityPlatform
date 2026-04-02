@@ -64,67 +64,55 @@ class HealthCheckE2ETest(E2ETestBase):
     def test_semantic_service_health(self):
         """Test semantic service health endpoint."""
         semantic_url = get_semantic_service_url()
-        
+
         if not check_service_health(semantic_url, timeout=5):
             pytest.skip(f"Semantic service not available at {semantic_url}")
-        
-        try:
-            response = requests.get(f'{semantic_url}/health', timeout=5)
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertIn('status', data)
-            self.assertEqual(data['status'], 'healthy')
-            # Check for fuseki only if it's in the response (some services may not include it)
-            if 'fuseki' in data:
-                self.assertEqual(data['fuseki'], 'connected')
-        except requests.exceptions.RequestException as e:
-            pytest.skip(f"Semantic service not available: {e}")
+
+        response = requests.get(f'{semantic_url}/health', timeout=10)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('status', data)
+        self.assertEqual(data['status'], 'healthy')
+        # A healthy semantic service must have fuseki connected
+        self.assertIn('fuseki', data, "Healthy semantic service response must include 'fuseki' status")
+        self.assertEqual(data['fuseki'], 'connected')
     
     def test_datacontract_service_health(self):
         """Test DataContract service health endpoint."""
         datacontract_url = get_datacontract_service_url()
-        
+
         if not check_service_health(datacontract_url, timeout=5):
             pytest.skip(f"DataContract service not available at {datacontract_url}")
-        
-        try:
-            response = requests.get(f'{datacontract_url}/health', timeout=5)
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertIn('status', data)
-            self.assertEqual(data['status'], 'healthy')
-        except requests.exceptions.RequestException as e:
-            pytest.skip(f"DataContract service not available: {e}")
+
+        response = requests.get(f'{datacontract_url}/health', timeout=10)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('status', data)
+        self.assertEqual(data['status'], 'healthy')
     
     def test_compliance_service_health(self):
         """Test compliance service health endpoint."""
         compliance_url = get_compliance_service_url()
-        
+
         if not check_service_health(compliance_url, timeout=5):
             pytest.skip(f"Compliance service not available at {compliance_url}")
-        
-        try:
-            response = requests.get(f'{compliance_url}/health', timeout=5)
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertIn('status', data)
-            self.assertEqual(data['status'], 'healthy')
-        except requests.exceptions.RequestException as e:
-            pytest.skip(f"Compliance service not available: {e}")
+
+        response = requests.get(f'{compliance_url}/health', timeout=10)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('status', data)
+        self.assertEqual(data['status'], 'healthy')
     
     def test_dq_service_health(self):
         """Test DQ service health endpoint."""
         dq_url = get_dq_service_url()
-        
+
         if not check_service_health(dq_url, timeout=5):
             pytest.skip(f"DQ service not available at {dq_url}")
-        
-        try:
-            response = requests.get(f'{dq_url}/health', timeout=5)
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertIn('status', data)
-            self.assertEqual(data['status'], 'healthy')
-        except requests.exceptions.RequestException as e:
-            pytest.skip(f"DQ service not available: {e}")
+
+        response = requests.get(f'{dq_url}/health', timeout=10)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('status', data)
+        self.assertEqual(data['status'], 'healthy')
 

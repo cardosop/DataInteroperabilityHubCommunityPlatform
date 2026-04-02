@@ -16,6 +16,8 @@ import uuid
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from django.test.utils import override_settings
 
 from hub.apps.core.events.models import Event
@@ -387,7 +389,7 @@ class TestBusinessRulesErrorPropagationWarningsEventsAndCachingE2E(WorkflowE2ETe
             )
             if ev is not None:
                 break
-            time.sleep(0.2)
+            time.sleep(0.2)  # INTENTIONAL: e2e/integration test polling real services
         if ev is not None:
             data = ev.data or {}
             vc = data.get("validation_context") or {}
@@ -462,7 +464,7 @@ class TestBusinessRulesErrorPropagationWarningsEventsAndCachingE2E(WorkflowE2ETe
             self.assertFalse(cached3)
 
             # TTL behavior: wait for TTL to expire -> next call should be cache miss
-            time.sleep(1.2)
+            time.sleep(1.2)  # INTENTIONAL: e2e/integration test polling real services
             result4, cached4 = _run_cached_workflow_state_validation()
             self.assertTrue(result4.is_valid)
             self.assertFalse(cached4)

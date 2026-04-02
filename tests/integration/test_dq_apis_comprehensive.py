@@ -46,14 +46,14 @@ class TestDQRunCreateAPI(TestCase):
 
         # Create tenant and user
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
@@ -198,7 +198,7 @@ class TestDQRunCreateAPI(TestCase):
     def test_create_dq_run_user_without_tenant(self):
         """Test creating DQ run when user has no tenant"""
         user_no_tenant = UserFactory.create_user(
-            email="no_tenant@example.com",
+            email=f"no_tenant-{uuid.uuid4().hex[:8]}@example.com",
             tenant=None,
             status=UserStatus.ACTIVE.value
         )
@@ -276,13 +276,13 @@ class TestDQRunRetrieveAPI(TestCase):
         )
 
         self.user_a = UserFactory.create_user(
-            email="user_a@example.com",
+            email=f"user_a-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_a,
             status=UserStatus.ACTIVE.value
         )
 
         self.user_b = UserFactory.create_user(
-            email="user_b@example.com",
+            email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_b,
             status=UserStatus.ACTIVE.value
         )
@@ -482,14 +482,14 @@ class TestDQRunUpdateAPI(TestCase):
 
         # Create tenant and user
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
@@ -587,7 +587,7 @@ class TestDQRunUpdateAPI(TestCase):
         )
 
         other_user = UserFactory.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             tenant=other_tenant,
             status=UserStatus.ACTIVE.value
         )
@@ -676,14 +676,14 @@ class TestDQRunDeleteAPI(TestCase):
 
         # Create tenant and user
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
@@ -756,7 +756,7 @@ class TestDQRunDeleteAPI(TestCase):
         )
 
         other_user = UserFactory.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             tenant=other_tenant,
             status=UserStatus.ACTIVE.value
         )
@@ -818,13 +818,13 @@ class TestDQScorecardsAPI(TestCase):
 
         # Create tenant and user
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
         self.user = UserFactory.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
@@ -993,7 +993,7 @@ class TestDQScorecardsAPI(TestCase):
         )
 
         user_b = UserFactory.create_user(
-            email="user_b@example.com",
+            email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=tenant_b,
             status=UserStatus.ACTIVE.value
         )
@@ -1039,7 +1039,7 @@ class TestDQScorecardsAPI(TestCase):
         )
 
         empty_user = UserFactory.create_user(
-            email="empty@example.com",
+            email=f"empty-{uuid.uuid4().hex[:8]}@example.com",
             tenant=empty_tenant,
             status=UserStatus.ACTIVE.value
         )
@@ -1082,13 +1082,13 @@ class TestDQRunListAPI(TestCase):
         )
 
         self.user_a = UserFactory.create_user(
-            email="user_a@example.com",
+            email=f"user_a-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_a,
             status=UserStatus.ACTIVE.value
         )
 
         self.user_b = UserFactory.create_user(
-            email="user_b@example.com",
+            email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_b,
             status=UserStatus.ACTIVE.value
         )
@@ -1276,14 +1276,14 @@ class TestDQRunIntegration(TestCase):
         self.client = APIClient()
 
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
@@ -1407,14 +1407,14 @@ class TestDQRunPerformance(TestCase):
         self.client = APIClient()
 
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
@@ -1488,14 +1488,14 @@ class TestDQRunEdgeCases(TestCase):
         self.client = APIClient()
 
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )

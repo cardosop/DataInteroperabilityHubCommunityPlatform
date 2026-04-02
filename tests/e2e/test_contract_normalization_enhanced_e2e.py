@@ -7,6 +7,8 @@ Tests complete contract lifecycle with all sections, remapping, and SPARQL queri
 import time
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from rest_framework import status
 
@@ -41,7 +43,7 @@ class EnhancedContractNormalizationE2ETest(E2ETestBase):
             "id": "orders",
             "name": "Orders Dataset",
             "description": "Customer orders data",
-            "version": "1.0.0",
+            "version": "3.0.2",
             "info": {
                 "owners": [{"name": "Data Team", "email": "data@example.com"}],
                 "tags": ["orders", "e-commerce"],
@@ -124,6 +126,8 @@ class EnhancedContractNormalizationE2ETest(E2ETestBase):
         hub_contract = contract.hub_contract_json
         self.assertIn("info", hub_contract)
         self.assertIn("owners", hub_contract["info"])
+        self.assertIsInstance(hub_contract["info"]["owners"], list)
+        self.assertGreater(len(hub_contract["info"]["owners"]), 0, "Should have at least one owner")
         self.assertIn("tags", hub_contract["info"])
         self.assertIn("schema", hub_contract)
         self.assertIn("quality", hub_contract)
@@ -142,8 +146,14 @@ class EnhancedContractNormalizationE2ETest(E2ETestBase):
         email_field = next((f for f in fields if f["name"] == "customer_email"), None)
         self.assertIsNotNone(email_field)
         self.assertEqual(email_field.get("semantic_type"), "EMAIL")
-        self.assertEqual(email_field.get("min_length"), 5)
-        self.assertEqual(email_field.get("max_length"), 255)
+        # After Pydantic model_dump(by_alias=True), min_length/max_length
+        # are serialized as minLength/maxLength in hub_contract_json.
+        self.assertEqual(
+            email_field.get("minLength") or email_field.get("min_length"), 5
+        )
+        self.assertEqual(
+            email_field.get("maxLength") or email_field.get("max_length"), 255
+        )
 
     def test_contract_update_triggers_remapping_all_sections(self):
         """Test contract update triggers remapping with all sections (7.5.5.2)"""
@@ -166,14 +176,6 @@ class EnhancedContractNormalizationE2ETest(E2ETestBase):
 
         # Prepare contract (ensures validation_status is set)
         self.prepare_contract_for_activation(contract_id)
-
-        # Ensure contract has valid validation_status before update
-        contract = Contract.objects.get(id=contract_id)
-        if contract.validation_status is None:
-            from hub.apps.contracts.models import ValidationStatus
-
-            contract.validation_status = ValidationStatus.VALID
-            contract.save(update_fields=["validation_status"])
 
         # Update contract with all sections
         updated_contract = {
@@ -241,7 +243,7 @@ class EnhancedContractNormalizationE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Wait for remapping
-        time.sleep(2)
+        time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
 
         # Verify contract was remapped
         contract = Contract.objects.get(id=contract_id)
@@ -271,8 +273,8 @@ class EnhancedSPARQLQueriesE2ETest(E2ETestBase):
         """Set up test fixtures"""
         super().setUp()
 
-    def test_field_validation_rules_queryable_via_sparql(self):
-        """Test field validation rules are queryable via SPARQL (7.5.5.3)"""
+    def test_field_validation_rules_stored_for_sparql_query(self):
+        """Test field validation rules are stored in a structure suitable for SPARQL query (7.5.5.3)"""
         # This test requires Fuseki to be running
         # For now, we'll test that the contract has the necessary structure
         asset_id = self.create_asset(
@@ -329,16 +331,22 @@ class EnhancedSPARQLQueriesE2ETest(E2ETestBase):
         self.assertEqual(
             email_field.get("pattern"), "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
         )
-        self.assertEqual(email_field.get("min_length"), 5)
-        self.assertEqual(email_field.get("max_length"), 255)
+        # After Pydantic model_dump(by_alias=True), min_length/max_length
+        # are serialized as minLength/maxLength in hub_contract_json.
+        self.assertEqual(
+            email_field.get("minLength") or email_field.get("min_length"), 5
+        )
+        self.assertEqual(
+            email_field.get("maxLength") or email_field.get("max_length"), 255
+        )
 
         amount_field = next((f for f in fields if f["name"] == "amount"), None)
         self.assertIsNotNone(amount_field)
         self.assertEqual(amount_field.get("minimum"), 0.0)
         self.assertEqual(amount_field.get("maximum"), 1000000.0)
 
-    def test_compliance_policies_queryable_via_sparql_dpv(self):
-        """Test compliance policies are queryable via SPARQL with DPV (7.5.5.4)"""
+    def test_compliance_policies_stored_with_dpv_vocabulary(self):
+        """Test compliance policies are stored with DPV vocabulary for SPARQL query (7.5.5.4)"""
         asset_id = self.create_asset(key="sparql-compliance-test", name="SPARQL Compliance Test")
 
         contract_data = {
@@ -383,8 +391,8 @@ class EnhancedSPARQLQueriesE2ETest(E2ETestBase):
         self.assertIn("CONTRACT", compliance.get("legal_bases", []))
         self.assertEqual(compliance.get("retention_policy", {}).get("period"), "P5Y")
 
-    def test_quality_rules_queryable_via_sparql_dqv(self):
-        """Test quality rules are queryable via SPARQL with DQV (7.5.5.5)"""
+    def test_quality_rules_stored_with_dqv_vocabulary(self):
+        """Test quality rules are stored with DQV vocabulary for SPARQL query (7.5.5.5)"""
         asset_id = self.create_asset(key="sparql-quality-test", name="SPARQL Quality Test")
 
         contract_data = {

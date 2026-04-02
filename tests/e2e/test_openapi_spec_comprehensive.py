@@ -9,6 +9,8 @@ Tests cover:
 - Endpoint documentation completeness
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import json
 import yaml
 from django.test import TestCase

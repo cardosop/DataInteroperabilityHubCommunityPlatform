@@ -15,6 +15,8 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.core.management import call_command
 from django.db import connection, close_old_connections
 from django.test import TestCase, override_settings

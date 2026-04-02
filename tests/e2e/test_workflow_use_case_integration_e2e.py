@@ -13,6 +13,8 @@ Verifies: workflow execution with business rules, workflow completes (or expecte
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 pytestmark = [
     pytest.mark.uc_journey_persona,
     pytest.mark.workflow_e2e,
@@ -125,16 +127,12 @@ class TestUC_AM_001_WorkflowIntegrationE2E(WorkflowE2ETestBase):
         self.assert_validation_results_in_state_data(instance)
 
     def test_all_asset_management_workflow_use_cases_covered(self):
-        """6.9.1: Assert Asset Management use cases that use workflows are covered."""
-        covered = [
-            "UC-AM-001"
-        ]  # Create Asset via Data-First Flow (asset_creation + contract_creation)
-        self.assertGreaterEqual(len(covered), 1)
-        for uc_id in covered:
-            self.assertTrue(
-                uc_id.startswith("UC-AM-"),
-                f"{uc_id} should be an Asset Management use case",
-            )
+        """6.9.1: Verify AM workflow class is importable and has WORKFLOW_NAME."""
+        self.assertEqual(
+            ContractCreationWorkflow.WORKFLOW_NAME,
+            "contract_creation",
+            "ContractCreationWorkflow.WORKFLOW_NAME must be 'contract_creation'",
+        )
 
 
 # --- 6.9.2 Contract Management use cases ---
@@ -205,14 +203,12 @@ class TestUC_CM_001_WorkflowIntegrationE2E(WorkflowE2ETestBase):
             )
 
     def test_all_contract_management_workflow_use_cases_covered(self):
-        """6.9.2: Assert Contract Management use cases that use workflows are covered."""
-        covered = ["UC-CM-001"]  # Create Contract (contract_creation)
-        self.assertGreaterEqual(len(covered), 1)
-        for uc_id in covered:
-            self.assertTrue(
-                uc_id.startswith("UC-CM-"),
-                f"{uc_id} should be a Contract Management use case",
-            )
+        """6.9.2: Verify CM workflow class is importable and has WORKFLOW_NAME."""
+        self.assertEqual(
+            ContractCreationWorkflow.WORKFLOW_NAME,
+            "contract_creation",
+            "ContractCreationWorkflow.WORKFLOW_NAME must be 'contract_creation'",
+        )
 
 
 # --- 6.9.3 Marketplace use cases ---
@@ -271,14 +267,12 @@ class TestUC_MKT_001_WorkflowIntegrationE2E(WorkflowE2ETestBase):
         self.assert_validation_results_in_state_data(instance)
 
     def test_all_marketplace_workflow_use_cases_covered(self):
-        """6.9.3: Assert Marketplace use cases that use workflows are covered."""
-        covered = ["UC-MKT-001"]  # Publish Asset to Marketplace (marketplace_publication)
-        self.assertGreaterEqual(len(covered), 1)
-        for uc_id in covered:
-            self.assertTrue(
-                uc_id.startswith("UC-MKT-"),
-                f"{uc_id} should be a Marketplace use case",
-            )
+        """6.9.3: Verify MKT workflow class is importable and has WORKFLOW_NAME."""
+        self.assertEqual(
+            MarketplacePublicationWorkflow.WORKFLOW_NAME,
+            "marketplace_publication",
+            "MarketplacePublicationWorkflow.WORKFLOW_NAME must be 'marketplace_publication'",
+        )
 
 
 # --- 6.9.4 Other use case categories (Data Quality, Compliance, AI/ML, remaining) ---

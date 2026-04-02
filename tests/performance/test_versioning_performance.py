@@ -6,6 +6,8 @@ Versioning list requires resource_type and resource_id (asset UUID).
 """
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract, OriginalFormat, OriginalSpecType
 from tests.performance.performance_test_base import APIPerformanceTestBase

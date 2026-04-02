@@ -232,5 +232,5 @@ class DatasetOperationsE2ETest(E2ETestBase):
         
         # Verify versions are sequential
         dataset_versions = [Dataset.objects.get(id=d).version for d in datasets]
-        self.assertEqual(sorted(dataset_versions), [1, 2, 3])
+        self.assertEqual(dataset_versions, [1, 2, 3], "Versions should be created in sequential order")
 

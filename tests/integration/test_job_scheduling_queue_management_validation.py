@@ -82,7 +82,7 @@ class JobQueueInfrastructureTest(TestCase):
             kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email="queue_test@example.com",
+            email=f"queue_test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -354,7 +354,7 @@ class JobQueueInfrastructureTest(TestCase):
             kyc_status="UNVERIFIED",
         )
         user2 = User.objects.create_user(
-            email="queue_test2@example.com",
+            email=f"queue_test2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE,
@@ -509,7 +509,7 @@ class JobSchedulingTest(TestCase):
             kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email="scheduling_test@example.com",
+            email=f"scheduling_test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -796,7 +796,7 @@ class JobQueueManagementTest(TestCase):
             kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email="queue_mgmt_test@example.com",
+            email=f"queue_mgmt_test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -1133,7 +1133,7 @@ class JobWorkerManagementTest(TestCase):
             kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email="worker_mgmt_test@example.com",
+            email=f"worker_mgmt_test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

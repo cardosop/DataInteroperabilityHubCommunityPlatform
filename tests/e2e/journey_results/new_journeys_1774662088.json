@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DA-004-19b4b225",
+      "journey_name": "Execute Federated Query",
+      "persona": "Data Analyst",
+      "status": "failed",
+      "start_time": 1774662088.9441712,
+      "end_time": 1774662088.9521775,
+      "duration": 0.00800633430480957,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Step 'Build Federated Query' returned HTTP 405: {'error': {'code': 'UNKNOWN_ERROR', 'message': 'Method \"POST\" not allowed.', 'http_status': 405, 'request_id': '7a700fc7-35fc-4b4c-93f2-adc0060b52b8', 'timestamp': '2026-03-28T01:41:28.948325+00:00', 'details': {'message': 'Method \"POST\" not allowed.'}}}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Build Federated Query",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774662088.9441798,
+          "end_time": 1774662088.9521725,
+          "duration": 0.007992744445800781,
+          "error_message": "Step 'Build Federated Query' returned HTTP 405: {'error': {'code': 'UNKNOWN_ERROR', 'message': 'Method \"POST\" not allowed.', 'http_status': 405, 'request_id': '7a700fc7-35fc-4b4c-93f2-adc0060b52b8', 'timestamp': '2026-03-28T01:41:28.948325+00:00', 'details': {'message': 'Method \"POST\" not allowed.'}}}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T01:41:28.952288"
+}

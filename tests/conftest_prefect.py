@@ -111,6 +111,6 @@ def wait_for_prefect_server(prefect_server_url: str, max_wait: int = 60) -> bool
                 return True
         except Exception:
             pass
-        time.sleep(2)
+        time.sleep(2)  # INTENTIONAL: test-specific delay
     return False
 

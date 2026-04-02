@@ -16,10 +16,13 @@ import yaml
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from .conftest import E2ETestBase, get_response_data
+import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
@@ -326,8 +329,11 @@ class APIConsistencyE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Verify pagination structure
-        self.assertIn("results", get_response_data(response) or {})
-        self.assertLessEqual(len((get_response_data(response) or {})["results"]), 2)
+        data = get_response_data(response) or {}
+        self.assertIn("results", data)
+        results = data["results"]
+        self.assertGreater(len(results), 0, "Pagination returned 0 results despite 5 assets created")
+        self.assertLessEqual(len(results), 2, "Pagination returned more results than page_size=2")
 
         # Test contracts endpoint pagination (if available)
         response = self.client.get("/api/v1/contracts/?page_size=2")
@@ -658,12 +664,19 @@ class APIErrorMessagesE2ETest(E2ETestBase):
             if "error" in get_response_data(response) or {}:
                 error = (get_response_data(response) or {})["error"]
                 if "message" in error:
-                    message = error["message"].lower()
-                    # Message should not just be "bad request" or "error"
-                    self.assertNotEqual(message, "bad request")
-                    self.assertNotEqual(message, "error")
-                    # Should contain some context
-                    self.assertGreater(len(message), 10)
+                    message = error["message"]
+                    message_lower = message.lower()
+                    # Message should not be a generic unhelpful phrase
+                    self.assertNotEqual(message_lower, "bad request")
+                    self.assertNotEqual(message_lower, "error")
+                    self.assertNotIn("something went wrong", message_lower)
+                    self.assertNotIn("an error occurred", message_lower)
+                    self.assertNotIn("internal server error", message_lower)
+                    # Should contain enough context to be actionable (at least 15 chars)
+                    self.assertGreaterEqual(
+                        len(message), 15,
+                        f"Error message too short to be actionable: {message!r}",
+                    )
 
 
 class APIResponseTimesE2ETest(E2ETestBase):
@@ -674,7 +687,7 @@ class APIResponseTimesE2ETest(E2ETestBase):
         super().setUp()
 
     def test_get_endpoint_response_time(self):
-        """Test that GET endpoints respond within acceptable time"""
+        """Test that GET endpoints respond within acceptable time (E2E threshold: 1s)"""
         asset_id = self.create_asset("test-perf-get", "Test")
 
         start_time = time.time()
@@ -684,15 +697,14 @@ class APIResponseTimesE2ETest(E2ETestBase):
         elapsed_time = time.time() - start_time
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # P95 target: 300ms, but allow higher for test environment
         self.assertLess(
             elapsed_time,
-            2.0,
-            f"GET endpoint took {elapsed_time:.3f}s, exceeds 2s threshold for test environment",
+            1.0,
+            f"GET endpoint took {elapsed_time:.3f}s, exceeds 1s E2E threshold",
         )
 
     def test_list_endpoint_response_time(self):
-        """Test that list endpoints respond within acceptable time"""
+        """Test that list endpoints respond within acceptable time (E2E threshold: 2s)"""
         # Create a few assets
         for i in range(5):
             self.create_asset(f"test-perf-list-{i}", f"Test {i}")
@@ -705,15 +717,14 @@ class APIResponseTimesE2ETest(E2ETestBase):
         elapsed_time = time.time() - start_time
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Allow higher threshold for list endpoints
         self.assertLess(
             elapsed_time,
-            3.0,
-            f"List endpoint took {elapsed_time:.3f}s, exceeds 3s threshold for test environment",
+            2.0,
+            f"List endpoint took {elapsed_time:.3f}s, exceeds 2s E2E threshold",
         )
 
     def test_post_endpoint_response_time(self):
-        """Test that POST endpoints respond within acceptable time"""
+        """Test that POST endpoints respond within acceptable time (E2E threshold: 3s)"""
         start_time = time.time()
         asset_id = self.create_asset("test-perf-post", "Test")
         elapsed_time = time.time() - start_time
@@ -721,8 +732,8 @@ class APIResponseTimesE2ETest(E2ETestBase):
         # POST may take longer due to processing
         self.assertLess(
             elapsed_time,
-            5.0,
-            f"POST endpoint took {elapsed_time:.3f}s, exceeds 5s threshold for test environment",
+            3.0,
+            f"POST endpoint took {elapsed_time:.3f}s, exceeds 3s E2E threshold",
         )
 
     def test_concurrent_request_response_times(self):
@@ -931,7 +942,7 @@ class APIRateLimitsE2ETest(E2ETestBase):
         from hub.apps.users.models import UserStatus
 
         user2 = self.user.__class__.objects.create_user(
-            email="e2e_test2@example.com",
+            email=f"e2e_test2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

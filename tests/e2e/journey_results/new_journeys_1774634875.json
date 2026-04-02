@@ -1,0 +1,97 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.3314177989959717
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-011-a618766f",
+      "journey_name": "Assign Data Stewards",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1774634873.8692245,
+      "end_time": 1774634875.2006423,
+      "duration": 1.3314177989959717,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774634873.8692327,
+          "end_time": 1774634874.9536967,
+          "duration": 1.0844640731811523,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Assign Stewards",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774634874.9842293,
+          "end_time": 1774634875.046265,
+          "duration": 0.062035560607910156,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Notify Stewards",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774634875.1386483,
+          "end_time": 1774634875.1386569,
+          "duration": 8.58306884765625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Monitor Steward Activity",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774634875.1386604,
+          "end_time": 1774634875.2006278,
+          "duration": 0.06196737289428711,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Note: Steward Activity Monitoring Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774634875.200635,
+          "end_time": 1774634875.20064,
+          "duration": 5.0067901611328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "be7ee065-4113-4993-b196-028495264a12"
+      }
+    }
+  ],
+  "exported_at": "2026-03-27T18:07:55.200737"
+}

@@ -127,7 +127,7 @@ class ODPSWorkflowChaosTestBase(TransactionTestCase):
                     break
                 except OperationalError as e:
                     if "deadlock" in str(e).lower() and attempt < max_retries - 1:
-                        time.sleep(0.1 * (attempt + 1))  # Exponential backoff
+                        time.sleep(0.1 * (attempt + 1))  # INTENTIONAL: test-specific delay  # Exponential backoff
                         continue
                     raise
 

@@ -13,6 +13,9 @@ from rest_framework.test import APIClient
 from rest_framework import status
 import json
 
+from datetime import timedelta
+from django.utils import timezone
+
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from hub.apps.assets.models import Asset
@@ -20,6 +23,10 @@ from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
 from hub.apps.dq.models import DQRun, DQRunStatus
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.semantic.models import SemanticResource, ResourceType
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.billing.tests.plan_fixtures import get_pro_plan
+from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
+import uuid
 
 User = get_user_model()
 
@@ -32,16 +39,26 @@ class IntegrationRegressionTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
+        plan = get_pro_plan()
         self.tenant = Tenant.objects.create(
             name="Integration Test Tenant",
-            slug="integration-test-tenant"
+            slug="integration-test-tenant",
+            plan=plan,
+        )
+        Subscription.objects.create(
+            tenant=self.tenant,
+            plan=plan,
+            status=SubscriptionStatus.ACTIVE,
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now() + timedelta(days=30),
         )
         self.user = User.objects.create_user(
-            email="integration@example.com",
+            email=f"integration-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+        ensure_user_has_tenant_admin_role(self.user)
         self.client.force_authenticate(user=self.user)
 
         # Create test asset

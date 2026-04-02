@@ -75,10 +75,11 @@ class RESTAPIE2ETest(E2ETestBase):
             # Paths may be documented with or without trailing slash
             path_variants = [path, path.rstrip('/')]
             found = any(p in paths for p in path_variants)
-            # At least some paths should be documented
-            if not found:
-                # Log but don't fail - some paths may not be in schema
-                pass
+            self.assertTrue(
+                found,
+                f"Required path {path} not found in OpenAPI schema. "
+                f"Available paths (first 10): {list(paths.keys())[:10]}",
+            )
     
     def test_openapi_schema_components_schemas(self):
         """Test OpenAPI schema components/schemas section"""
@@ -167,29 +168,49 @@ class RESTAPIE2ETest(E2ETestBase):
                     if not ('200' in responses or '201' in responses or '204' in responses):
                         missing_responses.append(f"{path} {method}")
         
-        # Log but don't fail - some paths may not have complete documentation
-        if missing_responses:
-            # Only fail if a significant portion of paths are missing responses
-            # This allows for gradual implementation
-            pass
+        # Fail if more than 20% of documented operations are missing response schemas
+        total_operations = sum(
+            1 for _path, methods in paths.items()
+            for method in methods
+            if method.lower() in ['get', 'post', 'patch', 'put', 'delete']
+        )
+        if total_operations > 0:
+            missing_ratio = len(missing_responses) / total_operations
+            self.assertLessEqual(
+                missing_ratio,
+                0.20,
+                f"{len(missing_responses)}/{total_operations} operations missing response schemas "
+                f"({missing_ratio:.0%}): {missing_responses[:10]}",
+            )
     
     def test_openapi_schema_error_responses(self):
-        """Test OpenAPI schema includes error responses"""
+        """Test OpenAPI schema includes error responses for most operations"""
         response = self.client.get('/api-docs/openapi.json')
         schema = json.loads(response.content)
-        
+
         paths = schema.get('paths', {})
-        
+
         # Check that paths have error responses documented
+        operations_with_errors = 0
+        total_operations = 0
         for path, methods in paths.items():
             for method, operation in methods.items():
                 if method.lower() in ['get', 'post', 'patch', 'put', 'delete']:
+                    total_operations += 1
                     responses = operation.get('responses', {})
-                    # Should have at least one error response (400, 401, 403, 404, 500)
                     error_codes = ['400', '401', '403', '404', '500']
-                    has_error_response = any(code in responses for code in error_codes)
-                    # Not all endpoints need error responses, but most should
-                    # This is informational, not a hard requirement
+                    if any(code in responses for code in error_codes):
+                        operations_with_errors += 1
+
+        self.assertGreater(
+            total_operations, 0,
+            "No operations found in OpenAPI schema",
+        )
+        # At least some operations should document error responses
+        self.assertGreater(
+            operations_with_errors, 0,
+            f"None of the {total_operations} operations document any error responses (400/401/403/404/500)",
+        )
     
     def test_openapi_schema_valid_json(self):
         """Test OpenAPI schema is valid JSON"""

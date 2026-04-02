@@ -1,0 +1,96 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-013-ab8ec412",
+      "journey_name": "Configure Data Mesh Domain",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1774662046.05164,
+      "end_time": 1774662052.5750535,
+      "duration": 6.523413419723511,
+      "completion_rate": 80.0,
+      "success_rate": 80.0,
+      "error_message": "Step 'Set Up Domain Analytics' returned HTTP 405: {'error': {'code': 'UNKNOWN_ERROR', 'message': 'Method \"POST\" not allowed.', 'http_status': 405, 'request_id': 'f3dc61f0-d525-4def-b50f-f330da874e86', 'timestamp': '2026-03-28T01:40:52.572314+00:00', 'details': {'message': 'Method \"POST\" not allowed.'}}}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Create/Select Domain",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774662046.0516512,
+          "end_time": 1774662046.2355173,
+          "duration": 0.18386602401733398,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Define Domain Boundaries",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774662046.2355287,
+          "end_time": 1774662046.2607474,
+          "duration": 0.025218725204467773,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Assign Domain Ownership",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774662046.2607596,
+          "end_time": 1774662046.2890077,
+          "duration": 0.028248071670532227,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Configure Domain-Scoped Assets",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774662052.5518777,
+          "end_time": 1774662052.5694156,
+          "duration": 0.017537832260131836,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Set Up Domain Analytics",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774662052.5694242,
+          "end_time": 1774662052.5750499,
+          "duration": 0.005625724792480469,
+          "error_message": "Step 'Set Up Domain Analytics' returned HTTP 405: {'error': {'code': 'UNKNOWN_ERROR', 'message': 'Method \"POST\" not allowed.', 'http_status': 405, 'request_id': 'f3dc61f0-d525-4def-b50f-f330da874e86', 'timestamp': '2026-03-28T01:40:52.572314+00:00', 'details': {'message': 'Method \"POST\" not allowed.'}}}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T01:40:52.575151"
+}

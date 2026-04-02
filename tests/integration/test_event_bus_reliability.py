@@ -361,7 +361,7 @@ class EventBusReliabilityTest(TestCase):
         django_queue = get_queue("job_default")
 
         # Wait a bit for job to be queued
-        time.sleep(0.2)
+        time.sleep(0.2)  # INTENTIONAL: e2e/integration test polling real services
 
         # Check that job exists in queue (async persistence is working)
         job_count = len(django_queue.jobs)

@@ -36,8 +36,8 @@ class WorkflowStateManagementTest(WorkflowConcurrencyTestBase):
             finally:
                 try:
                     connection.close()
-            except Exception:
-                pass  # Ignore connection close errors in teardown
+                except Exception:
+                    pass  # Ignore connection close errors in teardown
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             f1 = executor.submit(read_state)

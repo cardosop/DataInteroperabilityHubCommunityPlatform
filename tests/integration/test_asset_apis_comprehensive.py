@@ -27,6 +27,8 @@ import unittest
 from typing import Any, Dict, List
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
@@ -81,8 +83,8 @@ class AssetListAPITest(TestCase):
         ensure_tenant_has_active_subscription(self.tenant2)
 
         # Create users
-        self.user1 = UserFactory.create_user(tenant=self.tenant1, email="user1@example.com")
-        self.user2 = UserFactory.create_user(tenant=self.tenant2, email="user2@example.com")
+        self.user1 = UserFactory.create_user(tenant=self.tenant1, email=f"user1-{uuid.uuid4().hex[:8]}@example.com")
+        self.user2 = UserFactory.create_user(tenant=self.tenant2, email=f"user2-{uuid.uuid4().hex[:8]}@example.com")
         self.platform_admin = UserFactory.create_platform_admin()
         self.platform_admin.email = "admin@example.com"
         self.platform_admin.save()

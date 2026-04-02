@@ -266,7 +266,7 @@ class EventBusLoadTest(TestCase):
             threads.append(thread)
 
         # Publish events
-        time.sleep(0.5)  # Give subscribers time to start
+        time.sleep(0.5)  # Give subscribers time to start  # INTENTIONAL: test-specific timing
         start_time = time.time()
         for i in range(events_per_subscriber):
             self.event_bus.publish(
@@ -276,7 +276,7 @@ class EventBusLoadTest(TestCase):
             )
 
         # Wait for events to be received
-        time.sleep(2)
+        time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
 
         # Stop listening
         stop_event.set()
@@ -340,7 +340,7 @@ class EventBusLoadTest(TestCase):
             publish_time = time.time() - start_time
 
             # Wait for delivery
-            time.sleep(1)
+            time.sleep(1)  # INTENTIONAL: e2e/integration test polling real services
 
             # Calculate metrics
             total_received = sum(len(events) for events in self.subscriber_results.values())
@@ -481,7 +481,7 @@ class EventBusStressTest(TestCase):
             # Sleep to maintain target rate
             batch_time = time.time() - batch_start
             sleep_time = max(0, 1.0 - batch_time)
-            time.sleep(sleep_time)
+            time.sleep(sleep_time)  # INTENTIONAL: e2e/integration test polling real services
 
         elapsed_time = time.time() - start_time
         actual_rate = event_count / elapsed_time

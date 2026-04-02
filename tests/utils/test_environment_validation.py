@@ -16,10 +16,12 @@ import pytest
 
 class EnvironmentValidationError(Exception):
     """Raised when test environment validation fails"""
+    __test__ = False  # Not a test class — utility exception
     pass
 
 
 class EnvironmentValidator:
+    __test__ = False  # Not a test class — utility validator
     """
     Validates test environment configuration including:
     - Required environment variables

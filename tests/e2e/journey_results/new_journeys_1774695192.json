@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CM-003-165fb9e7",
+      "journey_name": "Assign Data Stewards",
+      "persona": "Community Manager",
+      "status": "failed",
+      "start_time": 1774695192.549283,
+      "end_time": 1774695192.9866643,
+      "duration": 0.4373812675476074,
+      "completion_rate": 50.0,
+      "success_rate": 50.0,
+      "error_message": "Step 'Create Stewardship Request' returned HTTP 400: {'detail': 'reason is required', 'code': 'VALIDATION_ERROR', 'details': {}}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774695192.5492887,
+          "end_time": 1774695192.9821012,
+          "duration": 0.4328124523162842,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Stewardship Request",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774695192.9821138,
+          "end_time": 1774695192.9866602,
+          "duration": 0.004546403884887695,
+          "error_message": "Step 'Create Stewardship Request' returned HTTP 400: {'detail': 'reason is required', 'code': 'VALIDATION_ERROR', 'details': {}}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T10:53:12.986765"
+}

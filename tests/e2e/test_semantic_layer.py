@@ -12,6 +12,8 @@ Covers:
 
 Uses REAL services (Fuseki, Semantic service, no mocks).
 """
+import uuid
+
 import pytest
 import hashlib
 from django.test import TestCase
@@ -126,7 +128,7 @@ class SemanticLayerE2ETest(E2ETestBase):
             
             if response.status_code in [status.HTTP_503_SERVICE_UNAVAILABLE, status.HTTP_404_NOT_FOUND]:
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay)  # Fixed delay for faster execution
+                    time.sleep(retry_delay)  # Fixed delay for faster execution  # INTENTIONAL: test-specific timing
                     continue
             
             # On last attempt, fail with clear error (don't skip - fix root cause)
@@ -208,7 +210,7 @@ class SemanticLayerE2ETest(E2ETestBase):
             if response.status_code == status.HTTP_200_OK:
                 break
             if response.status_code in [status.HTTP_503_SERVICE_UNAVAILABLE, status.HTTP_404_NOT_FOUND] and attempt < max_retries - 1:
-                time.sleep(retry_delay)
+                time.sleep(retry_delay)  # INTENTIONAL: e2e/integration test polling real services
                 continue
             break
         
@@ -283,7 +285,7 @@ class SemanticLayerE2ETest(E2ETestBase):
             if response.status_code == status.HTTP_200_OK:
                 break
             if response.status_code in [status.HTTP_503_SERVICE_UNAVAILABLE, status.HTTP_404_NOT_FOUND] and attempt < max_retries - 1:
-                time.sleep(retry_delay)
+                time.sleep(retry_delay)  # INTENTIONAL: e2e/integration test polling real services
                 continue
             break
         
@@ -380,7 +382,7 @@ class SemanticLayerE2ETest(E2ETestBase):
             
             if response.status_code in [status.HTTP_503_SERVICE_UNAVAILABLE, status.HTTP_404_NOT_FOUND]:
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay)  # Fixed delay for faster execution
+                    time.sleep(retry_delay)  # Fixed delay for faster execution  # INTENTIONAL: test-specific timing
                     continue
             
             break
@@ -515,12 +517,13 @@ class SemanticLayerE2ETest(E2ETestBase):
         from hub.apps.tenants.models import Tenant, KYCStatus
         from hub.apps.users.models import User
 
-        other_tenant = Tenant.objects.create(name='Other Tenant', slug='other-tenant', kyc_status=KYCStatus.VERIFIED)
+        _suffix = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f'Other Tenant {_suffix}', slug=f'other-tenant-{_suffix}', kyc_status=KYCStatus.VERIFIED)
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
         from hub.apps.users.models import Role, UserRole
 
         ensure_tenant_has_active_subscription(other_tenant)
-        other_user = User.objects.create_user(email='other@example.com', password='testpass123', tenant=other_tenant)
+        other_user = User.objects.create_user(email=f'other-{_suffix}@example.com', password='testpass123', tenant=other_tenant)
         # DATA_PROVIDER role required for asset creation
         provider_role, _ = Role.objects.get_or_create(
             tenant=other_tenant,

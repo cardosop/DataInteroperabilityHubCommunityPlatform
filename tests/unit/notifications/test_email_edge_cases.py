@@ -14,6 +14,7 @@ from hub.apps.notifications.services import get_email_service, EmailServiceError
 from hub.apps.notifications.tasks import send_email_async
 from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -26,7 +27,7 @@ class EmailServiceEdgeCaseTest(TestCase):
         """Set up test fixtures"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -40,7 +41,7 @@ class EmailServiceEdgeCaseTest(TestCase):
         try:
             email_service = get_email_service()
             result = email_service.send_email(
-                to_email="recipient@example.com",
+                to_email=f"recipient-{uuid.uuid4().hex[:8]}@example.com",
                 subject=subject,
                 html_content=html_content
             )
@@ -59,7 +60,7 @@ class EmailServiceEdgeCaseTest(TestCase):
         try:
             email_service = get_email_service()
             result = email_service.send_email(
-                to_email="recipient@example.com",
+                to_email=f"recipient-{uuid.uuid4().hex[:8]}@example.com",
                 subject=subject,
                 html_content=html_content
             )
@@ -75,7 +76,7 @@ class EmailServiceEdgeCaseTest(TestCase):
         # Create a failed email delivery
         delivery = EmailDelivery.objects.create(
             email_type=EmailType.USER_INVITATION,
-            to_email="recipient@example.com",
+            to_email=f"recipient-{uuid.uuid4().hex[:8]}@example.com",
             subject="Test Subject",
             status=EmailDeliveryStatus.FAILED,
             error_message="Test error",
@@ -125,7 +126,7 @@ class EmailServiceEdgeCaseTest(TestCase):
         try:
             email_service = get_email_service()
             result = email_service.send_email(
-                to_email="recipient@example.com",
+                to_email=f"recipient-{uuid.uuid4().hex[:8]}@example.com",
                 subject="Long Content Test",
                 html_content=html_content
             )
@@ -149,7 +150,7 @@ class EmailServiceEdgeCaseTest(TestCase):
         try:
             email_service = get_email_service()
             result = email_service.send_email(
-                to_email="recipient@example.com",
+                to_email=f"recipient-{uuid.uuid4().hex[:8]}@example.com",
                 subject="Attachment Test",
                 html_content="<html><body>Test</body></html>",
                 attachments=attachments
@@ -165,7 +166,7 @@ class EmailServiceEdgeCaseTest(TestCase):
         """Test email delivery status transitions"""
         delivery = EmailDelivery.objects.create(
             email_type=EmailType.USER_INVITATION,
-            to_email="recipient@example.com",
+            to_email=f"recipient-{uuid.uuid4().hex[:8]}@example.com",
             subject="Test Subject",
             status=EmailDeliveryStatus.PENDING,
             tenant=self.tenant,
@@ -203,7 +204,7 @@ class EmailServiceEdgeCaseTest(TestCase):
         try:
             email_service = get_email_service()
             result = email_service.send_email(
-                to_email="recipient@example.com",
+                to_email=f"recipient-{uuid.uuid4().hex[:8]}@example.com",
                 subject="",
                 html_content=""
             )
@@ -218,7 +219,7 @@ class EmailServiceEdgeCaseTest(TestCase):
         """Test email delivery reaching max retries"""
         delivery = EmailDelivery.objects.create(
             email_type=EmailType.USER_INVITATION,
-            to_email="recipient@example.com",
+            to_email=f"recipient-{uuid.uuid4().hex[:8]}@example.com",
             subject="Test Subject",
             status=EmailDeliveryStatus.FAILED,
             retry_count=3,

@@ -187,8 +187,13 @@ class FileOperationsE2ETest(E2ETestBase):
         
         # Try to download deleted file
         response = self.client.get(f'/api/v1/files/{file_id}/download/')
-        # May return 410 GONE or 400 BAD REQUEST depending on implementation
-        self.assertIn(response.status_code, [status.HTTP_410_GONE, status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND])
+        # Deleted file should return an error: 400 (bad request — file is deleted),
+        # 404 (not found), or 410 (gone)
+        self.assertIn(response.status_code, [
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_404_NOT_FOUND,
+            status.HTTP_410_GONE,
+        ], f"Deleted file download should fail, got {response.status_code}")
     
     def test_delete_file_success(self):
         """Test deleting a file"""
@@ -309,7 +314,8 @@ class FileOperationsE2ETest(E2ETestBase):
         # May succeed or fail depending on implementation
         # If validation is strict, should return 400
         # If permissive, should return 201 with warning
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST,
+            f"Unsupported format should be rejected, got {response.status_code}")
     
     def test_file_upload_concurrent_uploads(self):
         """Test concurrent file uploads"""

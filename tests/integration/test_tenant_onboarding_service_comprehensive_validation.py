@@ -14,6 +14,8 @@ Coverage:
 """
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -22,6 +24,7 @@ from rest_framework.test import APIClient
 from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.tenants.models import Tenant, TenantConfig, TenantPlan, TenantStatus
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -150,7 +153,7 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
             status=TenantStatus.ACTIVE,
         )
         User.objects.create_user(
-            email="duplicate@example.com",
+            email=f"duplicate-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=existing_tenant,
             status=UserStatus.ACTIVE,

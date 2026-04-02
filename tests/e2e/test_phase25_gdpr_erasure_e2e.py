@@ -14,6 +14,8 @@ Coverage:
 """
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -26,6 +28,7 @@ from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus, Role, UserRole
 
 from tests.e2e.conftest import get_response_data
+import uuid
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -52,7 +55,7 @@ class Phase25GDPRErasureE2ETest(TestCase):
 
         # Create user to be erased
         self.user_to_erase = User.objects.create_user(
-            email="eraseme2e@example.com",
+            email=f"eraseme2e-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -119,25 +122,28 @@ class Phase25GDPRErasureE2ETest(TestCase):
             erasure_service = ErasureService()
             try:
                 erasure_service.execute_erasure(str(erasure_request.id))
-            except Exception:
-                # Service may not be fully implemented
+            except NotImplementedError:
                 pytest.skip("ErasureService.execute_erasure not fully implemented")
                 return
 
-            # Step 5: Verify user anonymized
+            # Step 5: Verify user anonymized — all PII fields
             self.user_to_erase.refresh_from_db()
-            self.assertNotEqual(self.user_to_erase.email, "eraseme2e@example.com")
+            # Email must be anonymized
+            self.assertNotIn("eraseme2e", self.user_to_erase.email.lower())
             self.assertIn("erased", self.user_to_erase.email.lower())
+            # Display name must be anonymized (not the original value)
+            self.assertNotEqual(self.user_to_erase.display_name, "User To Erase E2E")
+            self.assertFalse(
+                self.user_to_erase.display_name and "User To Erase" in self.user_to_erase.display_name,
+                "display_name still contains original PII after erasure",
+            )
 
-            # Step 6: Verify API key revoked
-            api_key_refreshed = APIKey.objects.filter(id=self.api_key.id).first()
-            if api_key_refreshed:
-                self.assertTrue(
-                    api_key_refreshed.revoked_at is not None or api_key_refreshed.is_revoked
-                )
-            else:
-                # Or deleted
-                self.assertFalse(APIKey.objects.filter(id=self.api_key.id).exists())
+            # Step 6: Verify API key revoked (must still exist with revoked_at set)
+            self.api_key.refresh_from_db()
+            self.assertIsNotNone(
+                self.api_key.revoked_at,
+                "API key must be revoked (revoked_at set) after GDPR erasure",
+            )
 
             # Step 7: Verify erasure request completed
             erasure_request.refresh_from_db()
@@ -161,7 +167,7 @@ class Phase25GDPRErasureE2ETest(TestCase):
             status=TenantStatus.ACTIVE,
         )
         user2 = User.objects.create_user(
-            email="other2e2e@example.com",
+            email=f"other2e2e-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE,

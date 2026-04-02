@@ -17,7 +17,7 @@ import time
 from typing import Any, Dict, List
 
 import pytest
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 
 from hub.apps.contracts.management.commands.migrate_contracts_to_odps import (
     Command as MigrateCommand,
@@ -117,7 +117,7 @@ def create_odps_4_1_document(product_id: str = None) -> dict:
     }
 
 
-class ODPSVersionMigrationTestBase(TransactionTestCase):
+class ODPSVersionMigrationTestBase(TestCase):
     """Base class for ODPS version migration tests"""
 
     # Disable automatic database flush to avoid foreign key constraint issues

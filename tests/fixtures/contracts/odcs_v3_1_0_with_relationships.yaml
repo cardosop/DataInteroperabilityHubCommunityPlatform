@@ -1,0 +1,42 @@
+apiVersion: odcs.io/v3.1.0
+kind: DataContract
+id: fixture-v310-relationships
+name: ODCS v3.1.0 With Relationships
+version: 1.0.0
+schema:
+  - name: orders
+    id: elem-orders
+    fields:
+      - name: order_id
+        type: string
+        nullable: false
+        id: elem-order-id
+      - name: customer_id
+        type: string
+        nullable: false
+        id: elem-customer-id
+      - name: amount
+        type: number
+        nullable: true
+        logicalTypeOptions:
+          exclusiveMinimum: 0
+          scale: 2
+    relationships:
+      - type: foreignKey
+        name: orders_to_customers
+        source:
+          - customer_id
+        targetContract: customers-contract
+        targetModel: customers
+        targetProperties:
+          - id
+        description: Links orders to the customer who placed them
+team:
+  members:
+    - name: Alice
+      email: alice@example.com
+      role: owner
+      id: u-001
+    - name: Bob
+      email: bob@example.com
+      role: contributor

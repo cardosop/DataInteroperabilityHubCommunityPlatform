@@ -9,6 +9,8 @@ import statistics
 import time
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from rest_framework.test import APIClient
@@ -30,6 +32,7 @@ from hub.apps.semantic.models import SemanticResource
 from hub.apps.semantic.utils import map_contract_to_semantic
 from hub.apps.tenants.models import Tenant
 from tests.factories import JobFactory, TenantFactory
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -51,7 +54,7 @@ class RateLimitPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="perf_test@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -114,7 +117,7 @@ class JobProcessingPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="perf_test@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_job_processing_throughput(self):
@@ -138,7 +141,7 @@ class JobProcessingPerformanceTest(TestCase):
             # Update job status to simulate processing
             job.status = JobStatus.RUNNING
             job.save()
-            time.sleep(0.01)  # Simulate processing time
+            time.sleep(0.01)  # INTENTIONAL: test-specific delay  # Simulate processing time
             job.status = JobStatus.COMPLETED
             job.save()
 
@@ -182,7 +185,7 @@ class EmailSendingPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="perf_test@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_email_sending_throughput(self):
@@ -307,7 +310,7 @@ class NormalizationPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="perf_test@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_normalization_performance_1000_fields(self):
@@ -389,7 +392,7 @@ class RDFMappingPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="perf_test@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_rdf_mapping_performance_complete_contract(self):
@@ -455,7 +458,7 @@ class APIPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="perf_test@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -522,7 +525,7 @@ class SPARQLPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="perf_test@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_sparql_query_performance_standard_vocabularies(self):
@@ -577,7 +580,7 @@ class LargeContractHandlingTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="perf_test@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_large_contract_1000_fields_all_sections(self):

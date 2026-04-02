@@ -93,10 +93,9 @@ class AssetOperationsE2ETest(E2ETestBase):
         response = self.client.get(f"/api/v1/assets/?status={AssetStatus.DRAFT}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = get_response_data(response) or {}
-        asset_statuses = {a["status"] for a in data.get("results", [])}
-        # Should only contain DRAFT assets (may include other assets if filter doesn't work)
-        self.assertIn(AssetStatus.DRAFT, asset_statuses)
-        # If filter works correctly, should only have DRAFT, but we'll be lenient
+        for asset_item in data.get("results", []):
+            self.assertEqual(asset_item.get("status"), AssetStatus.DRAFT,
+                f"Filter should only return DRAFT assets, got {asset_item.get('status')}")
 
     def test_get_asset_details(self):
         """Test retrieving asset details"""
@@ -407,9 +406,13 @@ class AssetCustomActionEdgeCasesE2ETest(E2ETestBase):
         asset_id = self.create_asset(key='already-active-asset', name='Already Active Asset')
         self.prepare_asset_for_activation(asset_id)
 
-        # First activation — must succeed
+        from hub.apps.assets.models import Asset as AssetModel
+        asset = AssetModel.objects.get(id=asset_id)
+
+        # First activation — must succeed (version required for optimistic locking)
         activate_response = self.client.post(
             f'/api/v1/assets/{asset_id}/activate/',
+            {'version': asset.version},
             format='json'
         )
         if activate_response.status_code not in (200, 201):
@@ -419,9 +422,13 @@ class AssetCustomActionEdgeCasesE2ETest(E2ETestBase):
             )
             return
 
+        # Re-read after activation to get updated version
+        asset.refresh_from_db()
+
         # Second activation — acceptable: 200 (idempotent) OR 400/409 (conflict)
         second_activate = self.client.post(
             f'/api/v1/assets/{asset_id}/activate/',
+            {'version': asset.version},
             format='json'
         )
         self.assertNotEqual(
@@ -432,8 +439,8 @@ class AssetCustomActionEdgeCasesE2ETest(E2ETestBase):
         )
         self.assertIn(
             second_activate.status_code,
-            [200, 201, 400, 409, 422],
-            f"Unexpected status code for double-activate: {second_activate.status_code}",
+            [200, 400, 409],
+            f"Double-activate should be idempotent (200) or conflict (400/409), got {second_activate.status_code}",
         )
 
     def test_retire_draft_asset_returns_400(self):

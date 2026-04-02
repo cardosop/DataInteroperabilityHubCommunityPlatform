@@ -4,6 +4,8 @@ E2E tests for Schema Evolution and Version Comparison
 End-to-end tests for complete schema evolution and comparison workflows.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 
 from hub.apps.datasets.models import Dataset, SchemaVersion, DatasetSnapshot

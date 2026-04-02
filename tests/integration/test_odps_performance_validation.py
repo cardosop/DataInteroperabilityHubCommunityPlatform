@@ -11,6 +11,8 @@ Uses real services (no mocks/stubs) and follows engineering best practices.
 Follows TDD approach and fixes root causes.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import time
 import os
 import sys

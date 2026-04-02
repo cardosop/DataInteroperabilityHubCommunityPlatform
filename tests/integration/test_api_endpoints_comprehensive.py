@@ -13,6 +13,8 @@ Tests all API endpoints:
 import json
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from rest_framework import status
@@ -27,6 +29,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from tests.factories import TenantFactory
+import uuid
 
 User = get_user_model()
 
@@ -42,7 +45,7 @@ class RESTAPIEndpointsTest(TestCase):
         self.tenant = TenantFactory.create_tenant()
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -154,7 +157,7 @@ class GraphQLEndpointsTest(TestCase):
         self.tenant = TenantFactory.create_tenant()
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -237,7 +240,7 @@ class AuthenticationEndpointsTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -284,13 +287,13 @@ class AuthorizationChecksTest(TestCase):
         self.tenant1 = TenantFactory.create_tenant()
         self.tenant2 = TenantFactory.create_tenant()
         self.user1 = User.objects.create_user(
-            email="user1@example.com",
+            email=f"user1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE,
         )
         self.user2 = User.objects.create_user(
-            email="user2@example.com",
+            email=f"user2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant2,
             status=UserStatus.ACTIVE,
@@ -341,7 +344,7 @@ class ErrorHandlingTest(TestCase):
         self.tenant = TenantFactory.create_tenant()
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -378,7 +381,7 @@ class ResponseFormatsTest(TestCase):
         self.client = APIClient()
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

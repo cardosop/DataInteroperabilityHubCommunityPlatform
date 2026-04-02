@@ -11,6 +11,7 @@ from datetime import datetime
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.tenants.services import get_tenant_config, get_tenant_config_value
 from hub.apps.tenants.validators import get_platform_defaults
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -22,8 +23,8 @@ class GetTenantConfigTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.platform_defaults = get_platform_defaults()
     
@@ -199,8 +200,8 @@ class GetTenantConfigValueTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.platform_defaults = get_platform_defaults()
     

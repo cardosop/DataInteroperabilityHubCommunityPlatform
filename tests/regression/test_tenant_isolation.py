@@ -20,6 +20,7 @@ from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
 from hub.apps.files.models import File
 from hub.apps.jobs.models import Job, JobStatus, JobType
+import uuid
 
 User = get_user_model()
 
@@ -45,13 +46,13 @@ class TenantIsolationRegressionTest(TestCase):
         
         # Create users for each tenant
         self.user1 = User.objects.create_user(
-            email="tenant1@example.com",
+            email=f"tenant1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE
         )
         self.user2 = User.objects.create_user(
-            email="tenant2@example.com",
+            email=f"tenant2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant2,
             status=UserStatus.ACTIVE

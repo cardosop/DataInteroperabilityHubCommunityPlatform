@@ -129,7 +129,7 @@ class TestRedisMonitoringSetup:
         prometheus_url = os.getenv('PROMETHEUS_URL', 'http://localhost:9090')
 
         # Wait for Prometheus to scrape
-        time.sleep(10)
+        time.sleep(10)  # INTENTIONAL: e2e/integration test polling real services
 
         try:
             response = requests.get(f"{prometheus_url}/api/v1/targets", timeout=15)
@@ -159,7 +159,7 @@ class TestRedisMonitoringSetup:
         prometheus_url = os.getenv('PROMETHEUS_URL', 'http://localhost:9090')
 
         # Wait for Prometheus to scrape
-        time.sleep(15)
+        time.sleep(15)  # INTENTIONAL: e2e/integration test polling real services
 
         try:
             response = requests.get(

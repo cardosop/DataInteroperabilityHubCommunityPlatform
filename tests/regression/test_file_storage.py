@@ -9,6 +9,8 @@ Tests:
 - File status tracking
 - File metadata operations
 """
+import uuid
+
 import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
@@ -16,9 +18,15 @@ from rest_framework.test import APIClient
 from rest_framework import status
 import io
 
+from datetime import timedelta
+from django.utils import timezone
+
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from hub.apps.files.models import File, FileStatus
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.billing.tests.plan_fixtures import get_pro_plan
+from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
 
 User = get_user_model()
 
@@ -31,16 +39,26 @@ class FileStorageRegressionTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
+        plan = get_pro_plan()
         self.tenant = Tenant.objects.create(
             name="File Storage Test Tenant",
-            slug="file-storage-test-tenant"
+            slug="file-storage-test-tenant",
+            plan=plan,
+        )
+        Subscription.objects.create(
+            tenant=self.tenant,
+            plan=plan,
+            status=SubscriptionStatus.ACTIVE,
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now() + timedelta(days=30),
         )
         self.user = User.objects.create_user(
-            email="filestorage@example.com",
+            email=f"filestorage-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+        ensure_user_has_tenant_admin_role(self.user)
         self.client.force_authenticate(user=self.user)
 
 

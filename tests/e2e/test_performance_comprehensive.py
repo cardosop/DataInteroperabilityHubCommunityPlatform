@@ -17,6 +17,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -75,18 +77,22 @@ class APIPerformanceE2ETest(E2ETestBase):
                 latency_ms = (end_time - start_time) * 1000
                 latencies.append(latency_ms)
 
-        if latencies:
-            p50 = calculate_percentile(latencies, 50)
-            p95 = calculate_percentile(latencies, 95)
-            p99 = calculate_percentile(latencies, 99)
-            avg = statistics.mean(latencies)
+        self.assertGreater(
+            len(latencies), 0,
+            "All requests failed — no latency data collected",
+        )
+        p50 = calculate_percentile(latencies, 50)
+        p95 = calculate_percentile(latencies, 95)
+        p99 = calculate_percentile(latencies, 99)
+        avg = statistics.mean(latencies)
 
-            # Target: P95 ≤ 300ms (per Testing Strategy)
-            self.assertLess(
-                p95,
-                1000.0,  # Allow higher for test environment
-                f"P95 latency is {p95:.2f}ms (P50: {p50:.2f}ms, P99: {p99:.2f}ms, avg: {avg:.2f}ms), target: <300ms in production",
-            )
+        # Target: P95 ≤ 300ms in production; allow 500ms in E2E
+        # (test DB, no connection pooling, shared Docker host).
+        self.assertLess(
+            p95,
+            500.0,
+            f"P95 latency is {p95:.2f}ms (P50: {p50:.2f}ms, P99: {p99:.2f}ms, avg: {avg:.2f}ms), target: <300ms in production",
+        )
 
     def test_api_assets_detail_response_time(self):
         """Test API assets detail endpoint response time"""
@@ -103,14 +109,17 @@ class APIPerformanceE2ETest(E2ETestBase):
                 latency_ms = (end_time - start_time) * 1000
                 latencies.append(latency_ms)
 
-        if latencies:
-            p95 = calculate_percentile(latencies, 95)
-            # Target: P95 ≤ 300ms
-            self.assertLess(
-                p95,
-                1000.0,
-                f"P95 latency is {p95:.2f}ms, target: <300ms in production",
-            )
+        self.assertGreater(
+            len(latencies), 0,
+            "All requests failed — no latency data collected",
+        )
+        p95 = calculate_percentile(latencies, 95)
+        # Target: P95 ≤ 300ms in production; allow 500ms in E2E
+        self.assertLess(
+            p95,
+            500.0,
+            f"P95 latency is {p95:.2f}ms, target: <300ms in production",
+        )
 
     def test_api_contracts_list_response_time(self):
         """Test API contracts list endpoint response time"""
@@ -139,14 +148,17 @@ class APIPerformanceE2ETest(E2ETestBase):
                 latency_ms = (end_time - start_time) * 1000
                 latencies.append(latency_ms)
 
-        if latencies:
-            p95 = calculate_percentile(latencies, 95)
-            # Target: P95 ≤ 300ms
-            self.assertLess(
-                p95,
-                1000.0,
-                f"P95 latency is {p95:.2f}ms, target: <300ms in production",
-            )
+        self.assertGreater(
+            len(latencies), 0,
+            "All requests failed — no latency data collected",
+        )
+        p95 = calculate_percentile(latencies, 95)
+        # Target: P95 ≤ 300ms in production; allow 500ms in E2E
+        self.assertLess(
+            p95,
+            500.0,
+            f"P95 latency is {p95:.2f}ms, target: <300ms in production",
+        )
 
     def test_api_contracts_detail_response_time(self):
         """Test API contracts detail endpoint response time"""
@@ -165,14 +177,17 @@ class APIPerformanceE2ETest(E2ETestBase):
                 latency_ms = (end_time - start_time) * 1000
                 latencies.append(latency_ms)
 
-        if latencies:
-            p95 = calculate_percentile(latencies, 95)
-            # Target: P95 ≤ 300ms
-            self.assertLess(
-                p95,
-                1000.0,
-                f"P95 latency is {p95:.2f}ms, target: <300ms in production",
-            )
+        self.assertGreater(
+            len(latencies), 0,
+            "All requests failed — no latency data collected",
+        )
+        p95 = calculate_percentile(latencies, 95)
+        # Target: P95 ≤ 300ms in production; allow 500ms in E2E
+        self.assertLess(
+            p95,
+            500.0,
+            f"P95 latency is {p95:.2f}ms, target: <300ms in production",
+        )
 
     def test_api_jobs_list_response_time(self):
         """Test API jobs list endpoint response time"""
@@ -198,14 +213,17 @@ class APIPerformanceE2ETest(E2ETestBase):
                 latency_ms = (end_time - start_time) * 1000
                 latencies.append(latency_ms)
 
-        if latencies:
-            p95 = calculate_percentile(latencies, 95)
-            # Target: P95 ≤ 300ms
-            self.assertLess(
-                p95,
-                1000.0,
-                f"P95 latency is {p95:.2f}ms, target: <300ms in production",
-            )
+        self.assertGreater(
+            len(latencies), 0,
+            "All requests failed — no latency data collected",
+        )
+        p95 = calculate_percentile(latencies, 95)
+        # Target: P95 ≤ 300ms in production; allow 500ms in E2E
+        self.assertLess(
+            p95,
+            500.0,
+            f"P95 latency is {p95:.2f}ms, target: <300ms in production",
+        )
 
     # ========== Load Testing ==========
 
@@ -242,65 +260,64 @@ class APIPerformanceE2ETest(E2ETestBase):
         successful = [r for r in results if r["status"] == status.HTTP_200_OK]
         latencies = [r["latency"] for r in successful]
 
-        if latencies:
-            p95 = calculate_percentile(latencies, 95)
-            avg = statistics.mean(latencies)
+        self.assertGreater(
+            len(latencies), 0,
+            "All requests failed — no latency data collected",
+        )
+        p95 = calculate_percentile(latencies, 95)
+        avg = statistics.mean(latencies)
 
-            # Target: 30-50 RPS sustained (per Testing Strategy)
-            # In test environment, we verify throughput > 0
-            self.assertGreater(
-                throughput,
-                0.1,
-                f"Throughput is {throughput:.2f} RPS, target: 30-50 RPS in production",
-            )
+        # Target: 30-50 RPS in production; allow ≥5 RPS in E2E
+        self.assertGreater(
+            throughput,
+            5.0,
+            f"Throughput is {throughput:.2f} RPS, target: 30-50 RPS in production",
+        )
 
-            # Verify error rate < 0.5%
-            error_rate = (len(results) - len(successful)) / len(results) if results else 0
-            self.assertLess(
-                error_rate,
-                0.1,  # Allow 10% in test environment
-                f"Error rate is {error_rate*100:.2f}%, target: <0.5% in production",
-            )
+        # Target: <0.5% in production; allow <5% in E2E
+        error_rate = (len(results) - len(successful)) / len(results) if results else 0
+        self.assertLess(
+            error_rate,
+            0.05,
+            f"Error rate is {error_rate*100:.2f}%, target: <0.5% in production",
+        )
 
     def test_api_response_time_under_load(self):
         """Test API response times under concurrent load"""
         # Create test data
         asset_id = self.create_asset(key="load-test", name="Load Test Asset")
 
-        # Concurrent requests
+        # Sequential requests (Django's test client is not thread-safe)
         num_requests = 30
-        num_threads = 5
 
-        def make_request():
-            """Make a single API request"""
+        results = []
+        for _ in range(num_requests):
             start_time = time.perf_counter()
             response = self.client.get(f"/api/v1/assets/{asset_id}/")
             end_time = time.perf_counter()
-            return {
+            results.append({
                 "status": response.status_code,
                 "latency": (end_time - start_time) * 1000,
-            }
-
-        # Execute concurrent requests
-        with ThreadPoolExecutor(max_workers=num_threads) as executor:
-            futures = [executor.submit(make_request) for _ in range(num_requests)]
-            results = [future.result() for future in as_completed(futures)]
+            })
 
         # Calculate metrics
         successful = [r for r in results if r["status"] == status.HTTP_200_OK]
         latencies = [r["latency"] for r in successful]
 
-        if latencies:
-            p50 = calculate_percentile(latencies, 50)
-            p95 = calculate_percentile(latencies, 95)
-            p99 = calculate_percentile(latencies, 99)
+        self.assertGreater(
+            len(latencies), 0,
+            "All requests failed under load — no latency data collected",
+        )
+        p50 = calculate_percentile(latencies, 50)
+        p95 = calculate_percentile(latencies, 95)
+        p99 = calculate_percentile(latencies, 99)
 
-            # Target: P95 ≤ 300ms under load
-            self.assertLess(
-                p95,
-                2000.0,  # Allow higher for test environment under load
-                f"P95 latency under load is {p95:.2f}ms (P50: {p50:.2f}ms, P99: {p99:.2f}ms), target: <300ms in production",
-            )
+        # Target: P95 ≤ 300ms in production; allow 1000ms under load in E2E
+        self.assertLess(
+            p95,
+            1000.0,
+            f"P95 latency under load is {p95:.2f}ms (P50: {p50:.2f}ms, P99: {p99:.2f}ms), target: <300ms in production",
+        )
 
     # ========== Large Dataset Performance Tests ==========
 
@@ -330,14 +347,17 @@ class APIPerformanceE2ETest(E2ETestBase):
                 latency_ms = (end_time - start_time) * 1000
                 latencies.append(latency_ms)
 
-        if latencies:
-            p95 = calculate_percentile(latencies, 95)
-            # Large datasets may take longer, but should still be reasonable
-            self.assertLess(
-                p95,
-                5000.0,
-                f"P95 latency with large dataset is {p95:.2f}ms, should be reasonable",
-            )
+        self.assertGreater(
+            len(latencies), 0,
+            "All requests failed with large dataset — no latency data collected",
+        )
+        p95 = calculate_percentile(latencies, 95)
+        # Large datasets take longer; allow 2000ms in E2E
+        self.assertLess(
+            p95,
+            2000.0,
+            f"P95 latency with large dataset is {p95:.2f}ms, should be <2000ms",
+        )
 
 
 class WorkflowPerformanceE2ETest(E2ETestBase):
@@ -366,14 +386,17 @@ class WorkflowPerformanceE2ETest(E2ETestBase):
             end_time = time.perf_counter()
             latencies.append((end_time - start_time) * 1000)  # Convert to ms
 
-        if latencies:
-            p95 = calculate_percentile(latencies, 95)
-            # Job creation should be fast (<100ms)
-            self.assertLess(
-                p95,
-                500.0,
-                f"Job creation P95 latency is {p95:.2f}ms, target: <100ms in production",
-            )
+        self.assertGreater(
+            len(latencies), 0,
+            "All job creations failed — no latency data collected",
+        )
+        p95 = calculate_percentile(latencies, 95)
+        # Target: <100ms in production; allow 300ms in E2E
+        self.assertLess(
+            p95,
+            300.0,
+            f"Job creation P95 latency is {p95:.2f}ms, target: <100ms in production",
+        )
 
     def test_job_status_update_latency(self):
         """Test job status update latency"""
@@ -394,14 +417,17 @@ class WorkflowPerformanceE2ETest(E2ETestBase):
             end_time = time.perf_counter()
             latencies.append((end_time - start_time) * 1000)
 
-        if latencies:
-            p95 = calculate_percentile(latencies, 95)
-            # Job status update should be fast (<50ms)
-            self.assertLess(
-                p95,
-                200.0,
-                f"Job status update P95 latency is {p95:.2f}ms, target: <50ms in production",
-            )
+        self.assertGreater(
+            len(latencies), 0,
+            "All job status updates failed — no latency data collected",
+        )
+        p95 = calculate_percentile(latencies, 95)
+        # Target: <50ms in production; allow 150ms in E2E
+        self.assertLess(
+            p95,
+            150.0,
+            f"Job status update P95 latency is {p95:.2f}ms, target: <50ms in production",
+        )
 
     def test_job_processing_throughput(self):
         """Test job processing throughput"""
@@ -471,22 +497,25 @@ class WorkflowPerformanceE2ETest(E2ETestBase):
         throughput = calculate_throughput(num_jobs, duration)
         latencies = [r["latency"] for r in jobs]
 
-        if latencies:
-            p95 = calculate_percentile(latencies, 95)
+        self.assertGreater(
+            len(latencies), 0,
+            "All workflow executions failed — no latency data collected",
+        )
+        p95 = calculate_percentile(latencies, 95)
 
-            # Verify throughput
-            self.assertGreater(
-                throughput,
-                0.1,
-                f"Workflow execution throughput is {throughput:.2f} jobs/sec under load",
-            )
+        # Verify throughput: target >5 jobs/sec in E2E
+        self.assertGreater(
+            throughput,
+            1.0,
+            f"Workflow execution throughput is {throughput:.2f} jobs/sec under load",
+        )
 
-            # Verify latency
-            self.assertLess(
-                p95,
-                2000.0,
-                f"Workflow execution P95 latency is {p95:.2f}ms",
-            )
+        # Verify latency
+        self.assertLess(
+            p95,
+            2000.0,
+            f"Workflow execution P95 latency is {p95:.2f}ms",
+        )
 
 
 class EventBusPerformanceE2ETest(E2ETestBase):
@@ -504,19 +533,31 @@ class EventBusPerformanceE2ETest(E2ETestBase):
 
         event_bus = get_event_bus()
 
+        # Probe: skip if event bus is not configured
+        try:
+            _probe = event_bus.publish(
+                event_type="asset.created",
+                data={"asset_id": str(uuid.uuid4()), "probe": True},
+                tenant_id=str(self.tenant.id),
+            )
+            if not _probe:
+                pytest.skip("Event bus not configured — publish returned None")
+        except Exception:
+            pytest.skip("Event bus not available")
+
         latencies = []
         for i in range(20):
             event_data = {
-                "test_id": str(uuid.uuid4()),
+                "asset_id": str(uuid.uuid4()),
                 "timestamp": timezone.now().isoformat(),
-                "data": {"index": i},
+                "name": f"perf-test-{i}",
             }
 
             start_time = time.perf_counter()
             try:
                 event_id = event_bus.publish(
-                    event_type="test.performance",
-                    event_data=event_data,
+                    event_type="asset.updated",
+                    data=event_data,
                     tenant_id=str(self.tenant.id),
                 )
                 end_time = time.perf_counter()
@@ -526,14 +567,17 @@ class EventBusPerformanceE2ETest(E2ETestBase):
                 # Event bus might not be fully configured in test environment
                 pass
 
-        if latencies:
-            p95 = calculate_percentile(latencies, 95)
-            # Event publishing should be fast (<100ms)
-            self.assertLess(
-                p95,
-                1000.0,
-                f"Event publishing P95 latency is {p95:.2f}ms, target: <100ms in production",
-            )
+        self.assertGreater(
+            len(latencies), 0,
+            "All event publishes failed — no latency data collected",
+        )
+        p95 = calculate_percentile(latencies, 95)
+        # Target: <100ms in production; allow 500ms in E2E
+        self.assertLess(
+            p95,
+            500.0,
+            f"Event publishing P95 latency is {p95:.2f}ms, target: <100ms in production",
+        )
 
     def test_event_publishing_throughput(self):
         """Test event publishing throughput"""
@@ -541,21 +585,33 @@ class EventBusPerformanceE2ETest(E2ETestBase):
 
         event_bus = get_event_bus()
 
+        # Probe: skip if event bus is not configured
+        try:
+            _probe = event_bus.publish(
+                event_type="asset.created",
+                data={"asset_id": str(uuid.uuid4()), "probe": True},
+                tenant_id=str(self.tenant.id),
+            )
+            if not _probe:
+                pytest.skip("Event bus not configured — publish returned None")
+        except Exception:
+            pytest.skip("Event bus not available")
+
         num_events = 50
         start_time = time.perf_counter()
 
         published_count = 0
         for i in range(num_events):
             event_data = {
-                "test_id": str(uuid.uuid4()),
+                "asset_id": str(uuid.uuid4()),
                 "timestamp": timezone.now().isoformat(),
-                "data": {"index": i},
+                "name": f"perf-test-{i}",
             }
 
             try:
                 event_id = event_bus.publish(
-                    event_type="test.performance.throughput",
-                    event_data=event_data,
+                    event_type="asset.updated",
+                    data=event_data,
                     tenant_id=str(self.tenant.id),
                 )
                 if event_id:
@@ -568,13 +624,17 @@ class EventBusPerformanceE2ETest(E2ETestBase):
         duration = end_time - start_time
         throughput = calculate_throughput(published_count, duration)
 
-        # Event publishing should have good throughput
-        if published_count > 0:
-            self.assertGreater(
-                throughput,
-                0.1,
-                f"Event publishing throughput is {throughput:.2f} events/sec",
-            )
+        # At least some events must publish successfully
+        self.assertGreater(
+            published_count, 0,
+            "No events published successfully",
+        )
+        # Target: >10 events/sec in E2E
+        self.assertGreater(
+            throughput,
+            5.0,
+            f"Event publishing throughput is {throughput:.2f} events/sec",
+        )
 
     def test_event_publishing_under_load(self):
         """Test event publishing under concurrent load"""
@@ -582,22 +642,34 @@ class EventBusPerformanceE2ETest(E2ETestBase):
 
         event_bus = get_event_bus()
 
+        # Probe: skip if event bus is not configured
+        try:
+            _probe = event_bus.publish(
+                event_type="asset.created",
+                data={"asset_id": str(uuid.uuid4()), "probe": True},
+                tenant_id=str(self.tenant.id),
+            )
+            if not _probe:
+                pytest.skip("Event bus not configured — publish returned None")
+        except Exception:
+            pytest.skip("Event bus not available")
+
         num_events = 30
         num_threads = 5
 
         def publish_event(index):
             """Publish a single event"""
             event_data = {
-                "test_id": str(uuid.uuid4()),
+                "asset_id": str(uuid.uuid4()),
                 "timestamp": timezone.now().isoformat(),
-                "data": {"index": index},
+                "name": f"perf-load-{index}",
             }
 
             start_time = time.perf_counter()
             try:
                 event_id = event_bus.publish(
-                    event_type="test.performance.load",
-                    event_data=event_data,
+                    event_type="asset.updated",
+                    data=event_data,
                     tenant_id=str(self.tenant.id),
                 )
                 end_time = time.perf_counter()
@@ -621,23 +693,25 @@ class EventBusPerformanceE2ETest(E2ETestBase):
         throughput = calculate_throughput(len(successful), duration)
         latencies = [r["latency"] for r in successful if r["latency"] > 0]
 
-        if latencies:
-            p95 = calculate_percentile(latencies, 95)
+        self.assertGreater(
+            len(latencies), 0,
+            "All events failed under load — no latency data collected",
+        )
+        p95 = calculate_percentile(latencies, 95)
 
-            # Verify throughput under load
-            if len(successful) > 0:
-                self.assertGreater(
-                    throughput,
-                    0.1,
-                    f"Event publishing throughput under load is {throughput:.2f} events/sec",
-                )
+        # Verify throughput under load: target >5 events/sec in E2E
+        self.assertGreater(
+            throughput,
+            1.0,
+            f"Event publishing throughput under load is {throughput:.2f} events/sec",
+        )
 
-            # Verify latency under load
-            self.assertLess(
-                p95,
-                2000.0,
-                f"Event publishing P95 latency under load is {p95:.2f}ms",
-            )
+        # Verify latency under load
+        self.assertLess(
+            p95,
+            2000.0,
+            f"Event publishing P95 latency under load is {p95:.2f}ms",
+        )
 
     def test_event_consumption_metrics(self):
         """Test event consumption metrics availability"""

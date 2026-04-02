@@ -24,6 +24,7 @@ from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 
 from tests.factories import TenantFactory
+import uuid
 
 User = get_user_model()
 
@@ -38,7 +39,7 @@ class AssetCreationWorkflowUnitTests(TestCase):
         """Set up test fixtures"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -284,7 +285,7 @@ class MarketplacePublicationWorkflowUnitTests(TestCase):
         self.tenant.save()
         
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -397,7 +398,7 @@ class ContractUpdateWorkflowUnitTests(TestCase):
         """Set up test fixtures"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -442,7 +443,7 @@ class AssetRetirementWorkflowUnitTests(TestCase):
         """Set up test fixtures"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )

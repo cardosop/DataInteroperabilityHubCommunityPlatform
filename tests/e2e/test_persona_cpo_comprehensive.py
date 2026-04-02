@@ -12,6 +12,8 @@ All tests use REAL services (no mocks/stubs) and follow TDD approach.
 Target: 100% journey coverage for all CPO journeys.
 """
 import pytest
+
+pytestmark = pytest.mark.slow
 import hashlib
 import time
 import uuid
@@ -49,6 +51,7 @@ pytestmark = [
     pytest.mark.journey("JOURNEY-CPO-003"),
     pytest.mark.journey("JOURNEY-CPO-004"),
     pytest.mark.journey("JOURNEY-CPO-005"),
+    pytest.mark.uc("UC-CPO-009"),
 ]
 
 
@@ -76,10 +79,10 @@ class JourneyCPO001ReviewComplianceTests(E2ETestBase):
 
         # Wait for compliance run to complete
         compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
-        max_wait = 60
+        max_wait = 15
         start_time = time.time()
         while compliance_run.status in [ComplianceRunStatus.PENDING, ComplianceRunStatus.RUNNING] and (time.time() - start_time) < max_wait:
-            time.sleep(1)
+            time.sleep(1)  # INTENTIONAL: e2e/integration test polling real services
             compliance_run.refresh_from_db()
 
         # Compliance run may remain PENDING if service is unavailable
@@ -213,10 +216,10 @@ class JourneyCPO002GenerateComplianceReportTests(E2ETestBase):
 
         # Wait for compliance run to complete
         compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
-        max_wait = 60
+        max_wait = 15
         start_time = time.time()
         while compliance_run.status in [ComplianceRunStatus.PENDING, ComplianceRunStatus.RUNNING] and (time.time() - start_time) < max_wait:
-            time.sleep(1)
+            time.sleep(1)  # INTENTIONAL: e2e/integration test polling real services
             compliance_run.refresh_from_db()
 
         # Compliance run may remain PENDING if service is unavailable
@@ -271,10 +274,10 @@ class JourneyCPO002GenerateComplianceReportTests(E2ETestBase):
 
         # Wait for compliance run to complete
         compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
-        max_wait = 60
+        max_wait = 15
         start_time = time.time()
         while compliance_run.status in [ComplianceRunStatus.PENDING, ComplianceRunStatus.RUNNING] and (time.time() - start_time) < max_wait:
-            time.sleep(1)
+            time.sleep(1)  # INTENTIONAL: e2e/integration test polling real services
             compliance_run.refresh_from_db()
 
         # Compliance run may remain PENDING if service is unavailable
@@ -381,24 +384,13 @@ class JourneyCPO003ConfigureRetentionPoliciesTests(E2ETestBase):
                 format='json'
             )
 
-        # If endpoint still doesn't exist, create directly via model
+        # If endpoint still doesn't exist, skip — can't E2E test without API
         if response.status_code == status.HTTP_404_NOT_FOUND:
-            policy = RetentionPolicy.objects.create(
-                tenant=self.tenant,
-                name='30 Day Retention Policy',
-                description='Retain data for 30 days',
-                asset=asset,
-                policy_type=RetentionPolicyType.TIME_BASED.value,
-                retention_period_days=30,
-                action=RetentionAction.SOFT_DELETE.value,
-                enabled=True,
-                created_by=self.user
-            )
-            policy_id = policy.id
-        else:
-            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-            data = get_response_data(response) or {}
-            policy_id = data['id']
+            self.skipTest("retention-policies endpoint not implemented")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        data = get_response_data(response) or {}
+        policy_id = data['id']
 
         # Verify policy was created
         policy = RetentionPolicy.objects.get(id=policy_id)
@@ -407,60 +399,69 @@ class JourneyCPO003ConfigureRetentionPoliciesTests(E2ETestBase):
         self.assertEqual(policy.retention_period_days, 30)
         self.assertTrue(policy.enabled)
 
-        # Verify audit log (may not exist if created via model directly)
-        try:
-            self.verify_audit_log(
-                action='RETENTION_POLICY_CREATED',
-                resource_type='RETENTION_POLICY',
-                resource_id=policy_id
-            )
-        except AssertionError:
-            # Audit log may not exist if policy was created directly via model
-            # This is acceptable for E2E tests when API endpoint doesn't exist
-            pass
-
-    def test_create_event_based_retention_policy(self):
-        """Test creating event-based retention policy"""
-        asset_id = self.create_asset(key='cpo-event-retention', name='CPO Event Retention')
-        asset = Asset.objects.get(id=asset_id)
-
-        # Create event-based retention policy
-        policy = RetentionPolicy.objects.create(
-            tenant=self.tenant,
-            name='Event-Based Retention',
-            description='Retain until contract expires',
-            asset=asset,
-            policy_type=RetentionPolicyType.EVENT_BASED.value,
-            event_trigger='contract_expired',
-            action=RetentionAction.HARD_DELETE.value,
-            enabled=True,
-            created_by=self.user
+        # Verify audit log
+        self.verify_audit_log(
+            action='RETENTION_POLICY_CREATED',
+            resource_type='RETENTION_POLICY',
+            resource_id=policy_id
         )
 
+    def test_create_event_based_retention_policy(self):
+        """Test creating event-based retention policy via API"""
+        asset_id = self.create_asset(key='cpo-event-retention', name='CPO Event Retention')
+
+        response = self.client.post(
+            '/api/v1/governance/access/retention-policies/',
+            {
+                'name': 'Event-Based Retention',
+                'description': 'Retain until contract expires',
+                'asset_id': str(asset_id),
+                'policy_type': RetentionPolicyType.EVENT_BASED.value,
+                'event_trigger': 'contract_expired',
+                'action': RetentionAction.HARD_DELETE.value,
+                'enabled': True,
+            },
+            format='json',
+        )
+        if response.status_code == status.HTTP_404_NOT_FOUND:
+            self.skipTest("retention-policies endpoint not implemented")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        data = get_response_data(response) or {}
+        self.assertIn('id', data)
+
+        policy = RetentionPolicy.objects.get(id=data['id'])
         self.assertEqual(policy.policy_type, RetentionPolicyType.EVENT_BASED.value)
         self.assertEqual(policy.event_trigger, 'contract_expired')
         self.assertEqual(policy.action, RetentionAction.HARD_DELETE.value)
 
     def test_create_retention_policy_with_legal_hold(self):
-        """Test creating retention policy with legal hold"""
+        """Test creating retention policy with legal hold via API"""
         asset_id = self.create_asset(key='cpo-legal-hold', name='CPO Legal Hold')
-        asset = Asset.objects.get(id=asset_id)
 
-        # Create retention policy with legal hold
-        policy = RetentionPolicy.objects.create(
-            tenant=self.tenant,
-            name='Legal Hold Policy',
-            description='Data under legal hold',
-            asset=asset,
-            policy_type=RetentionPolicyType.TIME_BASED.value,
-            retention_period_days=365,
-            action=RetentionAction.SOFT_DELETE.value,
-            legal_hold=True,
-            legal_hold_reason='Pending litigation',
-            enabled=True,
-            created_by=self.user
+        response = self.client.post(
+            '/api/v1/governance/access/retention-policies/',
+            {
+                'name': 'Legal Hold Policy',
+                'description': 'Data under legal hold',
+                'asset_id': str(asset_id),
+                'policy_type': RetentionPolicyType.TIME_BASED.value,
+                'retention_period_days': 365,
+                'action': RetentionAction.SOFT_DELETE.value,
+                'legal_hold': True,
+                'legal_hold_reason': 'Pending litigation',
+                'enabled': True,
+            },
+            format='json',
         )
+        if response.status_code == status.HTTP_404_NOT_FOUND:
+            self.skipTest("retention-policies endpoint not implemented")
 
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        data = get_response_data(response) or {}
+        self.assertIn('id', data)
+
+        policy = RetentionPolicy.objects.get(id=data['id'])
         self.assertTrue(policy.legal_hold)
         self.assertEqual(policy.legal_hold_reason, 'Pending litigation')
 
@@ -506,15 +507,13 @@ class JourneyCPO003ConfigureRetentionPoliciesTests(E2ETestBase):
             )
 
         if response.status_code == status.HTTP_404_NOT_FOUND:
-            # Endpoint doesn't exist, verify via model
-            policies = RetentionPolicy.objects.filter(asset=asset, tenant=self.tenant)
-            self.assertEqual(policies.count(), 2)
-        else:
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
-            data = get_response_data(response) or {}
-            results = data.get('results', data) if isinstance(data, dict) else data
-            if isinstance(results, list):
-                self.assertGreaterEqual(len(results), 2)
+            self.skipTest("retention-policies list endpoint not implemented")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = get_response_data(response) or {}
+        results = data.get('results', data) if isinstance(data, dict) else data
+        if isinstance(results, list):
+            self.assertGreaterEqual(len(results), 2)
 
     def test_update_retention_policy(self):
         """Test updating retention policy"""
@@ -554,12 +553,9 @@ class JourneyCPO003ConfigureRetentionPoliciesTests(E2ETestBase):
             )
 
         if response.status_code == status.HTTP_404_NOT_FOUND:
-            # Endpoint doesn't exist, update directly
-            policy.retention_period_days = 60
-            policy.enabled = False
-            policy.save()
-        else:
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.skipTest("retention-policies update endpoint not implemented")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Verify update
         policy.refresh_from_db()
@@ -579,7 +575,7 @@ class JourneyCPO004ReviewAccessRequestsTests(E2ETestBase):
         # Create another user to request access
         from hub.apps.users.models import UserStatus
         requester = User.objects.create_user(
-            email="requester@example.com",
+            email=f"requester-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -609,20 +605,11 @@ class JourneyCPO004ReviewAccessRequestsTests(E2ETestBase):
             )
 
         if response.status_code == status.HTTP_404_NOT_FOUND:
-            # Endpoint doesn't exist, create directly via model
-            access_request = AccessRequest.objects.create(
-                tenant=self.tenant,
-                requested_by=requester,
-                asset=asset,
-                reason='Need access for analysis',
-                requested_access_type='READ',
-                requires_approval=True,
-                status=AccessRequestStatus.PENDING
-            )
-        else:
-            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-            data = get_response_data(response) or {}
-            access_request = AccessRequest.objects.get(id=data['id'])
+            self.skipTest("access-requests create endpoint not implemented")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        data = get_response_data(response) or {}
+        access_request = AccessRequest.objects.get(id=data['id'])
 
         # Step 1: List access requests
         # Try governance/access/access-requests/, then access/access-requests/
@@ -638,18 +625,16 @@ class JourneyCPO004ReviewAccessRequestsTests(E2ETestBase):
             )
 
         if response.status_code == status.HTTP_404_NOT_FOUND:
-            # Endpoint doesn't exist, verify via model
-            requests = AccessRequest.objects.filter(tenant=self.tenant)
-            self.assertGreaterEqual(requests.count(), 1)
-        else:
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
-            data = get_response_data(response) or {}
-            results = data.get('results', data) if isinstance(data, dict) else data
-            if isinstance(results, list):
-                self.assertGreaterEqual(len(results), 1)
-                # Find our request
-                request_ids = [r['id'] if isinstance(r, dict) else str(r.id) for r in results]
-                self.assertIn(str(access_request.id), request_ids)
+            self.skipTest("access-requests list endpoint not implemented")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = get_response_data(response) or {}
+        results = data.get('results', data) if isinstance(data, dict) else data
+        if isinstance(results, list):
+            self.assertGreater(len(results), 0)
+            # Find our request
+            request_ids = [r['id'] if isinstance(r, dict) else str(r.id) for r in results]
+            self.assertIn(str(access_request.id), request_ids)
 
         # Step 2: Get access request details
         response = self.client.get(
@@ -664,14 +649,12 @@ class JourneyCPO004ReviewAccessRequestsTests(E2ETestBase):
             )
 
         if response.status_code == status.HTTP_404_NOT_FOUND:
-            # Endpoint doesn't exist, verify via model
-            request = AccessRequest.objects.get(id=access_request.id)
-            self.assertEqual(request.status, AccessRequestStatus.PENDING)
-        else:
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
-            data = get_response_data(response) or {}
-            self.assertEqual(data['id'], str(access_request.id))
-            self.assertEqual(data['status'], AccessRequestStatus.PENDING)
+            self.skipTest("access-requests detail endpoint not implemented")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = get_response_data(response) or {}
+        self.assertEqual(data['id'], str(access_request.id))
+        self.assertEqual(data['status'], AccessRequestStatus.PENDING)
 
         # Step 3: Approve access request
         response = self.client.post(
@@ -714,7 +697,7 @@ class JourneyCPO004ReviewAccessRequestsTests(E2ETestBase):
 
         from hub.apps.users.models import UserStatus
         requester = User.objects.create_user(
-            email="requester2@example.com",
+            email=f"requester2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -744,20 +727,11 @@ class JourneyCPO004ReviewAccessRequestsTests(E2ETestBase):
             )
 
         if response.status_code == status.HTTP_404_NOT_FOUND:
-            # Endpoint doesn't exist, create directly via model
-            access_request = AccessRequest.objects.create(
-                tenant=self.tenant,
-                requested_by=requester,
-                asset=Asset.objects.get(id=asset_id),
-                reason='Need access',
-                requested_access_type='READ',
-                requires_approval=True,
-                status=AccessRequestStatus.PENDING
-            )
-        else:
-            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-            data = get_response_data(response) or {}
-            access_request = AccessRequest.objects.get(id=data['id'])
+            self.skipTest("access-requests create endpoint not implemented")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        data = get_response_data(response) or {}
+        access_request = AccessRequest.objects.get(id=data['id'])
 
         # Reject access request
         # Try governance/access/access-requests/, then access/access-requests/
@@ -796,7 +770,7 @@ class JourneyCPO004ReviewAccessRequestsTests(E2ETestBase):
 
         from hub.apps.users.models import UserStatus
         requester = User.objects.create_user(
-            email="requester3@example.com",
+            email=f"requester3-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -876,8 +850,8 @@ class JourneyCPO005AuditAccessLogsTests(E2ETestBase):
 
         data = get_response_data(response) or {}
         results = data.get('results', data) if isinstance(data, dict) else data
-        if isinstance(results, list):
-            self.assertGreaterEqual(len(results), 0)  # At least our asset creation event
+        self.assertIsInstance(results, list, f"Expected list of audit events, got: {type(results)}")
+        self.assertGreater(len(results), 0, "Should have at least one audit event from asset creation")
 
         # Step 2: Filter by resource type
         response = self.client.get(
@@ -1018,8 +992,13 @@ class JourneyCPO005AuditAccessLogsTests(E2ETestBase):
             {'start_date': 'invalid-date'},
             format='json'
         )
-        # Should either return 400 or ignore invalid filter
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # API may reject (400) or gracefully ignore invalid date filter (200)
+        # Both are valid — the key is no 500 error
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST],
+            f"Invalid date filter should return 200 (ignored) or 400 (rejected), not {response.status_code}",
+        )
 
         # Test non-existent audit event
         fake_id = str(uuid.uuid4())

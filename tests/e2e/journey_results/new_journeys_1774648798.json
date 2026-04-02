@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-007-ac4e23c6",
+      "journey_name": "Create Transformation Pipeline",
+      "persona": "Data Engineer",
+      "status": "failed",
+      "start_time": 1774648796.2177272,
+      "end_time": 1774648798.6000607,
+      "duration": 2.382333517074585,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 500 - {'error': {'code': 'INTERNAL_ERROR', 'message': 'current transaction is aborted, commands ignored until end of transaction block\\n', 'http_status': 500, 'request_id': 'ebf5690a-28b3-4a0c-ab68-5b929ea1915b', 'timestamp': '2026-03-27T21:59:58.583023+00:00'}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774648796.217736,
+          "end_time": 1774648798.600054,
+          "duration": 2.3823180198669434,
+          "error_message": "Failed to create asset: 500 - {'error': {'code': 'INTERNAL_ERROR', 'message': 'current transaction is aborted, commands ignored until end of transaction block\\n', 'http_status': 500, 'request_id': 'ebf5690a-28b3-4a0c-ab68-5b929ea1915b', 'timestamp': '2026-03-27T21:59:58.583023+00:00'}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-27T21:59:58.600147"
+}

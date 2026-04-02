@@ -21,7 +21,7 @@ User = __import__("django.contrib.auth", fromlist=["get_user_model"]).get_user_m
 
 # All tests use default django_db (rollback). Run with TEST_DB_SUFFIX=phase13 to avoid deadlock
 # when pytest+runserver share hub_test_test_shared (validation script runs this file with phase13).
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def test_compliance_runs_list_returns_401_when_unauthenticated():

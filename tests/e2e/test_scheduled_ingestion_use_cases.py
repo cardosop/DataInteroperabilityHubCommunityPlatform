@@ -84,25 +84,29 @@ class ScheduledIngestionCreationUseCasesTest(E2ETestBase):
             format='json'
         )
         
-        # May return 201, 400 (validation), or 500 (Prefect unavailable)
-        self.assertIn(response.status_code, [
-            status.HTTP_201_CREATED,
-            status.HTTP_400_BAD_REQUEST,
-            status.HTTP_500_INTERNAL_SERVER_ERROR
-        ])
-        
-        if response.status_code == status.HTTP_201_CREATED:
-            data = get_response_data(response) or {}
-            ingestion_id = data['id']
-            
-            # Verify ingestion created
-            ingestion = ScheduledIngestion.objects.get(id=ingestion_id)
-            self.assertEqual(ingestion.name, 'Daily Sales Ingestion')
-            self.assertEqual(ingestion.source_type, SourceType.S3)
-            self.assertEqual(ingestion.asset, self.asset)
-            self.assertEqual(ingestion.tenant, self.tenant)
-            self.assertEqual(ingestion.status, ScheduledIngestionStatus.ACTIVE)
-    
+        # Resource must be created — 201 (sync OK) or 207 (created
+        # but Prefect deployment sync failed, which is acceptable in
+        # test env where Prefect may not have the API key configured).
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_201_CREATED, 207],
+            f"Ingestion creation failed: {response.status_code} - "
+            f"{get_response_data(response)}",
+        )
+
+        data = get_response_data(response) or {}
+        # 207 wraps the resource under "resource" key
+        resource = data.get('resource', data)
+        ingestion_id = resource['id']
+
+        # Verify ingestion created
+        ingestion = ScheduledIngestion.objects.get(id=ingestion_id)
+        self.assertEqual(ingestion.name, 'Daily Sales Ingestion')
+        self.assertEqual(ingestion.source_type, SourceType.S3)
+        self.assertEqual(ingestion.asset, self.asset)
+        self.assertEqual(ingestion.tenant, self.tenant)
+        self.assertEqual(ingestion.status, ScheduledIngestionStatus.ACTIVE)
+
     def test_create_scheduled_ingestion_http_success(self):
         """Test creating a scheduled ingestion from HTTP source"""
         ingestion_data = {
@@ -136,23 +140,23 @@ class ScheduledIngestionCreationUseCasesTest(E2ETestBase):
             format='json'
         )
         
-        # May return 201, 400 (validation), or 500 (Prefect unavailable)
-        self.assertIn(response.status_code, [
-            status.HTTP_201_CREATED,
-            status.HTTP_400_BAD_REQUEST,
-            status.HTTP_500_INTERNAL_SERVER_ERROR
-        ])
-        
-        if response.status_code == status.HTTP_201_CREATED:
-            data = get_response_data(response) or {}
-            ingestion_id = data['id']
-            
-            # Verify ingestion created
-            ingestion = ScheduledIngestion.objects.get(id=ingestion_id)
-            self.assertEqual(ingestion.name, 'HTTP Data Ingestion')
-            self.assertEqual(ingestion.source_type, SourceType.HTTP)
-            self.assertEqual(ingestion.asset, self.asset)
-    
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_201_CREATED, 207],
+            f"HTTP ingestion creation failed: {response.status_code} - "
+            f"{get_response_data(response)}",
+        )
+
+        data = get_response_data(response) or {}
+        resource = data.get('resource', data)
+        ingestion_id = resource['id']
+
+        # Verify ingestion created
+        ingestion = ScheduledIngestion.objects.get(id=ingestion_id)
+        self.assertEqual(ingestion.name, 'HTTP Data Ingestion')
+        self.assertEqual(ingestion.source_type, SourceType.HTTP)
+        self.assertEqual(ingestion.asset, self.asset)
+
     def test_create_scheduled_ingestion_without_asset_success(self):
         """Test creating a scheduled ingestion with auto_create_asset=True"""
         ingestion_data = {
@@ -180,22 +184,24 @@ class ScheduledIngestionCreationUseCasesTest(E2ETestBase):
             format='json'
         )
         
-        # May return 201, 400 (validation), or 500 (Prefect unavailable)
-        self.assertIn(response.status_code, [
-            status.HTTP_201_CREATED,
-            status.HTTP_400_BAD_REQUEST,
-            status.HTTP_500_INTERNAL_SERVER_ERROR
-        ])
-        
-        if response.status_code == status.HTTP_201_CREATED:
-            data = get_response_data(response) or {}
-            ingestion_id = data['id']
-            
-            # Verify ingestion created
-            ingestion = ScheduledIngestion.objects.get(id=ingestion_id)
-            self.assertEqual(ingestion.name, 'Auto Asset Ingestion')
-            self.assertTrue(ingestion.auto_create_asset)
-            # Asset will be created when ingestion runs
+        # May return 201, 207 (created but Prefect sync failed),
+        # 400 (validation), or 500 (Prefect unavailable).
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_201_CREATED, 207],
+            f"Auto-asset ingestion creation failed: {response.status_code} - "
+            f"{get_response_data(response)}",
+        )
+
+        data = get_response_data(response) or {}
+        resource = data.get('resource', data)
+        ingestion_id = resource['id']
+
+        # Verify ingestion created
+        ingestion = ScheduledIngestion.objects.get(id=ingestion_id)
+        self.assertEqual(ingestion.name, 'Auto Asset Ingestion')
+        self.assertTrue(ingestion.auto_create_asset)
+        # Asset will be created when ingestion runs
     
     def test_create_scheduled_ingestion_invalid_config_fails(self):
         """Test that creating ingestion with invalid config fails"""
@@ -626,11 +632,14 @@ class ScheduledIngestionManagementUseCasesTest(E2ETestBase):
         # May return 200 or 500 (Prefect unavailable)
         self.assertIn(response.status_code, [
             status.HTTP_200_OK,
-            status.HTTP_500_INTERNAL_SERVER_ERROR
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
         ])
-        
+
         if response.status_code == status.HTTP_200_OK:
             self.ingestion.refresh_from_db()
-            self.assertEqual(self.ingestion.source_config['bucket'], 'updated-bucket')
-            self.assertEqual(self.ingestion.source_config['prefix'], 'updated-prefix/')
+            # source_config is encrypted on save; use the decryption
+            # accessor to read the plaintext values.
+            decrypted = self.ingestion.get_source_config()
+            self.assertEqual(decrypted['bucket'], 'updated-bucket')
+            self.assertEqual(decrypted['prefix'], 'updated-prefix/')
 
