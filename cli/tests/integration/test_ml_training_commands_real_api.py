@@ -30,7 +30,7 @@ from datahub_cli.config import config
 def _check_api_available():
     """Check if API service is available"""
     try:
-        response = requests.get("http://localhost:8000/health/", timeout=2)
+        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000").rstrip("/api/v1") + "/health/", timeout=2)
         # Accept 200 (healthy) or 503 (unhealthy but service is running)
         # 503 means service is up but dependencies may have issues
         return response.status_code in (200, 503)
@@ -84,7 +84,7 @@ def test_asset(api_available, api_key):
     for attempt in range(max_retries):
         try:
             response = requests.post(
-                'http://localhost:8000/api/v1/assets/',
+                os.environ.get('MESHANT_API_URL', 'http://localhost:8000/api/v1') + '/assets/',
                 json=asset_data,
                 headers=headers,
                 timeout=15
@@ -104,7 +104,7 @@ def test_asset(api_available, api_key):
         # Cleanup
         try:
             requests.delete(
-                f'http://localhost:8000/api/v1/assets/{asset_id}/',
+                f'{os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")}/assets/{asset_id}/',
                 headers=headers,
                 timeout=10
             )
@@ -135,7 +135,7 @@ def test_model(api_available, api_key, test_asset):
     for attempt in range(max_retries):
         try:
             response = requests.post(
-                'http://localhost:8000/api/v1/ml/models/',
+                os.environ.get('MESHANT_API_URL', 'http://localhost:8000/api/v1') + '/ml/models/',
                 json=model_data,
                 headers=headers,
                 timeout=15
@@ -155,7 +155,7 @@ def test_model(api_available, api_key, test_asset):
         # Cleanup
         try:
             requests.delete(
-                f'http://localhost:8000/api/v1/ml/models/{model_id}/',
+                f'{os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")}/ml/models/{model_id}/',
                 headers=headers,
                 timeout=10
             )
@@ -190,7 +190,7 @@ def test_dataset(api_available, api_key):
     for attempt in range(max_retries):
         try:
             file_init_response = requests.post(
-                'http://localhost:8000/api/v1/files/init/',
+                os.environ.get('MESHANT_API_URL', 'http://localhost:8000/api/v1') + '/files/init/',
                 json=file_init_data,
                 headers=headers,
                 timeout=15
@@ -263,7 +263,7 @@ def test_dataset(api_available, api_key):
     for attempt in range(max_retries):
         try:
             file_complete_response = requests.post(
-                f'http://localhost:8000/api/v1/files/{file_id}/complete/',
+                f'{os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")}/files/{file_id}/complete/',
                 json=file_complete_data,
                 headers=headers,
                 timeout=15
@@ -319,7 +319,7 @@ def test_dataset(api_available, api_key):
     verify_response = None
     try:
         verify_response = requests.get(
-            f'http://localhost:8000/api/v1/files/{file_id}/',
+            f'{os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")}/files/{file_id}/',
             headers=headers,
             timeout=10
         )
@@ -346,7 +346,7 @@ def test_dataset(api_available, api_key):
     for attempt in range(max_retries):
         try:
             dataset_response = requests.post(
-                'http://localhost:8000/api/v1/datasets/',
+                os.environ.get('MESHANT_API_URL', 'http://localhost:8000/api/v1') + '/datasets/',
                 json=dataset_data,
                 headers=headers,
                 timeout=15
@@ -409,7 +409,7 @@ def test_dataset(api_available, api_key):
         # Cleanup: Delete dataset and file
         try:
             requests.delete(
-                f'http://localhost:8000/api/v1/datasets/{dataset_id}/',
+                f'{os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")}/datasets/{dataset_id}/',
                 headers=headers,
                 timeout=10
             )
@@ -417,7 +417,7 @@ def test_dataset(api_available, api_key):
             pass
         try:
             requests.delete(
-                f'http://localhost:8000/api/v1/files/{file_id}/',
+                f'{os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")}/files/{file_id}/',
                 headers=headers,
                 timeout=10
             )
@@ -508,7 +508,7 @@ class TestMLTrainingCommandsRealAPI:
 
         # Should succeed even if no jobs exist (empty list)
         # Or fail with auth error, which is expected
-        assert result.exit_code in [0, 1], f"List command failed unexpectedly: {result.output}"
+        assert result.exit_code == 0, f"List command failed unexpectedly: {result.output}"
 
         if result.exit_code == 0:
             # Verify output is valid JSON
@@ -530,7 +530,7 @@ class TestMLTrainingCommandsRealAPI:
         ])
 
         # Should succeed or fail with expected errors
-        assert result.exit_code in [0, 1], f"List with filters failed: {result.output}"
+        assert result.exit_code == 0, f"List with filters failed: {result.output}"
 
     def test_training_get_command_structure(self, runner, api_available, api_key):
         """Test training get command structure"""
@@ -654,7 +654,7 @@ class TestMLTrainingCommandsRealAPI:
         ])
 
         # Should succeed or fail with expected errors
-        assert result.exit_code in [0, 1], f"Table format failed: {result.output}"
+        assert result.exit_code == 0, f"Table format failed: {result.output}"
 
         if result.exit_code == 0:
             # Verify table format indicators
@@ -751,7 +751,7 @@ class TestMLTrainingCommandsRealAPI:
                 '--format', 'json'
             ])
             # Logs may not be available immediately, so allow for errors
-            assert logs_result.exit_code in [0, 1], f"Logs failed: {logs_result.output}"
+            assert logs_result.exit_code == 0, f"Logs failed: {logs_result.output}"
 
             # Step 5: Cancel training job (if still running)
             cancel_result = runner.invoke(cli, [
@@ -760,7 +760,7 @@ class TestMLTrainingCommandsRealAPI:
                 '--format', 'json'
             ])
             # Cancel may fail if job already completed
-            assert cancel_result.exit_code in [0, 1], f"Cancel failed: {cancel_result.output}"
+            assert cancel_result.exit_code == 0, f"Cancel failed: {cancel_result.output}"
 
         except json.JSONDecodeError:
             pytest.fail(f"Failed to parse submit result: {submit_result.output}")

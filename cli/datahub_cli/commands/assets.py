@@ -28,8 +28,8 @@ def list_assets(status: Optional[str], domain: Optional[str], limit: int, offset
         params['domain'] = domain
     
     try:
-        # API endpoint structure: /api/v1/assets/assets/ (assets/ from api/urls.py + assets from router)
-        data = api_client.get('assets/assets/', params=params)
+        # API endpoint structure: /api/v1/assets/ (assets/ from api/urls.py + assets from router)
+        data = api_client.get('assets/', params=params)
         # Handle both paginated response (dict with 'results') and direct list response
         if isinstance(data, dict):
             results = data.get('results', [])
@@ -79,8 +79,8 @@ def get_asset(asset_id: str, include: Optional[str], output_format: str):
         params['include'] = include
     
     try:
-        # API endpoint structure: /api/v1/assets/assets/{id}/ (assets/ from api/urls.py + assets from router)
-        data = api_client.get(f'assets/assets/{asset_id}/', params=params)
+        # API endpoint structure: /api/v1/assets/{id}/ (assets/ from api/urls.py + assets from router)
+        data = api_client.get(f'assets/{asset_id}/', params=params)
         
         if output_format == 'json':
             click.echo(json.dumps(data, indent=2))
@@ -122,8 +122,8 @@ def create_asset(name: str, key: str, description: Optional[str], domain: Option
         data['domain'] = domain
     
     try:
-        # API endpoint structure: /api/v1/assets/assets/ (assets/ from api/urls.py + assets from router)
-        result = api_client.post('assets/assets/', json_data=data)
+        # API endpoint structure: /api/v1/assets/ (assets/ from api/urls.py + assets from router)
+        result = api_client.post('assets/', json_data=data)
         
         if output_format == 'json':
             click.echo(json.dumps(result, indent=2))
@@ -161,8 +161,8 @@ def update_asset(asset_id: str, name: Optional[str], description: Optional[str],
         raise click.ClickException("No fields to update")
     
     try:
-        # API endpoint structure: /api/v1/assets/assets/{id}/ (assets/ from api/urls.py + assets from router)
-        result = api_client.patch(f'assets/assets/{asset_id}/', json_data=data)
+        # API endpoint structure: /api/v1/assets/{id}/ (assets/ from api/urls.py + assets from router)
+        result = api_client.patch(f'assets/{asset_id}/', json_data=data)
         
         if output_format == 'json':
             click.echo(json.dumps(result, indent=2))
@@ -187,8 +187,8 @@ def delete_asset(asset_id: str, confirm: bool):
             return
     
     try:
-        # API endpoint structure: /api/v1/assets/assets/{id}/ (assets/ from api/urls.py + assets from router)
-        api_client.delete(f'assets/assets/{asset_id}/')
+        # API endpoint structure: /api/v1/assets/{id}/ (assets/ from api/urls.py + assets from router)
+        api_client.delete(f'assets/{asset_id}/')
         click.echo(f"Asset {asset_id} deleted successfully!")
     except click.ClickException:
         raise
@@ -202,8 +202,8 @@ def delete_asset(asset_id: str, confirm: bool):
 def activate_asset(asset_id: str, output_format: str):
     """Activate an asset"""
     try:
-        # API endpoint structure: /api/v1/assets/assets/{id}/activate/ (assets/ from api/urls.py + assets from router)
-        result = api_client.post(f'assets/assets/{asset_id}/activate/')
+        # API endpoint structure: /api/v1/assets/{id}/activate/ (assets/ from api/urls.py + assets from router)
+        result = api_client.post(f'assets/{asset_id}/activate/')
         
         if output_format == 'json':
             click.echo(json.dumps(result, indent=2))

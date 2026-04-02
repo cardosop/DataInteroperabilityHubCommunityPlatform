@@ -41,19 +41,16 @@ describe('SDK Installation', () => {
   describe('Module Exports', () => {
     it('should export DataHubClient', () => {
       const { DataHubClient } = require('../index');
-      expect(DataHubClient).toBeDefined();
       expect(typeof DataHubClient).toBe('function');
     });
 
     it('should export ContractsAPI', () => {
       const { ContractsAPI } = require('../index');
-      expect(ContractsAPI).toBeDefined();
       expect(typeof ContractsAPI).toBe('function');
     });
 
     it('should export LineageAPI', () => {
       const { LineageAPI } = require('../index');
-      expect(LineageAPI).toBeDefined();
       expect(typeof LineageAPI).toBe('function');
     });
 
@@ -66,17 +63,17 @@ describe('SDK Installation', () => {
         NetworkError,
       } = require('../index');
       
-      expect(DataHubError).toBeDefined();
-      expect(ValidationError).toBeDefined();
-      expect(UnauthorizedError).toBeDefined();
-      expect(NotFoundError).toBeDefined();
-      expect(NetworkError).toBeDefined();
+      expect(DataHubError).not.toBeUndefined();
+      expect(ValidationError).not.toBeUndefined();
+      expect(UnauthorizedError).not.toBeUndefined();
+      expect(NotFoundError).not.toBeUndefined();
+      expect(NetworkError).not.toBeUndefined();
     });
 
     it('should export config types', () => {
       // TypeScript types are compile-time only, but we can verify the default config is exported
       const { DEFAULT_CONFIG } = require('../index');
-      expect(DEFAULT_CONFIG).toBeDefined();
+      expect(DEFAULT_CONFIG).not.toBeUndefined();
       expect(DEFAULT_CONFIG.timeout).toBe(30000);
     });
   });
@@ -86,7 +83,7 @@ describe('SDK Installation', () => {
       // This test verifies that the TypeScript code compiles
       // If there are compilation errors, this test will fail during build
       const index = require('../index');
-      expect(index).toBeDefined();
+      expect(index).not.toBeUndefined();
     });
 
     it('should have type definitions', () => {

@@ -818,6 +818,52 @@ async def error_recovery_example():
                 pass
 ```
 
+## New ML Methods (Phase 118F)
+
+### Deploy / Undeploy
+
+```python
+# Deploy a model
+result = await client.ml.deploy_model("model-uuid", config={"replicas": 2})
+
+# Undeploy a model
+await client.ml.undeploy_model("model-uuid")
+```
+
+### Version Management
+
+```python
+# Deploy a specific version
+result = await client.ml.deploy_version("model-uuid", version="v3", config={})
+
+# Rollback to a previous version
+result = await client.ml.rollback_deployment("model-uuid", version="v2")
+```
+
+### Marketplace Publishing
+
+```python
+# Publish model to the internal marketplace
+result = await client.ml.publish_to_marketplace(
+    "model-uuid",
+    pricing_model="REQUEST_APPROVAL"
+)
+print(f"Listing ID: {result.get('listing_id')}")
+```
+
+### ML Plan Limits
+
+```python
+# Get current ML subscription plan
+plan = await client.ml.get_ml_plan()
+print(f"Plan: {plan.get('plan_name')} ({plan.get('status')})")
+
+# Get ML-specific limits
+limits = await client.ml.get_ml_plan_limits()
+for key, value in limits.items():
+    print(f"  {key}: {value or 'Unlimited'}")
+```
+
 ## Additional Resources
 
 - **[SDK README](../README.md)** - Complete SDK documentation

@@ -49,3 +49,52 @@ Docker Compose and CI health checks typically use `/health`. Restart the service
 ## References
 
 - [Compliance Service README](../../services/compliance-service/README.md) — API, PII categories, policy thresholds, limits, observability (shared.metrics)
+
+---
+
+## Phase 19 Compliance Overhaul
+
+### 25-Jurisdiction Support
+
+The compliance service now supports 25 jurisdictions. Configure applicable regulations per tenant:
+
+| Jurisdiction | Key | Notes |
+|-------------|-----|-------|
+| GDPR | `GDPR` | EU General Data Protection |
+| HIPAA | `HIPAA` | US Health data |
+| SOX | `SOX` | US Financial reporting |
+| LGPD | `LGPD` | Brazil data protection |
+| CCPA | `CCPA` | California Consumer Privacy |
+| PIPEDA | `PIPEDA` | Canada |
+| POPI | `POPI` | South Africa |
+| PDPA | `PDPA` | Singapore/Thailand |
+| APPs | `APPs` | Australia |
+| DPDP | `DPDP` | India |
+
+Additional jurisdictions available via `VALID_COMPLIANCE_REGIMES` in `hub/apps/tenants/validators.py`.
+
+### Async Scanning
+
+Compliance runs now execute asynchronously:
+
+```bash
+# Monitor a running compliance scan
+docker exec hub-test-api python /app/hub/manage.py shell -c "
+from hub.apps.compliance.models import ComplianceRun
+run = ComplianceRun.objects.get(id='<run-id>')
+print(f'Status: {run.status}, Risk: {run.risk_level}')
+"
+```
+
+Status flow: `PENDING → RUNNING → SUCCEEDED | FAILED`
+
+### Risk Score Thresholds
+
+| Level | Threshold | Action |
+|-------|-----------|--------|
+| LOW | 0-25 | Allowed to store |
+| MEDIUM | 26-50 | Review recommended |
+| HIGH | 51-75 | Restricted storage |
+| CRITICAL | 76-100 | Storage denied |
+
+Configure via `COMPLIANCE_RISK_THRESHOLD_HIGH` and `COMPLIANCE_RISK_THRESHOLD_CRITICAL` environment variables.

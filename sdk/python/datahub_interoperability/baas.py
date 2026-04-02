@@ -912,3 +912,45 @@ class BaaSAPI:
             return response if isinstance(response, dict) else {}
         except Exception as e:
             raise self._handle_baas_error(e, "get_sdk_download_links")
+
+    # ── 118F.17: Expanded BaaS methods ───────────────────
+
+    async def set_api_key_pricing(self, api_key_id: str, pricing: dict) -> dict:
+        return await self.client.post(f"baas/api-keys/{api_key_id}/pricing/", data=pricing)
+
+    async def get_api_key_pricing(self, api_key_id: str) -> dict:
+        return await self.client.get(f"baas/api-keys/{api_key_id}/pricing/")
+
+    async def list_customers(self, **kwargs) -> dict:
+        return await self.client.get("baas/customers/", params=kwargs or None)
+
+    async def get_customer_usage(self, customer_id: str, period: str = None) -> dict:
+        params = {"period": period} if period else None
+        return await self.client.get(f"baas/customers/{customer_id}/usage/", params=params)
+
+    async def list_billing_reports(self, **kwargs) -> dict:
+        return await self.client.get("baas/billing-reports/", params=kwargs or None)
+
+    async def get_billing_report(self, report_id: str) -> dict:
+        return await self.client.get(f"baas/billing-reports/{report_id}/")
+
+    async def generate_billing_report(self, period: str) -> dict:
+        return await self.client.post("baas/billing-reports/", data={"period": period})
+
+    async def finalize_billing_report(self, report_id: str) -> dict:
+        return await self.client.post(f"baas/billing-reports/{report_id}/finalize/")
+
+    async def export_billing_report_pdf(self, report_id: str) -> dict:
+        return await self.client.post(f"baas/billing-reports/{report_id}/export/", data={"format": "pdf"})
+
+    async def send_billing_report(self, report_id: str, email: str) -> dict:
+        return await self.client.post(f"baas/billing-reports/{report_id}/send/", data={"email": email})
+
+    async def rotate_api_key(self, api_key_id: str, grace_period_hours: int = 24) -> dict:
+        return await self.client.post(
+            f"baas/api-keys/{api_key_id}/rotate/",
+            data={"grace_period_hours": grace_period_hours},
+        )
+
+    async def get_dashboard(self) -> dict:
+        return await self.client.get("baas/dashboard/")

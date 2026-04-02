@@ -37,7 +37,7 @@ from datahub_cli.config import config
 def _check_api_available():
     """Check if API service is available"""
     try:
-        response = requests.get("http://localhost:8000/api/v1/", timeout=2)
+        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
         return response.status_code < 600
     except Exception:
         return False
@@ -60,7 +60,7 @@ class TestBaaSCLIComprehensive:
     def setup_config(self):
         """Set up API base URL and authentication"""
         self.runner = CliRunner()
-        api_base_url = "http://localhost:8000/api/v1"
+        api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
         config.set_api_base_url(api_base_url)
 
         # Try to get API key from environment, config, or create one

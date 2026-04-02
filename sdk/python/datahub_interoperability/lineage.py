@@ -76,8 +76,12 @@ class LineageAPI:
         Returns:
             Field-level lineage data
         """
+        params: Dict[str, Any] = {}
+        if model_name:
+            params["model_name"] = model_name
         return await self.client.get(
-            f"contracts/{contract_id}/fields/{field_name}/lineage/"
+            f"contracts/{contract_id}/fields/{field_name}/lineage/",
+            params=params,
         )
 
     async def get_full_lineage(

@@ -1317,3 +1317,68 @@ class ABTestError(ModelServingError):
             details: Additional error details
         """
         super().__init__(message, error_code, http_status, request_id, details)
+
+
+# ── Phase 118F.20: New error classes ─────────────────────
+
+
+class BillingError(DataHubError):
+    def __init__(self, msg, code="BILLING_ERROR", status=400, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)
+
+class BillingValidationError(BillingError):
+    def __init__(self, msg, rid=None, details=None):
+        super().__init__(msg, "BILLING_VALIDATION_ERROR", 400, rid, details)
+
+class DowngradeLimitExceededError(BillingError):
+    def __init__(self, msg, rid=None, details=None):
+        super().__init__(msg, "DOWNGRADE_LIMIT_EXCEEDED", 400, rid, details)
+
+class TransformationError(DataHubError):
+    def __init__(self, msg, code="TRANSFORMATION_ERROR", status=400, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)
+
+class TransformationValidationError(TransformationError):
+    def __init__(self, msg, rid=None, details=None):
+        super().__init__(msg, "TRANSFORMATION_VALIDATION_ERROR", 400, rid, details)
+
+class ComplianceError(DataHubError):
+    def __init__(self, msg, code="COMPLIANCE_ERROR", status=400, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)
+
+class ComplianceValidationError(ComplianceError):
+    def __init__(self, msg, rid=None, details=None):
+        super().__init__(msg, "COMPLIANCE_VALIDATION_ERROR", 400, rid, details)
+
+class SemanticError(DataHubError):
+    def __init__(self, msg, code="SEMANTIC_ERROR", status=400, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)
+
+class SPARQLError(SemanticError):
+    def __init__(self, msg, rid=None, details=None):
+        super().__init__(msg, "SPARQL_ERROR", 400, rid, details)
+
+class SHACLValidationError(SemanticError):
+    def __init__(self, msg, rid=None, details=None):
+        super().__init__(msg, "SHACL_VALIDATION_ERROR", 400, rid, details)
+
+class WorkflowError(DataHubError):
+    def __init__(self, msg, code="WORKFLOW_ERROR", status=400, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)
+
+class DLQError(DataHubError):
+    def __init__(self, msg, code="DLQ_ERROR", status=500, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)
+
+class EntitlementRequiredError(ForbiddenError):
+    def __init__(self, msg="Entitlement required", rid=None):
+        super().__init__(msg, rid)
+        self.code = "ENTITLEMENT_REQUIRED"
+
+class CircuitBreakerOpenError(ServerError):
+    def __init__(self, msg="Circuit breaker open", rid=None):
+        super().__init__(msg, "CIRCUIT_BREAKER_OPEN", 503, rid)
+
+class ModelDeploymentError(DataHubError):
+    def __init__(self, msg, code="MODEL_DEPLOYMENT_ERROR", status=400, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)

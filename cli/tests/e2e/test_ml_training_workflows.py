@@ -526,7 +526,7 @@ class TestMLTrainingWorkflowsE2E:
                 '--format', 'json'
             ])
             # Logs may not be available immediately, so allow for errors
-            assert logs_result.exit_code in [0, 1], f"Logs failed: {logs_result.output}"
+            assert logs_result.exit_code == 0, f"Logs failed: {logs_result.output}"
 
             # Step 5: Cancel training job (if still running)
             cancel_result = runner.invoke(cli, [
@@ -535,7 +535,7 @@ class TestMLTrainingWorkflowsE2E:
                 '--format', 'json'
             ])
             # Cancel may fail if job already completed
-            assert cancel_result.exit_code in [0, 1], f"Cancel failed: {cancel_result.output}"
+            assert cancel_result.exit_code == 0, f"Cancel failed: {cancel_result.output}"
 
         except json.JSONDecodeError as e:
             pytest.fail(f"Failed to parse JSON response: {e}\nOutput: {submit_result.output}")

@@ -199,7 +199,7 @@ class TestAuthenticationIntegration:
         
         # Should either succeed or fail gracefully
         # Exit code 0 = success, 1 = failure (expected without valid credentials)
-        assert result.exit_code in [0, 1], f"Unexpected exit code: {result.exit_code}, output: {result.output}"
+        assert result.exit_code == 0, f"Unexpected exit code: {result.exit_code}, output: {result.output}"
         
         # If login succeeded (exit code 0), verify tokens are set
         if result.exit_code == 0:

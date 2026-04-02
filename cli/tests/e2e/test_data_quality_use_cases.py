@@ -29,7 +29,7 @@ class TestDQCheckExecution:
             '--key', 'dq-test-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -48,7 +48,7 @@ class TestDQCheckExecution:
                     '--profile-key', 'intake_basic_gx'
                 ])
                 
-                assert dq_result.exit_code in [0, 1]
+                assert dq_result.exit_code == 0
                 if dq_result.exit_code == 0:
                     assert 'started successfully' in dq_result.output.lower()
                     assert 'DQ Run ID:' in dq_result.output
@@ -71,7 +71,7 @@ class TestDQCheckExecution:
         ])
         
         # Should either succeed or fail gracefully
-        assert dq_result.exit_code in [0, 1]
+        assert dq_result.exit_code == 0
         if dq_result.exit_code == 0:
             assert 'started successfully' in dq_result.output.lower()
     
@@ -87,7 +87,7 @@ class TestDQCheckExecution:
             '--key', 'custom-profile-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -106,7 +106,7 @@ class TestDQCheckExecution:
                     '--profile-key', 'intake_basic_gx'
                 ])
                 
-                assert dq_result.exit_code in [0, 1]
+                assert dq_result.exit_code == 0
                 if dq_result.exit_code == 0:
                     assert 'started successfully' in dq_result.output.lower()
                     assert 'intake_basic_gx' in dq_result.output
@@ -122,7 +122,7 @@ class TestDQCheckExecution:
             'files', 'upload', file_path
         ])
         
-        assert upload_result.exit_code in [0, 1]
+        assert upload_result.exit_code == 0
         if upload_result.exit_code == 0:
             # Extract file ID from output (basic parsing)
             file_id = None
@@ -141,7 +141,7 @@ class TestDQCheckExecution:
                     '--profile-key', 'intake_basic_gx'
                 ])
                 
-                assert dq_result.exit_code in [0, 1]
+                assert dq_result.exit_code == 0
                 if dq_result.exit_code == 0:
                     assert 'started successfully' in dq_result.output.lower()
     
@@ -171,7 +171,7 @@ class TestDQCheckExecution:
             '--key', 'json-dq-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -190,7 +190,7 @@ class TestDQCheckExecution:
                     '--format', 'json'
                 ])
                 
-                assert dq_result.exit_code in [0, 1]
+                assert dq_result.exit_code == 0
                 if dq_result.exit_code == 0 and dq_result.output.strip():
                     # Should be valid JSON
                     try:
@@ -217,7 +217,7 @@ class TestDQResultReview:
         ])
         
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'DQ Run ID:' in result.output
             assert 'Status:' in result.output
@@ -234,7 +234,7 @@ class TestDQResultReview:
             '00000000-0000-0000-0000-000000000000'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # Should show check results if available
             assert 'Checks' in result.output or 'Status:' in result.output
@@ -250,7 +250,7 @@ class TestDQResultReview:
             '--format', 'json'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0 and result.output.strip():
             # Should be valid JSON
             try:
@@ -269,7 +269,7 @@ class TestDQResultReview:
             'dq', 'list'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # Should show table or "No DQ runs found"
             assert 'No DQ runs found' in result.output or 'ID' in result.output
@@ -284,7 +284,7 @@ class TestDQResultReview:
             '--asset-id', '00000000-0000-0000-0000-000000000000'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         # Should handle filtering correctly
     
     def test_list_dq_runs_filtered_by_status(self, runner, temp_config_dir, api_base_url):
@@ -297,7 +297,7 @@ class TestDQResultReview:
             '--status', 'SUCCEEDED'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         # Should handle status filtering correctly
     
     def test_get_dq_scorecard(self, runner, temp_config_dir, api_base_url):
@@ -312,7 +312,7 @@ class TestDQResultReview:
             '--key', 'scorecard-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -329,7 +329,7 @@ class TestDQResultReview:
                     'dq', 'scorecard', asset_id
                 ])
                 
-                assert scorecard_result.exit_code in [0, 1]
+                assert scorecard_result.exit_code == 0
                 if scorecard_result.exit_code == 0:
                     assert 'Asset ID:' in scorecard_result.output or 'Overall Quality Score' in scorecard_result.output
     
@@ -345,7 +345,7 @@ class TestDQResultReview:
             '--key', 'asset-with-dq-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -363,7 +363,7 @@ class TestDQResultReview:
                     '--include', 'latest_dq'
                 ])
                 
-                assert get_result.exit_code in [0, 1]
+                assert get_result.exit_code == 0
                 # May or may not show DQ results depending on API implementation
     
     def test_watch_dq_run(self, runner, temp_config_dir, api_base_url):
@@ -396,7 +396,7 @@ class TestDQAlerts:
             '--list'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # Should show table or "No alerting rules found"
             assert 'No alerting rules found' in result.output or 'ID' in result.output
@@ -413,7 +413,7 @@ class TestDQAlerts:
             '--key', 'alert-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -433,7 +433,7 @@ class TestDQAlerts:
                     '--threshold', '80.0'
                 ])
                 
-                assert alert_result.exit_code in [0, 1]
+                assert alert_result.exit_code == 0
                 if alert_result.exit_code == 0:
                     assert 'created successfully' in alert_result.output.lower()
                     assert 'ID:' in alert_result.output
@@ -463,7 +463,7 @@ class TestDQAlerts:
             '--format', 'json'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0 and result.output.strip():
             # Should be valid JSON
             try:
@@ -489,7 +489,7 @@ class TestDQWorkflows:
             '--key', 'dq-workflow-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -507,7 +507,7 @@ class TestDQWorkflows:
                     '--asset-id', asset_id
                 ])
                 
-                assert run_result.exit_code in [0, 1]
+                assert run_result.exit_code == 0
                 if run_result.exit_code == 0:
                     # Extract DQ run ID
                     dq_run_id = None
@@ -524,7 +524,7 @@ class TestDQWorkflows:
                             'dq', 'get', dq_run_id
                         ])
                         
-                        assert get_result.exit_code in [0, 1]
+                        assert get_result.exit_code == 0
                         if get_result.exit_code == 0:
                             assert 'DQ Run ID:' in get_result.output
                         
@@ -534,14 +534,14 @@ class TestDQWorkflows:
                             '--asset-id', asset_id
                         ])
                         
-                        assert list_result.exit_code in [0, 1]
+                        assert list_result.exit_code == 0
                         
                         # Step 5: Get scorecard
                         scorecard_result = runner.invoke(cli, [
                             'dq', 'scorecard', asset_id
                         ])
                         
-                        assert scorecard_result.exit_code in [0, 1]
+                        assert scorecard_result.exit_code == 0
 
 
 @pytest.fixture

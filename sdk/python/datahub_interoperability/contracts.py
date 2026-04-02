@@ -380,6 +380,7 @@ class ContractsAPI:
         spec_type: Optional[str] = None,
         odps_version: Optional[str] = None,
         has_odps_link: Optional[bool] = None,
+        spec_version: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         List contracts with filtering.
@@ -403,6 +404,7 @@ class ContractsAPI:
             spec_type: Filter by original spec type (e.g., "ODPS", "ODCS")
             odps_version: Filter by ODPS version (e.g., "4.1", "4.0"). Only applies to ODPS contracts
             has_odps_link: Filter by whether contract has an ODPS link (True/False). Only applies to ODCS contracts
+            spec_version: Filter by spec version (e.g., "4.1", "1.0"). Universal — works for both ODPS and ODCS
 
         Returns:
             Paginated response with contracts
@@ -444,6 +446,8 @@ class ContractsAPI:
             params["odps_version"] = odps_version
         if has_odps_link is not None:
             params["has_odps_link"] = has_odps_link
+        if spec_version:
+            params["spec_version"] = spec_version
 
         return await self.client.get("contracts/", params=params)
 
@@ -458,6 +462,46 @@ class ContractsAPI:
             Contract data
         """
         return await self.client.get(f"contracts/{contract_id}/")
+
+    async def export(
+        self,
+        contract_id: str,
+        format: str = "hubcontract",
+    ) -> Dict[str, Any]:
+        """
+        Export contract in specified format.
+
+        Args:
+            contract_id: Contract UUID
+            format: Export format - "hubcontract", "odps", or "odcs" (default: "hubcontract")
+
+        Returns:
+            Exported contract data
+        """
+        params: Dict[str, Any] = {}
+        if format:
+            params["format"] = format
+        return await self.client.get(f"contracts/{contract_id}/export/", params=params)
+
+    async def download(
+        self,
+        contract_id: str,
+        format: str = "hubcontract",
+    ) -> Dict[str, Any]:
+        """
+        Download contract in specified format.
+
+        Args:
+            contract_id: Contract UUID
+            format: Download format - "hubcontract", "odps", or "odcs" (default: "hubcontract")
+
+        Returns:
+            Downloaded contract data
+        """
+        params: Dict[str, Any] = {}
+        if format:
+            params["format"] = format
+        return await self.client.get(f"contracts/{contract_id}/download/", params=params)
 
     async def create(
         self,

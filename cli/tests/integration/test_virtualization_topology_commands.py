@@ -31,7 +31,7 @@ def _check_api_available():
     """Check if API service is available"""
     try:
         # Try both localhost and container hostname
-        for url in ["http://localhost:8000/api/v1/", "http://api-service:8000/api/v1/"]:
+        for url in [os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", "http://api-service:8000/api/v1/"]:
             try:
                 response = requests.get(url, timeout=2)
                 if response.status_code < 600:  # Any HTTP response means API is up
@@ -58,7 +58,7 @@ def shared_api_key():
     Module-level fixture that creates a single API key for all tests in this module.
     This avoids race conditions and reduces API calls.
     """
-    api_base_url = "http://localhost:8000/api/v1"
+    api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
 
     # Check if API key is provided via environment variable
     env_key = os.environ.get('DATAHUB_API_KEY') or os.environ.get('TEST_API_KEY')
@@ -306,7 +306,7 @@ def runner(shared_api_key):
     runner = CliRunner()
     # Set API key in config
     config.set_api_key(shared_api_key)
-    config.set_api_base_url("http://localhost:8000/api/v1")
+    config.set_api_base_url(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1"))
     return runner
 
 
@@ -316,7 +316,7 @@ def test_dataset(shared_api_key):
     Create a test virtual dataset for topology tests.
     Returns dataset_id.
     """
-    api_base_url = "http://localhost:8000/api/v1"
+    api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
     headers = {
         'Authorization': f'ApiKey {shared_api_key}',
         'Content-Type': 'application/json'

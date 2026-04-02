@@ -57,7 +57,7 @@ class APIClient:
         # Determine timeout: use provided timeout, or detect workflow endpoints for longer timeout
         if timeout is None:
             # Workflow endpoints that may take longer
-            workflow_endpoints = ['contracts/products/', 'contracts/', '/link-odps']
+            workflow_endpoints = ['contracts/products/', 'contracts/', '/link-odps', 'transformation/']
             is_workflow = any(we in endpoint for we in workflow_endpoints)
             timeout = 120 if is_workflow else 30
 

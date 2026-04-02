@@ -26,6 +26,7 @@ safety>=2.3.5
 pip-audit>=2.6.1
 
 # Testing Utilities
+daphne>=4.1.0  # Required for channels.testing (WebsocketCommunicator)
 factory-boy>=3.3.0
 pytest-timeout>=2.2.0
 faker>=20.0.0

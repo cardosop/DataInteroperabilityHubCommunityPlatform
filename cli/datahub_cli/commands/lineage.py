@@ -69,8 +69,11 @@ def get_model_lineage(contract_id: str, model_name: str, output_format: str):
 def get_field_lineage(contract_id: str, model_name: str, field_name: str, output_format: str):
     """Get field-level lineage"""
     try:
-        data = api_client.get(f'contracts/{contract_id}/fields/{model_name}/{field_name}/lineage/')
-        
+        data = api_client.get(
+            f'contracts/{contract_id}/fields/{field_name}/lineage/',
+            params={'model_name': model_name},
+        )
+
         if output_format == 'json':
             click.echo(json.dumps(data, indent=2))
         else:

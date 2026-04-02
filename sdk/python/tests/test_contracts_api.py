@@ -121,7 +121,7 @@ async def test_update_contract(contracts_api, client):
 
     assert result == expected_response
     client.patch.assert_called_once_with(
-        "contracts/contracts/123/",
+        "contracts/123/",
         data={"original_raw": '{"updated": true}'},
     )
 

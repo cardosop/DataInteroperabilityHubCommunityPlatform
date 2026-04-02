@@ -2,7 +2,7 @@
 Tests for Lineage API.
 """
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from datahub_interoperability.client import DataHubClient
 from datahub_interoperability.config import DataHubClientConfig
 from datahub_interoperability.lineage import LineageAPI
@@ -57,7 +57,10 @@ async def test_get_field_lineage(lineage_api, client):
     result = await lineage_api.get_field_lineage("123", "model1", "field1")
     
     assert result == expected_response
-    client.get.assert_called_once_with("contracts/123/fields/model1/field1/lineage/")
+    client.get.assert_called_once_with(
+        "contracts/123/fields/field1/lineage/",
+        params={"model_name": "model1"},
+    )
 
 
 @pytest.mark.asyncio

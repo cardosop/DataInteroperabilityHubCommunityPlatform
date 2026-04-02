@@ -153,7 +153,7 @@ def list_compliance_runs(
         }
 
         if asset_id:
-            params['asset_id'] = asset_id
+            params['asset'] = asset_id
         if status:
             params['status'] = status
 
@@ -203,7 +203,7 @@ def generate_compliance_report(asset_id: Optional[str], regulation: str, output_
         asset_data = api_client.get(f'assets/{asset_id}/')
 
         # Get latest compliance run for the asset
-        compliance_runs = api_client.get('compliance/runs/', params={'asset_id': asset_id, 'limit': 1})
+        compliance_runs = api_client.get('compliance/runs/', params={'asset': asset_id, 'limit': 1})
         runs = compliance_runs.get('results', []) if isinstance(compliance_runs, dict) else compliance_runs
         if not isinstance(runs, list):
             runs = []
@@ -255,3 +255,133 @@ def generate_compliance_report(asset_id: Optional[str], regulation: str, output_
     except Exception as e:
         raise click.ClickException(f"Failed to generate compliance report: {e}")
 
+
+# ── 118E.8: scan-async, scan-result, regulations ────────
+
+
+@compliance.command("scan-async")
+@click.option("--file-id", required=True, help="File ID")
+@click.option(
+    "--regulations", required=True,
+    help="Comma-separated regulations",
+)
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def scan_async(file_id, regulations, output_format):
+    """Submit an async compliance scan"""
+    try:
+        data = api_client.post(
+            "compliance/scans/",
+            json_data={
+                "file_id": file_id,
+                "regulations": regulations.split(","),
+            },
+            timeout=120,
+        )
+        if output_format == "json":
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo("Scan submitted!")
+            click.echo(f"Job ID: {data.get('job_id')}")
+            click.echo(f"Status: {data.get('status')}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to submit scan: {e}")
+
+
+@compliance.command("scan-result")
+@click.argument("job_id")
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def scan_result(job_id, output_format):
+    """Get async compliance scan result"""
+    try:
+        data = api_client.get(f"compliance/scans/{job_id}/")
+        if output_format == "json":
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo(f"Job ID: {job_id}")
+            click.echo(f"Status: {data.get('status')}")
+            click.echo(f"Risk Level: {data.get('risk_level')}")
+            if data.get("cross_border_alert"):
+                click.echo(f"Cross-border Alert: {data['cross_border_alert']}")
+            if data.get("localisation_alert"):
+                click.echo(f"Localisation Alert: {data['localisation_alert']}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to get scan result: {e}")
+
+
+@compliance.group("regulations")
+def regulations_group():
+    """Regulation management commands"""
+    pass
+
+
+@regulations_group.command("list")
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def list_regulations(output_format):
+    """List available regulations"""
+    try:
+        data = api_client.get("compliance/regulations/")
+        results = (
+            data.get("results", data) if isinstance(data, dict) else
+            data if isinstance(data, list) else []
+        )
+        if output_format == "json":
+            click.echo(json.dumps(results, indent=2))
+        else:
+            if not results:
+                click.echo("No regulations found.")
+                return
+            click.echo(f"{'Key':<20} {'Name':<30} {'Region':<15}")
+            click.echo("-" * 65)
+            for r in results:
+                if not isinstance(r, dict):
+                    continue
+                click.echo(
+                    f"{str(r.get('key', '')):<20} "
+                    f"{str(r.get('name', ''))[:28]:<30} "
+                    f"{str(r.get('region', '')):<15}"
+                )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to list regulations: {e}")
+
+
+@regulations_group.command("get")
+@click.argument("key")
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def get_regulation(key, output_format):
+    """Get regulation details"""
+    try:
+        data = api_client.get(f"compliance/regulations/{key}/")
+        if output_format == "json":
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo(f"Key: {data.get('key')}")
+            click.echo(f"Name: {data.get('name')}")
+            click.echo(f"Region: {data.get('region')}")
+            if data.get("description"):
+                click.echo(f"Description: {data['description']}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to get regulation: {e}")

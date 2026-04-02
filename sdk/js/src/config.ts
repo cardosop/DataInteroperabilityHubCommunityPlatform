@@ -12,7 +12,14 @@ export interface DataHubClientConfig {
    * API token (JWT or API key) for authentication
    */
   apiToken?: string;
-  
+
+  /**
+   * Authentication type.
+   * - 'bearer' (default): sends `Authorization: Bearer {token}`
+   * - 'apikey': sends `Authorization: ApiKey {token}`
+   */
+  authType?: 'bearer' | 'apikey';
+
   /**
    * Request timeout in milliseconds (default: 30000)
    */

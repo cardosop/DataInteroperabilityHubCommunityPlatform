@@ -59,11 +59,11 @@ class TestOutputFormatIntegration:
             # Test JSON format
             result_json = runner.invoke(cli, cmd + ['--format', 'json'])
             # Should either succeed or fail gracefully
-            assert result_json.exit_code in [0, 1]
+            assert result_json.exit_code == 0
             
             # Test table format
             result_table = runner.invoke(cli, cmd + ['--format', 'table'])
-            assert result_table.exit_code in [0, 1]
+            assert result_table.exit_code == 0
 
 
 class TestLineageVisualizationIntegration:
@@ -103,7 +103,7 @@ def runner():
 @pytest.fixture
 def api_base_url():
     """API base URL fixture"""
-    return 'http://localhost:8000/api/v1'
+    return os.environ.get('MESHANT_API_URL', 'http://localhost:8000/api/v1')
 
 
 @pytest.fixture

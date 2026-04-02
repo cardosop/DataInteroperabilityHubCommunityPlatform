@@ -125,6 +125,11 @@ def get_ingestion(ingestion_id: str, output_format: str):
                 click.echo(f"Next Run: {data.get('next_run_at')}")
             if data.get("description"):
                 click.echo(f"Description: {data.get('description')}")
+            # 118E.11: failure tracking fields
+            if data.get("consecutive_failure_count") is not None:
+                click.echo(f"Consecutive Failures: {data.get('consecutive_failure_count')}")
+            if data.get("auto_pause_status"):
+                click.echo(f"Auto-Pause Status: {data.get('auto_pause_status')}")
             click.echo(f"Created: {data.get('created_at')}")
             click.echo(f"Updated: {data.get('updated_at')}")
     except click.ClickException:
@@ -413,6 +418,9 @@ def get_run_detail(ingestion_id: str, run_id: str, output_format: str):
             click.echo(f"Datasets Created: {data.get('datasets_created', 0)}")
             if data.get("error_message"):
                 click.echo(f"Error: {data.get('error_message')}")
+            # 118E.11: DLQ sync status
+            if data.get("dlq_sync_status"):
+                click.echo(f"DLQ Sync Status: {data.get('dlq_sync_status')}")
             if data.get("result_json"):
                 click.echo(f"Result: {json.dumps(data.get('result_json'), indent=2)}")
     except click.ClickException:

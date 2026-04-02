@@ -34,7 +34,7 @@ class TestODPSInfoCommandsRealAPI:
     def setup_config(self):
         """Set up API base URL to point to Docker Compose service"""
         # Use the running Docker Compose API service
-        api_base_url = "http://localhost:8000/api/v1"
+        api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
         config.set_api_base_url(api_base_url)
 
         # Try to get API key from environment, config, or use test key
@@ -57,7 +57,7 @@ class TestODPSInfoCommandsRealAPI:
     def _check_api_available(self):
         """Check if API service is available"""
         try:
-            response = requests.get("http://localhost:8000/api/v1/", timeout=5)
+            response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=5)
             return response.status_code in [200, 401, 403]  # Any response means API is up
         except Exception:
             return False
@@ -229,7 +229,7 @@ print(str(contract.id))
         Returns the first ODPS contract found, or None if none exist.
         """
         try:
-            api_base_url = "http://localhost:8000/api/v1"
+            api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
             api_key = os.environ.get('DATAHUB_API_KEY') or 'test-api-key-cli-integration-12345'
 
             headers = {
@@ -239,7 +239,7 @@ print(str(contract.id))
 
             # List contracts and find an ODPS one
             response = requests.get(
-                f'{api_base_url}/contracts/contracts/',
+                f'{api_base_url}/contracts/',
                 headers=headers,
                 params={'limit': 100},
                 timeout=10

@@ -237,3 +237,93 @@ def reject_access_request(access_request_id: str, reason: str, output_format: st
     except Exception as e:
         raise click.ClickException(f"Failed to reject access request: {e}")
 
+
+# ── 118E.9: governance workflows ─────────────────────────
+
+
+@governance.group("workflows")
+def workflows():
+    """Governance workflow commands"""
+    pass
+
+
+@workflows.command("list")
+@click.option("--status", "wf_status", help="Filter by status")
+@click.option("--limit", type=int, default=20)
+@click.option("--offset", type=int, default=0)
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def list_workflows(wf_status, limit, offset, output_format):
+    """List governance workflows"""
+    params = {"limit": limit, "offset": offset}
+    if wf_status:
+        params["status"] = wf_status
+    try:
+        data = api_client.get("governance/workflows/", params=params)
+        results = (
+            data.get("results", []) if isinstance(data, dict) else
+            data if isinstance(data, list) else []
+        )
+        if output_format == "json":
+            click.echo(json.dumps(results, indent=2))
+        else:
+            if not results:
+                click.echo("No workflows found.")
+                return
+            click.echo(f"{'ID':<40} {'Name':<25} {'Status':<12}")
+            click.echo("-" * 77)
+            for w in results:
+                if not isinstance(w, dict):
+                    continue
+                click.echo(
+                    f"{str(w.get('id', ''))[:36]:<40} "
+                    f"{str(w.get('name', ''))[:23]:<25} "
+                    f"{str(w.get('status', '')):<12}"
+                )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to list workflows: {e}")
+
+
+@workflows.command("get")
+@click.argument("workflow_id")
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def get_workflow(workflow_id, output_format):
+    """Get workflow details"""
+    try:
+        data = api_client.get(f"governance/workflows/{workflow_id}/")
+        if output_format == "json":
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo(f"ID: {data.get('id')}")
+            click.echo(f"Name: {data.get('name')}")
+            click.echo(f"Status: {data.get('status')}")
+            click.echo(f"Created: {data.get('created_at')}")
+            click.echo(f"Updated: {data.get('updated_at')}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to get workflow: {e}")
+
+
+@workflows.command("retry")
+@click.argument("workflow_id")
+def retry_workflow(workflow_id):
+    """Retry a failed governance workflow"""
+    try:
+        data = api_client.post(f"governance/workflows/{workflow_id}/retry/")
+        click.echo(f"Workflow {workflow_id} retried.")
+        click.echo(f"Status: {data.get('status')}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to retry workflow: {e}")
+

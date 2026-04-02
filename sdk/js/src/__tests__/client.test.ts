@@ -171,7 +171,7 @@ describe('DataHubClient', () => {
 
       mockAxiosInstance.request.mockRejectedValueOnce(errorResponse);
       
-      await expect(client.get('/test')).rejects.toBeDefined();
+      await expect(client.get('/test')).rejects.not.toBeUndefined();
       expect(mockAxiosInstance.request).toHaveBeenCalledTimes(1);
     });
   });

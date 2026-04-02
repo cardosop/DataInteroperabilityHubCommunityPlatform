@@ -27,7 +27,9 @@ from .commands import (
     scheduled_export,
     scheduled_ingestion,
     search,
+    semantic,
     tenants,
+    transformation,
     virtualization,
     webhooks,
 )
@@ -86,6 +88,8 @@ cli.add_command(billing.billing, name="billing")
 cli.add_command(tenants.tenants, name="tenants")
 cli.add_command(gdpr.gdpr, name="gdpr")
 cli.add_command(search.search, name="search")
+cli.add_command(transformation.transformation, name="transformation")
+cli.add_command(semantic.semantic, name="semantic")
 
 
 def main():

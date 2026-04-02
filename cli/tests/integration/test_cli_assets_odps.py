@@ -27,7 +27,7 @@ def _check_api_available():
     """Check if API service is available"""
     try:
         import requests
-        response = requests.get("http://localhost:8000/api/v1/", timeout=2)
+        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
         return response.status_code < 600
     except Exception:
         return False
@@ -98,7 +98,7 @@ print(api_key_value)
 @pytest.fixture(autouse=True)
 def setup_config():
     """Set up API base URL and authentication"""
-    api_base_url = "http://localhost:8000/api/v1"
+    api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
     config.set_api_base_url(api_base_url)
 
     api_key = (
@@ -368,7 +368,7 @@ class TestCLIAssetsODPS:
             sample_asset
         ])
         # May succeed or fail depending on contract validation status
-        assert activate_result.exit_code in [0, 1]
+        assert activate_result.exit_code == 0
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
     def test_assets_list_filter_by_domain_with_odps(self, sample_asset, sample_odps_file, setup_config):

@@ -103,7 +103,7 @@ class SearchAPI:
             "q": query,
             "limit": limit,
         }
-        return await self.client.get("search/search/suggestions/", params=params)
+        return await self.client.get("search/suggestions/", params=params)
 
     async def get_analytics(
         self,
@@ -126,4 +126,4 @@ class SearchAPI:
         if end_date:
             params["end_date"] = end_date
 
-        return await self.client.get("search/search/analytics/", params=params)
+        return await self.client.get("search/analytics/", params=params)

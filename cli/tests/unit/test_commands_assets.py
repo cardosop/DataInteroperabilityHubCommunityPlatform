@@ -42,7 +42,7 @@ class TestAssetsList:
         assert 'asset-2' in result.output
         assert 'ACTIVE' in result.output
         assert 'DRAFT' in result.output
-        mock_api_client.get.assert_called_once_with('assets/assets/', params={'limit': 20, 'offset': 0})
+        mock_api_client.get.assert_called_once_with('assets/', params={'limit': 20, 'offset': 0})
     
     def test_list_assets_success_json_format(self, runner, mock_api_client):
         """Test listing assets in JSON format"""
@@ -75,7 +75,7 @@ class TestAssetsList:
         
         assert result.exit_code == 0
         mock_api_client.get.assert_called_once_with(
-            'assets/assets/',
+            'assets/',
             params={'status': 'ACTIVE', 'domain': 'domain1', 'limit': 10, 'offset': 5}
         )
     
@@ -152,7 +152,7 @@ class TestAssetsGet:
         assert 'asset-1' in result.output
         assert 'Test Asset' in result.output
         assert 'ACTIVE' in result.output
-        mock_api_client.get.assert_called_once_with('assets/assets/asset-1/', params={})
+        mock_api_client.get.assert_called_once_with('assets/asset-1/', params={})
     
     def test_get_asset_with_include(self, runner, mock_api_client):
         """Test getting an asset with include parameter"""
@@ -166,7 +166,7 @@ class TestAssetsGet:
         
         assert result.exit_code == 0
         mock_api_client.get.assert_called_once_with(
-            'assets/assets/asset-1/',
+            'assets/asset-1/',
             params={'include': 'contract,datasets'}
         )
     
@@ -219,7 +219,7 @@ class TestAssetsCreate:
         assert 'asset-1' in result.output
         mock_api_client.post.assert_called_once()
         call_args = mock_api_client.post.call_args
-        assert call_args[0][0] == 'assets/assets/'
+        assert call_args[0][0] == 'assets/'
         assert call_args[1]['json_data']['name'] == 'Test Asset'
         assert call_args[1]['json_data']['key'] == 'test-asset'
         assert call_args[1]['json_data']['visibility'] == 'INTERNAL'
@@ -296,7 +296,7 @@ class TestAssetsUpdate:
         assert 'Asset updated successfully' in result.output
         mock_api_client.patch.assert_called_once()
         call_args = mock_api_client.patch.call_args
-        assert call_args[0][0] == 'assets/assets/asset-1/'
+        assert call_args[0][0] == 'assets/asset-1/'
         assert call_args[1]['json_data']['name'] == 'Updated Asset'
     
     def test_update_asset_multiple_fields(self, runner, mock_api_client):
@@ -370,7 +370,7 @@ class TestAssetsDelete:
         
         assert result.exit_code == 0
         assert 'deleted successfully' in result.output
-        mock_api_client.delete.assert_called_once_with('assets/assets/asset-1/')
+        mock_api_client.delete.assert_called_once_with('assets/asset-1/')
     
     def test_delete_asset_with_confirmation_prompt(self, runner, mock_api_client):
         """Test deleting an asset with confirmation prompt"""
@@ -427,7 +427,7 @@ class TestAssetsActivate:
         assert result.exit_code == 0
         assert 'Asset activated successfully' in result.output
         assert 'ACTIVE' in result.output
-        mock_api_client.post.assert_called_once_with('assets/assets/asset-1/activate/')
+        mock_api_client.post.assert_called_once_with('assets/asset-1/activate/')
     
     def test_activate_asset_json_output(self, runner, mock_api_client):
         """Test activating an asset with JSON output"""

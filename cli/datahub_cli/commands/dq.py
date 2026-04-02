@@ -38,8 +38,8 @@ def run_dq(asset_id: Optional[str], dataset_id: Optional[str], file_id: Optional
         data['run_scope'] = 'EXTERNAL'
     
     try:
-        # API endpoint structure: /api/v1/dq-runs/ (dq-runs from api/urls.py)
-        result = api_client.post('dq-runs/', json_data=data)
+        # API endpoint: /api/v1/dq/runs/ (dq/ from api/urls.py + runs from dq/urls.py)
+        result = api_client.post('dq/runs/', json_data=data)
         
         if output_format == 'json':
             click.echo(json.dumps(result, indent=2))
@@ -66,8 +66,8 @@ def run_dq(asset_id: Optional[str], dataset_id: Optional[str], file_id: Optional
 def get_dq_run(dq_run_id: str, output_format: str):
     """Get DQ run details and results"""
     try:
-        # API endpoint structure: /api/v1/dq-runs/{id}/ (dq-runs from api/urls.py)
-        data = api_client.get(f'dq-runs/{dq_run_id}/')
+        # API endpoint structure: /api/v1/dq/runs/{id}/ (dq-runs from api/urls.py)
+        data = api_client.get(f'dq/runs/{dq_run_id}/')
         
         if output_format == 'json':
             click.echo(json.dumps(data, indent=2))
@@ -133,8 +133,8 @@ def list_dq_runs(asset_id: Optional[str], dataset_id: Optional[str], status: Opt
         params['status'] = status
     
     try:
-        # API endpoint structure: /api/v1/dq-runs/ (dq-runs from api/urls.py)
-        data = api_client.get('dq-runs/', params=params)
+        # API endpoint: /api/v1/dq/runs/ (dq/ from api/urls.py + runs from dq/urls.py)
+        data = api_client.get('dq/runs/', params=params)
         # Handle both paginated response (dict with 'results') and direct list response
         if isinstance(data, dict):
             results = data.get('results', [])
@@ -178,13 +178,25 @@ def watch_dq_run(dq_run_id: str, interval: int, timeout: int, output_format: str
     
     try:
         while True:
-            # Check timeout
+            # 118E.13: Fail-closed on poll timeout
             if time.time() - start_time > timeout:
-                raise click.ClickException(f"Timeout waiting for DQ run {dq_run_id} to complete")
+                click.echo(
+                    f"\nPoll timeout for DQ run {dq_run_id}."
+                )
+                click.echo("Overall Status: UNKNOWN")
+                click.echo("Error Code: POLL_TIMEOUT")
+                click.echo(
+                    "The DQ run may still be in progress. "
+                    "Check with: datahub dq get " + dq_run_id
+                )
+                raise click.ClickException(
+                    f"Timeout waiting for DQ run "
+                    f"{dq_run_id} to complete"
+                )
             
             # Get DQ run status
-            # API endpoint structure: /api/v1/dq-runs/{id}/ (dq-runs from api/urls.py)
-            data = api_client.get(f'dq-runs/{dq_run_id}/')
+            # API endpoint structure: /api/v1/dq/runs/{id}/ (dq-runs from api/urls.py)
+            data = api_client.get(f'dq/runs/{dq_run_id}/')
             status = data.get('status')
             
             if output_format == 'table':

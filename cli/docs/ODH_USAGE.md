@@ -732,6 +732,40 @@ Errors are returned in a consistent format:
 - Archive old model versions instead of deleting
 - Monitor resource usage in deployment configurations
 
+## New ML Commands (Phase 118E)
+
+### Deploy / Undeploy / Rollback
+
+```bash
+# Deploy a model (optionally with config file)
+datahub ml deploy <model_id> --config-file deploy-config.json
+
+# Undeploy a model
+datahub ml undeploy <model_id>
+
+# Rollback to a previous version
+datahub ml rollback <model_odh_id> --version v2
+```
+
+### Marketplace Publishing
+
+```bash
+# Publish model to the internal marketplace
+datahub ml marketplace-publish <model_id> --pricing-model REQUEST_APPROVAL
+```
+
+Pricing models: `FREE`, `FREE_AUTO_APPROVE`, `REQUEST_APPROVAL`
+
+### Plan Limits
+
+```bash
+# Show current ML subscription plan
+datahub ml plan show
+
+# Show ML-specific plan limits
+datahub ml plan limits
+```
+
 ## Additional Resources
 
 - **[CLI README](../README.md)** - Complete CLI documentation

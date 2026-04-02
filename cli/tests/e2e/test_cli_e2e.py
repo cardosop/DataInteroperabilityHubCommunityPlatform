@@ -29,7 +29,7 @@ class TestCompleteWorkflows:
         result = runner.invoke(cli, ['contracts', 'create', '--file', file_path])
         
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         
         # If creation succeeded, try to get it
         if result.exit_code == 0:
@@ -48,12 +48,12 @@ class TestCompleteWorkflows:
             '--key', 'e2e-test-asset'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         
         # If creation succeeded, try to list it
         if result.exit_code == 0:
             list_result = runner.invoke(cli, ['assets', 'list'])
-            assert list_result.exit_code in [0, 1]
+            assert list_result.exit_code == 0
     
     def test_file_upload_download_workflow(self, runner, temp_config_dir, api_base_url, temp_file, tmp_path):
         """Test complete file upload and download workflow"""
@@ -66,12 +66,12 @@ class TestCompleteWorkflows:
         # Upload file
         upload_result = runner.invoke(cli, ['files', 'upload', file_path])
         
-        assert upload_result.exit_code in [0, 1]
+        assert upload_result.exit_code == 0
         
         # If upload succeeded, try to list files
         if upload_result.exit_code == 0:
             list_result = runner.invoke(cli, ['files', 'list'])
-            assert list_result.exit_code in [0, 1]
+            assert list_result.exit_code == 0
     
     def test_job_monitoring_workflow(self, runner, temp_config_dir, api_base_url):
         """Test complete job monitoring workflow"""
@@ -80,7 +80,7 @@ class TestCompleteWorkflows:
         
         # List jobs
         list_result = runner.invoke(cli, ['jobs', 'list'])
-        assert list_result.exit_code in [0, 1]
+        assert list_result.exit_code == 0
         
         # If jobs exist, try to get one
         if list_result.exit_code == 0 and 'No jobs found' not in list_result.output:
@@ -102,7 +102,7 @@ class TestRealAPIScenarios:
         result = runner.invoke(cli, ['contracts', 'list'])
         
         # Should either succeed (if API allows) or fail with auth/connection error
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code != 0:
             # May suggest authentication, or be connection error if API not available
             assert any(keyword in result.output.lower() for keyword in [
@@ -121,7 +121,7 @@ class TestRealAPIScenarios:
             '--offset', '0'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         # Should handle pagination correctly
     
     def test_filtered_queries(self, runner, temp_config_dir, api_base_url):
@@ -136,7 +136,7 @@ class TestRealAPIScenarios:
             '--domain', 'test-domain'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         # Should apply filters correctly
 
 
@@ -153,7 +153,7 @@ class TestCICDScenarios:
         result = runner.invoke(cli, ['contracts', 'list'], input='')
         
         # Should not prompt for input
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
     
     def test_scripted_workflow(self, runner, temp_config_dir, temp_file):
         """Test scripted workflow (automation scenario)"""
@@ -194,7 +194,7 @@ class TestCICDScenarios:
         for cmd in commands:
             result = runner.invoke(cli, cmd)
             # Should all work consistently
-            assert result.exit_code in [0, 1]
+            assert result.exit_code == 0
 
 
 class TestErrorRecoveryE2E:
@@ -214,7 +214,7 @@ class TestErrorRecoveryE2E:
         result2 = runner.invoke(cli, ['contracts', 'list'])
         
         # Should either succeed or fail gracefully (depending on API availability)
-        assert result2.exit_code in [0, 1]
+        assert result2.exit_code == 0
     
     def test_recovery_from_auth_error(self, runner, temp_config_dir, api_base_url):
         """Test recovery from authentication error"""
@@ -231,7 +231,7 @@ class TestErrorRecoveryE2E:
         result2 = runner.invoke(cli, ['contracts', 'list'])
         
         # Should either succeed or fail gracefully
-        assert result2.exit_code in [0, 1]
+        assert result2.exit_code == 0
 
 
 class TestOutputFormatE2E:

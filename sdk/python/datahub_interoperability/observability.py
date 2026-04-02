@@ -50,7 +50,7 @@ class ObservabilityAPI:
         if end_date:
             params["end_date"] = end_date
 
-        return await self.client.get("observability/observability/freshness/", params=params)
+        return await self.client.get("observability/freshness/", params=params)
 
     async def get_volume(
         self,
@@ -77,7 +77,7 @@ class ObservabilityAPI:
         if end_date:
             params["end_date"] = end_date
 
-        return await self.client.get("observability/observability/volume/", params=params)
+        return await self.client.get("observability/volume/", params=params)
 
     async def get_schema_drift(
         self,
@@ -96,7 +96,7 @@ class ObservabilityAPI:
         if dataset_id:
             params["dataset_id"] = dataset_id
 
-        return await self.client.get("observability/observability/schema-drift/", params=params)
+        return await self.client.get("observability/schema-drift/", params=params)
 
     async def get_pipelines(
         self,
@@ -123,7 +123,7 @@ class ObservabilityAPI:
         if end_date:
             params["end_date"] = end_date
 
-        return await self.client.get("observability/observability/pipelines/", params=params)
+        return await self.client.get("observability/pipelines/", params=params)
 
     async def get_slas(
         self,
@@ -142,7 +142,7 @@ class ObservabilityAPI:
         if dataset_id:
             params["dataset_id"] = dataset_id
 
-        return await self.client.get("observability/observability/slas/", params=params)
+        return await self.client.get("observability/slas/", params=params)
 
     async def list_incidents(
         self,
@@ -172,7 +172,7 @@ class ObservabilityAPI:
         if severity:
             params["severity"] = severity
 
-        return await self.client.get("observability/observability/incidents/", params=params)
+        return await self.client.get("observability/incidents/", params=params)
 
     async def create_incident(
         self,
@@ -200,7 +200,7 @@ class ObservabilityAPI:
         }
         data.update(kwargs)
 
-        return await self.client.post("observability/observability/incidents/", data=data)
+        return await self.client.post("observability/incidents/", data=data)
 
     async def update_incident(
         self,
@@ -212,11 +212,13 @@ class ObservabilityAPI:
 
         Args:
             incident_id: Incident UUID
-            **kwargs: Fields to update
+            **kwargs: Fields to update (status, severity, description, etc.)
 
         Returns:
             Updated incident
         """
+        data = {"incident_id": incident_id}
+        data.update(kwargs)
         return await self.client.patch(
-            f"observability/observability/incidents/{incident_id}/", data=kwargs
+            "observability/incidents/update/", data=data
         )

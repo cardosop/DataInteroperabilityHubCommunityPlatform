@@ -731,6 +731,88 @@ cd cli
 python setup.py sdist bdist_wheel
 ```
 
+## New Commands (Phase 118E)
+
+### Transformation Pipelines
+
+```bash
+datahub transformation pipelines list [--status ACTIVE]
+datahub transformation pipelines get <pipeline_id>
+datahub transformation pipelines create --name "ETL Pipeline" [--description "..."] [--config '{}']
+datahub transformation pipelines update <pipeline_id> [--name "..."] [--description "..."]
+datahub transformation pipelines delete <pipeline_id> [--confirm]
+datahub transformation pipelines validate <pipeline_id>
+datahub transformation runs list [--pipeline-id <id>] [--status RUNNING]
+datahub transformation runs get <run_id>
+datahub transformation runs submit <pipeline_id> [--params '{}']
+datahub transformation runs cancel <run_id>
+datahub transformation plan-limits
+```
+
+### Semantic / SPARQL
+
+```bash
+datahub semantic sparql query --query "SELECT ?s WHERE { ?s a ?o }" [--accept application/sparql-results+json]
+datahub semantic sparql query --file query.sparql
+datahub semantic sparql service-description
+datahub semantic ontology
+datahub semantic void
+datahub semantic shacl validate [--data data.ttl] [--shapes shapes.ttl]
+```
+
+### Billing (New Commands)
+
+```bash
+datahub billing plan-limits                              # Show plan limits
+datahub billing usage [--resource-type api_calls]        # Usage records
+datahub billing refund <pi_id> --amount 1000 --reason requested_by_customer
+datahub billing reconcile [--dry-run]                    # Stripe reconciliation
+```
+
+### BaaS (New Commands)
+
+```bash
+datahub baas customers list
+datahub baas customers usage <customer_id> [--period 2026-03]
+datahub baas billing-reports list|get|generate|finalize|export|send
+datahub baas api-keys rotate <id> [--grace-hours 24]
+```
+
+### ML (New Commands)
+
+```bash
+datahub ml deploy <model_id> [--config-file deploy.json]
+datahub ml undeploy <model_id>
+datahub ml rollback <model_odh_id> --version <v>
+datahub ml plan show
+datahub ml plan limits
+datahub ml marketplace-publish <model_id> [--pricing-model REQUEST_APPROVAL]
+```
+
+### Compliance (New Commands)
+
+```bash
+datahub compliance scan-async --file-id <id> --regulations GDPR,HIPAA
+datahub compliance scan-result <job_id>
+datahub compliance regulations list
+datahub compliance regulations get <key>
+```
+
+### Governance (New Commands)
+
+```bash
+datahub governance workflows list [--status PENDING]
+datahub governance workflows get <id>
+datahub governance workflows retry <id>
+```
+
+### Display Enhancements
+
+- `datahub scheduled-ingestion get` now shows `Consecutive Failures` and `Auto-Pause Status`
+- `datahub scheduled-ingestion run-detail` now shows `DLQ Sync Status`
+- `datahub scheduled-export get` now shows `Consecutive Failures` and `Auto-Pause Status`
+- `datahub dq watch` now displays fail-closed status (`UNKNOWN` / `POLL_TIMEOUT`) on timeout
+
 ## License
 
 MIT License

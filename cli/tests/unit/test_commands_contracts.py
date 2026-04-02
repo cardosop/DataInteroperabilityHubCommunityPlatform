@@ -45,7 +45,7 @@ class TestContractsList:
         assert 'contract-2' in result.output
         assert 'DRAFT' in result.output
         assert 'ACTIVE' in result.output
-        mock_api_client.get.assert_called_once_with('contracts/contracts/', params={'limit': 20, 'offset': 0})
+        mock_api_client.get.assert_called_once_with('contracts/', params={'limit': 20, 'offset': 0})
 
     def test_list_contracts_success_json_format(self, runner, mock_api_client):
         """Test listing contracts in JSON format"""
@@ -79,7 +79,7 @@ class TestContractsList:
 
         assert result.exit_code == 0
         mock_api_client.get.assert_called_once_with(
-            'contracts/contracts/',
+            'contracts/',
             params={'status': 'ACTIVE', 'asset_id': 'asset-123', 'limit': 10, 'offset': 5}
         )
 
@@ -149,7 +149,7 @@ class TestContractsGet:
         assert 'contract-1' in result.output
         assert 'DRAFT' in result.output
         assert 'ODCS' in result.output
-        mock_api_client.get.assert_called_once_with('contracts/contracts/contract-1/')
+        mock_api_client.get.assert_called_once_with('contracts/contract-1/')
 
     def test_get_contract_success_json_format(self, runner, mock_api_client):
         """Test getting a contract in JSON format"""
@@ -216,7 +216,7 @@ class TestContractsCreate:
         assert 'contract-1' in result.output
         mock_api_client.post.assert_called_once()
         call_args = mock_api_client.post.call_args
-        assert call_args[0][0] == 'contracts/contracts/'
+        assert call_args[0][0] == 'contracts/'
         assert call_args[1]['json_data']['original_format'] == 'YAML'
         assert 'original_raw' in call_args[1]['json_data']
 
@@ -349,7 +349,7 @@ class TestContractsValidate:
 
         assert result.exit_code == 0
         assert 'Contract is valid' in result.output
-        mock_api_client.post.assert_called_once_with('contracts/contracts/contract-1/validate/')
+        mock_api_client.post.assert_called_once_with('contracts/contract-1/validate/')
 
     def test_validate_contract_with_errors(self, runner, mock_api_client):
         """Test validating a contract with errors"""
@@ -424,7 +424,7 @@ class TestContractsLint:
 
         assert result.exit_code == 0
         assert 'No linting issues found' in result.output
-        mock_api_client.post.assert_called_once_with('contracts/contracts/contract-1/lint/')
+        mock_api_client.post.assert_called_once_with('contracts/contract-1/lint/')
 
     def test_lint_contract_with_issues(self, runner, mock_api_client):
         """Test linting a contract with issues"""
@@ -605,7 +605,7 @@ product:
         assert 'odcs-123' in result.output
         mock_api_client.post.assert_called_once()
         call_args = mock_api_client.post.call_args
-        assert call_args[0][0] == 'contracts/contracts/odcs-123/link-odps/'
+        assert call_args[0][0] == 'contracts/odcs-123/link-odps/'
         assert call_args[1]['json_data']['original_format'] == 'JSON'
 
     def test_create_odps_with_format_override(self, runner, mock_api_client, temp_file):
@@ -2124,7 +2124,7 @@ class TestContractsLinkODPS:
         assert 'odps-1' in result.output
         assert 'ACTIVE' in result.output
         mock_api_client.post.assert_called_once_with(
-            'contracts/contracts/odcs-1/link-odps/',
+            'contracts/odcs-1/link-odps/',
             json_data={'odps_contract_id': 'odps-1'}
         )
 
@@ -2172,7 +2172,7 @@ class TestContractsUnlinkODPS:
         assert 'ODPS contract unlinked successfully' in result.output
         assert 'odcs-1' in result.output
         mock_api_client.post.assert_called_once_with(
-            'contracts/contracts/odcs-1/unlink-odps/'
+            'contracts/odcs-1/unlink-odps/'
         )
 
     def test_unlink_odps_success_json_format(self, runner, mock_api_client):
@@ -2224,7 +2224,7 @@ class TestContractsListLinks:
         assert 'odps-1' in result.output
         assert 'ODCS Link: None' in result.output
         mock_api_client.get.assert_called_once_with(
-            'contracts/contracts/odcs-1/links/'
+            'contracts/odcs-1/links/'
         )
 
     def test_list_links_with_odcs_link(self, runner, mock_api_client):

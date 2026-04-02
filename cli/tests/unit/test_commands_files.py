@@ -45,7 +45,7 @@ class TestFilesList:
         assert 'file-2' in result.output
         assert 'test.csv' in result.output
         assert 'UPLOADED' in result.output
-        mock_api_client.get.assert_called_once_with('files/files/', params={'limit': 20, 'offset': 0})
+        mock_api_client.get.assert_called_once_with('files/', params={'limit': 20, 'offset': 0})
     
     def test_list_files_success_json_format(self, runner, mock_api_client):
         """Test listing files in JSON format"""
@@ -77,7 +77,7 @@ class TestFilesList:
         
         assert result.exit_code == 0
         mock_api_client.get.assert_called_once_with(
-            'files/files/',
+            'files/',
             params={'status': 'UPLOADED', 'limit': 10, 'offset': 5}
         )
     
@@ -148,9 +148,9 @@ class TestFilesUpload:
             assert 'file-1' in result.output
             assert mock_api_client.post.call_count == 2
             # Verify init call
-            assert mock_api_client.post.call_args_list[0][0][0] == 'files/files/init/'
+            assert mock_api_client.post.call_args_list[0][0][0] == 'files/init/'
             # Verify complete call
-            assert mock_api_client.post.call_args_list[1][0][0] == 'files/files/file-1/complete/'
+            assert mock_api_client.post.call_args_list[1][0][0] == 'files/file-1/complete/'
             # Verify S3 upload
             mock_put.assert_called_once()
     
@@ -360,8 +360,8 @@ class TestFilesDownload:
             assert 'File downloaded' in result.output
             assert output_path.exists()
             assert output_path.read_bytes() == file_content
-            mock_api_client.get.assert_called_once_with(f'files/files/{file_id}/')
-            mock_api_client.post.assert_called_once_with(f'files/files/{file_id}/download/')
+            mock_api_client.get.assert_called_once_with(f'files/{file_id}/')
+            mock_api_client.post.assert_called_once_with(f'files/{file_id}/download/')
     
     def test_download_file_default_output_path(self, runner, mock_api_client, tmp_path, monkeypatch):
         """Test downloading a file with default output path"""
@@ -430,7 +430,7 @@ class TestFilesDelete:
         
         assert result.exit_code == 0
         assert 'deleted successfully' in result.output
-        mock_api_client.delete.assert_called_once_with('files/files/file-1/')
+        mock_api_client.delete.assert_called_once_with('files/file-1/')
     
     def test_delete_file_with_confirmation_prompt(self, runner, mock_api_client):
         """Test deleting a file with confirmation prompt"""

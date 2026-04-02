@@ -44,6 +44,14 @@ critical_use_cases:
   - UC-GOV-ADV-004  # Configure Automated Retention
   # Billing / Cost (Tenant Admin)
   - UC-TA-007    # Monitor Cost Tracking
+  # Transformation Pipeline (implemented Phase 115A)
+  - UC-TRANS-001   # Create Transformation Pipeline
+  - UC-TRANS-002   # Execute Transformation Pipeline
+  - UC-TRANS-003   # Monitor Pipeline Execution
+  # Scheduled Ingestion (critical flow)
+  - UC-INGEST-001  # Create Scheduled Ingestion
+  - UC-INGEST-002  # Configure Ingestion Source
+  - UC-INGEST-003  # Monitor Ingestion Runs
   # Scheduled Export (critical flow)
   - UC-EXPORT-001  # Schedule Recurring Export
   - UC-EXPORT-002  # Configure Export Destination
@@ -82,6 +90,9 @@ critical_journeys:
   # Platform Admin / Marketplace
   - JOURNEY-PA-001   # Onboard Marketplace Instance
   - JOURNEY-MPA-005  # (Marketplace Admin journey)
+  # Scheduled Ingestion
+  - JOURNEY-INGESTION-001  # Create and Run Scheduled Ingestion
+  - JOURNEY-INGESTION-003  # Edit and Delete Scheduled Ingestion
   # Scheduled Export
   - JOURNEY-EXPORT-001  # Create and Run Scheduled Export
   - JOURNEY-EXPORT-002  # Monitor and Troubleshoot Export Runs

@@ -1,123 +1,123 @@
 # WSGI/ASGI Production Server
 # gunicorn manages worker processes; uvicorn.workers.UvicornWorker handles ASGI (HTTP + WebSocket).
 # uvicorn[standard] includes uvloop + httptools for best async performance.
-gunicorn>=23.0.0
-uvicorn[standard]>=0.34.0
+gunicorn>=23.0.0,<24.0
+uvicorn[standard]>=0.34.0,<1.0
 
 # Core Django Framework
 Django>=6.0,<7.0
-djangorestframework>=3.15.0
-django-cors-headers>=4.0.0
+djangorestframework==3.16.1
+django-cors-headers==4.9.0
 # Pin docutils: Django's admindocs (pulled in by DRF schema discovery) uses docutils.parsers.rst;
 # docutils 0.21+ reorganized the package and no longer exposes parsers.rst, causing AttributeError.
 docutils>=0.17,<0.21
 
 # Database
-psycopg2-binary>=2.9.9
+psycopg2-binary==2.9.11
 
 # Job Queue
-django-rq>=3.2.0
-rq>=1.15.0
-redis>=5.0.0
+django-rq==3.2.1
+rq==2.6.1
+redis==7.1.0
+pyclamd>=0.4.0
 
 # GraphQL
-strawberry-graphql[django]>=0.287.0
-graphene-django>=3.2.0
+strawberry-graphql[django]==0.287.2
+graphene-django==3.2.3
 
 # Authentication & Security
-PyJWT>=2.8.0
-cryptography>=41.0.0
-django-environ>=0.11.0
-django-csp>=4.0
+PyJWT==2.10.1
+cryptography==46.0.3
+django-environ==0.12.0
+django-csp==4.0
+python-magic==0.4.27  # Magic-byte MIME validation (14.6); requires libmagic system lib
 
 # Secrets Management — HashiCorp Vault (Phase 2)
 # hvac is the official Python client for Vault's HTTP API.
 # Used by hub/vault_loader.py for AppRole + Kubernetes auth.
 hvac>=2.3.0,<3.0
 
-# Object Storage (S3-compatible)
-boto3>=1.34.0
-django-storages>=1.14.6
+# Object Storage (S3-compatible) and SES email
+boto3==1.42.7
+django-storages==1.14.6
 
 # Observability
-structlog>=24.1.0
-django-structlog>=10.0.0
+structlog==25.5.0
+django-structlog==10.0.0
 # prometheus-client>=0.20.0  # Replaced by OpenTelemetry metrics
 # django-prometheus>=2.4.0  # Removed: Not compatible with Django 6.0
-deprecated>=1.2.0  # Required by OpenTelemetry packages
-opentelemetry-api>=1.20.0
-opentelemetry-sdk>=1.20.0
-opentelemetry-instrumentation-django>=0.42b0
-opentelemetry-instrumentation-requests>=0.42b0  # Required for HTTP request tracing
-opentelemetry-instrumentation-httpx>=0.42b0  # Required for HTTPX client tracing
+deprecated==1.3.1  # Required by OpenTelemetry packages
+opentelemetry-api==1.39.0
+opentelemetry-sdk==1.39.0
+opentelemetry-instrumentation-django==0.60b0
+opentelemetry-instrumentation-requests==0.60b0  # Required for HTTP request tracing
+opentelemetry-instrumentation-httpx==0.60b0  # Required for HTTPX client tracing
 # Jaeger exporter removed: conflicts with opentelemetry-proto (protobuf>=5) and googleapis-common-protos (protobuf<5). Use OTLP for tracing.
-opentelemetry-exporter-otlp>=1.20.0  # OTLP exporter for tracing (Jaeger can ingest OTLP)
-opentelemetry-exporter-prometheus>=0.60b0
+opentelemetry-exporter-otlp>=1.20.0,<2.0
+opentelemetry-exporter-prometheus==0.60b0
 
 # Error Tracking
-sentry-sdk>=2.0.0  # Optional: Error tracking with Sentry (set SENTRY_DSN to enable)
+sentry-sdk==2.55.0  # Optional: Error tracking with Sentry (set SENTRY_DSN to enable)
 
 # Typed models and validation
-# Pin <2.11.4: Pydantic 2.11.4+ breaks Prefect 2.x flow parameter schema (TypeError: 'type' object is not iterable)
-pydantic>=2.6,<2.11.4
+# Prefect 3.x requires pydantic >=2.10.1,<3.0 (excludes 2.11.0–2.11.4 internally)
+pydantic>=2.10.1,<3.0
 
-# Data Quality Engines
-great-expectations>=0.18.0
-soda-core>=3.0.0
+# Data Quality Engines — in services/dq-service/requirements.txt only (Phase 55)
 
 # Data Processing
-pandas>=2.1.0
-numpy>=1.26.0
-pyarrow>=14.0.0  # Required for Parquet file format support
+pandas==2.3.3
+numpy==1.26.4
+pyarrow==23.0.1  # Required for Parquet file format support
 
 # HTTP Client
-httpx>=0.25.0
-requests>=2.31.0
+httpx==0.28.1
+requests==2.32.4
 
 # Email Services
-sendgrid>=6.10.0
-boto3>=1.34.0  # Already included for S3, also used for SES
+sendgrid==6.12.5
 
 # RDF/Semantic
-rdflib>=7.0.0
-SPARQLWrapper>=2.0.0
+rdflib==7.5.0
+SPARQLWrapper==2.0.0
 
 # Utilities
-python-dateutil>=2.8.2
-pytz>=2023.3
-pyyaml>=6.0.1
-html2text>=2024.2.26
-click>=8.0.0  # CLI framework
-croniter>=2.0.0  # Cron expression parsing for scheduled ingestions
+python-dateutil==2.9.0.post0
+pytz==2025.2
+pyyaml==6.0.3
+html2text==2025.4.15
+click==8.3.1  # CLI framework
+croniter==6.0.0  # Cron expression parsing for scheduled ingestions
 
 # OpenAPI/Swagger
-drf-spectacular>=0.27.0
+drf-spectacular==0.29.0
 
 # WebSocket Support
-channels>=4.0.0
-channels-redis>=4.2.0
-django-filter>=23.0
+channels==4.3.2
+channels-redis==4.3.0
+django-filter==25.2
 
 # Payment Processing
-stripe>=7.0.0
+stripe>=7.0.0,<8.0
 
 # Snowflake Connector
-snowflake-connector-python>=3.7.0
+snowflake-connector-python>=3.12.0,<5.0
 
 # ODBC Connector (virtualization ODBC sources)
-pyodbc>=5.0.0
+pyodbc>=5.0.0,<6.0
 
 # Google Cloud Platform
-google-cloud-bigquery>=3.20.0
-google-cloud-bigquery-analyticshub>=0.6.0
-google-cloud-storage>=2.10.0  # Required for Prefect integration S3/GCS connectors
-google-auth>=2.25.0
+google-cloud-bigquery>=3.20.0,<4.0
+google-cloud-bigquery-analyticshub>=0.6.0,<1.0
+google-cloud-storage>=2.10.0,<3.0  # Required for Prefect integration S3/GCS connectors
+google-auth>=2.25.0,<3.0
+
+# PDF invoice generation (Phase 116B.2 — customer billing reports)
+reportlab>=4.4.0,<5.0
 
 # Performance Testing
-psutil>=5.9.0
+psutil==7.1.3
 
 # Prefect Integration (optional - required for scheduled ingestion Prefect deployment sync)
-# Pin to 2.16.x to match docker-compose.test.yml prefect-server-test/prefect-worker-test (2.16.9).
-prefect>=2.16.0,<2.17
-# Prefect 2.16 imports griffe.dataclasses; griffe 1.x removed it. Pin <1 so subprocess flow runs.
-griffe<1
+# Matches docker-compose.test.yml prefect-server-test (3.x). Phase 43 migrated from 2.16.x.
+prefect>=3.6.15,<4.0

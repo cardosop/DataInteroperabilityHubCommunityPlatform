@@ -1,10 +1,11 @@
 {
-  "generated_at": "2025-12-28T17:02:24.298386",
+  "generated_at": "2026-03-24T02:01:57.635500",
   "summary": {
-    "total_service_clients": 4,
-    "total_methods": 17,
-    "total_service_to_service_calls": 13,
+    "total_service_clients": 5,
+    "total_methods": 27,
+    "total_service_to_service_calls": 19,
     "services": [
+      "webhook-delivery",
       "compliance",
       "d-q",
       "semantic",
@@ -13,10 +14,53 @@
   },
   "service_clients": [
     {
+      "file_path": "hub/apps/webhooks/service_client.py",
+      "class_name": "WebhookDeliveryClient",
+      "service_name": "webhook-delivery",
+      "base_url": "unknown",
+      "http_client_type": "unknown",
+      "methods": [
+        {
+          "method_name": "deliver_webhook",
+          "parameters": [
+            "self",
+            "url",
+            "payload",
+            "headers",
+            "data"
+          ],
+          "return_type": "Tuple[int, str]",
+          "docstring": "Deliver webhook with retry and circuit breaker protection.\n\nArgs:\n    url: Webhook URL\n    payload: JSON payload (if using json parameter)\n    headers: HTTP headers\n    data: Raw data string (alternative to payload)\n\nReturns:\n    Tuple of (status_code, response_text)\n\nRaises:\n    httpx.HTTPStatusError: On HTTP errors\n    httpx.RequestError: On network errors",
+          "line_number": 121,
+          "http_calls": []
+        },
+        {
+          "method_name": "health_check",
+          "parameters": [
+            "self"
+          ],
+          "return_type": "Tuple[bool, str]",
+          "docstring": "Health check for webhook delivery client.\n\nReturns:\n    Tuple of (is_healthy, status_message)",
+          "line_number": 165,
+          "http_calls": []
+        },
+        {
+          "method_name": "close",
+          "parameters": [
+            "self"
+          ],
+          "return_type": null,
+          "docstring": "Close the HTTP client and release resources.\n\nShould be called when the client is no longer needed to properly\nclose underlying socket connections.",
+          "line_number": 184,
+          "http_calls": []
+        }
+      ]
+    },
+    {
       "file_path": "hub/apps/compliance/service_client.py",
       "class_name": "ComplianceServiceClient",
       "service_name": "compliance",
-      "base_url": "http://localhost:8082",
+      "base_url": "http://compliance-service:8082",
       "http_client_type": "unknown",
       "methods": [
         {
@@ -26,12 +70,12 @@
           ],
           "return_type": "Tuple[bool, str]",
           "docstring": "Checks the health of the Compliance service",
-          "line_number": 93,
+          "line_number": 124,
           "http_calls": [
             {
               "http_method": "GET",
               "endpoint": "/health",
-              "line_number": 96
+              "line_number": 127
             }
           ]
         },
@@ -43,16 +87,59 @@
             "file_format",
             "scan_mode",
             "applicable_regulations",
-            "contract"
+            "contract",
+            "tenant_id",
+            "correlation_id"
           ],
           "return_type": "Dict[str, Any]",
-          "docstring": "Scan file for PII and compliance issues.\n\nArgs:\n    file_content: File content as bytes\n    file_format: File format (csv, json, parquet)\n    scan_mode: Scan mode ('internal' or 'external' for scan-only)\n    applicable_regulations: Optional list of regulations to check (e.g., ['GDPR', 'HIPAA'])\n    contract: Optional Contract instance to extract compliance policy from (GAP-8.2.2)\n\nReturns:\n    Compliance scan result dictionary",
-          "line_number": 103,
+          "docstring": "Scan file for PII and compliance issues.\n\nArgs:\n    file_content: File content as bytes\n    file_format: File format (csv, json, parquet)\n    scan_mode: Scan mode ('internal' or 'external' for scan-only)\n    applicable_regulations: Optional list of regulations to check (e.g., ['GDPR', 'HIPAA'])\n    contract: Optional Contract instance to extract compliance policy from (GAP-8.2.2)\n    tenant_id: Optional tenant ID for metrics/logging (5.3.2); Hub always passes this.\n    correlation_id: Optional correlation ID for tracing (5.4.1); sent as X-Correlation-Id and logged.\n\nReturns:\n    Compliance scan result dictionary",
+          "line_number": 134,
           "http_calls": [
             {
               "http_method": "POST",
               "endpoint": "/scan-file",
-              "line_number": 170
+              "line_number": 227
+            }
+          ]
+        },
+        {
+          "method_name": "scan_file_async",
+          "parameters": [
+            "self",
+            "file_content",
+            "file_format",
+            "scan_mode",
+            "applicable_regulations",
+            "legal_basis",
+            "destination_jurisdiction",
+            "tenant_id",
+            "correlation_id"
+          ],
+          "return_type": "Dict[str, Any]",
+          "docstring": "POST to /scan-file-async.\n\nReturns the response body with ``_http_status`` injected so the\ncaller can branch on 202 (async accepted) vs 200 (sync result).\n\nForwards X-Actor-Id, X-Correlation-Id, X-Internal-Api-Key.\n\nRaises:\n    httpx.HTTPStatusError: on non-200/202 HTTP errors.\n    httpx.RequestError: on network-level failures.",
+          "line_number": 246,
+          "http_calls": [
+            {
+              "http_method": "POST",
+              "endpoint": "/scan-file-async",
+              "line_number": 319
+            }
+          ]
+        },
+        {
+          "method_name": "get_scan_result",
+          "parameters": [
+            "self",
+            "job_id"
+          ],
+          "return_type": "Dict[str, Any]",
+          "docstring": "GET /scan-result/{job_id} \u2014 poll for an async job result.\n\nForwards X-Actor-Id, X-Correlation-Id, X-Internal-Api-Key.\n\nReturns:\n    dict with ``\"status\"`` (QUEUED/RUNNING/COMPLETED/FAILED)\n    and ``\"result\"`` payload when status is COMPLETED.\n\nRaises:\n    httpx.HTTPStatusError / httpx.RequestError on errors.",
+          "line_number": 333,
+          "http_calls": [
+            {
+              "http_method": "GET",
+              "endpoint": "/scan-result/",
+              "line_number": 362
             }
           ]
         }
@@ -62,22 +149,23 @@
       "file_path": "hub/apps/dq/service_client.py",
       "class_name": "DQServiceClient",
       "service_name": "d-q",
-      "base_url": "http://dq-service:8083",
+      "base_url": "http://localhost:8084",
       "http_client_type": "unknown",
       "methods": [
         {
           "method_name": "health_check",
           "parameters": [
-            "self"
+            "self",
+            "timeout"
           ],
           "return_type": "Tuple[bool, str]",
-          "docstring": "Checks the health of the DQ service",
-          "line_number": 118,
+          "docstring": "Checks the health of the DQ service. Uses short timeout to avoid blocking when service is unreachable.",
+          "line_number": 139,
           "http_calls": [
             {
               "http_method": "GET",
               "endpoint": "/health",
-              "line_number": 121
+              "line_number": 142
             }
           ]
         },
@@ -93,12 +181,12 @@
           ],
           "return_type": "Dict[str, Any]",
           "docstring": "Run DQ checks on file content.\n\nArgs:\n    file_content: File content as bytes\n    file_format: File format (csv, json, parquet)\n    profile_key: DQ profile key (default: intake_basic_gx)\n    use_cache: Whether to use cached results\n    contract: Optional Contract instance to extract quality rules from\n\nReturns:\n    DQ result dictionary",
-          "line_number": 128,
+          "line_number": 149,
           "http_calls": [
             {
               "http_method": "POST",
               "endpoint": "/run",
-              "line_number": 218
+              "line_number": 235
             }
           ]
         }
@@ -108,22 +196,23 @@
       "file_path": "hub/apps/semantic/service_client.py",
       "class_name": "SemanticServiceClient",
       "service_name": "semantic",
-      "base_url": "http://localhost:8081",
+      "base_url": "http://semantic-service:8081",
       "http_client_type": "unknown",
       "methods": [
         {
           "method_name": "health_check",
           "parameters": [
-            "self"
+            "self",
+            "use_cache"
           ],
           "return_type": "Tuple[bool, str]",
-          "docstring": "Checks the health of the Semantic service",
-          "line_number": 124,
+          "docstring": "Checks the health of the Semantic service.\n\nPhase 2 Optimization: Uses cached health status to avoid repeated checks.\nCache TTL: 30 seconds (configurable via _health_status_cache_ttl)\n\nArgs:\n    use_cache: Whether to use cached health status (default: True)\n\nReturns:\n    Tuple of (is_healthy, fuseki_status)",
+          "line_number": 188,
           "http_calls": [
             {
               "http_method": "GET",
               "endpoint": "/health",
-              "line_number": 131
+              "line_number": 219
             }
           ]
         },
@@ -133,16 +222,34 @@
             "self",
             "hub_contract",
             "contract_uuid",
-            "asset_uuid"
+            "asset_uuid",
+            "tenant_id"
           ],
           "return_type": "Dict[str, Any]",
           "docstring": "Map a HubContract to RDF.\n\nArgs:\n    hub_contract: HubContract JSON\n    contract_uuid: Contract UUID\n    asset_uuid: Optional asset UUID for linking\n\nReturns:\n    Mapping result with contract_uri, triples_count, semantic_status",
-          "line_number": 149,
+          "line_number": 271,
           "http_calls": [
             {
               "http_method": "POST",
               "endpoint": "/map/contract",
-              "line_number": 175
+              "line_number": 305
+            }
+          ]
+        },
+        {
+          "method_name": "get_contract_relationships",
+          "parameters": [
+            "self",
+            "contract_id"
+          ],
+          "return_type": "Dict[str, Any]",
+          "docstring": "Get RDF relationship triples for a contract.\n\nCircuit-breaker wrapped; timeout 15s; cached 60s in Redis.\n\nReturns:\n    Dict with 'triples' (raw N-Triples text) and 'status'.",
+          "line_number": 320,
+          "http_calls": [
+            {
+              "http_method": "GET",
+              "endpoint": "/semantic/relationships/",
+              "line_number": 352
             }
           ]
         },
@@ -156,16 +263,21 @@
             "asset_status",
             "dq_status",
             "compliance_status",
-            "version"
+            "version",
+            "source_type",
+            "source_metadata",
+            "external_resources",
+            "tenant_id",
+            "provenance"
           ],
           "return_type": "Dict[str, Any]",
-          "docstring": "Map an asset to RDF.\n\nArgs:\n    asset_uuid: Asset UUID\n    asset_name: Asset name\n    asset_description: Optional description\n    asset_status: Optional status\n    dq_status: Optional DQ status\n    compliance_status: Optional compliance status\n    version: Optional version\n\nReturns:\n    Mapping result with asset_uri, triples_count, semantic_status",
-          "line_number": 192,
+          "docstring": "Map an asset to RDF.\n\nArgs:\n    asset_uuid: Asset UUID\n    asset_name: Asset name\n    asset_description: Optional description\n    asset_status: Optional status\n    dq_status: Optional DQ status\n    compliance_status: Optional compliance status\n    version: Optional version\n    source_type: Optional source type (e.g., \"FEDERATED\" for federated assets)\n    source_metadata: Optional source metadata dictionary for federated assets\n    external_resources: Optional list of external resource references, each containing:\n        - resource_id: External resource identifier\n        - name: Resource name\n        - url: Resource URL\n        - format: Resource format (CSV, JSON, PARQUET, etc.)\n        - size_bytes: Resource size in bytes (optional)\n        - marketplace_type: Marketplace type\n        - connection_id: Connection ID\n        - metadata: Additional metadata (optional)\n\nReturns:\n    Mapping result with asset_uri, triples_count, semantic_status",
+          "line_number": 414,
           "http_calls": [
             {
               "http_method": "POST",
               "endpoint": "/map/asset",
-              "line_number": 226
+              "line_number": 487
             }
           ]
         },
@@ -177,16 +289,20 @@
             "dataset_name",
             "format",
             "row_count",
-            "asset_uuid"
+            "asset_uuid",
+            "tenant_id",
+            "distribution_url",
+            "series_id",
+            "provenance"
           ],
           "return_type": "Dict[str, Any]",
           "docstring": "Map a dataset to RDF.\n\nArgs:\n    dataset_uuid: Dataset UUID\n    dataset_name: Optional dataset name\n    format: Optional format (CSV, JSON, Parquet)\n    row_count: Optional row count\n    asset_uuid: Optional asset UUID for linking\n\nReturns:\n    Mapping result with dataset_uri, triples_count, semantic_status",
-          "line_number": 247,
+          "line_number": 498,
           "http_calls": [
             {
               "http_method": "POST",
               "endpoint": "/map/dataset",
-              "line_number": 277
+              "line_number": 548
             }
           ]
         },
@@ -196,16 +312,17 @@
             "self",
             "product",
             "product_uuid",
-            "odcs_contract_uuid"
+            "odcs_contract_uuid",
+            "tenant_id"
           ],
           "return_type": "Dict[str, Any]",
           "docstring": "Map an ODPS product to RDF.\n\nArgs:\n    product: ODPS product structure (from original_raw or reconstructed)\n    product_uuid: ODPS product UUID (contract ID)\n    odcs_contract_uuid: Optional linked ODCS contract UUID\n\nReturns:\n    Mapping result with product_uri, triples_count, semantic_status",
-          "line_number": 296,
+          "line_number": 559,
           "http_calls": [
             {
               "http_method": "POST",
               "endpoint": "/map/odps",
-              "line_number": 322
+              "line_number": 593
             }
           ]
         },
@@ -219,12 +336,51 @@
           ],
           "return_type": "Dict[str, Any]",
           "docstring": "Execute a SPARQL query.\n\nArgs:\n    query: SPARQL query string\n    output_format: Output format (json, csv, turtle, xml)\n    timeout: Query timeout in seconds\n\nReturns:\n    Query results as dictionary",
-          "line_number": 339,
+          "line_number": 604,
           "http_calls": [
             {
               "http_method": "POST",
               "endpoint": "/sparql",
-              "line_number": 362
+              "line_number": 627
+            }
+          ]
+        },
+        {
+          "method_name": "query_sparql_tenant",
+          "parameters": [
+            "self",
+            "query",
+            "tenant_id",
+            "output_format",
+            "timeout"
+          ],
+          "return_type": "Dict[str, Any]",
+          "docstring": "Execute a read-only SPARQL query scoped to a tenant's named graph.\n\nDelegates to ``POST /query`` on the semantic service, which rewrites\nthe WHERE clause to restrict results to\n``GRAPH <urn:tenant:{tenant_id}> { \u2026 }``.\n\nArgs:\n    query: SPARQL query string (SELECT / ASK / CONSTRUCT / DESCRIBE).\n    tenant_id: Non-empty tenant identifier.\n    output_format: ``json`` (default), ``turtle``, or ``csv``.\n    timeout: HTTP timeout in seconds.\n\nReturns:\n    Query results as dictionary.",
+          "line_number": 663,
+          "http_calls": [
+            {
+              "http_method": "POST",
+              "endpoint": "/query",
+              "line_number": 692
+            }
+          ]
+        },
+        {
+          "method_name": "ingest_rdf",
+          "parameters": [
+            "self",
+            "graph_data",
+            "tenant_id",
+            "format"
+          ],
+          "return_type": "Dict[str, Any]",
+          "docstring": "Ingest RDF data into a tenant-scoped named graph.\n\nDelegates to ``POST /ingest`` on the semantic service.\n\nArgs:\n    graph_data: Serialised RDF content.\n    tenant_id: Non-empty tenant identifier.\n    format: RDF serialization format (``turtle``, ``n-triples``, \u2026).\n\nReturns:\n    ``{\"graph_uri\": \"...\", \"triples_count\": N, \"status\": \"OK\"|\"DEGRADED\"}``",
+          "line_number": 712,
+          "http_calls": [
+            {
+              "http_method": "POST",
+              "endpoint": "/ingest",
+              "line_number": 740
             }
           ]
         },
@@ -237,12 +393,28 @@
           ],
           "return_type": "Dict[str, Any]",
           "docstring": "Resolve a stable URI to JSON-LD representation.\n\nArgs:\n    resource_type: Resource type (asset, contract, dataset, field)\n    resource_id: Resource UUID (for field: {asset_uuid}/{field_name})\n\nReturns:\n    JSON-LD representation as dictionary\n\nNote: The semantic service route is /id/{resource_path:path} where\nresource_path = {resource_type}/{resource_id}. This allows slashes\nin resource_id (e.g., for fields: field/{asset_uuid}/{field_name}).",
-          "line_number": 398,
+          "line_number": 776,
           "http_calls": [
             {
               "http_method": "GET",
               "endpoint": "/id/",
-              "line_number": 427
+              "line_number": 814
+            }
+          ]
+        },
+        {
+          "method_name": "get_sparql_service_description",
+          "parameters": [
+            "self"
+          ],
+          "return_type": "Dict[str, Any]",
+          "docstring": "Fetch the SPARQL 1.1 Service Description from the semantic service.\n\nCalls ``GET /sparql`` (no query param) which returns Turtle.\n\nReturns:\n    ``{\"content\": \"<turtle>\"}`` or ``{\"error\": \"...\"}``",
+          "line_number": 838,
+          "http_calls": [
+            {
+              "http_method": "GET",
+              "endpoint": "/sparql",
+              "line_number": 854
             }
           ]
         },
@@ -253,12 +425,12 @@
           ],
           "return_type": "Dict[str, Any]",
           "docstring": "Get ontology definition in Turtle format.\n\nReturns:\n    Ontology definition with format and content",
-          "line_number": 446,
+          "line_number": 863,
           "http_calls": [
             {
               "http_method": "GET",
               "endpoint": "/ontology",
-              "line_number": 460
+              "line_number": 877
             }
           ]
         },
@@ -269,14 +441,24 @@
           ],
           "return_type": "Dict[str, Any]",
           "docstring": "Get JSON-LD context for hub ontology.\n\nReturns:\n    JSON-LD context dictionary",
-          "line_number": 474,
+          "line_number": 891,
           "http_calls": [
             {
               "http_method": "GET",
               "endpoint": "/context.jsonld",
-              "line_number": 488
+              "line_number": 905
             }
           ]
+        },
+        {
+          "method_name": "close",
+          "parameters": [
+            "self"
+          ],
+          "return_type": null,
+          "docstring": "Close the HTTP client and release resources.\n\nShould be called when the client is no longer needed to properly\nclose underlying socket connections.",
+          "line_number": 914,
+          "http_calls": []
         }
       ]
     },
@@ -298,8 +480,8 @@
             "timeout"
           ],
           "return_type": "Dict[str, Any]",
-          "docstring": "Validate a contract.\n\nArgs:\n    raw_contract: Raw contract content\n    format: Contract format (JSON or YAML)\n    tenant_id: Tenant ID for caching\n    use_cache: Whether to use cached results\n    timeout: Request timeout in seconds\n\nReturns:\n    Validation result with status, issues, cli_version",
-          "line_number": 195,
+          "docstring": "Validate a contract.\n\nIn test environment, returns a mock response to prevent timeouts.\n\nArgs:\n    raw_contract: Raw contract content\n    format: Contract format (JSON or YAML)\n    tenant_id: Tenant ID for caching\n    use_cache: Whether to use cached results\n    timeout: Request timeout in seconds\n\nReturns:\n    Validation result with status, issues, cli_version",
+          "line_number": 207,
           "http_calls": []
         },
         {
@@ -312,7 +494,7 @@
           ],
           "return_type": "Dict[str, Any]",
           "docstring": "Lint a contract.\n\nArgs:\n    raw_contract: Raw contract content\n    format: Contract format (JSON or YAML)\n    timeout: Request timeout in seconds\n\nReturns:\n    Linting result with issues",
-          "line_number": 278,
+          "line_number": 292,
           "http_calls": []
         },
         {
@@ -326,7 +508,7 @@
           ],
           "return_type": "Dict[str, Any]",
           "docstring": "Convert a contract between formats.\n\nArgs:\n    raw_contract: Raw contract content\n    source_format: Source format (JSON or YAML)\n    target_format: Target format (JSON or YAML)\n    timeout: Request timeout in seconds\n\nReturns:\n    Conversion result with converted contract",
-          "line_number": 303,
+          "line_number": 317,
           "http_calls": []
         },
         {
@@ -336,7 +518,7 @@
           ],
           "return_type": "Dict[str, Any]",
           "docstring": "Check service health and get CLI version.\n\nReturns:\n    Health status and CLI version",
-          "line_number": 331,
+          "line_number": 345,
           "http_calls": []
         }
       ]
@@ -349,9 +531,9 @@
       "method": "health_check",
       "http_method": "GET",
       "endpoint": "/health",
-      "full_url": "http://localhost:8082/health",
+      "full_url": "http://compliance-service:8082/health",
       "file_path": "hub/apps/compliance/service_client.py",
-      "line_number": 96
+      "line_number": 127
     },
     {
       "service_client": "ComplianceServiceClient",
@@ -359,9 +541,29 @@
       "method": "scan_file",
       "http_method": "POST",
       "endpoint": "/scan-file",
-      "full_url": "http://localhost:8082/scan-file",
+      "full_url": "http://compliance-service:8082/scan-file",
       "file_path": "hub/apps/compliance/service_client.py",
-      "line_number": 170
+      "line_number": 227
+    },
+    {
+      "service_client": "ComplianceServiceClient",
+      "service_name": "compliance",
+      "method": "scan_file_async",
+      "http_method": "POST",
+      "endpoint": "/scan-file-async",
+      "full_url": "http://compliance-service:8082/scan-file-async",
+      "file_path": "hub/apps/compliance/service_client.py",
+      "line_number": 319
+    },
+    {
+      "service_client": "ComplianceServiceClient",
+      "service_name": "compliance",
+      "method": "get_scan_result",
+      "http_method": "GET",
+      "endpoint": "/scan-result/",
+      "full_url": "http://compliance-service:8082/scan-result/",
+      "file_path": "hub/apps/compliance/service_client.py",
+      "line_number": 362
     },
     {
       "service_client": "DQServiceClient",
@@ -369,9 +571,9 @@
       "method": "health_check",
       "http_method": "GET",
       "endpoint": "/health",
-      "full_url": "http://dq-service:8083/health",
+      "full_url": "http://localhost:8084/health",
       "file_path": "hub/apps/dq/service_client.py",
-      "line_number": 121
+      "line_number": 142
     },
     {
       "service_client": "DQServiceClient",
@@ -379,9 +581,9 @@
       "method": "run_dq",
       "http_method": "POST",
       "endpoint": "/run",
-      "full_url": "http://dq-service:8083/run",
+      "full_url": "http://localhost:8084/run",
       "file_path": "hub/apps/dq/service_client.py",
-      "line_number": 218
+      "line_number": 235
     },
     {
       "service_client": "SemanticServiceClient",
@@ -389,9 +591,9 @@
       "method": "health_check",
       "http_method": "GET",
       "endpoint": "/health",
-      "full_url": "http://localhost:8081/health",
+      "full_url": "http://semantic-service:8081/health",
       "file_path": "hub/apps/semantic/service_client.py",
-      "line_number": 131
+      "line_number": 219
     },
     {
       "service_client": "SemanticServiceClient",
@@ -399,9 +601,19 @@
       "method": "map_contract",
       "http_method": "POST",
       "endpoint": "/map/contract",
-      "full_url": "http://localhost:8081/map/contract",
+      "full_url": "http://semantic-service:8081/map/contract",
       "file_path": "hub/apps/semantic/service_client.py",
-      "line_number": 175
+      "line_number": 305
+    },
+    {
+      "service_client": "SemanticServiceClient",
+      "service_name": "semantic",
+      "method": "get_contract_relationships",
+      "http_method": "GET",
+      "endpoint": "/semantic/relationships/",
+      "full_url": "http://semantic-service:8081/semantic/relationships/",
+      "file_path": "hub/apps/semantic/service_client.py",
+      "line_number": 352
     },
     {
       "service_client": "SemanticServiceClient",
@@ -409,9 +621,9 @@
       "method": "map_asset",
       "http_method": "POST",
       "endpoint": "/map/asset",
-      "full_url": "http://localhost:8081/map/asset",
+      "full_url": "http://semantic-service:8081/map/asset",
       "file_path": "hub/apps/semantic/service_client.py",
-      "line_number": 226
+      "line_number": 487
     },
     {
       "service_client": "SemanticServiceClient",
@@ -419,9 +631,9 @@
       "method": "map_dataset",
       "http_method": "POST",
       "endpoint": "/map/dataset",
-      "full_url": "http://localhost:8081/map/dataset",
+      "full_url": "http://semantic-service:8081/map/dataset",
       "file_path": "hub/apps/semantic/service_client.py",
-      "line_number": 277
+      "line_number": 548
     },
     {
       "service_client": "SemanticServiceClient",
@@ -429,9 +641,9 @@
       "method": "map_odps",
       "http_method": "POST",
       "endpoint": "/map/odps",
-      "full_url": "http://localhost:8081/map/odps",
+      "full_url": "http://semantic-service:8081/map/odps",
       "file_path": "hub/apps/semantic/service_client.py",
-      "line_number": 322
+      "line_number": 593
     },
     {
       "service_client": "SemanticServiceClient",
@@ -439,9 +651,29 @@
       "method": "query_sparql",
       "http_method": "POST",
       "endpoint": "/sparql",
-      "full_url": "http://localhost:8081/sparql",
+      "full_url": "http://semantic-service:8081/sparql",
       "file_path": "hub/apps/semantic/service_client.py",
-      "line_number": 362
+      "line_number": 627
+    },
+    {
+      "service_client": "SemanticServiceClient",
+      "service_name": "semantic",
+      "method": "query_sparql_tenant",
+      "http_method": "POST",
+      "endpoint": "/query",
+      "full_url": "http://semantic-service:8081/query",
+      "file_path": "hub/apps/semantic/service_client.py",
+      "line_number": 692
+    },
+    {
+      "service_client": "SemanticServiceClient",
+      "service_name": "semantic",
+      "method": "ingest_rdf",
+      "http_method": "POST",
+      "endpoint": "/ingest",
+      "full_url": "http://semantic-service:8081/ingest",
+      "file_path": "hub/apps/semantic/service_client.py",
+      "line_number": 740
     },
     {
       "service_client": "SemanticServiceClient",
@@ -449,9 +681,19 @@
       "method": "resolve_uri",
       "http_method": "GET",
       "endpoint": "/id/",
-      "full_url": "http://localhost:8081/id/",
+      "full_url": "http://semantic-service:8081/id/",
       "file_path": "hub/apps/semantic/service_client.py",
-      "line_number": 427
+      "line_number": 814
+    },
+    {
+      "service_client": "SemanticServiceClient",
+      "service_name": "semantic",
+      "method": "get_sparql_service_description",
+      "http_method": "GET",
+      "endpoint": "/sparql",
+      "full_url": "http://semantic-service:8081/sparql",
+      "file_path": "hub/apps/semantic/service_client.py",
+      "line_number": 854
     },
     {
       "service_client": "SemanticServiceClient",
@@ -459,9 +701,9 @@
       "method": "get_ontology",
       "http_method": "GET",
       "endpoint": "/ontology",
-      "full_url": "http://localhost:8081/ontology",
+      "full_url": "http://semantic-service:8081/ontology",
       "file_path": "hub/apps/semantic/service_client.py",
-      "line_number": 460
+      "line_number": 877
     },
     {
       "service_client": "SemanticServiceClient",
@@ -469,9 +711,9 @@
       "method": "get_jsonld_context",
       "http_method": "GET",
       "endpoint": "/context.jsonld",
-      "full_url": "http://localhost:8081/context.jsonld",
+      "full_url": "http://semantic-service:8081/context.jsonld",
       "file_path": "hub/apps/semantic/service_client.py",
-      "line_number": 488
+      "line_number": 905
     }
   ]
 }

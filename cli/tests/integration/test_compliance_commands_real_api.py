@@ -98,7 +98,7 @@ class TestComplianceCommandsRealAPI(LiveServerTestCase):
             'status': AssetStatus.DRAFT.value
         }
         response = requests.post(
-            f'{self.api_base_url}/assets/assets/',
+            f'{self.api_base_url}/assets/',
             json=data,
             headers=headers
         )
@@ -123,7 +123,7 @@ class TestComplianceCommandsRealAPI(LiveServerTestCase):
         ])
 
         # Should succeed (201) or fail gracefully (400 if validation fails)
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'started successfully' in result.output.lower() or 'Compliance Run ID:' in result.output
             # Verify endpoint was called correctly (check output for success indicators)
@@ -146,7 +146,7 @@ class TestComplianceCommandsRealAPI(LiveServerTestCase):
             '--scan-mode', 'internal'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'started successfully' in result.output.lower()
             assert 'Regulations: GDPR,HIPAA' in result.output or 'GDPR' in result.output
@@ -318,7 +318,7 @@ class TestComplianceCommandsRealAPI(LiveServerTestCase):
             '--regulation', 'GDPR'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'GDPR' in result.output or 'compliance run' in result.output.lower()
 
@@ -342,7 +342,7 @@ class TestComplianceCommandsRealAPI(LiveServerTestCase):
         # If successful, the endpoint was called correctly
         # The actual endpoint verification happens in unit tests
         # This integration test verifies the command works end-to-end
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
 
         # Test list command endpoint
         result = self.runner.invoke(cli, [

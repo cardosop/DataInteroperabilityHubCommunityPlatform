@@ -691,7 +691,7 @@ async def test_sdk_authentication_with_valid_key(real_model_serving_api):
 async def test_sdk_authentication_without_key():
     """Test SDK authentication without API key."""
     config = DataHubClientConfig(
-        base_url="http://localhost:8000/api/v1",
+        base_url=os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1"),
         api_token=None,
         timeout=30.0,
         max_retries=3,
@@ -709,7 +709,7 @@ async def test_sdk_authentication_without_key():
 async def test_sdk_authentication_with_invalid_key():
     """Test SDK authentication with invalid API key."""
     config = DataHubClientConfig(
-        base_url="http://localhost:8000/api/v1",
+        base_url=os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1"),
         api_token="invalid-key-12345",
         timeout=30.0,
         max_retries=3,

@@ -117,6 +117,11 @@ def get_export(export_id: str, output_format: str):
                 click.echo(f"Last Run: {data.get('last_run_at')}")
             if data.get("last_run_status"):
                 click.echo(f"Last Run Status: {data.get('last_run_status')}")
+            # 118E.12: failure tracking fields
+            if data.get("consecutive_failure_count") is not None:
+                click.echo(f"Consecutive Failures: {data.get('consecutive_failure_count')}")
+            if data.get("auto_pause_status"):
+                click.echo(f"Auto-Pause Status: {data.get('auto_pause_status')}")
             click.echo(f"Created: {data.get('created_at')}")
             click.echo(f"Updated: {data.get('updated_at')}")
     except click.ClickException:

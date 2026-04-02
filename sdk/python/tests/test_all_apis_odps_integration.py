@@ -36,7 +36,7 @@ async def check_endpoint_exists(client: DataHubClient, endpoint_path: str, metho
 
     Args:
         client: DataHub client instance
-        endpoint_path: API endpoint path (e.g., "contracts/contracts/{id}/lineage/contracts/")
+        endpoint_path: API endpoint path (e.g., "contracts/{id}/lineage/contracts/")
         method: HTTP method to use for check (default: "GET")
 
     Returns:

@@ -134,8 +134,8 @@ class VersioningAPI:
             Comparison data with schema and data differences
         """
         params = {
-            "version1_id": version1_id,
-            "version2_id": version2_id,
+            "version1": version1_id,
+            "version2": version2_id,
         }
-        return await self.client.get(f"datasets/{dataset_id}/compare/", params=params)
+        return await self.client.get(f"datasets/{dataset_id}/versions/compare/", params=params)
 

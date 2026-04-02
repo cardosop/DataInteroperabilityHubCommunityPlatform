@@ -202,3 +202,99 @@ export function parseError(response: any): DataHubError {
   return new ServerError('Unexpected error format', 'UNKNOWN_ERROR', 500);
 }
 
+// ── Phase 118G.23: Domain-specific error classes ────────
+
+export class BillingError extends DataHubError {
+  constructor(m: string, code = 'BILLING_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class BillingValidationError extends BillingError {
+  constructor(m: string, rid?: string) { super(m, 'BILLING_VALIDATION_ERROR', 400, rid); }
+}
+export class DowngradeLimitExceededError extends BillingError {
+  constructor(m: string, rid?: string) { super(m, 'DOWNGRADE_LIMIT_EXCEEDED', 400, rid); }
+}
+export class TransformationError extends DataHubError {
+  constructor(m: string, code = 'TRANSFORMATION_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class TransformationValidationError extends TransformationError {
+  constructor(m: string, rid?: string) { super(m, 'TRANSFORMATION_VALIDATION_ERROR', 400, rid); }
+}
+export class ComplianceError extends DataHubError {
+  constructor(m: string, code = 'COMPLIANCE_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class ComplianceValidationError extends ComplianceError {
+  constructor(m: string, rid?: string) { super(m, 'COMPLIANCE_VALIDATION_ERROR', 400, rid); }
+}
+export class SemanticError extends DataHubError {
+  constructor(m: string, code = 'SEMANTIC_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class SPARQLError extends SemanticError {
+  constructor(m: string, rid?: string) { super(m, 'SPARQL_ERROR', 400, rid); }
+}
+export class SHACLValidationError extends SemanticError {
+  constructor(m: string, rid?: string) { super(m, 'SHACL_VALIDATION_ERROR', 400, rid); }
+}
+export class WorkflowError extends DataHubError {
+  constructor(m: string, code = 'WORKFLOW_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class DLQError extends DataHubError {
+  constructor(m: string, code = 'DLQ_ERROR', s = 500, rid?: string) { super(m, code, s, rid); }
+}
+export class EntitlementRequiredError extends DataHubError {
+  constructor(m = 'Entitlement required', rid?: string) { super(m, 'ENTITLEMENT_REQUIRED', 403, rid); }
+}
+export class CircuitBreakerOpenError extends ServerError {
+  constructor(m = 'Circuit breaker open', rid?: string) { super(m, 'CIRCUIT_BREAKER_OPEN', 503, rid); }
+}
+export class ModelDeploymentError extends DataHubError {
+  constructor(m: string, code = 'MODEL_DEPLOYMENT_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class MarketplaceError extends DataHubError {
+  constructor(m: string, code = 'MARKETPLACE_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class MarketplaceValidationError extends MarketplaceError {
+  constructor(m: string, rid?: string) { super(m, 'MARKETPLACE_VALIDATION_ERROR', 400, rid); }
+}
+export class BaaSError extends DataHubError {
+  constructor(m: string, code = 'BAAS_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class BaaSValidationError extends BaaSError {
+  constructor(m: string, rid?: string) { super(m, 'BAAS_VALIDATION_ERROR', 400, rid); }
+}
+export class ODHMLError extends DataHubError {
+  constructor(m: string, code = 'ML_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class ODHMLValidationError extends ODHMLError {
+  constructor(m: string, rid?: string) { super(m, 'ML_VALIDATION_ERROR', 400, rid); }
+}
+export class GovernanceError extends DataHubError {
+  constructor(m: string, code = 'GOVERNANCE_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class MeshError extends DataHubError {
+  constructor(m: string, code = 'MESH_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class VirtualizationError extends DataHubError {
+  constructor(m: string, code = 'VIRTUALIZATION_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class WebhookError extends DataHubError {
+  constructor(m: string, code = 'WEBHOOK_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class GDPRError extends DataHubError {
+  constructor(m: string, code = 'GDPR_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class ScheduledIngestionError extends DataHubError {
+  constructor(m: string, code = 'INGESTION_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class ScheduledExportError extends DataHubError {
+  constructor(m: string, code = 'EXPORT_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class DQError extends DataHubError {
+  constructor(m: string, code = 'DQ_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class SearchError extends DataHubError {
+  constructor(m: string, code = 'SEARCH_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+export class ObservabilityError extends DataHubError {
+  constructor(m: string, code = 'OBSERVABILITY_ERROR', s = 400, rid?: string) { super(m, code, s, rid); }
+}
+

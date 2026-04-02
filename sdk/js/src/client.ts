@@ -6,6 +6,7 @@
 
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { DataHubClientConfig, DEFAULT_CONFIG } from './config';
+import { camelToSnake, snakeToCamel } from './caseTransform';
 import {
   DataHubError,
   parseError,
@@ -50,6 +51,9 @@ export class DataHubClient {
   private config: DataHubClientConfig;
   private tokenRefreshCallback?: () => Promise<string>;
 
+  // 118C.4: Token refresh lock — prevents concurrent refresh races
+  private refreshPromise: Promise<string> | null = null;
+
   constructor(config: DataHubClientConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
 
@@ -67,38 +71,66 @@ export class DataHubClient {
       },
     });
 
-    // Set up request interceptor for authentication
+    // 118C.1: Auth interceptor — supports bearer and apikey
     this.axiosInstance.interceptors.request.use(
-      (config) => {
+      (reqConfig) => {
         if (this.config.apiToken) {
-          config.headers.Authorization = `Bearer ${this.config.apiToken}`;
+          const prefix =
+            this.config.authType === 'apikey' ? 'ApiKey' : 'Bearer';
+          reqConfig.headers.Authorization =
+            `${prefix} ${this.config.apiToken}`;
         }
-        return config;
+        return reqConfig;
       },
-      (error) => {
-        return Promise.reject(error);
-      }
+      (error) => Promise.reject(error)
+    );
+
+    // 118C.2: Request case transform — camelCase → snake_case
+    this.axiosInstance.interceptors.request.use(
+      (reqConfig) => {
+        if (reqConfig.data && typeof reqConfig.data === 'object') {
+          reqConfig.data = camelToSnake(reqConfig.data);
+        }
+        return reqConfig;
+      },
+      (error) => Promise.reject(error)
     );
 
     // Initialize API modules
     this.initializeAPIs();
 
-    // Set up response interceptor for error handling
+    // Response interceptors: case transform + error handling
     this.axiosInstance.interceptors.response.use(
-      (response) => response,
+      // 118C.3: Response case transform — snake_case → camelCase
+      (response: AxiosResponse) => {
+        if (response.data && typeof response.data === 'object') {
+          response.data = snakeToCamel(response.data);
+        }
+        return response;
+      },
+      // 118C.4: Error handler with serialized token refresh
       async (error: AxiosError) => {
         // Handle token refresh for 401 errors
         if (error.response?.status === 401 && this.tokenRefreshCallback) {
           try {
-            const newToken = await this.tokenRefreshCallback();
+            // Serialize: if a refresh is already in flight, wait for it
+            if (!this.refreshPromise) {
+              this.refreshPromise = this.tokenRefreshCallback();
+            }
+            const newToken = await this.refreshPromise;
             this.config.apiToken = newToken;
+            this.refreshPromise = null;
+
             // Retry the original request
             if (error.config) {
-              error.config.headers.Authorization = `Bearer ${newToken}`;
+              const prefix =
+                this.config.authType === 'apikey' ? 'ApiKey' : 'Bearer';
+              error.config.headers.Authorization =
+                `${prefix} ${newToken}`;
               return this.axiosInstance.request(error.config);
             }
           } catch (refreshError) {
-            // Token refresh failed
+            this.refreshPromise = null;
             throw new UnauthorizedError('Token refresh failed');
           }
         }
@@ -247,33 +279,83 @@ export class DataHubClient {
   lineage: any;
   compliance: any;
   scheduledIngestion: any;
+  scheduledExport: any;
   versioning: any;
   governance: any;
   search: any;
   observability: any;
   webhooks: any;
+  marketplace: any;
+  baas: any;
+  ml: any;
+  billing: any;
+  gdpr: any;
+  tenants: any;
+  mesh: any;
+  virtualization: any;
+  transformation: any;
+  semantic: any;
+  datasets: any;
+  assets: any;
+  files: any;
+  dq: any;
+  workflows: any;
 
   /**
    * Initialize API modules
    */
   private initializeAPIs(): void {
-    // Import and initialize API modules
-    // Using dynamic imports to avoid circular dependencies
     const { ContractsAPI } = require('./contracts');
     const { LineageAPI } = require('./lineage');
     const { ComplianceAPI } = require('./compliance');
-    // Note: Other APIs will be added as they are created
+    const { GovernanceAPI } = require('./governance');
+    const { MeshAPI } = require('./mesh');
+    const { VirtualizationAPI } = require('./virtualization');
+    const { WebhooksAPI } = require('./webhooks');
+    const { MarketplaceAPI } = require('./marketplace');
+    const { BaaSAPI } = require('./baas');
+    const { MLAPI } = require('./ml');
+    const { ScheduledIngestionAPI } = require('./scheduledIngestion');
+    const { ScheduledExportAPI } = require('./scheduledExport');
+    const { VersioningAPI } = require('./versioning');
+    const { BillingAPI } = require('./billing');
+    const { SearchAPI } = require('./search');
+    const { ObservabilityAPI } = require('./observability');
+    const { GDPRAPI } = require('./gdpr');
+    const { TenantsAPI } = require('./tenants');
+    const { TransformationAPI } = require('./transformation');
+    const { SemanticAPI } = require('./semantic');
+    const { DatasetsAPI } = require('./datasets');
+    const { AssetsAPI } = require('./assets');
+    const { FilesAPI } = require('./files');
+    const { DQAPI } = require('./dq');
+    const { WorkflowsAPI } = require('./workflows');
 
     this.contracts = new ContractsAPI(this);
     this.lineage = new LineageAPI(this);
     this.compliance = new ComplianceAPI(this);
-    // Initialize other APIs when modules are created
-    // this.scheduledIngestion = new ScheduledIngestionAPI(this);
-    // this.versioning = new VersioningAPI(this);
-    // this.governance = new GovernanceAPI(this);
-    // this.search = new SearchAPI(this);
-    // this.observability = new ObservabilityAPI(this);
-    // this.webhooks = new WebhooksAPI(this);
+    this.governance = new GovernanceAPI(this);
+    this.mesh = new MeshAPI(this);
+    this.virtualization = new VirtualizationAPI(this);
+    this.webhooks = new WebhooksAPI(this);
+    this.marketplace = new MarketplaceAPI(this);
+    this.baas = new BaaSAPI(this);
+    this.ml = new MLAPI(this);
+    this.scheduledIngestion = new ScheduledIngestionAPI(this);
+    this.scheduledExport = new ScheduledExportAPI(this);
+    this.versioning = new VersioningAPI(this);
+    this.billing = new BillingAPI(this);
+    this.search = new SearchAPI(this);
+    this.observability = new ObservabilityAPI(this);
+    this.gdpr = new GDPRAPI(this);
+    this.tenants = new TenantsAPI(this);
+    this.transformation = new TransformationAPI(this);
+    this.semantic = new SemanticAPI(this);
+    this.datasets = new DatasetsAPI(this);
+    this.assets = new AssetsAPI(this);
+    this.files = new FilesAPI(this);
+    this.dq = new DQAPI(this);
+    this.workflows = new WorkflowsAPI(this);
   }
 }
 

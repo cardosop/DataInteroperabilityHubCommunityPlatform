@@ -58,7 +58,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> str | None:
         # Verify it works
         try:
             response = requests.get(
-                f"{api_base_url}/contracts/contracts/",
+                f"{api_base_url}/contracts/",
                 headers={"X-API-Key": api_key},
                 timeout=5
             )

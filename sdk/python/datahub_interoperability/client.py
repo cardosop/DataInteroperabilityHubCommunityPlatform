@@ -89,13 +89,23 @@ class DataHubClient:
         )
 
         # Initialize API modules
+        from .ai import AIAPI
+        from .assets import AssetsAPI
+        from .audit import AuditAPI
+        from .auth import AuthAPI
         from .baas import BaaSAPI
         from .billing import BillingAPI
+        from .compliance import ComplianceAPI
         from .contracts import ContractsAPI
+        from .datasets import DatasetsAPI
+        from .dq import DQAPI
+        from .files import FilesAPI
         from .gdpr import GDPRAPI
         from .governance import GovernanceAPI
+        from .jobs import JobsAPI
         from .lineage import LineageAPI
         from .marketplace import MarketplaceIntegrationAPI
+        from .marketplace_listings import MarketplaceListingsAPI
         from .mesh import MeshAPI
         from .ml import InferenceAPI, ODHIntegrationAPI, TrainingAPI
         from .model_serving import ModelServingAPI
@@ -103,10 +113,15 @@ class DataHubClient:
         from .scheduled_export import ScheduledExportAPI
         from .scheduled_ingestion import ScheduledIngestionAPI
         from .search import SearchAPI
+        from .semantic import SemanticAPI
+        from .social import SocialAPI
         from .tenants import TenantsAPI
+        from .transformation import TransformationAPI
+        from .users import UsersAPI
         from .versioning import VersioningAPI
         from .virtualization import VirtualizationAPI
         from .webhooks import WebhooksAPI
+        from .workflows import WorkflowsAPI
 
         self.contracts = ContractsAPI(self)
         self.lineage = LineageAPI(self)
@@ -128,6 +143,21 @@ class DataHubClient:
         self.training = TrainingAPI(self)
         self.inference = InferenceAPI(self)
         self.model_serving = ModelServingAPI(self)
+        self.ai = AIAPI(self)
+        self.assets = AssetsAPI(self)
+        self.audit = AuditAPI(self)
+        self.auth = AuthAPI(self)
+        self.compliance = ComplianceAPI(self)
+        self.datasets = DatasetsAPI(self)
+        self.dq = DQAPI(self)
+        self.files = FilesAPI(self)
+        self.jobs = JobsAPI(self)
+        self.marketplace_listings = MarketplaceListingsAPI(self)
+        self.semantic = SemanticAPI(self)
+        self.social = SocialAPI(self)
+        self.transformation = TransformationAPI(self)
+        self.users = UsersAPI(self)
+        self.workflows = WorkflowsAPI(self)
 
     def set_api_token(self, token: str) -> None:
         """
@@ -164,15 +194,18 @@ class DataHubClient:
         """
         headers = {}
         if self.config.api_token:
-            # Detect if token is an API key (no dots, unlike JWT tokens)
-            # API keys are typically base64url strings without dots
-            # JWT tokens have format: header.payload.signature (three parts separated by dots)
+            # Detect if token is an API key (no dots, unlike JWT tokens).
+            # API keys are base64url strings without dots.
+            # JWT tokens have the format: header.payload.signature (three dot-separated parts).
             token = self.config.api_token
             if "." not in token:
-                # API key - use X-API-Key header
-                headers["X-API-Key"] = token
+                # API key — use Authorization: ApiKey header.
+                # This is preferred over X-API-Key because Django's CSRF middleware
+                # exempts requests carrying an Authorization header, which is required
+                # for mutating (POST/PUT/PATCH/DELETE) operations.
+                headers["Authorization"] = f"ApiKey {token}"
             else:
-                # JWT token - use Bearer authorization
+                # JWT token — use standard Bearer authorization.
                 headers["Authorization"] = f"Bearer {token}"
         return headers
 

@@ -20,7 +20,7 @@ from datahub_interoperability.errors import (
 def client():
     """Create a test client"""
     config = DataHubClientConfig(
-        base_url="http://localhost:8000/api/v1",
+        base_url=os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1"),
         api_token="test-token",
     )
     return DataHubClient(config)

@@ -32,7 +32,7 @@ from datahub_cli.config import config
 def _check_api_available():
     """Check if API service is available"""
     try:
-        response = requests.get("http://localhost:8000/api/v1/", timeout=2)
+        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
         return response.status_code < 600  # Any HTTP response means API is up
     except Exception:
         return False
@@ -50,7 +50,7 @@ def shared_api_key():
     Module-level fixture that creates a single API key for all tests in this module.
     This avoids race conditions and reduces API calls.
     """
-    api_base_url = "http://localhost:8000/api/v1"
+    api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
 
     # Check if API key is provided via environment variable
     env_key = os.environ.get('DATAHUB_API_KEY') or os.environ.get('TEST_API_KEY')
@@ -264,7 +264,7 @@ def test_dataset_id(shared_api_key):
     if not shared_api_key:
         return None
 
-    api_base_url = "http://localhost:8000/api/v1"
+    api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
     headers = {'Authorization': f'ApiKey {shared_api_key}', 'Content-Type': 'application/json'}
 
     # Create a test dataset with sources (required for SQL queries)
@@ -310,7 +310,7 @@ class TestVirtualizationQueriesCommandsRealAPI:
         Uses the module-level shared_api_key fixture to avoid race conditions.
         """
         # Use the running Docker Compose API service
-        api_base_url = "http://localhost:8000/api/v1"
+        api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
         config.set_api_base_url(api_base_url)
 
         # Use the shared API key from the module-level fixture

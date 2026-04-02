@@ -117,8 +117,8 @@ describe('Compliance API E2E Tests', () => {
 
       const result = await complianceAPI.create(params);
 
-      expect(result).toBeDefined();
-      expect(result.id).toBeDefined();
+      expect(result).not.toBeUndefined();
+      expect(result.id).not.toBeUndefined();
       expect(result.status).toBe('PENDING');
       expect(result.asset).toBe(testAssetId);
     }, 30000);
@@ -140,8 +140,8 @@ describe('Compliance API E2E Tests', () => {
 
       const result = await complianceAPI.create(params);
 
-      expect(result).toBeDefined();
-      expect(result.id).toBeDefined();
+      expect(result).not.toBeUndefined();
+      expect(result.id).not.toBeUndefined();
       expect(result.status).toBe('PENDING');
     }, 30000);
 
@@ -173,8 +173,8 @@ describe('Compliance API E2E Tests', () => {
 
       const result = await complianceAPI.list();
 
-      expect(result).toBeDefined();
-      expect(result.results).toBeDefined();
+      expect(result).not.toBeUndefined();
+      expect(result.results).not.toBeUndefined();
       expect(Array.isArray(result.results)).toBe(true);
     }, 30000);
 
@@ -193,8 +193,8 @@ describe('Compliance API E2E Tests', () => {
         limit: 10,
       });
 
-      expect(result).toBeDefined();
-      expect(result.results).toBeDefined();
+      expect(result).not.toBeUndefined();
+      expect(result.results).not.toBeUndefined();
       // All results should be for the specified asset
       result.results.forEach((run: ComplianceRun) => {
         if (run.asset) {
@@ -214,8 +214,8 @@ describe('Compliance API E2E Tests', () => {
         limit: 10,
       });
 
-      expect(result).toBeDefined();
-      expect(result.results).toBeDefined();
+      expect(result).not.toBeUndefined();
+      expect(result.results).not.toBeUndefined();
       // All results should have PENDING status
       result.results.forEach((run: ComplianceRun) => {
         expect(run.status).toBe('PENDING');
@@ -233,8 +233,8 @@ describe('Compliance API E2E Tests', () => {
         offset: 0,
       });
 
-      expect(result).toBeDefined();
-      expect(result.results).toBeDefined();
+      expect(result).not.toBeUndefined();
+      expect(result.results).not.toBeUndefined();
       expect(result.results.length).toBeLessThanOrEqual(5);
     }, 30000);
   });
@@ -259,9 +259,9 @@ describe('Compliance API E2E Tests', () => {
       // Then retrieve it
       const retrieved = await complianceAPI.get(created.id);
 
-      expect(retrieved).toBeDefined();
+      expect(retrieved).not.toBeUndefined();
       expect(retrieved.id).toBe(created.id);
-      expect(retrieved.status).toBeDefined();
+      expect(retrieved.status).not.toBeUndefined();
     }, 30000);
   });
 
@@ -286,7 +286,7 @@ describe('Compliance API E2E Tests', () => {
       try {
         const results = await complianceAPI.getResults(created.id);
 
-        expect(results).toBeDefined();
+        expect(results).not.toBeUndefined();
         expect(results.compliance_run_id).toBe(created.id);
         // Results may or may not be available depending on run status
         if (results.overall_status) {
@@ -389,16 +389,16 @@ describe('Compliance API E2E Tests', () => {
         scanMode: 'internal' as const,
       });
 
-      expect(created).toBeDefined();
-      expect(created.id).toBeDefined();
+      expect(created).not.toBeUndefined();
+      expect(created.id).not.toBeUndefined();
 
       // List runs - this should use /compliance/runs/ endpoint
       const listResult = await complianceAPI.list();
-      expect(listResult).toBeDefined();
+      expect(listResult).not.toBeUndefined();
 
       // Get run - this should use /compliance/runs/{id}/ endpoint
       const retrieved = await complianceAPI.get(created.id);
-      expect(retrieved).toBeDefined();
+      expect(retrieved).not.toBeUndefined();
       expect(retrieved.id).toBe(created.id);
     }, 30000);
   });

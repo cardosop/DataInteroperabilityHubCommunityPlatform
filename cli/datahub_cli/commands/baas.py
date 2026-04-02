@@ -1065,3 +1065,359 @@ def show_sdks(output_format: str):
             error_code="SDKS_GET_FAILED",
             original_error=e
         )
+
+
+# ── 118E.5: Customers + Billing Reports ─────────────────
+
+
+@baas.group("customers")
+def customers():
+    """Customer management commands"""
+    pass
+
+
+@customers.command("list")
+@click.option("--limit", type=int, default=20)
+@click.option("--offset", type=int, default=0)
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def list_customers(
+    limit: int, offset: int, output_format: str,
+):
+    """List BaaS customers"""
+    params = {"limit": limit, "offset": offset}
+    try:
+        data = api_client.get(
+            "baas/customers/", params=params,
+        )
+        results = (
+            data.get("results", [])
+            if isinstance(data, dict) else
+            data if isinstance(data, list) else []
+        )
+        if output_format == "json":
+            click.echo(json.dumps(results, indent=2))
+        else:
+            if not results:
+                click.echo("No customers found.")
+                return
+            click.echo(
+                f"{'ID':<40} {'Name':<25} "
+                f"{'Email':<30}"
+            )
+            click.echo("-" * 95)
+            for c in results:
+                if not isinstance(c, dict):
+                    continue
+                click.echo(
+                    f"{str(c.get('id', ''))[:36]:<40} "
+                    f"{str(c.get('name', ''))[:23]:<25} "
+                    f"{str(c.get('email', ''))[:28]:<30}"
+                )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to list customers: {e}"
+        )
+
+
+@customers.command("usage")
+@click.argument("customer_id")
+@click.option(
+    "--period",
+    help="Billing period (e.g. 2026-03)",
+)
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def customer_usage(
+    customer_id: str,
+    period: Optional[str],
+    output_format: str,
+):
+    """Get usage for a specific customer"""
+    params = {}
+    if period:
+        params["period"] = period
+    try:
+        data = api_client.get(
+            f"baas/customers/{customer_id}/usage/",
+            params=params,
+        )
+        if output_format == "json":
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo(
+                f"Customer: {customer_id}"
+            )
+            records = (
+                data.get("results", data)
+                if isinstance(data, dict) else data
+            )
+            if isinstance(records, list):
+                for r in records:
+                    click.echo(
+                        f"  {r.get('metric', 'N/A')}: "
+                        f"{r.get('quantity', 0)}"
+                    )
+            else:
+                click.echo(json.dumps(data, indent=2))
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to get customer usage: {e}"
+        )
+
+
+@baas.group("billing-reports")
+def billing_reports():
+    """Billing report commands"""
+    pass
+
+
+@billing_reports.command("list")
+@click.option("--limit", type=int, default=20)
+@click.option("--offset", type=int, default=0)
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def list_billing_reports(
+    limit: int, offset: int, output_format: str,
+):
+    """List billing reports"""
+    params = {"limit": limit, "offset": offset}
+    try:
+        data = api_client.get(
+            "baas/billing-reports/", params=params,
+        )
+        results = (
+            data.get("results", [])
+            if isinstance(data, dict) else
+            data if isinstance(data, list) else []
+        )
+        if output_format == "json":
+            click.echo(json.dumps(results, indent=2))
+        else:
+            if not results:
+                click.echo("No billing reports found.")
+                return
+            click.echo(
+                f"{'ID':<40} {'Period':<15} "
+                f"{'Status':<12} {'Total':<15}"
+            )
+            click.echo("-" * 82)
+            for r in results:
+                if not isinstance(r, dict):
+                    continue
+                click.echo(
+                    f"{str(r.get('id', ''))[:36]:<40} "
+                    f"{str(r.get('period', '')):<15} "
+                    f"{str(r.get('status', '')):<12} "
+                    f"{str(r.get('total_amount', '')):<15}"
+                )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to list billing reports: {e}"
+        )
+
+
+@billing_reports.command("get")
+@click.argument("report_id")
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def get_billing_report(
+    report_id: str, output_format: str,
+):
+    """Get billing report details"""
+    try:
+        data = api_client.get(
+            f"baas/billing-reports/{report_id}/",
+        )
+        if output_format == "json":
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo(f"ID: {data.get('id')}")
+            click.echo(f"Period: {data.get('period')}")
+            click.echo(f"Status: {data.get('status')}")
+            click.echo(
+                f"Total: {data.get('total_amount')}"
+            )
+            click.echo(
+                f"Created: {data.get('created_at')}"
+            )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to get billing report: {e}"
+        )
+
+
+@billing_reports.command("generate")
+@click.option(
+    "--period", required=True,
+    help="Billing period (e.g. 2026-03)",
+)
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def generate_billing_report(
+    period: str, output_format: str,
+):
+    """Generate a billing report"""
+    try:
+        data = api_client.post(
+            "baas/billing-reports/",
+            json_data={"period": period},
+        )
+        if output_format == "json":
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo("Report generated!")
+            click.echo(f"ID: {data.get('id')}")
+            click.echo(f"Status: {data.get('status')}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to generate report: {e}"
+        )
+
+
+@billing_reports.command("finalize")
+@click.argument("report_id")
+def finalize_billing_report(report_id: str):
+    """Finalize a billing report"""
+    try:
+        api_client.post(
+            f"baas/billing-reports/{report_id}"
+            f"/finalize/",
+        )
+        click.echo(f"Report {report_id} finalized.")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to finalize report: {e}"
+        )
+
+
+@billing_reports.command("export")
+@click.argument("report_id")
+@click.option(
+    "--format", "export_fmt",
+    type=click.Choice(["csv", "pdf"]),
+    default="csv",
+)
+def export_billing_report(
+    report_id: str, export_fmt: str,
+):
+    """Export a billing report"""
+    try:
+        data = api_client.post(
+            f"baas/billing-reports/{report_id}"
+            f"/export/",
+            json_data={"format": export_fmt},
+        )
+        url = data.get("download_url")
+        if url:
+            click.echo(f"Download URL: {url}")
+        else:
+            click.echo(json.dumps(data, indent=2))
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to export report: {e}"
+        )
+
+
+@billing_reports.command("send")
+@click.argument("report_id")
+@click.option(
+    "--email", required=True,
+    help="Recipient email",
+)
+def send_billing_report(
+    report_id: str, email: str,
+):
+    """Send a billing report via email"""
+    try:
+        api_client.post(
+            f"baas/billing-reports/{report_id}"
+            f"/send/",
+            json_data={"email": email},
+        )
+        click.echo(
+            f"Report {report_id} sent to {email}."
+        )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to send report: {e}"
+        )
+
+
+# ── 118E.6: api-keys rotate ─────────────────────────────
+
+
+@api_keys.command("rotate")
+@click.argument("api_key_id")
+@click.option(
+    "--grace-hours", type=int, default=24,
+    help="Hours old key remains valid (default: 24)",
+)
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def rotate_api_key(
+    api_key_id: str, grace_hours: int,
+    output_format: str,
+):
+    """Rotate an API key with grace period"""
+    try:
+        data = api_client.post(
+            f"baas/api-keys/{api_key_id}/rotate/",
+            json_data={
+                "grace_period_hours": grace_hours,
+            },
+        )
+        if output_format == "json":
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo("API key rotated!")
+            click.echo(
+                f"New Key: {data.get('api_key')}"
+            )
+            click.echo(
+                f"Grace Period: {grace_hours}h"
+            )
+            click.echo(
+                "Save the new key — it won't be "
+                "shown again."
+            )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to rotate API key: {e}"
+        )

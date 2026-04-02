@@ -992,8 +992,8 @@ def deploy_model_serving(model_id: str, endpoint: Optional[str], output_format: 
         data['endpoint'] = endpoint
 
     try:
-        # API endpoint: /api/v1/ml/serving/deployments/
-        result = api_client.post('ml/serving/deployments/', json_data=data)
+        # API endpoint: /api/v1/ml/inference/deployments/
+        result = api_client.post('ml/inference/deployments/', json_data=data)
 
         if output_format == 'json':
             click.echo(json.dumps(result, indent=2))
@@ -1013,7 +1013,7 @@ def deploy_model_serving(model_id: str, endpoint: Optional[str], output_format: 
             if isinstance(e, requests.exceptions.HTTPError) and hasattr(e, 'response'):
                 response = e.response
                 if hasattr(response, 'text') and hasattr(response, 'status_code'):
-                    raise handle_ml_api_error(response.text, response.status_code, 'ml/serving/deployments/')
+                    raise handle_ml_api_error(response.text, response.status_code, 'ml/inference/deployments/')
         except (ImportError, AttributeError):
             pass
         raise click.ClickException(f"Failed to deploy model for serving: {e}")
@@ -1047,15 +1047,41 @@ def predict_serving(model_id: str, input: str, output_format: str):
         except ODHMLModelParameterError as e:
             raise click.ClickException(str(e))
 
-    # Build request data
+    # Resolve deployment_id from model_id — the predict endpoint requires
+    # deployment_id, not model_id.  List deployments for this model and
+    # pick the first READY one (fall back to any deployment).
+    deployment_id = None
+    try:
+        deps = api_client.get(
+            'ml/inference/deployments/',
+            params={'model_id': model_id, 'status': 'READY', 'limit': 1},
+        )
+        results = deps.get('results', []) if isinstance(deps, dict) else deps
+        if results:
+            deployment_id = results[0].get('deployment_id')
+        if not deployment_id:
+            # Fall back: any deployment for this model
+            deps = api_client.get(
+                'ml/inference/deployments/',
+                params={'model_id': model_id, 'limit': 1},
+            )
+            results = deps.get('results', []) if isinstance(deps, dict) else deps
+            if results:
+                deployment_id = results[0].get('deployment_id')
+    except Exception:
+        pass  # Will fail below with a clear message
+
+    if not deployment_id:
+        raise click.ClickException(f"No deployment found for model {model_id}")
+
     data = {
-        'model_id': model_id,
+        'deployment_id': deployment_id,
         'input': input_json
     }
 
     try:
-        # API endpoint: /api/v1/ml/serving/predict/
-        result = api_client.post('ml/serving/predict/', json_data=data)
+        # API endpoint: /api/v1/ml/inference/deployments/predict/
+        result = api_client.post('ml/inference/deployments/predict/', json_data=data)
 
         if output_format == 'json':
             click.echo(json.dumps(result, indent=2))
@@ -1076,7 +1102,7 @@ def predict_serving(model_id: str, input: str, output_format: str):
             if isinstance(e, requests.exceptions.HTTPError) and hasattr(e, 'response'):
                 response = e.response
                 if hasattr(response, 'text') and hasattr(response, 'status_code'):
-                    raise handle_ml_api_error(response.text, response.status_code, 'ml/serving/predict/')
+                    raise handle_ml_api_error(response.text, response.status_code, 'ml/inference/deployments/predict/')
         except (ImportError, AttributeError):
             pass
         raise click.ClickException(f"Failed to run prediction: {e}")
@@ -1103,8 +1129,8 @@ def list_serving(model_id: Optional[str], status: Optional[str], limit: int, off
         params['model_id'] = model_id
 
     try:
-        # API endpoint: /api/v1/ml/serving/deployments/
-        data = api_client.get('ml/serving/deployments/', params=params)
+        # API endpoint: /api/v1/ml/inference/deployments/
+        data = api_client.get('ml/inference/deployments/', params=params)
         # Handle both paginated response (dict with 'results') and direct list response
         if isinstance(data, dict):
             results = data.get('results', [])
@@ -1143,7 +1169,7 @@ def list_serving(model_id: Optional[str], status: Optional[str], limit: int, off
             if isinstance(e, requests.exceptions.HTTPError) and hasattr(e, 'response'):
                 response = e.response
                 if hasattr(response, 'text') and hasattr(response, 'status_code'):
-                    raise handle_ml_api_error(response.text, response.status_code, 'ml/serving/deployments/')
+                    raise handle_ml_api_error(response.text, response.status_code, 'ml/inference/deployments/')
         except (ImportError, AttributeError):
             pass
         raise click.ClickException(f"Failed to list serving deployments: {e}")
@@ -1155,8 +1181,8 @@ def list_serving(model_id: Optional[str], status: Optional[str], limit: int, off
 def get_serving(serving_id: str, output_format: str):
     """Get serving deployment details"""
     try:
-        # API endpoint: /api/v1/ml/serving/deployments/{id}/
-        data = api_client.get(f'ml/serving/deployments/{serving_id}/')
+        # API endpoint: /api/v1/ml/inference/deployments/{id}/
+        data = api_client.get(f'ml/inference/deployments/{serving_id}/')
 
         if output_format == 'json':
             click.echo(json.dumps(data, indent=2))
@@ -1190,7 +1216,7 @@ def get_serving(serving_id: str, output_format: str):
             if isinstance(e, requests.exceptions.HTTPError) and hasattr(e, 'response'):
                 response = e.response
                 if hasattr(response, 'text') and hasattr(response, 'status_code'):
-                    raise handle_ml_api_error(response.text, response.status_code, f'ml/serving/deployments/{serving_id}/')
+                    raise handle_ml_api_error(response.text, response.status_code, f'ml/inference/deployments/{serving_id}/')
         except (ImportError, AttributeError):
             pass
         raise click.ClickException(f"Failed to get serving deployment: {e}")
@@ -1202,8 +1228,8 @@ def get_serving(serving_id: str, output_format: str):
 def undeploy_serving(serving_id: str, output_format: str):
     """Undeploy a model serving deployment"""
     try:
-        # API endpoint: /api/v1/ml/serving/deployments/{id}/
-        result = api_client.delete(f'ml/serving/deployments/{serving_id}/')
+        # API endpoint: /api/v1/ml/inference/deployments/{id}/
+        result = api_client.delete(f'ml/inference/deployments/{serving_id}/')
 
         if output_format == 'json':
             click.echo(json.dumps(result if result else {}, indent=2))
@@ -1218,7 +1244,7 @@ def undeploy_serving(serving_id: str, output_format: str):
             if isinstance(e, requests.exceptions.HTTPError) and hasattr(e, 'response'):
                 response = e.response
                 if hasattr(response, 'text') and hasattr(response, 'status_code'):
-                    raise handle_ml_api_error(response.text, response.status_code, f'ml/serving/deployments/{serving_id}/')
+                    raise handle_ml_api_error(response.text, response.status_code, f'ml/inference/deployments/{serving_id}/')
         except (ImportError, AttributeError):
             pass
         raise click.ClickException(f"Failed to undeploy serving deployment: {e}")
@@ -1230,8 +1256,8 @@ def undeploy_serving(serving_id: str, output_format: str):
 def get_serving_metrics(serving_id: str, output_format: str):
     """Get quality metrics for a serving deployment"""
     try:
-        # API endpoint: /api/v1/ml/serving/deployments/{id}/metrics/
-        data = api_client.get(f'ml/serving/deployments/{serving_id}/metrics/')
+        # API endpoint: /api/v1/ml/inference/deployments/{id}/metrics/
+        data = api_client.get(f'ml/inference/deployments/{serving_id}/metrics/')
 
         if output_format == 'json':
             click.echo(json.dumps(data, indent=2))
@@ -1264,7 +1290,7 @@ def get_serving_metrics(serving_id: str, output_format: str):
             if isinstance(e, requests.exceptions.HTTPError) and hasattr(e, 'response'):
                 response = e.response
                 if hasattr(response, 'text') and hasattr(response, 'status_code'):
-                    raise handle_ml_api_error(response.text, response.status_code, f'ml/serving/deployments/{serving_id}/metrics/')
+                    raise handle_ml_api_error(response.text, response.status_code, f'ml/inference/deployments/{serving_id}/metrics/')
         except (ImportError, AttributeError):
             pass
         raise click.ClickException(f"Failed to get serving metrics: {e}")
@@ -1308,15 +1334,12 @@ def create_ab_test(model_id: str, variant_id: str, traffic_split: str, output_fo
     data = {
         'model_id': model_id,
         'variant_id': variant_id,
-        'traffic_split': {
-            'base': base_percent,
-            'variant': variant_percent
-        }
+        'traffic_split': f"{base_percent}:{variant_percent}"
     }
 
     try:
-        # API endpoint: /api/v1/ml/serving/ab-tests/
-        result = api_client.post('ml/serving/ab-tests/', json_data=data)
+        # API endpoint: /api/v1/ml/inference/ab-tests/
+        result = api_client.post('ml/inference/ab-tests/', json_data=data)
 
         if output_format == 'json':
             click.echo(json.dumps(result, indent=2))
@@ -1336,7 +1359,7 @@ def create_ab_test(model_id: str, variant_id: str, traffic_split: str, output_fo
             if isinstance(e, requests.exceptions.HTTPError) and hasattr(e, 'response'):
                 response = e.response
                 if hasattr(response, 'text') and hasattr(response, 'status_code'):
-                    raise handle_ml_api_error(response.text, response.status_code, 'ml/serving/ab-tests/')
+                    raise handle_ml_api_error(response.text, response.status_code, 'ml/inference/ab-tests/')
         except (ImportError, AttributeError):
             pass
         raise click.ClickException(f"Failed to create A/B test: {e}")
@@ -1358,8 +1381,8 @@ def list_ab_tests(model_id: Optional[str], output_format: str):
         params['model_id'] = model_id
 
     try:
-        # API endpoint: /api/v1/ml/serving/ab-tests/
-        data = api_client.get('ml/serving/ab-tests/', params=params)
+        # API endpoint: /api/v1/ml/inference/ab-tests/
+        data = api_client.get('ml/inference/ab-tests/', params=params)
         # Handle both paginated response (dict with 'results') and direct list response
         if isinstance(data, dict):
             results = data.get('results', [])
@@ -1404,7 +1427,7 @@ def list_ab_tests(model_id: Optional[str], output_format: str):
             if isinstance(e, requests.exceptions.HTTPError) and hasattr(e, 'response'):
                 response = e.response
                 if hasattr(response, 'text') and hasattr(response, 'status_code'):
-                    raise handle_ml_api_error(response.text, response.status_code, 'ml/serving/ab-tests/')
+                    raise handle_ml_api_error(response.text, response.status_code, 'ml/inference/ab-tests/')
         except (ImportError, AttributeError):
             pass
         raise click.ClickException(f"Failed to list A/B tests: {e}")
@@ -1416,8 +1439,8 @@ def list_ab_tests(model_id: Optional[str], output_format: str):
 def get_ab_test(ab_test_id: str, output_format: str):
     """Get A/B test details"""
     try:
-        # API endpoint: /api/v1/ml/serving/ab-tests/{id}/
-        data = api_client.get(f'ml/serving/ab-tests/{ab_test_id}/')
+        # API endpoint: /api/v1/ml/inference/ab-tests/{id}/
+        data = api_client.get(f'ml/inference/ab-tests/{ab_test_id}/')
 
         if output_format == 'json':
             click.echo(json.dumps(data, indent=2))
@@ -1467,7 +1490,217 @@ def get_ab_test(ab_test_id: str, output_format: str):
             if isinstance(e, requests.exceptions.HTTPError) and hasattr(e, 'response'):
                 response = e.response
                 if hasattr(response, 'text') and hasattr(response, 'status_code'):
-                    raise handle_ml_api_error(response.text, response.status_code, f'ml/serving/ab-tests/{ab_test_id}/')
+                    raise handle_ml_api_error(response.text, response.status_code, f'ml/inference/ab-tests/{ab_test_id}/')
         except (ImportError, AttributeError):
             pass
         raise click.ClickException(f"Failed to get A/B test: {e}")
+
+
+# ── 118E.7: deploy/undeploy/rollback/plan/marketplace ────
+
+
+@ml.command("deploy")
+@click.argument("model_id")
+@click.option(
+    "--config-file",
+    type=click.Path(exists=True),
+    help="Deployment config JSON file",
+)
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def deploy_model(
+    model_id: str,
+    config_file: Optional[str],
+    output_format: str,
+):
+    """Deploy an ML model"""
+    payload = {}
+    if config_file:
+        with open(config_file, "r") as f:
+            payload = json.loads(f.read())
+    try:
+        data = api_client.post(
+            f"ml/models/{model_id}/deploy/",
+            json_data=payload,
+            timeout=120,
+        )
+        if output_format == "json":
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo("Model deployed successfully!")
+            click.echo(f"Model ID: {model_id}")
+            click.echo(f"Status: {data.get('status')}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to deploy model: {e}"
+        )
+
+
+@ml.command("undeploy")
+@click.argument("model_id")
+def undeploy_model(model_id: str):
+    """Undeploy an ML model"""
+    try:
+        api_client.post(
+            f"ml/models/{model_id}/undeploy/",
+        )
+        click.echo(f"Model {model_id} undeployed.")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to undeploy model: {e}"
+        )
+
+
+@ml.command("rollback")
+@click.argument("model_odh_id")
+@click.option(
+    "--version", "target_version",
+    required=True,
+    help="Version to rollback to",
+)
+def rollback_model(
+    model_odh_id: str, target_version: str,
+):
+    """Rollback an ML model to a previous version"""
+    try:
+        data = api_client.post(
+            f"ml/models/{model_odh_id}/rollback/",
+            json_data={"version": target_version},
+        )
+        click.echo(
+            f"Model rolled back to version "
+            f"{target_version}."
+        )
+        click.echo(f"Status: {data.get('status')}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to rollback model: {e}"
+        )
+
+
+@ml.group("plan")
+def ml_plan():
+    """ML plan and limits commands"""
+    pass
+
+
+@ml_plan.command("show")
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def show_ml_plan(output_format: str):
+    """Show current ML subscription plan"""
+    try:
+        data = api_client.get(
+            "billing/subscription/ml/current/",
+        )
+        if output_format == "json":
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo(
+                f"Plan: {data.get('plan_name')} "
+                f"({data.get('plan_slug')})"
+            )
+            click.echo(f"Status: {data.get('status')}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to get ML plan: {e}"
+        )
+
+
+@ml_plan.command("limits")
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def show_ml_limits(output_format: str):
+    """Show ML plan limits"""
+    try:
+        data = api_client.get(
+            "billing/subscription/ml/current/",
+        )
+        limits = data.get("limits", {})
+        ml_limits = {
+            k: v for k, v in limits.items()
+            if "ml" in k
+        }
+
+        if output_format == "json":
+            click.echo(json.dumps(ml_limits, indent=2))
+        else:
+            if not ml_limits:
+                click.echo("No ML limits on plan.")
+                return
+            click.echo(
+                f"{'Limit':<45} {'Value':<15}"
+            )
+            click.echo("-" * 60)
+            for k, v in sorted(ml_limits.items()):
+                val = (
+                    "Unlimited" if v is None
+                    else str(v)
+                )
+                click.echo(f"{k:<45} {val:<15}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to get ML limits: {e}"
+        )
+
+
+@ml.command("marketplace-publish")
+@click.argument("model_id")
+@click.option(
+    "--pricing-model",
+    type=click.Choice([
+        "FREE", "FREE_AUTO_APPROVE",
+        "REQUEST_APPROVAL",
+    ]),
+    default="REQUEST_APPROVAL",
+)
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def marketplace_publish(
+    model_id: str, pricing_model: str,
+    output_format: str,
+):
+    """Publish an ML model to the marketplace"""
+    try:
+        data = api_client.post(
+            f"ml/models/{model_id}"
+            f"/marketplace-publish/",
+            json_data={
+                "pricing_model": pricing_model,
+            },
+        )
+        if output_format == "json":
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo("Model published to marketplace!")
+            click.echo(
+                f"Listing ID: {data.get('listing_id')}"
+            )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to publish model: {e}"
+        )

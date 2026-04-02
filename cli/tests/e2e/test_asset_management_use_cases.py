@@ -28,7 +28,7 @@ class TestAssetCreation:
             '--key', 'minimal-asset-key'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'created successfully' in result.output.lower()
             assert 'Minimal Asset' in result.output
@@ -50,7 +50,7 @@ class TestAssetCreation:
             '--visibility', 'PUBLIC'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'created successfully' in result.output.lower()
             assert 'Complete Asset' in result.output
@@ -71,7 +71,7 @@ class TestAssetCreation:
             '--description', 'Asset created in data-first flow'
         ])
         
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract asset ID from output
             asset_id = None
@@ -92,7 +92,7 @@ class TestAssetCreation:
                 ])
                 
                 # File upload may succeed or fail depending on API availability
-                assert upload_result.exit_code in [0, 1]
+                assert upload_result.exit_code == 0
     
     def test_create_asset_contract_first_flow_simulation(self, runner, temp_config_dir, api_base_url, temp_file):
         """Test contract-first flow: Create contract, then create asset (simulated)"""
@@ -115,7 +115,7 @@ schema:
             '--file', contract_file
         ])
         
-        assert contract_result.exit_code in [0, 1]
+        assert contract_result.exit_code == 0
         
         # Step 2: Create asset (contract-first flow)
         asset_result = runner.invoke(cli, [
@@ -125,7 +125,7 @@ schema:
             '--description', 'Asset created in contract-first flow'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             assert 'created successfully' in asset_result.output.lower()
     
@@ -141,7 +141,7 @@ schema:
             '--format', 'json'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0 and result.output.strip():
             # Should be valid JSON
             try:
@@ -174,7 +174,7 @@ schema:
         # Second creation should fail if API enforces uniqueness
         if result1.exit_code == 0:
             # API may or may not enforce uniqueness
-            assert result2.exit_code in [0, 1]
+            assert result2.exit_code == 0
             if result2.exit_code != 0:
                 assert 'duplicate' in result2.output.lower() or 'already exists' in result2.output.lower() or 'unique' in result2.output.lower()
 
@@ -194,7 +194,7 @@ class TestAssetUpdates:
             '--key', 'update-test-asset-key'
         ])
         
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -214,7 +214,7 @@ class TestAssetUpdates:
                     '--domain', 'marketing'
                 ])
                 
-                assert update_result.exit_code in [0, 1]
+                assert update_result.exit_code == 0
                 if update_result.exit_code == 0:
                     assert 'updated successfully' in update_result.output.lower()
                     assert 'Updated Name' in update_result.output
@@ -231,7 +231,7 @@ class TestAssetUpdates:
             '--key', 'activate-test-asset-key'
         ])
         
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -248,7 +248,7 @@ class TestAssetUpdates:
                     'assets', 'activate', asset_id
                 ])
                 
-                assert activate_result.exit_code in [0, 1]
+                assert activate_result.exit_code == 0
                 if activate_result.exit_code == 0:
                     assert 'activated successfully' in activate_result.output.lower()
                     assert 'ACTIVE' in activate_result.output or 'Status:' in activate_result.output
@@ -266,7 +266,7 @@ class TestAssetUpdates:
             '--visibility', 'INTERNAL'
         ])
         
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -284,7 +284,7 @@ class TestAssetUpdates:
                     '--visibility', 'PUBLIC'
                 ])
                 
-                assert update_result.exit_code in [0, 1]
+                assert update_result.exit_code == 0
                 if update_result.exit_code == 0:
                     assert 'updated successfully' in update_result.output.lower()
     
@@ -300,7 +300,7 @@ class TestAssetUpdates:
             '--key', 'no-update-test-asset-key'
         ])
         
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -337,7 +337,7 @@ class TestAssetDeletion:
             '--key', 'delete-draft-test-asset-key'
         ])
         
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -355,7 +355,7 @@ class TestAssetDeletion:
                     '--confirm'
                 ])
                 
-                assert delete_result.exit_code in [0, 1]
+                assert delete_result.exit_code == 0
                 if delete_result.exit_code == 0:
                     assert 'deleted successfully' in delete_result.output.lower()
     
@@ -371,7 +371,7 @@ class TestAssetDeletion:
             '--key', 'delete-active-test-asset-key'
         ])
         
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -394,7 +394,7 @@ class TestAssetDeletion:
                     '--confirm'
                 ])
                 
-                assert delete_result.exit_code in [0, 1]
+                assert delete_result.exit_code == 0
                 # May succeed or fail depending on API policy for active assets
                 if delete_result.exit_code == 0:
                     assert 'deleted successfully' in delete_result.output.lower()
@@ -411,7 +411,7 @@ class TestAssetDeletion:
             '--key', 'delete-deps-test-asset-key'
         ])
         
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -437,7 +437,7 @@ class TestAssetDeletion:
                     '--confirm'
                 ])
                 
-                assert delete_result.exit_code in [0, 1]
+                assert delete_result.exit_code == 0
                 # May succeed or fail depending on API dependency handling
                 if delete_result.exit_code != 0:
                     assert 'dependenc' in delete_result.output.lower() or 'cannot delete' in delete_result.output.lower() or 'Failed to delete asset' in delete_result.output
@@ -454,7 +454,7 @@ class TestAssetDeletion:
             '--key', 'cancel-delete-test-asset-key'
         ])
         
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -495,7 +495,7 @@ class TestAssetSearch:
             'assets', 'list'
         ])
         
-        assert list_result.exit_code in [0, 1]
+        assert list_result.exit_code == 0
         # Should list assets (may or may not include the one we just created)
     
     def test_search_assets_by_domain(self, runner, temp_config_dir, api_base_url):
@@ -517,7 +517,7 @@ class TestAssetSearch:
             '--domain', 'sales'
         ])
         
-        assert list_result.exit_code in [0, 1]
+        assert list_result.exit_code == 0
         if list_result.exit_code == 0:
             # Should show assets in sales domain
             assert 'sales' in list_result.output.lower() or 'No assets found' in list_result.output
@@ -540,7 +540,7 @@ class TestAssetSearch:
             '--status', 'DRAFT'
         ])
         
-        assert list_result.exit_code in [0, 1]
+        assert list_result.exit_code == 0
         if list_result.exit_code == 0:
             # Should show draft assets
             assert 'DRAFT' in list_result.output or 'No assets found' in list_result.output
@@ -557,7 +557,7 @@ class TestAssetSearch:
             '--offset', '0'
         ])
         
-        assert list_result.exit_code in [0, 1]
+        assert list_result.exit_code == 0
         # Should handle pagination correctly
     
     def test_search_assets_json_output(self, runner, temp_config_dir, api_base_url):
@@ -570,7 +570,7 @@ class TestAssetSearch:
             '--format', 'json'
         ])
         
-        assert list_result.exit_code in [0, 1]
+        assert list_result.exit_code == 0
         if list_result.exit_code == 0 and list_result.output.strip():
             # Should be valid JSON
             try:
@@ -591,7 +591,7 @@ class TestAssetSearch:
             '--domain', 'non-existent-domain-xyz'
         ])
         
-        assert list_result.exit_code in [0, 1]
+        assert list_result.exit_code == 0
         if list_result.exit_code == 0:
             # Should show "No assets found" or empty list
             assert 'No assets found' in list_result.output or list_result.output.strip() == '' or list_result.output.strip() == '[]'
@@ -613,7 +613,7 @@ class TestAssetManagementWorkflows:
             '--description', 'Testing complete lifecycle'
         ])
         
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -642,7 +642,7 @@ class TestAssetManagementWorkflows:
                     'assets', 'get', asset_id
                 ])
                 
-                assert get_result.exit_code in [0, 1]
+                assert get_result.exit_code == 0
                 if get_result.exit_code == 0:
                     assert 'Lifecycle Asset' in get_result.output or 'Updated Lifecycle Asset' in get_result.output
                 
@@ -653,7 +653,7 @@ class TestAssetManagementWorkflows:
                 ])
                 
                 # All steps should complete (may succeed or fail depending on API)
-                assert delete_result.exit_code in [0, 1]
+                assert delete_result.exit_code == 0
 
 
 @pytest.fixture

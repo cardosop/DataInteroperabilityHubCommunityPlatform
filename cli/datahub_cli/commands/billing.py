@@ -108,6 +108,189 @@ def list_invoices(limit: int, offset: int, output_format: str):
         raise click.ClickException(f"Failed to list invoices: {e}")
 
 
+@billing.command("plan-limits")
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def plan_limits(output_format: str):
+    """Show current plan limits and usage"""
+    try:
+        data = api_client.get("billing/subscription/current/")
+        limits = data.get("limits", {})
+
+        if output_format == "json":
+            click.echo(json.dumps(limits, indent=2))
+        else:
+            if not limits:
+                click.echo("No limits on current plan.")
+                return
+            click.echo(f"{'Limit Key':<45} {'Value':<15}")
+            click.echo("-" * 60)
+            for k, v in sorted(limits.items()):
+                val = "Unlimited" if v is None else str(v)
+                click.echo(f"{k:<45} {val:<15}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to get plan limits: {e}"
+        )
+
+
+@billing.command("usage")
+@click.option(
+    "--resource-type",
+    help="Filter by resource type (e.g. api_calls, storage_gb)",
+)
+@click.option("--limit", type=int, default=20)
+@click.option("--offset", type=int, default=0)
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def get_usage(
+    resource_type: Optional[str], limit: int,
+    offset: int, output_format: str,
+):
+    """List usage records for current billing period"""
+    params = {"limit": limit, "offset": offset}
+    if resource_type:
+        params["metric_key"] = resource_type
+
+    try:
+        data = api_client.get(
+            "billing/usage/", params=params,
+        )
+        results = (
+            data.get("results", [])
+            if isinstance(data, dict) else
+            data if isinstance(data, list) else []
+        )
+
+        if output_format == "json":
+            click.echo(json.dumps(results, indent=2))
+        else:
+            if not results:
+                click.echo("No usage records found.")
+                return
+            click.echo(
+                f"{'Metric':<30} {'Quantity':<15} "
+                f"{'Period Start':<25}"
+            )
+            click.echo("-" * 70)
+            for r in results:
+                if not isinstance(r, dict):
+                    continue
+                click.echo(
+                    f"{str(r.get('metric_key', '')):<30} "
+                    f"{str(r.get('quantity', '')):<15} "
+                    f"{str(r.get('period_start', ''))[:23]:<25}"
+                )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to get usage: {e}"
+        )
+
+
+@billing.command("refund")
+@click.argument("payment_intent_id")
+@click.option(
+    "--amount", "amount_cents", type=int,
+    required=True, help="Refund amount in cents",
+)
+@click.option(
+    "--reason",
+    type=click.Choice([
+        "duplicate", "fraudulent",
+        "requested_by_customer",
+    ]),
+    required=True,
+    help="Refund reason",
+)
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def process_refund(
+    payment_intent_id: str, amount_cents: int,
+    reason: str, output_format: str,
+):
+    """Issue a Stripe refund (admin only)"""
+    try:
+        data = api_client.post(
+            "billing/refunds/",
+            json_data={
+                "payment_intent_id": payment_intent_id,
+                "amount_cents": amount_cents,
+                "reason": reason,
+            },
+        )
+        if output_format == "json":
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo("Refund issued successfully!")
+            click.echo(
+                f"Refund ID: {data.get('refund_id')}"
+            )
+            click.echo(f"Status: {data.get('status')}")
+            click.echo(
+                f"Amount: {data.get('amount_cents')} cents"
+            )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to process refund: {e}"
+        )
+
+
+@billing.command("reconcile")
+@click.option("--dry-run", is_flag=True, default=False)
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def reconcile(dry_run: bool, output_format: str):
+    """Reconcile subscription status with Stripe (admin)"""
+    try:
+        data = api_client.post(
+            "billing/admin/reconcile/",
+            json_data={"dry_run": dry_run},
+            timeout=120,
+        )
+        if output_format == "json":
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo(
+                f"Checked: {data.get('checked', 0)}"
+            )
+            click.echo(
+                f"Drifted: {data.get('drifted', 0)}"
+            )
+            click.echo(
+                f"Errors: {data.get('errors', 0)}"
+            )
+            if dry_run:
+                click.echo("(dry-run — no changes made)")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to reconcile: {e}"
+        )
+
+
 @billing.command("invoice")
 @click.argument("invoice_id")
 @click.option(

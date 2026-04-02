@@ -27,7 +27,7 @@ class TestVirtualizationCommandsRegistrationRealAPI:
         for attempt in range(max_retries):
             try:
                 import requests
-                response = requests.get('http://localhost:8000/api/v1/health/', timeout=2)
+                response = requests.get(os.environ.get('MESHANT_API_URL', 'http://localhost:8000/api/v1') + '/health/', timeout=2)
                 if response.status_code == 200:
                     break
             except Exception:

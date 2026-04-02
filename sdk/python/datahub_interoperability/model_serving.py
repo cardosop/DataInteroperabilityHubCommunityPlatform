@@ -4,6 +4,7 @@ Model serving operations for DataHub SDK.
 Provides high-level methods for deploying models as APIs, running predictions,
 managing deployments, and conducting A/B tests with contract validation support.
 """
+import asyncio
 import re
 import uuid
 from typing import Dict, Any, List, Optional
@@ -11,6 +12,8 @@ from typing import Dict, Any, List, Optional
 from .client import DataHubClient
 from .errors import (
     ValidationError,
+    UnauthorizedError,
+    ForbiddenError,
     NotFoundError,
     ServerError,
     ConflictError,
@@ -250,7 +253,7 @@ class ModelServingAPI:
 
         try:
             # Deploy via inference API endpoint
-            response = await self.client.post("/ml/inference/deployments/", data=data)
+            response = await self.client.post("ml/inference/deployments/", data=data)
             if isinstance(response, dict):
                 # Map response to serving details format
                 return {
@@ -268,7 +271,7 @@ class ModelServingAPI:
         except ConflictError:
             raise ConflictError(f"Model {model_id} is already deployed")
         except Exception as e:
-            if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
                 raise
             raise ServerError(f"Failed to deploy model: {str(e)}", "DEPLOYMENT_ERROR", 500)
 
@@ -309,19 +312,29 @@ class ModelServingAPI:
             pass
 
         try:
-            # First, find active deployment for this model
-            deployments = await self.list_deployed_models(model_id=model_id, status="READY")
-            if not deployments:
-                raise NotFoundError(f"No active deployment found for model {model_id}")
+            # Wait for a READY deployment. Deployments are async — a freshly-
+            # deployed model may still be in DEPLOYING state.  Poll up to 10s
+            # (5 attempts × 2s interval) before giving up.
+            serving_id = None
+            max_attempts = 5
+            for attempt in range(max_attempts):
+                deployments = await self.list_deployed_models(model_id=model_id, status="READY")
+                if deployments:
+                    serving_id = deployments[0].get("serving_id") or deployments[0].get("deployment_id")
+                    break
+                if attempt < max_attempts - 1:
+                    # Check if any deployment exists at all before waiting
+                    all_deployments = await self.list_deployed_models(model_id=model_id)
+                    if not all_deployments:
+                        raise NotFoundError(f"No deployment found for model {model_id}")
+                    await asyncio.sleep(2)
 
-            # Use the first ready deployment
-            serving_id = deployments[0].get("serving_id") or deployments[0].get("deployment_id")
             if not serving_id:
-                raise NotFoundError(f"Deployment ID not found for model {model_id}")
+                raise NotFoundError(f"No active deployment found for model {model_id}")
 
             # Run prediction
             prediction_data = {"deployment_id": serving_id, "input": input_data}
-            response = await self.client.post("/ml/inference/deployments/predict/", data=prediction_data)
+            response = await self.client.post("ml/inference/deployments/predict/", data=prediction_data)
 
             if isinstance(response, dict):
                 # Map response to prediction results format
@@ -344,7 +357,7 @@ class ModelServingAPI:
         except NotFoundError:
             raise
         except Exception as e:
-            if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
                 raise
             raise ServerError(f"Failed to run prediction: {str(e)}", "PREDICTION_ERROR", 500)
 
@@ -410,7 +423,7 @@ class ModelServingAPI:
             params["offset"] = offset
 
         try:
-            response = await self.client.get("/ml/inference/deployments/", params=params)
+            response = await self.client.get("ml/inference/deployments/", params=params)
             if isinstance(response, dict):
                 deployments = response.get("results", [])
             elif isinstance(response, list):
@@ -432,7 +445,7 @@ class ModelServingAPI:
 
             return result
         except Exception as e:
-            if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
                 raise
             raise ServerError(f"Failed to list deployed models: {str(e)}", "LIST_ERROR", 500)
 
@@ -466,7 +479,7 @@ class ModelServingAPI:
         self._validate_serving_id(serving_id, "serving_id")
 
         try:
-            response = await self.client.get(f"/ml/inference/deployments/{serving_id}/")
+            response = await self.client.get(f"ml/inference/deployments/{serving_id}/")
             if isinstance(response, dict):
                 # Map to serving details format
                 return {
@@ -484,7 +497,7 @@ class ModelServingAPI:
         except NotFoundError:
             raise NotFoundError(f"Serving with id {serving_id} not found")
         except Exception as e:
-            if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
                 raise
             raise ServerError(f"Failed to get serving details: {str(e)}", "GET_ERROR", 500)
 
@@ -504,11 +517,11 @@ class ModelServingAPI:
         self._validate_serving_id(serving_id, "serving_id")
 
         try:
-            await self.client.delete(f"/ml/inference/deployments/{serving_id}/")
+            await self.client.delete(f"ml/inference/deployments/{serving_id}/")
         except NotFoundError:
             raise NotFoundError(f"Serving with id {serving_id} not found")
         except Exception as e:
-            if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
                 raise
             raise ServerError(f"Failed to undeploy model: {str(e)}", "UNDEPLOY_ERROR", 500)
 
@@ -543,7 +556,7 @@ class ModelServingAPI:
         self._validate_serving_id(serving_id, "serving_id")
 
         try:
-            response = await self.client.get(f"/ml/inference/deployments/{serving_id}/metrics/")
+            response = await self.client.get(f"ml/inference/deployments/{serving_id}/metrics/")
             if isinstance(response, dict):
                 # Map to quality metrics format
                 metrics = response.get("metrics", {})
@@ -563,7 +576,7 @@ class ModelServingAPI:
         except NotFoundError:
             raise NotFoundError(f"Serving with id {serving_id} not found")
         except Exception as e:
-            if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
                 raise
             raise ServerError(f"Failed to get quality metrics: {str(e)}", "METRICS_ERROR", 500)
 
@@ -611,7 +624,7 @@ class ModelServingAPI:
         try:
             # Note: A/B testing endpoint may not exist yet - this is a placeholder
             # In a real implementation, this would call /ml/inference/ab-tests/ or similar
-            response = await self.client.post("/ml/inference/ab-tests/", data=data)
+            response = await self.client.post("ml/inference/ab-tests/", data=data)
             if isinstance(response, dict):
                 return {
                     "ab_test_id": response.get("ab_test_id", response.get("id", "")),
@@ -628,7 +641,7 @@ class ModelServingAPI:
         except ConflictError:
             raise ConflictError(f"A/B test already exists for model {model_id}")
         except Exception as e:
-            if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
                 raise
             raise ServerError(f"Failed to create A/B test: {str(e)}", "AB_TEST_ERROR", 500)
 
@@ -692,7 +705,7 @@ class ModelServingAPI:
 
         try:
             # Note: A/B testing endpoint may not exist yet - this is a placeholder
-            response = await self.client.get("/ml/inference/ab-tests/", params=params)
+            response = await self.client.get("ml/inference/ab-tests/", params=params)
             if isinstance(response, dict):
                 ab_tests = response.get("results", [])
             elif isinstance(response, list):
@@ -714,7 +727,7 @@ class ModelServingAPI:
 
             return result
         except Exception as e:
-            if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
                 raise
             raise ServerError(f"Failed to list A/B tests: {str(e)}", "LIST_ERROR", 500)
 
@@ -763,7 +776,7 @@ class ModelServingAPI:
 
         try:
             # Note: A/B testing endpoint may not exist yet - this is a placeholder
-            response = await self.client.get(f"/ml/inference/ab-tests/{ab_test_id}/")
+            response = await self.client.get(f"ml/inference/ab-tests/{ab_test_id}/")
             if isinstance(response, dict):
                 # Map to A/B test details format with metrics
                 return {
@@ -783,6 +796,6 @@ class ModelServingAPI:
         except NotFoundError:
             raise NotFoundError(f"A/B test with id {ab_test_id} not found")
         except Exception as e:
-            if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
                 raise
             raise ServerError(f"Failed to get A/B test details: {str(e)}", "GET_ERROR", 500)

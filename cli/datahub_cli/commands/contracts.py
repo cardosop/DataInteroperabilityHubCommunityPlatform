@@ -46,7 +46,7 @@ def list_contracts(status: Optional[str], asset_id: Optional[str], limit: int, o
         params['asset_id'] = asset_id
 
     try:
-        # API endpoint structure: /api/v1/contracts/contracts/ (contracts/ from api/urls.py + contracts from router)
+        # API endpoint structure: /api/v1/contracts/ (contracts/ from api/urls.py + contracts from router)
         data = api_client.get('contracts/', params=params)
         # Handle both paginated response (dict with 'results') and direct list response
         if isinstance(data, dict):
@@ -247,7 +247,7 @@ def create_contract(file_path: str, asset_id: Optional[str], spec_type_override:
 def validate_contract(contract_id: str, output_format: str):
     """Validate a contract"""
     try:
-        # API endpoint structure: /api/v1/contracts/contracts/{id}/validate/ (contracts/ from api/urls.py + contracts from router)
+        # API endpoint structure: /api/v1/contracts/{id}/validate/ (contracts/ from api/urls.py + contracts from router)
         result = api_client.post(f'contracts/{contract_id}/validate/')
 
         if output_format == 'json':
@@ -287,7 +287,7 @@ def validate_contract(contract_id: str, output_format: str):
 def lint_contract(contract_id: str, output_format: str):
     """Lint a contract"""
     try:
-        # API endpoint structure: /api/v1/contracts/contracts/{id}/lint/ (contracts/ from api/urls.py + contracts from router)
+        # API endpoint structure: /api/v1/contracts/{id}/lint/ (contracts/ from api/urls.py + contracts from router)
         result = api_client.post(f'contracts/{contract_id}/lint/')
 
         if output_format == 'json':
@@ -720,7 +720,7 @@ def export_contract(contract_id: str, format_type: str, output_format: str, vers
 def get_pricing(contract_id: str, output_format: str):
     """Get pricing information for a contract (ODPS pricing plans)"""
     try:
-        # API endpoint structure: /api/v1/contracts/contracts/{id}/
+        # API endpoint structure: /api/v1/contracts/{id}/
         data = api_client.get(f'contracts/{contract_id}/')
 
         # Extract ODPS pricing plans
@@ -772,7 +772,7 @@ def get_pricing(contract_id: str, output_format: str):
 def get_access_methods(contract_id: str, output_format: str):
     """Get access methods for a contract (ODPS access methods)"""
     try:
-        # API endpoint structure: /api/v1/contracts/contracts/{id}/
+        # API endpoint structure: /api/v1/contracts/{id}/
         data = api_client.get(f'contracts/{contract_id}/')
 
         # Extract ODPS access methods
@@ -1130,7 +1130,7 @@ def get_payment_gateways(contract_id: str, output_format: str):
         validate_contract_id(contract_id)
 
         # API endpoint: GET /api/v1/contracts/{contract_id}/payment-gateways/
-        # Note: Router uses basename="contract", so URL is contracts/{id}/payment-gateways/ (not contracts/contracts/{id}/payment-gateways/)
+        # Note: Router uses basename="contract", so URL is contracts/{id}/payment-gateways/ (not contracts/{id}/payment-gateways/)
         try:
             result = api_client.get(f'contracts/{contract_id}/payment-gateways/')
         except Exception as e:
@@ -1208,7 +1208,7 @@ def get_product_strategy(contract_id: str, output_format: str):
         validate_contract_id(contract_id)
 
         # API endpoint: GET /api/v1/contracts/{contract_id}/product-strategy/
-        # Note: Router uses basename="contract", so URL is contracts/{id}/product-strategy/ (not contracts/contracts/{id}/product-strategy/)
+        # Note: Router uses basename="contract", so URL is contracts/{id}/product-strategy/ (not contracts/{id}/product-strategy/)
         try:
             result = api_client.get(f'contracts/{contract_id}/product-strategy/')
         except Exception as e:

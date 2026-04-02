@@ -25,7 +25,7 @@ class TestMLInferenceCommandsRegistrationRealAPI:
             try:
                 import requests
                 # Health endpoint is at /health/ not /api/v1/health/
-                response = requests.get('http://localhost:8000/health/', timeout=2)
+                response = requests.get(os.environ.get('MESHANT_API_URL', 'http://localhost:8000').rstrip('/api/v1') + '/health/', timeout=2)
                 if response.status_code == 200:
                     break
             except Exception:

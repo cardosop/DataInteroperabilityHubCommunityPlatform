@@ -27,8 +27,8 @@ def list_files(status: Optional[str], limit: int, offset: int, output_format: st
         params['status'] = status
     
     try:
-        # API endpoint structure: /api/v1/files/files/ (files/ from api/urls.py + files from router)
-        data = api_client.get('files/files/', params=params)
+        # API endpoint: /api/v1/files/ (files/ from api/urls.py, router registered at "")
+        data = api_client.get('files/', params=params)
         # Handle both paginated response (dict with 'results') and direct list response
         if isinstance(data, dict):
             results = data.get('results', [])
@@ -80,8 +80,8 @@ def upload_file(file_path: str, name: Optional[str], output_format: str):
     
     # Initialize upload
     try:
-        # API endpoint structure: /api/v1/files/files/init/ (files/ from api/urls.py + files from router + init action)
-        init_data = api_client.post('files/files/init/', json_data={
+        # API endpoint: /api/v1/files/init/ (files/ from api/urls.py, router registered at "")
+        init_data = api_client.post('files/init/', json_data={
             'name': file_name,
             'content_type': content_type,
             'size': file_size,
@@ -101,8 +101,8 @@ def upload_file(file_path: str, name: Optional[str], output_format: str):
             upload_response.raise_for_status()
         
         # Complete upload
-        # API endpoint structure: /api/v1/files/files/{id}/complete/ (files/ from api/urls.py + files from router + complete action)
-        complete_data = api_client.post(f'files/files/{file_id}/complete/')
+        # API endpoint: /api/v1/files/{id}/complete/
+        complete_data = api_client.post(f'files/{file_id}/complete/')
         
         if output_format == 'json':
             click.echo(json.dumps(complete_data, indent=2))
@@ -125,13 +125,13 @@ def download_file(file_id: str, output_path: Optional[str]):
     """Download a file"""
     try:
         # Get file info
-        # API endpoint structure: /api/v1/files/files/{id}/ (files/ from api/urls.py + files from router)
-        file_data = api_client.get(f'files/files/{file_id}/')
+        # API endpoint structure: /api/v1/files/{id}/ (files/ from api/urls.py + files from router)
+        file_data = api_client.get(f'files/{file_id}/')
         file_name = file_data.get('name', 'download')
         
         # Get download URL
-        # API endpoint structure: /api/v1/files/files/{id}/download/ (files/ from api/urls.py + files from router + download action)
-        download_data = api_client.post(f'files/files/{file_id}/download/')
+        # API endpoint: /api/v1/files/{id}/download/
+        download_data = api_client.post(f'files/{file_id}/download/')
         download_url = download_data.get('download_url')
         
         if not download_url:
@@ -168,8 +168,8 @@ def delete_file(file_id: str, confirm: bool):
             return
     
     try:
-        # API endpoint structure: /api/v1/files/files/{id}/ (files/ from api/urls.py + files from router)
-        api_client.delete(f'files/files/{file_id}/')
+        # API endpoint structure: /api/v1/files/{id}/ (files/ from api/urls.py + files from router)
+        api_client.delete(f'files/{file_id}/')
         click.echo(f"File {file_id} deleted successfully!")
     except click.ClickException:
         raise

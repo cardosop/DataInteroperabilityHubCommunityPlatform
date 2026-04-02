@@ -28,7 +28,7 @@ class TestContractsIntegration:
         result = runner.invoke(cli, ["contracts", "list"])
 
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         # If it succeeds, verify output format
         if result.exit_code == 0:
             # Output should be either table or JSON
@@ -46,7 +46,7 @@ class TestContractsIntegration:
         result = runner.invoke(cli, ["contracts", "create", "--file", file_path])
 
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
 
         # If creation succeeded, try to get it
         if result.exit_code == 0:
@@ -100,7 +100,7 @@ class TestContractsIntegration:
         )
 
         # Should either succeed or fail gracefully (may need authentication)
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert (
                 "ODPS product created successfully" in result.output
@@ -150,7 +150,7 @@ class TestContractsIntegration:
         )
 
         # Should either succeed or fail gracefully (may need authentication or valid ODCS ID)
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
 
     def test_contracts_export_odps_integration(self, runner, temp_config_dir, api_base_url):
         """Test contracts export with ODPS format against real API"""
@@ -172,7 +172,7 @@ class TestContractsIntegration:
         )
 
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # If successful, should show export info
             assert (
@@ -207,7 +207,7 @@ class TestContractsIntegration:
         )
 
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # If successful, file should exist
             assert output_file.exists() or "downloaded successfully" in result.output.lower()
@@ -239,7 +239,7 @@ class TestContractsIntegration:
         result = runner.invoke(cli, ["contracts", "create", "--file", file_path])
 
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # If successful, should show detection or spec type
             assert (
@@ -259,7 +259,7 @@ class TestContractsIntegration:
         result = runner.invoke(cli, ["contracts", "list"])
 
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # If successful, should show Spec Type column
             assert "Spec Type" in result.output or len(result.output) > 0
@@ -281,7 +281,7 @@ class TestContractsIntegration:
         )
 
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert "linked successfully" in result.output.lower()
 
@@ -296,7 +296,7 @@ class TestContractsIntegration:
         )
 
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert "unlinked successfully" in result.output.lower()
 
@@ -311,7 +311,7 @@ class TestContractsIntegration:
         )
 
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # Should show link information or "No links found"
             assert (
@@ -331,18 +331,18 @@ class TestContractsIntegration:
         # Step 1: Link ODPS to ODCS
         link_result = runner.invoke(cli, ["contracts", "link-odps", odcs_id, odps_id])
         # May fail if contracts don't exist, which is OK for integration test
-        assert link_result.exit_code in [0, 1]
+        assert link_result.exit_code == 0
 
         # Step 2: List links (if linking succeeded)
         if link_result.exit_code == 0:
             list_result = runner.invoke(cli, ["contracts", "list-links", odcs_id])
-            assert list_result.exit_code in [0, 1]
+            assert list_result.exit_code == 0
             if list_result.exit_code == 0:
                 assert "ODPS Link" in list_result.output or "No links found" in list_result.output
 
             # Step 3: Unlink (if linking succeeded)
             unlink_result = runner.invoke(cli, ["contracts", "unlink-odps", odcs_id])
-            assert unlink_result.exit_code in [0, 1]
+            assert unlink_result.exit_code == 0
             if unlink_result.exit_code == 0:
                 assert "unlinked successfully" in unlink_result.output.lower()
 
@@ -359,7 +359,7 @@ class TestLineageIntegration:
         result = runner.invoke(cli, ["lineage", "contract", "test-contract-id"])
 
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
 
     def test_lineage_full_integration(self, runner, temp_config_dir, api_base_url):
         """Test lineage full command integration"""
@@ -379,7 +379,7 @@ class TestLineageIntegration:
             ],
         )
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
 
 
 class TestAssetsIntegration:
@@ -392,7 +392,7 @@ class TestAssetsIntegration:
 
         result = runner.invoke(cli, ["assets", "list"])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
 
     def test_assets_create_get_flow(self, runner, temp_config_dir, api_base_url):
         """Test complete flow: create asset, then get it"""
@@ -403,7 +403,7 @@ class TestAssetsIntegration:
             cli, ["assets", "create", "--name", "Test Asset", "--key", "test-asset-integration"]
         )
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
 
         # If creation succeeded, try to get it
         if result.exit_code == 0:
@@ -421,7 +421,7 @@ class TestFilesIntegration:
 
         result = runner.invoke(cli, ["files", "list"])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
 
     def test_files_upload_download_flow(
         self, runner, temp_config_dir, api_base_url, temp_file, tmp_path
@@ -436,7 +436,7 @@ class TestFilesIntegration:
         # Try to upload
         result = runner.invoke(cli, ["files", "upload", file_path])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
 
         # If upload succeeded, try to download
         if result.exit_code == 0:
@@ -454,7 +454,7 @@ class TestJobsIntegration:
 
         result = runner.invoke(cli, ["jobs", "list"])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
 
     def test_jobs_get_watch_flow(self, runner, temp_config_dir, api_base_url):
         """Test complete flow: get job, then watch it"""
@@ -464,14 +464,14 @@ class TestJobsIntegration:
         # Try to get a job
         result = runner.invoke(cli, ["jobs", "get", "test-job-id"])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
 
         # If job exists, try to watch it (with short timeout for testing)
         if result.exit_code == 0:
             watch_result = runner.invoke(
                 cli, ["jobs", "watch", "test-job-id", "--interval", "1", "--timeout", "5"]
             )
-            assert watch_result.exit_code in [0, 1]
+            assert watch_result.exit_code == 0
 
 
 class TestCommandErrorHandling:
@@ -508,7 +508,7 @@ def runner():
 @pytest.fixture
 def api_base_url():
     """API base URL fixture (defaults to localhost)"""
-    return "http://localhost:8000/api/v1"
+    return os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
 
 
 @pytest.fixture

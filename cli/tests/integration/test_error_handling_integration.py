@@ -49,7 +49,7 @@ class TestAPIErrorIntegration:
         result = runner.invoke(cli, ['contracts', 'list'])
         
         # Should either fail with auth error, connection error, or succeed if API allows unauthenticated access
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code != 0:
             # May be auth error, connection error, or other error
             assert any(keyword in result.output for keyword in [
@@ -65,7 +65,7 @@ class TestAPIErrorIntegration:
         result = runner.invoke(cli, ['contracts', 'get', '00000000-0000-0000-0000-000000000000'])
         
         # Should handle gracefully (may be connection error if API not available)
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code != 0:
             # May be not found error, connection error, or other error
             assert any(keyword in result.output.lower() for keyword in [
@@ -111,7 +111,7 @@ class TestErrorRecoveryIntegration:
         result = runner.invoke(cli, ['contracts', 'list'])
         
         # Should handle auth failure gracefully (may be connection error if API not available)
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         # If it fails, may suggest login, or be connection error
         if result.exit_code != 0:
             assert any(keyword in result.output.lower() for keyword in [
@@ -143,7 +143,7 @@ class TestErrorContextIntegration:
         result = runner.invoke(cli, ['contracts', 'validate', 'invalid-id'])
         
         # Error should be contextual to validate command
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code != 0:
             assert 'validate' in result.output.lower() or 'Failed to validate contract' in result.output
     
@@ -156,7 +156,7 @@ class TestErrorContextIntegration:
         result = runner.invoke(cli, ['assets', 'get', test_id])
         
         # Error should mention the resource ID if available
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code != 0:
             # May or may not include ID depending on error type
             pass  # Just verify it doesn't crash
@@ -171,7 +171,7 @@ def runner():
 @pytest.fixture
 def api_base_url():
     """API base URL fixture"""
-    return 'http://localhost:8000/api/v1'
+    return os.environ.get('MESHANT_API_URL', 'http://localhost:8000/api/v1')
 
 
 @pytest.fixture

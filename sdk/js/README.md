@@ -167,6 +167,41 @@ const request: AssetCreateRequest = {
 const asset: Asset = await client.assets.create(request);
 ```
 
+## New Features (Phase 118C + 118G)
+
+### API Key Authentication
+
+```typescript
+const client = new DataHubClient({
+  baseUrl: 'https://api.hub.example.com/api/v1',
+  apiToken: 'your-api-key',
+  authType: 'apikey',  // sends Authorization: ApiKey {token}
+});
+```
+
+### Automatic Case Transform
+
+Request bodies are automatically converted from camelCase to snake_case. Response bodies are converted from snake_case to camelCase. Use `camelToSnake()` / `snakeToCamel()` for manual transforms.
+
+### 22 New API Modules
+
+`GovernanceAPI`, `MeshAPI`, `VirtualizationAPI`, `WebhooksAPI`, `MarketplaceAPI`, `BaaSAPI`, `MLAPI`, `ScheduledIngestionAPI`, `ScheduledExportAPI`, `VersioningAPI`, `BillingAPI`, `SearchAPI`, `ObservabilityAPI`, `GDPRAPI`, `TenantsAPI`, `TransformationAPI`, `SemanticAPI`, `DatasetsAPI`, `AssetsAPI`, `FilesAPI`, `DQAPI`, `WorkflowsAPI`
+
+```typescript
+// All modules available on the client
+const pipelines = await client.transformation.listPipelines();
+const results = await client.dq.getScorecard(assetId);
+await client.billing.processRefund(piId, 1000, 'requested_by_customer');
+```
+
+### 31 Domain Error Classes
+
+`BillingError`, `TransformationError`, `ComplianceError`, `SemanticError`, `SPARQLError`, `SHACLValidationError`, `WorkflowError`, `EntitlementRequiredError` (403), `CircuitBreakerOpenError` (503), `MarketplaceError`, `BaaSError`, `ODHMLError`, `GovernanceError`, `MeshError`, and more.
+
+### Token Refresh Race Fix
+
+Concurrent 401 errors share a single token refresh — no duplicate refresh calls.
+
 ## License
 
 MIT

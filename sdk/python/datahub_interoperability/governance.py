@@ -277,3 +277,15 @@ class GovernanceAPI:
         """
         return await self.client.get(f"governance/compliance-reports/{report_id}/")
 
+    # ── 118F.19: Expanded governance methods ─────────────
+
+    async def get_access_request_expiration(self, request_id: str) -> dict:
+        data = await self.client.get(f"governance/access-requests/{request_id}/")
+        return {"expires_at": data.get("expires_at")}
+
+    async def set_access_request_expiration(self, request_id: str, expires_at: str) -> dict:
+        return await self.client.patch(
+            f"governance/access-requests/{request_id}/",
+            data={"expires_at": expires_at},
+        )
+

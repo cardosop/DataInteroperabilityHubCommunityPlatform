@@ -39,7 +39,7 @@ def setup_authentication_for_e2e(api_base_url: str, config: Config) -> bool:
         # Verify it works
         try:
             response = requests.get(
-                f"{api_base_url}/contracts/contracts/",
+                f"{api_base_url}/contracts/",
                 headers={"Authorization": f"ApiKey {api_key}"},
                 timeout=5
             )
@@ -153,7 +153,7 @@ schema:
             '--file', str(contract_file)
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'created successfully' in result.output.lower()
             assert 'ID:' in result.output
@@ -196,7 +196,7 @@ schema:
             '--file', str(contract_file)
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'created successfully' in result.output.lower()
             assert 'ID:' in result.output
@@ -266,7 +266,7 @@ privacy_compliance:
             '--file', str(contract_file)
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'created successfully' in result.output.lower()
             # Should normalize all objects
@@ -299,7 +299,7 @@ schema:
             '--file', str(contract_file)
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'created successfully' in result.output.lower()
             assert 'ID:' in result.output
@@ -345,7 +345,7 @@ schema:
                 '--asset-id', asset_id
             ])
 
-            assert result.exit_code in [0, 1]
+            assert result.exit_code == 0
             if result.exit_code == 0:
                 assert 'created successfully' in result.output.lower()
 
@@ -373,7 +373,7 @@ schema:
             '--format', 'json'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0 and result.output.strip():
             # Should be valid JSON
             try:
@@ -435,7 +435,7 @@ schema:
             '--file', contract_file
         ])
 
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract contract ID
             contract_id = None
@@ -452,7 +452,7 @@ schema:
                     'contracts', 'validate', contract_id
                 ])
 
-                assert validate_result.exit_code in [0, 1]
+                assert validate_result.exit_code == 0
                 if validate_result.exit_code == 0:
                     assert 'Validation Status:' in validate_result.output
                     # Should be valid or show validation results
@@ -482,7 +482,7 @@ schema:
             '--file', contract_file
         ])
 
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract contract ID
             contract_id = None
@@ -499,7 +499,7 @@ schema:
                     'contracts', 'validate', contract_id
                 ])
 
-                assert validate_result.exit_code in [0, 1]
+                assert validate_result.exit_code == 0
                 if validate_result.exit_code == 0:
                     assert 'Validation Status:' in validate_result.output
                     # May show errors or warnings
@@ -535,7 +535,7 @@ schema:
             '--file', contract_file
         ])
 
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract contract ID
             contract_id = None
@@ -552,7 +552,7 @@ schema:
                     'contracts', 'validate', contract_id
                 ])
 
-                assert validate_result.exit_code in [0, 1]
+                assert validate_result.exit_code == 0
                 if validate_result.exit_code == 0:
                     assert 'Validation Status:' in validate_result.output
                     # Should show errors or warnings
@@ -582,7 +582,7 @@ schema:
             '--file', contract_file
         ])
 
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract contract ID
             contract_id = None
@@ -600,7 +600,7 @@ schema:
                     '--format', 'json'
                 ])
 
-                assert validate_result.exit_code in [0, 1]
+                assert validate_result.exit_code == 0
                 if validate_result.exit_code == 0 and validate_result.output.strip():
                     # Should be valid JSON
                     try:
@@ -713,7 +713,7 @@ privacy_compliance:
             '--file', str(contract_file)
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'created successfully' in result.output.lower()
             # Should show normalization status
@@ -734,7 +734,7 @@ privacy_compliance:
                     'contracts', 'get', contract_id
                 ])
 
-                assert get_result.exit_code in [0, 1]
+                assert get_result.exit_code == 0
                 if get_result.exit_code == 0:
                     # Should show normalization status and any errors/warnings
                     assert 'Normalization Status:' in get_result.output or 'normalization' in get_result.output.lower()
@@ -767,7 +767,7 @@ schema:
             '--file', str(contract_file)
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'created successfully' in result.output.lower()
             # Should normalize successfully even with minimal objects
@@ -802,7 +802,7 @@ schema:
             '--file', str(contract_file)
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # May show normalization errors
             assert 'Normalization Status:' in result.output or 'Normalization Errors:' in result.output or 'normalization' in result.output.lower()
@@ -822,7 +822,7 @@ schema:
                     'contracts', 'get', contract_id
                 ])
 
-                assert get_result.exit_code in [0, 1]
+                assert get_result.exit_code == 0
                 if get_result.exit_code == 0:
                     # May show normalization errors or warnings
                     assert 'Normalization' in get_result.output or 'normalization' in get_result.output.lower()
@@ -857,7 +857,7 @@ schema:
             '--file', str(contract_file)
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # May show normalization warnings
             assert 'Normalization Status:' in result.output or 'normalization' in result.output.lower()
@@ -877,7 +877,7 @@ schema:
                     'contracts', 'get', contract_id
                 ])
 
-                assert get_result.exit_code in [0, 1]
+                assert get_result.exit_code == 0
                 if get_result.exit_code == 0:
                     # May show normalization warnings
                     assert 'Normalization' in get_result.output or 'normalization' in get_result.output.lower() or 'Warnings' in get_result.output
@@ -940,7 +940,7 @@ class TestODPSProductFirstFlow:
             '--extract-odcs'
         ])
 
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Verify output shows both contracts
             assert 'ODPS product created successfully' in create_result.output or 'odps_contract' in create_result.output
@@ -973,7 +973,7 @@ class TestODPSProductFirstFlow:
                     'contracts', 'get', odps_contract_id
                 ])
 
-                assert get_odps_result.exit_code in [0, 1]
+                assert get_odps_result.exit_code == 0
                 if get_odps_result.exit_code == 0:
                     assert 'ODPS' in get_odps_result.output or odps_contract_id in get_odps_result.output
 
@@ -983,7 +983,7 @@ class TestODPSProductFirstFlow:
                     'contracts', 'get', odcs_contract_id
                 ])
 
-                assert get_odcs_result.exit_code in [0, 1]
+                assert get_odcs_result.exit_code == 0
                 if get_odcs_result.exit_code == 0:
                     assert 'ODCS' in get_odcs_result.output or odcs_contract_id in get_odcs_result.output
 
@@ -1023,7 +1023,7 @@ product:
             '--extract-odcs'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'ODPS product created successfully' in result.output or 'odps_contract' in result.output
 
@@ -1073,7 +1073,7 @@ product:
             '--resolve-external-refs'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'ODPS product created successfully' in result.output or 'odps_contract' in result.output
 
@@ -1108,7 +1108,7 @@ product:
             '--file', odcs_file
         ])
 
-        assert create_odcs_result.exit_code in [0, 1]
+        assert create_odcs_result.exit_code == 0
         if create_odcs_result.exit_code == 0:
             # Extract ODCS contract ID
             odcs_contract_id = None
@@ -1150,7 +1150,7 @@ product:
                     '--link-odcs', odcs_contract_id
                 ])
 
-                assert link_result.exit_code in [0, 1]
+                assert link_result.exit_code == 0
                 if link_result.exit_code == 0:
                     assert 'ODPS contract created and linked successfully' in link_result.output or 'id' in link_result.output
                     assert odcs_contract_id in link_result.output
@@ -1190,7 +1190,7 @@ schema:
             '--file', contract_file
         ])
 
-        assert create_result.exit_code in [0, 1]
+        assert create_result.exit_code == 0
         if create_result.exit_code == 0:
             # Extract contract ID
             contract_id = None
@@ -1207,7 +1207,7 @@ schema:
                     'contracts', 'get', contract_id
                 ])
 
-                assert get_result.exit_code in [0, 1]
+                assert get_result.exit_code == 0
                 if get_result.exit_code == 0:
                     assert 'Lifecycle Contract' in get_result.output or contract_id in get_result.output
 
@@ -1216,7 +1216,7 @@ schema:
                     'contracts', 'validate', contract_id
                 ])
 
-                assert validate_result.exit_code in [0, 1]
+                assert validate_result.exit_code == 0
                 if validate_result.exit_code == 0:
                     assert 'Validation Status:' in validate_result.output
 
@@ -1225,7 +1225,7 @@ schema:
                     'contracts', 'lint', contract_id
                 ])
 
-                assert lint_result.exit_code in [0, 1]
+                assert lint_result.exit_code == 0
                 if lint_result.exit_code == 0:
                     assert 'Lint Status:' in lint_result.output or 'No linting issues' in lint_result.output or 'Issues' in lint_result.output
 
@@ -1378,7 +1378,7 @@ class TestODPSLinkingWorkflow:
             odcs_id
         ])
 
-        assert list_links_result.exit_code in [0, 1]
+        assert list_links_result.exit_code == 0
         if list_links_result.exit_code == 0:
             # Should show ODPS link if linking succeeded
             assert 'ODPS Link' in list_links_result.output or 'No links found' in list_links_result.output
@@ -1391,7 +1391,7 @@ class TestODPSLinkingWorkflow:
                 odcs_id, odps_id
             ])
             # May succeed (if not already linked) or fail gracefully (if already linked)
-            assert link_result.exit_code in [0, 1]
+            assert link_result.exit_code == 0
 
         # Step 5: Unlink ODPS from ODCS
         unlink_result = runner.invoke(cli, [
@@ -1399,7 +1399,7 @@ class TestODPSLinkingWorkflow:
             odcs_id
         ])
 
-        assert unlink_result.exit_code in [0, 1]
+        assert unlink_result.exit_code == 0
         if unlink_result.exit_code == 0:
             assert 'unlinked successfully' in unlink_result.output.lower()
 
@@ -1409,7 +1409,7 @@ class TestODPSLinkingWorkflow:
             odcs_id
         ])
 
-        assert list_links_after_result.exit_code in [0, 1]
+        assert list_links_after_result.exit_code == 0
         if list_links_after_result.exit_code == 0:
             # After unlinking, should show no links or ODPS Link: None
             assert 'ODPS Link: None' in list_links_after_result.output or 'No links found' in list_links_after_result.output
@@ -1514,7 +1514,7 @@ class TestODPSLinkingWorkflow:
             odps_id
         ])
 
-        assert list_links_result.exit_code in [0, 1]
+        assert list_links_result.exit_code == 0
         if list_links_result.exit_code == 0:
             # Should show ODCS link
             assert 'ODCS Link' in list_links_result.output or 'No links found' in list_links_result.output

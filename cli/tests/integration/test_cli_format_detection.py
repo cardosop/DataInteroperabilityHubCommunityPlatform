@@ -27,7 +27,7 @@ def _check_api_available():
     """Check if API service is available"""
     try:
         import requests
-        response = requests.get("http://localhost:8000/api/v1/", timeout=2)
+        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
         return response.status_code < 600
     except Exception:
         return False
@@ -91,7 +91,7 @@ print(api_key_value)
 @pytest.fixture(autouse=True)
 def setup_config():
     """Set up API base URL and authentication"""
-    api_base_url = "http://localhost:8000/api/v1"
+    api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
     config.set_api_base_url(api_base_url)
 
     api_key = (
@@ -412,7 +412,7 @@ class TestCLIFormatDetection:
             '--format', 'json'
         ])
         # May succeed or fail depending on contract validity, but should not crash
-        assert result_validate.exit_code in [0, 1]
+        assert result_validate.exit_code == 0
 
         # Test lint command with ODPS
         result_lint = runner.invoke(cli, [
@@ -421,7 +421,7 @@ class TestCLIFormatDetection:
             '--format', 'json'
         ])
         # May succeed or fail depending on contract validity, but should not crash
-        assert result_lint.exit_code in [0, 1]
+        assert result_lint.exit_code == 0
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
     def test_format_detection_from_file_extension(self, odps_json_file, odps_yaml_file, setup_config):
@@ -463,4 +463,4 @@ class TestCLIFormatDetection:
         # Should handle ODPS via regular create command with override
         # Note: This may or may not work depending on implementation
         # The important thing is it doesn't crash
-        assert result.exit_code in [0, 1]  # May fail if ODPS requires create-odps
+        assert result.exit_code == 0  # May fail if ODPS requires create-odps

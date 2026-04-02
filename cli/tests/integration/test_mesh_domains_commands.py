@@ -30,7 +30,7 @@ from datahub_cli.config import config
 def _check_api_available():
     """Check if API service is available"""
     try:
-        response = requests.get("http://localhost:8000/api/v1/", timeout=2)
+        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
         return response.status_code < 600  # Any HTTP response means API is up
     except Exception:
         return False
@@ -49,7 +49,7 @@ class TestMeshDomainsCommandsRealAPI:
     def setup_config(self):
         """Set up API base URL to point to Docker Compose service"""
         # Use the running Docker Compose API service
-        api_base_url = "http://localhost:8000/api/v1"
+        api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
         config.set_api_base_url(api_base_url)
 
         # Try to get API key from environment, config, or create one
@@ -548,7 +548,7 @@ print(f"API_KEY={api_key_value}")
         result = runner.invoke(cli, ['mesh', 'domains', 'delete', domain_id], input='n\n')
 
         # Should exit without deleting (exit code 0 or 1 is OK for cancellation)
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
 
         # Cleanup
         self._delete_test_domain(api_base_url, self.api_key, domain_id)
@@ -604,7 +604,7 @@ class TestMeshComplianceCommandsRealAPI:
     def setup_config(self):
         """Set up API base URL to point to Docker Compose service"""
         # Use the running Docker Compose API service
-        api_base_url = "http://localhost:8000/api/v1"
+        api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
         config.set_api_base_url(api_base_url)
 
         # Try to get API key from environment, config, or create one
@@ -785,7 +785,7 @@ print(f"API_KEY={api_key_value}")
         if not self.api_key:
             pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
 
-        api_base_url = "http://localhost:8000/api/v1"
+        api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
 
         # Create a test domain (api_key is guaranteed to be str here due to skip above)
         assert self.api_key is not None
@@ -797,7 +797,7 @@ print(f"API_KEY={api_key_value}")
 
             # The command should succeed (exit code 0) or handle the case gracefully
             # Compliance check might take time or might not be immediately available
-            assert result.exit_code in [0, 1], f"Command failed with output: {result.output}"
+            assert result.exit_code == 0, f"Command failed with output: {result.output}"
 
             # Should have some output
             assert len(result.output) > 0
@@ -820,7 +820,7 @@ print(f"API_KEY={api_key_value}")
         if not self.api_key:
             pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
 
-        api_base_url = "http://localhost:8000/api/v1"
+        api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
 
         # Create a test domain (api_key is guaranteed to be str here due to skip above)
         assert self.api_key is not None
@@ -831,7 +831,7 @@ print(f"API_KEY={api_key_value}")
             result = runner.invoke(cli, ['mesh', 'compliance', 'check', domain_id, '--format', 'json'])
 
             # The command should succeed (exit code 0) or handle the case gracefully
-            assert result.exit_code in [0, 1], f"Command failed with output: {result.output}"
+            assert result.exit_code == 0, f"Command failed with output: {result.output}"
 
             # If successful, should be valid JSON
             if result.exit_code == 0:
@@ -856,7 +856,7 @@ print(f"API_KEY={api_key_value}")
         if not self.api_key:
             pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
 
-        api_base_url = "http://localhost:8000/api/v1"
+        api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
 
         # Create a test domain (api_key is guaranteed to be str here due to skip above)
         assert self.api_key is not None
@@ -872,7 +872,7 @@ print(f"API_KEY={api_key_value}")
             ])
 
             # Should handle gracefully (either succeed or provide clear error)
-            assert result.exit_code in [0, 1], f"Command failed with output: {result.output}"
+            assert result.exit_code == 0, f"Command failed with output: {result.output}"
         finally:
             # Cleanup (api_key is guaranteed to be str here due to skip above)
             if self.api_key:
@@ -900,7 +900,7 @@ print(f"API_KEY={api_key_value}")
         if not self.api_key:
             pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
 
-        api_base_url = "http://localhost:8000/api/v1"
+        api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
 
         # Create a test domain (api_key is guaranteed to be str here due to skip above)
         assert self.api_key is not None
@@ -911,7 +911,7 @@ print(f"API_KEY={api_key_value}")
             result = runner.invoke(cli, ['mesh', 'compliance', 'report', domain_id])
 
             # Should handle gracefully - might not have reports yet
-            assert result.exit_code in [0, 1], f"Command failed with output: {result.output}"
+            assert result.exit_code == 0, f"Command failed with output: {result.output}"
 
             # Should have some output
             assert len(result.output) > 0
@@ -937,7 +937,7 @@ print(f"API_KEY={api_key_value}")
         if not self.api_key:
             pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
 
-        api_base_url = "http://localhost:8000/api/v1"
+        api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
 
         # Create a test domain (api_key is guaranteed to be str here due to skip above)
         assert self.api_key is not None
@@ -948,7 +948,7 @@ print(f"API_KEY={api_key_value}")
             result = runner.invoke(cli, ['mesh', 'compliance', 'report', domain_id, '--format', 'json'])
 
             # Should handle gracefully
-            assert result.exit_code in [0, 1], f"Command failed with output: {result.output}"
+            assert result.exit_code == 0, f"Command failed with output: {result.output}"
 
             # If successful, should be valid JSON
             if result.exit_code == 0 and 'No compliance reports found' not in result.output:
@@ -973,7 +973,7 @@ print(f"API_KEY={api_key_value}")
         if not self.api_key:
             pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
 
-        api_base_url = "http://localhost:8000/api/v1"
+        api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
 
         # Create a test domain (without running compliance check)
         domain_id = self._create_test_domain(api_base_url, self.api_key)
@@ -983,7 +983,7 @@ print(f"API_KEY={api_key_value}")
             result = runner.invoke(cli, ['mesh', 'compliance', 'report', domain_id])
 
             # Should handle gracefully
-            assert result.exit_code in [0, 1], f"Command failed with output: {result.output}"
+            assert result.exit_code == 0, f"Command failed with output: {result.output}"
 
             # Should show helpful message about no reports
             assert any(keyword in result.output.lower() for keyword in [
@@ -1016,7 +1016,7 @@ print(f"API_KEY={api_key_value}")
         if not self.api_key:
             pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
 
-        api_base_url = "http://localhost:8000/api/v1"
+        api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
 
         # Create a test domain (api_key is guaranteed to be str here due to skip above)
         assert self.api_key is not None
@@ -1035,7 +1035,7 @@ print(f"API_KEY={api_key_value}")
             report_result = runner.invoke(cli, ['mesh', 'compliance', 'report', domain_id, '--format', 'json'])
 
             # At least one should succeed
-            assert check_result.exit_code in [0, 1] or report_result.exit_code in [0, 1], \
+            assert check_result.exit_code == 0 or report_result.exit_code == 0, \
                 f"At least one command should handle gracefully. Check: {check_result.output}, Report: {report_result.output}"
         finally:
             # Cleanup (api_key is guaranteed to be str here due to skip above)

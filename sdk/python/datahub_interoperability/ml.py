@@ -179,7 +179,7 @@ class ODHIntegrationAPI:
             params["offset"] = offset
 
         try:
-            response = await self.client.get("/ml/models/", params=params)
+            response = await self.client.get("ml/models/", params=params)
             # Handle both paginated response (dict with 'results') and direct list response
             if isinstance(response, dict):
                 return response.get("results", [])
@@ -212,7 +212,7 @@ class ODHIntegrationAPI:
         self._validate_uuid(model_id, "model_id")
 
         try:
-            response = await self.client.get(f"/ml/models/{model_id}/")
+            response = await self.client.get(f"ml/models/{model_id}/")
             if isinstance(response, dict):
                 return response
             else:
@@ -271,7 +271,7 @@ class ODHIntegrationAPI:
             data["contract_id"] = contract_id
 
         try:
-            response = await self.client.post("/ml/models/", data=data)
+            response = await self.client.post("ml/models/", data=data)
             if isinstance(response, dict):
                 return response
             else:
@@ -328,7 +328,7 @@ class ODHIntegrationAPI:
             raise ValidationError("At least one field (asset_id, contract_id, status) must be provided for update")
 
         try:
-            response = await self.client.patch(f"/ml/models/{model_id}/", data=data)
+            response = await self.client.patch(f"ml/models/{model_id}/", data=data)
             if isinstance(response, dict):
                 return response
             else:
@@ -355,7 +355,7 @@ class ODHIntegrationAPI:
         self._validate_uuid(model_id, "model_id")
 
         try:
-            await self.client.delete(f"/ml/models/{model_id}/")
+            await self.client.delete(f"ml/models/{model_id}/")
         except NotFoundError:
             raise NotFoundError(f"Model with id {model_id} not found")
         except Exception as e:
@@ -381,7 +381,7 @@ class ODHIntegrationAPI:
         self._validate_uuid(model_id, "model_id")
 
         try:
-            response = await self.client.get(f"/ml/models/{model_id}/versions/")
+            response = await self.client.get(f"ml/models/{model_id}/versions/")
             if isinstance(response, dict):
                 return response.get("versions", [])
             elif isinstance(response, list):
@@ -415,7 +415,7 @@ class ODHIntegrationAPI:
         self._validate_uuid(asset_id, "asset_id")
 
         try:
-            response = await self.client.post(f"/ml/models/{model_id}/link-asset/", data={"asset_id": asset_id})
+            response = await self.client.post(f"ml/models/{model_id}/link-asset/", data={"asset_id": asset_id})
             if isinstance(response, dict):
                 return response
             else:
@@ -456,7 +456,7 @@ class ODHIntegrationAPI:
 
         try:
             response = await self.client.post(
-                f"/ml/models/{model_id}/link-dataset/", data={"dataset_id": dataset_id, "role": role.upper()}
+                f"ml/models/{model_id}/link-dataset/", data={"dataset_id": dataset_id, "role": role.upper()}
             )
             if isinstance(response, dict):
                 return response
@@ -468,6 +468,37 @@ class ODHIntegrationAPI:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
             raise ServerError(f"Failed to link model to dataset: {str(e)}")
+
+    # ── 118F.18: Expanded ML methods ─────────────────────
+
+    async def deploy_model(self, model_id: str, config: dict = None) -> dict:
+        return await self.client.post(f"ml/models/{model_id}/deploy/", data=config or {})
+
+    async def undeploy_model(self, model_id: str) -> dict:
+        return await self.client.post(f"ml/models/{model_id}/undeploy/")
+
+    async def deploy_version(self, model_id: str, version: str, config: dict = None) -> dict:
+        payload = {"version": version}
+        if config:
+            payload["config"] = config
+        return await self.client.post(f"ml/models/{model_id}/deploy-version/", data=payload)
+
+    async def rollback_deployment(self, model_id: str, version: str) -> dict:
+        return await self.client.post(f"ml/models/{model_id}/rollback/", data={"version": version})
+
+    async def publish_to_marketplace(self, model_id: str, pricing_model: str = "REQUEST_APPROVAL") -> dict:
+        return await self.client.post(
+            f"ml/models/{model_id}/marketplace-publish/",
+            data={"pricing_model": pricing_model},
+        )
+
+    async def get_ml_plan(self) -> dict:
+        return await self.client.get("billing/subscription/ml/current/")
+
+    async def get_ml_plan_limits(self) -> dict:
+        data = await self.client.get("billing/subscription/ml/current/")
+        limits = data.get("limits", {})
+        return {k: v for k, v in limits.items() if "ml" in k}
 
 
 class TrainingAPI:
@@ -524,7 +555,7 @@ class TrainingAPI:
         data = {"model_id": model_id, "dataset_id": dataset_id, "config": config}
 
         try:
-            response = await self.client.post("/ml/training/jobs/", data=data)
+            response = await self.client.post("ml/training/jobs/", data=data)
             if isinstance(response, dict):
                 return response
             else:
@@ -555,7 +586,7 @@ class TrainingAPI:
             raise ValidationError("training_job_id is required and must be a string")
 
         try:
-            response = await self.client.get(f"/ml/training/jobs/{training_job_id}/")
+            response = await self.client.get(f"ml/training/jobs/{training_job_id}/")
             if isinstance(response, dict):
                 return response
             else:
@@ -608,7 +639,7 @@ class TrainingAPI:
             params["offset"] = offset
 
         try:
-            response = await self.client.get("/ml/training/jobs/", params=params)
+            response = await self.client.get("ml/training/jobs/", params=params)
             if isinstance(response, dict):
                 return response.get("results", [])
             elif isinstance(response, list):
@@ -636,7 +667,7 @@ class TrainingAPI:
             raise ValidationError("training_job_id is required and must be a string")
 
         try:
-            await self.client.post(f"/ml/training/jobs/{training_job_id}/cancel/")
+            await self.client.post(f"ml/training/jobs/{training_job_id}/cancel/")
         except NotFoundError:
             raise NotFoundError(f"Training job with id {training_job_id} not found")
         except Exception as e:
@@ -663,7 +694,7 @@ class TrainingAPI:
             raise ValidationError("training_job_id is required and must be a string")
 
         try:
-            response = await self.client.get(f"/ml/training/jobs/{training_job_id}/logs/")
+            response = await self.client.get(f"ml/training/jobs/{training_job_id}/logs/")
             # Logs might be returned as a string or in a dict with a 'logs' key
             if isinstance(response, str):
                 return response
@@ -731,7 +762,7 @@ class InferenceAPI:
             data["config"] = config
 
         try:
-            response = await self.client.post("/ml/inference/deployments/", data=data)
+            response = await self.client.post("ml/inference/deployments/", data=data)
             if isinstance(response, dict):
                 return response
             else:
@@ -768,7 +799,7 @@ class InferenceAPI:
         data = {"deployment_id": deployment_id, "input": input_data}
 
         try:
-            response = await self.client.post("/ml/inference/deployments/predict/", data=data)
+            response = await self.client.post("ml/inference/deployments/predict/", data=data)
             if isinstance(response, dict):
                 return response
             else:
@@ -799,7 +830,7 @@ class InferenceAPI:
             raise ValidationError("deployment_id is required and must be a string")
 
         try:
-            response = await self.client.get(f"/ml/inference/deployments/{deployment_id}/")
+            response = await self.client.get(f"ml/inference/deployments/{deployment_id}/")
             if isinstance(response, dict):
                 return response
             else:
@@ -863,7 +894,7 @@ class InferenceAPI:
             params["offset"] = offset
 
         try:
-            response = await self.client.get("/ml/inference/deployments/", params=params)
+            response = await self.client.get("ml/inference/deployments/", params=params)
             if isinstance(response, dict):
                 return response.get("results", [])
             elif isinstance(response, list):
@@ -891,7 +922,7 @@ class InferenceAPI:
             raise ValidationError("deployment_id is required and must be a string")
 
         try:
-            await self.client.delete(f"/ml/inference/deployments/{deployment_id}/")
+            await self.client.delete(f"ml/inference/deployments/{deployment_id}/")
         except NotFoundError:
             raise NotFoundError(f"Deployment with id {deployment_id} not found")
         except DataHubError as e:
@@ -929,7 +960,7 @@ class InferenceAPI:
             raise ValidationError("deployment_id is required and must be a string")
 
         try:
-            response = await self.client.get(f"/ml/inference/deployments/{deployment_id}/metrics/")
+            response = await self.client.get(f"ml/inference/deployments/{deployment_id}/metrics/")
             if isinstance(response, dict):
                 return response
             else:

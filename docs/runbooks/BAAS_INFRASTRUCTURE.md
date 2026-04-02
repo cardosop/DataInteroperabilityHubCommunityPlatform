@@ -54,3 +54,53 @@ When `BAAS_DATABASE_URL` or `BAAS_REDIS_URL` is set, the app may perform health 
 ## Runbook index
 
 See [RUNBOOKS.md](../RUNBOOKS.md) for the full list; [BaaS Platform Troubleshooting](../RUNBOOKS.md#baas-platform-troubleshooting) for general BaaS issues.
+
+---
+
+## Phase 117 BaaS Additions
+
+### P4: Customer Identity Fields
+
+BaaS API keys now support customer identity for per-key billing:
+
+| Field | Description |
+|-------|-------------|
+| `customer_id` | External customer identifier |
+| `customer_email` | Customer email for billing |
+| `customer_name` | Display name |
+| `pricing_tier` | FREE / PRO / ENTERPRISE |
+
+Set via `POST /api/v1/baas/api-keys/` with `customer_id` in request body.
+
+### P2: API Key Rotation Grace Period
+
+When rotating an API key, the old key remains valid for a configurable grace period:
+
+```bash
+# Default grace period: 24 hours
+BAAS_KEY_ROTATION_GRACE_HOURS=24
+
+# Check active keys with grace period
+docker exec hub-test-api python /app/hub/manage.py shell -c "
+from hub.apps.baas.models import APIKey
+from django.utils import timezone
+grace_keys = APIKey.objects.filter(
+    rotated_at__isnull=False,
+    rotated_at__gt=timezone.now() - timezone.timedelta(hours=24)
+)
+print(f'Keys in grace period: {grace_keys.count()}')
+"
+```
+
+### P5: Developer Dashboard Endpoint
+
+BaaS developer dashboard available at:
+
+- **Endpoint**: `GET /api/v1/baas/dashboard/`
+- **Auth**: API Key (X-API-Key header)
+- **Returns**: Usage stats, quota status, recent API calls, documentation links
+
+```bash
+# Test dashboard endpoint
+curl -H "X-API-Key: <key>" http://localhost:8000/api/v1/baas/dashboard/
+```

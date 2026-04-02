@@ -20,7 +20,7 @@ def _check_api_available():
     try:
         import requests
         # Health endpoint is at /health/ not /api/v1/health/
-        response = requests.get('http://localhost:8000/health/', timeout=2)
+        response = requests.get(os.environ.get('MESHANT_API_URL', 'http://localhost:8000').rstrip('/api/v1') + '/health/', timeout=2)
         return response.status_code == 200
     except Exception:
         return False
@@ -74,7 +74,7 @@ def test_asset_id(api_available):
         }
 
         response = requests.post(
-            'http://localhost:8000/api/v1/assets/',
+            os.environ.get('MESHANT_API_URL', 'http://localhost:8000/api/v1') + '/assets/',
             json=asset_data,
             headers=headers,
             timeout=10
@@ -87,7 +87,7 @@ def test_asset_id(api_available):
             # Cleanup: delete the asset
             try:
                 requests.delete(
-                    f'http://localhost:8000/api/v1/assets/{asset_id}/',
+                    f'{os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")}/assets/{asset_id}/',
                     headers=headers,
                     timeout=10
                 )
@@ -166,7 +166,7 @@ class TestMLModelRegistryE2E:
                     ])
                     # This may fail if model doesn't have versions, which is OK
                     # We just verify the command executes
-                    assert versions_result.exit_code in [0, 1], f"Versions failed: {versions_result.output}"
+                    assert versions_result.exit_code == 0, f"Versions failed: {versions_result.output}"
 
                     # Step 6: Delete model
                     delete_result = runner.invoke(cli, [
@@ -193,7 +193,7 @@ class TestMLModelRegistryE2E:
         result = runner.invoke(cli, ['ml', 'models', 'list', '--format', 'json'])
         # Should succeed even if no models exist (empty list)
         # Or fail with auth error, which is expected
-        assert result.exit_code in [0, 1], f"List command failed unexpectedly: {result.output}"
+        assert result.exit_code == 0, f"List command failed unexpectedly: {result.output}"
 
         if result.exit_code == 0:
             # Verify output is valid JSON
@@ -215,7 +215,7 @@ class TestMLModelRegistryE2E:
             '--format', 'json'
         ])
         # Should succeed or fail with expected errors (auth, not found, etc.)
-        assert result.exit_code in [0, 1], f"List with filters failed: {result.output}"
+        assert result.exit_code == 0, f"List with filters failed: {result.output}"
 
     def test_get_model_command_structure(self, runner, api_available):
         """Test ML models get command structure"""
@@ -244,7 +244,7 @@ class TestMLModelRegistryE2E:
         ])
         # Should succeed or fail with expected errors (auth, validation, etc.)
         # Not a command parsing error
-        assert result.exit_code in [0, 1], f"Create command failed: {result.output}"
+        assert result.exit_code == 0, f"Create command failed: {result.output}"
 
     def test_update_model_command_structure(self, runner, api_available):
         """Test ML models update command structure"""
@@ -294,7 +294,7 @@ class TestMLModelRegistryE2E:
         """Test that table format works correctly"""
         result = runner.invoke(cli, ['ml', 'models', 'list', '--format', 'table'])
         # Should succeed or fail with expected errors
-        assert result.exit_code in [0, 1], f"Table format failed: {result.output}"
+        assert result.exit_code == 0, f"Table format failed: {result.output}"
 
         if result.exit_code == 0:
             # Verify table format indicators
@@ -304,7 +304,7 @@ class TestMLModelRegistryE2E:
         """Test that JSON format works correctly"""
         result = runner.invoke(cli, ['ml', 'models', 'list', '--format', 'json'])
         # Should succeed or fail with expected errors
-        assert result.exit_code in [0, 1], f"JSON format failed: {result.output}"
+        assert result.exit_code == 0, f"JSON format failed: {result.output}"
 
         if result.exit_code == 0:
             # Verify JSON format

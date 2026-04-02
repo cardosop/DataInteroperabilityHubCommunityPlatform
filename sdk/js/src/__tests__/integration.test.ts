@@ -40,9 +40,9 @@ describe('Integration Tests', () => {
 
   describe('Client Initialization', () => {
     it('should initialize client with all API modules', () => {
-      expect(client.contracts).toBeDefined();
-      expect(client.lineage).toBeDefined();
-      expect(client.compliance).toBeDefined();
+      expect(client.contracts).not.toBeUndefined();
+      expect(client.lineage).not.toBeUndefined();
+      expect(client.compliance).not.toBeUndefined();
     });
 
     it('should allow access to APIs through client', () => {
@@ -250,7 +250,7 @@ describe('Integration Tests', () => {
         fail('Should have thrown error');
       } catch (error: any) {
         expect(error.httpStatus).toBe(400);
-        expect(error.details).toBeDefined();
+        expect(error.details).not.toBeUndefined();
         expect(error.details.field_errors).toHaveLength(1);
       }
     });

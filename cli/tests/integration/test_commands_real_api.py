@@ -158,7 +158,7 @@ class TestCLIIntegrationRealAPI(LiveServerTestCase):
         Returns the file initialization data as a dict.
         """
         # URL structure: /api/v1/files/init/ (files/ from api/urls.py + init action)
-        url = f'{self.api_base_url}/files/files/init/'
+        url = f'{self.api_base_url}/files/init/'
         data = {
             'name': name,
             'content_type': content_type

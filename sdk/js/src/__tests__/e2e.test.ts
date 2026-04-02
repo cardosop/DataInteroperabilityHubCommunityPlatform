@@ -71,7 +71,7 @@ describe('E2E Tests', () => {
       //   originalRaw: JSON.stringify(contractData),
       //   originalFormat: 'JSON',
       // });
-      // expect(created.id).toBeDefined();
+      // expect(created.id).not.toBeUndefined();
       // expect(created.status).toBe('DRAFT');
 
       // Step 2: Validate contract

@@ -1014,6 +1014,46 @@ else:
     print(f"Errors: {validation_result.get('errors', [])}")
 ```
 
+## New Modules (Phase 118F)
+
+### 15 New API Modules
+
+| Module | Class | Key Methods |
+|--------|-------|-------------|
+| `compliance` | `ComplianceAPI` | `create_run`, `list_runs`, `get_run`, `get_results`, `poll_async` |
+| `transformation` | `TransformationAPI` | pipeline CRUD + `execute_pipeline`, `cancel_execution` |
+| `semantic` | `SemanticAPI` | `sparql_query`, `shacl_validate`, `get_ontology`, `get_void` |
+| `datasets` | `DatasetsAPI` | `list_datasets`, `get_dataset`, `create_dataset`, `list_versions` |
+| `assets` | `AssetsAPI` | CRUD + `get_health_score`, `get_recommendations`, `classify_asset` |
+| `files` | `FilesAPI` | `init_upload`, `complete_upload`, `get_download_url` |
+| `dq` | `DQAPI` | `create_run`, `get_scorecard`, `get_anomalies`, `get_trends` |
+| `workflows` | `WorkflowsAPI` | `list_workflows`, `get_workflow`, `trigger_workflow`, `retry_workflow` |
+| `auth` | `AuthAPI` | `login`, `register`, `refresh_token`, `get_profile` |
+| `jobs` | `JobsAPI` | `list_jobs`, `get_job`, `cancel_job` |
+| `audit` | `AuditAPI` | `list_events`, `get_event`, `export_events` |
+| `social` | `SocialAPI` | ratings, reviews, comments, communities |
+| `ai` | `AIAPI` | `search`, `schema_matching` |
+| `users` | `UsersAPI` | CRUD + `create_invitation` |
+| `marketplace_listings` | `MarketplaceListingsAPI` | listings, orders, entitlements, `check_access` |
+
+### Expanded Modules
+
+- **billing**: `list_plans`, `change_plan`, `get_plan_limits`, `get_usage`, `process_refund`, `trigger_reconciliation`
+- **baas**: `list_customers`, `get_customer_usage`, billing reports CRUD, `rotate_api_key`, `get_dashboard`
+- **ml**: `deploy_model`, `undeploy_model`, `rollback_deployment`, `publish_to_marketplace`, `get_ml_plan_limits`
+- **governance**: `get_access_request_expiration`, `set_access_request_expiration`
+
+### New Error Classes
+
+`BillingError`, `DowngradeLimitExceededError`, `TransformationError`, `ComplianceError`, `SemanticError`, `SPARQLError`, `SHACLValidationError`, `WorkflowError`, `DLQError`, `EntitlementRequiredError`, `CircuitBreakerOpenError`, `ModelDeploymentError`
+
+```python
+from datahub_interoperability import (
+    TransformationAPI, SemanticAPI, DQAPI,
+    BillingError, EntitlementRequiredError,
+)
+```
+
 ## License
 
 MIT

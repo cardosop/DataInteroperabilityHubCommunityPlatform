@@ -23,7 +23,7 @@ def _check_api_available():
     """Check if API service is available"""
     try:
         import requests
-        response = requests.get('http://localhost:8000/health/', timeout=2)
+        response = requests.get(os.environ.get('MESHANT_API_URL', 'http://localhost:8000').rstrip('/api/v1') + '/health/', timeout=2)
         return response.status_code == 200
     except Exception:
         return False
@@ -67,7 +67,7 @@ def test_model_id(api_available):
 
         # Try to get an existing model
         response = requests.get(
-            'http://localhost:8000/api/v1/ml/models/',
+            os.environ.get('MESHANT_API_URL', 'http://localhost:8000/api/v1') + '/ml/models/',
             headers=headers,
             params={'limit': 1},
             timeout=10
@@ -83,7 +83,7 @@ def test_model_id(api_available):
         # No existing model - try to create one
         # First, we need an asset to link the model to
         asset_response = requests.get(
-            'http://localhost:8000/api/v1/assets/',
+            os.environ.get('MESHANT_API_URL', 'http://localhost:8000/api/v1') + '/assets/',
             headers=headers,
             params={'limit': 1},
             timeout=10
@@ -107,7 +107,7 @@ def test_model_id(api_available):
                 'visibility': 'INTERNAL'
             }
             asset_create_response = requests.post(
-                'http://localhost:8000/api/v1/assets/',
+                os.environ.get('MESHANT_API_URL', 'http://localhost:8000/api/v1') + '/assets/',
                 json=asset_data,
                 headers=headers,
                 timeout=15
@@ -128,7 +128,7 @@ def test_model_id(api_available):
         }
 
         create_response = requests.post(
-            'http://localhost:8000/api/v1/ml/models/',
+            os.environ.get('MESHANT_API_URL', 'http://localhost:8000/api/v1') + '/ml/models/',
             json=model_data,
             headers=headers,
             timeout=15
@@ -357,7 +357,7 @@ class TestMLServingListCommand:
             '--format', 'json'
         ])
 
-        assert result.exit_code in [0, 1]  # May fail with auth error
+        assert result.exit_code == 0  # May fail with auth error
         if result.exit_code == 0:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
@@ -370,7 +370,7 @@ class TestMLServingListCommand:
             '--format', 'json'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
@@ -383,7 +383,7 @@ class TestMLServingListCommand:
             '--format', 'json'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
@@ -397,7 +397,7 @@ class TestMLServingListCommand:
             '--format', 'json'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
@@ -409,7 +409,7 @@ class TestMLServingListCommand:
             '--format', 'table'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # Should show table headers or "No serving deployments found"
             assert 'Serving ID' in result.output or 'No serving deployments found' in result.output
@@ -421,7 +421,7 @@ class TestMLServingListCommand:
             '--format', 'json'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
@@ -737,7 +737,7 @@ class TestMLServingABTestListCommand:
             '--format', 'json'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
@@ -750,7 +750,7 @@ class TestMLServingABTestListCommand:
             '--format', 'json'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
@@ -762,7 +762,7 @@ class TestMLServingABTestListCommand:
             '--format', 'table'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'A/B Test ID' in result.output or 'No A/B tests found' in result.output
 
@@ -773,7 +773,7 @@ class TestMLServingABTestListCommand:
             '--format', 'json'
         ])
 
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             data = json.loads(result.output)
             assert isinstance(data, (list, dict))
@@ -847,7 +847,7 @@ class TestMLServingCLIErrorHandling:
         ])
 
         # Should either succeed or fail with meaningful error
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code != 0:
             # Error should be user-friendly
             assert len(result.output) > 0
@@ -867,7 +867,7 @@ class TestMLServingCLIErrorHandling:
             ])
 
             # Should fail with auth error or skip
-            assert result.exit_code in [0, 1]
+            assert result.exit_code == 0
         finally:
             if original_key:
                 os.environ['DATAHUB_API_KEY'] = original_key
@@ -881,7 +881,7 @@ class TestMLServingCLIErrorHandling:
         ])
 
         # Should handle gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
 
 
 class TestMLServingCLIOutputConsistency:

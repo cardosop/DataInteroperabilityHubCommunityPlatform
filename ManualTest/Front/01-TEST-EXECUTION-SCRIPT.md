@@ -21,9 +21,9 @@ Execute in this order. Each section links to detailed scripts.
 
 | # | Script | Duration | Pass |
 |---|--------|----------|------|
-| 1 | [JOURNEY-AUTH-004](03-USER-JOURNEYS/auth/JOURNEY-AUTH-004.md) — Unauthenticated User Accesses Public Resources | 10 min | ☐ |
-| 2 | [JOURNEY-AUTH-001](03-USER-JOURNEYS/auth/JOURNEY-AUTH-001.md) — First-Time Visitor Registers | 10 min | ☐ |
-| 3 | [JOURNEY-AUTH-002](03-USER-JOURNEYS/auth/JOURNEY-AUTH-002.md) — User Logs In | 10 min | ☐ |
+| 1 | [JOURNEY-AUTH-004](03-USER-JOURNEYS/auth/JOURNEY-AUTH-004.md) — Unauthenticated User Accesses Public Resources | 10 min | ☐ | PASS
+| 2 | [JOURNEY-AUTH-001](03-USER-JOURNEYS/auth/JOURNEY-AUTH-001.md) — First-Time Visitor Registers | 10 min | ☐ | PASS
+| 3 | [JOURNEY-AUTH-002](03-USER-JOURNEYS/auth/JOURNEY-AUTH-002.md) — User Logs In | 10 min | ☐ | PASS
 | 4 | [JOURNEY-AUTH-003](03-USER-JOURNEYS/auth/JOURNEY-AUTH-003.md) — User Resets Password | 15 min | ☐ |
 
 ---

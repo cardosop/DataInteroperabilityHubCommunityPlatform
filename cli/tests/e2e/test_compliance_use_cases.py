@@ -57,7 +57,7 @@ class TestComplianceChecks:
             '--key', 'compliance-test-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -76,7 +76,7 @@ class TestComplianceChecks:
                     '--scan-mode', 'internal'
                 ])
                 
-                assert compliance_result.exit_code in [0, 1]
+                assert compliance_result.exit_code == 0
                 if compliance_result.exit_code == 0:
                     assert 'started successfully' in compliance_result.output.lower()
                     assert 'Compliance Run ID:' in compliance_result.output
@@ -95,7 +95,7 @@ class TestComplianceChecks:
         ])
         
         # Should either succeed or fail gracefully
-        assert compliance_result.exit_code in [0, 1]
+        assert compliance_result.exit_code == 0
         if compliance_result.exit_code == 0:
             assert 'started successfully' in compliance_result.output.lower()
     
@@ -111,7 +111,7 @@ class TestComplianceChecks:
             '--key', 'custom-regulations-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -131,7 +131,7 @@ class TestComplianceChecks:
                     '--scan-mode', 'internal'
                 ])
                 
-                assert compliance_result.exit_code in [0, 1]
+                assert compliance_result.exit_code == 0
                 if compliance_result.exit_code == 0:
                     assert 'started successfully' in compliance_result.output.lower()
                     assert 'Regulations: GDPR,HIPAA' in compliance_result.output
@@ -153,7 +153,7 @@ class TestComplianceChecks:
                 temp_file
             ])
             
-            assert upload_result.exit_code in [0, 1]
+            assert upload_result.exit_code == 0
             if upload_result.exit_code == 0:
                 # Extract file ID from output
                 file_id = None
@@ -181,7 +181,7 @@ class TestComplianceChecks:
                         '--scan-mode', 'external'
                     ])
                     
-                    assert compliance_result.exit_code in [0, 1]
+                    assert compliance_result.exit_code == 0
                     if compliance_result.exit_code == 0:
                         assert 'started successfully' in compliance_result.output.lower()
                         assert 'Scan Mode: external' in compliance_result.output
@@ -213,7 +213,7 @@ class TestComplianceChecks:
         ])
         
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'Compliance Run ID:' in result.output or 'id' in result.output.lower()
     
@@ -227,7 +227,7 @@ class TestComplianceChecks:
             '--limit', '10'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # Should either show runs or "No compliance runs found"
             assert 'compliance run' in result.output.lower() or 'found' in result.output.lower()
@@ -243,7 +243,7 @@ class TestComplianceChecks:
             '--limit', '10'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # Should either show runs or "No compliance runs found"
             assert 'compliance run' in result.output.lower() or 'found' in result.output.lower()
@@ -259,7 +259,7 @@ class TestComplianceChecks:
             '--limit', '10'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # Should either show runs or "No compliance runs found"
             assert 'compliance run' in result.output.lower() or 'found' in result.output.lower()
@@ -280,7 +280,7 @@ class TestComplianceReporting:
             '--key', 'gdpr-report-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -299,7 +299,7 @@ class TestComplianceReporting:
                     '--regulation', 'GDPR'
                 ])
                 
-                assert report_result.exit_code in [0, 1]
+                assert report_result.exit_code == 0
                 if report_result.exit_code == 0:
                     # Should show report or indicate no compliance runs
                     assert 'GDPR' in report_result.output or 'compliance run' in report_result.output.lower()
@@ -316,7 +316,7 @@ class TestComplianceReporting:
             '--key', 'hipaa-report-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -335,7 +335,7 @@ class TestComplianceReporting:
                     '--regulation', 'HIPAA'
                 ])
                 
-                assert report_result.exit_code in [0, 1]
+                assert report_result.exit_code == 0
                 if report_result.exit_code == 0:
                     # Should show report or indicate no compliance runs
                     assert 'HIPAA' in report_result.output or 'compliance run' in report_result.output.lower()
@@ -352,7 +352,7 @@ class TestComplianceReporting:
             '--key', 'sox-report-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -371,7 +371,7 @@ class TestComplianceReporting:
                     '--regulation', 'SOX'
                 ])
                 
-                assert report_result.exit_code in [0, 1]
+                assert report_result.exit_code == 0
                 if report_result.exit_code == 0:
                     # Should show report or indicate no compliance runs
                     assert 'SOX' in report_result.output or 'compliance run' in report_result.output.lower()
@@ -388,7 +388,7 @@ class TestComplianceReporting:
             '--key', 'lgpd-report-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -407,7 +407,7 @@ class TestComplianceReporting:
                     '--regulation', 'LGPD'
                 ])
                 
-                assert report_result.exit_code in [0, 1]
+                assert report_result.exit_code == 0
                 if report_result.exit_code == 0:
                     # Should show report or indicate no compliance runs
                     assert 'LGPD' in report_result.output or 'compliance run' in report_result.output.lower()
@@ -424,7 +424,7 @@ class TestComplianceReporting:
             '--key', 'ccpa-report-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -443,7 +443,7 @@ class TestComplianceReporting:
                     '--regulation', 'CCPA'
                 ])
                 
-                assert report_result.exit_code in [0, 1]
+                assert report_result.exit_code == 0
                 if report_result.exit_code == 0:
                     # Should show report or indicate no compliance runs
                     assert 'CCPA' in report_result.output or 'compliance run' in report_result.output.lower()
@@ -477,7 +477,7 @@ class TestAccessRequests:
             '--key', 'access-request-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -497,7 +497,7 @@ class TestAccessRequests:
                     '--access-type', 'READ'
                 ])
                 
-                assert request_result.exit_code in [0, 1]
+                assert request_result.exit_code == 0
                 if request_result.exit_code == 0:
                     assert 'created successfully' in request_result.output.lower()
                     assert 'Access Request ID:' in request_result.output
@@ -540,7 +540,7 @@ class TestAccessRequests:
         ])
         
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'Access Request ID:' in result.output or 'id' in result.output.lower()
     
@@ -554,7 +554,7 @@ class TestAccessRequests:
             '--limit', '10'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # Should either show requests or "No access requests found"
             assert 'access request' in result.output.lower() or 'found' in result.output.lower()
@@ -570,7 +570,7 @@ class TestAccessRequests:
             '--limit', '10'
         ])
         
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             # Should either show requests or "No access requests found"
             assert 'access request' in result.output.lower() or 'found' in result.output.lower()
@@ -587,7 +587,7 @@ class TestAccessRequests:
         ])
         
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'approved successfully' in result.output.lower()
     
@@ -604,7 +604,7 @@ class TestAccessRequests:
         ])
         
         # Should either succeed or fail gracefully
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
         if result.exit_code == 0:
             assert 'rejected successfully' in result.output.lower()
     
@@ -637,7 +637,7 @@ class TestCompleteComplianceWorkflow:
             '--key', 'complete-workflow-asset-key'
         ])
         
-        assert asset_result.exit_code in [0, 1]
+        assert asset_result.exit_code == 0
         if asset_result.exit_code == 0:
             # Extract asset ID
             asset_id = None
@@ -657,7 +657,7 @@ class TestCompleteComplianceWorkflow:
                     '--scan-mode', 'internal'
                 ])
                 
-                assert compliance_result.exit_code in [0, 1]
+                assert compliance_result.exit_code == 0
                 
                 # List compliance runs
                 list_result = runner.invoke(cli, [
@@ -665,7 +665,7 @@ class TestCompleteComplianceWorkflow:
                     '--asset-id', asset_id
                 ])
                 
-                assert list_result.exit_code in [0, 1]
+                assert list_result.exit_code == 0
                 
                 # Generate report (may fail if compliance run not completed yet, which is OK)
                 report_result = runner.invoke(cli, [
@@ -674,5 +674,5 @@ class TestCompleteComplianceWorkflow:
                     '--regulation', 'GDPR'
                 ])
                 
-                assert report_result.exit_code in [0, 1]
+                assert report_result.exit_code == 0
 
