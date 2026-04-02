@@ -1,12 +1,12 @@
 /**
  * Retention Policy Detail Page Tests
- * Real useRetentionPolicy and useDeleteRetentionPolicy; only axios mocked (no mocks of application code).
+ * Real useRetentionPolicy and useDeleteRetentionPolicy; only API client mocked (no mocks of application code).
  * Scenarios: loading, error, success (detail content).
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ToastProvider } from '../../../shared/components/Toast';
@@ -15,30 +15,13 @@ import type { RetentionPolicy } from '../../../shared/types/governanceRetention'
 import { RetentionAction, RetentionPolicyType } from '../../../shared/types/governanceRetention';
 import { RetentionPolicyDetailPage } from './RetentionPolicyDetailPage';
 
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
+vi.mock('../../../shared/api/client');
 
 import { apiClient } from '../../../shared/api/client';
 
 describe('RetentionPolicyDetailPage', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   function wrapper({ children }: { children: ReactNode }) {
     return (
@@ -64,9 +47,9 @@ describe('RetentionPolicyDetailPage', () => {
     });
 
     const realClient = apiClient.getClient();
-    mockAxiosInstance = realClient;
-    vi.mocked(mockAxiosInstance.get).mockClear();
-    vi.mocked(mockAxiosInstance.delete).mockClear();
+    mockClient = realClient;
+    vi.mocked(mockClient.get).mockClear();
+    vi.mocked(mockClient.delete).mockClear();
   });
 
   it('should display loading state', async () => {
@@ -74,7 +57,7 @@ describe('RetentionPolicyDetailPage', () => {
     const getPromise = new Promise((resolve) => {
       resolveGet = resolve;
     });
-    vi.mocked(mockAxiosInstance.get).mockReturnValue(getPromise as never);
+    vi.mocked(mockClient.get).mockReturnValue(getPromise as never);
 
     render(<RetentionPolicyDetailPage />, { wrapper });
 
@@ -124,7 +107,7 @@ describe('RetentionPolicyDetailPage', () => {
         },
       },
     };
-    vi.mocked(mockAxiosInstance.get).mockRejectedValue(err);
+    vi.mocked(mockClient.get).mockRejectedValue(err);
 
     render(<RetentionPolicyDetailPage />, { wrapper });
 
@@ -157,7 +140,7 @@ describe('RetentionPolicyDetailPage', () => {
       updated_at: '2024-01-01T00:00:00Z',
     };
 
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: mockPolicy,
     } as never);
 

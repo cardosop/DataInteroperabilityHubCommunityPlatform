@@ -10,21 +10,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import type { ReactNode } from 'react';
 
-// Mock axios before any imports that use it
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn().mockResolvedValue({ data: { results: [] } }),
-    post: vi.fn().mockResolvedValue({ data: {} }),
-    patch: vi.fn().mockResolvedValue({ data: {} }),
-    put: vi.fn().mockResolvedValue({ data: {} }),
-    delete: vi.fn().mockResolvedValue({ data: {} }),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  };
-  return { default: { create: vi.fn(() => mockAxiosInstance) } };
-});
+// Mock API client before any imports that use it
+vi.mock('../../../shared/api/client');
 
 import { CustomerListPage } from './CustomerListPage';
 import { CustomerDetailPage } from './CustomerDetailPage';

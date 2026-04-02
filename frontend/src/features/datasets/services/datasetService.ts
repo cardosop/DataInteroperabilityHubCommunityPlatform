@@ -101,7 +101,11 @@ export const datasetService = {
     params.append('version1', version1);
     params.append('version2', version2);
 
-    const response = await apiClient.getClient().get(
+    const response = await apiClient.getClient().get<{
+      version1: DatasetVersion;
+      version2: DatasetVersion;
+      differences: Array<{ field: string; version1_value: unknown; version2_value: unknown }>;
+    }>(
       `${DATASETS_BASE_PATH}/${id}/versions/compare/?${params.toString()}`
     );
     return response.data;

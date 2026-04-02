@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../types/api';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,7 +15,7 @@ import { DatasetMultiPicker } from './DatasetMultiPicker';
 
 describe('DatasetMultiPicker', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   const mockDatasets = {
     results: [
@@ -42,8 +42,8 @@ describe('DatasetMultiPicker', () => {
         mutations: { retry: false },
       },
     });
-    mockAxiosInstance = apiClient.getClient();
-    vi.spyOn(mockAxiosInstance, 'get').mockImplementation((url: string) => {
+    mockClient = apiClient.getClient();
+    vi.spyOn(mockClient, 'get').mockImplementation((url: string) => {
       const u = url ?? '';
       if (u.includes('datasets') && !u.includes('datasets/d1') && !u.includes('datasets/d2')) {
         return Promise.resolve({ data: mockDatasets });
@@ -75,7 +75,7 @@ describe('DatasetMultiPicker', () => {
   });
 
   it('shows error state when network fails', async () => {
-    vi.spyOn(mockAxiosInstance, 'get').mockRejectedValueOnce(new Error('Network error'));
+    vi.spyOn(mockClient, 'get').mockRejectedValueOnce(new Error('Network error'));
     const user = userEvent.setup();
     render(<DatasetMultiPicker value={[]} onChange={() => {}} />, { wrapper });
     const input = screen.getByRole('combobox', { name: /select datasets/i });

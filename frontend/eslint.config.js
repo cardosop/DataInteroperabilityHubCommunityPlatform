@@ -25,10 +25,16 @@ export default defineConfig([
       'react-hooks/set-state-in-effect': 'off',
       // Phase 34 — Force icon imports through the registry
       'no-restricted-imports': ['error', {
-        paths: [{
-          name: 'lucide-react',
-          message: 'Import icons via src/shared/config/iconRegistry.ts or use the Icon component.',
-        }],
+        paths: [
+          {
+            name: 'lucide-react',
+            message: 'Import icons via src/shared/config/iconRegistry.ts or use the Icon component.',
+          },
+          {
+            name: 'axios',
+            message: 'axios was removed due to supply chain compromise (UNC1069 RAT in v1.14.1). Use the shared API client: import { apiClient } from "shared/api/client".',
+          },
+        ],
       }],
       // Phase 56 — Block access_token localStorage writes outside E2E fixtures
       'no-restricted-syntax': ['error', {

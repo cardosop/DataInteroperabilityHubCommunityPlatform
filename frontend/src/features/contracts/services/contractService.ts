@@ -117,7 +117,7 @@ export const contractService = {
       ? `${CONTRACTS_BASE_PATH}/${id}/export/?format=${format}`
       : `${CONTRACTS_BASE_PATH}/${id}/export/`;
     
-    const response = await apiClient.getClient().get(url, {
+    const response = await apiClient.getClient().get<Blob>(url, {
       responseType: 'blob',
     });
     return response.data;
@@ -131,7 +131,7 @@ export const contractService = {
       ? `${CONTRACTS_BASE_PATH}/${id}/download/?format=${format}`
       : `${CONTRACTS_BASE_PATH}/${id}/download/`;
     
-    const response = await apiClient.getClient().get(url, {
+    const response = await apiClient.getClient().get<Blob>(url, {
       responseType: 'blob',
     });
     return response.data;

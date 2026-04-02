@@ -8,31 +8,14 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Job } from '../../../shared/types/jobs';
 import type { PaginatedResponse } from '../../../shared/types/api';
 
-// Mock axios at module level
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
+// Mock API client at module level
+vi.mock('../../../shared/api/client');
 
 // Mock Toast so useMutationWithNotification doesn't need a provider
 vi.mock('../../../shared/components/Toast', () => ({
@@ -90,7 +73,7 @@ function createTestHarness() {
 }
 
 describe('useJobs hooks — adaptive polling', () => {
-  let mockAxios: AxiosInstance;
+  let mockAxios: HttpClient;
 
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });

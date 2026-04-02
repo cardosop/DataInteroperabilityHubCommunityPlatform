@@ -1,27 +1,21 @@
 /**
  * VirtualDatasetCreatePage smoke test — Phase 106
  */
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('axios', () => {
-  const inst = {
-    get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn(),
-    interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
-  };
-  return { default: { create: vi.fn(() => inst) } };
-});
+vi.mock('../../../shared/api/client');
 
 import { apiClient } from '../../../shared/api/client';
 import { VirtualDatasetCreatePage } from './VirtualDatasetCreatePage';
 
 describe('VirtualDatasetCreatePage', () => {
   let queryClient: QueryClient;
-  let mock: AxiosInstance;
+  let mock: HttpClient;
 
   function Wrapper({ children }: { children: ReactNode }) {
     return (

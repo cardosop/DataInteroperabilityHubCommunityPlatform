@@ -1,13 +1,13 @@
 /**
  * Retention Policy Edit Page Tests
- * Real useRetentionPolicy and useUpdateRetentionPolicy; only axios mocked (no mocks of application code).
+ * Real useRetentionPolicy and useUpdateRetentionPolicy; only API client mocked (no mocks of application code).
  * Scenarios: loading, error, form with data, submit, validation, mutation error.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,24 +15,7 @@ import type { RetentionPolicy } from '../../../shared/types/governanceRetention'
 import { RetentionAction, RetentionPolicyType } from '../../../shared/types/governanceRetention';
 import { RetentionPolicyEditPage } from './RetentionPolicyEditPage';
 
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
+vi.mock('../../../shared/api/client');
 
 import { apiClient } from '../../../shared/api/client';
 
@@ -63,7 +46,7 @@ const mockPolicy: RetentionPolicy = {
 
 describe('RetentionPolicyEditPage', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   function wrapper({ children }: { children: ReactNode }) {
     return (
@@ -91,9 +74,9 @@ describe('RetentionPolicyEditPage', () => {
     });
 
     const realClient = apiClient.getClient();
-    mockAxiosInstance = realClient;
-    vi.mocked(mockAxiosInstance.get).mockClear();
-    vi.mocked(mockAxiosInstance.patch).mockClear();
+    mockClient = realClient;
+    vi.mocked(mockClient.get).mockClear();
+    vi.mocked(mockClient.patch).mockClear();
   });
 
   it('should display loading state', async () => {
@@ -101,7 +84,7 @@ describe('RetentionPolicyEditPage', () => {
     const getPromise = new Promise((resolve) => {
       resolveGet = resolve;
     });
-    vi.mocked(mockAxiosInstance.get).mockReturnValue(getPromise as never);
+    vi.mocked(mockClient.get).mockReturnValue(getPromise as never);
 
     render(<RetentionPolicyEditPage />, { wrapper });
 
@@ -128,7 +111,7 @@ describe('RetentionPolicyEditPage', () => {
         },
       },
     };
-    vi.mocked(mockAxiosInstance.get).mockRejectedValue(err);
+    vi.mocked(mockClient.get).mockRejectedValue(err);
 
     render(<RetentionPolicyEditPage />, { wrapper });
 
@@ -139,7 +122,7 @@ describe('RetentionPolicyEditPage', () => {
   });
 
   it('should display form with policy data', async () => {
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: mockPolicy,
     } as never);
 
@@ -157,7 +140,7 @@ describe('RetentionPolicyEditPage', () => {
 
   it('should validate required name on submit', async () => {
     const user = userEvent.setup();
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: mockPolicy,
     } as never);
 
@@ -184,10 +167,10 @@ describe('RetentionPolicyEditPage', () => {
 
   it('should submit form with updated data', async () => {
     const user = userEvent.setup();
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: mockPolicy,
     } as never);
-    vi.mocked(mockAxiosInstance.patch).mockResolvedValue({
+    vi.mocked(mockClient.patch).mockResolvedValue({
       data: { ...mockPolicy, name: 'Updated Policy' },
     } as never);
 
@@ -207,9 +190,9 @@ describe('RetentionPolicyEditPage', () => {
 
     await waitFor(
       () => {
-        expect(mockAxiosInstance.patch).toHaveBeenCalled();
-        const patchUrl = vi.mocked(mockAxiosInstance.patch).mock.calls[0][0];
-        const patchBody = vi.mocked(mockAxiosInstance.patch).mock.calls[0][1];
+        expect(mockClient.patch).toHaveBeenCalled();
+        const patchUrl = vi.mocked(mockClient.patch).mock.calls[0][0];
+        const patchBody = vi.mocked(mockClient.patch).mock.calls[0][1];
         expect(patchUrl).toContain('policy-1');
         expect(patchBody?.name).toBe('Updated Policy');
       },
@@ -219,10 +202,10 @@ describe('RetentionPolicyEditPage', () => {
 
   it('should display mutation error when update fails', async () => {
     const user = userEvent.setup();
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: mockPolicy,
     } as never);
-    vi.mocked(mockAxiosInstance.patch).mockRejectedValue({
+    vi.mocked(mockClient.patch).mockRejectedValue({
       response: {
         status: 400,
         data: {

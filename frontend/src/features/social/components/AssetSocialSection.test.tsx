@@ -1,12 +1,12 @@
 /**
  * AssetSocialSection Tests
  * Verifies capability-gating and tab rendering. Mocks useCapabilities to control
- * capability availability; uses real tab components with axios mocked for their API calls.
+ * capability availability; uses real tab components with API client mocked for their API calls.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssetSocialSection } from './AssetSocialSection';
@@ -23,26 +23,11 @@ vi.mock('../../../shared/hooks/useCapabilities', () => ({
   }),
 }));
 
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
+vi.mock('../../../shared/api/client');
 
 describe('AssetSocialSection', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   function wrapper({ children }: { children: ReactNode }) {
     return (
@@ -57,8 +42,8 @@ describe('AssetSocialSection', () => {
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    mockAxiosInstance = apiClient.getClient();
-    vi.mocked(mockAxiosInstance.get).mockImplementation((url: string) => {
+    mockClient = apiClient.getClient();
+    vi.mocked(mockClient.get).mockImplementation((url: string) => {
       if (typeof url === 'string' && (url.includes('social') && url.includes('ratings'))) {
         return Promise.resolve({ data: { results: [], count: 0 } });
       }

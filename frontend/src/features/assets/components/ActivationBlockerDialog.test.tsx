@@ -176,7 +176,7 @@ describe('extractBlockersFromError', () => {
     expect(result).toEqual(['ASSET_ACTIVATION_BLOCKED']);
   });
 
-  it('should extract blockers from raw axios response shape', () => {
+  it('should extract blockers from raw API error response shape', () => {
     const err = {
       response: {
         data: {

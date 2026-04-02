@@ -3,7 +3,6 @@
  * Handles login, logout, token refresh, and user management
  */
 
-import axios from 'axios';
 import { apiClient } from '../../../shared/api/client';
 import type { PaginatedResponse } from '../../../shared/types/api';
 import type {
@@ -101,21 +100,35 @@ class AuthService {
       throw new Error('No refresh token available');
     }
 
-    // Use axios directly (bypass apiClient interceptors) to avoid the 401 interceptor
+    // Use fetch directly (bypass apiClient interceptors) to avoid the 401 interceptor
     // triggering a recursive refresh or hard redirect to /login during proactive refresh.
+    // Phase 209: replaced axios.post with native fetch after axios supply chain compromise.
     const baseURL = apiClient.getClient().defaults.baseURL || '/api/v1';
-    const response = await axios.post<RefreshTokenResponse>(
-      `${baseURL}/auth/refresh/`,
-      { refresh_token: refreshToken } as RefreshTokenRequest,
-      { withCredentials: true, timeout: 30000 },
-    );
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    try {
+      const fetchResponse = await fetch(`${baseURL}/auth/refresh/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken } as RefreshTokenRequest),
+        credentials: 'include',
+        signal: controller.signal,
+      });
 
-    this.setAccessToken(response.data.access_token);
-    if (response.data.refresh_token) {
-      this.setRefreshToken(response.data.refresh_token);
+      if (!fetchResponse.ok) {
+        throw new Error(`Refresh failed with status ${fetchResponse.status}`);
+      }
+
+      const data = (await fetchResponse.json()) as RefreshTokenResponse;
+      this.setAccessToken(data.access_token);
+      if (data.refresh_token) {
+        this.setRefreshToken(data.refresh_token);
+      }
+
+      return data.access_token;
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    return response.data.access_token;
   }
 
   async fetchUser(): Promise<User> {

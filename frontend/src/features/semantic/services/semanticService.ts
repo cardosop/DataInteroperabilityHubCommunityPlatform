@@ -65,7 +65,7 @@ export const semanticService = {
    * Get ontology definition (Turtle format)
    */
   async getOntology(): Promise<string> {
-    const response = await apiClient.getClient().get(`${SEMANTIC_BASE_PATH}/ontology`, {
+    const response = await apiClient.getClient().get<string>(`${SEMANTIC_BASE_PATH}/ontology`, {
       responseType: 'text',
       headers: {
         Accept: 'text/turtle, text/plain, */*',

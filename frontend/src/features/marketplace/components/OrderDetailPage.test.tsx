@@ -6,20 +6,14 @@
  * 2. Rejection dialog renders with textarea for reason
  * 3. Error boundary catches render errors
  */
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('axios', () => {
-  const inst = {
-    get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn(),
-    interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
-  };
-  return { default: { create: vi.fn(() => inst) } };
-});
+vi.mock('../../../shared/api/client');
 
 import { apiClient } from '../../../shared/api/client';
 import { OrderDetailPage } from './OrderDetailPage';
@@ -45,7 +39,7 @@ const MOCK_ORDER = {
 
 describe('OrderDetailPage', () => {
   let queryClient: QueryClient;
-  let mock: AxiosInstance;
+  let mock: HttpClient;
 
   function Wrapper({ children }: { children: ReactNode }) {
     return (

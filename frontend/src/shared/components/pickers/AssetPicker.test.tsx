@@ -1,42 +1,25 @@
 /**
  * AssetPicker Unit Tests
  * Per task 29.68.6.1. Searchable single-select, keyboard nav, selection.
- * Uses axios mock for assets list; real AssetPicker component.
+ * Uses API client mock for assets list; real AssetPicker component.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../types/api';
 import { type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssetPicker } from './AssetPicker';
 
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
+vi.mock('../../api/client');
 
 import { apiClient } from '../../api/client';
 
 describe('AssetPicker', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn();
@@ -70,8 +53,8 @@ describe('AssetPicker', () => {
     });
 
     const realClient = apiClient.getClient();
-    mockAxiosInstance = realClient;
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({ data: mockAssets });
+    mockClient = realClient;
+    vi.mocked(mockClient.get).mockResolvedValue({ data: mockAssets });
   });
 
   it('renders with placeholder', () => {
@@ -94,7 +77,7 @@ describe('AssetPicker', () => {
     await user.click(input);
 
     await waitFor(() => {
-      expect(mockAxiosInstance.get).toHaveBeenCalled();
+      expect(mockClient.get).toHaveBeenCalled();
     });
   });
 
@@ -156,7 +139,7 @@ describe('AssetPicker', () => {
   });
 
   it('handles invalid selection (deleted asset): clear button allows user to reset', async () => {
-    vi.spyOn(mockAxiosInstance, 'get').mockImplementation((url: string) => {
+    vi.spyOn(mockClient, 'get').mockImplementation((url: string) => {
       const u = url ?? '';
       if (u.includes('assets') && !u.includes('assets/invalid-id')) {
         return Promise.resolve({ data: mockAssets });
@@ -181,7 +164,7 @@ describe('AssetPicker', () => {
   });
 
   it('shows clear button when value selected', async () => {
-    vi.mocked(mockAxiosInstance.get).mockImplementation((url: string) => {
+    vi.mocked(mockClient.get).mockImplementation((url: string) => {
       if (url?.includes('/assets/') && url?.includes('/a1')) {
         return Promise.resolve({ data: { id: 'a1', name: 'Asset One', key: 'asset-one' } });
       }

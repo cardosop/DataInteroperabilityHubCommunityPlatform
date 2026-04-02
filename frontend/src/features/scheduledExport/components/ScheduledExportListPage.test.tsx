@@ -1,42 +1,25 @@
 /**
  * Scheduled Export List Page Tests
- * Real useScheduledExports hook and real scheduledExportService; only axios mocked (no mocks of application code).
+ * Real useScheduledExports hook and real scheduledExportService; only API client mocked (no mocks of application code).
  * Scenarios: loading, error, success (table), empty list.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ScheduledExport } from '../../../shared/types/scheduledExport';
 import { ScheduledExportListPage } from './ScheduledExportListPage';
 
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
+vi.mock('../../../shared/api/client');
 
 import { apiClient } from '../../../shared/api/client';
 
 describe('ScheduledExportListPage', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   function wrapper({ children }: { children: ReactNode }) {
     return (
@@ -57,8 +40,8 @@ describe('ScheduledExportListPage', () => {
     });
 
     const realClient = apiClient.getClient();
-    mockAxiosInstance = realClient;
-    vi.mocked(mockAxiosInstance.get).mockClear();
+    mockClient = realClient;
+    vi.mocked(mockClient.get).mockClear();
   });
 
   it('should display loading state', async () => {
@@ -66,7 +49,7 @@ describe('ScheduledExportListPage', () => {
     const listPromise = new Promise((resolve) => {
       resolveList = resolve;
     });
-    vi.mocked(mockAxiosInstance.get).mockReturnValue(listPromise as never);
+    vi.mocked(mockClient.get).mockReturnValue(listPromise as never);
 
     render(<ScheduledExportListPage />, { wrapper });
 
@@ -86,7 +69,7 @@ describe('ScheduledExportListPage', () => {
   });
 
   it('should display error state', async () => {
-    vi.mocked(mockAxiosInstance.get).mockRejectedValue(new Error('Network error'));
+    vi.mocked(mockClient.get).mockRejectedValue(new Error('Network error'));
 
     render(<ScheduledExportListPage />, { wrapper });
 
@@ -115,7 +98,7 @@ describe('ScheduledExportListPage', () => {
       },
     ];
 
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         count: 1,
         next: null,
@@ -137,7 +120,7 @@ describe('ScheduledExportListPage', () => {
   });
 
   it('should display empty state when no scheduled exports', async () => {
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         count: 0,
         next: null,

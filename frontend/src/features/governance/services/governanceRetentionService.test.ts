@@ -2,12 +2,12 @@
  * Governance Retention Service Tests
  * Tests for retention policy service using real apiClient (no mocks of apiClient)
  *
- * Note: We mock axios at the module level to avoid real HTTP calls,
+ * Note: We mock API client at the module level to avoid real HTTP calls,
  * but we use the real apiClient instance, ensuring the service correctly
  * uses apiClient.getClient() and the actual service methods.
  */
 
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   RetentionPolicy,
@@ -17,43 +17,25 @@ import type {
 } from '../../../shared/types/governanceRetention';
 import { RetentionAction, RetentionPolicyType } from '../../../shared/types/governanceRetention';
 
-// Mock axios at module level - this allows apiClient to use real methods
+// Mock API client at module level - this allows apiClient to use real methods
 // but intercepts HTTP calls for testing
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
+vi.mock('../../../shared/api/client');
 
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
-
-import axios from 'axios';
 import { apiClient } from '../../../shared/api/client';
 import { governanceRetentionService } from './governanceRetentionService';
 
-// Get the mock instance from axios.create
-vi.mocked(axios.create);
+// Get the mock instance from apiClient.getClient()
+// Phase 209: uses shared API client mock
 
 describe('governanceRetentionService', () => {
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   beforeEach(() => {
     vi.clearAllMocks();
     // Get the real client instance from apiClient
     const realClient = apiClient.getClient();
-    // Use the real client's methods, but we'll mock them via axios.create mock
-    mockAxiosInstance = realClient;
+    // Use the real client's methods, but we'll mock them via apiClient mock
+    mockClient = realClient;
   });
 
   describe('listPolicies', () => {
@@ -83,8 +65,8 @@ describe('governanceRetentionService', () => {
         },
       };
 
-      // Mock the get method on the axios instance
-      vi.mocked(mockAxiosInstance.get).mockResolvedValue(mockResponse as never);
+      // Mock the get method on the HTTP client
+      vi.mocked(mockClient.get).mockResolvedValue(mockResponse as never);
 
       const filters: RetentionPolicyListFilters = {
         page: 1,
@@ -96,7 +78,7 @@ describe('governanceRetentionService', () => {
       const result = await governanceRetentionService.listPolicies(filters);
 
       // Verify the service called apiClient.getClient().get() with correct URL
-      expect(vi.mocked(mockAxiosInstance.get)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.get)).toHaveBeenCalledWith(
         'governance/retention-policies/?page=1&page_size=20&asset_id=asset-123&enabled=true'
       );
       expect(result.count).toBe(2);
@@ -119,12 +101,12 @@ describe('governanceRetentionService', () => {
         },
       };
 
-      // Mock the get method on the axios instance
-      vi.mocked(mockAxiosInstance.get).mockResolvedValue(mockResponse as never);
+      // Mock the get method on the HTTP client
+      vi.mocked(mockClient.get).mockResolvedValue(mockResponse as never);
 
       const result = await governanceRetentionService.listPolicies();
 
-      expect(vi.mocked(mockAxiosInstance.get)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.get)).toHaveBeenCalledWith(
         'governance/retention-policies/'
       );
       expect(result.count).toBe(0);
@@ -157,13 +139,13 @@ describe('governanceRetentionService', () => {
         updated_at: '2024-01-01T00:00:00Z',
       };
 
-      (mockAxiosInstance.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      (mockClient.get as ReturnType<typeof vi.fn>).mockResolvedValue({
         data: mockPolicy,
       });
 
       const result = await governanceRetentionService.getPolicy('policy-1');
 
-      expect(vi.mocked(mockAxiosInstance.get)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.get)).toHaveBeenCalledWith(
         'governance/retention-policies/policy-1/'
       );
       expect(result.id).toBe('policy-1');
@@ -208,13 +190,13 @@ describe('governanceRetentionService', () => {
         updated_at: '2024-01-01T00:00:00Z',
       };
 
-      vi.mocked(mockAxiosInstance.post).mockResolvedValue({
+      vi.mocked(mockClient.post).mockResolvedValue({
         data: mockCreatedPolicy,
       });
 
       const result = await governanceRetentionService.createPolicy(createRequest);
 
-      expect(vi.mocked(mockAxiosInstance.post)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.post)).toHaveBeenCalledWith(
         'governance/retention-policies/',
         createRequest
       );
@@ -254,13 +236,13 @@ describe('governanceRetentionService', () => {
         updated_at: '2024-01-02T00:00:00Z',
       };
 
-      vi.mocked(mockAxiosInstance.patch).mockResolvedValue({
+      vi.mocked(mockClient.patch).mockResolvedValue({
         data: mockUpdatedPolicy,
       });
 
       const result = await governanceRetentionService.updatePolicy(updateRequest);
 
-      expect(vi.mocked(mockAxiosInstance.patch)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.patch)).toHaveBeenCalledWith(
         'governance/retention-policies/policy-1/',
         { name: 'Updated Policy', retention_period_days: 60 }
       );
@@ -272,13 +254,13 @@ describe('governanceRetentionService', () => {
 
   describe('deletePolicy', () => {
     it('should delete a retention policy', async () => {
-      vi.mocked(mockAxiosInstance.delete).mockResolvedValue({
+      vi.mocked(mockClient.delete).mockResolvedValue({
         status: 204,
       });
 
       await governanceRetentionService.deletePolicy('policy-1');
 
-      expect(vi.mocked(mockAxiosInstance.delete)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.delete)).toHaveBeenCalledWith(
         'governance/retention-policies/policy-1/'
       );
     });

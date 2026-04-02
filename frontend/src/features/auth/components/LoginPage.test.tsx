@@ -1,27 +1,21 @@
 /**
  * LoginPage smoke test — Phase 106
  */
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('axios', () => {
-  const inst = {
-    get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn(),
-    interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
-  };
-  return { default: { create: vi.fn(() => inst) } };
-});
+vi.mock('../../../shared/api/client');
 
 import { apiClient } from '../../../shared/api/client';
 import { LoginPage } from './LoginPage';
 
 describe('LoginPage', () => {
   let queryClient: QueryClient;
-  let mock: AxiosInstance;
+  let mock: HttpClient;
 
   function Wrapper({ children }: { children: ReactNode }) {
     return (
@@ -39,24 +33,37 @@ describe('LoginPage', () => {
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
     mock = apiClient.getClient();
-    // Default: return empty paginated response for any GET
-    vi.mocked(mock.get).mockResolvedValue({
-      data: { count: 0, results: [], page: 1, page_size: 20, total_pages: 0, has_next: false, has_previous: false },
+    vi.mocked(mock.get).mockImplementation((url: string) => {
+      const u = String(url);
+      if (u.includes('openapi.json')) {
+        return Promise.resolve({
+          data: {
+            openapi: '3.0.0',
+            paths: {
+              '/api/v1/auth/register/': { post: {} },
+              '/api/v1/auth/password-reset/': { post: {} },
+            },
+          },
+        });
+      }
+      return Promise.resolve({
+        data: { count: 0, results: [], page: 1, page_size: 20, total_pages: 0, has_next: false, has_previous: false },
+      });
     });
   });
 
   it('renders without crashing', async () => {
     render(<LoginPage />, { wrapper: Wrapper });
-    // Component should mount without throwing
-    expect(document.body.innerHTML.length).toBeGreaterThan(0);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
+    });
   });
 
   it('mounts and processes initial render cycle', async () => {
     const { container } = render(<LoginPage />, { wrapper: Wrapper });
-    // Wait for any content to appear (heading, text, button, etc.)
-    // The component should render something meaningful
-    // Component should mount and start its render lifecycle
-    // (loading state, data fetch, or static content)
-    expect(container.children.length).toBeGreaterThan(0);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /login/i })).toBeInTheDocument();
+    });
+    expect(container.querySelector('form')).toBeTruthy();
   });
 });

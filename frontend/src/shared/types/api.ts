@@ -51,3 +51,45 @@ export interface ApiResponse<T> {
   status: number;
   headers: Record<string, string>;
 }
+
+/**
+ * Request configuration for the fetch-based HTTP client.
+ * Replaces AxiosRequestConfig after Phase 209 axios removal.
+ */
+export interface RequestConfig {
+  headers?: Record<string, string>;
+  params?: Record<string, string | number | boolean | undefined>;
+  responseType?: 'json' | 'blob' | 'text';
+  timeout?: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * HTTP client interface matching the method signatures that all 38+ service files use.
+ * `getClient()` returns this type. Methods return `ApiResponse<T>` (with `data: T`)
+ * so services can continue doing `response.data` unchanged — the compatibility wrapper
+ * from the Phase 209 axios→fetch migration.
+ */
+export interface HttpClient {
+  get<T = unknown>(url: string, config?: RequestConfig): Promise<ApiResponse<T>>;
+  post<T = unknown>(url: string, data?: unknown, config?: RequestConfig): Promise<ApiResponse<T>>;
+  put<T = unknown>(url: string, data?: unknown, config?: RequestConfig): Promise<ApiResponse<T>>;
+  patch<T = unknown>(url: string, data?: unknown, config?: RequestConfig): Promise<ApiResponse<T>>;
+  delete<T = unknown>(url: string, config?: RequestConfig): Promise<ApiResponse<T>>;
+  head<T = unknown>(url: string, config?: RequestConfig): Promise<ApiResponse<T>>;
+  defaults: { baseURL: string };
+}
+
+/**
+ * Type guard for ApiError — replaces axios.isAxiosError() after Phase 209.
+ * Use this instead of checking error.response?.status (axios-specific).
+ */
+export function isApiError(e: unknown): e is ApiError {
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    'error' in e &&
+    typeof (e as ApiError).error === 'object' &&
+    typeof (e as ApiError).error?.code === 'string'
+  );
+}

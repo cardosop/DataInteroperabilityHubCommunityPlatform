@@ -12,6 +12,8 @@ const MVP_EXACT_PATHS = new Set([
   '/baas',
   '/ml',
   '/transformation',
+  '/scheduled-ingestions',
+  '/scheduled-exports',
 ]);
 
 const MVP_PREFIX_PATHS = ['/ai/'];

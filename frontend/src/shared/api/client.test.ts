@@ -1,353 +1,300 @@
 /**
- * API Client Tests
- * Tests for error shape normalization and tenant ID header
+ * API Client Tests — Phase 209: fetch-based client
+ *
+ * Tests for FetchHttpClient: error normalization, auth headers, tenant ID,
+ * token refresh, network retry, timeout, blob responses.
  */
 
-import type { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiError } from '../types/api';
 
-// Mock axios before importing client
-vi.mock('axios', () => {
-  const mockInstance = {
-    interceptors: {
-      request: {
-        use: vi.fn(),
-      },
-      response: {
-        use: vi.fn(),
-      },
-    },
-    get: vi.fn(),
-    post: vi.fn(),
-    put: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockInstance),
-      post: vi.fn(),
-    },
-  };
-});
-
-// Mock error reporting and performance metrics services
+// Mock dependencies
 vi.mock('../services/errorReporting', () => ({
-  errorReportingService: {
-    reportError: vi.fn(),
-  },
+  errorReportingService: { reportError: vi.fn() },
 }));
-
 vi.mock('../services/performanceMetrics', () => ({
-  performanceMetricsService: {
-    measureAPICall: vi.fn(),
-    collectWebVitals: vi.fn(),
-  },
+  performanceMetricsService: { measureAPICall: vi.fn() },
 }));
 
-import axios from 'axios';
+// Mock crypto.randomUUID
+vi.stubGlobal('crypto', { randomUUID: () => 'test-correlation-id' });
+
 import { ApiClient } from './client';
 
-const mockAxiosCreate = vi.mocked(axios.create);
+function mockFetchResponse(body: unknown, status = 200, headers: Record<string, string> = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...headers },
+  });
+}
 
-describe('ApiClient', () => {
-  let apiClient: ApiClient;
-  let requestInterceptor:
-    | ((config: InternalAxiosRequestConfig) => InternalAxiosRequestConfig)
-    | null;
-  let responseErrorInterceptor: ((error: AxiosError) => Promise<never>) | null;
+describe('ApiClient (fetch-based)', () => {
+  let client: ApiClient;
+  let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    // Create new client instance - this will call axios.create
-    apiClient = new ApiClient();
-
-    // Get the mock instance that was created
-    const createdInstance = mockAxiosCreate.mock.results[mockAxiosCreate.mock.results.length - 1]
-      ?.value as AxiosInstance;
-    if (!createdInstance) {
-      throw new Error('Failed to get mock axios instance');
-    }
-
-    // Capture interceptors from the mock
-    const requestUseCall = (createdInstance.interceptors.request.use as ReturnType<typeof vi.fn>)
-      .mock.calls[
-      (createdInstance.interceptors.request.use as ReturnType<typeof vi.fn>).mock.calls.length - 1
-    ];
-    requestInterceptor = requestUseCall?.[0] || null;
-
-    const responseUseCall = (createdInstance.interceptors.response.use as ReturnType<typeof vi.fn>)
-      .mock.calls[
-      (createdInstance.interceptors.response.use as ReturnType<typeof vi.fn>).mock.calls.length - 1
-    ];
-    responseErrorInterceptor = responseUseCall?.[1] || null;
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    Object.defineProperty(document, 'cookie', { writable: true, value: '' });
+    client = new ApiClient();
   });
 
-  describe('Error Shape Normalization', () => {
-    it('should normalize nested error shape correctly', async () => {
-      const nestedError: ApiError = {
+  describe('successful requests', () => {
+    it('GET returns { data, status, headers }', async () => {
+      fetchMock.mockResolvedValue(mockFetchResponse({ results: [1, 2, 3] }));
+
+      const response = await client.getClient().get<{ results: number[] }>('assets/');
+      expect(response.data).toEqual({ results: [1, 2, 3] });
+      expect(response.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledOnce();
+    });
+
+    it('POST sends JSON body', async () => {
+      fetchMock.mockResolvedValue(mockFetchResponse({ id: '123' }, 201));
+
+      const response = await client.getClient().post('assets/', { name: 'test' });
+      expect(response.data).toEqual({ id: '123' });
+      expect(response.status).toBe(201);
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(init.body).toBe(JSON.stringify({ name: 'test' }));
+      expect(init.method).toBe('POST');
+    });
+
+    it('handles 204 No Content (empty body)', async () => {
+      fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+      const response = await client.getClient().delete('assets/123/');
+      expect(response.data).toBeUndefined();
+      expect(response.status).toBe(204);
+    });
+
+    it('handles blob responseType', async () => {
+      const blob = new Blob(['test content'], { type: 'text/plain' });
+      fetchMock.mockResolvedValue(new Response(blob, { status: 200 }));
+
+      const response = await client.getClient().get('files/download/', { responseType: 'blob' });
+      expect(response.data).toBeInstanceOf(Blob);
+    });
+  });
+
+  describe('request headers', () => {
+    it('adds Authorization header when access token is set', async () => {
+      client.setAccessToken('test-token-123');
+      fetchMock.mockResolvedValue(mockFetchResponse({}));
+
+      await client.getClient().get('assets/');
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const headers = new Headers(init.headers as HeadersInit);
+      expect(headers.get('Authorization')).toBe('Bearer test-token-123');
+    });
+
+    it('adds X-Tenant-ID header when tenant getter is set', async () => {
+      client.setTenantIdGetter(() => 'tenant-abc');
+      fetchMock.mockResolvedValue(mockFetchResponse({}));
+
+      await client.getClient().get('assets/');
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const headers = new Headers(init.headers as HeadersInit);
+      expect(headers.get('X-Tenant-ID')).toBe('tenant-abc');
+    });
+
+    it('adds X-Correlation-ID header', async () => {
+      fetchMock.mockResolvedValue(mockFetchResponse({}));
+
+      await client.getClient().get('assets/');
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const headers = new Headers(init.headers as HeadersInit);
+      expect(headers.get('X-Correlation-ID')).toBe('test-correlation-id');
+    });
+
+    it('adds Cache-Control for GET requests', async () => {
+      fetchMock.mockResolvedValue(mockFetchResponse({}));
+
+      await client.getClient().get('assets/');
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const headers = new Headers(init.headers as HeadersInit);
+      expect(headers.get('Cache-Control')).toBe('no-cache, no-store, must-revalidate');
+    });
+
+    it('adds CSRF token for POST requests', async () => {
+      Object.defineProperty(document, 'cookie', {
+        writable: true,
+        value: 'csrftoken=my-csrf-token',
+      });
+      fetchMock.mockResolvedValue(mockFetchResponse({}));
+
+      await client.getClient().post('assets/', {});
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const headers = new Headers(init.headers as HeadersInit);
+      expect(headers.get('X-CSRFToken')).toBe('my-csrf-token');
+    });
+
+    it('sends credentials: include', async () => {
+      fetchMock.mockResolvedValue(mockFetchResponse({}));
+
+      await client.getClient().get('assets/');
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(init.credentials).toBe('include');
+    });
+  });
+
+  describe('error normalization', () => {
+    it('normalizes nested error shape { error: { code, message } }', async () => {
+      fetchMock.mockResolvedValue(
+        mockFetchResponse(
+          { error: { code: 'NOT_FOUND', message: 'Asset not found' } },
+          404,
+        ),
+      );
+
+      await expect(client.getClient().get('assets/999/')).rejects.toMatchObject({
         error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Invalid input',
+          code: 'NOT_FOUND',
+          message: 'Asset not found',
+          http_status: 404,
+        },
+      } satisfies Partial<ApiError>);
+    });
+
+    it('normalizes flat DRF error shape { detail: "..." }', async () => {
+      fetchMock.mockResolvedValue(
+        mockFetchResponse({ detail: 'Not found.' }, 404),
+      );
+
+      await expect(client.getClient().get('assets/999/')).rejects.toMatchObject({
+        error: {
+          message: 'Not found.',
+          http_status: 404,
+        },
+      });
+    });
+
+    it('normalizes DRF field validation error { field: ["msg"] }', async () => {
+      fetchMock.mockResolvedValue(
+        mockFetchResponse({ name: ['This field is required.'] }, 400),
+      );
+
+      await expect(client.getClient().post('assets/', {})).rejects.toMatchObject({
+        error: {
+          message: 'This field is required.',
           http_status: 400,
-          request_id: 'req-123',
-          timestamp: '2024-01-01T00:00:00Z',
-          details: { field: 'email' },
         },
-      };
-
-      const axiosError = {
-        response: {
-          status: 400,
-          data: nestedError,
-          headers: {},
-        },
-        config: {
-          headers: {},
-        } as InternalAxiosRequestConfig,
-        isAxiosError: true,
-        name: 'AxiosError',
-        message: 'Request failed',
-      } as unknown as AxiosError<ApiError>;
-
-      if (!responseErrorInterceptor) {
-        throw new Error('Response error interceptor not set');
-      }
-
-      try {
-        await responseErrorInterceptor(axiosError);
-        expect.fail('Should have rejected');
-      } catch (rejectedError) {
-        const apiError = rejectedError as ApiError;
-        expect(apiError.error.code).toBe('VALIDATION_ERROR');
-        expect(apiError.error.message).toBe('Invalid input');
-        expect(apiError.error.details).toEqual({ field: 'email' });
-      }
+      });
     });
 
-    it('should normalize flat error shape correctly', async () => {
-      const flatError = {
-        error: 'Invalid input',
-        code: 'VALIDATION_ERROR',
-        details: { field: 'email' },
-        timestamp: '2024-01-01T00:00:00Z',
-      };
-
-      const axiosError = {
-        response: {
-          status: 400,
-          data: flatError,
-          headers: {},
-        },
-        config: {
-          headers: {},
-        } as InternalAxiosRequestConfig,
-        isAxiosError: true,
-        name: 'AxiosError',
-        message: 'Request failed',
-      } as unknown as AxiosError;
-
-      if (!responseErrorInterceptor) {
-        throw new Error('Response error interceptor not set');
-      }
-
-      try {
-        await responseErrorInterceptor(axiosError);
-        expect.fail('Should have rejected');
-      } catch (rejectedError) {
-        const apiError = rejectedError as ApiError;
-        // Flat error should be normalized to nested structure
-        expect(apiError.error.code).toBe('VALIDATION_ERROR');
-        expect(apiError.error.message).toBe('Invalid input');
-        expect(apiError.error.details).toEqual({ field: 'email' });
-      }
-    });
-
-    it('should preserve code and details from flat error shape', async () => {
-      const flatError = {
-        error: 'Something went wrong',
-        code: 'CUSTOM_ERROR',
-        details: { custom_field: 'value', nested: { data: 123 } },
-      };
-
-      const axiosError = {
-        response: {
+    it('handles non-JSON error response', async () => {
+      fetchMock.mockResolvedValue(
+        new Response('Internal Server Error', {
           status: 500,
-          data: flatError,
-          headers: {},
+          headers: { 'Content-Type': 'text/plain' },
+        }),
+      );
+
+      await expect(client.getClient().get('assets/')).rejects.toMatchObject({
+        error: {
+          code: 'UNKNOWN_ERROR',
+          http_status: 500,
         },
-        config: {
-          headers: {},
-        } as InternalAxiosRequestConfig,
-        isAxiosError: true,
-        name: 'AxiosError',
-        message: 'Request failed',
-      } as unknown as AxiosError;
-
-      if (!responseErrorInterceptor) {
-        throw new Error('Response error interceptor not set');
-      }
-
-      try {
-        await responseErrorInterceptor(axiosError);
-        expect.fail('Should have rejected');
-      } catch (rejectedError) {
-        const apiError = rejectedError as ApiError;
-        // Verify code and details are preserved
-        expect(apiError.error.code).toBe('CUSTOM_ERROR');
-        expect(apiError.error.details).toEqual({ custom_field: 'value', nested: { data: 123 } });
-      }
+      });
     });
   });
 
-  describe('Network Error Retries', () => {
-    let setTimeoutSpy: ReturnType<typeof vi.spyOn>;
+  describe('401 refresh and retry', () => {
+    it('refreshes token and retries on 401', async () => {
+      client.setRefreshToken('refresh-token-123');
 
-    beforeEach(() => {
-      vi.useFakeTimers();
-      setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+      fetchMock
+        // First call: 401
+        .mockResolvedValueOnce(mockFetchResponse({ detail: 'Unauthorized' }, 401))
+        // Refresh call: success
+        .mockResolvedValueOnce(
+          mockFetchResponse({ access_token: 'new-token', refresh_token: 'new-refresh' }),
+        )
+        // Retry: success
+        .mockResolvedValueOnce(mockFetchResponse({ results: [] }));
+
+      const response = await client.getClient().get('assets/');
+      expect(response.data).toEqual({ results: [] });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
     });
 
-    afterEach(() => {
-      vi.useRealTimers();
-    });
+    it('clears tokens when refresh fails', async () => {
+      client.setRefreshToken('bad-refresh');
 
-    it.each(['post', 'patch', 'put', 'delete'])(
-      'should NOT schedule a retry for %s requests on ECONNABORTED (timeout)',
-      async (method) => {
-        if (!responseErrorInterceptor) throw new Error('Response error interceptor not set');
+      fetchMock
+        // First call: 401
+        .mockResolvedValueOnce(mockFetchResponse({ detail: 'Unauthorized' }, 401))
+        // Refresh call: fails
+        .mockResolvedValueOnce(mockFetchResponse({ detail: 'Invalid token' }, 401));
 
-        const networkError = {
-          response: undefined,
-          code: 'ECONNABORTED',
-          message: 'timeout of 45000ms exceeded',
-          config: {
-            method,
-            headers: {},
-            _networkRetryCount: undefined,
-          } as unknown as InternalAxiosRequestConfig,
-          isAxiosError: true,
-          name: 'AxiosError',
-        } as unknown as AxiosError;
-
-        try {
-          await responseErrorInterceptor(networkError);
-          expect.fail('Should have rejected');
-        } catch {
-          // Expected rejection — key assertion: no retry back-off timer was started
-        }
-
-        expect(setTimeoutSpy).not.toHaveBeenCalled();
-      }
-    );
-
-    it.each(['post', 'patch', 'put', 'delete'])(
-      'should NOT schedule a retry for %s requests on ECONNRESET',
-      async (method) => {
-        if (!responseErrorInterceptor) throw new Error('Response error interceptor not set');
-
-        const networkError = {
-          response: undefined,
-          code: 'ECONNRESET',
-          message: 'socket hang up',
-          config: {
-            method,
-            headers: {},
-            _networkRetryCount: undefined,
-          } as unknown as InternalAxiosRequestConfig,
-          isAxiosError: true,
-          name: 'AxiosError',
-        } as unknown as AxiosError;
-
-        try {
-          await responseErrorInterceptor(networkError);
-          expect.fail('Should have rejected');
-        } catch {
-          // Expected rejection
-        }
-
-        expect(setTimeoutSpy).not.toHaveBeenCalled();
-      }
-    );
-
-    it('should schedule a retry back-off for GET requests on ECONNRESET', async () => {
-      if (!responseErrorInterceptor) throw new Error('Response error interceptor not set');
-
-      const networkError = {
-        response: undefined,
-        code: 'ECONNRESET',
-        message: 'socket hang up',
-        config: {
-          method: 'get',
-          headers: {},
-          url: '/some-resource/',
-          _networkRetryCount: undefined,
-        } as unknown as InternalAxiosRequestConfig,
-        isAxiosError: true,
-        name: 'AxiosError',
-      } as unknown as AxiosError;
-
-      // Kick off the interceptor but don't await — the retry timer will pause it
-      const pendingPromise = responseErrorInterceptor(networkError).catch(() => {});
-
-      // The retry logic awaits a setTimeout before calling this.client again;
-      // advance timers to unblock it so the test doesn't hang
-      await vi.runAllTimersAsync();
-      await pendingPromise;
-
-      expect(setTimeoutSpy).toHaveBeenCalledOnce();
-      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1000);
+      await expect(client.getClient().get('assets/')).rejects.toMatchObject({
+        error: { http_status: 401 },
+      });
+      expect(client.getAccessToken()).toBeNull();
     });
   });
 
-  describe('Tenant ID Header', () => {
-    it('should add X-Tenant-ID header when tenant ID getter is set', () => {
-      const tenantId = 'tenant-123';
-      apiClient.setTenantIdGetter(() => tenantId);
+  describe('network retry', () => {
+    it('retries GET on network error (max 2)', async () => {
+      fetchMock
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(mockFetchResponse({ ok: true }));
 
-      const config = {
-        headers: {},
-      } as InternalAxiosRequestConfig;
-
-      if (!requestInterceptor) {
-        throw new Error('Request interceptor not set');
-      }
-
-      const result = requestInterceptor(config);
-      expect(result.headers['X-Tenant-ID']).toBe(tenantId);
+      const response = await client.getClient().get('health/');
+      expect(response.data).toEqual({ ok: true });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
     });
 
-    it('should not add X-Tenant-ID header when tenant ID getter returns null', () => {
-      apiClient.setTenantIdGetter(() => null);
+    it('does NOT retry POST on network error', async () => {
+      fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
 
-      const config = {
-        headers: {},
-      } as InternalAxiosRequestConfig;
+      await expect(client.getClient().post('assets/', {})).rejects.toMatchObject({
+        error: { code: 'NETWORK_ERROR' },
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
 
-      if (!requestInterceptor) {
-        throw new Error('Request interceptor not set');
-      }
+  describe('timeout', () => {
+    it('aborts request after timeout', async () => {
+      fetchMock.mockImplementation(
+        () => new Promise((_, reject) => {
+          setTimeout(() => reject(new DOMException('Aborted', 'AbortError')), 10);
+        }),
+      );
 
-      const result = requestInterceptor(config);
-      expect(result.headers['X-Tenant-ID']).toBeUndefined();
+      await expect(
+        client.getClient().get('slow/', { timeout: 5 }),
+      ).rejects.toMatchObject({
+        error: { code: 'TIMEOUT' },
+      });
+    });
+  });
+
+  describe('token management', () => {
+    it('getAccessToken returns null initially', () => {
+      expect(client.getAccessToken()).toBeNull();
     });
 
-    it('should not add X-Tenant-ID header when tenant ID getter is not set', () => {
-      apiClient.setTenantIdGetter(null);
+    it('setAccessToken / getAccessToken round-trip', () => {
+      client.setAccessToken('tok');
+      expect(client.getAccessToken()).toBe('tok');
+    });
 
-      const config = {
-        headers: {},
-      } as InternalAxiosRequestConfig;
-
-      if (!requestInterceptor) {
-        throw new Error('Request interceptor not set');
-      }
-
-      const result = requestInterceptor(config);
-      expect(result.headers['X-Tenant-ID']).toBeUndefined();
+    it('clearTokens resets both tokens', () => {
+      client.setAccessToken('a');
+      client.setRefreshToken('r');
+      client.clearTokens();
+      expect(client.getAccessToken()).toBeNull();
     });
   });
 });

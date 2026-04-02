@@ -3,8 +3,8 @@
  * API client for marketplace order operations
  */
 
-import axios from 'axios';
 import { apiClient } from '../../../shared/api/client';
+import { isApiError } from '../../../shared/types/api';
 import type { PaginatedResponse } from '../../../shared/types/api';
 import type {
   Order,
@@ -86,8 +86,11 @@ export const orderService = {
         .post<PurchaseWithPaymentSuccess>(`${ORDERS_BASE_PATH}/purchase/`, payload);
       return { kind: 'success', data: response.data };
     } catch (e) {
-      if (axios.isAxiosError(e) && e.response?.status === 402) {
-        const d = e.response.data as Record<string, unknown>;
+      // Phase 209: replaced axios.isAxiosError with isApiError after axios supply chain compromise.
+      // The fetch-based client normalizes errors to ApiError shape with http_status.
+      // 402 Payment Required returns requires_action with client_secret for 3D Secure.
+      if (isApiError(e) && e.error.http_status === 402) {
+        const d = e.error.details as Record<string, unknown> | undefined;
         if (d?.requires_action && typeof d.client_secret === 'string') {
           return {
             kind: 'requires_action',

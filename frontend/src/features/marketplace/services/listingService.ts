@@ -90,7 +90,7 @@ export const listingService = {
    * Download listing contract/document
    */
   async download(id: string): Promise<Blob> {
-    const response = await apiClient.getClient().get(`${LISTINGS_BASE_PATH}/${id}/download/`, {
+    const response = await apiClient.getClient().get<Blob>(`${LISTINGS_BASE_PATH}/${id}/download/`, {
       responseType: 'blob',
     });
     return response.data;
@@ -103,7 +103,7 @@ export const listingService = {
     const url = format 
       ? `${LISTINGS_BASE_PATH}/${id}/preview.${format}/`
       : `${LISTINGS_BASE_PATH}/${id}/preview/`;
-    const response = await apiClient.getClient().get(url, {
+    const response = await apiClient.getClient().get<Blob>(url, {
       responseType: 'blob',
     });
     return response.data;

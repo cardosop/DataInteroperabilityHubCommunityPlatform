@@ -1,37 +1,22 @@
 /**
  * RatingsTab Tests
  * Verifies assetId-only mode (no asset selector when assetId provided and assetIdOnly=true).
- * Mocks only axios (network layer).
+ * Mocks only API client (network layer).
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RatingsTab } from './RatingsTab';
 import { apiClient } from '../../../shared/api/client';
 
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
+vi.mock('../../../shared/api/client');
 
 describe('RatingsTab', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   function wrapper({ children }: { children: ReactNode }) {
     return (
@@ -46,8 +31,8 @@ describe('RatingsTab', () => {
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    mockAxiosInstance = apiClient.getClient();
-    vi.mocked(mockAxiosInstance.get).mockImplementation((url: string) => {
+    mockClient = apiClient.getClient();
+    vi.mocked(mockClient.get).mockImplementation((url: string) => {
       if (typeof url === 'string' && url.includes('social') && url.includes('ratings')) {
         return Promise.resolve({ data: { results: [], count: 0 } });
       }

@@ -1,37 +1,20 @@
 /**
  * DatasetCreatePage Unit Tests
  * Per task 29.68.6.1. Flow selector (none | existing | create_new), AssetPicker, create_new.
- * Uses axios mock for controlled API responses; real hooks and components.
+ * Uses API client mock for controlled API responses; real hooks and components.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../../shared/components/Toast';
 import { DatasetCreatePage } from './DatasetCreatePage';
 
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
+vi.mock('../../../shared/api/client');
 
 vi.mock('../../files/components/FileUpload', () => ({
   FileUpload: ({
@@ -61,7 +44,7 @@ import { apiClient } from '../../../shared/api/client';
 
 describe('DatasetCreatePage', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   function wrapper({ children, initialEntries = ['/datasets/create'] }: { children: ReactNode; initialEntries?: string[] }) {
     return (
@@ -90,9 +73,9 @@ describe('DatasetCreatePage', () => {
     });
 
     const realClient = apiClient.getClient();
-    mockAxiosInstance = realClient;
-    vi.mocked(mockAxiosInstance.get).mockClear();
-    vi.mocked(mockAxiosInstance.post).mockClear();
+    mockClient = realClient;
+    vi.mocked(mockClient.get).mockClear();
+    vi.mocked(mockClient.post).mockClear();
   });
 
   it('renders flow selector with none, existing, create_new options', () => {
@@ -169,7 +152,7 @@ describe('DatasetCreatePage', () => {
 
   it('create_new flow: submit button enabled when file, key, name filled', async () => {
     const user = userEvent.setup();
-    vi.mocked(mockAxiosInstance.post).mockResolvedValue({
+    vi.mocked(mockClient.post).mockResolvedValue({
       data: { asset_id: 'a1', dataset_id: 'd1', contract_id: 'c1' },
       status: 201,
     });
@@ -196,8 +179,8 @@ describe('DatasetCreatePage', () => {
   it('existing flow: calls create dataset API with file_id and asset_id on submit', async () => {
     const user = userEvent.setup();
     const mockAssets = { results: [{ id: 'asset-1', name: 'Test Asset', key: 'test-asset' }], count: 1 };
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({ data: mockAssets });
-    vi.mocked(mockAxiosInstance.post).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({ data: mockAssets });
+    vi.mocked(mockClient.post).mockResolvedValue({
       data: { id: 'ds-1', name: 'Dataset', file_id: 'file-123', asset_id: 'asset-1' },
       status: 201,
     });
@@ -218,7 +201,7 @@ describe('DatasetCreatePage', () => {
     await user.click(screen.getByTestId('btn-create-dataset'));
 
     await waitFor(() => {
-      const postCalls = vi.mocked(mockAxiosInstance.post).mock.calls;
+      const postCalls = vi.mocked(mockClient.post).mock.calls;
       const datasetCreateCall = postCalls.find((c) => String(c[0] ?? '').includes('datasets') && !String(c[0] ?? '').includes('data-first'));
       expect(datasetCreateCall).toBeDefined();
       expect(datasetCreateCall?.[1]).toMatchObject({
@@ -230,7 +213,7 @@ describe('DatasetCreatePage', () => {
 
   it('create_new flow: calls data-first API on submit', async () => {
     const user = userEvent.setup();
-    vi.mocked(mockAxiosInstance.post).mockResolvedValue({
+    vi.mocked(mockClient.post).mockResolvedValue({
       data: { asset_id: 'a1', dataset_id: 'd1', contract_id: 'c1' },
       status: 201,
     });
@@ -247,7 +230,7 @@ describe('DatasetCreatePage', () => {
     await user.click(screen.getByTestId('btn-create-dataset'));
 
     await waitFor(() => {
-      const postCalls = vi.mocked(mockAxiosInstance.post).mock.calls;
+      const postCalls = vi.mocked(mockClient.post).mock.calls;
       const dataFirstCall = postCalls.find((c) => String(c[0] ?? '').includes('data-first'));
       expect(dataFirstCall).toBeDefined();
       expect(dataFirstCall?.[1]).toMatchObject({

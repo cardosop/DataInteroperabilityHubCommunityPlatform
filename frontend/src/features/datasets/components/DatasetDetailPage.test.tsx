@@ -1,13 +1,13 @@
 /**
  * Dataset Detail Page Tests
- * Real useDataset, useUpdateDataset, useDeleteDataset; only axios mocked.
+ * Real useDataset, useUpdateDataset, useDeleteDataset; only API client mocked.
  * Scenarios: loading, error, detail with linked asset, detail without asset (Link to Asset), edit form.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,30 +15,13 @@ import { DatasetFormat } from '../../../shared/types/datasets';
 import { ToastProvider } from '../../../shared/components/Toast';
 import { DatasetDetailPage } from './DatasetDetailPage';
 
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
+vi.mock('../../../shared/api/client');
 
 import { apiClient } from '../../../shared/api/client';
 
 describe('DatasetDetailPage', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   function wrapper({ children }: { children: ReactNode }) {
     return (
@@ -64,9 +47,9 @@ describe('DatasetDetailPage', () => {
     });
 
     const realClient = apiClient.getClient();
-    mockAxiosInstance = realClient;
-    vi.mocked(mockAxiosInstance.get).mockClear();
-    vi.mocked(mockAxiosInstance.patch).mockClear();
+    mockClient = realClient;
+    vi.mocked(mockClient.get).mockClear();
+    vi.mocked(mockClient.patch).mockClear();
   });
 
   it('should display loading state', async () => {
@@ -74,7 +57,7 @@ describe('DatasetDetailPage', () => {
     const getPromise = new Promise((resolve) => {
       resolveGet = resolve;
     });
-    vi.mocked(mockAxiosInstance.get).mockReturnValue(getPromise as never);
+    vi.mocked(mockClient.get).mockReturnValue(getPromise as never);
 
     render(<DatasetDetailPage />, { wrapper });
 
@@ -98,7 +81,7 @@ describe('DatasetDetailPage', () => {
   });
 
   it('should display error state', async () => {
-    vi.mocked(mockAxiosInstance.get).mockRejectedValue(new Error('Not found'));
+    vi.mocked(mockClient.get).mockRejectedValue(new Error('Not found'));
 
     render(<DatasetDetailPage />, { wrapper });
 
@@ -108,7 +91,7 @@ describe('DatasetDetailPage', () => {
   });
 
   it('should show linked asset with link when asset_id present', async () => {
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         id: 'ds-1',
         name: 'Test Dataset',
@@ -136,7 +119,7 @@ describe('DatasetDetailPage', () => {
   });
 
   it('should show Link to Asset button when dataset has no asset', async () => {
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         id: 'ds-1',
         name: 'Test Dataset',
@@ -162,7 +145,7 @@ describe('DatasetDetailPage', () => {
 
   it('should open edit form when Link to Asset is clicked', async () => {
     const user = userEvent.setup();
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         id: 'ds-1',
         name: 'Test Dataset',
@@ -191,7 +174,7 @@ describe('DatasetDetailPage', () => {
 
   it('should save with asset_id when Edit and Save clicked', async () => {
     const user = userEvent.setup();
-    vi.mocked(mockAxiosInstance.get).mockImplementation((url: string) => {
+    vi.mocked(mockClient.get).mockImplementation((url: string) => {
       if (url?.includes('ds-1') && !url?.includes('versions')) {
         return Promise.resolve({
           data: {
@@ -214,7 +197,7 @@ describe('DatasetDetailPage', () => {
       }
       return Promise.reject(new Error('Unexpected URL'));
     });
-    vi.mocked(mockAxiosInstance.patch).mockResolvedValue({
+    vi.mocked(mockClient.patch).mockResolvedValue({
       data: {
         id: 'ds-1',
         name: 'Test Dataset',
@@ -235,7 +218,7 @@ describe('DatasetDetailPage', () => {
 
     await user.click(screen.getByRole('button', { name: /save/i }));
     await waitFor(() => {
-      expect(mockAxiosInstance.patch).toHaveBeenCalledWith(
+      expect(mockClient.patch).toHaveBeenCalledWith(
         expect.stringContaining('ds-1'),
         expect.objectContaining({ asset: 'asset-123' })
       );
@@ -244,7 +227,7 @@ describe('DatasetDetailPage', () => {
 
   it('should unlink asset when user clears AssetPicker and saves', async () => {
     const user = userEvent.setup();
-    vi.mocked(mockAxiosInstance.get).mockImplementation((url: string) => {
+    vi.mocked(mockClient.get).mockImplementation((url: string) => {
       if (url?.includes('ds-1') && !url?.includes('versions')) {
         return Promise.resolve({
           data: {
@@ -267,7 +250,7 @@ describe('DatasetDetailPage', () => {
       }
       return Promise.reject(new Error('Unexpected URL'));
     });
-    vi.mocked(mockAxiosInstance.patch).mockResolvedValue({
+    vi.mocked(mockClient.patch).mockResolvedValue({
       data: {
         id: 'ds-1',
         name: 'Test Dataset',
@@ -291,7 +274,7 @@ describe('DatasetDetailPage', () => {
 
     await user.click(screen.getByRole('button', { name: /save/i }));
     await waitFor(() => {
-      expect(mockAxiosInstance.patch).toHaveBeenCalledWith(
+      expect(mockClient.patch).toHaveBeenCalledWith(
         expect.stringContaining('ds-1'),
         expect.objectContaining({ asset: null })
       );
@@ -299,7 +282,7 @@ describe('DatasetDetailPage', () => {
   });
 
   it('should show asset_name when API returns it', async () => {
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         id: 'ds-1',
         name: 'Test Dataset',

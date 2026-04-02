@@ -1,41 +1,24 @@
 /**
  * Scheduled Export Create Page Tests
  * Verifies form renders with AssetMultiPicker, DatasetMultiPicker, FileMultiPicker, ContractPicker (task 29.69.6.1).
- * Real components; axios mocked for API calls.
+ * Real components; API client mocked for API calls.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ScheduledExportCreatePage } from './ScheduledExportCreatePage';
 
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
+vi.mock('../../../shared/api/client');
 
 import { apiClient } from '../../../shared/api/client';
 
 describe('ScheduledExportCreatePage', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   function wrapper({ children }: { children: ReactNode }) {
     return (
@@ -56,8 +39,8 @@ describe('ScheduledExportCreatePage', () => {
     });
 
     const realClient = apiClient.getClient();
-    mockAxiosInstance = realClient;
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    mockClient = realClient;
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: { results: [], count: 0 },
     } as never);
   });

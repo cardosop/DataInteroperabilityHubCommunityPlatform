@@ -1,22 +1,16 @@
 /**
  * assetService tests — Phase 105
  */
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('axios', () => {
-  const inst = {
-    get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn(),
-    interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
-  };
-  return { default: { create: vi.fn(() => inst) } };
-});
+vi.mock('../../../shared/api/client');
 
 import { apiClient } from '../../../shared/api/client';
 import { assetService } from './assetService';
 
 describe('assetService', () => {
-  let mock: AxiosInstance;
+  let mock: HttpClient;
 
   beforeEach(() => {
     vi.clearAllMocks();

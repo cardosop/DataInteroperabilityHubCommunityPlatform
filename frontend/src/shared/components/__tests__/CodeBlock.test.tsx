@@ -2,7 +2,7 @@
  * CodeBlock Component Tests — Phase 37
  */
 
-import { render, screen, act, fireEvent } from '@testing-library/react';
+import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { CodeBlock } from '../CodeBlock';
 
@@ -26,8 +26,7 @@ describe('CodeBlock', () => {
     // Use fireEvent instead of userEvent to avoid async timing issues
     fireEvent.click(screen.getByTestId('code-block-copy'));
 
-    // Wait for the async handler to resolve
-    await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith(code));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(code));
   });
 
   it('shows Copied label after copy then reverts after 2s', async () => {

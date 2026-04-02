@@ -2,12 +2,12 @@
  * Scheduled Export Service Tests
  * Tests for scheduled export service using real apiClient (no mocks of apiClient)
  *
- * Note: We mock axios at the module level to avoid real HTTP calls,
+ * Note: We mock API client at the module level to avoid real HTTP calls,
  * but we use the real apiClient instance, ensuring the service correctly
  * uses apiClient.getClient() and the actual service methods.
  */
 
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   ScheduledExport,
@@ -20,48 +20,30 @@ import type {
   ScheduledExportUpdateRequest,
 } from '../../../shared/types/scheduledExport';
 
-// Mock axios at module level - this allows apiClient to use real methods
+// Mock API client at module level - this allows apiClient to use real methods
 // but intercepts HTTP calls for testing
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
+vi.mock('../../../shared/api/client');
 
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
-
-import axios from 'axios';
 import { apiClient } from '../../../shared/api/client';
 import { scheduledExportService } from './scheduledExportService';
 
-// Get the mock instance from axios.create
-vi.mocked(axios.create);
+// Get the mock instance from apiClient.getClient()
+// Phase 209: uses shared API client mock
 
 describe('scheduledExportService', () => {
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   beforeEach(() => {
     vi.clearAllMocks();
     // Get the real client instance from apiClient
     const realClient = apiClient.getClient();
-    // Use the real client's methods, but we'll mock them via axios.create mock
-    mockAxiosInstance = realClient;
+    // Use the real client's methods, but we'll mock them via apiClient mock
+    mockClient = realClient;
     // Clear mock call history but keep implementations
-    vi.mocked(mockAxiosInstance.get).mockClear();
-    vi.mocked(mockAxiosInstance.post).mockClear();
-    vi.mocked(mockAxiosInstance.patch).mockClear();
-    vi.mocked(mockAxiosInstance.delete).mockClear();
+    vi.mocked(mockClient.get).mockClear();
+    vi.mocked(mockClient.post).mockClear();
+    vi.mocked(mockClient.patch).mockClear();
+    vi.mocked(mockClient.delete).mockClear();
   });
 
   describe('list', () => {
@@ -106,7 +88,7 @@ describe('scheduledExportService', () => {
         ] as ScheduledExport[],
       };
 
-      vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+      vi.mocked(mockClient.get).mockResolvedValue({
         data: mockResponse,
       } as never);
 
@@ -118,7 +100,7 @@ describe('scheduledExportService', () => {
 
       const result = await scheduledExportService.list(filters);
 
-      expect(vi.mocked(mockAxiosInstance.get)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.get)).toHaveBeenCalledWith(
         'scheduled-exports/?page=1&page_size=20&status=ACTIVE'
       );
       expect(result.count).toBe(2);
@@ -134,13 +116,13 @@ describe('scheduledExportService', () => {
         results: [] as ScheduledExport[],
       };
 
-      vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+      vi.mocked(mockClient.get).mockResolvedValue({
         data: mockResponse,
       } as never);
 
       const result = await scheduledExportService.list();
 
-      expect(vi.mocked(mockAxiosInstance.get)).toHaveBeenCalledWith('scheduled-exports/');
+      expect(vi.mocked(mockClient.get)).toHaveBeenCalledWith('scheduled-exports/');
       expect(result.count).toBe(0);
       expect(result.results).toHaveLength(0);
     });
@@ -165,13 +147,13 @@ describe('scheduledExportService', () => {
         updated_at: '2024-01-01T00:00:00Z',
       };
 
-      vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+      vi.mocked(mockClient.get).mockResolvedValue({
         data: mockExport,
       } as never);
 
       const result = await scheduledExportService.getById('export-1');
 
-      expect(vi.mocked(mockAxiosInstance.get)).toHaveBeenCalledWith('scheduled-exports/export-1/');
+      expect(vi.mocked(mockClient.get)).toHaveBeenCalledWith('scheduled-exports/export-1/');
       expect(result.id).toBe('export-1');
       expect(result.name).toBe('Test Export');
     });
@@ -204,13 +186,13 @@ describe('scheduledExportService', () => {
         updated_at: '2024-01-01T00:00:00Z',
       };
 
-      vi.mocked(mockAxiosInstance.post).mockResolvedValue({
+      vi.mocked(mockClient.post).mockResolvedValue({
         data: mockCreatedExport,
       } as never);
 
       const result = await scheduledExportService.create(createRequest);
 
-      expect(vi.mocked(mockAxiosInstance.post)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.post)).toHaveBeenCalledWith(
         'scheduled-exports/',
         createRequest
       );
@@ -243,13 +225,13 @@ describe('scheduledExportService', () => {
         updated_at: '2024-01-02T00:00:00Z',
       };
 
-      vi.mocked(mockAxiosInstance.patch).mockResolvedValue({
+      vi.mocked(mockClient.patch).mockResolvedValue({
         data: mockUpdatedExport,
       } as never);
 
       const result = await scheduledExportService.update('export-1', updateRequest);
 
-      expect(vi.mocked(mockAxiosInstance.patch)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.patch)).toHaveBeenCalledWith(
         'scheduled-exports/export-1/',
         updateRequest
       );
@@ -260,13 +242,13 @@ describe('scheduledExportService', () => {
 
   describe('delete', () => {
     it('should delete a scheduled export', async () => {
-      vi.mocked(mockAxiosInstance.delete).mockResolvedValue({
+      vi.mocked(mockClient.delete).mockResolvedValue({
         status: 204,
       } as never);
 
       await scheduledExportService.delete('export-1');
 
-      expect(vi.mocked(mockAxiosInstance.delete)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.delete)).toHaveBeenCalledWith(
         'scheduled-exports/export-1/'
       );
     });
@@ -285,13 +267,13 @@ describe('scheduledExportService', () => {
         message: 'Export triggered successfully',
       };
 
-      vi.mocked(mockAxiosInstance.post).mockResolvedValue({
+      vi.mocked(mockClient.post).mockResolvedValue({
         data: mockTriggerResponse,
       } as never);
 
       const result = await scheduledExportService.trigger('export-1', triggerRequest);
 
-      expect(vi.mocked(mockAxiosInstance.post)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.post)).toHaveBeenCalledWith(
         'scheduled-exports/export-1/trigger/',
         triggerRequest,
         { timeout: 60000 }
@@ -309,13 +291,13 @@ describe('scheduledExportService', () => {
         message: 'Export triggered successfully',
       };
 
-      vi.mocked(mockAxiosInstance.post).mockResolvedValue({
+      vi.mocked(mockClient.post).mockResolvedValue({
         data: mockTriggerResponse,
       } as never);
 
       const result = await scheduledExportService.trigger('export-1');
 
-      expect(vi.mocked(mockAxiosInstance.post)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.post)).toHaveBeenCalledWith(
         'scheduled-exports/export-1/trigger/',
         {},
         { timeout: 60000 }
@@ -359,13 +341,13 @@ describe('scheduledExportService', () => {
         },
       ];
 
-      vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+      vi.mocked(mockClient.get).mockResolvedValue({
         data: mockRuns,
       } as never);
 
       const result = await scheduledExportService.listRuns('export-1');
 
-      expect(vi.mocked(mockAxiosInstance.get)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.get)).toHaveBeenCalledWith(
         'scheduled-exports/export-1/runs/'
       );
       expect(result).toHaveLength(2);
@@ -392,13 +374,13 @@ describe('scheduledExportService', () => {
         updated_at: '2024-01-01T02:05:00Z',
       };
 
-      vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+      vi.mocked(mockClient.get).mockResolvedValue({
         data: mockRun,
       } as never);
 
       const result = await scheduledExportService.getRunById('run-1');
 
-      expect(vi.mocked(mockAxiosInstance.get)).toHaveBeenCalledWith(
+      expect(vi.mocked(mockClient.get)).toHaveBeenCalledWith(
         'scheduled-exports/runs/run-1/'
       );
       expect(result.id).toBe('run-1');

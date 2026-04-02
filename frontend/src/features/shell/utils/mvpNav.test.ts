@@ -7,6 +7,6 @@ describe('mvpNav', () => {
     expect(isPathHiddenInMvpMode('/mesh', true)).toBe(true);
     expect(isPathHiddenInMvpMode('/contracts', true)).toBe(false);
     expect(isPathHiddenInMvpMode('/ai/search', true)).toBe(true);
-    expect(isPathHiddenInMvpMode('/scheduled-ingestions', true)).toBe(false);
+    expect(isPathHiddenInMvpMode('/scheduled-ingestions', true)).toBe(true);
   });
 });

@@ -166,7 +166,7 @@ export const baasService = {
   },
 
   async getInvoicePdf(reportId: string): Promise<Blob> {
-    const response = await apiClient.getClient().get(
+    const response = await apiClient.getClient().get<{ metadata_json?: { pdf_base64?: string }; pdf_base64?: string }>(
       `${BAAS_BASE_PATH}/billing-reports/${reportId}/`,
     );
     // PDF is stored as base64 in metadata_json — decode client-side

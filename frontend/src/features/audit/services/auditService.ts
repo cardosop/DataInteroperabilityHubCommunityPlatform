@@ -57,7 +57,7 @@ export const auditService = {
     if (filters.end_date) params.set('end_date', filters.end_date);
     const url = `${AUDIT_EVENTS_PATH}/export/?${params.toString()}`;
 
-    const response = await apiClient.getClient().get(url, {
+    const response = await apiClient.getClient().get<Blob>(url, {
       responseType: 'blob',
     });
     return response.data;

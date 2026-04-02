@@ -20,7 +20,7 @@ describe('filterVisibleNavItems', () => {
       hasRole: allowAllRoles,
       isCapabilityAvailable: allowAllCaps,
     });
-    expect(out.map((i) => i.path)).toEqual(['/', '/contracts', '/scheduled-ingestions']);
+    expect(out.map((i) => i.path)).toEqual(['/', '/contracts']);
   });
 
   it('keeps mesh when MVP mode is off and capability is available', () => {

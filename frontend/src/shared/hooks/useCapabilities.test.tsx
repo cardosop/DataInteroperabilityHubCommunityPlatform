@@ -1,28 +1,17 @@
 /**
  * useCapabilities hook tests.
- * Real useCapabilities and capabilitiesService; only axios mocked.
+ * Real useCapabilities and capabilitiesService; only API client mocked.
  * Scenarios: success (capabilities loaded), error (fallback capabilities), loading then success.
  */
 
 import { renderHook, waitFor } from '@testing-library/react';
-import type { AxiosInstance } from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCapabilities } from './useCapabilities';
+import { apiClient } from '../api/client';
 
-const mockAxiosInstance = vi.hoisted(() => ({
-  get: vi.fn(),
-  head: vi.fn(),
-  interceptors: {
-    request: { use: vi.fn() },
-    response: { use: vi.fn() },
-  },
-})) as unknown as AxiosInstance;
+vi.mock('../api/client');
 
-vi.mock('axios', () => ({
-  default: {
-    create: vi.fn(() => mockAxiosInstance),
-  },
-}));
+const mockClient = apiClient.getClient();
 
 describe('useCapabilities', () => {
   beforeEach(() => {
@@ -37,7 +26,7 @@ describe('useCapabilities', () => {
       '/api/v1/auth/register/': {},
       '/api/v1/auth/password-reset/': {},
     };
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: { paths: openApiPaths },
     });
 
@@ -56,7 +45,7 @@ describe('useCapabilities', () => {
   });
 
   it('should use fallback capabilities on error', async () => {
-    vi.mocked(mockAxiosInstance.get).mockRejectedValue(new Error('Network error'));
+    vi.mocked(mockClient.get).mockRejectedValue(new Error('Network error'));
 
     const { result } = renderHook(() => useCapabilities());
 
@@ -75,7 +64,7 @@ describe('useCapabilities', () => {
   });
 
   it('should return capability via getCapability when available', async () => {
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: { paths: { '/api/v1/auth/register/': {} } },
     });
 

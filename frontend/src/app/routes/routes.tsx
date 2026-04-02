@@ -1157,7 +1157,7 @@ export const router = createBrowserRouter([
         path: 'audit',
         element: (
           <ErrorBoundary>
-            <ProtectedRoute requiredRole={['AUDITOR', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+            <ProtectedRoute requiredRole={['AUDITOR', 'PLATFORM_ADMIN']}>
               <AuditEventListPage />
             </ProtectedRoute>
           </ErrorBoundary>
@@ -1167,7 +1167,7 @@ export const router = createBrowserRouter([
         path: 'audit/:id',
         element: (
           <ErrorBoundary>
-            <ProtectedRoute requiredRole={['AUDITOR', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+            <ProtectedRoute requiredRole={['AUDITOR', 'PLATFORM_ADMIN']}>
               <AuditEventDetailPage />
             </ProtectedRoute>
           </ErrorBoundary>

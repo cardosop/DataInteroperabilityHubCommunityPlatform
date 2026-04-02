@@ -1,12 +1,12 @@
 /**
  * Retention Policy List Page Tests
- * Real useRetentionPolicies hook and real governanceRetentionService; only axios mocked (no mocks of application code).
+ * Real useRetentionPolicies hook and real governanceRetentionService; only API client mocked (no mocks of application code).
  * Scenarios: loading, error, success (table), empty list.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,30 +14,13 @@ import type { RetentionPolicy } from '../../../shared/types/governanceRetention'
 import { RetentionAction, RetentionPolicyType } from '../../../shared/types/governanceRetention';
 import { RetentionPolicyListPage } from './RetentionPolicyListPage';
 
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
+vi.mock('../../../shared/api/client');
 
 import { apiClient } from '../../../shared/api/client';
 
 describe('RetentionPolicyListPage', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   function wrapper({ children }: { children: ReactNode }) {
     return (
@@ -58,8 +41,8 @@ describe('RetentionPolicyListPage', () => {
     });
 
     const realClient = apiClient.getClient();
-    mockAxiosInstance = realClient;
-    vi.mocked(mockAxiosInstance.get).mockClear();
+    mockClient = realClient;
+    vi.mocked(mockClient.get).mockClear();
   });
 
   it('should display loading state', async () => {
@@ -67,7 +50,7 @@ describe('RetentionPolicyListPage', () => {
     const listPromise = new Promise((resolve) => {
       resolveList = resolve;
     });
-    vi.mocked(mockAxiosInstance.get).mockReturnValue(listPromise as never);
+    vi.mocked(mockClient.get).mockReturnValue(listPromise as never);
 
     render(<RetentionPolicyListPage />, { wrapper });
 
@@ -104,7 +87,7 @@ describe('RetentionPolicyListPage', () => {
         },
       },
     };
-    vi.mocked(mockAxiosInstance.get).mockRejectedValue(err);
+    vi.mocked(mockClient.get).mockRejectedValue(err);
 
     render(<RetentionPolicyListPage />, { wrapper });
 
@@ -139,7 +122,7 @@ describe('RetentionPolicyListPage', () => {
       },
     ];
 
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         count: 1,
         page: 1,
@@ -166,7 +149,7 @@ describe('RetentionPolicyListPage', () => {
   });
 
   it('should display empty state when no policies', async () => {
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         count: 0,
         page: 1,

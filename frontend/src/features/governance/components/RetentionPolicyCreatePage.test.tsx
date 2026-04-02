@@ -1,37 +1,20 @@
 /**
  * Retention Policy Create Page Tests
- * Real useCreateRetentionPolicy; only axios mocked (no mocks of application code).
+ * Real useCreateRetentionPolicy; only API client mocked (no mocks of application code).
  * Scenarios: form render, validation (name, resource, retention period), submit success, mutation error, loading.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RetentionAction, RetentionPolicyType } from '../../../shared/types/governanceRetention';
 import { RetentionPolicyCreatePage } from './RetentionPolicyCreatePage';
 
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
+vi.mock('../../../shared/api/client');
 
 import { apiClient } from '../../../shared/api/client';
 
@@ -39,7 +22,7 @@ const VALID_ASSET_UUID = '550e8400-e29b-41d4-a716-446655440000';
 
 describe('RetentionPolicyCreatePage', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   function wrapper({ children }: { children: ReactNode }) {
     return (
@@ -67,9 +50,9 @@ describe('RetentionPolicyCreatePage', () => {
     });
 
     const realClient = apiClient.getClient();
-    mockAxiosInstance = realClient;
-    vi.mocked(mockAxiosInstance.post).mockClear();
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({ data: mockAssets });
+    mockClient = realClient;
+    vi.mocked(mockClient.post).mockClear();
+    vi.mocked(mockClient.get).mockResolvedValue({ data: mockAssets });
   });
 
   it('should render form fields', () => {
@@ -200,7 +183,7 @@ describe('RetentionPolicyCreatePage', () => {
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
     };
-    vi.mocked(mockAxiosInstance.post).mockResolvedValue({
+    vi.mocked(mockClient.post).mockResolvedValue({
       data: createdPolicy,
     } as never);
 
@@ -229,7 +212,7 @@ describe('RetentionPolicyCreatePage', () => {
 
     await waitFor(
       () => {
-        expect(mockAxiosInstance.post).toHaveBeenCalledWith(
+        expect(mockClient.post).toHaveBeenCalledWith(
           'governance/retention-policies/',
           expect.objectContaining({
             name: 'Test Policy',
@@ -248,7 +231,7 @@ describe('RetentionPolicyCreatePage', () => {
 
   it('should display mutation error when create fails', async () => {
     const user = userEvent.setup();
-    vi.mocked(mockAxiosInstance.post).mockRejectedValue({
+    vi.mocked(mockClient.post).mockRejectedValue({
       response: {
         status: 400,
         data: {
@@ -298,7 +281,7 @@ describe('RetentionPolicyCreatePage', () => {
     const postPromise = new Promise((resolve) => {
       resolvePost = resolve;
     });
-    vi.mocked(mockAxiosInstance.post).mockReturnValue(postPromise as never);
+    vi.mocked(mockClient.post).mockReturnValue(postPromise as never);
 
     render(<RetentionPolicyCreatePage />, { wrapper });
 

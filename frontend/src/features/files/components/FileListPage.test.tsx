@@ -1,13 +1,13 @@
 /**
  * File List Page Tests
- * Real useFiles and useDeleteFile; only axios mocked.
+ * Real useFiles and useDeleteFile; only API client mocked.
  * Scenarios: loading, error, empty list with upload button, table with upload button, upload modal.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,31 +15,13 @@ import type { File as FileType } from '../../../shared/types/files';
 import { ToastProvider } from '../../../shared/components/Toast';
 import { FileListPage } from './FileListPage';
 
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    put: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
-
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
+vi.mock('../../../shared/api/client');
 
 import { apiClient } from '../../../shared/api/client';
 
 describe('FileListPage', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
 
   function wrapper({ children }: { children: ReactNode }) {
     return (
@@ -61,9 +43,9 @@ describe('FileListPage', () => {
     });
 
     const realClient = apiClient.getClient();
-    mockAxiosInstance = realClient;
-    vi.mocked(mockAxiosInstance.get).mockClear();
-    vi.mocked(mockAxiosInstance.post).mockClear();
+    mockClient = realClient;
+    vi.mocked(mockClient.get).mockClear();
+    vi.mocked(mockClient.post).mockClear();
   });
 
   it('should display loading state', async () => {
@@ -71,7 +53,7 @@ describe('FileListPage', () => {
     const listPromise = new Promise((resolve) => {
       resolveList = resolve;
     });
-    vi.mocked(mockAxiosInstance.get).mockReturnValue(listPromise as never);
+    vi.mocked(mockClient.get).mockReturnValue(listPromise as never);
 
     render(<FileListPage />, { wrapper });
 
@@ -93,7 +75,7 @@ describe('FileListPage', () => {
   });
 
   it('should display error state', async () => {
-    vi.mocked(mockAxiosInstance.get).mockRejectedValue(new Error('Network error'));
+    vi.mocked(mockClient.get).mockRejectedValue(new Error('Network error'));
 
     render(<FileListPage />, { wrapper });
 
@@ -103,7 +85,7 @@ describe('FileListPage', () => {
   });
 
   it('should display Upload File button in header when empty', async () => {
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         results: [],
         total_pages: 0,
@@ -126,7 +108,7 @@ describe('FileListPage', () => {
 
   it('should open upload modal when Upload File button is clicked', async () => {
     const user = userEvent.setup();
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         results: [],
         total_pages: 0,
@@ -166,7 +148,7 @@ describe('FileListPage', () => {
       },
     ];
 
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         results: mockFiles,
         total_pages: 1,
@@ -203,7 +185,7 @@ describe('FileListPage', () => {
       },
     ];
 
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         results: mockFiles,
         total_pages: 1,
@@ -212,7 +194,7 @@ describe('FileListPage', () => {
         has_previous: false,
       },
     } as never);
-    vi.mocked(mockAxiosInstance.delete).mockResolvedValue({ data: null } as never);
+    vi.mocked(mockClient.delete).mockResolvedValue({ data: null } as never);
 
     render(<FileListPage />, { wrapper });
 
@@ -232,7 +214,7 @@ describe('FileListPage', () => {
   });
 
   it('should show Upload File action in empty state when no filters', async () => {
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         results: [],
         total_pages: 0,
@@ -256,7 +238,7 @@ describe('FileListPage', () => {
 
   it('should show Clear filters action in empty state when filters applied', async () => {
     const user = userEvent.setup();
-    vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+    vi.mocked(mockClient.get).mockResolvedValue({
       data: {
         results: [],
         total_pages: 0,

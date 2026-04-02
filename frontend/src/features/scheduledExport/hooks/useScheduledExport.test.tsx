@@ -5,7 +5,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
-import type { AxiosInstance } from 'axios';
+import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -24,34 +24,16 @@ import {
   useUpdateScheduledExport,
 } from './useScheduledExport';
 
-// Mock axios at module level
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    interceptors: {
-      request: { use: vi.fn() },
-      response: { use: vi.fn() },
-    },
-  } as unknown as AxiosInstance;
+// Mock API client at module level
+vi.mock('../../../shared/api/client');
 
-  return {
-    default: {
-      create: vi.fn(() => mockAxiosInstance),
-    },
-  };
-});
-
-import axios from 'axios';
 import { apiClient } from '../../../shared/api/client';
 
-vi.mocked(axios.create);
+// Phase 209: uses shared API client mock
 
 describe('useScheduledExport hooks', () => {
   let queryClient: QueryClient;
-  let mockAxiosInstance: AxiosInstance;
+  let mockClient: HttpClient;
   let wrapper: ({ children }: { children: ReactNode }) => ReactNode;
 
   beforeEach(() => {
@@ -72,11 +54,11 @@ describe('useScheduledExport hooks', () => {
     );
 
     const realClient = apiClient.getClient();
-    mockAxiosInstance = realClient;
-    vi.mocked(mockAxiosInstance.get).mockClear();
-    vi.mocked(mockAxiosInstance.post).mockClear();
-    vi.mocked(mockAxiosInstance.patch).mockClear();
-    vi.mocked(mockAxiosInstance.delete).mockClear();
+    mockClient = realClient;
+    vi.mocked(mockClient.get).mockClear();
+    vi.mocked(mockClient.post).mockClear();
+    vi.mocked(mockClient.patch).mockClear();
+    vi.mocked(mockClient.delete).mockClear();
   });
 
   describe('useScheduledExports', () => {
@@ -121,7 +103,7 @@ describe('useScheduledExport hooks', () => {
         ] as ScheduledExport[],
       };
 
-      vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+      vi.mocked(mockClient.get).mockResolvedValue({
         data: mockResponse,
       } as never);
 
@@ -155,7 +137,7 @@ describe('useScheduledExport hooks', () => {
         updated_at: '2024-01-01T00:00:00Z',
       };
 
-      vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+      vi.mocked(mockClient.get).mockResolvedValue({
         data: mockExport,
       } as never);
 
@@ -197,7 +179,7 @@ describe('useScheduledExport hooks', () => {
         },
       ];
 
-      vi.mocked(mockAxiosInstance.get).mockResolvedValue({
+      vi.mocked(mockClient.get).mockResolvedValue({
         data: mockRuns,
       } as never);
 
@@ -246,7 +228,7 @@ describe('useScheduledExport hooks', () => {
         updated_at: '2024-01-01T00:00:00Z',
       };
 
-      vi.mocked(mockAxiosInstance.post).mockResolvedValue({
+      vi.mocked(mockClient.post).mockResolvedValue({
         data: mockCreatedExport,
       } as never);
 
@@ -288,7 +270,7 @@ describe('useScheduledExport hooks', () => {
         updated_at: '2024-01-02T00:00:00Z',
       };
 
-      vi.mocked(mockAxiosInstance.patch).mockResolvedValue({
+      vi.mocked(mockClient.patch).mockResolvedValue({
         data: mockUpdatedExport,
       } as never);
 
@@ -312,7 +294,7 @@ describe('useScheduledExport hooks', () => {
 
   describe('useDeleteScheduledExport', () => {
     it('should delete scheduled export and invalidate queries', async () => {
-      vi.mocked(mockAxiosInstance.delete).mockResolvedValue({
+      vi.mocked(mockClient.delete).mockResolvedValue({
         status: 204,
       } as never);
 
@@ -343,7 +325,7 @@ describe('useScheduledExport hooks', () => {
         message: 'Export triggered successfully',
       };
 
-      vi.mocked(mockAxiosInstance.post).mockResolvedValue({
+      vi.mocked(mockClient.post).mockResolvedValue({
         data: mockTriggerResponse,
       } as never);
 

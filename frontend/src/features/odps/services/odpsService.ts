@@ -100,10 +100,9 @@ export const odpsService = {
       queryParams.append('version', params.version);
     }
 
-    const response = await apiClient.getClient().get(
-      `${CONTRACTS_BASE_PATH}/${contractId}/export/?${queryParams.toString()}`,
-      {
-        responseType: 'blob',
+    const response = await apiClient.getClient().get<Blob>(
+      `${CONTRACTS_BASE_PATH}/${contractId}/export/?${queryParams.toString()}`, {
+      responseType: 'blob',
       }
     );
     return response.data;
@@ -123,10 +122,9 @@ export const odpsService = {
       queryParams.append('version', params.version);
     }
 
-    const response = await apiClient.getClient().get(
-      `${CONTRACTS_BASE_PATH}/${contractId}/download/?${queryParams.toString()}`,
-      {
-        responseType: 'blob',
+    const response = await apiClient.getClient().get<Blob>(
+      `${CONTRACTS_BASE_PATH}/${contractId}/download/?${queryParams.toString()}`, {
+      responseType: 'blob',
       }
     );
     return response.data;
