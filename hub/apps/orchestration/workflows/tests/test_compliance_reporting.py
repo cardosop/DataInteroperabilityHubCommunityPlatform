@@ -1,6 +1,7 @@
 """
 Unit tests for Compliance Reporting Workflow
 """
+import uuid
 import unittest
 from unittest.mock import patch, MagicMock, Mock
 from datetime import datetime, timedelta
@@ -22,9 +23,10 @@ class ComplianceReportingWorkflowUnitTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant, _ = Tenant.objects.get_or_create(name="Test Tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant, _ = Tenant.objects.get_or_create(name=f"Test Tenant {uid}")
         self.user, _ = User.objects.get_or_create(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             defaults={"display_name": "Test User"}
@@ -573,9 +575,10 @@ class ComplianceReportingWorkflowIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant, _ = Tenant.objects.get_or_create(name="Test Tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant, _ = Tenant.objects.get_or_create(name=f"Test Tenant {uid}")
         self.user, _ = User.objects.get_or_create(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             defaults={"display_name": "Test User"}
@@ -677,9 +680,10 @@ class ComplianceReportingWorkflowE2ETest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant, _ = Tenant.objects.get_or_create(name="Test Tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant, _ = Tenant.objects.get_or_create(name=f"Test Tenant {uid}")
         self.user, _ = User.objects.get_or_create(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             defaults={"display_name": "Test User"}

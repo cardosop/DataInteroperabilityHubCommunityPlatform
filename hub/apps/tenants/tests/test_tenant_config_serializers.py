@@ -11,6 +11,7 @@ from rest_framework import serializers
 from datetime import datetime
 
 from hub.apps.tenants.models import Tenant, TenantConfig
+import uuid
 from hub.apps.tenants.serializers import (
     TenantConfigSerializer,
     TenantConfigUpdateSerializer,
@@ -104,9 +105,10 @@ class TenantConfigSerializerTest(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
     
     # GAP-0.2.2.1: TenantConfigSerializer tests
@@ -292,9 +294,10 @@ class TenantConfigUpdateSerializerTest(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
         self.config = TenantConfig.objects.create(
             tenant=self.tenant,

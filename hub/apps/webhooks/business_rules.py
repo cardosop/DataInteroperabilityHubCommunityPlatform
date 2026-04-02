@@ -665,8 +665,9 @@ class WebhooksBusinessRules(BusinessRules):
                 details=details
             )
 
-        # Validate secret strength
-        secret = webhook.secret
+        # Validate secret strength (use decrypted secret since the model
+        # encrypts the secret on save — we need the original length)
+        secret = webhook.decrypted_secret
         details['secret_length'] = len(secret)
 
         # Minimum secret length check

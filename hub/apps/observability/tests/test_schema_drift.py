@@ -15,6 +15,7 @@ from hub.apps.observability.models import SchemaDrift
 from hub.apps.observability.schema_drift import SchemaDriftDetector
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -24,12 +25,13 @@ class SchemaDriftDetectorTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

@@ -10,6 +10,7 @@ Comprehensive TDD tests for:
 All tests follow TDD principles, use real implementations (no mocks/stubs),
 and fix root causes rather than workarounds.
 """
+import uuid
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -39,13 +40,13 @@ class MonitoringValidationTestBase(TestCase):
         """Set up test fixtures"""
         super().setUp()
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.engine = WorkflowEngine()
 
@@ -87,13 +88,34 @@ class TestValidationMetrics(MonitoringValidationTestBase):
         step_def = self.workflow_def.dsl_json["steps"][0]
         self.engine._execute_task_step(instance, step, step_def)
 
-        # Verify metrics exist (check that metrics can be accessed)
-        # Note: We can't easily verify exact counts without Prometheus,
-        # but we can verify the metrics objects exist and are callable
-        self.assertIsNotNone(workflow_business_rules_validations_total)
-        self.assertIsNotNone(workflow_business_rules_validation_duration_seconds)
-        self.assertIsNotNone(workflow_business_rules_validation_cache_hits_total)
-        self.assertIsNotNone(workflow_business_rules_validation_cache_misses_total)
+        # Verify metrics exist and have expected Prometheus metric interface.
+        # Existence check only: exact counts require a Prometheus scrape endpoint,
+        # but we verify these are real metric objects with a labels() method.
+        self.assertIsNotNone(
+            workflow_business_rules_validations_total,
+            "validations_total metric should be defined",
+        )
+        self.assertIsNotNone(
+            workflow_business_rules_validation_duration_seconds,
+            "validation_duration_seconds metric should be defined",
+        )
+        self.assertIsNotNone(
+            workflow_business_rules_validation_cache_hits_total,
+            "cache_hits_total metric should be defined",
+        )
+        self.assertIsNotNone(
+            workflow_business_rules_validation_cache_misses_total,
+            "cache_misses_total metric should be defined",
+        )
+        # Verify they expose the Prometheus labels interface
+        self.assertTrue(
+            hasattr(workflow_business_rules_validations_total, "labels"),
+            "validations_total should support labels()",
+        )
+        self.assertTrue(
+            hasattr(workflow_business_rules_validation_duration_seconds, "labels"),
+            "validation_duration_seconds should support labels()",
+        )
 
     def test_validation_metrics_labels(self):
         """Test that validation metrics have correct labels"""

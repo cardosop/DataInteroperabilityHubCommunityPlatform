@@ -76,54 +76,61 @@ class PluginViewSetTest(TestCase):
         data = response.data
         if isinstance(data, dict) and "results" in data:
             plugin_list = data["results"]
-        elif isinstance(data, list):
-            plugin_list = data
         else:
-            plugin_list = []
+            self.assertIsInstance(data, list, "Expected list or paginated dict response")
+            plugin_list = data
 
         # Should only return available plugins by default
-        if plugin_list:
-            plugin_names = [p["name"] for p in plugin_list]
-            self.assertIn("Test Plugin 1", plugin_names)
-            self.assertIn("Test Plugin 2", plugin_names)
-            self.assertNotIn("Deprecated Plugin", plugin_names)
+        self.assertGreater(len(plugin_list), 0, "Expected at least one plugin in response")
+        plugin_names = [p["name"] for p in plugin_list]
+        self.assertIn("Test Plugin 1", plugin_names)
+        self.assertIn("Test Plugin 2", plugin_names)
+        self.assertNotIn("Deprecated Plugin", plugin_names)
 
     def test_list_plugins_filter_by_category(self):
         """Test filtering plugins by category"""
         response = self.client.get("/api/v1/developer/plugins/?category=CONNECTOR")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        if "results" in response.data:
-            for plugin in response.data["results"]:
-                self.assertEqual(plugin["category"], "CONNECTOR")
+        data = response.data
+        plugin_list = data["results"] if isinstance(data, dict) and "results" in data else data
+        self.assertGreater(len(plugin_list), 0, "Expected at least one CONNECTOR plugin")
+        for plugin in plugin_list:
+            self.assertEqual(plugin["category"], "CONNECTOR")
 
     def test_list_plugins_search(self):
         """Test searching plugins"""
         response = self.client.get("/api/v1/developer/plugins/?search=Plugin 1")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        if "results" in response.data:
-            plugin_names = [p["name"] for p in response.data["results"]]
-            self.assertIn("Test Plugin 1", plugin_names)
-            self.assertNotIn("Test Plugin 2", plugin_names)
+        data = response.data
+        plugin_list = data["results"] if isinstance(data, dict) and "results" in data else data
+        self.assertGreater(len(plugin_list), 0, "Expected search to return at least one plugin")
+        plugin_names = [p["name"] for p in plugin_list]
+        self.assertIn("Test Plugin 1", plugin_names)
+        self.assertNotIn("Test Plugin 2", plugin_names)
 
     def test_list_plugins_sort_by_popularity(self):
         """Test sorting plugins by popularity"""
         response = self.client.get("/api/v1/developer/plugins/?sort=popularity")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        if "results" in response.data and len(response.data["results"]) > 1:
-            downloads = [p["download_count"] for p in response.data["results"]]
-            self.assertEqual(downloads, sorted(downloads, reverse=True))
+        data = response.data
+        plugin_list = data["results"] if isinstance(data, dict) and "results" in data else data
+        self.assertGreater(len(plugin_list), 1, "Expected at least 2 plugins to verify sort order")
+        downloads = [p["download_count"] for p in plugin_list]
+        self.assertEqual(downloads, sorted(downloads, reverse=True))
 
     def test_list_plugins_sort_by_rating(self):
         """Test sorting plugins by rating"""
         response = self.client.get("/api/v1/developer/plugins/?sort=rating")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        if "results" in response.data and len(response.data["results"]) > 1:
-            ratings = [p["rating"] or 0 for p in response.data["results"]]
-            self.assertEqual(ratings, sorted(ratings, reverse=True))
+        data = response.data
+        plugin_list = data["results"] if isinstance(data, dict) and "results" in data else data
+        self.assertGreater(len(plugin_list), 1, "Expected at least 2 plugins to verify sort order")
+        ratings = [p["rating"] or 0 for p in plugin_list]
+        self.assertEqual(ratings, sorted(ratings, reverse=True))
 
     def test_retrieve_plugin(self):
         """Test retrieving a single plugin"""

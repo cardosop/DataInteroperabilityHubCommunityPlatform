@@ -97,7 +97,7 @@ class TestDatabricksConnectorListListings(TestCase):
                 listings = self.connector.list_listings(limit=5)
 
                 self.assertEqual(len(listings), 5)
-                mock_get_details.assert_called()
+                mock_get_details.assert_called_once()
 
     def test_list_listings_with_offset(self):
         """Test list_listings with offset parameter"""
@@ -121,7 +121,7 @@ class TestDatabricksConnectorListListings(TestCase):
 
                 # Should skip first 5 and return remaining
                 self.assertGreaterEqual(len(listings), 0)
-                mock_get_details.assert_called()
+                mock_get_details.assert_called_once()
 
     def test_list_listings_empty_result(self):
         """Test list_listings when no shares exist"""
@@ -282,7 +282,7 @@ class TestDatabricksConnectorListResources(TestCase):
                 self.assertEqual(resources[0].resource_id, 'test_catalog.schema1.table1')
 
                 # Verify tables.list() was called with correct parameters
-                mock_request.assert_called()
+                mock_request.assert_called_once()
                 call_args = mock_request.call_args
                 self.assertEqual(call_args[0][1], '/api/2.0/unity-catalog/tables')
                 self.assertEqual(call_args[1]['params']['catalog_name'], 'test_catalog')

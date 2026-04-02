@@ -15,6 +15,7 @@ from hub.apps.orchestration.models import (
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.tenants.models import KYCStatus, Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -25,11 +26,12 @@ class WorkflowIntegrationTest(TestCase):
     """Integration tests for workflow execution"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -123,11 +125,12 @@ class WorkflowIntegrationEdgeCasesTest(TestCase):
     """Integration tests for workflow execution edge cases"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -185,11 +188,12 @@ class WorkflowIntegrationErrorHandlingTest(TestCase):
     """Integration tests for workflow execution error handling"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()

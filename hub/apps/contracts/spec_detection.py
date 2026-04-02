@@ -39,12 +39,10 @@ def is_odps_contract(contract_data: Dict[str, Any]) -> bool:
     """
     Check if contract data represents an ODPS contract.
 
-    Detection logic:
-    - Checks for 'schema' field with ODPS indicators:
-      * opendataproducts.org/schema
-      * schemas.opendataproducts.io/spec
-    - Checks for 'open-data-product' in schema URL
-    - Checks for 'product' field (ODPS structure indicator)
+    Detection logic (priority order):
+    1. Bitol ODPS: kind: DataProduct + Bitol schema URL prefix
+    2. Pre-Bitol ODPS schema URLs (opendataproducts.org, schemas.opendataproducts.io)
+    3. Product field with details structure
 
     Args:
         contract_data: Contract data dictionary
@@ -55,11 +53,17 @@ def is_odps_contract(contract_data: Dict[str, Any]) -> bool:
     if not isinstance(contract_data, dict):
         return False
 
+    # 1. Bitol ODPS detection (highest priority — explicit discriminator)
+    #    kind: DataProduct + Bitol schema URL or Bitol apiVersion
+    from .odps_version_detection import _detect_bitol_odps_version
+    if _detect_bitol_odps_version(contract_data):
+        return True
+
     # Check for schema field with ODPS indicators
     schema_url = contract_data.get("schema")
     if schema_url and isinstance(schema_url, str):
         schema_lower = schema_url.lower()
-        # Check for ODPS schema URL patterns
+        # Check for pre-Bitol ODPS schema URL patterns
         if "opendataproducts.org/schema" in schema_lower:
             return True
         if "schemas.opendataproducts.io/spec" in schema_lower:
@@ -80,7 +84,10 @@ def is_odps_contract(contract_data: Dict[str, Any]) -> bool:
     # This prevents misclassification when ODCS contracts have version fields that
     # could be interpreted as ODPS versions
     if "apiVersion" in contract_data and "kind" in contract_data:
-        # Strong ODCS indicator - don't check version field for ODPS
+        # Check it's not a Bitol DataProduct (already handled above)
+        if contract_data.get("kind") != "DataProduct":
+            return False
+        # kind=DataProduct without Bitol URL — still ODCS-like, not ODPS
         return False
 
     # ODCS-like structure without ODPS schema/product: has "schema" with "fields" (not schema URL)
@@ -129,7 +136,14 @@ def detect_spec_type(contract_data: Dict[str, Any]) -> Tuple[str, str]:
     if is_odps_contract(contract_data):
         odps_version = detect_odps_version(contract_data)
         if odps_version and odps_version != "unknown":
-            # Normalize version for storage (use detected version)
+            # Bitol ODPS versions are stored with "bitol-" prefix
+            # (e.g. "bitol-1.0.0") — keep as-is for DB storage.
+            # Both Bitol and pre-Bitol store original_spec_type="ODPS"
+            # and differentiate via original_spec_version prefix.
+            if odps_version.startswith("bitol-"):
+                return OriginalSpecType.ODPS, odps_version
+
+            # Normalize pre-Bitol version for storage
             # For .x versions, use the latest known version in that series
             if odps_version == "3.x":
                 spec_version = "3.9"  # Latest 3.x version
@@ -138,7 +152,7 @@ def detect_spec_type(contract_data: Dict[str, Any]) -> Tuple[str, str]:
             elif odps_version == "1.x":
                 spec_version = "1.9"  # Latest 1.x version
             else:
-                spec_version = odps_version  # Use exact version (4.1, 4.0)
+                spec_version = odps_version  # Exact (4.1, 4.0)
 
             return OriginalSpecType.ODPS, spec_version
         else:

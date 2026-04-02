@@ -32,6 +32,7 @@ from hub.apps.contracts.odcs_generator import generate_odcs_from_hubcontract
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase, ContractsTestBase
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -813,14 +814,14 @@ class ODCSRoundTripIntegrationTest(ContractsAPITestBase):
         """Test that export maintains cross-tenant isolation."""
         # Create second tenant
         tenant2 = Tenant.objects.create(
-            name="Test Tenant 2",
-            slug="test-tenant-2",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
 
         user2 = User.objects.create_user(
-            email="user2@example.com",
+            email=f"user2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE,

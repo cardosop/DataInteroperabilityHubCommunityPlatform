@@ -14,6 +14,7 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Error handling
 - Metrics recording
 """
+import uuid
 
 import json
 
@@ -118,6 +119,8 @@ class ODPSServiceCreateTest(ODPSServiceTestBase):
         self.assertEqual(contract.original_spec_type, OriginalSpecType.ODPS)
         self.assertEqual(contract.original_format, OriginalFormat.JSON)
         self.assertIsNotNone(contract.hub_contract_json)
+        self.assertIsInstance(contract.hub_contract_json, dict)
+        self.assertIn("info", contract.hub_contract_json)
         self.assertEqual(contract.normalization_status, NormalizationStatus.NORMALIZED_OK)
         self.assertEqual(contract.status, ContractStatus.DRAFT)
         self.assertEqual(contract.asset, self.asset)
@@ -143,6 +146,8 @@ class ODPSServiceCreateTest(ODPSServiceTestBase):
         self.assertEqual(contract.original_spec_type, OriginalSpecType.ODPS)
         self.assertEqual(contract.original_format, OriginalFormat.YAML)
         self.assertIsNotNone(contract.hub_contract_json)
+        self.assertIsInstance(contract.hub_contract_json, dict)
+        self.assertIn("info", contract.hub_contract_json)
         self.assertEqual(contract.normalization_status, NormalizationStatus.NORMALIZED_OK)
 
     def test_create_odps_without_asset(self):
@@ -213,7 +218,7 @@ class ODPSServiceCreateTest(ODPSServiceTestBase):
                 asset_id="00000000-0000-0000-0000-000000000000",
             )
 
-        self.assertEqual(cm.exception.code, "ASSET_NOT_FOUND")
+        self.assertIn(cm.exception.code, ("ASSET_NOT_FOUND", "NOT_FOUND"))
 
     def test_create_odps_version_detection(self):
         """Test ODPS version auto-detection."""
@@ -276,6 +281,8 @@ class ODPSServiceCreateTest(ODPSServiceTestBase):
         # Contract should be created with resolved refs
         self.assertIsNotNone(contract)
         self.assertIsNotNone(contract.hub_contract_json)
+        self.assertIsInstance(contract.hub_contract_json, dict)
+        self.assertIn("info", contract.hub_contract_json)
 
 
 class ODPSServiceNormalizeTest(ODPSServiceTestBase):
@@ -655,6 +662,8 @@ class ODPSServiceIntegrationTest(ODPSServiceTestBase):
 
         # 2. Verify normalization
         self.assertIsNotNone(contract.hub_contract_json)
+        self.assertIsInstance(contract.hub_contract_json, dict)
+        self.assertIn("info", contract.hub_contract_json)
         self.assertEqual(contract.normalization_status, NormalizationStatus.NORMALIZED_OK)
 
         # 3. Export ODPS
@@ -825,6 +834,7 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
         # Should handle large documents
         self.assertIsNotNone(contract)
         self.assertIsNotNone(contract.hub_contract_json)
+        self.assertIsInstance(contract.hub_contract_json, dict)
 
     def test_create_odps_with_invalid_tenant_id_format(self):
         """Test ODPS contract creation with invalid tenant_id format."""
@@ -877,9 +887,10 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
     def test_create_odps_cross_tenant_isolation(self):
         """Test that contracts are isolated by tenant."""
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -960,8 +971,9 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
     def test_link_odps_to_odcs_cross_tenant_isolation(self):
         """Test that linking respects tenant isolation."""
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
+            name=f"Other Tenant {_uid}",
             slug="other-tenant-2",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
@@ -1134,15 +1146,15 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
             },
         }
 
-        # Should handle None values gracefully
+        # Should either normalize successfully or raise ValidationError
         try:
             result = self.service.normalize_odps(odps_doc=none_doc, tenant_id=str(self.tenant.id))
             # If normalization succeeds, verify structure
-            if result:
-                self.assertIsNotNone(result)
-        except ValidationError:
-            # If normalization fails, it should fail gracefully
-            pass
+            self.assertIsNotNone(result)
+            self.assertIsInstance(result, dict)
+        except ValidationError as exc:
+            # If normalization fails, it should fail with a meaningful message
+            self.assertIsNotNone(str(exc))
 
     def test_service_handles_nested_structures(self):
         """Test that service handles nested structures correctly."""

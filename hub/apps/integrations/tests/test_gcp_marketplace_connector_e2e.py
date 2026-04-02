@@ -14,6 +14,8 @@ import json
 import os
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.db import transaction
 from django.test import TestCase
 
@@ -33,6 +35,7 @@ from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJ
 from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 # Real service account credentials for testing
 REAL_SERVICE_ACCOUNT_JSON = {
@@ -85,10 +88,10 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant E2E", slug="test-tenant-e2e", status="ACTIVE", kyc_status="VERIFIED"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", status="ACTIVE", kyc_status="VERIFIED"
         )
         self.user = User.objects.create_user(
-            email="test-e2e@example.com",
+            email=f"test-e2e-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

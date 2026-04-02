@@ -30,6 +30,8 @@ def _is_graphene_django_available() -> bool:
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/v1/", include("hub.apps.api.urls")),
+    # Phase 18.3 — unified FTS endpoint querying Asset/Contract search_vector
+    path("api/search/", include("hub.apps.search.search_urls")),
     path("graphql/", include("hub.apps.graphql.urls")),
 ]
 
@@ -50,8 +52,7 @@ if _is_graphene_django_available():
 # Add remaining URL patterns
 urlpatterns.extend([
     path("health/", include("hub.apps.health.urls")),
-    # Metrics at /metrics and /metrics/ for Prometheus (no trailing slash) and tools
-    path("metrics", include("hub.apps.observability.urls")),
+    # Metrics endpoint (trailing slash canonical; Django APPEND_SLASH handles redirect)
     path("metrics/", include("hub.apps.observability.urls")),
     # CSP violation reports — unauthenticated; browsers send before scripts run.
     path("api/csp-report/", csp_report_view, name="csp-report"),

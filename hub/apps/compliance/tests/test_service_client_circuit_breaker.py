@@ -30,7 +30,7 @@ from hub.apps.core.resilience.circuit_breaker import (
 def get_real_redis_client_or_none():
     """Get real Redis client or return None if unavailable."""
     try:
-        redis_url = getattr(settings, "REDIS_URL", "redis://redis:6379/0")
+        redis_url = getattr(settings, "REDIS_URL", None) or "redis://redis-cache-test:6379/0"
         client = redis.from_url(
             redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
         )

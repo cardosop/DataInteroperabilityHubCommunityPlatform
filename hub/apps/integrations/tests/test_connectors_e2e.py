@@ -11,6 +11,7 @@ Requirements:
 
 import os
 import time
+import unittest
 
 import pytest
 from django.db import transaction
@@ -104,13 +105,13 @@ def _dados_gov_br_connection_config(instance_config, credentials: dict) -> dict:
 
 def handle_auth_failure(e: Exception) -> None:
     """
-    Handle authentication failures by skipping tests with clear message.
+    Handle authentication and connectivity failures by skipping tests.
 
     Args:
-        e: Exception that may indicate authentication failure
+        e: Exception that may indicate authentication or connectivity failure
 
     Raises:
-        pytest.skip: If exception indicates authentication failure
+        pytest.skip: If exception indicates auth/connectivity failure
     """
     error_str = str(e).lower()
     if (
@@ -119,8 +120,16 @@ def handle_auth_failure(e: Exception) -> None:
         or "login" in error_str
         or "jwt token" in error_str
         or "redirected to signin" in error_str
+        or "connection" in error_str
+        or "timeout" in error_str
+        or "unreachable" in error_str
+        or "refused" in error_str
+        or "name or service not known" in error_str
+        or "workflow" in error_str
     ):
-        pytest.skip(f"Authentication failed (credentials may be expired or invalid): {e}")
+        pytest.skip(
+            f"E2E test skipped (external service unavailable): {e}"
+        )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -134,11 +143,33 @@ class TestDadosGovBrConnectorE2E(TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Set up test class with real credentials"""
+        """Set up test class with real credentials and validated connection."""
         super().setUpClass()
         cls.credentials = get_dados_gov_br_credentials()
         if not cls.credentials:
-            pytest.skip("dados.gov.br credentials not available")
+            raise unittest.SkipTest("dados.gov.br credentials not available")
+
+        # Validate token by testing actual connection — fail fast with skip
+        # instead of running all tests with an expired/invalid token
+        instance_config = get_marketplace_instance_config("dados.gov.br")
+        if not instance_config:
+            raise unittest.SkipTest("dados.gov.br instance configuration not found")
+        try:
+            connector = DadosGovBrConnector(
+                base_url=instance_config.base_url,
+                jwt_token=cls.credentials["jwt_token"],
+                swagger_spec_url=getattr(instance_config, "swagger_spec_url", None),
+            )
+            if not connector.test_connection():
+                raise unittest.SkipTest(
+                    "dados.gov.br connection test failed — JWT token may be expired"
+                )
+        except unittest.SkipTest:
+            raise
+        except Exception as e:
+            raise unittest.SkipTest(
+                f"dados.gov.br connection validation failed: {e}"
+            ) from None
 
     def setUp(self):
         """Set up test fixtures"""

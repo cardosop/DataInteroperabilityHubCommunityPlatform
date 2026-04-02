@@ -17,6 +17,7 @@ from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantConfig, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -49,15 +50,17 @@ class WorkflowsAPIIntegrationTest(TestCase):
 
     def setUp(self):
         super().setUp()
+        # Stale data cleanup handled by conftest autouse fixture.
         self.client = APIClient()
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -172,7 +175,7 @@ class WorkflowsAPIIntegrationTest(TestCase):
     def test_list_workflows_user_without_tenant_returns_400(self):
         """User without tenant gets 400 (tenant required)."""
         user_no_tenant = User.objects.create_user(
-            email="notenant@example.com",
+            email=f"notenant-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status=UserStatus.ACTIVE,

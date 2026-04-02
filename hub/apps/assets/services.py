@@ -6,12 +6,15 @@ Business logic for asset operations.
 
 from typing import Any, Dict, List, Optional
 
-from django.db import transaction
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError, transaction
 
 from hub.apps.assets.business_rules import AssetsBusinessRules
 from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, ComplianceStatus, DQStatus
+from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.events.service_publishers import AssetEventPublisher
 from hub.apps.core.services.base import BaseService, ConflictError, NotFoundError, ValidationError
+from hub.apps.core.transaction_safe import run_side_effect
 
 
 class AssetService(BaseService, AssetEventPublisher):
@@ -255,35 +258,58 @@ class AssetService(BaseService, AssetEventPublisher):
                     details=result.details,
                 )
 
-            # Check for duplicate key
-            if Asset.objects.filter(tenant_id=effective_tenant_id, key=key).exists():
-                raise ConflictError(
-                    f"Asset with key '{key}' already exists",
-                    details={"key": key, "tenant_id": effective_tenant_id},
-                )
-
-            # Check plan limit (Phase 25.1.2)
+            # Check plan limit (Phase 25.1.2, hardened Phase 113.B)
             from hub.apps.tenants.services import PlanLimitService
 
-            current_asset_count = Asset.objects.filter(tenant_id=effective_tenant_id).count()
             plan_limit_service = PlanLimitService(
-                tenant_id=effective_tenant_id, user_id=effective_user_id
+                tenant_id=effective_tenant_id,
+                user_id=effective_user_id,
             )
             plan_limit_service.check_limit(
                 tenant_id=effective_tenant_id,
                 limit_key="max_assets",
-                current_usage=current_asset_count,
                 delta=1,
             )
 
-            asset = Asset.objects.create(
-                tenant_id=effective_tenant_id,
-                key=key,
-                name=name,
-                description=description,
-                domain=domain,
-                status=AssetStatus.DRAFT,
-                **kwargs,
+            try:
+                with transaction.atomic():
+                    asset = Asset(
+                        tenant_id=effective_tenant_id,
+                        key=key,
+                        name=name,
+                        description=description,
+                        domain=domain,
+                        status=AssetStatus.DRAFT,
+                        **kwargs,
+                    )
+                    asset.full_clean()
+                    asset.save()
+            except IntegrityError:
+                raise ConflictError(
+                    f"Asset with key '{key}' already exists",
+                    code="ASSET_KEY_EXISTS",
+                    details={"key": key, "tenant_id": str(effective_tenant_id)},
+                )
+            except DjangoValidationError as e:
+                if "already exists" in str(e):
+                    raise ConflictError(
+                        f"Asset with key '{key}' already exists",
+                        code="ASSET_KEY_EXISTS",
+                        details={"key": key, "tenant_id": str(effective_tenant_id)},
+                    )
+                raise ValidationError(
+                    str(e),
+                    code="VALIDATION_ERROR",
+                    details={"errors": e.message_dict if hasattr(e, "message_dict") else {"__all__": e.messages}},
+                )
+
+            # Phase 70.1: Audit event for asset creation (service layer)
+            run_side_effect(
+                create_audit_event,
+                resource_type="ASSET",
+                action="ASSET_CREATED",
+                resource_id=str(asset.id),
+                details={"name": name, "key": key, "status": "DRAFT"},
             )
 
             return asset
@@ -369,7 +395,24 @@ class AssetService(BaseService, AssetEventPublisher):
 
             # Increment version
             asset.version += 1
+            try:
+                asset.full_clean()
+            except DjangoValidationError as e:
+                raise ValidationError(
+                    str(e),
+                    code="VALIDATION_ERROR",
+                    details={"errors": e.message_dict if hasattr(e, "message_dict") else {"__all__": e.messages}},
+                )
             asset.save()
+
+            # Phase 70.1: Audit event for asset update
+            run_side_effect(
+                create_audit_event,
+                resource_type="ASSET",
+                action="ASSET_UPDATED",
+                resource_id=str(asset.id),
+                details={"changed_fields": list(kwargs.keys()), "version": asset.version},
+            )
 
             return asset
 
@@ -429,6 +472,15 @@ class AssetService(BaseService, AssetEventPublisher):
 
             asset.status = AssetStatus.RETIRED
             asset.save()
+
+            # Phase 70.1: Audit event for asset deletion (retirement)
+            run_side_effect(
+                create_audit_event,
+                resource_type="ASSET",
+                action="ASSET_DELETED",
+                resource_id=str(asset.id),
+                details={"status": "RETIRED"},
+            )
 
         return self.execute_with_metrics(
             operation="delete_asset", tenant_id=effective_tenant_id, func=_delete
@@ -522,6 +574,16 @@ class AssetService(BaseService, AssetEventPublisher):
                     user_id=effective_user_id,
                     asset_id=asset_id,
                 )
+                # Phase 70.1: Audit event for ODPS contract link
+                try:
+                    create_audit_event(
+                        resource_type="ASSET",
+                        action="ASSET_ODPS_LINKED",
+                        resource_id=str(asset_id),
+                        details={"odps_contract_id": str(odps_contract.id)},
+                    )
+                except Exception:
+                    pass
                 return odps_contract
             else:
                 raise ValidationError(

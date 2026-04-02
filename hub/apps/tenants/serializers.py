@@ -49,6 +49,8 @@ class TenantSerializer(serializers.ModelSerializer):
 class TenantCreateSerializer(serializers.ModelSerializer):
     """Serializer for tenant creation"""
 
+    slug = serializers.SlugField(max_length=255)
+
     class Meta:
         model = Tenant
         fields = ["name", "slug", "region"]

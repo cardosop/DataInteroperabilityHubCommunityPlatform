@@ -192,10 +192,8 @@ class SearchBusinessRules(BusinessRules):
         """
         result = ValidationResult(is_valid=True)
 
-        # Check if query is empty
+        # Empty/blank query is valid — it represents a filter-only search
         if not query or not query.strip():
-            result.is_valid = False
-            result.errors.append("Search query cannot be empty")
             return result
 
         query_stripped = query.strip()

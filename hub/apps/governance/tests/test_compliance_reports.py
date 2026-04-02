@@ -21,6 +21,7 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import Job, JobType, JobStatus
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -31,15 +32,16 @@ class ComplianceReportGeneratorTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -115,9 +117,13 @@ class ComplianceReportGeneratorTest(TestCase):
         
         self.assertEqual(report['regulation'], 'GDPR')
         self.assertIn('compliance_runs', report)
-        self.assertIn('pii_detection', report)
-        self.assertIn('data_subject_rights', report)
+        self.assertIsInstance(report['compliance_runs'], dict)
+        self.assertIn('total', report['compliance_runs'])
         self.assertGreater(report['compliance_runs']['total'], 0)
+        self.assertIn('pii_detection', report)
+        self.assertIsInstance(report['pii_detection'], dict)
+        self.assertIn('data_subject_rights', report)
+        self.assertIsInstance(report['data_subject_rights'], dict)
     
     def test_generate_hipaa_report(self):
         """Test HIPAA report generation"""

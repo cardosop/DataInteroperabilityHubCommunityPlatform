@@ -29,13 +29,13 @@ from hub.apps.websocket.protocol import (
     WebSocketMessage,
     WebSocketMessageType,
 )
-from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTransactionTestCase
 
 User = get_user_model()
 
 
 @pytest.mark.django_db(transaction=True)
-class TestEventConsumer(AsyncWebSocketTestCase):
+class TestEventConsumer(AsyncWebSocketTransactionTestCase):
     """Test EventConsumer class."""
 
     def setUp(self):
@@ -186,8 +186,7 @@ class TestEventConsumer(AsyncWebSocketTestCase):
             await communicator.disconnect()
 
     async def test_receive_unsubscribe(self):
-        """Test unsubscribe - connection only."""
-        # Note: Full message handling is tested in test_consumer_handlers.py
+        """Test unsubscribe after subscribing to events."""
         communicator = self._create_communicator()
 
         try:
@@ -196,12 +195,36 @@ class TestEventConsumer(AsyncWebSocketTestCase):
 
             # Receive initial confirmation
             await communicator.receive_json_from()
+
+            # First subscribe to some event types
+            subscribe_msg = WebSocketMessage(
+                type=WebSocketMessageType.SUBSCRIBE.value,
+                data={"event_types": ["asset.created", "asset.updated"]},
+            )
+            await communicator.send_json_to(json.loads(subscribe_msg.to_json()))
+
+            # Receive subscription confirmation
+            sub_response = await communicator.receive_json_from()
+            self.assertEqual(sub_response["type"], WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value)
+            self.assertIn("asset.created", sub_response["data"]["event_types"])
+
+            # Now unsubscribe from one event type
+            unsubscribe_msg = WebSocketMessage(
+                type=WebSocketMessageType.UNSUBSCRIBE.value,
+                data={"event_types": ["asset.created"]},
+            )
+            await communicator.send_json_to(json.loads(unsubscribe_msg.to_json()))
+
+            # Receive unsubscribe confirmation
+            unsub_response = await communicator.receive_json_from()
+            self.assertEqual(unsub_response["type"], WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value)
+            self.assertNotIn("asset.created", unsub_response["data"]["event_types"])
+            self.assertIn("asset.updated", unsub_response["data"]["event_types"])
         finally:
             await communicator.disconnect()
 
     async def test_receive_ping(self):
-        """Test ping - connection only."""
-        # Note: Full message handling is tested in test_consumer_handlers.py
+        """Test ping message receives a pong response."""
         communicator = self._create_communicator()
 
         try:
@@ -210,12 +233,22 @@ class TestEventConsumer(AsyncWebSocketTestCase):
 
             # Receive initial confirmation
             await communicator.receive_json_from()
+
+            # Send a ping message
+            ping_msg = WebSocketMessage(
+                type=WebSocketMessageType.PING.value,
+                timestamp="2026-03-26T00:00:00Z",
+            )
+            await communicator.send_json_to(json.loads(ping_msg.to_json()))
+
+            # Expect a pong response
+            response = await communicator.receive_json_from()
+            self.assertEqual(response["type"], WebSocketMessageType.PONG.value)
         finally:
             await communicator.disconnect()
 
     async def test_receive_invalid_json(self):
-        """Test invalid JSON - connection only."""
-        # Note: Full message handling is tested in test_consumer_handlers.py
+        """Test invalid JSON sends an error response."""
         communicator = self._create_communicator()
 
         try:
@@ -224,12 +257,19 @@ class TestEventConsumer(AsyncWebSocketTestCase):
 
             # Receive initial confirmation
             await communicator.receive_json_from()
+
+            # Send invalid JSON as raw text
+            await communicator.send_to(text_data="this is not valid json{{{")
+
+            # Expect an error response
+            response = await communicator.receive_json_from()
+            self.assertEqual(response["type"], WebSocketMessageType.ERROR.value)
+            self.assertIn("Invalid JSON", response["error"])
         finally:
             await communicator.disconnect()
 
     async def test_receive_unknown_message_type(self):
-        """Test unknown message type - connection only."""
-        # Note: Full message handling is tested in test_consumer_handlers.py
+        """Test unknown message type sends an error response."""
         communicator = self._create_communicator()
 
         try:
@@ -238,12 +278,23 @@ class TestEventConsumer(AsyncWebSocketTestCase):
 
             # Receive initial confirmation
             await communicator.receive_json_from()
+
+            # Send a message with an unknown type
+            unknown_msg = WebSocketMessage(
+                type="totally_unknown_type",
+                data={"foo": "bar"},
+            )
+            await communicator.send_json_to(json.loads(unknown_msg.to_json()))
+
+            # Expect an error response about unknown message type
+            response = await communicator.receive_json_from()
+            self.assertEqual(response["type"], WebSocketMessageType.ERROR.value)
+            self.assertIn("Unknown message type", response["error"])
         finally:
             await communicator.disconnect()
 
     async def test_subscribe_no_event_types(self):
-        """Test subscribe without event types - connection only."""
-        # Note: Full message handling is tested in test_consumer_handlers.py
+        """Test subscribe with empty event_types sends an error."""
         communicator = self._create_communicator()
 
         try:
@@ -252,5 +303,17 @@ class TestEventConsumer(AsyncWebSocketTestCase):
 
             # Receive initial confirmation
             await communicator.receive_json_from()
+
+            # Send subscribe with empty event_types list
+            subscribe_msg = WebSocketMessage(
+                type=WebSocketMessageType.SUBSCRIBE.value,
+                data={"event_types": []},
+            )
+            await communicator.send_json_to(json.loads(subscribe_msg.to_json()))
+
+            # Expect an error about no event types
+            response = await communicator.receive_json_from()
+            self.assertEqual(response["type"], WebSocketMessageType.ERROR.value)
+            self.assertIn("No event types", response["error"])
         finally:
             await communicator.disconnect()

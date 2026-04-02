@@ -3,6 +3,7 @@ Unit tests for DatasetsBusinessRules.
 
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
+import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -422,8 +423,9 @@ class DatasetsBusinessRulesValidationTest(DatasetsTestBase):
 
     def test_validate_tenant_context_mismatch(self):
         """Test tenant context validation with mismatched tenants"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         dataset = DatasetFactory.create_dataset(
             tenant=self.tenant, file=self.file, format="CSV", version=1
@@ -455,11 +457,12 @@ class DatasetsBusinessRulesValidationTest(DatasetsTestBase):
 
     def test_validate_permissions_tenant_mismatch(self):
         """Test permissions validation with tenant mismatch"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{_uid}@example.com", password="testpass123", tenant=other_tenant
         )
         dataset = DatasetFactory.create_dataset(
             tenant=self.tenant, file=self.file, format="CSV", version=1

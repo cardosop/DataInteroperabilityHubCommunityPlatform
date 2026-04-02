@@ -42,11 +42,31 @@ class HubContractInfo(BaseModel):
         return value
 
 
+class HubContractRelationship(BaseModel):
+    """Relationship between schema objects/fields (ODCS v3.1.0)."""
+
+    id: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=255)
+    type: Optional[str] = Field(default=None, max_length=100)
+    source: List[str] = Field(default_factory=list)
+    target_contract: Optional[str] = None
+    target_model: Optional[str] = None
+    target_properties: List[str] = Field(default_factory=list)
+    description: Optional[str] = None
+    custom_properties: Optional[List[Dict[str, Any]]] = None
+
+    model_config = ConfigDict(extra="allow")
+
+
 class HubContractField(BaseModel):
     """Schema field definition."""
 
     name: str
     data_type: str = Field(default="string", alias="type")
+    element_id: Optional[str] = Field(
+        default=None,
+        pattern=r'^[a-zA-Z0-9_\-\.]{1,128}$',
+    )
     nullable: bool = True
     description: Optional[str] = None
     semantic_type: Optional[str] = None
@@ -58,11 +78,16 @@ class HubContractField(BaseModel):
     max_length: Optional[int] = Field(default=None, alias="maxLength")
     minimum: Optional[float] = None
     maximum: Optional[float] = None
+    exclusiveMinimum: Optional[Any] = None
+    exclusiveMaximum: Optional[Any] = None
+    logicalType: Optional[str] = None
+    logicalTypeOptions: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
     is_primary_key: Optional[bool] = False
     is_unique: Optional[bool] = None
     is_indexed: Optional[bool] = None
     lineage: Optional[LineageEntry] = None
+    relationships: Optional[List[HubContractRelationship]] = None
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -88,6 +113,7 @@ class HubContractSchema(BaseModel):
     primary_key: Optional[List[str]] = None
     unique_constraints: Optional[List[Any]] = None
     indexes: Optional[List[Any]] = None
+    relationships: Optional[List[HubContractRelationship]] = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -103,6 +129,10 @@ class HubContractModelEntry(BaseModel):
     """Canonical model entry within models[]."""
 
     name: str
+    element_id: Optional[str] = Field(
+        default=None,
+        pattern=r'^[a-zA-Z0-9_\-\.]{1,128}$',
+    )
     description: Optional[str] = None
     fields: List[HubContractField]
     primary_key: Optional[List[str]] = None
@@ -114,6 +144,7 @@ class HubContractModelEntry(BaseModel):
     data_granularity_description: Optional[str] = None
     tags: Optional[List[str]] = None
     lineage: Optional[LineageSection] = None
+    relationships: Optional[List[HubContractRelationship]] = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -210,7 +241,7 @@ class ServerEntry(BaseModel):
     port: Optional[Any] = None
     database: Optional[str] = None
     catalog: Optional[str] = None
-    schema: Optional[str] = None
+    schema_: Optional[str] = Field(default=None, alias="schema")
     warehouse: Optional[str] = None
     account: Optional[str] = None
     region: Optional[str] = None
@@ -219,7 +250,7 @@ class ServerEntry(BaseModel):
     topic: Optional[str] = None
     queue: Optional[str] = None
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
 
 class TermsSection(BaseModel):
@@ -445,7 +476,7 @@ class HubContractModel(BaseModel):
     hub_contract_version: str
     id: str
     info: HubContractInfo
-    schema: HubContractSchema
+    schema_: HubContractSchema = Field(alias="schema")
     models: Optional[List[HubContractModelEntry]] = None
     definitions: Optional[List[DefinitionEntry]] = None
     quality: Optional[QualitySection] = None
@@ -465,7 +496,7 @@ class HubContractModel(BaseModel):
     normalization: Optional[NormalizationMetadata] = None
     extensions: Optional[Dict[str, Any]] = None
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     @field_validator("hub_contract_version", "id")
     @classmethod
@@ -476,7 +507,7 @@ class HubContractModel(BaseModel):
 
     @model_validator(mode="after")
     def check_required_sections(self) -> "HubContractModel":
-        if not self.info or not self.schema:
+        if not self.info or not self.schema_:
             raise ValueError("info and schema sections are required")
         return self
 

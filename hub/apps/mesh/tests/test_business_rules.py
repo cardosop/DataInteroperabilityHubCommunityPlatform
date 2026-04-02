@@ -19,6 +19,7 @@ from hub.apps.mesh.business_rules import (
 )
 from hub.apps.mesh.models import DataMeshDomain, DomainStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
+import uuid
 
 User = get_user_model()
 
@@ -35,7 +36,7 @@ class DataMeshBusinessRulesInitializationTest(TestCase):
     def test_initialization_with_tenant_id(self):
         """Test initialization with tenant_id"""
         tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         rules = DataMeshBusinessRules(tenant_id=str(tenant.id))
         self.assertEqual(rules.tenant_id, str(tenant.id))
@@ -44,10 +45,10 @@ class DataMeshBusinessRulesInitializationTest(TestCase):
     def test_initialization_with_tenant_and_user(self):
         """Test initialization with tenant_id and user_id"""
         tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=tenant
         )
         rules = DataMeshBusinessRules(tenant_id=str(tenant.id), user_id=str(user.id))
         self.assertEqual(rules.tenant_id, str(tenant.id))
@@ -73,10 +74,10 @@ class DataMeshBusinessRulesDomainStructureTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -172,11 +173,12 @@ class DataMeshBusinessRulesDomainStructureTest(TestCase):
 
     def test_validate_domain_structure_owner_different_tenant(self):
         """Test validate_domain_structure with owner from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
         )
 
         domain = DataMeshDomain(
@@ -196,13 +198,13 @@ class DataMeshBusinessRulesOwnershipTransferTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.current_owner = User.objects.create_user(
-            email="current@example.com", password="testpass123", tenant=self.tenant
+            email=f"current-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.new_owner = User.objects.create_user(
-            email="new@example.com", password="testpass123", tenant=self.tenant
+            email=f"new-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant,
@@ -257,11 +259,12 @@ class DataMeshBusinessRulesOwnershipTransferTest(TestCase):
 
     def test_validate_ownership_transfer_user_different_tenant(self):
         """Test validate_ownership_transfer with user from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
         )
 
         result = self.rules.validate_ownership_transfer(
@@ -307,7 +310,7 @@ class DataMeshBusinessRulesBoundariesTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id))
 
@@ -429,10 +432,10 @@ class DataMeshBusinessRulesPolicyConflictTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
@@ -782,10 +785,10 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
@@ -1106,10 +1109,10 @@ class DataMeshBusinessRulesDomainOwnershipTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant,
@@ -1167,7 +1170,7 @@ class DataMeshBusinessRulesDomainOwnershipTest(TestCase):
     def test_validate_domain_ownership_platform_admin(self):
         """Test domain ownership validation for platform admin"""
         platform_admin = User.objects.create_user(
-            email="platform@example.com",
+            email=f"platform-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             is_platform_admin=True,
@@ -1185,11 +1188,12 @@ class DataMeshBusinessRulesDomainOwnershipTest(TestCase):
 
     def test_validate_domain_ownership_user_different_tenant(self):
         """Test domain ownership validation with user from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
         )
 
         from hub.apps.users.models import Role, UserRole
@@ -1218,10 +1222,10 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant,
@@ -1247,7 +1251,7 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
         from hub.apps.assets.models import Asset, AssetStatus
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE[0]
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE
         )
 
         result = self.rules.validate_asset_ownership_transfer(self.domain, asset)
@@ -1262,11 +1266,12 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
         """Test asset ownership transfer with asset from different tenant"""
         from hub.apps.assets.models import Asset, AssetStatus
 
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_asset = Asset.objects.create(
-            tenant=other_tenant, key="other-asset", name="Other Asset", status=AssetStatus.ACTIVE[0]
+            tenant=other_tenant, key="other-asset", name="Other Asset", status=AssetStatus.ACTIVE
         )
 
         result = self.rules.validate_asset_ownership_transfer(self.domain, other_asset)
@@ -1281,7 +1286,7 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
 
         # Use RETIRED status which is not in valid_transfer_statuses (ACTIVE, DRAFT, PUBLIC)
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.RETIRED[0]
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.RETIRED
         )
 
         result = self.rules.validate_asset_ownership_transfer(self.domain, asset)
@@ -1298,7 +1303,7 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
 
         # Create asset with dataset (which creates dependencies)
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE[0]
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE
         )
 
         file = File.objects.create(
@@ -1335,7 +1340,7 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
-            status=AssetStatus.ACTIVE[0],
+            status=AssetStatus.ACTIVE,
             domain=self.domain,  # Already in domain
         )
 
@@ -1353,13 +1358,13 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
 
         # Create user without TENANT_ADMIN role
         regular_user = User.objects.create_user(
-            email="regular@example.com", password="testpass123", tenant=self.tenant
+            email=f"regular-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
 
         rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(regular_user.id))
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE[0]
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE
         )
 
         result = rules.validate_asset_ownership_transfer(self.domain, asset)
@@ -1376,10 +1381,10 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
@@ -1743,10 +1748,10 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -1948,8 +1953,9 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
         )
 
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         asset = Asset.objects.create(
@@ -2004,11 +2010,12 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
         )
 
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
         )
 
         domain2 = DataMeshDomain.objects.create(
@@ -2191,10 +2198,10 @@ class DataMeshBusinessRulesErrorHandlingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -2397,11 +2404,12 @@ class DataMeshBusinessRulesErrorHandlingTest(TestCase):
 
     def test_validate_ownership_transfer_with_cross_tenant_user(self):
         """Test error handling when transferring to user from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
         )
 
         domain = DataMeshDomain.objects.create(

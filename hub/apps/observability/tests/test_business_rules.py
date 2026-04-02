@@ -32,6 +32,7 @@ from hub.apps.observability.models import (
     FreshnessSLA,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -42,11 +43,12 @@ class FreshnessSLABusinessRulesTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -139,11 +141,12 @@ class DataSLABusinessRulesTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -242,11 +245,12 @@ class IncidentManagementBusinessRulesTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -337,7 +341,7 @@ class IncidentManagementBusinessRulesTest(TestCase):
         # Wait so resolution_time_seconds is at least 1 (int of fractional seconds can be 0)
         import time
 
-        time.sleep(1.1)
+        time.sleep(1.1)  # INTENTIONAL: test-specific timing requirement
 
         resolved = IncidentManager.resolve_incident(
             incident_id=str(incident.id),
@@ -356,11 +360,12 @@ class ObservabilityBusinessRulesFailureTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -422,11 +427,12 @@ class ObservabilityBusinessRulesEdgeCasesTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.asset = Asset.objects.create(
             tenant=self.tenant,

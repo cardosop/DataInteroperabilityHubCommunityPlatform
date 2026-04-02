@@ -12,6 +12,7 @@ from django.db import transaction
 
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
+from hub.apps.core.transaction_safe import run_side_effect
 from hub.apps.scheduled_export.business_rules import ScheduledExportBusinessRules
 from hub.apps.scheduled_export.models import (
     DestinationType,
@@ -246,7 +247,7 @@ class ScheduledExportService(BaseService):
 
         # Prepare export payload/URL based on destination type
         destination_type = scheduled_export.destination_type
-        destination_config = scheduled_export.destination_config.copy()
+        destination_config = scheduled_export.get_destination_config()
         destination_path = destination_path or destination_config.get("prefix", "")
 
         # For now, return structured response with upload instructions
@@ -358,17 +359,16 @@ class ScheduledExportService(BaseService):
                 details=result.details,
             )
 
-        # Check plan limit (Phase 25.4.1)
+        # Check plan limit (Phase 25.4.1, hardened Phase 113.B)
         from hub.apps.tenants.services import PlanLimitService
 
-        current_scheduled_export_count = ScheduledExport.objects.filter(tenant=tenant).count()
         plan_limit_service = PlanLimitService(
-            tenant_id=str(tenant.id), user_id=str(created_by.id) if created_by else None
+            tenant_id=str(tenant.id),
+            user_id=str(created_by.id) if created_by else None,
         )
         plan_limit_service.check_limit(
             tenant_id=str(tenant.id),
             limit_key="max_scheduled_exports",
-            current_usage=current_scheduled_export_count,
             delta=1,
         )
 
@@ -385,26 +385,20 @@ class ScheduledExportService(BaseService):
         scheduled_export = ScheduledExport.objects.create(**create_kw)
 
         # Emit audit event
-        try:
-            create_audit_event(
-                resource_type="SCHEDULED_EXPORT",
-                action="CREATED",
-                actor_user=created_by,
-                tenant=tenant,
-                resource_id=str(scheduled_export.id),
-                details={
-                    "scheduled_export_id": str(scheduled_export.id),
-                    "name": scheduled_export.name,
-                    "destination_type": scheduled_export.destination_type,
-                    "status": scheduled_export.status,
-                },
-            )
-        except Exception as e:
-            logger.warning(
-                "Failed to create audit event for scheduled export creation %s: %s",
-                str(scheduled_export.id),
-                str(e),
-            )
+        run_side_effect(
+            create_audit_event,
+            resource_type="SCHEDULED_EXPORT",
+            action="CREATED",
+            actor_user=created_by,
+            tenant=tenant,
+            resource_id=str(scheduled_export.id),
+            details={
+                "scheduled_export_id": str(scheduled_export.id),
+                "name": scheduled_export.name,
+                "destination_type": scheduled_export.destination_type,
+                "status": scheduled_export.status,
+            },
+        )
 
         return scheduled_export
 
@@ -519,25 +513,19 @@ class ScheduledExportService(BaseService):
             scheduled_export.save(update_fields=update_fields)
 
         # Emit audit event
-        try:
-            create_audit_event(
-                resource_type="SCHEDULED_EXPORT",
-                action="UPDATED",
-                actor_user=user,
-                tenant=tenant,
-                resource_id=str(scheduled_export.id),
-                details={
-                    "scheduled_export_id": str(scheduled_export.id),
-                    "updated_fields": update_fields,
-                    "status": scheduled_export.status,
-                },
-            )
-        except Exception as e:
-            logger.warning(
-                "Failed to create audit event for scheduled export update %s: %s",
-                str(scheduled_export.id),
-                str(e),
-            )
+        run_side_effect(
+            create_audit_event,
+            resource_type="SCHEDULED_EXPORT",
+            action="UPDATED",
+            actor_user=user,
+            tenant=tenant,
+            resource_id=str(scheduled_export.id),
+            details={
+                "scheduled_export_id": str(scheduled_export.id),
+                "updated_fields": update_fields,
+                "status": scheduled_export.status,
+            },
+        )
 
         return scheduled_export
 
@@ -586,24 +574,18 @@ class ScheduledExportService(BaseService):
         tenant = Tenant.objects.get(id=effective_tenant_id)
 
         # Emit audit event before deletion
-        try:
-            create_audit_event(
-                resource_type="SCHEDULED_EXPORT",
-                action="DELETED",
-                actor_user=user,
-                tenant=tenant,
-                resource_id=str(scheduled_export.id),
-                details={
-                    "scheduled_export_id": str(scheduled_export.id),
-                    "name": scheduled_export.name,
-                },
-            )
-        except Exception as e:
-            logger.warning(
-                "Failed to create audit event for scheduled export deletion %s: %s",
-                str(scheduled_export.id),
-                str(e),
-            )
+        run_side_effect(
+            create_audit_event,
+            resource_type="SCHEDULED_EXPORT",
+            action="DELETED",
+            actor_user=user,
+            tenant=tenant,
+            resource_id=str(scheduled_export.id),
+            details={
+                "scheduled_export_id": str(scheduled_export.id),
+                "name": scheduled_export.name,
+            },
+        )
 
         # Delete scheduled export
         scheduled_export.delete()
@@ -663,24 +645,15 @@ class ScheduledExportService(BaseService):
                     return r
 
         # Check plan limit for export runs per month (Phase 25.4.1)
-        from datetime import datetime, timedelta
-
-        from django.utils import timezone
-
         from hub.apps.tenants.services import PlanLimitService
 
-        now = timezone.now()
-        month_start = datetime(now.year, now.month, 1, tzinfo=now.tzinfo)
-        current_month_runs_count = ScheduledExportRun.objects.filter(
-            scheduled_export__tenant_id=effective_tenant_id, created_at__gte=month_start
-        ).count()
         plan_limit_service = PlanLimitService(
-            tenant_id=effective_tenant_id, user_id=effective_user_id
+            tenant_id=effective_tenant_id,
+            user_id=effective_user_id,
         )
         plan_limit_service.check_limit(
             tenant_id=effective_tenant_id,
             limit_key="max_export_runs_per_month",
-            current_usage=current_month_runs_count,
             delta=1,
         )
 

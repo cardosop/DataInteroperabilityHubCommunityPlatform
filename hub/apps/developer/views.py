@@ -10,7 +10,7 @@ from django.db.models import Q
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import Plugin, PluginCategory, PluginStatus, SDKDocumentation, SDKLanguage
@@ -280,9 +280,19 @@ class PortalViewSet(viewsets.ViewSet):
 
 
 class APIKeysViewSet(viewsets.ViewSet):
-    """API key management - POST /api/v1/developer/api-keys/"""
+    """API key management - GET list, POST create."""
 
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        """List API keys (placeholder).
+
+        GET /api/v1/developer/api-keys/
+        """
+        return Response({
+            "results": [],
+            "count": 0,
+        }, status=status.HTTP_200_OK)
 
     def create(self, request):
         """Generate API key (placeholder)."""

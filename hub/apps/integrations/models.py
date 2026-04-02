@@ -54,6 +54,15 @@ class MarketplaceConnection(models.Model):
         default=True,
         help_text="Whether this connection is active and can be used"
     )
+    consecutive_failure_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of consecutive sync failures (Phase 71 — auto-disable)",
+    )
+    last_error_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of the last sync failure (Phase 71)",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -240,6 +249,7 @@ class MarketplaceSyncJob(models.Model):
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["connection", "status"]),
             models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["connection", "status", "created_at"], name="idx_syncjob_conn_st_cr"),
         ]
 
     def __str__(self):
@@ -379,13 +389,22 @@ class MarketplaceSyncJob(models.Model):
 
         self.save(update_fields=['status', 'completed_at', 'items_synced', 'items_failed', 'errors', 'metadata', 'updated_at'])
 
-    def add_error(self, error_message: str, save: bool = True):
+    def add_error(
+        self,
+        error_message: str,
+        save: bool = True,
+        error_type: str = None,
+    ):
         """
         Add an error message to the errors list.
 
         Args:
             error_message: Error message to add
             save: Whether to save the model after adding error (default: True)
+            error_type: Optional error classification
+                (``"transient"``, ``"permanent"``, ``"unknown"``).
+                Added as ``error_type`` key in the error entry when
+                provided (Phase 77).
         """
         if not isinstance(error_message, str):
             raise ValueError("Error message must be a string")
@@ -397,11 +416,13 @@ class MarketplaceSyncJob(models.Model):
         if not isinstance(self.errors, list):
             self.errors = []
 
-        # Add error with timestamp
+        # Add error with timestamp + optional error_type (Phase 77)
         error_entry = {
             "message": error_message,
-            "timestamp": timezone.now().isoformat()
+            "timestamp": timezone.now().isoformat(),
         }
+        if error_type is not None:
+            error_entry["error_type"] = error_type
 
         self.errors.append(error_entry)
 

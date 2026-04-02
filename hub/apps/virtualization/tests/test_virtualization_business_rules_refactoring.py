@@ -12,6 +12,8 @@ to extend the BusinessRules base class. It tests:
 
 All tests use real services and models (no mocks/stubs) and follow TDD principles.
 """
+import uuid
+
 from django.test import TestCase, override_settings
 from django.core.cache import cache
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -49,13 +51,14 @@ class VirtualizationBusinessRulesRefactoringTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
 
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -180,7 +183,7 @@ class VirtualizationBusinessRulesRefactoringTest(TestCase):
         )
         result = self.business_rules.validate(context=context, validation_type='all')
         self.assertIsInstance(result, ValidationResult)
-        self.assertTrue(result.is_valid or len(result.errors) > 0)  # Should return a result
+        self.assertTrue(result.is_valid, f"Expected valid result, errors: {result.errors}")
 
     def test_validate_with_standard_context(self):
         """Test validate() with standard RuleExecutionContext."""
@@ -361,13 +364,14 @@ class QueryExecutionBusinessRulesRefactoringTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
 
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -594,13 +598,14 @@ class ResultBusinessRulesRefactoringTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
 
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -697,8 +702,10 @@ class ResultBusinessRulesRefactoringTest(TestCase):
             raise_on_error=False
         )
         self.assertIsInstance(result, ValidationResult)
-        # Should have warning about large result
-        self.assertTrue(len(result.warnings) > 0 or result.is_valid)
+        # Large result should be valid but generate a warning
+        self.assertTrue(result.is_valid)
+        self.assertGreater(len(result.warnings), 0,
+                           "Large result should trigger a warning")
 
     def test_validate_result_caching_raises_on_error(self):
         """Test validate_result_caching() raises exception when raise_on_error=True."""
@@ -894,13 +901,14 @@ class FrameworkFeaturesTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
 
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

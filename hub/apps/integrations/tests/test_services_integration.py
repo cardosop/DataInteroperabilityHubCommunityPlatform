@@ -8,9 +8,11 @@ Tests with real database and event publishing to verify:
 - Database transactions work correctly
 """
 
+import uuid
 import pytest
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from tests.utils.wait_helpers import wait_for_event_persistence
 
 from hub.apps.assets.models import Asset, AssetSourceType
 from hub.apps.audit.models import AuditEvent
@@ -36,6 +38,7 @@ from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -63,9 +66,10 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         except (ImportError, AttributeError):
             pass
 
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id), request_id="test-request-123"
@@ -347,7 +351,6 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
 
     def test_delete_connection_publishes_event(self):
         """Test that connection deletion publishes event"""
-        import time
 
         # Create connection
         connection = self.service.create_connection(
@@ -366,7 +369,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         )
 
         # Wait a moment for synchronous persistence to complete
-        time.sleep(0.1)
+        wait_for_event_persistence()
 
         # Verify event was published
         events = Event.objects.filter(event_type="integration.connection.deleted").order_by(
@@ -470,9 +473,10 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         )
         self.assertEqual(connections.count(), 0)
 
-        # Verify no audit log was created for failed operation
+        # Verify no audit log was created for this tenant's failed operation
         audit_events = AuditEvent.objects.filter(
-            resource_type="MARKETPLACE_CONNECTION", action="CONNECTION_CREATED"
+            resource_type="MARKETPLACE_CONNECTION", action="CONNECTION_CREATED",
+            tenant=self.tenant,
         )
         # Should have no events for this failed operation
         self.assertEqual(audit_events.count(), 0)
@@ -480,9 +484,9 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
     def test_tenant_isolation(self):
         """Test that connections are isolated by tenant"""
         # Create second tenant
-        tenant2 = Tenant.objects.create(name="Test Tenant 2", slug="test-tenant-2")
+        tenant2 = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         user2 = User.objects.create_user(
-            email="test2@example.com", tenant=tenant2, status=UserStatus.ACTIVE
+            email=f"test2-{uuid.uuid4().hex[:8]}@example.com", tenant=tenant2, status=UserStatus.ACTIVE
         )
 
         # Create connection for tenant 1
@@ -564,9 +568,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertIn("workflow_instance_id", sync_job.metadata)
 
         # Verify audit log (when job is created; workflow path may publish different events)
-        import time
-
-        time.sleep(0.1)  # Allow for transaction commit
+        wait_for_event_persistence()
         audit_event = (
             AuditEvent.objects.filter(
                 resource_type="MARKETPLACE_SYNC_JOB",
@@ -582,7 +584,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertEqual(audit_event.details_json["direction"], SyncDirection.PUSH.value)
 
         # Verify event was published
-        time.sleep(0.1)  # Allow for event persistence
+        wait_for_event_persistence()
         event = (
             Event.objects.filter(
                 event_type="integration.sync_job.created", data__sync_job_id=str(sync_job.id)
@@ -626,9 +628,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertIn("workflow_instance_id", sync_job.metadata)
 
         # Verify audit log
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
         audit_event = (
             AuditEvent.objects.filter(
                 resource_type="MARKETPLACE_SYNC_JOB",
@@ -642,7 +642,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertEqual(audit_event.details_json["direction"], SyncDirection.PULL.value)
 
         # Verify event was published
-        time.sleep(0.1)
+        wait_for_event_persistence()
         event = (
             Event.objects.filter(
                 event_type="integration.sync_job.created", data__sync_job_id=str(sync_job.id)
@@ -791,9 +791,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertEqual(job.status, JobStatus.CANCELLED)
 
         # Verify audit log
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
         audit_event = (
             AuditEvent.objects.filter(
                 resource_type="MARKETPLACE_SYNC_JOB",
@@ -809,7 +807,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertEqual(audit_event.details_json["reason"], "Integration test cancellation")
 
         # Verify event was published
-        time.sleep(0.1)
+        wait_for_event_persistence()
         event = (
             Event.objects.filter(
                 event_type="integration.sync_job.cancelled", data__sync_job_id=str(sync_job.id)
@@ -848,9 +846,9 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
     def test_sync_job_tenant_isolation(self):
         """Test that sync jobs are isolated by tenant."""
         # Create second tenant
-        tenant2 = Tenant.objects.create(name="Test Tenant 2", slug="test-tenant-2")
+        tenant2 = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         user2 = User.objects.create_user(
-            email="test2@example.com", tenant=tenant2, status=UserStatus.ACTIVE
+            email=f"test2-{uuid.uuid4().hex[:8]}@example.com", tenant=tenant2, status=UserStatus.ACTIVE
         )
 
         connection1 = self.service.create_connection(
@@ -914,9 +912,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
             sync_metadata={"test": "metadata"},
         )
 
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
         audit_event = (
             AuditEvent.objects.filter(
                 resource_type="MARKETPLACE_MAPPING",
@@ -949,9 +945,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
             external_listing_id="listing-456",
         )
 
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
         event = (
             Event.objects.filter(
                 event_type="integration.mapping.created", data__mapping_id=str(mapping.id)
@@ -1075,9 +1069,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertEqual(updated_mapping.sync_metadata["last_sync"], "2024-01-01")
 
         # Verify audit log
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
         audit_event = (
             AuditEvent.objects.filter(
                 resource_type="MARKETPLACE_MAPPING",
@@ -1092,7 +1084,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertIn("external_listing_id", audit_event.details_json["changes"])
 
         # Verify event was published
-        time.sleep(0.1)
+        wait_for_event_persistence()
         event = (
             Event.objects.filter(
                 event_type="integration.mapping.updated", data__mapping_id=str(mapping.id)
@@ -1132,9 +1124,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertEqual(MarketplaceMapping.objects.filter(id=mapping.id).count(), 0)
 
         # Verify audit log
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
         audit_event = (
             AuditEvent.objects.filter(
                 resource_type="MARKETPLACE_MAPPING",
@@ -1149,7 +1139,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertEqual(audit_event.details_json["reason"], "Integration test deletion")
 
         # Verify event was published
-        time.sleep(0.1)
+        wait_for_event_persistence()
         event = (
             Event.objects.filter(
                 event_type="integration.mapping.deleted", data__mapping_id=str(mapping.id)
@@ -1163,9 +1153,9 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
     def test_mapping_tenant_isolation(self):
         """Test that mappings are isolated by tenant."""
         # Create second tenant
-        tenant2 = Tenant.objects.create(name="Test Tenant 2", slug="test-tenant-2")
+        tenant2 = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         user2 = User.objects.create_user(
-            email="test2@example.com", tenant=tenant2, status=UserStatus.ACTIVE
+            email=f"test2-{uuid.uuid4().hex[:8]}@example.com", tenant=tenant2, status=UserStatus.ACTIVE
         )
 
         connection1 = self.service.create_connection(

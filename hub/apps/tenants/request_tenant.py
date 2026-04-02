@@ -84,6 +84,12 @@ def get_request_tenant(request: HttpRequest) -> Tuple[Optional[str], Optional["T
     Returns (tenant_id_str, tenant) or (None, None). Prefer get_request_tenant_id
     for filtering when only the ID is needed.
 
+    This function is intentionally read-only: it does NOT mutate request.tenant_id
+    or request.tenant.  Mutating request attributes in a GET handler constitutes
+    a persistent side-effect on the session-scoped user object, which can leak
+    tenant context across request boundaries in long-lived worker threads.
+    TenantScopingMiddleware is the sole place that may set these attributes.
+
     Args:
         request: Django request.
 
@@ -96,13 +102,8 @@ def get_request_tenant(request: HttpRequest) -> Tuple[Optional[str], Optional["T
     if not tenant_id_str:
         return None, None
 
-    # Optionally set request.tenant_id/request.tenant for consistency if not set
-    if not hasattr(request, "tenant_id") or not request.tenant_id:
-        request.tenant_id = tenant_id_str
     try:
         tenant = Tenant.objects.get(id=tenant_id_str)
-        if not hasattr(request, "tenant") or not request.tenant:
-            request.tenant = tenant
         return tenant_id_str, tenant
     except Tenant.DoesNotExist:
         return tenant_id_str, None

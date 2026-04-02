@@ -3,7 +3,10 @@ E2E tests for Virtualization Query Execution Workflow
 
 End-to-end tests for complete workflow execution with all services.
 """
+import uuid
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from django.utils import timezone
 
@@ -30,13 +33,14 @@ class VirtualizationWorkflowE2ETest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

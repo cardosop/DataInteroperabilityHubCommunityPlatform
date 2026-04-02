@@ -14,8 +14,10 @@ class MarketplaceConnectionSerializer(serializers.ModelSerializer):
     """
     Serializer for MarketplaceConnection model (read operations).
 
-    Note: The config field is never exposed in read operations for security.
-    Only encrypted config is stored in the database.
+    Security: The ``config`` field is **never** exposed in read responses.
+    It contains encrypted credentials (API keys, connection strings, tokens).
+    The field is omitted from Meta.fields (positive allowlist) and also
+    listed in Meta.extra_kwargs as write_only for defense-in-depth.
     """
 
     marketplace_type_display = serializers.CharField(
@@ -55,6 +57,12 @@ class MarketplaceConnectionSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+        # Phase 90.4 — defense-in-depth: even though config is not in
+        # ``fields``, mark it write_only so DRF will never serialize it
+        # if the allowlist is accidentally widened in the future.
+        extra_kwargs = {
+            'config': {'write_only': True},
+        }
 
 
 class MarketplaceConnectionCreateSerializer(serializers.Serializer):
@@ -73,6 +81,7 @@ class MarketplaceConnectionCreateSerializer(serializers.Serializer):
         help_text="Human-readable name (empty/whitespace rejected by service layer)"
     )
     config = serializers.JSONField(
+        write_only=True,
         help_text="Connection configuration dictionary (API keys, endpoints, etc.). Will be encrypted at rest."
     )
     is_active = serializers.BooleanField(
@@ -91,9 +100,14 @@ class MarketplaceConnectionCreateSerializer(serializers.Serializer):
         return value
 
     def validate_config(self, value):
-        """Validate config is a dictionary"""
+        """Validate config is a dictionary with size limit (Phase 92 DoS prevention)."""
         if not isinstance(value, dict):
             raise serializers.ValidationError("Configuration must be a JSON object (dictionary)")
+        # Reject overly-large payloads (DoS prevention)
+        import json
+        json_str = json.dumps(value)
+        if len(json_str) > 65536:  # 64KB limit
+            raise serializers.ValidationError("Configuration too large (max 64KB)")
         return value
 
     def validate_marketplace_type(self, value):
@@ -125,6 +139,7 @@ class MarketplaceConnectionUpdateSerializer(serializers.Serializer):
     )
     config = serializers.JSONField(
         required=False,
+        write_only=True,
         help_text="Connection configuration dictionary. Will be encrypted at rest."
     )
     is_active = serializers.BooleanField(

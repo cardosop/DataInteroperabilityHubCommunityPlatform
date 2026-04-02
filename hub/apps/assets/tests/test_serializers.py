@@ -2,6 +2,7 @@
 Unit tests for asset serializers.
 """
 
+import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -24,9 +25,10 @@ class AssetSerializerTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
         self.asset = Asset.objects.create(
@@ -139,18 +141,18 @@ class AssetSerializerTest(TestCase):
         self.assertIn("key", serializer.errors)
 
     def test_asset_update_serializer_invalid_status(self):
-        """Test AssetUpdateSerializer with invalid status (failure scenario)"""
+        """AssetUpdateSerializer rejects invalid status values."""
         serializer = AssetUpdateSerializer(
-            instance=self.asset, data={"status": "INVALID_STATUS"}, partial=True
+            instance=self.asset,
+            data={"status": "INVALID_STATUS"},
+            partial=True,
         )
 
-        # Should either reject invalid status or accept it
-        if not serializer.is_valid():
-            self.assertIn("status", serializer.errors)
-        else:
-            # If valid, verify it was updated
-            updated = serializer.save()
-            self.assertEqual(updated.status, "INVALID_STATUS")
+        self.assertFalse(
+            serializer.is_valid(),
+            "Serializer should reject invalid status value",
+        )
+        self.assertIn("status", serializer.errors)
 
     # ========== EDGE CASES ==========
 
@@ -189,15 +191,17 @@ class AssetSerializerTest(TestCase):
         self.assertEqual(data["key"], "none-values-asset")
 
     def test_asset_create_serializer_very_long_key(self):
-        """Test AssetCreateSerializer with very long key (edge case)"""
-        long_key = "a" * 300
-        serializer = AssetCreateSerializer(data={"key": long_key, "name": "Test Asset"})
+        """AssetCreateSerializer rejects key exceeding max_length."""
+        long_key = "a" * 300  # max_length=255
+        serializer = AssetCreateSerializer(
+            data={"key": long_key, "name": "Test Asset"},
+        )
 
-        # Should either accept or reject based on validation
-        if serializer.is_valid():
-            self.assertEqual(serializer.validated_data["key"], long_key)
-        else:
-            self.assertIn("key", serializer.errors)
+        self.assertFalse(
+            serializer.is_valid(),
+            "Serializer should reject key longer than max_length",
+        )
+        self.assertIn("key", serializer.errors)
 
     def test_asset_update_serializer_partial_update(self):
         """Test AssetUpdateSerializer with partial update (edge case)"""
@@ -222,45 +226,40 @@ class AssetSerializerTest(TestCase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_asset_serializer_database_error_handling(self):
-        """Test error handling when serialization fails"""
-        # Use valid asset
+    def test_asset_serializer_serializes_valid_asset(self):
+        """AssetSerializer serializes a valid asset without error."""
         serializer = AssetSerializer(self.asset)
+        data = serializer.data
+        self.assertEqual(data["key"], self.asset.key)
+        self.assertEqual(data["name"], self.asset.name)
+        self.assertIn("id", data)
 
-        # Should serialize successfully
-        try:
-            data = serializer.data
-            self.assertIsNotNone(data)
-        except Exception:
-            # If fails, that's a problem
-            self.fail("AssetSerializer should handle serialization errors gracefully")
-
-    def test_asset_create_serializer_validation_error_handling(self):
-        """Test error handling for validation errors"""
+    def test_asset_create_serializer_ignores_unknown_fields(self):
+        """AssetCreateSerializer ignores unknown fields (DRF default)."""
         serializer = AssetCreateSerializer(
-            data={"key": "test-asset", "name": "Test Asset", "status": "INVALID_STATUS"}
+            data={
+                "key": "test-asset",
+                "name": "Test Asset",
+                "status": "INVALID_STATUS",
+            }
+        )
+        # DRF ignores unknown fields — serializer is valid
+        self.assertTrue(
+            serializer.is_valid(),
+            f"Extra fields should be ignored: {serializer.errors}",
         )
 
-        # Should return validation errors, not raise exception
-        is_valid = serializer.is_valid()
-        if not is_valid:
-            self.assertIsNotNone(serializer.errors)
-            self.assertGreater(len(serializer.errors), 0)
-
-    def test_asset_update_serializer_nonexistent_instance(self):
-        """Test AssetUpdateSerializer with non-existent instance (error handling)"""
+    def test_asset_update_serializer_nonexistent_instance_raises(self):
+        """Saving AssetUpdateSerializer with unsaved instance raises."""
         import uuid
 
-        fake_asset = Asset(id=uuid.uuid4(), tenant=self.tenant, key="fake")
+        fake_asset = Asset(
+            id=uuid.uuid4(), tenant=self.tenant, key="fake",
+        )
+        serializer = AssetUpdateSerializer(
+            instance=fake_asset, data={"name": "Updated"},
+        )
 
-        serializer = AssetUpdateSerializer(instance=fake_asset, data={"name": "Updated"})
-
-        # Should handle gracefully or raise appropriate error
-        try:
-            serializer.is_valid()
-            serializer.save()
-            # If succeeds, verify update
-            self.assertIsNotNone(fake_asset.name)
-        except Exception:
-            # If fails, that's acceptable for non-existent instance
-            pass
+        if serializer.is_valid():
+            with self.assertRaises(Exception):
+                serializer.save()

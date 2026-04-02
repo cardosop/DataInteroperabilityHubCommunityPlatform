@@ -317,25 +317,42 @@ class AssetDataStrategyTest(TestCase):
 
     # ========== FAILURE SCENARIOS ==========
 
-    def test_data_strategy_failure_invalid_strategy(self):
-        """Test failure with invalid data_strategy (failure scenario)"""
-        # Try to create asset with invalid strategy
-        try:
-            asset = Asset.objects.create(
-                tenant=self.tenant,
-                key=f"test-asset-{uuid.uuid4().hex[:8]}",
-                name="Test Asset",
-                status=AssetStatus.ACTIVE,
-                visibility=AssetVisibility.PUBLIC,
-                source_type=AssetSourceType.FEDERATED,
-                data_strategy="INVALID_STRATEGY",
-                created_by=self.user,
-            )
-            # If succeeds, verify it was set
-            self.assertIsNotNone(asset.data_strategy)
-        except (ValidationError, ValueError):
-            # If fails, that's acceptable for invalid strategy
-            pass
+    def test_data_strategy_model_accepts_any_string(self):
+        """Test that Django CharField accepts any string at the model layer.
+
+        The data_strategy field is a CharField with choices, but Django does not
+        enforce choices at the database level.  Validation of allowed values
+        happens via full_clean() / serializer validation.
+        """
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
+            name="Test Asset",
+            status=AssetStatus.ACTIVE,
+            visibility=AssetVisibility.PUBLIC,
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy="INVALID_STRATEGY",
+            created_by=self.user,
+        )
+        self.assertEqual(asset.data_strategy, "INVALID_STRATEGY")
+
+    def test_data_strategy_full_clean_rejects_invalid_strategy(self):
+        """Test that full_clean rejects invalid data_strategy values."""
+        from django.db import transaction as db_transaction
+
+        asset = Asset(
+            tenant=self.tenant,
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
+            name="Test Asset",
+            status=AssetStatus.ACTIVE,
+            visibility=AssetVisibility.PUBLIC,
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy="INVALID_STRATEGY",
+            created_by=self.user,
+        )
+        with self.assertRaises(ValidationError):
+            with db_transaction.atomic():
+                asset.full_clean()
 
     def test_can_download_resource_failure_nonexistent_resource(self):
         """Test can_download_resource failure for non-existent resource (failure scenario)"""
@@ -455,28 +472,23 @@ class AssetDataStrategyTest(TestCase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_data_strategy_error_handling_database_error(self):
-        """Test error handling when database operations fail"""
-        # Use valid data
-        try:
-            asset = Asset.objects.create(
-                tenant=self.tenant,
-                key=f"test-asset-{uuid.uuid4().hex[:8]}",
-                name="Test Asset",
-                status=AssetStatus.ACTIVE,
-                visibility=AssetVisibility.PUBLIC,
-                source_type=AssetSourceType.FEDERATED,
-                data_strategy=DataStrategy.METADATA_ONLY,
-                created_by=self.user,
-            )
-            # Should succeed
-            self.assertIsNotNone(asset)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("Asset creation should handle database errors gracefully")
+    def test_data_strategy_create_asset_succeeds(self):
+        """Test that creating an asset with a valid data_strategy succeeds"""
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
+            name="Test Asset",
+            status=AssetStatus.ACTIVE,
+            visibility=AssetVisibility.PUBLIC,
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY,
+            created_by=self.user,
+        )
+        self.assertIsNotNone(asset.id)
+        self.assertEqual(asset.data_strategy, DataStrategy.METADATA_ONLY)
 
-    def test_can_download_resource_error_handling(self):
-        """Test error handling when checking download permission fails"""
+    def test_can_download_resource_returns_boolean(self):
+        """Test that can_download_resource returns a boolean value"""
         asset = Asset.objects.create(
             tenant=self.tenant,
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
@@ -488,11 +500,6 @@ class AssetDataStrategyTest(TestCase):
             created_by=self.user,
         )
 
-        # Should handle errors gracefully
-        try:
-            result = asset.can_download_resource("resource-1")
-            # Should return boolean
-            self.assertIsInstance(result, bool)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("can_download_resource should handle errors gracefully")
+        result = asset.can_download_resource("resource-1")
+        self.assertIsInstance(result, bool)
+        self.assertTrue(result)

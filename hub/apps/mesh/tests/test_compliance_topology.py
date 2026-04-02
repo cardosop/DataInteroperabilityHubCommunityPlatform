@@ -13,6 +13,7 @@ Tests verify comprehensive compliance checking and topology generation:
 
 All tests use real implementations (no mocks/stubs) to ensure integration.
 """
+import uuid
 import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
@@ -43,9 +44,10 @@ class DataMeshComplianceCheckTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
         self.tenant_id = str(self.tenant.id)
 
@@ -58,7 +60,7 @@ class DataMeshComplianceCheckTest(TestCase):
 
         # Create tenant admin user
         self.tenant_admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -304,9 +306,10 @@ class DataMeshTopologyTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
         self.tenant_id = str(self.tenant.id)
 
@@ -319,7 +322,7 @@ class DataMeshTopologyTest(TestCase):
 
         # Create tenant admin user
         self.tenant_admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -462,8 +465,9 @@ class DataMeshTopologyTest(TestCase):
 
         topology = self.service.get_topology(tenant_id=self.tenant_id)
 
-        # Should have relationships (edges) between domains
-        self.assertGreaterEqual(len(topology["edges"]), 0)  # May have edges if shared policies
+        # Should have relationships (edges) between domains sharing a policy
+        self.assertIsInstance(topology["edges"], list)
+        self.assertGreater(len(topology["edges"]), 0)
 
     def test_get_topology_includes_summary_statistics(self):
         """Test that topology includes summary statistics"""
@@ -509,9 +513,10 @@ class DataMeshComplianceTopologyIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
         self.tenant_id = str(self.tenant.id)
 
@@ -524,7 +529,7 @@ class DataMeshComplianceTopologyIntegrationTest(TestCase):
 
         # Create tenant admin user
         self.tenant_admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

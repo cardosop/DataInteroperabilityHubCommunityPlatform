@@ -28,10 +28,10 @@ class JobsBusinessRulesInitializationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
 
@@ -40,7 +40,7 @@ class JobsBusinessRulesInitializationTest(TestCase):
         rules = JobsBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
-        self.assertIsNotNone(rules)
+        self.assertIsInstance(rules, JobsBusinessRules)
         self.assertEqual(rules.get_rule_name(), "JobsBusinessRules")
         self.assertEqual(rules.tenant_id, str(self.tenant.id))
         self.assertEqual(rules.user_id, str(self.user.id))
@@ -48,21 +48,21 @@ class JobsBusinessRulesInitializationTest(TestCase):
     def test_jobs_business_rules_initialization_without_user(self):
         """Test JobsBusinessRules can be initialized without user"""
         rules = JobsBusinessRules(tenant_id=str(self.tenant.id))
-        self.assertIsNotNone(rules)
+        self.assertIsInstance(rules, JobsBusinessRules)
         self.assertEqual(rules.tenant_id, str(self.tenant.id))
         self.assertIsNone(rules.user_id)
 
     def test_jobs_business_rules_initialization_without_tenant(self):
         """Test JobsBusinessRules can be initialized without tenant"""
         rules = JobsBusinessRules(user_id=str(self.user.id))
-        self.assertIsNotNone(rules)
+        self.assertIsInstance(rules, JobsBusinessRules)
         self.assertIsNone(rules.tenant_id)
         self.assertEqual(rules.user_id, str(self.user.id))
 
     def test_jobs_business_rules_initialization_without_context(self):
         """Test JobsBusinessRules can be initialized without tenant or user"""
         rules = JobsBusinessRules()
-        self.assertIsNotNone(rules)
+        self.assertIsInstance(rules, JobsBusinessRules)
         self.assertIsNone(rules.tenant_id)
         self.assertIsNone(rules.user_id)
 
@@ -143,10 +143,10 @@ class JobsRuleExecutionContextTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.job = Job.objects.create(
@@ -167,7 +167,7 @@ class JobsRuleExecutionContextTest(TestCase):
             tenant=self.tenant,
             user=self.user
         )
-        self.assertIsNotNone(context)
+        self.assertIsInstance(context, JobsRuleExecutionContext)
         self.assertEqual(context.tenant_id, str(self.tenant.id))
         self.assertEqual(context.user_id, str(self.user.id))
         self.assertEqual(context.job, self.job)
@@ -238,10 +238,10 @@ class JobsBusinessRulesValidationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.job = Job.objects.create(
@@ -267,7 +267,7 @@ class JobsBusinessRulesValidationTest(TestCase):
             user=self.user
         )
         result = self.rules.validate(context)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
 
     def test_validate_with_standard_context(self):
@@ -279,7 +279,7 @@ class JobsBusinessRulesValidationTest(TestCase):
             resource=self.job
         )
         result = self.rules.validate(context)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         # Should still validate basic job structure
         self.assertTrue(result.is_valid)
 
@@ -290,7 +290,7 @@ class JobsBusinessRulesValidationTest(TestCase):
             tenant=self.tenant,
             user=self.user
         )
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
 
     def test_validate_without_job(self):
@@ -299,14 +299,14 @@ class JobsBusinessRulesValidationTest(TestCase):
             tenant=self.tenant,
             user=self.user
         )
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         # Should validate tenant and user context
         self.assertTrue(result.is_valid)
 
     def test_validate_without_any_context(self):
         """Test validate method without any context"""
         result = self.rules.validate()
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         # Should return error indicating at least one context is required
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -319,10 +319,10 @@ class JobsBusinessRulesJobCreationValidationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = JobsBusinessRules(
@@ -352,7 +352,7 @@ class JobsBusinessRulesJobCreationValidationTest(TestCase):
         )
 
         result = self.rules.validate_job_creation(job, self.tenant, self.user)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
         self.assertIn('job_type_validated', result.details)
         self.assertIn('job_configuration_validated', result.details)
@@ -619,8 +619,9 @@ class JobsBusinessRulesJobCreationValidationTest(TestCase):
         """Test _validate_job_resource with resource from different tenant"""
         from hub.apps.contracts.models import Contract, ContractStatus
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         contract = Contract.objects.create(
             tenant=other_tenant,
@@ -713,7 +714,7 @@ class JobsBusinessRulesJobCreationValidationTest(TestCase):
         )
 
         result = self.rules._validate_job_quota(job, self.tenant)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.details, dict)
         # Should have quota details
         self.assertIn('max_job_concurrency', result.details)
         self.assertIn('max_queued_jobs', result.details)
@@ -742,7 +743,7 @@ class JobsBusinessRulesJobCreationValidationTest(TestCase):
         )
 
         result = self.rules.validate_job_creation(job, self.tenant, self.user)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
         # Check all validations were performed
         self.assertTrue(result.details['job_type_validated'])
@@ -763,7 +764,7 @@ class JobsBusinessRulesJobCreationValidationTest(TestCase):
         )
 
         result = self.rules.validate_job_creation(job, None, self.user)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.details, dict)
         # Type and configuration should still be validated
         self.assertTrue(result.details['job_type_validated'])
         self.assertTrue(result.details['job_configuration_validated'])
@@ -796,7 +797,7 @@ class JobsBusinessRulesJobCreationValidationTest(TestCase):
             user=self.user,
             validation_type='job_creation'
         )
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
         self.assertIn('job_creation', result.details['validated_items'])
 
@@ -808,10 +809,10 @@ class JobsBusinessRulesJobCreationIntegrationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = JobsBusinessRules(
@@ -845,7 +846,7 @@ class JobsBusinessRulesJobCreationIntegrationTest(TestCase):
 
         # Validate the created job using business rules
         result = self.rules.validate_job_creation(job, self.tenant, self.user)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
         # All validations should pass
@@ -871,7 +872,7 @@ class JobsBusinessRulesJobCreationIntegrationTest(TestCase):
 
         # Validate the created job - should fail resource validation
         result = self.rules.validate_job_creation(job, self.tenant, self.user)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         # Job creation should fail due to invalid resource
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -883,8 +884,9 @@ class JobsBusinessRulesJobCreationIntegrationTest(TestCase):
         from hub.apps.contracts.models import Contract, ContractStatus
 
         # Create another tenant and contract
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         contract = Contract.objects.create(
             tenant=other_tenant,
@@ -905,7 +907,7 @@ class JobsBusinessRulesJobCreationIntegrationTest(TestCase):
 
         # Validate the created job - should fail tenant mismatch
         result = self.rules.validate_job_creation(job, self.tenant, self.user)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         self.assertIn('belongs to tenant', result.errors[0].lower())
@@ -936,7 +938,7 @@ class JobsBusinessRulesJobCreationIntegrationTest(TestCase):
 
         # Validate before creating
         result = self.rules.validate_job_creation(job, self.tenant, self.user)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
 
         # If validation passes, create the job
@@ -957,10 +959,10 @@ class JobExecutionValidationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = JobsBusinessRules(
@@ -983,7 +985,7 @@ class JobExecutionValidationTest(TestCase):
             current_status="PENDING",
             new_status="RUNNING"
         )
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
         self.assertEqual(result.details['validation_type'], 'job_execution')
         self.assertTrue(result.details['status_transition_validated'])
@@ -1242,7 +1244,7 @@ class JobExecutionValidationTest(TestCase):
             current_status="PENDING",
             new_status="CANCELLED"
         )
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.details, dict)
         self.assertTrue(result.details['cancellation_validated'])
 
     def test_validate_job_execution_without_cancellation(self):
@@ -1252,7 +1254,7 @@ class JobExecutionValidationTest(TestCase):
             current_status="PENDING",
             new_status="RUNNING"
         )
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.details, dict)
         self.assertFalse(result.details['cancellation_validated'])
 
 
@@ -1263,10 +1265,10 @@ class JobExecutionValidationIntegrationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = JobsBusinessRules(
@@ -1424,15 +1426,15 @@ class JobsBusinessRulesJobPriorityValidationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus, Role
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         # Create tenant admin user
         self.tenant_admin = User.objects.create_user(
-            email="admin@example.com", password="testpass123", tenant=self.tenant,
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         # Create tenant admin role
@@ -1448,7 +1450,7 @@ class JobsBusinessRulesJobPriorityValidationTest(TestCase):
         )
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
-            email="platform@example.com", password="testpass123", tenant=None,
+            email=f"platform-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=None,
             status=UserStatus.ACTIVE,
             is_platform_admin=True
         )
@@ -1470,7 +1472,7 @@ class JobsBusinessRulesJobPriorityValidationTest(TestCase):
         )
 
         result = self.rules.validate_job_priority(job, self.tenant, self.user)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
         self.assertIn('priority_level_validated', result.details)
         self.assertIn('priority_assignment_validated', result.details)
@@ -1489,7 +1491,7 @@ class JobsBusinessRulesJobPriorityValidationTest(TestCase):
         )
 
         result = self.rules.validate_job_priority(job, self.tenant, self.user)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
 
     def test_validate_job_priority_valid_high(self):
@@ -1505,7 +1507,7 @@ class JobsBusinessRulesJobPriorityValidationTest(TestCase):
         )
 
         result = self.rules.validate_job_priority(job, self.tenant, self.tenant_admin)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
 
     def test_validate_job_priority_valid_critical(self):
@@ -1521,7 +1523,7 @@ class JobsBusinessRulesJobPriorityValidationTest(TestCase):
         )
 
         result = self.rules.validate_job_priority(job, self.tenant, self.tenant_admin)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
 
     def test_validate_priority_level_valid(self):
@@ -1814,7 +1816,7 @@ class JobsBusinessRulesJobPriorityValidationTest(TestCase):
         )
 
         result = self.rules.validate_job_priority(job, self.tenant, None)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.details, dict)
         # Priority level and queue should still be validated
         self.assertTrue(result.details['priority_level_validated'])
         self.assertTrue(result.details['priority_queue_validated'])
@@ -1834,7 +1836,7 @@ class JobsBusinessRulesJobPriorityValidationTest(TestCase):
         )
 
         result = self.rules.validate_job_priority(job, self.tenant, self.tenant_admin)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
         # Check all validations were performed
         self.assertTrue(result.details['priority_level_validated'])
@@ -1850,15 +1852,15 @@ class JobsBusinessRulesJobPriorityIntegrationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus, Role
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         # Create tenant admin user
         self.tenant_admin = User.objects.create_user(
-            email="admin@example.com", password="testpass123", tenant=self.tenant,
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         # Create tenant admin role
@@ -1902,7 +1904,7 @@ class JobsBusinessRulesJobPriorityIntegrationTest(TestCase):
 
         # Validate priority
         result = self.rules.validate_job_priority(job, self.tenant, self.user)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
 
@@ -1931,7 +1933,7 @@ class JobsBusinessRulesJobPriorityIntegrationTest(TestCase):
 
         # Validate priority
         result = self.rules.validate_job_priority(job, self.tenant, self.tenant_admin)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
 
@@ -1960,7 +1962,7 @@ class JobsBusinessRulesJobPriorityIntegrationTest(TestCase):
 
         # Validate priority - should fail permission check
         result = self.rules.validate_job_priority(job, self.tenant, self.user)
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         self.assertIn('permission', result.errors[0].lower())

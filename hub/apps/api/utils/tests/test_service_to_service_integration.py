@@ -160,7 +160,7 @@ class ServiceToServiceIntegrationTest(TestCase):
         # Verify endpoint construction
         call_args = mock_client.request.call_args
         self.assertEqual(call_args[0][0], 'POST')
-        self.assertEqual(call_args[0][1], '/sparql')
+        self.assertEqual(call_args[0][1], '/query')
         self.assertIn('json', call_args[1])
 
 

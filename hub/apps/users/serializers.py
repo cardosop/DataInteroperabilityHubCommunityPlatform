@@ -5,6 +5,7 @@ DRF serializers for User and Role API.
 """
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from hub.apps.auth.utils import sha256_hex
 from .models import User, Role, UserRole, UserStatus
 
 User = get_user_model()
@@ -119,15 +120,18 @@ class UserCreateSerializer(serializers.ModelSerializer):
         if role_ids:
             roles = Role.objects.filter(id__in=role_ids, tenant=user.tenant)
             for role in roles:
-                UserRole.objects.get_or_create(user=user, role=role)
+                UserRole.objects.get_or_create(
+                    user=user, tenant=role.tenant, role=role
+                )
         
-        # Generate invitation token if needed
+        # Generate invitation token if needed (11.3: store SHA-256 hash)
         if send_invitation:
             from django.utils import timezone
             from datetime import timedelta
             import uuid
-            
-            user.invitation_token = uuid.uuid4()
+
+            _plaintext = str(uuid.uuid4())
+            user.invitation_token = sha256_hex(_plaintext)
             user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
             user.save(update_fields=["invitation_token", "invitation_token_expires_at"])
         

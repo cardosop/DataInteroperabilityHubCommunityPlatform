@@ -16,6 +16,7 @@ from hub.apps.orchestration.models import (
     WorkflowStep,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -26,11 +27,12 @@ class WorkflowDefinitionTest(TestCase):
     """Test WorkflowDefinition model"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.valid_dsl = {
             "version": "1.0.0",
@@ -87,11 +89,12 @@ class WorkflowInstanceTest(TestCase):
     """Test WorkflowInstance model"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.workflow_def = WorkflowDefinition.objects.create(
             name="test_workflow",
@@ -228,11 +231,12 @@ class WorkflowStepTest(TestCase):
     """Test WorkflowStep model"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.workflow_def = WorkflowDefinition.objects.create(
             name="test_workflow",
@@ -353,11 +357,12 @@ class WorkflowDefinitionFailureTest(TestCase):
     """Test WorkflowDefinition model failure scenarios"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
 
     def test_workflow_definition_clean_with_malformed_dsl(self):
@@ -383,11 +388,12 @@ class WorkflowDefinitionEdgeCasesTest(TestCase):
     """Test WorkflowDefinition model edge cases"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
 
     def test_workflow_definition_with_empty_name(self):
@@ -422,11 +428,12 @@ class WorkflowInstanceFailureTest(TestCase):
     """Test WorkflowInstance model failure scenarios"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.workflow_def = WorkflowDefinition.objects.create(
             name="test_workflow",
@@ -468,11 +475,12 @@ class WorkflowInstanceEdgeCasesTest(TestCase):
     """Test WorkflowInstance model edge cases"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.workflow_def = WorkflowDefinition.objects.create(
             name="test_workflow",
@@ -511,11 +519,12 @@ class WorkflowStepFailureTest(TestCase):
     """Test WorkflowStep model failure scenarios"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.workflow_def = WorkflowDefinition.objects.create(
             name="test_workflow",
@@ -564,11 +573,12 @@ class WorkflowStepEdgeCasesTest(TestCase):
     """Test WorkflowStep model edge cases"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.workflow_def = WorkflowDefinition.objects.create(
             name="test_workflow",

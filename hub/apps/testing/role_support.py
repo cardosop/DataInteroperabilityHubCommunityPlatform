@@ -26,5 +26,24 @@ def ensure_user_has_data_provider_role(user) -> None:
         defaults={"description": "Data Provider"},
     )
 
-    if not UserRole.objects.filter(user=user, role=role).exists():
-        UserRole.objects.create(user=user, role=role)
+    UserRole.objects.get_or_create(user=user, role=role)
+
+
+def ensure_user_has_tenant_admin_role(user) -> None:
+    """
+    Ensure user has TENANT_ADMIN role so all tenant-scoped views allow access.
+
+    Creates the Role for the user's tenant (get_or_create) and UserRole linking
+    user to role. Idempotent: if user already has TENANT_ADMIN, does nothing.
+    """
+    tenant = user.tenant
+    if not tenant:
+        return
+
+    role, _ = Role.objects.get_or_create(
+        tenant=tenant,
+        name="TENANT_ADMIN",
+        defaults={"description": "Tenant Administrator"},
+    )
+
+    UserRole.objects.get_or_create(user=user, role=role)

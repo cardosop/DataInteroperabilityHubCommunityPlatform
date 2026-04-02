@@ -42,27 +42,29 @@ class ComplianceRunViewSetTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
 
         # Create another tenant and user for isolation tests
+        _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         ensure_tenant_has_active_subscription(self.tenant)
         ensure_tenant_has_active_subscription(self.other_tenant)
 
         self.other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.other_tenant,
             status=UserStatus.ACTIVE,
@@ -79,7 +81,7 @@ class ComplianceRunViewSetTest(TestCase):
 
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             is_platform_admin=True,
         )
@@ -92,7 +94,7 @@ class ComplianceRunViewSetTest(TestCase):
         )
 
         self.auditor_user = User.objects.create_user(
-            email="auditor@example.com",
+            email=f"auditor-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -586,7 +588,7 @@ class ComplianceRunViewSetTest(TestCase):
         """Test creating compliance run requires user to belong to tenant"""
         # Create user without tenant
         user_no_tenant = User.objects.create_user(
-            email="notenant@example.com", password="testpass123"
+            email=f"notenant-{uuid.uuid4().hex[:8]}@example.com", password="testpass123"
         )
 
         self.client.force_authenticate(user=user_no_tenant)

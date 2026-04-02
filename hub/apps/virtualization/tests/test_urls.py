@@ -39,9 +39,10 @@ class VirtualizationURLRoutingTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
 
@@ -54,7 +55,7 @@ class VirtualizationURLRoutingTest(TestCase):
 
         # Create user with DATA_PROVIDER role
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

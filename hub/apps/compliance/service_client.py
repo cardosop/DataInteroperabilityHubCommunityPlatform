@@ -12,17 +12,14 @@ Client for interacting with the compliance-service microservice.
 """
 import uuid
 import httpx
-import logging
-import time
+import structlog
 from typing import Dict, Any, Optional, Tuple
 from django.conf import settings
 
-from hub.apps.core.resilience.circuit_breaker import (
-    CircuitBreaker,
-    get_redis_client,
-)
+from hub.apps.core.resilience.backoff import sleep_with_jitter
+from hub.apps.core.resilience.service_breakers import get_shared_circuit_breaker
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ComplianceServiceClient:
@@ -68,14 +65,7 @@ class ComplianceServiceClient:
         self.max_retries = 2
         self.backoff_factor = 1
 
-        # Initialize circuit breaker
-        self._circuit_breaker = CircuitBreaker(
-            service_name="compliance-service",
-            failure_threshold=5,
-            timeout_seconds=60,
-            success_threshold=2,
-            redis_client=get_redis_client()
-        )
+        self._circuit_breaker = get_shared_circuit_breaker("compliance-service")
 
     def _request_with_retry(self, method: str, endpoint: str, **kwargs) -> httpx.Response:
         """Helper to make HTTP requests with retry logic. Caller headers (e.g. X-Correlation-Id) take precedence over trace headers."""
@@ -100,19 +90,23 @@ class ComplianceServiceClient:
             except httpx.HTTPStatusError as e:
                 if e.response.status_code >= 500 and attempt < self.max_retries:
                     logger.warning(
-                        f"Compliance service returned {e.response.status_code}. "
-                        f"Retrying in {self.backoff_factor * (2 ** attempt)}s..."
+                        "compliance_service_http_retry",
+                        status_code=e.response.status_code,
+                        delay=self.backoff_factor * (2 ** attempt),
+                        attempt=attempt + 1,
                     )
-                    time.sleep(self.backoff_factor * (2 ** attempt))
+                    sleep_with_jitter(attempt, self.backoff_factor)
                     continue
                 raise
             except httpx.RequestError as e:
                 if attempt < self.max_retries:
                     logger.warning(
-                        f"Network error connecting to Compliance service: {e}. "
-                        f"Retrying in {self.backoff_factor * (2 ** attempt)}s..."
+                        "compliance_service_network_retry",
+                        error=str(e),
+                        delay=self.backoff_factor * (2 ** attempt),
+                        attempt=attempt + 1,
                     )
-                    time.sleep(self.backoff_factor * (2 ** attempt))
+                    sleep_with_jitter(attempt, self.backoff_factor)
                     continue
                 raise
         raise Exception("Max retries exceeded for Compliance service.")
@@ -124,7 +118,7 @@ class ComplianceServiceClient:
             data = response.json()
             return data.get("status") == "healthy", data.get("service", "compliance-service")
         except Exception as e:
-            logger.error(f"Compliance service health check failed: {e}")
+            logger.error("compliance_service_health_check_failed", error=str(e))
             return False, "unknown"
 
     def scan_file(
@@ -136,6 +130,7 @@ class ComplianceServiceClient:
         contract: Optional[Any] = None,
         tenant_id: Optional[str] = None,
         correlation_id: Optional[str] = None,
+        legal_basis: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Scan file for PII and compliance issues.
@@ -152,9 +147,11 @@ class ComplianceServiceClient:
         Returns:
             Compliance scan result dictionary
         """
-        # Define fallback response (fail-closed: allowed_to_store must be False when service unavailable)
+        # Define fallback response (fail-closed: allowed_to_store must be
+        # False when service unavailable).  v2 fields are null so callers
+        # can distinguish "service returned null" from "field absent".
         def fallback_response(*args, **kwargs) -> Dict[str, Any]:
-            """Fallback response when circuit breaker is open or service fails."""
+            """Fallback when circuit breaker is open or service fails."""
             return {
                 "overall_status": "UNKNOWN",
                 "risk_level": "UNKNOWN",
@@ -165,14 +162,22 @@ class ComplianceServiceClient:
                 "applicable_regulations": [],
                 "issues": [],
                 "metadata": {},
-                "error": "Compliance service unavailable (circuit breaker open)",
+                # v2 fields (19.10.6) — null on unavailability
+                "cross_border_alert": None,
+                "regulation_summaries": None,
+                "schema_version": None,
+                "error": (
+                    "Compliance service unavailable "
+                    "(circuit breaker open)"
+                ),
             }
 
         # Correlation ID for tracing (5.4.1): use provided or generate; service echoes it in response
         effective_correlation_id = correlation_id or str(uuid.uuid4())
         logger.info(
-            "Calling compliance service scan_file",
-            extra={"correlation_id": effective_correlation_id, "tenant_id": tenant_id or "unknown"},
+            "compliance_service_scan_file",
+            correlation_id=effective_correlation_id,
+            tenant_id=tenant_id or "unknown",
         )
 
         # Execute with circuit breaker protection
@@ -209,6 +214,8 @@ class ComplianceServiceClient:
             if targeted_categories:
                 import json
                 data['targeted_categories'] = json.dumps(targeted_categories) if isinstance(targeted_categories, list) else targeted_categories
+            if legal_basis:
+                data['legal_basis'] = legal_basis
 
             response = self._request_with_retry(
                 "POST",
@@ -226,6 +233,146 @@ class ComplianceServiceClient:
             )
             return result
         except Exception as e:
-            logger.error(f"Error scanning file with Compliance service: {e}")
+            logger.error("compliance_service_scan_file_error", error=str(e))
             return fallback_response()
+
+    def scan_file_async(
+        self,
+        file_content: bytes,
+        file_format: str,
+        scan_mode: str = "internal",
+        applicable_regulations: Optional[list] = None,
+        legal_basis: Optional[str] = None,
+        destination_jurisdiction: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        POST to /scan-file-async.
+
+        Returns the response body with ``_http_status`` injected so the
+        caller can branch on 202 (async accepted) vs 200 (sync result).
+
+        Forwards X-Actor-Id, X-Correlation-Id, X-Internal-Api-Key.
+
+        Raises:
+            httpx.HTTPStatusError: on non-200/202 HTTP errors.
+            httpx.RequestError: on network-level failures.
+        """
+        import json as _json
+        from hub.apps.api.middleware.trace_propagation import (
+            get_trace_headers,
+        )
+
+        eff_cid = correlation_id or str(uuid.uuid4())
+        logger.info(
+            "compliance_service_scan_file_async",
+            correlation_id=eff_cid,
+            tenant_id=tenant_id or "unknown",
+        )
+
+        trace_hdrs = get_trace_headers() or {}
+        internal_key = getattr(settings, "INTERNAL_API_KEY", "")
+        if internal_key:
+            trace_hdrs["X-Internal-Api-Key"] = internal_key
+        actor_id = getattr(settings, "SERVICE_ACTOR_ID", "hub")
+        headers = {
+            **trace_hdrs,
+            "X-Correlation-Id": eff_cid,
+            "X-Actor-Id": actor_id,
+        }
+
+        files = {
+            "file": (
+                f"data.{file_format}",
+                file_content,
+                f"application/{file_format}",
+            )
+        }
+        data: Dict[str, Any] = {
+            "scan_mode": scan_mode,
+            "tenant_id": tenant_id or "unknown",
+        }
+        if applicable_regulations:
+            data["applicable_regulations"] = _json.dumps(
+                applicable_regulations
+            )
+        if legal_basis:
+            data["legal_basis"] = legal_basis
+        if destination_jurisdiction:
+            data["destination_jurisdiction"] = destination_jurisdiction
+
+        # The async endpoint only queues the job and should respond with
+        # 202 quickly.  Use a 60-second timeout — much shorter than the
+        # 1 800-second timeout used for synchronous full scans — so that
+        # a hanging async endpoint falls back to the sync path promptly.
+        async_timeout = getattr(
+            settings, "COMPLIANCE_ASYNC_SUBMIT_TIMEOUT", 60
+        )
+
+        def _fallback_async_circuit(*_a, **_kw):
+            # Reuse sync path in _call_compliance_service (same as unreachable async).
+            raise httpx.ConnectError("compliance-service circuit breaker open")
+
+        def _execute_async():
+            response = self.client.post(
+                "/scan-file-async",
+                files=files,
+                data=data,
+                headers=headers,
+                timeout=async_timeout,
+            )
+            if response.status_code not in (200, 202):
+                response.raise_for_status()
+            result = response.json()
+            result["_http_status"] = response.status_code
+            return result
+
+        return self._circuit_breaker.call(
+            _execute_async, fallback=_fallback_async_circuit
+        )
+
+    def get_scan_result(self, job_id: str) -> Dict[str, Any]:
+        """
+        GET /scan-result/{job_id} — poll for an async job result.
+
+        Forwards X-Actor-Id, X-Correlation-Id, X-Internal-Api-Key.
+
+        Returns:
+            dict with ``"status"`` (QUEUED/RUNNING/COMPLETED/FAILED)
+            and ``"result"`` payload when status is COMPLETED.
+
+        Raises:
+            httpx.HTTPStatusError / httpx.RequestError on errors.
+        """
+        from hub.apps.api.middleware.trace_propagation import (
+            get_trace_headers,
+        )
+
+        cid = str(uuid.uuid4())
+        trace_hdrs = get_trace_headers() or {}
+        internal_key = getattr(settings, "INTERNAL_API_KEY", "")
+        if internal_key:
+            trace_hdrs["X-Internal-Api-Key"] = internal_key
+        actor_id = getattr(settings, "SERVICE_ACTOR_ID", "hub")
+        headers = {
+            **trace_hdrs,
+            "X-Correlation-Id": cid,
+            "X-Actor-Id": actor_id,
+        }
+
+        def _fallback_poll_open(*_a, **_kw):
+            return {"status": "QUEUED"}
+
+        def _execute_poll():
+            response = self._request_with_retry(
+                "GET",
+                f"/scan-result/{job_id}",
+                headers=headers,
+            )
+            return response.json()
+
+        return self._circuit_breaker.call(
+            _execute_poll, fallback=_fallback_poll_open
+        )
 

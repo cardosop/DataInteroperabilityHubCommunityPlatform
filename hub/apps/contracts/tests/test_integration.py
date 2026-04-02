@@ -5,6 +5,7 @@ Note: These tests require the DataContract CLI service to be running.
 Start services with: make docker-up-services
 """
 
+import unittest
 import os
 
 import pytest
@@ -35,9 +36,9 @@ class DataContractCLIIntegrationTest(ContractsAPITestBase):
         try:
             health = cli_client.health_check()
             if health.get("status") != "healthy":
-                pytest.skip(f"DataContract CLI service is not healthy at {self.service_url}")
+                raise unittest.SkipTest(f"DataContract CLI service is not healthy at {self.service_url}")
         except Exception as e:
-            pytest.skip(f"DataContract CLI service not available at {self.service_url}: {str(e)}")
+            raise unittest.SkipTest(f"DataContract CLI service not available at {self.service_url}: {str(e)}")
 
     @override_settings(DATACONTRACT_SERVICE_URL="http://localhost:8080")
     def test_validate_contract_integration(self):

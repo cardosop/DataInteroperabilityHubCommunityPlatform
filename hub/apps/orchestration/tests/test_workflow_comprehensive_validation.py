@@ -23,8 +23,9 @@ All tests follow TDD principles, use real implementations (no mocks/stubs),
 and fix root causes rather than workarounds.
 """
 import time
+import uuid
 from typing import Dict, Any, List
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
@@ -52,13 +53,13 @@ class WorkflowComprehensiveValidationTestBase(TestCase):
         super().setUp()
         self.engine = WorkflowEngine()
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
@@ -129,7 +130,7 @@ class WorkflowComprehensiveValidationTestBase(TestCase):
     EVENT_BUS_ASYNC_PERSISTENCE=False,
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,
 )
-class WorkflowStateVerificationTest(WorkflowComprehensiveValidationTestBase, TransactionTestCase):
+class WorkflowStateVerificationTest(WorkflowComprehensiveValidationTestBase):
     """Test suite for workflow state verification (10.1.19.1)"""
 
     def test_workflow_state_is_correctly_tracked(self):
@@ -239,7 +240,7 @@ class WorkflowStateVerificationTest(WorkflowComprehensiveValidationTestBase, Tra
 
         # Start workflow
         instance = self.engine.start_instance(str(instance.id))
-        time.sleep(0.1)  # Allow event persistence
+        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
 
         # Verify workflow.started event was published
         started_events = Event.objects.filter(
@@ -250,7 +251,7 @@ class WorkflowStateVerificationTest(WorkflowComprehensiveValidationTestBase, Tra
 
         # Execute workflow
         instance = self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # Allow event persistence
+        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
 
         # Refresh to get latest state
         instance.refresh_from_db()
@@ -315,7 +316,7 @@ class WorkflowStateVerificationTest(WorkflowComprehensiveValidationTestBase, Tra
             pass  # Expected to fail
 
         # Wait for compensation to complete
-        time.sleep(0.2)
+        time.sleep(0.2)  # INTENTIONAL: brief yield for async workflow execution
 
         # Refresh to get latest state
         instance.refresh_from_db()
@@ -340,7 +341,7 @@ class WorkflowStateVerificationTest(WorkflowComprehensiveValidationTestBase, Tra
     EVENT_BUS_ASYNC_PERSISTENCE=False,
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,
 )
-class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase, TransactionTestCase):
+class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase):
     """Test suite for workflow failure scenarios (10.1.19.2)"""
 
     def test_workflow_handles_step_failures_correctly(self):
@@ -439,7 +440,7 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase, Tran
             pass  # Expected to fail
 
         # Wait a bit for compensation to complete
-        time.sleep(0.3)
+        time.sleep(0.3)  # INTENTIONAL: brief yield for async workflow execution
 
         # Refresh to get latest state (outside transaction)
         instance = WorkflowInstance.objects.get(id=instance.id)
@@ -497,7 +498,7 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase, Tran
             pass  # Expected to fail
 
         # Wait for rollback to complete
-        time.sleep(0.3)
+        time.sleep(0.3)  # INTENTIONAL: brief yield for async workflow execution
 
         # Refresh to get latest state (outside transaction)
         instance = WorkflowInstance.objects.get(id=instance.id)
@@ -571,7 +572,7 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase, Tran
     EVENT_BUS_ASYNC_PERSISTENCE=False,
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,
 )
-class WorkflowEventOrderingTest(WorkflowComprehensiveValidationTestBase, TransactionTestCase):
+class WorkflowEventOrderingTest(WorkflowComprehensiveValidationTestBase):
     """Test suite for workflow event ordering (10.1.19.3)"""
 
     def test_workflow_events_are_published_in_correct_order(self):
@@ -595,15 +596,15 @@ class WorkflowEventOrderingTest(WorkflowComprehensiveValidationTestBase, Transac
             tenant_id=str(self.tenant.id),
             created_by_id=str(self.user.id),
         )
-        time.sleep(0.1)  # Allow workflow.created event to persist
+        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
 
         # Start workflow
         instance = self.engine.start_instance(str(instance.id))
-        time.sleep(0.1)  # Allow event persistence
+        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
 
         # Execute workflow
         instance = self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # Allow event persistence
+        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
 
         # Get all workflow events for this instance, ordered by timestamp
         events = Event.objects.filter(
@@ -675,11 +676,11 @@ class WorkflowEventOrderingTest(WorkflowComprehensiveValidationTestBase, Transac
 
         # Start workflow
         instance = self.engine.start_instance(str(instance.id))
-        time.sleep(0.1)  # Allow event persistence
+        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
 
         # Execute workflow
         instance = self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # Allow event persistence
+        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
 
         # Get step events
         step_started_events = Event.objects.filter(
@@ -738,11 +739,11 @@ class WorkflowEventOrderingTest(WorkflowComprehensiveValidationTestBase, Transac
 
         # Start workflow
         instance = self.engine.start_instance(str(instance.id))
-        time.sleep(0.1)  # Allow event persistence
+        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
 
         # Execute workflow
         instance = self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # Allow event persistence
+        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
 
         # Refresh to get latest state
         instance.refresh_from_db()

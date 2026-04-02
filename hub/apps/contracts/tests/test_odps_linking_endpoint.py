@@ -505,8 +505,8 @@ product:
             url, {"original_raw": odps_json, "original_format": "JSON"}, format="json"
         )
 
-        # Should handle unicode characters
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # Unicode characters in product details are valid; linking should succeed
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_linking_endpoint_handles_special_characters(self):
         """Test that linking endpoint handles special characters correctly."""
@@ -533,8 +533,8 @@ product:
             url, {"original_raw": odps_json, "original_format": "JSON"}, format="json"
         )
 
-        # Should handle special characters
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # Special characters in product details are valid; linking should succeed
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_linking_endpoint_handles_very_large_documents(self):
         """Test that linking endpoint handles very large documents correctly."""
@@ -562,16 +562,15 @@ product:
             url, {"original_raw": odps_json, "original_format": "JSON"}, format="json"
         )
 
-        # Should handle very large documents
-        # 500 can occur when document exceeds database index size limits
+        # Very large documents should either succeed or be rejected with a client error
         self.assertIn(
             response.status_code,
             [
                 status.HTTP_200_OK,
                 status.HTTP_400_BAD_REQUEST,
                 status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
             ],
+            "Very large documents should not cause a 500 server error",
         )
 
     def test_linking_endpoint_handles_none_values(self):
@@ -599,8 +598,8 @@ product:
             url, {"original_raw": odps_json, "original_format": "JSON"}, format="json"
         )
 
-        # Should handle None values gracefully
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # None description is valid (optional field); linking should succeed
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_linking_endpoint_handles_nested_structures(self):
         """Test that linking endpoint handles nested structures correctly."""
@@ -627,5 +626,5 @@ product:
             url, {"original_raw": odps_json, "original_format": "JSON"}, format="json"
         )
 
-        # Should handle nested structures
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # Extra nested fields in product details are ignored; linking should succeed
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

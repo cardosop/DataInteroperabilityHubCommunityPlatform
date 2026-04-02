@@ -5,11 +5,9 @@ Tests for semantic versioning, version tagging, and diff visualization
 in the context of API and dataset creation workflows.
 """
 
-import pytest
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.exceptions import ValidationError
 from django.test import TestCase
-from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -20,10 +18,9 @@ from hub.apps.datasets.versioning import VersionHistoryManager
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
+import uuid
 
 User = get_user_model()
-
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class SemanticVersioningIntegrationTest(DatasetsAPITestBase):
@@ -182,13 +179,14 @@ class VersionTaggingIntegrationTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -335,13 +333,14 @@ class VersionDiffVisualizationIntegrationTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

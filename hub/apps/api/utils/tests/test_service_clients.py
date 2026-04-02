@@ -18,6 +18,7 @@ from hub.apps.dq.service_client import DQServiceClient
 from hub.apps.compliance.service_client import ComplianceServiceClient
 from hub.apps.semantic.service_client import SemanticServiceClient
 from hub.apps.contracts.cli_client import DataContractCLIClient
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 
 
 class DQServiceClientTest(TestCase):
@@ -155,6 +156,9 @@ class SemanticServiceClientTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        # Reset circuit breaker so stale OPEN state from other tests doesn't leak in
+        reset_circuit_breaker_by_name("semantic-service-read")
+        reset_circuit_breaker_by_name("semantic-service-write")
         self.client = SemanticServiceClient()
         self.client.base_url = 'http://localhost:8081'
 

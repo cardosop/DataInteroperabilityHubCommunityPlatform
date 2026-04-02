@@ -15,6 +15,7 @@ skip when Prometheus is not reachable (e.g. not started in test stack). To run t
 ensure Prometheus is available at http://localhost:9090 or http://prometheus:9090.
 """
 
+import unittest
 import time
 
 import pytest
@@ -41,10 +42,11 @@ from hub.apps.observability.otel_metrics import (
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 User = get_user_model()
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.integration,
 ]
 
@@ -58,7 +60,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
             name="Alerting Test Tenant", slug="alerting-test-tenant", status="ACTIVE"
         )
         self.user = User.objects.create_user(
-            email="alerting-test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"alerting-test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
     def test_marketplace_alerts_loaded_in_prometheus(self):
@@ -81,11 +83,11 @@ class MarketplaceAlertingIntegrationTest(TestCase):
                 continue
 
         if not prometheus_url:
-            pytest.skip("Prometheus not accessible from test container")
+            raise unittest.SkipTest("Prometheus not accessible from test container")
 
         try:
             # Wait for Prometheus to load rules
-            time.sleep(2)
+            time.sleep(2)  # INTENTIONAL: test-specific timing requirement
 
             response = requests.get(f"{prometheus_url}/api/v1/rules", timeout=10)
             self.assertEqual(response.status_code, 200, "Prometheus should be accessible")
@@ -98,7 +100,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
 
             # If alerts not loaded yet, that's OK - they'll be loaded on next reload
             if len(marketplace_groups) == 0:
-                pytest.skip(
+                raise unittest.SkipTest(
                     "Marketplace alerts not yet loaded in Prometheus "
                     "(may need reload or restart)"
                 )
@@ -148,7 +150,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
             )
 
         except requests.exceptions.RequestException as e:
-            pytest.skip(f"Prometheus not accessible: {e}")
+            raise unittest.SkipTest(f"Prometheus not accessible: {e}")
 
     def test_connection_test_failure_alert_rule(self):
         """Test that connection test failure alert rule is evaluable"""
@@ -170,7 +172,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
                 continue
 
         if not prometheus_url:
-            pytest.skip("Prometheus not accessible from test container")
+            raise unittest.SkipTest("Prometheus not accessible from test container")
 
         try:
             # Query the alert rule
@@ -184,7 +186,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
             # Rule should be evaluable (may return empty results if no data)
 
         except requests.exceptions.RequestException as e:
-            pytest.skip(f"Prometheus not accessible: {e}")
+            raise unittest.SkipTest(f"Prometheus not accessible: {e}")
 
     def test_sync_job_failure_alert_rule(self):
         """Test that sync job failure alert rule is evaluable"""
@@ -206,7 +208,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
                 continue
 
         if not prometheus_url:
-            pytest.skip("Prometheus not accessible from test container")
+            raise unittest.SkipTest("Prometheus not accessible from test container")
 
         try:
             # Query the alert rule
@@ -219,7 +221,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
             self.assertEqual(response.status_code, 200, "Prometheus query should succeed")
 
         except requests.exceptions.RequestException as e:
-            pytest.skip(f"Prometheus not accessible: {e}")
+            raise unittest.SkipTest(f"Prometheus not accessible: {e}")
 
 
 class MarketplaceNotificationIntegrationTest(TestCase):
@@ -231,7 +233,7 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             name="Notification Test Tenant", slug="notification-test-tenant", status="ACTIVE"
         )
         self.user = User.objects.create_user(
-            email="notification-test@example.com",
+            email=f"notification-test-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
             display_name="Test User",

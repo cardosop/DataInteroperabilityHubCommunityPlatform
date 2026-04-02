@@ -2,7 +2,9 @@
 Contract Migration Tests
 """
 
-import pytest
+
+from rest_framework import status
+from rest_framework.test import APIClient
 
 from hub.apps.contracts.migration import (
     MigrationStrategy,
@@ -17,7 +19,6 @@ from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, 
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.jobs.models import Job, JobStatus, JobType
 
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class MigrationTest(ContractsTestBase):
@@ -491,17 +492,17 @@ class DCSRemovalMigrationTest(ContractsTestBase):
         super().setUp()
 
     def test_original_spec_type_enum_only_odcs(self):
-        """Test that OriginalSpecType enum only contains ODCS after migration"""
+        """Test that OriginalSpecType enum does not contain DATACONTRACT_COM after migration"""
         # Get all choices
         choices = [choice[0] for choice in OriginalSpecType.choices]
 
-        # Should only contain ODCS
-        self.assertEqual(len(choices), 1)
-        self.assertEqual(choices[0], OriginalSpecType.ODCS)
+        # Should contain ODCS and ODPS (DATACONTRACT_COM was removed)
+        self.assertEqual(len(choices), 2)
+        self.assertIn(OriginalSpecType.ODCS, choices)
         self.assertNotIn("DATACONTRACT_COM", choices)
 
     def test_contract_model_field_constraints(self):
-        """Test that Contract model field only accepts ODCS"""
+        """Test that Contract model field does not accept DATACONTRACT_COM"""
         from hub.apps.contracts.models import Contract
 
         # Get field
@@ -511,9 +512,9 @@ class DCSRemovalMigrationTest(ContractsTestBase):
         choices = field.choices
         choice_values = [choice[0] for choice in choices] if choices else []
 
-        # Should only have ODCS
-        self.assertEqual(len(choice_values), 1)
-        self.assertEqual(choice_values[0], OriginalSpecType.ODCS)
+        # Should have ODCS and ODPS (DATACONTRACT_COM was removed)
+        self.assertEqual(len(choice_values), 2)
+        self.assertIn(OriginalSpecType.ODCS, choice_values)
         self.assertNotIn("DATACONTRACT_COM", choice_values)
 
     def test_migration_data_function_exists(self):

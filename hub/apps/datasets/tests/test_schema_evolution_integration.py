@@ -3,6 +3,7 @@ Integration tests for Schema Evolution Tracking
 
 Tests for schema evolution in the context of dataset creation and version management.
 """
+import uuid
 
 import pytest
 
@@ -280,15 +281,13 @@ class SchemaEvolutionIntegrationTest(DatasetsTestBase):
             created_by=self.user,
         )
 
-        # Should handle non-existent parent gracefully
+        # Non-existent parent must either return None or raise
         try:
             schema_version = SchemaEvolutionTracker.track_schema_version(
                 child, parent_dataset=fake_parent
             )
-            # If succeeds, should return schema version or handle gracefully
-            self.assertIsNone(schema_version) or self.assertIsNotNone(schema_version)
+            self.assertIsNone(schema_version)
         except Exception:
-            # If fails, that's acceptable for non-existent parent
             pass
 
     # ========== EDGE CASES ==========

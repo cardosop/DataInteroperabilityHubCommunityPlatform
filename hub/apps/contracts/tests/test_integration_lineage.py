@@ -20,10 +20,12 @@ class TestLineageIntegration(ContractsAPITestBase):
     def test_contract_with_contract_level_lineage(self):
         """Test contract creation with contract-level lineage."""
         odcs_contract = {
-            "apiVersion": "odcs/v3",
+            "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
             "id": "test-contract-1",
             "name": "Test Contract 1",
+            "version": "1.0.0",
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
             "transformSourceObjects": [
                 {"namespace": "ns1", "name": "source-contract"},
             ],
@@ -35,8 +37,14 @@ class TestLineageIntegration(ContractsAPITestBase):
             format="JSON",
             spec_type="ODCS"
         )
-        self.assertIsNotNone(hub_contract)
-        self.assertEqual(status_val.value, "SUCCESS")
+        self.assertIsNotNone(
+            hub_contract,
+            f"Normalization failed: status={status_val}, errors={errors}"
+        )
+        self.assertIn(
+            status_val.value,
+            ("NORMALIZED_OK", "NORMALIZED_WITH_WARNINGS"),
+        )
 
         contract = Contract.objects.create(
             tenant=self.tenant,
@@ -79,7 +87,7 @@ class TestLineageIntegration(ContractsAPITestBase):
             spec_type="ODCS"
         )
         self.assertIsNotNone(hub_contract)
-        self.assertEqual(status_val.value, "SUCCESS")
+        self.assertEqual(status_val.value, "NORMALIZED_OK")
 
         contract = Contract.objects.create(
             tenant=self.tenant,
@@ -132,7 +140,7 @@ class TestLineageIntegration(ContractsAPITestBase):
             spec_type="ODCS"
         )
         self.assertIsNotNone(hub_contract)
-        self.assertEqual(status_val.value, "SUCCESS")
+        self.assertEqual(status_val.value, "NORMALIZED_OK")
 
         contract = Contract.objects.create(
             tenant=self.tenant,
@@ -193,7 +201,7 @@ class TestLineageIntegration(ContractsAPITestBase):
             spec_type="ODCS"
         )
         self.assertIsNotNone(hub_contract)
-        self.assertEqual(status_val.value, "SUCCESS")
+        self.assertEqual(status_val.value, "NORMALIZED_OK")
 
         contract = Contract.objects.create(
             tenant=self.tenant,

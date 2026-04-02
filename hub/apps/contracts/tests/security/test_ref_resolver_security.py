@@ -64,7 +64,7 @@ def _make_test_http_server():
 
         def add_delayed_json(self, path: str, data: dict, delay_sec: float):
             def delayed():
-                time.sleep(delay_sec)
+                time.sleep(delay_sec)  # INTENTIONAL: test-specific timing requirement
                 return ("application/json", json.dumps(data).encode("utf-8"))
 
             self.routes[path] = ("delayed", delayed)
@@ -97,7 +97,7 @@ def _make_test_http_server():
             self.port = self.server.server_address[1]
             self.thread = Thread(target=self.server.serve_forever, daemon=True)
             self.thread.start()
-            time.sleep(0.15)
+            time.sleep(0.15)  # INTENTIONAL: test-specific timing requirement
 
         def stop(self):
             if self.server:
@@ -123,7 +123,7 @@ def _make_test_http_server():
 def get_real_redis_client_or_none():
     """Get real Redis client or return None if unavailable."""
     try:
-        redis_url = getattr(settings, "REDIS_URL", "redis://redis:6379/0")
+        redis_url = getattr(settings, "REDIS_URL", None) or "redis://redis-cache-test:6379/0"
         client = redis.from_url(
             redis_url, decode_responses=False, socket_connect_timeout=2, socket_timeout=2
         )

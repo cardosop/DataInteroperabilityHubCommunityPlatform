@@ -13,7 +13,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from django.test import TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.jobs.models import Job, JobStatus, JobType
@@ -97,7 +97,7 @@ def _ensure_test_bucket_exists():
         pass  # Don't fail setUp if MinIO not reachable
 
 
-class ScheduledIngestionJobTest(TransactionTestCase):
+class ScheduledIngestionJobTest(TestCase):
     """Comprehensive tests for SCHEDULED_INGESTION job processing using real implementations.
 
     Tests that run the full workflow (execute_scheduled_ingestion_job) may skip when the
@@ -108,7 +108,20 @@ class ScheduledIngestionJobTest(TransactionTestCase):
     running with xdist/parallel or --reuse-db.
     """
 
+    reset_sequences = False
+    serialized_rollback = False
+
     _workflow_unavailable_reason = None
+
+    def _fixture_teardown(self):
+        """Skip TRUNCATE CASCADE which causes >60s timeouts with many FK
+        relationships on the shared test DB.
+
+        Isolation is maintained by unique UUID-based tenant/user names in
+        setUp — each test creates its own object graph that doesn't
+        conflict with other tests.
+        """
+        pass
 
     def setUp(self):
         """Set up test fixtures with unique names to avoid collisions in parallel runs."""

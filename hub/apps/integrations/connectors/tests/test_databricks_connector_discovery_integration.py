@@ -4,6 +4,7 @@ Integration tests for Databricks connector discovery operations.
 Tests list_listings, get_listing, and list_resources with real Databricks API.
 No mocks or stubs - uses real Unity Catalog API endpoints.
 """
+import unittest
 import os
 import pytest
 from django.test import TestCase
@@ -36,7 +37,7 @@ class TestDatabricksConnectorDiscoveryIntegration(TestCase):
         cls.token = os.getenv('DATABRICKS_TOKEN')
 
         if not cls.host or not cls.token:
-            pytest.skip("DATABRICKS_HOST and DATABRICKS_TOKEN not set - skipping integration tests")
+            raise unittest.SkipTest("DATABRICKS_HOST and DATABRICKS_TOKEN not set - skipping integration tests")
 
         # Create connector
         assert cls.host is not None
@@ -66,7 +67,7 @@ class TestDatabricksConnectorDiscoveryIntegration(TestCase):
         except ConnectionError as e:
             error_str = str(e).lower()
             if 'authentication failed' in error_str or 'unauthorized' in error_str:
-                pytest.skip(f"Databricks authentication failed: {e}")
+                raise unittest.SkipTest(f"Databricks authentication failed: {e}")
             pytest.fail(f"list_listings failed: {e}")
 
     def test_list_listings_with_limit(self):
@@ -79,7 +80,7 @@ class TestDatabricksConnectorDiscoveryIntegration(TestCase):
         except ConnectionError as e:
             error_str = str(e).lower()
             if 'authentication failed' in error_str or 'unauthorized' in error_str:
-                pytest.skip(f"Databricks authentication failed: {e}")
+                raise unittest.SkipTest(f"Databricks authentication failed: {e}")
             pytest.fail(f"list_listings failed: {e}")
 
     def test_list_listings_with_offset(self):
@@ -102,7 +103,7 @@ class TestDatabricksConnectorDiscoveryIntegration(TestCase):
         except ConnectionError as e:
             error_str = str(e).lower()
             if 'authentication failed' in error_str or 'unauthorized' in error_str:
-                pytest.skip(f"Databricks authentication failed: {e}")
+                raise unittest.SkipTest(f"Databricks authentication failed: {e}")
             pytest.fail(f"list_listings failed: {e}")
 
     def test_get_listing_success(self):
@@ -112,7 +113,7 @@ class TestDatabricksConnectorDiscoveryIntegration(TestCase):
             listings = self.connector.list_listings(limit=1)
 
             if not listings:
-                pytest.skip("No shares available in workspace for testing get_listing")
+                raise unittest.SkipTest("No shares available in workspace for testing get_listing")
 
             share_name = listings[0].marketplace_id
             listing = self.connector.get_listing(share_name)
@@ -128,11 +129,11 @@ class TestDatabricksConnectorDiscoveryIntegration(TestCase):
                 self.assertIn('access_methods', odps)
                 self.assertIn('databricks_delta_sharing', odps['access_methods'])
         except NotFoundError:
-            pytest.skip("Share not found - may have been deleted")
+            raise unittest.SkipTest("Share not found - may have been deleted")
         except ConnectionError as e:
             error_str = str(e).lower()
             if 'authentication failed' in error_str or 'unauthorized' in error_str:
-                pytest.skip(f"Databricks authentication failed: {e}")
+                raise unittest.SkipTest(f"Databricks authentication failed: {e}")
             pytest.fail(f"get_listing failed: {e}")
 
     def test_get_listing_not_found(self):
@@ -143,7 +144,7 @@ class TestDatabricksConnectorDiscoveryIntegration(TestCase):
         except ConnectionError as e:
             error_str = str(e).lower()
             if 'authentication failed' in error_str or 'unauthorized' in error_str:
-                pytest.skip(f"Databricks authentication failed: {e}")
+                raise unittest.SkipTest(f"Databricks authentication failed: {e}")
             pytest.fail(f"get_listing failed: {e}")
 
     def test_list_resources_success(self):
@@ -153,7 +154,7 @@ class TestDatabricksConnectorDiscoveryIntegration(TestCase):
             listings = self.connector.list_listings(limit=1)
 
             if not listings:
-                pytest.skip("No shares available in workspace for testing list_resources")
+                raise unittest.SkipTest("No shares available in workspace for testing list_resources")
 
             share_name = listings[0].marketplace_id
             resources = self.connector.list_resources(share_name)
@@ -168,11 +169,11 @@ class TestDatabricksConnectorDiscoveryIntegration(TestCase):
                 # Verify resource ID format (catalog.schema.table or schema.table)
                 self.assertIn('.', resource.resource_id)
         except NotFoundError:
-            pytest.skip("Share not found - may have been deleted")
+            raise unittest.SkipTest("Share not found - may have been deleted")
         except ConnectionError as e:
             error_str = str(e).lower()
             if 'authentication failed' in error_str or 'unauthorized' in error_str:
-                pytest.skip(f"Databricks authentication failed: {e}")
+                raise unittest.SkipTest(f"Databricks authentication failed: {e}")
             pytest.fail(f"list_resources failed: {e}")
 
     def test_list_resources_not_found(self):
@@ -183,7 +184,7 @@ class TestDatabricksConnectorDiscoveryIntegration(TestCase):
         except ConnectionError as e:
             error_str = str(e).lower()
             if 'authentication failed' in error_str or 'unauthorized' in error_str:
-                pytest.skip(f"Databricks authentication failed: {e}")
+                raise unittest.SkipTest(f"Databricks authentication failed: {e}")
             pytest.fail(f"list_resources failed: {e}")
 
     def test_listing_metadata_structure(self):
@@ -192,7 +193,7 @@ class TestDatabricksConnectorDiscoveryIntegration(TestCase):
             listings = self.connector.list_listings(limit=1)
 
             if not listings:
-                pytest.skip("No shares available in workspace for testing metadata structure")
+                raise unittest.SkipTest("No shares available in workspace for testing metadata structure")
 
             listing = listings[0]
 
@@ -218,6 +219,6 @@ class TestDatabricksConnectorDiscoveryIntegration(TestCase):
         except ConnectionError as e:
             error_str = str(e).lower()
             if 'authentication failed' in error_str or 'unauthorized' in error_str:
-                pytest.skip(f"Databricks authentication failed: {e}")
+                raise unittest.SkipTest(f"Databricks authentication failed: {e}")
             pytest.fail(f"Metadata structure test failed: {e}")
 

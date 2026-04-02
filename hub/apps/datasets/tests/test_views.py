@@ -194,7 +194,7 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should see their own dataset
         results = response.data.get("results", [])
-        self.assertGreaterEqual(len(results), 1)
+        self.assertEqual(len(results), 1)
         # User from our tenant requests datasets filtered by other_tenant's asset (IDOR attempt)
         self.client.force_authenticate(user=self.user)
         response = self.client.get(f"/api/v1/datasets/?asset_id={other_asset.id}")
@@ -354,10 +354,8 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         """Test retrieving dataset with invalid UUID format (edge case)"""
         response = self.client.get("/api/v1/datasets/invalid-uuid/")
 
-        # Should return 404 or 400 depending on URL routing
-        self.assertIn(
-            response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST]
-        )
+        # View validates UUID format and returns 400 for invalid format
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     # ========== CREATE ENDPOINT TESTS ==========
 
@@ -380,12 +378,11 @@ class DatasetViewSetTest(DatasetsAPITestBase):
 
         response = self.client.post("/api/v1/datasets/", data, format="json")
 
-        # May return 201 or 400 depending on S3/file availability
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
-
-        if response.status_code == status.HTTP_201_CREATED:
-            self.assertIn("id", response.data)
-            self.assertEqual(response.data["file"], str(new_file.id))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("id", response.data)
+        self.assertEqual(response.data["file"], str(new_file.id))
+        # Verify persisted to DB
+        self.assertTrue(Dataset.objects.filter(id=response.data["id"]).exists())
 
     def test_create_dataset_missing_file_id(self):
         """Test creating dataset with missing file_id (error handling)"""
@@ -434,6 +431,9 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Verify response body reflects the update
+        self.assertEqual(response.data["format"], "JSON")
+        # Verify DB was actually updated (independent query)
         self.dataset.refresh_from_db()
         self.assertEqual(self.dataset.format, "JSON")
 
@@ -447,6 +447,9 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Verify response body reflects the update
+        self.assertEqual(response.data["format"], "PARQUET")
+        # Verify DB was actually updated
         self.dataset.refresh_from_db()
         self.assertEqual(self.dataset.format, "PARQUET")
 
@@ -589,12 +592,9 @@ class DatasetViewSetTest(DatasetsAPITestBase):
             f"/api/v1/datasets/{self.dataset.id}/versions/", data, format="json"
         )
 
-        # May return 201 or 400 depending on service availability
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
-
-        if response.status_code == status.HTTP_201_CREATED:
-            self.assertIn("id", response.data)
-            self.assertEqual(response.data["semantic_version"], "1.1.0")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("id", response.data)
+        self.assertEqual(response.data["semantic_version"], "1.1.0")
 
     def test_create_version_rejected_when_versioning_disabled(self):
         """Phase 12: Creating a version returns 403 when versioning_enabled=False."""
@@ -644,8 +644,7 @@ class DatasetViewSetTest(DatasetsAPITestBase):
             f"/api/v1/datasets/{self.dataset.id}/versions/compare/?version1={self.dataset.id}&version2={version2.id}"
         )
 
-        # May return 200 or 400 depending on comparison service availability
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_compare_versions_missing_params(self):
         """Test comparing versions with missing parameters (error handling)"""
@@ -689,8 +688,7 @@ class DatasetViewSetTest(DatasetsAPITestBase):
 
         response = self.client.post("/api/v1/datasets/", data, format="json")
 
-        # May return 201 or 400 depending on S3/file availability
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     # ========== ERROR HANDLING ==========
 

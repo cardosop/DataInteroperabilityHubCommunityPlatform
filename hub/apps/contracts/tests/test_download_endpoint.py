@@ -10,10 +10,10 @@ Comprehensive integration tests verifying:
 
 Tests use real implementations (no mocks/stubs) and follow TDD principles.
 """
+import uuid
 
 import json
 
-import pytest
 from rest_framework import status
 
 from hub.apps.contracts.models import (
@@ -24,8 +24,8 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
 )
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
+from hub.apps.tenants.models import Tenant
 
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class ContractDownloadEndpointTest(ContractsAPITestBase):
@@ -258,7 +258,8 @@ class ContractDownloadEndpointTest(ContractsAPITestBase):
 
     def test_download_unauthorized(self):
         """Test download endpoint requires authentication"""
-        # Don't authenticate
+        # Clear authentication
+        self.client.force_authenticate(user=None)
         response = self.client.get(
             f"/api/v1/contracts/{self.contract.id}/download/",
         )
@@ -343,9 +344,10 @@ class ContractDownloadEndpointTest(ContractsAPITestBase):
         self.client.force_authenticate(user=self.user)
 
         # Create another tenant and contract
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )

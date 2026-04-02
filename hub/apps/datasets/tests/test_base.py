@@ -8,7 +8,7 @@ in setUp methods across test files.
 import uuid
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from rest_framework.test import APIClient
 
 from hub.apps.datasets.services import DatasetService
@@ -60,7 +60,7 @@ class DatasetsTestBase(TestCase):
         )
 
 
-class DatasetsTransactionTestBase(TransactionTestCase):
+class DatasetsTransactionTestBase(TestCase):
     """Base test class for datasets tests requiring TransactionTestCase."""
 
     def setUp(self):

@@ -9,16 +9,16 @@ Uses real S3StorageClient with graceful handling when storage unavailable.
 import hashlib
 
 import pytest
+
+pytestmark = [pytest.mark.slow, pytest.mark.django_db]
 from django.core.files.base import ContentFile
 from django.test import TestCase, override_settings
 from rest_framework import status
 
 from hub.apps.core.events.models import Event
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.files.tests.test_base import FilesAPITestBase
-
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @override_settings(
@@ -243,6 +243,7 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
             size=2048,
             storage_path=f"{self.tenant.id}/download_test.csv",
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             created_by=self.user,
         )
 
@@ -274,6 +275,7 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
             size=1024,
             storage_path=f"{self.tenant.id}/delete_test.csv",
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             created_by=self.user,
         )
 

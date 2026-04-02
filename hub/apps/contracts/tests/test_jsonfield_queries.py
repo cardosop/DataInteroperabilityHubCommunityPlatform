@@ -11,6 +11,8 @@ from django.db.models import Q, Value, When
 
 from hub.apps.contracts.models import Contract, ContractStatus
 from hub.apps.contracts.tests.test_base import ContractsTestBase
+from hub.apps.tenants.models import Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -69,26 +71,30 @@ class JSONFieldQueryTest(ContractsTestBase):
     def test_tags_contains_query(self):
         """Test querying by tags using __contains lookup."""
         # Query contracts with tag1
-        contracts = Contract.objects.filter(hub_contract_json__info__tags__contains=["tag1"])
+        contracts = Contract.objects.filter(tenant=self.tenant, hub_contract_json__info__tags__contains=["tag1"])
 
         self.assertEqual(contracts.count(), 1)
         self.assertEqual(contracts.first().id, self.contract1.id)
 
         # Query contracts with tag2
-        contracts = Contract.objects.filter(hub_contract_json__info__tags__contains=["tag2"])
+        contracts = Contract.objects.filter(tenant=self.tenant, hub_contract_json__info__tags__contains=["tag2"])
 
         self.assertEqual(contracts.count(), 2)
 
     def test_quality_profile_query(self):
         """Test querying by quality profile key."""
         contracts = Contract.objects.filter(
-            hub_contract_json__quality__default_profile_key="great_expectations"
+            tenant=self.tenant,
+            hub_contract_json__quality__default_profile_key="great_expectations",
         )
 
         self.assertEqual(contracts.count(), 1)
         self.assertEqual(contracts.first().id, self.contract1.id)
 
-        contracts = Contract.objects.filter(hub_contract_json__quality__default_profile_key="soda")
+        contracts = Contract.objects.filter(
+            tenant=self.tenant,
+            hub_contract_json__quality__default_profile_key="soda",
+        )
 
         self.assertEqual(contracts.count(), 1)
         self.assertEqual(contracts.first().id, self.contract2.id)
@@ -96,13 +102,15 @@ class JSONFieldQueryTest(ContractsTestBase):
     def test_compliance_jurisdictions_query(self):
         """Test querying by compliance jurisdictions."""
         contracts = Contract.objects.filter(
-            hub_contract_json__privacy_compliance__jurisdictions__contains=["GDPR"]
+            tenant=self.tenant,
+            hub_contract_json__privacy_compliance__jurisdictions__contains=["GDPR"],
         )
 
         self.assertEqual(contracts.count(), 2)
 
         contracts = Contract.objects.filter(
-            hub_contract_json__privacy_compliance__jurisdictions__contains=["CCPA"]
+            tenant=self.tenant,
+            hub_contract_json__privacy_compliance__jurisdictions__contains=["CCPA"],
         )
 
         self.assertEqual(contracts.count(), 1)
@@ -111,14 +119,16 @@ class JSONFieldQueryTest(ContractsTestBase):
     def test_contains_personal_data_query(self):
         """Test querying by contains_personal_data boolean."""
         contracts = Contract.objects.filter(
-            hub_contract_json__privacy_compliance__contains_personal_data=True
+            tenant=self.tenant,
+            hub_contract_json__privacy_compliance__contains_personal_data=True,
         )
 
         self.assertEqual(contracts.count(), 1)
         self.assertEqual(contracts.first().id, self.contract1.id)
 
         contracts = Contract.objects.filter(
-            hub_contract_json__privacy_compliance__contains_personal_data=False
+            tenant=self.tenant,
+            hub_contract_json__privacy_compliance__contains_personal_data=False,
         )
 
         self.assertEqual(contracts.count(), 1)
@@ -128,7 +138,7 @@ class JSONFieldQueryTest(ContractsTestBase):
         """Test complex query with When/Case expressions."""
         from django.db.models import Case, IntegerField, Value, When
 
-        contracts = Contract.objects.annotate(
+        contracts = Contract.objects.filter(tenant=self.tenant).annotate(
             personal_data_score=Case(
                 When(
                     hub_contract_json__privacy_compliance__contains_personal_data=True,
@@ -145,6 +155,7 @@ class JSONFieldQueryTest(ContractsTestBase):
     def test_combined_filters(self):
         """Test combining multiple JSONField filters."""
         contracts = Contract.objects.filter(
+            tenant=self.tenant,
             hub_contract_json__info__tags__contains=["tag2"],
             hub_contract_json__privacy_compliance__jurisdictions__contains=["GDPR"],
         )
@@ -161,7 +172,7 @@ class JSONFieldQueryTest(ContractsTestBase):
             cursor.execute(
                 """
                 EXPLAIN (FORMAT JSON)
-                SELECT * FROM contracts_contract
+                SELECT * FROM contracts
                 WHERE hub_contract_json->'info'->'tags' @> '["tag1"]'::jsonb
             """
             )
@@ -197,14 +208,16 @@ class JSONFieldQueryTest(ContractsTestBase):
         # Time the query
         start = time.time()
         contracts = Contract.objects.filter(
-            hub_contract_json__info__tags__contains=["tag1"]
+            tenant=self.tenant,
+            hub_contract_json__info__tags__contains=["tag1"],
         ).count()
         elapsed = time.time() - start
 
         # Should be fast even with multiple contracts
         # With GIN index, should be < 100ms for this query
         self.assertLess(elapsed, 0.1, f"Query too slow: {elapsed:.3f}s")
-        self.assertGreater(contracts, 0)
+        # contract1 has tag1, plus perf contracts where tag0/tag1 overlap: i=0 has tag0,tag1; i=1 has tag1,tag2
+        self.assertGreaterEqual(contracts, 3)
 
     # Edge cases and error handling tests
     def test_query_with_empty_tags(self):
@@ -223,15 +236,21 @@ class JSONFieldQueryTest(ContractsTestBase):
             created_by=self.user,
         )
 
-        # Query with empty tags should return empty or handle gracefully
-        contracts = Contract.objects.filter(hub_contract_json__info__tags__contains=[])
-        # Empty contains may match all or none depending on implementation
-        self.assertIsInstance(contracts.count(), int)
+        # Query with empty tags - empty contains matches all records with a tags array
+        contracts = Contract.objects.filter(
+            tenant=self.tenant,
+            hub_contract_json__info__tags__contains=[],
+        )
+        # Empty array is a subset of any array, so should match all 3 contracts with tags arrays
+        self.assertGreaterEqual(contracts.count(), 3)
 
     def test_query_with_nonexistent_field(self):
         """Test querying with nonexistent JSONField path."""
-        contracts = Contract.objects.filter(hub_contract_json__nonexistent__field="value")
-        # Should return empty queryset or handle gracefully
+        contracts = Contract.objects.filter(
+            tenant=self.tenant,
+            hub_contract_json__nonexistent__field="value",
+        )
+        # Should return empty queryset
         self.assertEqual(contracts.count(), 0)
 
     def test_query_with_null_values(self):
@@ -250,9 +269,15 @@ class JSONFieldQueryTest(ContractsTestBase):
             created_by=self.user,
         )
 
-        # Query with null should handle gracefully
-        contracts = Contract.objects.filter(hub_contract_json__info__tags__isnull=True)
-        self.assertGreaterEqual(contracts.count(), 0)
+        # JSON null for nested keys is not always equivalent to SQL NULL for __isnull
+        # on all backends/versions; assert retrieval via a stable path + stored shape.
+        contracts = Contract.objects.filter(
+            tenant=self.tenant,
+            hub_contract_json__info__title="Null Test",
+        )
+        self.assertEqual(contracts.count(), 1)
+        self.assertEqual(contracts.first().id, contract.id)
+        self.assertIsNone(contracts.first().hub_contract_json["info"]["tags"])
 
     def test_query_with_special_characters_in_json(self):
         """Test querying with special characters in JSONField values."""
@@ -270,9 +295,13 @@ class JSONFieldQueryTest(ContractsTestBase):
             created_by=self.user,
         )
 
-        # Should handle special characters
-        contracts = Contract.objects.filter(hub_contract_json__info__title__contains="<>&\"'")
-        self.assertGreaterEqual(contracts.count(), 0)
+        # Substring matching on JSON scalars uses icontains (contains is JSON containment)
+        contracts = Contract.objects.filter(
+            tenant=self.tenant,
+            hub_contract_json__info__title__icontains=">&",
+        )
+        self.assertEqual(contracts.count(), 1)
+        self.assertEqual(contracts.first().id, contract.id)
 
     def test_query_with_unicode_characters(self):
         """Test querying with unicode characters in JSONField."""
@@ -290,9 +319,12 @@ class JSONFieldQueryTest(ContractsTestBase):
             created_by=self.user,
         )
 
-        # Should handle unicode characters
-        contracts = Contract.objects.filter(hub_contract_json__info__title__contains="产品")
-        self.assertGreaterEqual(contracts.count(), 0)
+        contracts = Contract.objects.filter(
+            tenant=self.tenant,
+            hub_contract_json__info__title__icontains="产品",
+        )
+        self.assertEqual(contracts.count(), 1)
+        self.assertEqual(contracts.first().id, contract.id)
 
     def test_query_with_very_large_json(self):
         """Test querying with very large JSONField data."""
@@ -319,8 +351,12 @@ class JSONFieldQueryTest(ContractsTestBase):
         )
 
         # Should handle large JSON
-        contracts = Contract.objects.filter(hub_contract_json__info__title="Large Contract")
+        contracts = Contract.objects.filter(
+            tenant=self.tenant,
+            hub_contract_json__info__title="Large Contract",
+        )
         self.assertEqual(contracts.count(), 1)
+        self.assertEqual(contracts.first().id, contract.id)
 
     def test_query_with_nested_structures(self):
         """Test querying deeply nested JSONField structures."""
@@ -341,9 +377,11 @@ class JSONFieldQueryTest(ContractsTestBase):
 
         # Should handle nested structures
         contracts = Contract.objects.filter(
-            hub_contract_json__extensions__level1__level2__level3__level4__value="deep"
+            tenant=self.tenant,
+            hub_contract_json__extensions__level1__level2__level3__level4__value="deep",
         )
         self.assertEqual(contracts.count(), 1)
+        self.assertEqual(contracts.first().id, contract.id)
 
     def test_query_with_mixed_data_types(self):
         """Test querying with mixed data types in JSONField."""
@@ -369,12 +407,14 @@ class JSONFieldQueryTest(ContractsTestBase):
         )
 
         # Query by integer
-        contracts = Contract.objects.filter(hub_contract_json__metadata__count=42)
+        contracts = Contract.objects.filter(tenant=self.tenant, hub_contract_json__metadata__count=42)
         self.assertEqual(contracts.count(), 1)
+        self.assertEqual(contracts.first().id, contract.id)
 
         # Query by boolean
-        contracts = Contract.objects.filter(hub_contract_json__metadata__active=True)
+        contracts = Contract.objects.filter(tenant=self.tenant, hub_contract_json__metadata__active=True)
         self.assertEqual(contracts.count(), 1)
+        self.assertEqual(contracts.first().id, contract.id)
 
     def test_query_with_empty_jsonfield(self):
         """Test querying contracts with empty JSONField."""
@@ -389,17 +429,21 @@ class JSONFieldQueryTest(ContractsTestBase):
             created_by=self.user,
         )
 
-        # Should handle empty JSON
-        contracts = Contract.objects.filter(hub_contract_json__isnull=False)
-        self.assertGreaterEqual(contracts.count(), 0)
+        # Should handle empty JSON - all 3 contracts (contract1, contract2, and this one) have non-null JSON
+        contracts = Contract.objects.filter(tenant=self.tenant, hub_contract_json__isnull=False)
+        self.assertEqual(contracts.count(), 3)
 
     def test_query_with_invalid_json_path(self):
         """Test querying with invalid JSONField path syntax."""
         # Invalid path with array index without proper syntax
         try:
-            contracts = Contract.objects.filter(hub_contract_json__info__tags__0="tag1")
+            contracts = Contract.objects.filter(
+                tenant=self.tenant,
+                hub_contract_json__info__tags__0="tag1",
+            )
             # May or may not work depending on Django version
-            self.assertIsInstance(contracts.count(), int)
+            # If it works, contract1 has "tag1" at index 0
+            self.assertGreaterEqual(contracts.count(), 0)
         except Exception:
             # If it raises exception, that's acceptable
             pass
@@ -407,7 +451,8 @@ class JSONFieldQueryTest(ContractsTestBase):
     def test_query_cross_tenant_isolation(self):
         """Test that JSONField queries respect tenant isolation."""
         # Create another tenant
-        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant-json")
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-json-{_uid}")
 
         other_contract = Contract.objects.create(
             tenant=other_tenant,
@@ -437,56 +482,74 @@ class JSONFieldQueryTest(ContractsTestBase):
         from django.db.models import Q
 
         # Complex query with Q objects
+        # tag1 matches contract1, CCPA matches contract1 => union = contract1 only
         contracts = Contract.objects.filter(
             Q(hub_contract_json__info__tags__contains=["tag1"])
-            | Q(hub_contract_json__privacy_compliance__jurisdictions__contains=["CCPA"])
+            | Q(hub_contract_json__privacy_compliance__jurisdictions__contains=["CCPA"]),
+            tenant=self.tenant,
         )
 
-        self.assertGreaterEqual(contracts.count(), 0)
+        self.assertEqual(contracts.count(), 1)
+        self.assertEqual(contracts.first().id, self.contract1.id)
 
     def test_query_with_exclude(self):
         """Test excluding contracts based on JSONField values."""
-        contracts = Contract.objects.exclude(hub_contract_json__info__tags__contains=["tag3"])
+        contracts = Contract.objects.filter(tenant=self.tenant).exclude(
+            hub_contract_json__info__tags__contains=["tag3"]
+        )
 
-        # Should exclude contracts with tag3
+        # Should exclude contract2 (which has tag3), leaving contract1
         contract_ids = list(contracts.values_list("id", flat=True))
-        self.assertNotIn(self.contract2.id, contract_ids or [])
+        self.assertNotIn(self.contract2.id, contract_ids)
+        self.assertIn(self.contract1.id, contract_ids)
+        self.assertEqual(contracts.count(), 1)
 
     def test_query_with_ordering_by_jsonfield(self):
         """Test ordering queryset by JSONField values."""
-        contracts = Contract.objects.order_by("hub_contract_json__info__title")
+        contracts = Contract.objects.filter(tenant=self.tenant).order_by(
+            "hub_contract_json__info__title"
+        )
 
-        # Should order by title
-        self.assertGreaterEqual(contracts.count(), 0)
+        # Should order by title - both setUp contracts present
+        self.assertEqual(contracts.count(), 2)
 
     def test_query_with_annotate_jsonfield(self):
         """Test annotating queryset with JSONField values."""
         from django.db.models import F
 
-        contracts = Contract.objects.annotate(title=F("hub_contract_json__info__title")).filter(
-            title__isnull=False
-        )
+        contracts = Contract.objects.filter(tenant=self.tenant).annotate(
+            title=F("hub_contract_json__info__title")
+        ).filter(title__isnull=False)
 
-        self.assertGreaterEqual(contracts.count(), 0)
+        # Both setUp contracts have info.title set
+        self.assertEqual(contracts.count(), 2)
 
     def test_query_with_distinct(self):
         """Test distinct() with JSONField queries."""
         contracts = Contract.objects.filter(
-            hub_contract_json__info__tags__contains=["tag2"]
+            tenant=self.tenant,
+            hub_contract_json__info__tags__contains=["tag2"],
         ).distinct()
 
-        self.assertGreaterEqual(contracts.count(), 0)
+        # Both contract1 and contract2 have tag2
+        self.assertEqual(contracts.count(), 2)
 
     def test_query_with_count_aggregation(self):
         """Test count aggregation with JSONField queries."""
         count = Contract.objects.filter(
-            hub_contract_json__privacy_compliance__contains_personal_data=True
+            tenant=self.tenant,
+            hub_contract_json__privacy_compliance__contains_personal_data=True,
         ).count()
 
-        self.assertGreaterEqual(count, 0)
+        # Only contract1 has contains_personal_data=True
+        self.assertEqual(count, 1)
 
     def test_query_with_exists(self):
         """Test exists() check with JSONField queries."""
-        exists = Contract.objects.filter(hub_contract_json__info__tags__contains=["tag1"]).exists()
+        exists = Contract.objects.filter(
+            tenant=self.tenant,
+            hub_contract_json__info__tags__contains=["tag1"],
+        ).exists()
 
-        self.assertIsInstance(exists, bool)
+        # contract1 has tag1
+        self.assertTrue(exists)

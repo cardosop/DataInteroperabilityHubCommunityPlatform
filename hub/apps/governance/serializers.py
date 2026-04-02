@@ -9,6 +9,7 @@ from .models import (
     RetentionPolicy, RetentionPolicyType, RetentionAction,
     ComplianceReport
 )
+from .access_certification import AccessCertification
 
 
 class AccessRequestSerializer(serializers.ModelSerializer):
@@ -29,6 +30,23 @@ class AccessRequestSerializer(serializers.ModelSerializer):
             'id', 'tenant', 'requested_by', 'created_at', 'updated_at',
             'approved_by', 'approved_at', 'rejected_by', 'rejected_at',
             'access_granted_at'
+        ]
+
+
+class AccessCertificationSerializer(serializers.ModelSerializer):
+    """Serializer for AccessCertification"""
+
+    class Meta:
+        model = AccessCertification
+        fields = [
+            'id', 'tenant', 'user', 'asset', 'dataset',
+            'certification_type', 'status', 'reviewer',
+            'review_notes', 'expires_at', 'certified_at',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'tenant', 'certified_at',
+            'created_at', 'updated_at',
         ]
 
 

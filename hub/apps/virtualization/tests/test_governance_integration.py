@@ -8,7 +8,9 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 
-from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.tenants.models import Tenant, KYCStatus, TenantPlan, PlanTier
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from django.utils import timezone
 from hub.apps.virtualization.models import (
     VirtualDataset,
     QueryType,
@@ -18,6 +20,7 @@ from hub.apps.virtualization.services import VirtualizationService
 from hub.apps.core.services.base import ValidationError, PermissionError
 from hub.apps.governance.services import GovernanceService
 from hub.apps.governance.models import AccessPolicy
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -38,16 +41,43 @@ class VirtualizationGovernanceIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
+        # Set up subscription/plan
+        plan, _ = TenantPlan.objects.get_or_create(
+            slug="virtualization-test-plan",
+            defaults={
+                "name": "Virtualization Test Plan",
+                "tier": PlanTier.PRO,
+                "limits_json": {"max_assets": 100, "max_storage_gb": 1000, "max_virtual_datasets": 100},
+                "is_active": True,
+            },
+        )
+        if "max_storage_gb" not in (plan.limits_json or {}):
+            plan.limits_json = {**(plan.limits_json or {}), "max_storage_gb": 1000, "max_virtual_datasets": 100}
+            plan.save(update_fields=["limits_json"])
+        if self.tenant.plan_id != plan.id:
+            self.tenant.plan = plan
+            self.tenant.save(update_fields=["plan"])
+        Subscription.objects.get_or_create(
+            tenant=self.tenant,
+            defaults={
+                "plan": plan,
+                "status": SubscriptionStatus.ACTIVE,
+                "current_period_start": timezone.now(),
+                "current_period_end": timezone.now(),
+            },
+        )
+
         self.service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         # Clear cache
@@ -93,6 +123,7 @@ class VirtualizationGovernanceIntegrationTest(TestCase):
             name="Test Dataset Governance",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
+            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
         )
 
         self.assertIsNotNone(dataset)
@@ -153,7 +184,7 @@ class VirtualizationGovernanceIntegrationTest(TestCase):
         )
 
         self.assertIsNotNone(dataset)
-        self.assertEqual(len(dataset.sources), 2)
+        self.assertEqual(len(dataset.get_sources()), 2)
 
     @pytest.mark.skipif(not governance_service_available(), reason="GovernanceService not available")
     def test_governance_integration_with_abac_policy_denial(self):
@@ -196,6 +227,7 @@ class VirtualizationGovernanceIntegrationTest(TestCase):
                 name="Test Dataset Denied",
                 query="SELECT * FROM source",
                 query_type=QueryType.SQL,
+                sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
             )
 
         self.assertIn("ABAC policy", str(cm.exception))
@@ -205,7 +237,7 @@ class VirtualizationGovernanceIntegrationTest(TestCase):
         """Test that users without required role cannot create virtual datasets"""
         # User without DATA_PROVIDER or TENANT_ADMIN role
         regular_user = User.objects.create_user(
-            email="regular@example.com",
+            email=f"regular-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -220,6 +252,7 @@ class VirtualizationGovernanceIntegrationTest(TestCase):
                 name="Test Dataset No Role",
                 query="SELECT * FROM source",
                 query_type=QueryType.SQL,
+                sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
             )
 
         self.assertIn("required role", str(cm.exception).lower())
@@ -264,6 +297,7 @@ class VirtualizationGovernanceIntegrationTest(TestCase):
             name="Test Dataset Limits",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
+            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
         )
 
         self.assertIsNotNone(dataset)

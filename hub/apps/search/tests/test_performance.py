@@ -6,6 +6,7 @@ Tests performance requirements for search endpoints:
 
 These tests use real services and infrastructure (no mocks).
 """
+import uuid
 
 import statistics
 import time
@@ -29,9 +30,10 @@ class SearchPerformanceTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.client = APIClient()
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant", status="ACTIVE")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -39,8 +41,6 @@ class SearchPerformanceTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Create test search indices
-        import uuid
-
         self.search_indices = []
         for i in range(20):
             index = SearchIndex.objects.create(

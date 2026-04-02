@@ -14,7 +14,7 @@ Tests cover success, failure, edge cases, and error handling scenarios.
 """
 
 import pytest
-from django.test import TransactionTestCase
+from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetSourceType, AssetStatus
 from hub.apps.integrations.base import MarketplaceType
@@ -30,8 +30,15 @@ from hub.apps.users.models import User, UserStatus
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-class MarketplaceFrameworkTest(TransactionTestCase):
+class MarketplaceFrameworkTest(TestCase):
     """Comprehensive tests for marketplace integration framework"""
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        """Skip TRUNCATE CASCADE to avoid timeout."""
+        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -48,13 +55,16 @@ class MarketplaceFrameworkTest(TransactionTestCase):
         except (ImportError, AttributeError):
             pass
 
+        import uuid as _uuid
+        _suffix = _uuid.uuid4().hex[:8]
+        self._suffix = _suffix
         self.tenant = Tenant.objects.create(
-            name="Framework Test Tenant",
-            slug="framework-test-tenant",
+            name=f"Framework Test Tenant {_suffix}",
+            slug=f"framework-test-tenant-{_suffix}",
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="framework-test@example.com",
+            email=f"framework-test-{_suffix}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -126,17 +136,18 @@ class MarketplaceFrameworkTest(TransactionTestCase):
 
     def test_service_create_connection(self):
         """Test service creates connection"""
+        conn_name = f"Framework Test Connection {self._suffix}"
         connection = self.service.create_connection(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Framework Test Connection",
+            name=conn_name,
             config=self.config,
         )
 
         self.assertIsNotNone(connection)
         self.assertEqual(connection.tenant, self.tenant)
-        self.assertEqual(connection.name, "Framework Test Connection")
+        self.assertEqual(connection.name, conn_name)
         self.assertEqual(
             connection.marketplace_type, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
         )
@@ -147,7 +158,7 @@ class MarketplaceFrameworkTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Framework Test Connection",
+            name=f"Framework Get Connection {self._suffix}",
             config=self.config,
         )
 
@@ -165,14 +176,14 @@ class MarketplaceFrameworkTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Connection 1",
+            name=f"Connection 1 {self._suffix}",
             config=self.config,
         )
         self.service.create_connection(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE.value,
-            name="Connection 2",
+            name=f"Connection 2 {self._suffix}",
             config=self.config,
         )
 
@@ -186,19 +197,20 @@ class MarketplaceFrameworkTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Original Name",
+            name=f"Original Name {self._suffix}",
             config=self.config,
         )
 
+        updated_name = f"Updated Name {self._suffix}"
         updated = self.service.update_connection(
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            name="Updated Name",
+            name=updated_name,
         )
 
         updated.refresh_from_db()
-        self.assertEqual(updated.name, "Updated Name")
+        self.assertEqual(updated.name, updated_name)
 
     def test_service_delete_connection(self):
         """Test service deletes connection"""
@@ -206,7 +218,7 @@ class MarketplaceFrameworkTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="To Delete",
+            name=f"To Delete {self._suffix}",
             config=self.config,
         )
         connection_id = str(connection.id)
@@ -227,14 +239,14 @@ class MarketplaceFrameworkTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Test Connection",
+            name=f"Mapping Create Conn {self._suffix}",
             config=self.config,
         )
 
         asset = Asset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
-            name="Test Asset",
+            name=f"Mapping Create Asset {self._suffix}",
             source_type=AssetSourceType.HUB_NATIVE,
             status=AssetStatus.ACTIVE,
         )
@@ -258,14 +270,14 @@ class MarketplaceFrameworkTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Test Connection",
+            name=f"Mapping Get Conn {self._suffix}",
             config=self.config,
         )
 
         asset = Asset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
-            name="Test Asset",
+            name=f"Mapping Get Asset {self._suffix}",
             source_type=AssetSourceType.HUB_NATIVE,
             status=AssetStatus.ACTIVE,
         )
@@ -292,14 +304,14 @@ class MarketplaceFrameworkTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Test Connection",
+            name=f"Sync Job Conn {self._suffix}",
             config=self.config,
         )
 
         asset = Asset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
-            name="Test Asset",
+            name=f"Sync Job Asset {self._suffix}",
             source_type=AssetSourceType.HUB_NATIVE,
             status=AssetStatus.ACTIVE,
         )
@@ -333,7 +345,7 @@ class MarketplaceFrameworkTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Integration Test",
+            name=f"Integration Test {self._suffix}",
             config=self.config,
         )
 
@@ -347,13 +359,13 @@ class MarketplaceFrameworkTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Model Integration Test",
+            name=f"Model Integration Test {self._suffix}",
             config=self.config,
         )
 
         # Verify model was created correctly
         model_instance = MarketplaceConnection.objects.get(id=connection.id)
-        self.assertEqual(model_instance.name, "Model Integration Test")
+        self.assertEqual(model_instance.name, f"Model Integration Test {self._suffix}")
         self.assertEqual(model_instance.tenant, self.tenant)
 
     # ========== EDGE CASES TESTS ==========
@@ -365,14 +377,14 @@ class MarketplaceFrameworkTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Connection 1",
+            name=f"Multi Conn 1 {self._suffix}",
             config=self.config,
         )
         conn2 = self.service.create_connection(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE.value,
-            name="Connection 2",
+            name=f"Multi Conn 2 {self._suffix}",
             config=self.config,
         )
 
@@ -386,7 +398,7 @@ class MarketplaceFrameworkTest(TransactionTestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-                name="Empty Config Test",
+                name=f"Empty Config Test {self._suffix}",
                 config={},
             )
             # May succeed or fail depending on connector requirements
@@ -406,7 +418,7 @@ class MarketplaceFrameworkTest(TransactionTestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 marketplace_type="INVALID_TYPE",
-                name="Invalid Type Test",
+                name=f"Invalid Type Test {self._suffix}",
                 config=self.config,
             )
 
@@ -428,7 +440,7 @@ class MarketplaceFrameworkTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Required Fields Test",
+            name=f"Required Fields Test {self._suffix}",
             config=self.config,
         )
 
@@ -447,14 +459,14 @@ class MarketplaceFrameworkTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Test Connection",
+            name=f"Mapping Fields Conn {self._suffix}",
             config=self.config,
         )
 
         asset = Asset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
-            name="Test Asset",
+            name=f"Mapping Fields Asset {self._suffix}",
             source_type=AssetSourceType.HUB_NATIVE,
             status=AssetStatus.ACTIVE,
         )

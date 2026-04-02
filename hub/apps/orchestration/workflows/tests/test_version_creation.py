@@ -6,6 +6,7 @@ Comprehensive tests for version creation workflow including:
 - Integration tests for workflow execution
 - E2E tests for complete version creation journey
 """
+import uuid
 import pytest
 from django.test import TestCase
 from django.utils import timezone
@@ -30,14 +31,15 @@ class VersionCreationWorkflowUnitTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User"
@@ -810,14 +812,15 @@ class VersionCreationWorkflowIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User"
@@ -997,14 +1000,15 @@ class VersionCreationWorkflowE2ETest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User"

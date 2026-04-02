@@ -8,9 +8,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import connection, connections
-from django.db.utils import InterfaceError as DjangoInterfaceError, OperationalError
-from django.test import TransactionTestCase
+from django.test import TestCase
 
 from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.governance.services import GovernanceService
@@ -19,76 +17,20 @@ from hub.apps.integrations.business_rules import MarketplaceIntegrationBusinessR
 from hub.apps.integrations.models import MarketplaceConnection
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.tenants.services import TenantService
-from hub.apps.users.models import Role, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 User = get_user_model()
 
 
-def _is_connection_closed_error(exc: BaseException) -> bool:
-    """True if the exception indicates the DB connection was closed (any backend or wrapper)."""
-    msg = str(exc).lower()
-    return "connection" in msg and "closed" in msg
-
-
-def _ensure_db_connection():
-    """Ensure default DB connection is open so setUp never sees 'connection already closed'."""
-    try:
-        connections.close_all()
-        connection.ensure_connection()
-    except Exception:
-        pass
-
-
-def _ensure_db_connection_for_teardown():
-    """Ensure connection for tearDown/flush without closing first (avoid breaking active connection)."""
-    try:
-        connection.ensure_connection()
-    except Exception:
-        try:
-            connections.close_all()
-            connection.ensure_connection()
-        except Exception:
-            pass
-
-
-class ConnectionValidationGovernanceIntegrationTest(TransactionTestCase):
-    """
-    Integration tests for connection validation with GovernanceService.
-
-    Uses TransactionTestCase; tearDown ensures connection is open before super().tearDown()
-    to avoid 'connection already closed' during flush in batched runs.
-    """
+class ConnectionValidationGovernanceIntegrationTest(TestCase):
+    """Integration tests for connection validation with GovernanceService."""
 
     def setUp(self):
-        """Set up test fixtures; retry up to 3 times on connection closed."""
-        _ensure_db_connection()
-        last_error = None
-        for _ in range(3):
-            try:
-                self._create_fixtures()
-                last_error = None
-                break
-            except (DjangoInterfaceError, OperationalError) as e:
-                last_error = e
-                if _is_connection_closed_error(e):
-                    _ensure_db_connection()
-                    continue
-                raise
-            except Exception as e:
-                if _is_connection_closed_error(e):
-                    last_error = e
-                    _ensure_db_connection()
-                    continue
-                raise
-        if last_error is not None:
-            raise last_error
-
-    def _create_fixtures(self):
         """Create tenant, user, rules, and roles. Unique slug per run to avoid collisions."""
         slug_suffix = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{slug_suffix}",
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -108,28 +50,6 @@ class ConnectionValidationGovernanceIntegrationTest(TransactionTestCase):
         self.provider_role, _ = Role.objects.get_or_create(
             tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
-
-    def tearDown(self):
-        """Ensure connection then run TransactionTestCase teardown (flush); retry on connection closed."""
-        last_err = None
-        for _ in range(3):
-            try:
-                _ensure_db_connection_for_teardown()
-                super().tearDown()
-                last_err = None
-                break
-            except (DjangoInterfaceError, OperationalError) as e:
-                last_err = e
-                if _is_connection_closed_error(e):
-                    continue
-                raise
-            except Exception as e:
-                if _is_connection_closed_error(e):
-                    last_err = e
-                    continue
-                raise
-        if last_err is not None:
-            raise last_err
 
     def test_validate_connection_access_with_governance_service_pattern(self):
         """
@@ -165,7 +85,6 @@ class ConnectionValidationGovernanceIntegrationTest(TransactionTestCase):
         # Our validation should match GovernanceService behavior
         self.assertTrue(permission_allowed)
 
-    @pytest.mark.timeout(600)  # TransactionTestCase + GovernanceService can exceed 300s under batch load
     def test_validate_connection_access_without_permission_governance_pattern(self):
         """
         Test that validate_connection_access correctly identifies missing permissions
@@ -204,7 +123,7 @@ class ConnectionValidationGovernanceIntegrationTest(TransactionTestCase):
         following GovernanceService pattern
         """
         platform_admin = User.objects.create_user(
-            email="platform@example.com",
+            email=f"platform-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             is_platform_admin=True,
@@ -235,42 +154,14 @@ class ConnectionValidationGovernanceIntegrationTest(TransactionTestCase):
         self.assertTrue(permission_allowed)
 
 
-class ConnectionValidationTenantServiceIntegrationTest(TransactionTestCase):
-    """
-    Integration tests for connection validation with TenantService.
-
-    Uses TransactionTestCase; tearDown ensures connection is open before super().tearDown().
-    """
+class ConnectionValidationTenantServiceIntegrationTest(TestCase):
+    """Integration tests for connection validation with TenantService."""
 
     def setUp(self):
-        """Set up test fixtures; retry up to 3 times on connection closed."""
-        _ensure_db_connection()
-        last_error = None
-        for _ in range(3):
-            try:
-                self._create_fixtures()
-                last_error = None
-                break
-            except (DjangoInterfaceError, OperationalError) as e:
-                last_error = e
-                if _is_connection_closed_error(e):
-                    _ensure_db_connection()
-                    continue
-                raise
-            except Exception as e:
-                if _is_connection_closed_error(e):
-                    last_error = e
-                    _ensure_db_connection()
-                    continue
-                raise
-        if last_error is not None:
-            raise last_error
-
-    def _create_fixtures(self):
-        """Create tenant, user, rules, role, and user-role. Unique slug per run to avoid collisions."""
+        """Create tenant, user, rules, role, and user-role."""
         slug_suffix = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-svc-{slug_suffix}",
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -286,28 +177,6 @@ class ConnectionValidationTenantServiceIntegrationTest(TransactionTestCase):
             tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
         UserRole.objects.create(user=self.user, role=self.provider_role)
-
-    def tearDown(self):
-        """Ensure connection then run TransactionTestCase teardown; retry on connection closed."""
-        last_err = None
-        for _ in range(3):
-            try:
-                _ensure_db_connection_for_teardown()
-                super().tearDown()
-                last_err = None
-                break
-            except (DjangoInterfaceError, OperationalError) as e:
-                last_err = e
-                if _is_connection_closed_error(e):
-                    continue
-                raise
-            except Exception as e:
-                if _is_connection_closed_error(e):
-                    last_err = e
-                    continue
-                raise
-        if last_err is not None:
-            raise last_err
 
     def test_validate_connection_access_tenant_service_integration(self):
         """
@@ -340,7 +209,7 @@ class ConnectionValidationTenantServiceIntegrationTest(TransactionTestCase):
         """
         uv_suffix = uuid.uuid4().hex[:8]
         unverified_tenant = Tenant.objects.create(
-            name="Unverified Tenant",
+            name=f"Unverified Tenant {uv_suffix}",
             slug=f"unverified-tenant-{uv_suffix}",
             kyc_status=KYCStatus.UNVERIFIED,
         )

@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.webhooks.models import (
@@ -37,6 +37,7 @@ from hub.apps.testing.billing_support import ensure_tenant_has_active_subscripti
 from hub.apps.users.models import UserStatus
 from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.core.events.bus import get_event_bus
+from tests.utils.wait_helpers import wait_for_event_persistence
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -83,9 +84,12 @@ class WebhookReceiverHandler(BaseHTTPRequestHandler):
         }
         self.request_queue.put(request_data)
 
-        # Simulate delay if configured
+        # Simulate delay if configured (broken into small intervals for clean shutdown)
         if self.response_delay > 0:
-            time.sleep(self.response_delay)
+            remaining = self.response_delay
+            while remaining > 0:
+                time.sleep(min(remaining, 0.5))  # INTENTIONAL: simulates slow webhook receiver
+                remaining -= 0.5
 
         # Send response
         self.send_response(self.response_status)
@@ -106,6 +110,11 @@ class TestWebhookServer:
 
     Provides a real HTTP endpoint that webhooks can be delivered to,
     allowing comprehensive testing without mocks.
+    """
+
+    __test__ = False  # Not a test class — prevent pytest collection warning
+
+    """
     """
 
     def __init__(self, port: int = 0, response_status: int = 200,
@@ -137,15 +146,24 @@ class TestWebhookServer:
             )
 
         self.server = HTTPServer(("localhost", self.port), handler_factory)
+        self.server.timeout = 1  # Don't block on individual requests
         self.port = self.server.server_address[1]
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self._shutting_down = False
+        self.thread = threading.Thread(target=self.server.serve_forever, name="webhook-test-server", daemon=True)
         self.thread.start()
 
     def stop(self):
-        """Stop the HTTP server."""
+        """Stop the HTTP server without blocking on in-flight requests."""
+        self._shutting_down = True
         if self.server:
-            self.server.shutdown()
-            self.server.server_close()
+            # Use a thread to call shutdown() so it doesn't block indefinitely
+            shutdown_thread = threading.Thread(target=self.server.shutdown, daemon=True)
+            shutdown_thread.start()
+            shutdown_thread.join(timeout=5)  # Wait max 5s for clean shutdown
+            try:
+                self.server.server_close()
+            except Exception:
+                pass
             self.server = None
             self.thread = None
 
@@ -196,19 +214,30 @@ class TestWebhookServer:
         self.stop()
 
 
-class ODPSWebhookIntegrationTest(TestCase):
+@override_settings(WEBHOOK_ASYNC_DELIVERY=False)
+class ODPSWebhookIntegrationTest(TransactionTestCase):
     """
     Comprehensive integration tests for ODPS webhook delivery.
 
     Uses real HTTP servers to test webhook delivery without mocks.
+    Runs with WEBHOOK_ASYNC_DELIVERY=False so deliveries happen synchronously
+    (no RQ worker needed in test container).
     """
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        """Skip TRUNCATE CASCADE to avoid timeout."""
+        pass
 
     def setUp(self):
         """Set up test fixtures."""
+        uid = uuid.uuid4().hex[:8]
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -216,7 +245,7 @@ class ODPSWebhookIntegrationTest(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -270,7 +299,7 @@ class ODPSWebhookIntegrationTest(TestCase):
             self.assertEqual(count, 1, "Webhook should be triggered")
 
             # Wait for delivery
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             # Verify delivery record
             deliveries = WebhookDelivery.objects.filter(webhook=webhook)
@@ -374,7 +403,7 @@ class ODPSWebhookIntegrationTest(TestCase):
             self.assertEqual(count, 2, "Two webhooks should receive ODPS_CREATED event")
 
             # Wait for deliveries
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             # Verify deliveries
             deliveries1 = WebhookDelivery.objects.filter(webhook=webhook1)
@@ -414,7 +443,7 @@ class ODPSWebhookIntegrationTest(TestCase):
             self.assertEqual(count, 2, "Two webhooks should receive ODPS_UPDATED event")
 
             # Wait for deliveries
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             # Verify deliveries
             deliveries1 = WebhookDelivery.objects.filter(webhook=webhook1)
@@ -460,7 +489,7 @@ class ODPSWebhookIntegrationTest(TestCase):
             )
 
             # Wait for delivery attempt
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             # Verify delivery record
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
@@ -494,7 +523,7 @@ class ODPSWebhookIntegrationTest(TestCase):
             )
 
             # Wait for delivery attempt
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             # Verify delivery record
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
@@ -538,7 +567,7 @@ class ODPSWebhookIntegrationTest(TestCase):
         )
 
         # Wait for delivery attempt
-        time.sleep(1.0)
+        wait_for_event_persistence(timeout=2.0)
 
         # Verify delivery record
         delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
@@ -547,6 +576,7 @@ class ODPSWebhookIntegrationTest(TestCase):
         # Connection errors are recoverable
         self.assertIn(delivery.status, [DeliveryStatus.FAILED, DeliveryStatus.PENDING])
 
+    @override_settings(WEBHOOK_REQUEST_TIMEOUT=2)
     def test_odps_webhook_error_handling_timeout(self):
         """
         Test ODPS webhook error handling for timeout errors.
@@ -556,8 +586,8 @@ class ODPSWebhookIntegrationTest(TestCase):
         - Delivery record is updated with error information
         - Retry is scheduled for recoverable errors
         """
-        # Start server with delay longer than timeout
-        with TestWebhookServer(response_status=200, response_delay=35.0) as server:
+        # Start server with delay longer than WEBHOOK_REQUEST_TIMEOUT (2s)
+        with TestWebhookServer(response_status=200, response_delay=5.0) as server:
             webhook = Webhook.objects.create(
                 tenant=self.tenant,
                 name="ODPS Webhook",
@@ -579,8 +609,8 @@ class ODPSWebhookIntegrationTest(TestCase):
                 event_data=event_data,
             )
 
-            # Wait for delivery attempt (timeout is 30 seconds)
-            time.sleep(1.0)
+            # Wait for delivery attempt (WEBHOOK_REQUEST_TIMEOUT is 2 seconds)
+            wait_for_event_persistence(timeout=2.0)
 
             # Verify delivery record
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
@@ -621,7 +651,7 @@ class ODPSWebhookIntegrationTest(TestCase):
             )
 
             # Wait for delivery attempt
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             # Verify delivery record
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
@@ -698,7 +728,7 @@ class ODPSWebhookIntegrationTest(TestCase):
             subscriber._handle_odps_event(event)
 
             # Wait for webhook delivery
-            time.sleep(1.0)
+            wait_for_event_persistence(timeout=2.0)
 
             # Verify webhook was delivered
             deliveries = WebhookDelivery.objects.filter(webhook=webhook)
@@ -772,7 +802,7 @@ class ODPSWebhookIntegrationTest(TestCase):
                 self.assertEqual(count, 1, f"Webhook should be triggered for {event_type}")
 
                 # Wait for delivery
-                time.sleep(0.3)
+                wait_for_event_persistence()
 
                 # Verify delivery
                 delivery = WebhookDelivery.objects.filter(
@@ -832,7 +862,7 @@ class ODPSWebhookIntegrationTest(TestCase):
             self.assertEqual(count, 1, "Only active webhook should be triggered")
 
             # Wait for delivery
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             # Verify only active webhook has delivery
             active_deliveries = WebhookDelivery.objects.filter(webhook=active_webhook)

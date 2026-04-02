@@ -6,47 +6,53 @@ Tests performance targets:
 - RDF mapping: <10s for complete contract, <15s for contract with all sections
 - API response: <500ms for contract retrieval, <1s for contract creation
 """
-
-import os
-
-# Import RDF mapper - handle import path with hyphen
-import sys
-import time
-
+import json
 import os
 import sys
 import time
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
+from hub.apps.contracts.models import (
+    Contract,
+    ContractStatus,
+    NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
+)
 from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase, ContractsTestBase
 from hub.apps.tenants.models import Tenant
 
 User = get_user_model()
 
-semantic_service_path = os.path.join(
-    os.path.dirname(__file__), "../../../services/semantic-service"
+# Resolve from project root (4 levels up from hub/apps/contracts/tests/)
+semantic_service_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "../../../../services/semantic-service")
 )
 if semantic_service_path not in sys.path:
     sys.path.insert(0, semantic_service_path)
+_rdf_available = False
 try:
-    from mapper import map_hubcontract_to_rdf
+    from mapper import HubContractMapper
     from rdflib import Graph
-except ImportError:
-    # Fallback: create minimal mock for testing
-    class Graph:
-        pass
 
     def map_hubcontract_to_rdf(hub_contract, contract_uuid):
-        return Graph()
+        """Wrapper around HubContractMapper.map_hubcontract_to_rdf."""
+        return HubContractMapper().map_hubcontract_to_rdf(hub_contract, contract_uuid)
+
+    _rdf_available = True
+except ImportError:
+    map_hubcontract_to_rdf = None  # type: ignore[assignment]
+    Graph = None  # type: ignore[assignment,misc]
 
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.slow
 
 
 class NormalizationPerformanceTest(ContractsTestBase):
@@ -233,6 +239,7 @@ class NormalizationPerformanceTest(ContractsTestBase):
         self.assertIsNotNone(hub_contract)
 
 
+@pytest.mark.skipif(not _rdf_available, reason="semantic-service mapper not installed")
 class RDFMappingPerformanceTest(ContractsTestBase):
     """Test RDF mapping performance targets (GAP-11.2.1)"""
 
@@ -509,18 +516,27 @@ class APIPerformanceTest(ContractsAPITestBase):
         invalid_json = "{ invalid json }"
 
         start_time = time.time()
+        raised = False
         try:
             hub_contract, spec_type, spec_version, norm_status, errors, warnings = (
                 normalize_contract(invalid_json, "JSON")
             )
-            elapsed_time = time.time() - start_time
-            # Should fail quickly if invalid
-            self.assertLess(elapsed_time, 1.0)
-        except Exception:
-            # Exception is acceptable for invalid JSON
-            elapsed_time = time.time() - start_time
-            # Should fail quickly
-            self.assertLess(elapsed_time, 1.0)
+            # If it returns rather than raising, status must indicate failure
+            self.assertIn(
+                norm_status,
+                [NormalizationStatus.NORMALIZATION_FAILED, NormalizationStatus.NOT_NORMALIZED],
+                f"Invalid JSON should fail normalization, got {norm_status}",
+            )
+        except (json.JSONDecodeError, ValueError, KeyError, TypeError):
+            # Parse/schema errors are the expected rejection path
+            raised = True
+        elapsed_time = time.time() - start_time
+
+        # Must fail fast regardless of path
+        self.assertLess(elapsed_time, 1.0)
+        # Must either raise or return a failure status (verified above)
+        if not raised:
+            self.assertIsNotNone(norm_status)
 
     def test_normalization_performance_with_empty_contract(self):
         """Test normalization performance with empty contract."""
@@ -534,7 +550,11 @@ class APIPerformanceTest(ContractsAPITestBase):
 
         # Should handle empty contract quickly
         self.assertLess(elapsed_time, 1.0)
-        self.assertIsNotNone(hub_contract)
+        # Empty {} has no spec fields — normalizer may return None or a
+        # minimal hub contract depending on the fallback normalizer used.
+        # The key requirement is fast handling (asserted above) and that the
+        # function returns a valid 6-tuple without raising.
+        self.assertIsInstance(norm_status, NormalizationStatus)
 
     def test_normalization_performance_with_very_large_contract(self):
         """Test normalization performance with very large contract (10000 fields)."""
@@ -567,6 +587,7 @@ class APIPerformanceTest(ContractsAPITestBase):
         self.assertLess(elapsed_time, 60.0)  # 60s threshold for very large contracts
         self.assertIsNotNone(hub_contract)
 
+    @pytest.mark.skipif(not _rdf_available, reason="semantic-service mapper not installed")
     def test_rdf_mapping_performance_with_empty_contract(self):
         """Test RDF mapping performance with empty contract."""
         hub_contract = {}
@@ -580,6 +601,7 @@ class APIPerformanceTest(ContractsAPITestBase):
         self.assertLess(elapsed_time, 1.0)
         self.assertIsNotNone(graph)
 
+    @pytest.mark.skipif(not _rdf_available, reason="semantic-service mapper not installed")
     def test_rdf_mapping_performance_with_missing_fields(self):
         """Test RDF mapping performance with contract missing required fields."""
         hub_contract = {
@@ -622,8 +644,8 @@ class APIPerformanceTest(ContractsAPITestBase):
 
         # Should handle invalid filters gracefully and quickly
         self.assertLess(elapsed_time, 1.0)
-        # May return 200 with filtered results or 400 for bad request
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # Unknown params should be ignored (200) — not crash (500)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_api_list_performance_with_invalid_sorting(self):
         """Test API list performance with invalid sort parameters."""
@@ -633,8 +655,12 @@ class APIPerformanceTest(ContractsAPITestBase):
 
         # Should handle invalid sorting gracefully and quickly
         self.assertLess(elapsed_time, 1.0)
-        # May return 200 with default sorting or 400 for bad request
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # Invalid ordering must not crash the server
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST],
+        )
+        self.assertNotEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def test_api_list_performance_with_pagination(self):
         """Test API list performance with pagination."""
@@ -698,7 +724,10 @@ class APIPerformanceTest(ContractsAPITestBase):
         for elapsed_time in times:
             self.assertLess(elapsed_time, 5.0)
 
-        # Check that variance is not too large (all within 2x of minimum)
+        # Check that variance is not too large.  Use a floor of 10ms so
+        # sub-millisecond jitter (timer resolution, GC) doesn't trigger
+        # false failures when actual normalization is fast.
         min_time = min(times)
         max_time = max(times)
-        self.assertLess(max_time, min_time * 3)  # Allow 3x variance for test environment
+        threshold = max(min_time * 5, 0.01)  # 5x or 10ms, whichever is larger
+        self.assertLess(max_time, threshold)

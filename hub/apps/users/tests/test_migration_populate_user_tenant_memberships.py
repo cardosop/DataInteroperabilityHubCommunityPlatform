@@ -4,6 +4,7 @@ Tests for migration 0006_populate_user_tenant_memberships.
 Verifies that users with tenant_id get UserTenantMembership created (idempotent).
 Uses real DB; calls migration function directly (no mocks/stubs).
 """
+import uuid
 
 import importlib.util
 
@@ -48,7 +49,7 @@ class MigrationPopulateUserTenantMembershipsTest(TestCase):
             slug="migration-populate-tenant",
         )
         user = User.objects.create_user(
-            email="migration-populate@example.com",
+            email=f"migration-populate-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant,
             status=UserStatus.ACTIVE,
@@ -79,7 +80,7 @@ class MigrationPopulateUserTenantMembershipsTest(TestCase):
             slug="idempotent-tenant",
         )
         user = User.objects.create_user(
-            email="idempotent@example.com",
+            email=f"idempotent-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant,
             status=UserStatus.ACTIVE,

@@ -24,16 +24,17 @@ class JobTimeoutTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -77,6 +78,7 @@ class JobTimeoutTest(TestCase):
     
     def test_check_job_timeouts_exceeded(self):
         """Test that jobs exceeding timeout are marked as failed"""
+        before_check = timezone.now()
         job = Job.objects.create(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
@@ -87,14 +89,19 @@ class JobTimeoutTest(TestCase):
             started_at=timezone.now() - timedelta(minutes=35),  # Exceeds 30 min timeout
             timeout_seconds=1800  # 30 minutes
         )
-        
+
         check_job_timeouts()
-        
+
         job.refresh_from_db()
         self.assertEqual(job.status, JobStatus.FAILED)
         self.assertIn("exceeded timeout", job.error_message)
-        self.assertIsNotNone(job.completed_at)
+        # Verify completed_at was set to a reasonable time (at or after check started)
+        self.assertGreaterEqual(job.completed_at, before_check,
+                                "completed_at should be set to approximately when timeout was detected")
+        # Verify result_json contains timeout information with a meaningful value
+        self.assertIsInstance(job.result_json, dict)
         self.assertIn("timeout", job.result_json)
+        self.assertTrue(job.result_json["timeout"], "result_json['timeout'] should be truthy")
     
     def test_check_job_timeouts_pending_jobs_not_affected(self):
         """Test that pending jobs are not affected by timeout check"""

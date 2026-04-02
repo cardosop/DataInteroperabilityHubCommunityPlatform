@@ -33,8 +33,8 @@ from hub.apps.integrations.base import (
 )
 from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
-    ckan_available,
     create_test_connector,
+    marketplace_available,
 )
 
 
@@ -1300,6 +1300,9 @@ class TestCKANConnectorRetryLogic(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        # Reset circuit breaker so prior test failures don't leave it OPEN
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name("ckan-connector")
         self.connector = CKANConnector(base_url="https://data.gov")
 
     @patch("time.sleep")
@@ -1363,7 +1366,7 @@ class TestCKANConnectorIntegration(TestCase):
         cls.connector = None
         cls.ckan_url = ""
         cls.ckan_api_key = ""
-        if not ckan_available():
+        if not marketplace_available():
             return
         cls.connector = create_test_connector(verify_connection=True)
         if not cls.connector:
@@ -1373,14 +1376,14 @@ class TestCKANConnectorIntegration(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        if not ckan_available() or not getattr(self, "connector", None):
+        if not marketplace_available() or not getattr(self, "connector", None):
             self.skipTest("No CKAN instance available for testing")
 
     def test_integration_authenticate(self):
         """Integration test for authentication"""
         assert self.connector is not None  # ensured by setUp skip
         if not self.ckan_api_key:
-            pytest.skip("CKAN_TEST_API_KEY not set, skipping authentication test")
+            raise unittest.SkipTest("CKAN_TEST_API_KEY not set, skipping authentication test")
 
         credentials = {"api_key": self.ckan_api_key}
         result = self.connector.authenticate(credentials)
@@ -1549,7 +1552,8 @@ class TestCKANConnectorErrorHandling(TestCase):
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
     @patch("httpx.get")
-    def test_download_resource_handles_io_error(self, mock_get, mock_request):
+    @patch("builtins.open", side_effect=IOError("Disk write error"))
+    def test_download_resource_handles_io_error(self, mock_open, mock_get, mock_request):
         """Test download_resource handles IO errors when writing file"""
         mock_response = Mock()
         mock_response.json.return_value = {
@@ -1567,9 +1571,9 @@ class TestCKANConnectorErrorHandling(TestCase):
         mock_download_response.raise_for_status = Mock()
         mock_get.return_value = mock_download_response
 
-        # Use a path that will cause IOError (e.g., non-existent directory)
+        # builtins.open is mocked to raise IOError
         with self.assertRaises(IOError):
-            self.connector.download_resource("resource-1", "/nonexistent/dir/file.csv")
+            self.connector.download_resource("resource-1", "/tmp/test_io_error.csv")
 
     def test_sync_push_handles_missing_asset_data_provider(self):
         """CKAN connector is harvest-only: sync_push raises NotImplementedError."""

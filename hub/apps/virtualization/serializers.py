@@ -46,10 +46,10 @@ class VirtualDatasetSerializer(serializers.ModelSerializer):
         ]
 
     def to_representation(self, instance):
-        """Mask sensitive fields (password, connection_string, etc.) in sources."""
+        """Decrypt and mask sensitive fields in sources."""
         ret = super().to_representation(instance)
-        if ret.get("sources"):
-            ret["sources"] = mask_sources_for_api(ret["sources"])
+        # Use decrypted sources from model method
+        ret["sources"] = mask_sources_for_api(instance.get_sources())
         return ret
 
 

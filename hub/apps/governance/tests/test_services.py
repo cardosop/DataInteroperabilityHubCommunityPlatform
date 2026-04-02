@@ -41,17 +41,18 @@ class GovernanceServiceTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
         self.approver = User.objects.create_user(
-            email="approver@example.com",
+            email=f"approver-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -388,8 +389,9 @@ class GovernanceServiceTest(TestCase):
     def test_get_access_request_tenant_isolation(self):
         """Test that getting access request from different tenant raises NotFoundError"""
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         request = AccessRequest.objects.create(
@@ -445,8 +447,9 @@ class GovernanceServiceTest(TestCase):
             )
 
         # Create another tenant and request
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         AccessRequest.objects.create(
             tenant=other_tenant,

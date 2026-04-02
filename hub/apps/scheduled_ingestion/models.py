@@ -11,6 +11,8 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from croniter import croniter
 
+from hub.apps.integrations.encryption import encrypt_json_field, decrypt_json_field, EncryptionError
+
 
 class SourceType(models.TextChoices):
     """Source type enumeration"""
@@ -37,6 +39,14 @@ class ScheduledIngestionStatus(models.TextChoices):
     ACTIVE = "ACTIVE", "Active"
     PAUSED = "PAUSED", "Paused"
     ERROR = "ERROR", "Error"
+    DELETED = "DELETED", "Deleted"
+
+
+class DeploymentSyncStatus(models.TextChoices):
+    """Phase 25.4.4 — Prefect deployment sync status"""
+    SYNCED = "SYNCED", "Synced"
+    PENDING = "PENDING", "Pending"
+    FAILED = "FAILED", "Failed"
 
 
 class ScheduledIngestionRunStatus(models.TextChoices):
@@ -137,6 +147,12 @@ class ScheduledIngestion(models.Model):
         blank=True,
         help_text="Prefect deployment ID (format: {tenant_id}-{scheduled_ingestion_id})"
     )
+    deployment_sync_status = models.CharField(
+        max_length=10,
+        choices=DeploymentSyncStatus.choices,
+        default=DeploymentSyncStatus.PENDING,
+        help_text="Prefect deployment sync status: SYNCED, PENDING, FAILED",
+    )
     prefect_work_pool_name = models.CharField(
         max_length=255,
         default="default",
@@ -172,9 +188,18 @@ class ScheduledIngestion(models.Model):
         blank=True,
         help_text="User who created the scheduled ingestion"
     )
+    consecutive_failure_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of consecutive failed runs (Phase 71 — auto-pause)",
+    )
+    last_error_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of the last failure (Phase 71)",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = "scheduled_ingestions"
         ordering = ["-created_at"]
@@ -216,15 +241,48 @@ class ScheduledIngestion(models.Model):
                 raise ValidationError(f"Invalid cron expression: {str(e)}")
     
     def save(self, *args, **kwargs):
-        """Override save to validate and calculate next_run_at"""
+        """Override save to validate, encrypt source_config, and calculate next_run_at"""
         self.full_clean()
-        
+
+        # Encrypt source_config if plaintext dict (not already encrypted)
+        if (
+            isinstance(self.source_config, dict)
+            and self.source_config
+            and not self.source_config.get("_encrypted")
+        ):
+            try:
+                encrypted = encrypt_json_field(self.source_config)
+                self.source_config = {"_encrypted": encrypted}
+            except EncryptionError as e:
+                raise ValidationError(
+                    {"source_config": f"Failed to encrypt: {e}"}
+                ) from e
+
         # Calculate next_run_at if not set or if schedule changed
         if not self.next_run_at or self._state.adding:
             self.next_run_at = self._calculate_next_run_at()
-        
+
         super().save(*args, **kwargs)
-    
+
+    def get_source_config(self) -> dict:
+        """
+        Get decrypted source configuration.
+
+        Returns:
+            Decrypted source config dictionary.
+            Legacy plaintext dicts (pre-migration) are returned as-is.
+        """
+        if not self.source_config:
+            return {}
+        if isinstance(self.source_config, dict):
+            if "_encrypted" in self.source_config:
+                return decrypt_json_field(
+                    self.source_config["_encrypted"]
+                )
+            # Legacy plaintext — return as-is
+            return self.source_config
+        return {}
+
     def _calculate_next_run_at(self):
         """Calculate next run time based on schedule"""
         from datetime import datetime, timedelta
@@ -359,6 +417,12 @@ class ScheduledIngestionRun(models.Model):
         blank=True,
         default=dict,
         help_text="Run result data (files processed, datasets created, etc.)"
+    )
+    dlq_sync_status = models.CharField(
+        max_length=20,
+        choices=[("PENDING", "Pending"), ("SYNCED", "Synced"), ("FAILED", "Failed")],
+        default="PENDING",
+        help_text="Phase 72: DLQ sync status after run completion",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

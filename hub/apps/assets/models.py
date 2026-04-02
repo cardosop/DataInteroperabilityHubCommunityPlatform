@@ -7,6 +7,8 @@ import uuid
 from django.db import models
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.contrib.postgres.search import SearchVectorField
+from django.contrib.postgres.indexes import GinIndex
 
 
 class AssetStatus(models.TextChoices):
@@ -150,6 +152,11 @@ class Asset(models.Model):
         blank=True,
         help_text="Source metadata for federated assets: marketplace_type, marketplace_id, listing_id, listing_url, synced_at, sync_job_id"
     )
+    metadata_json = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Hub-managed metadata (e.g. contract_warnings from invalidation cascade)",
+    )
     data_strategy = models.CharField(
         max_length=20,
         choices=DataStrategy.choices,
@@ -158,6 +165,15 @@ class Asset(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # Full-text search vector (Phase 18.2).
+    # Populated asynchronously via post_save → RQ task.
+    # Covers name (A), description (B), domain (C).
+    search_vector = SearchVectorField(
+        null=True,
+        blank=True,
+        help_text="PostgreSQL tsvector for full-text search (auto-maintained)",
+    )
 
     class Meta:
         db_table = "assets"
@@ -169,20 +185,54 @@ class Asset(models.Model):
             models.Index(fields=["tenant", "compliance_status"]),
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["tenant", "source_type"]),
+            GinIndex(fields=["search_vector"], name="asset_search_vector_gin_idx"),
         ]
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "key"],
                 name="unique_asset_key_per_tenant"
-            )
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    status__in=["DRAFT", "ACTIVE", "PUBLIC", "RETIRED"]
+                ),
+                name="asset_status_valid",
+            ),
         ]
 
     def __str__(self):
         return f"{self.name} ({self.key})"
 
+    # Valid status transitions (state machine)
+    VALID_TRANSITIONS = {
+        AssetStatus.DRAFT: [AssetStatus.ACTIVE],
+        AssetStatus.ACTIVE: [AssetStatus.PUBLIC, AssetStatus.RETIRED],
+        AssetStatus.PUBLIC: [AssetStatus.RETIRED],
+        AssetStatus.RETIRED: [],  # Terminal state
+    }
+
     def clean(self):
-        """Validate asset activation requirements"""
+        """Validate asset status transitions and activation requirements."""
         super().clean()
+
+        # Enforce state machine transitions
+        if self.pk:
+            try:
+                previous = Asset.objects.only("status").get(pk=self.pk)
+                if (
+                    previous.status != self.status
+                    and self.status not in self.VALID_TRANSITIONS.get(
+                        previous.status, []
+                    )
+                ):
+                    raise ValidationError(
+                        f"Invalid status transition: "
+                        f"{previous.status} → {self.status}. "
+                        f"Allowed transitions from {previous.status}: "
+                        f"{self.VALID_TRANSITIONS.get(previous.status, [])}"
+                    )
+            except Asset.DoesNotExist:
+                pass  # New object, no transition to validate
 
         # Enforce ACTIVE status requirements
         if self.status == AssetStatus.ACTIVE:

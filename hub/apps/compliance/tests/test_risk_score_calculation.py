@@ -28,13 +28,14 @@ class RiskScoreCalculationTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -116,6 +117,12 @@ class RiskScoreCalculationTest(TestCase):
             allowed_to_store=False,
         )
 
+        compliance_run_none.refresh_from_db()
+        compliance_run_low.refresh_from_db()
+        compliance_run_medium.refresh_from_db()
+        compliance_run_high.refresh_from_db()
+        compliance_run_critical.refresh_from_db()
+
         self.assertEqual(compliance_run_none.risk_level, RiskLevel.NONE)
         self.assertEqual(compliance_run_low.risk_level, RiskLevel.LOW)
         self.assertEqual(compliance_run_medium.risk_level, RiskLevel.MEDIUM)
@@ -159,6 +166,9 @@ class RiskScoreCalculationTest(TestCase):
                 {"category": "SSN", "count": 100, "match_ratio": 1.0}  # 100% > 1% threshold
             ],
         )
+
+        compliance_run_allowed.refresh_from_db()
+        compliance_run_blocked.refresh_from_db()
 
         self.assertTrue(compliance_run_allowed.allowed_to_store)
         self.assertFalse(compliance_run_blocked.allowed_to_store)

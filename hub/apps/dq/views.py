@@ -7,7 +7,7 @@ REST API views for DQ run management.
 from datetime import datetime, timedelta, timezone as dt_timezone
 
 import structlog
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import permissions, serializers, status, viewsets
@@ -68,14 +68,17 @@ class DQRunViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         # Platform admins can see all DQ runs
+        base = DQRun.objects.select_related(
+            "tenant", "asset", "dataset", "file", "job",
+        )
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            queryset = DQRun.objects.all()
+            queryset = base
         else:
             # Regular users can only see DQ runs in their tenant
             # Use central helper for tenant resolution (Phase 10.1.1)
             tenant_id = get_request_tenant_id(self.request)
             if tenant_id:
-                queryset = DQRun.objects.filter(tenant_id=tenant_id)
+                queryset = base.filter(tenant_id=tenant_id)
             else:
                 return DQRun.objects.none()
 
@@ -356,9 +359,9 @@ class DQRunViewSet(viewsets.ModelViewSet):
 
         for check in checks:
             check_name = check.get("name", "Unknown Check")
-            check_type = check.get("type", "unknown")
+            check_type = check.get("category") or check.get("type", "unknown")
             check_status = check.get("status", "UNKNOWN")
-            check_result = check.get("result", {})
+            check_result = check.get("details") or check.get("result", {})
 
             # Count checks by status
             if check_status == "PASS":
@@ -399,9 +402,9 @@ class DQRunViewSet(viewsets.ModelViewSet):
             "by_category": {},
         }
 
-        # Group checks by category/type
+        # Group checks by category
         for check in checks:
-            check_type = check.get("type", "unknown")
+            check_type = check.get("category") or check.get("type", "unknown")
             if check_type not in score_breakdown["by_category"]:
                 score_breakdown["by_category"][check_type] = {
                     "total": 0,
@@ -433,12 +436,17 @@ class DQRunViewSet(viewsets.ModelViewSet):
                 )
 
                 if trend:
+                    period_days = None
+                    if trend.period_start and trend.period_end:
+                        period_days = (
+                            trend.period_end - trend.period_start
+                        ).days
                     trend_analysis = {
                         "direction": trend.direction,
-                        "change_percentage": trend.change_percentage,
+                        "change_percentage": trend.change_percent,
                         "previous_value": trend.previous_value,
                         "current_value": trend.current_value,
-                        "period_days": trend.period_days,
+                        "period_days": period_days,
                         "created_at": trend.created_at.isoformat(),
                     }
         except (AttributeError, ValueError, TypeError) as e:
@@ -480,16 +488,26 @@ class DQRunViewSet(viewsets.ModelViewSet):
         for check in checks:
             if check.get("status") == "FAIL":
                 check_name = check.get("name", "Unknown")
-                check_type = check.get("type", "unknown")
-                message = check.get("result", {}).get("message", "")
+                check_category = (
+                    check.get("category")
+                    or check.get("type", "unknown")
+                )
+                message = (
+                    check.get("message")
+                    or check.get("details", {}).get("message", "")
+                    or check.get("result", {}).get("message", "")
+                )
 
                 recommendations.append(
                     {
                         "check_name": check_name,
-                        "check_type": check_type,
+                        "check_type": check_category,
                         "issue": message,
                         "priority": "HIGH",
-                        "suggestion": f"Review and fix {check_type} check: {check_name}",
+                        "suggestion": (
+                            f"Review and fix {check_category} "
+                            f"check: {check_name}"
+                        ),
                     }
                 )
 
@@ -527,6 +545,72 @@ class DQRunViewSet(viewsets.ModelViewSet):
         )
 
 
+def _persist_dq_run_failure_state(
+    dq_run_id: str,
+    *,
+    error_message: str,
+    error_type: str,
+) -> None:
+    """Persist FAILED on DQRun using a clean connection/transaction.
+
+    After PostgreSQL ``QueryCanceled`` / ``InFailedSqlTransaction``, the default
+    connection may be unusable until rollback/close. Without this, the error
+    handler's ``save()`` fails and tests/jobs see stuck RUNNING rows.
+    """
+    import logging
+
+    log = logging.getLogger(__name__)
+    details = {
+        "error": error_message,
+        "error_type": error_type,
+        "fail_closed": True,
+    }
+    now = timezone.now()
+
+    def _save():
+        with transaction.atomic():
+            run = DQRun.objects.get(id=dq_run_id)
+            run.status = DQRunStatus.FAILED
+            run.overall_status = "UNKNOWN"
+            run.details_json = details
+            run.completed_at = now
+            run.save(
+                update_fields=[
+                    "status",
+                    "overall_status",
+                    "details_json",
+                    "completed_at",
+                ]
+            )
+            if run.asset_id:
+                Asset.objects.filter(pk=run.asset_id).update(
+                    dq_status=AssetDQStatus.UNKNOWN,
+                )
+
+    try:
+        _save()
+    except Exception as first_exc:
+        log.warning(
+            "dq_run_failure_persist_retry dq_run_id=%s exc=%s",
+            dq_run_id,
+            first_exc,
+            exc_info=True,
+        )
+        try:
+            connection.close()
+        except Exception:
+            pass
+        try:
+            _save()
+        except Exception as second_exc:
+            log.error(
+                "dq_run_failure_persist_abandoned dq_run_id=%s exc=%s",
+                dq_run_id,
+                second_exc,
+                exc_info=True,
+            )
+
+
 def execute_dq_run(dq_run_id: str) -> None:
     """
     Execute a DQ run.
@@ -536,13 +620,25 @@ def execute_dq_run(dq_run_id: str) -> None:
     Args:
         dq_run_id: DQ run ID
     """
-    from hub.apps.files.models import File as FileModel
+    from hub.apps.datasets.models import Dataset
     from hub.apps.files.storage import S3StorageClient
 
-    dq_run = DQRun.objects.get(id=dq_run_id)
+    dq_run = (
+        DQRun.objects.select_related(
+            "asset",
+            "file",
+            "dataset",
+            "dataset__file",
+        ).get(id=dq_run_id)
+    )
+    import time as _time
+    from django.conf import settings as _s
+
     dq_run.status = DQRunStatus.RUNNING
     dq_run.started_at = timezone.now()
     dq_run.save(update_fields=["status", "started_at"])
+
+    _dq_deadline = _time.monotonic() + getattr(_s, "DQ_POLL_MAX_SECONDS", 300)
 
     try:
         # Get file content
@@ -555,9 +651,14 @@ def execute_dq_run(dq_run_id: str) -> None:
         elif dq_run.dataset and dq_run.dataset.file:
             file_obj = dq_run.dataset.file
             file_format = dq_run.dataset.format.lower() if dq_run.dataset.format else "csv"
-        elif dq_run.asset:
-            # Get latest dataset for asset
-            dataset = dq_run.asset.datasets.order_by("-version").first()
+        elif dq_run.asset_id:
+            # Latest dataset for asset (direct filter + select_related: one round-trip)
+            dataset = (
+                Dataset.objects.filter(asset_id=dq_run.asset_id)
+                .select_related("file")
+                .order_by("-version")
+                .first()
+            )
             if dataset and dataset.file:
                 file_obj = dataset.file
                 file_format = dataset.format.lower() if dataset.format else "csv"
@@ -575,6 +676,25 @@ def execute_dq_run(dq_run_id: str) -> None:
             file_content=file_content, file_format=file_format, profile_key=dq_run.profile_key
         )
 
+        # Phase 69: deadline check after service call (fail-closed)
+        if _time.monotonic() > _dq_deadline:
+            elapsed = (timezone.now() - dq_run.started_at).total_seconds()
+            dq_run.status = DQRunStatus.FAILED
+            dq_run.overall_status = "UNKNOWN"
+            dq_run.details_json = {
+                "error": f"DQ service execution exceeded deadline after {int(elapsed)}s",
+                "error_code": "POLL_TIMEOUT",
+            }
+            dq_run.completed_at = timezone.now()
+            dq_run.save(update_fields=["status", "overall_status", "details_json", "completed_at"])
+            # Phase 78: Prometheus counter for poll timeouts
+            try:
+                from hub.apps.observability.otel_metrics import poll_timeout_total
+                poll_timeout_total.labels(service="dq").inc()
+            except Exception:
+                pass
+            return
+
         # Calculate execution time for metering
         execution_time = (timezone.now() - dq_run.started_at).total_seconds()
 
@@ -585,7 +705,12 @@ def execute_dq_run(dq_run_id: str) -> None:
         # Update DQ run with results
         dq_run.status = DQRunStatus.SUCCEEDED
         dq_run.overall_status = result.get("overall_status")
-        dq_run.quality_score = result.get("quality_score")
+        raw_score = result.get("quality_score")
+        dq_run.quality_score = (
+            max(0.0, min(100.0, float(raw_score)))
+            if raw_score is not None
+            else None
+        )
         dq_run.checks_json = result.get("checks", [])
         dq_run.details_json = {
             "engine_type": result.get("engine_type"),
@@ -632,12 +757,13 @@ def execute_dq_run(dq_run_id: str) -> None:
             dq_run.asset.save(update_fields=["dq_status"])
 
     except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.error(f"DQ run {dq_run_id} failed: {e}", exc_info=True)
-
-        dq_run.status = DQRunStatus.FAILED
-        dq_run.details_json = {"error": str(e), "error_type": type(e).__name__}
-        dq_run.completed_at = timezone.now()
-        dq_run.save(update_fields=["status", "details_json", "completed_at"])
+        logger.exception(
+            "dq_run_execute_failed",
+            dq_run_id=dq_run_id,
+            error=str(e),
+        )
+        _persist_dq_run_failure_state(
+            dq_run_id,
+            error_message=str(e),
+            error_type=type(e).__name__,
+        )

@@ -30,6 +30,7 @@ from hub.apps.contracts.odps_compensation import ODPSCreationCompensation, ODPSC
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -112,9 +113,10 @@ class ODPSCreationCompensationRollbackTest(ODPSCreationCompensationTestBase):
         """Test rollback fails for contract from different tenant."""
         # Arrange
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )

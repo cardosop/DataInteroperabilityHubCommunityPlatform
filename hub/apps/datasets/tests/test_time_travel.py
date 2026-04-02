@@ -3,6 +3,7 @@ Unit tests for Time-Travel Queries
 
 Tests for timestamp-based queries, version number queries, and snapshot operations.
 """
+import uuid
 
 from datetime import timedelta
 

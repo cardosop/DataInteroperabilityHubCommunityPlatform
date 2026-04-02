@@ -27,6 +27,11 @@ class ComplianceServiceClientTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = ComplianceServiceClient()
+        # Reset circuit breaker so each test starts with CLOSED state.
+        # Without this, 401 responses from a real service (when INTERNAL_API_KEY
+        # is absent) open the circuit and break MockTransport-based tests that
+        # never intend to hit the real service.
+        self.client._circuit_breaker.reset()
 
     def tearDown(self):
         """Clean up test fixtures"""
@@ -39,12 +44,11 @@ class ComplianceServiceClientTest(TestCase):
         """Test successful health check with real service"""
         try:
             is_healthy, service_name = self.client.health_check()
-            self.assertIsInstance(is_healthy, bool)
-            self.assertIsInstance(service_name, str)
-            if is_healthy:
-                self.assertEqual(service_name, "compliance-service")
         except Exception as e:
             self.skipTest(f"Compliance service not available: {e}")
+        self.assertTrue(is_healthy)
+        self.assertIsInstance(service_name, str)
+        self.assertGreater(len(service_name), 0)
 
     def test_health_check_endpoint_construction(self):
         """Test that health_check constructs endpoint correctly using MockTransport"""

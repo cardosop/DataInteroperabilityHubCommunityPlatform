@@ -26,6 +26,7 @@ from hub.apps.assets.tests.factories import AssetFactory
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
+import uuid
 
 User = get_user_model()
 
@@ -36,14 +37,14 @@ class GovernanceBusinessRulesInitializationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_governance_business_rules_initialization(self):
-        """Test GovernanceBusinessRules can be initialized"""
+        """Test GovernanceBusinessRules can be initialized and validate"""
         rules = GovernanceBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
@@ -51,6 +52,10 @@ class GovernanceBusinessRulesInitializationTest(TestCase):
         self.assertEqual(rules.get_rule_name(), "GovernanceBusinessRules")
         self.assertEqual(rules.tenant_id, str(self.tenant.id))
         self.assertEqual(rules.user_id, str(self.user.id))
+        # Verify the rules object can actually validate (returns a ValidationResult)
+        self.assertTrue(hasattr(rules, 'validate'))
+        result = rules.validate()
+        self.assertIsInstance(result, ValidationResult)
 
     def test_governance_business_rules_initialization_without_user(self):
         """Test GovernanceBusinessRules can be initialized without user"""
@@ -94,10 +99,10 @@ class AccessRequestEligibilityValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -149,11 +154,12 @@ class AccessRequestEligibilityValidationTest(TestCase):
 
     def test_validate_access_request_eligibility_wrong_tenant(self):
         """Test eligibility validation with user from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
         )
 
         access_request = AccessRequest.objects.create(
@@ -177,10 +183,10 @@ class ResourceAccessValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -287,8 +293,9 @@ class ResourceAccessValidationTest(TestCase):
 
     def test_validate_resource_access_cross_tenant(self):
         """Test resource access validation with cross-tenant resource"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_asset = Asset.objects.create(
             tenant=other_tenant,
@@ -320,10 +327,10 @@ class AccessRequestStatusTransitionValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -444,13 +451,13 @@ class AccessRequestApprovalValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.approver = User.objects.create_user(
-            email="approver@example.com", password="testpass123", tenant=self.tenant
+            email=f"approver-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -485,7 +492,7 @@ class AccessRequestApprovalValidationTest(TestCase):
     def test_validate_approval_single_step_unauthorized(self):
         """Test approval validation with unauthorized approver"""
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=self.tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
 
         access_request = AccessRequest.objects.create(
@@ -553,11 +560,12 @@ class AccessRequestApprovalValidationTest(TestCase):
 
     def test_validate_approval_wrong_tenant(self):
         """Test approval validation with approver from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_approver = User.objects.create_user(
-            email="other-approver@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-approver-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
         )
 
         access_request = AccessRequest.objects.create(
@@ -585,10 +593,10 @@ class AccessRequestValidationIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -661,10 +669,10 @@ class ClassificationLevelValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -760,10 +768,10 @@ class ClassificationConsistencyValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -886,10 +894,10 @@ class ClassificationChangeValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -1020,10 +1028,10 @@ class ClassificationInheritanceValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -1186,10 +1194,10 @@ class ClassificationValidationIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -1294,10 +1302,10 @@ class ABACPolicyValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -1756,10 +1764,10 @@ class ComplianceReportGenerationEligibilityTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -1801,11 +1809,12 @@ class ComplianceReportGenerationEligibilityTest(TestCase):
 
     def test_validate_report_generation_eligibility_wrong_tenant(self):
         """Test report generation eligibility with user from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
         )
 
         result = self.rules._validate_compliance_report_generation_eligibility(
@@ -1823,10 +1832,10 @@ class ComplianceReportScopeValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -1960,10 +1969,10 @@ class ComplianceReportFormatValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -2078,10 +2087,10 @@ class ComplianceReportAccessValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -2152,11 +2161,12 @@ class ComplianceReportAccessValidationTest(TestCase):
 
     def test_validate_report_access_wrong_tenant(self):
         """Test report access validation with user from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
         )
 
         report = ComplianceReport.objects.create(
@@ -2219,10 +2229,10 @@ class ComplianceReportValidationIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 

@@ -257,9 +257,10 @@ class XTenantIdMiddlewareTest(TestCase):
 
     def test_x_tenant_id_invalid_membership_returns_403_response(self):
         """X-Tenant-Id with invalid membership causes 403 response from middleware."""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant-xtest",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-xtest-{_uid}",
         )
         request = self.factory.get("/api/v1/assets/")
         request.user = self.user

@@ -17,7 +17,7 @@ from hub.apps.testing.billing_support import ensure_tenant_has_active_subscripti
 
 # Use transaction=False so TenantSuspensionMiddleware sees subscription created in setUp
 # (with transaction=True the middleware can use a different connection and returns 403 for PATCH)
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class TenantMeUsageViewTest(TestCase):
@@ -26,6 +26,7 @@ class TenantMeUsageViewTest(TestCase):
     def setUp(self):
         self.client = APIClient()
         uid = str(uuid.uuid4())[:8]
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         ensure_tenant_has_active_subscription(self.tenant)
         self.admin_role, _ = Role.objects.get_or_create(
@@ -98,6 +99,7 @@ class TenantMeConfigViewTest(TestCase):
     def setUp(self):
         self.client = APIClient()
         uid = str(uuid.uuid4())[:8]
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.other_tenant = Tenant.objects.create(name=f"Other {uid}", slug=f"other-tenant-{uid}")
         ensure_tenant_has_active_subscription(self.tenant)

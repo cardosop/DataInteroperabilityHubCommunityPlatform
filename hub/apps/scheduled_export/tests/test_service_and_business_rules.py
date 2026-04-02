@@ -8,7 +8,7 @@ import uuid
 from decimal import Decimal
 
 import pytest
-from django.test import TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 
@@ -30,12 +30,12 @@ from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.timeout(600),
 ]
 
 
-class ScheduledExportServiceTest(TransactionTestCase):
+class ScheduledExportServiceTest(TestCase):
     """Tests for ScheduledExportService create/update methods."""
 
     reset_sequences = False
@@ -192,21 +192,21 @@ class ScheduledExportServiceTest(TransactionTestCase):
             },  # Different hour (2 AM instead of midnight)
         )
 
-        # Verify next_run_at was recalculated (should be set and different)
-        self.assertIsNotNone(updated_export.next_run_at)
-        # Verify the schedule_config was actually updated
+        # Verify schedule_config was updated
         self.assertEqual(updated_export.schedule_config["cron"], "0 2 * * *")
-        # The next_run_at should reflect the new schedule
-        # Since we're updating to 2 AM, next_run_at should be at 2 AM
-        # But we need to refresh from DB to get the recalculated value
         updated_export.refresh_from_db()
-        # Check that the cron in schedule_config matches what we expect
-        self.assertEqual(updated_export.schedule_config["cron"], "0 2 * * *")
-        # The next_run_at calculation should use the new cron, so it should be at 2 AM
-        # However, if it's already past 2 AM today, it will be 2 AM tomorrow
-        # So let's just verify it's not the same as the original
-        # Actually, let's verify the schedule_config was updated and next_run_at exists
+        # next_run_at must exist and be recalculated (at hour=2)
         self.assertIsNotNone(updated_export.next_run_at)
+        self.assertEqual(
+            updated_export.next_run_at.hour, 2,
+            f"next_run_at should be at 02:00 UTC per new cron, "
+            f"got {updated_export.next_run_at}",
+        )
+        # Must differ from original (which was midnight cron)
+        self.assertNotEqual(
+            updated_export.next_run_at, original_next_run_at,
+            "next_run_at should change when schedule changes",
+        )
 
     def test_create_export_run_success(self):
         """Test successful creation of export run via service."""
@@ -316,7 +316,7 @@ class ScheduledExportServiceTest(TransactionTestCase):
         self.assertIsNotNone(updated_run.completed_at)
 
 
-class ScheduledExportBusinessRulesTest(TransactionTestCase):
+class ScheduledExportBusinessRulesTest(TestCase):
     """Tests for ScheduledExportBusinessRules validation."""
 
     reset_sequences = False

@@ -35,6 +35,7 @@ from hub.apps.observability.otel_metrics import (
 )
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -416,15 +417,17 @@ class ODPSExportMetricsCollectionTest(ODPSExportMetricsTestBase):
     def test_export_metrics_tenant_tracking(self):
         """Test that metrics track tenant_id correctly."""
         # Create another tenant and user
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
 
+        _uid = uuid.uuid4().hex[:8]
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{_uid}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE,

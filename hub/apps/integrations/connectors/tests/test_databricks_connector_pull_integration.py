@@ -12,6 +12,7 @@ To run these tests:
 1. Set DATABRICKS_HOST and DATABRICKS_TOKEN environment variables
 2. Run: docker-compose exec api-service python -m pytest hub/apps/integrations/connectors/tests/test_databricks_connector_pull_integration.py -v -m integration
 """
+import unittest
 import os
 import pytest
 from django.test import TestCase
@@ -45,7 +46,7 @@ class TestDatabricksConnectorPullIntegration(TestCase):
         cls.token = os.getenv('DATABRICKS_TOKEN')
 
         if not cls.host or not cls.token:
-            pytest.skip("DATABRICKS_HOST and DATABRICKS_TOKEN environment variables required for integration tests")
+            raise unittest.SkipTest("DATABRICKS_HOST and DATABRICKS_TOKEN environment variables required for integration tests")
 
         # Create connector
         cls.connector = DatabricksConnector(host=cls.host, token=cls.token)
@@ -54,7 +55,7 @@ class TestDatabricksConnectorPullIntegration(TestCase):
         try:
             cls.connector.test_connection()
         except Exception as e:
-            pytest.skip(f"Cannot connect to Databricks workspace: {e}")
+            raise unittest.SkipTest(f"Cannot connect to Databricks workspace: {e}")
 
     def setUp(self):
         """Set up test fixtures."""
@@ -127,7 +128,7 @@ class TestDatabricksConnectorPullIntegration(TestCase):
         listings = self.connector.list_listings(limit=1)
 
         if not listings:
-            pytest.skip("No shares available in Databricks workspace for testing")
+            raise unittest.SkipTest("No shares available in Databricks workspace for testing")
 
         listing = listings[0]
 
@@ -157,7 +158,7 @@ class TestDatabricksConnectorPullIntegration(TestCase):
         listings = self.connector.list_listings(limit=1)
 
         if not listings:
-            pytest.skip("No shares available in Databricks workspace for testing")
+            raise unittest.SkipTest("No shares available in Databricks workspace for testing")
 
         listing = listings[0]
 
@@ -167,7 +168,7 @@ class TestDatabricksConnectorPullIntegration(TestCase):
             listing.resources = resources
         except Exception:
             # If resources can't be fetched, skip this test
-            pytest.skip("Cannot fetch resources for listing")
+            raise unittest.SkipTest("Cannot fetch resources for listing")
 
         # Map to Hub asset
         mapping = self.connector.map_to_hub_asset(listing)
@@ -188,7 +189,7 @@ class TestDatabricksConnectorPullIntegration(TestCase):
         listings = self.connector.list_listings(limit=1)
 
         if not listings:
-            pytest.skip("No shares available in Databricks workspace for testing")
+            raise unittest.SkipTest("No shares available in Databricks workspace for testing")
 
         listing = listings[0]
         sync_job_id = "test-job-123"
@@ -208,7 +209,7 @@ class TestDatabricksConnectorPullIntegration(TestCase):
         initial_listings = self.connector.list_listings(limit=1)
 
         if not initial_listings:
-            pytest.skip("No shares available in Databricks workspace for testing")
+            raise unittest.SkipTest("No shares available in Databricks workspace for testing")
 
         # Run sync_pull
         result = self.connector.sync_pull(options={'limit': 1})

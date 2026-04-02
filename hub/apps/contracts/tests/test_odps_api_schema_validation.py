@@ -995,10 +995,12 @@ class APIVersionCompatibilityTest(APISchemaValidationTestBase):
 
     def test_response_schema_with_empty_results(self):
         """Test that list endpoint returns correct schema with empty results"""
-        # Query with filter that returns no results
+        import uuid
+
+        # Query with a search term guaranteed to match nothing
         response = self.client.get(
             "/api/v1/contracts/",
-            {"spec_type": "ODPS", "status": "RETIRED"},  # Assuming no RETIRED contracts
+            {"search": f"nonexistent-contract-{uuid.uuid4().hex}"},
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)

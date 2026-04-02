@@ -25,6 +25,7 @@ from hub.apps.gdpr.models import (
 )
 from hub.apps.gdpr.serializers import DataExportJobSerializer, ErasureRequestSerializer
 from hub.apps.tenants.models import Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -36,11 +37,12 @@ class DataExportJobSerializerTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         # Create tenant
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant", status="ACTIVE")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE")
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User",
@@ -163,7 +165,9 @@ class DataExportJobSerializerTest(TestCase):
 
         # Serializer should be valid but won't create (since it's read-only)
         # In practice, objects are created via service layer, not serializer
-        self.assertTrue(True)  # Placeholder - serializer is read-only by design
+        read_only_count = sum(1 for f in serializer.fields.values() if f.read_only)
+        total = len(serializer.fields)
+        self.assertGreater(read_only_count, total // 2, "Majority of fields should be read-only")
 
     # ========== EDGE CASES TESTS ==========
 
@@ -204,11 +208,12 @@ class ErasureRequestSerializerTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         # Create tenant
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant", status="ACTIVE")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE")
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User",
@@ -348,7 +353,9 @@ class ErasureRequestSerializerTest(TestCase):
 
         # Serializer should be valid but won't create (since it's read-only)
         # In practice, objects are created via service layer, not serializer
-        self.assertTrue(True)  # Placeholder - serializer is read-only by design
+        read_only_count = sum(1 for f in serializer.fields.values() if f.read_only)
+        total = len(serializer.fields)
+        self.assertGreater(read_only_count, total // 2, "Majority of fields should be read-only")
 
     # ========== EDGE CASES TESTS ==========
 

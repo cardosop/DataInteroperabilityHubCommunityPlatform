@@ -55,6 +55,7 @@ from hub.apps.contracts.models import Contract, OriginalSpecType
 from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.users.models import Role, UserRole, UserStatus
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
+import uuid
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -323,7 +324,7 @@ class Command(BaseCommand):
             if not user:
                 self.stdout.write("No user found. Creating E2E test user...")
                 user = User.objects.create_user(
-                    email="e2e-marketplace@example.com",
+                    email=f"e2e-marketplace-{uuid.uuid4().hex[:8]}@example.com",
                     password="e2e-test-pass",
                     tenant=tenant,
                     status=UserStatus.ACTIVE,
@@ -695,7 +696,7 @@ class Command(BaseCommand):
                     elapsed = int(time.time() - start_time)
                     self.stdout.write(f"   Progress: {progress}% - {step} (elapsed: {elapsed}s)")
 
-                time.sleep(2)
+                time.sleep(2)  # INTENTIONAL: test-specific timing requirement
             except WorkflowInstance.DoesNotExist:
                 self.stdout.write("   ⚠️  Workflow instance not found")
                 break

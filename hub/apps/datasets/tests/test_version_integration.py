@@ -3,6 +3,7 @@ Integration tests for Dataset Version History
 
 Tests for version operations in the context of API and dataset creation.
 """
+import uuid
 
 import json
 

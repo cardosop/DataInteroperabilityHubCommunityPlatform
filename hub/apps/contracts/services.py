@@ -28,6 +28,7 @@ from hub.apps.contracts.normalization_service import NormalizationService
 from hub.apps.contracts.odps_parser import ODPSParser
 from hub.apps.contracts.ref_resolver import resolve_odps_refs
 from hub.apps.core.events.service_publishers import ContractEventPublisher, ODPSEventPublisher
+from hub.apps.core.transaction_safe import run_side_effect
 from hub.apps.core.services.base import BaseService, NotFoundError, PermissionError, ValidationError
 from hub.apps.jobs.models import JobType
 from hub.apps.jobs.utils import create_job
@@ -231,6 +232,15 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         effective_spec_type = original_spec_type or OriginalSpecType.ODCS
         spec_type_str = getattr(effective_spec_type, "value", None) or str(effective_spec_type)
 
+        # Plan limit enforcement
+        from hub.apps.tenants.services import PlanLimitService
+        plan_limit_service = PlanLimitService(tenant_id=effective_tenant_id)
+        plan_limit_service.check_limit(
+            tenant_id=effective_tenant_id,
+            limit_key="max_contracts",
+            delta=1,
+        )
+
         # Phase 18.2.1: validate contract creation via business rules before mutating
         # Business rules run first so invalid asset references (cross-tenant, non-existent)
         # return 400 BUSINESS_RULES_VALIDATION instead of 404 NOT_FOUND
@@ -395,42 +405,29 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             )
 
             # Index for search
-            try:
-                from hub.apps.search.indexing import SearchIndexer
+            from hub.apps.search.indexing import SearchIndexer
 
-                indexer = SearchIndexer()
-                indexer.index_contract(contract)
-            except Exception as e:
-                # Log but don't fail contract creation if indexing fails
-                import logging
-
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to index contract {contract.id} for search: {e}")
+            indexer = SearchIndexer()
+            run_side_effect(indexer.index_contract, contract)
 
             # Create audit log
-            try:
-                from hub.apps.audit.utils import create_audit_event
-                from hub.apps.tenants.models import Tenant
+            from hub.apps.audit.utils import create_audit_event
+            from hub.apps.tenants.models import Tenant
 
-                tenant_obj = Tenant.objects.get(id=effective_tenant_id)
-                create_audit_event(
-                    resource_type="CONTRACT",
-                    action="CONTRACT_CREATED",
-                    actor_user=user,
-                    tenant=tenant_obj,
-                    resource_id=str(contract.id),
-                    details={
-                        "contract_id": str(contract.id),
-                        "original_spec_type": contract.original_spec_type,
-                        "normalization_status": contract.normalization_status,
-                    },
-                )
-            except Exception as e:
-                # Log but don't fail contract creation if audit logging fails
-                import logging
-
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to create audit log for contract {contract.id}: {e}")
+            tenant_obj = Tenant.objects.get(id=effective_tenant_id)
+            run_side_effect(
+                create_audit_event,
+                resource_type="CONTRACT",
+                action="CONTRACT_CREATED",
+                actor_user=user,
+                tenant=tenant_obj,
+                resource_id=str(contract.id),
+                details={
+                    "contract_id": str(contract.id),
+                    "original_spec_type": contract.original_spec_type,
+                    "normalization_status": contract.normalization_status,
+                },
+            )
 
             # Send notification email for ODPS creation completion or normalization failure
             if user and contract.original_spec_type == OriginalSpecType.ODPS:
@@ -447,16 +444,24 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                             if contract.normalization_errors
                             else "ODPS normalization failed"
                         )
-                        send_odps_normalization_failure_email.delay(
-                            contract_id=str(contract.id),
-                            error_message=error_message,
-                            error_code="ODPS_NORMALIZATION_ERROR",
-                            errors=contract.normalization_errors,
-                            field_path=None,
+                        _cid = str(contract.id)
+                        _err = error_message
+                        _errs = contract.normalization_errors
+                        transaction.on_commit(
+                            lambda: send_odps_normalization_failure_email.delay(
+                                contract_id=_cid,
+                                error_message=_err,
+                                error_code="ODPS_NORMALIZATION_ERROR",
+                                errors=_errs,
+                                field_path=None,
+                            )
                         )
                     else:
                         # Send creation completion notification
-                        send_odps_creation_completion_email.delay(str(contract.id))
+                        _cid = str(contract.id)
+                        transaction.on_commit(
+                            lambda: send_odps_creation_completion_email.delay(_cid)
+                        )
                 except Exception as e:
                     # Log but don't fail contract creation if notification fails
                     import logging
@@ -691,7 +696,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             from hub.apps.tenants.models import Tenant
             from hub.apps.users.models import User
 
-            try:
+            def _audit_update():
                 actor_user = User.objects.get(id=user_id) if user_id else None
                 tenant_obj = (
                     Tenant.objects.get(id=effective_tenant_id) if effective_tenant_id else None
@@ -708,11 +713,8 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         "updated_fields": ["original_raw"] if original_raw else [],
                     },
                 )
-            except Exception as audit_err:
-                logger.warning(
-                    "contract_update_audit_event_failed",
-                    extra={"error_type": type(audit_err).__name__, "error": str(audit_err), "contract_id": str(contract.id)},
-                )
+
+            run_side_effect(_audit_update)
             return contract
 
         return self.execute_with_metrics(
@@ -962,6 +964,21 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 contract.validation_warnings = result.get("warnings", [])
                 contract.last_validated_at = timezone.now()
                 contract.save()
+
+                from hub.apps.contracts.invalidation_cascade import (
+                    maybe_apply_invalidation_after_validation,
+                )
+                from hub.apps.users.models import User
+
+                actor = None
+                if effective_user_id:
+                    try:
+                        actor = User.objects.get(id=effective_user_id)
+                    except User.DoesNotExist:
+                        actor = None
+                maybe_apply_invalidation_after_validation(
+                    contract, actor_user=actor
+                )
 
                 return {
                     "async": False,
@@ -1230,7 +1247,6 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             func=_auto_generate,
         )
 
-    @transaction.atomic
     def link_odps_to_odcs(
         self,
         odcs_contract_id: str,
@@ -1734,10 +1750,10 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             )
 
             # Create audit log for ODPS linking
-            try:
-                from hub.apps.audit.utils import create_audit_event
-                from hub.apps.tenants.models import Tenant
+            from hub.apps.audit.utils import create_audit_event
+            from hub.apps.tenants.models import Tenant
 
+            def _audit_linking():
                 tenant_obj = Tenant.objects.get(id=effective_tenant_id)
                 create_audit_event(
                     resource_type="ODPS",
@@ -1758,15 +1774,8 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         "request_id": self.request_id,
                     },
                 )
-            except Exception as e:
-                # Log but don't fail linking if audit logging fails
-                logger.warning(
-                    "odps_linking_audit_logging_failed",
-                    odps_contract_id=str(odps_contract.id),
-                    odcs_contract_id=str(odcs_contract.id),
-                    error=str(e),
-                    message="Failed to create audit log for ODPS linking (non-critical)",
-                )
+
+            run_side_effect(_audit_linking)
 
             # Publish contract event
             try:
@@ -1811,23 +1820,16 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             # Publish ODPS-specific events
             # Publish ODPS created event (if this is a new contract)
             if state.odps_contract_created:
-                try:
-                    event_id = self.publish_odps_created(
-                        contract_id=str(odps_contract.id),
-                        asset_id=str(odps_contract.asset.id) if odps_contract.asset else None,
-                        status=odps_contract.status,
-                        odps_version=odps_contract.original_spec_version,
-                        original_format=odps_contract.original_format,
-                    )
-                    if event_id and state.events_published is not None:
-                        state.events_published.append(str(event_id))
-                except Exception as e:
-                    logger.warning(
-                        "odps_created_event_publish_failed",
-                        contract_id=str(odps_contract.id),
-                        error=str(e),
-                        message="Failed to publish ODPS created event (non-critical)",
-                    )
+                event_id = run_side_effect(
+                    self.publish_odps_created,
+                    contract_id=str(odps_contract.id),
+                    asset_id=str(odps_contract.asset.id) if odps_contract.asset else None,
+                    status=odps_contract.status,
+                    odps_version=odps_contract.original_spec_version,
+                    original_format=odps_contract.original_format,
+                )
+                if event_id and state.events_published is not None:
+                    state.events_published.append(str(event_id))
 
             # Publish ODPS linked event
             try:
@@ -1874,18 +1876,29 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
             # Send notification email for ODPS linking status
             try:
-                from hub.apps.notifications.tasks import send_odps_linking_status_email
+                from hub.apps.notifications.tasks import (
+                    send_odps_linking_status_email,
+                )
 
-                send_odps_linking_status_email.delay(
-                    odps_contract_id=str(odps_contract.id),
-                    status="completed",
-                    status_message="ODPS contract linked to ODCS contract successfully",
-                    odcs_contract_id=str(odcs_contract.id),
-                    progress_percentage=100.0,
-                    current_phase="completed",
-                    validation_passed=True,
-                    user_id=effective_user_id,
-                    tenant_id=effective_tenant_id,
+                _odps_id = str(odps_contract.id)
+                _odcs_id = str(odcs_contract.id)
+                _uid = effective_user_id
+                _tid = effective_tenant_id
+                transaction.on_commit(
+                    lambda: send_odps_linking_status_email.delay(
+                        odps_contract_id=_odps_id,
+                        status="completed",
+                        status_message=(
+                            "ODPS contract linked to ODCS"
+                            " contract successfully"
+                        ),
+                        odcs_contract_id=_odcs_id,
+                        progress_percentage=100.0,
+                        current_phase="completed",
+                        validation_passed=True,
+                        user_id=_uid,
+                        tenant_id=_tid,
+                    )
                 )
             except Exception as notify_error:
                 # Log but don't fail linking if notification fails
@@ -1899,9 +1912,11 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
             return odps_contract
 
-        # Wrap with error handling for metrics
+        # Wrap with error handling for metrics. Failure audit runs outside this atomic
+        # block so FAILURE rows are not rolled back with the aborted ODPS linking txn.
         try:
-            result = _link_odps()
+            with transaction.atomic():
+                result = _link_odps()
             # Record success metrics
             duration = time.time() - start_time
             odps_linking_success_total.labels(
@@ -2406,7 +2421,6 @@ class ODPSService(BaseService, ODPSEventPublisher):
         # Initialize event publisher
         ODPSEventPublisher.__init__(self)
 
-    @transaction.atomic
     def create_odps(
         self,
         odps_raw: str,
@@ -2727,10 +2741,10 @@ class ODPSService(BaseService, ODPSEventPublisher):
             )
 
             # Create audit log for ODPS creation
-            try:
-                from hub.apps.audit.utils import create_audit_event
-                from hub.apps.tenants.models import Tenant
+            from hub.apps.audit.utils import create_audit_event
+            from hub.apps.tenants.models import Tenant
 
+            def _audit_odps_creation():
                 tenant_obj = Tenant.objects.get(id=effective_tenant_id)
                 create_audit_event(
                     resource_type="ODPS",
@@ -2757,14 +2771,8 @@ class ODPSService(BaseService, ODPSEventPublisher):
                         "request_id": self.request_id,
                     },
                 )
-            except Exception as e:
-                # Log but don't fail ODPS creation if audit logging fails
-                logger.warning(
-                    "odps_audit_logging_failed",
-                    contract_id=str(contract.id),
-                    error=str(e),
-                    message="Failed to create audit log for ODPS creation (non-critical)",
-                )
+
+            run_side_effect(_audit_odps_creation)
 
             # Send notification email for ODPS creation completion or normalization failure
             if user:
@@ -2781,16 +2789,24 @@ class ODPSService(BaseService, ODPSEventPublisher):
                             if normalization_errors
                             else "ODPS normalization failed"
                         )
-                        send_odps_normalization_failure_email.delay(
-                            contract_id=str(contract.id),
-                            error_message=error_message,
-                            error_code="ODPS_NORMALIZATION_ERROR",
-                            errors=normalization_errors,
-                            field_path=None,
+                        _cid = str(contract.id)
+                        _err = error_message
+                        _errs = normalization_errors
+                        transaction.on_commit(
+                            lambda: send_odps_normalization_failure_email.delay(
+                                contract_id=_cid,
+                                error_message=_err,
+                                error_code="ODPS_NORMALIZATION_ERROR",
+                                errors=_errs,
+                                field_path=None,
+                            )
                         )
                     else:
                         # Send creation completion notification
-                        send_odps_creation_completion_email.delay(str(contract.id))
+                        _cid = str(contract.id)
+                        transaction.on_commit(
+                            lambda: send_odps_creation_completion_email.delay(_cid)
+                        )
                 except Exception as e:
                     # Log but don't fail ODPS creation if notification fails
                     logger.warning(
@@ -2842,34 +2858,26 @@ class ODPSService(BaseService, ODPSEventPublisher):
                 ) from e
 
             if hub_contract:
-                try:
-                    event_id = self.publish_odps_normalized(
-                        contract_id=str(contract.id),
-                        odps_version=odps_version,
-                        normalization_status=(
-                            normalization_status.value
-                            if hasattr(normalization_status, "value")
-                            else str(normalization_status)
-                        ),
-                    )
-                    if event_id and state.events_published is not None:
-                        state.events_published.append(str(event_id))
-                except Exception as e:
-                    # If normalized event publishing fails, log but don't fail the operation
-                    # The contract is already created and the created event was published
-                    logger.warning(
-                        "odps_normalized_event_publish_failed",
-                        contract_id=str(contract.id),
-                        error=str(e),
-                        message="Failed to publish ODPS normalized event (non-critical)",
-                    )
+                event_id = run_side_effect(
+                    self.publish_odps_normalized,
+                    contract_id=str(contract.id),
+                    odps_version=odps_version,
+                    normalization_status=(
+                        normalization_status.value
+                        if hasattr(normalization_status, "value")
+                        else str(normalization_status)
+                    ),
+                )
+                if event_id and state.events_published is not None:
+                    state.events_published.append(str(event_id))
 
             return contract
 
         try:
-            return self.execute_with_metrics(
-                operation="create_odps", tenant_id=effective_tenant_id, func=_create
-            )
+            with transaction.atomic():
+                return self.execute_with_metrics(
+                    operation="create_odps", tenant_id=effective_tenant_id, func=_create
+                )
         except Exception as e:
             # Create audit log for ODPS creation failure
             try:
@@ -3123,7 +3131,6 @@ class ODPSService(BaseService, ODPSEventPublisher):
             operation="normalize_odps", tenant_id=effective_tenant_id, func=_normalize
         )
 
-    @transaction.atomic
     def link_odps_to_odcs(
         self,
         odcs_contract_id: str,
@@ -3138,7 +3145,9 @@ class ODPSService(BaseService, ODPSEventPublisher):
         Link ODPS contract to ODCS contract (bidirectional).
 
         This method delegates to ContractService.link_odps_to_odcs() to maintain
-        consistency and avoid code duplication.
+        consistency and avoid code duplication. No method-level transaction: the
+        service implementation uses an inner atomic block and records FAILURE
+        audit events outside that block so audits are not rolled back.
 
         Args:
             odcs_contract_id: ODCS contract ID to link to

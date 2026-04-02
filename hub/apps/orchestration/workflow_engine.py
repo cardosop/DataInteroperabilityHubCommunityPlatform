@@ -397,6 +397,14 @@ class WorkflowEngine(WorkflowEventPublisher):
 
                     # Update step index and batch all state updates into single save
                     instance.current_step_index = i + 1
+                    # Keep state_data in sync with the model field
+                    instance.state_data["current_step_index"] = instance.current_step_index
+                    next_step_name = (
+                        steps[i + 1].get("name", "unknown")
+                        if i + 1 < len(steps)
+                        else "completed"
+                    )
+                    instance.state_data["current_step_name"] = next_step_name
                     # Recalculate progress after step completion (state_data already updated in _execute_step)
                     if instance.state_data:
                         instance.state_data["progress_percentage"] = self._calculate_progress(

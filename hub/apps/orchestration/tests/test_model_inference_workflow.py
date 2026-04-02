@@ -10,7 +10,7 @@ Tests verify:
 """
 try:
     import pytest
-    pytestmark = pytest.mark.django_db(transaction=True)
+    pytestmark = pytest.mark.django_db
 except ImportError:
     pytest = None
     pytestmark = None
@@ -26,6 +26,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.ml.models import MLModel, ModelStatus, ModelType
+import uuid
 
 User = get_user_model()
 
@@ -129,12 +130,13 @@ class ModelInferenceWorkflowStepExecutionTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -255,12 +257,13 @@ class ModelInferenceWorkflowIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

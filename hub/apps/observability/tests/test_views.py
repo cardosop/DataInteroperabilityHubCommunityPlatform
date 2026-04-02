@@ -22,6 +22,7 @@ from hub.apps.observability.volume import VolumeMonitor
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -33,12 +34,13 @@ class PipelineMonitoringIntegrationTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -82,10 +84,11 @@ class PipelineMonitoringIntegrationTest(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data["results"]), 0)
-
+        results = response.data["results"]
+        # Verify filter actually returned results (setUp creates SCHEDULED_INGESTION pipelines)
+        self.assertGreater(len(results), 0, "Filter returned no results despite matching pipelines in setUp")
         # All results should be SCHEDULED_INGESTION
-        for result in response.data["results"]:
+        for result in results:
             self.assertEqual(result["pipeline_type"], "SCHEDULED_INGESTION")
 
 
@@ -96,12 +99,13 @@ class DataSLAsIntegrationTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -163,13 +167,14 @@ class DataIncidentsIntegrationTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -280,13 +285,14 @@ class ObservabilityViewSetTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

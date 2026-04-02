@@ -40,7 +40,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TransactionTestCase, override_settings
+from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -49,6 +49,7 @@ from hub.apps.files.storage import S3StorageClient
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.tenants.services import get_tenant_file_size_limit
 from hub.apps.tenants.validators import get_platform_defaults
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -60,7 +61,8 @@ User = get_user_model()
     AWS_SECRET_ACCESS_KEY="minio123",
     AWS_S3_ENDPOINT_URL="http://localhost:9000",
 )
-class TenantConfigFileUploadIntegrationTest(TransactionTestCase):
+# Using TestCase since _fixture_teardown is pass (no flush needed)
+class TenantConfigFileUploadIntegrationTest(TestCase):
     """Test File Upload integration with tenant configuration"""
 
     # Disable automatic database flush to avoid foreign key constraint issues
@@ -95,7 +97,34 @@ class TenantConfigFileUploadIntegrationTest(TransactionTestCase):
             email=f"user-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
+
+        # Assign DATA_PROVIDER role so user passes permission checks
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        UserRole.objects.create(user=self.user, role=provider_role, tenant=self.tenant)
+
+        # Active subscription required for write operations
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.tenant)
+
+        # Create subscription so middleware doesn't block write ops
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        from hub.apps.tenants.models import TenantPlan
+        free_plan = TenantPlan.objects.filter(slug="free").first()
+        if free_plan:
+            Subscription.objects.get_or_create(
+                tenant=self.tenant,
+                defaults={
+                    "plan": free_plan,
+                    "status": SubscriptionStatus.ACTIVE,
+                    "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
+                }
+            )
 
         self.platform_defaults = get_platform_defaults()
 
@@ -197,59 +226,49 @@ class TenantConfigFileUploadIntegrationTest(TransactionTestCase):
         # Should succeed (uses platform default, within browser method limit)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-    def test_chunked_upload_validates_total_file_size(self):
-        """Test chunked upload validates total file size across chunks"""
+    def test_chunked_upload_init_validates_total_file_size(self):
+        """Test chunked upload init validates total file size against tenant limit.
+
+        File size validation occurs at the /files/init/ endpoint when the
+        total size is declared.  The /complete/ endpoint does NOT re-validate
+        size (it delegates to S3), so we test the init path.
+        """
         # Create tenant config with custom file size limit (5 GB)
         TenantConfig.objects.create(
-            tenant=self.tenant, max_file_size_bytes=5 * 1024 * 1024 * 1024  # 5 GB
+            tenant=self.tenant,
+            max_file_size_bytes=5 * 1024 * 1024 * 1024,  # 5 GB
         )
 
         self.client.force_authenticate(user=self.user)
 
-        # Create file record with size exceeding tenant limit
-        file_obj = File.objects.create(
-            tenant=self.tenant,
-            name="large_file.csv",
-            content_type="text/csv",
-            size=6 * 1024 * 1024 * 1024,  # 6 GB (exceeds tenant limit)
-            storage_path=f"{self.tenant.id}/file_id/large_file.csv",
-            status=FileStatus.UPLOADING,
-            created_by=self.user,
-            metadata_json={
-                "multipart_upload_id": "upload-123",
-                "chunk_size": 100 * 1024 * 1024,  # 100 MB chunks
-                "chunk_count": 60,
-            },
-        )
-
-        # Skip if storage not available
-        if not self.storage_available:
-            self.skipTest("MinIO storage not available in test environment")
-
-        # Use real S3StorageClient (no mock)
-        # Try to complete upload
-        # Note: The file size validation happens before storage operations
-        # The file was created with size exceeding tenant limit, so validation should fail
+        # Try to init an upload whose declared size exceeds tenant limit
         response = self.client.post(
-            f"/api/v1/files/{file_obj.id}/complete/",
-            {"content_sha256": "abc123", "parts": [{"ETag": "etag1", "PartNumber": 1}]},
+            "/api/v1/files/init/",
+            {
+                "name": "large_file.csv",
+                "content_type": "text/csv",
+                "size": 6 * 1024 * 1024 * 1024,  # 6 GB
+                "upload_method": "sdk",
+            },
             format="json",
         )
 
-        # Should return validation error (file size exceeds tenant limit)
-        # Response may be 400 (validation error) or 500/503 (service error)
-        self.assertIn(
+        # Must return 400 validation error
+        self.assertEqual(
             response.status_code,
-            [
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            ],
+            status.HTTP_400_BAD_REQUEST,
+            f"File size validation should return 400, got "
+            f"{response.status_code}: "
+            f"{getattr(response, 'data', response.content)}",
         )
-
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            self.assertIn("error", response.data)
-            self.assertIn("exceeds tenant limit", str(response.data["error"]).lower())
+        error_msg = str(
+            response.data.get("detail", response.data)
+        )
+        self.assertIn(
+            "exceeds",
+            error_msg.lower(),
+            f"Error should mention size exceeds limit: {error_msg}",
+        )
 
     def test_get_tenant_file_size_limit_utility_function(self):
         """Test get_tenant_file_size_limit utility function"""

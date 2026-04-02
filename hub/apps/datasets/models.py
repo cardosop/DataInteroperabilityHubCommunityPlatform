@@ -41,11 +41,11 @@ class Dataset(models.Model):
     )
     file = models.ForeignKey(
         "files.File",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="datasets",
         null=True,
         blank=True,
-        help_text="File this dataset is based on (nullable for external-ref or pending upload)"
+        help_text="File this dataset is based on (nullable; SET_NULL preserves dataset on file deletion)"
     )
     schema_json = models.JSONField(
         null=True,

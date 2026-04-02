@@ -120,8 +120,9 @@ class DatasetVersioningTest(DatasetsAPITestBase):
     def test_create_version_wrong_tenant(self):
         """Test creating version with dataset from wrong tenant (failure scenario)"""
         # Create another tenant and dataset
+        _sfx = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_sfx}", slug=f"other-tenant-{_sfx}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         other_file = File.objects.create(

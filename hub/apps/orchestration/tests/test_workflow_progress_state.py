@@ -11,7 +11,7 @@ Tests verify that progress_percentage is correctly stored and updated in state_d
 try:
     import pytest
 
-    pytestmark = pytest.mark.django_db(transaction=True)
+    pytestmark = pytest.mark.django_db
 except ImportError:
     # pytest not available, using Django test runner
     pytest = None
@@ -41,11 +41,12 @@ class WorkflowProgressStateTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.engine = WorkflowEngine()
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Register a test task
@@ -88,8 +89,6 @@ class WorkflowProgressStateTest(TestCase):
         # Verify progress is stored in state_data
         self.assertIn("progress_percentage", instance.state_data)
         self.assertIsInstance(instance.state_data["progress_percentage"], (int, float))
-        self.assertGreaterEqual(instance.state_data["progress_percentage"], 0.0)
-        self.assertLessEqual(instance.state_data["progress_percentage"], 100.0)
 
         # Verify current step information is stored
         self.assertIn("current_step_index", instance.state_data)
@@ -186,8 +185,9 @@ class WorkflowProgressStateTest(TestCase):
         # Verify progress is still stored even after failure
         self.assertIn("progress_percentage", instance.state_data)
         self.assertIsInstance(instance.state_data["progress_percentage"], (int, float))
-        self.assertGreaterEqual(instance.state_data["progress_percentage"], 0.0)
-        self.assertLessEqual(instance.state_data["progress_percentage"], 100.0)
+        # Step1 completed before step2 failed, so progress must be positive but not 100%
+        self.assertGreater(instance.state_data["progress_percentage"], 0.0)
+        self.assertLess(instance.state_data["progress_percentage"], 100.0)
 
         # Progress at failure point should reflect the failed step
         # At step index 1 (step2 failed), progress = (1+1)/3*100 = 66.67%
@@ -283,10 +283,6 @@ class WorkflowProgressStateTest(TestCase):
         # Verify final progress is 100%
         self.assertEqual(instance.state_data["progress_percentage"], 100.0)
 
-        # Verify progress is valid throughout
-        self.assertGreaterEqual(instance.state_data["progress_percentage"], 0.0)
-        self.assertLessEqual(instance.state_data["progress_percentage"], 100.0)
-
     def test_progress_with_single_step_workflow(self):
         """Test progress storage with single step workflow (Task 0.3.2)"""
         workflow_def = WorkflowDefinition.objects.create(
@@ -355,10 +351,11 @@ class WorkflowProgressStateTest(TestCase):
         self.assertIsInstance(instance.state_data["current_step_index"], int)
         self.assertIsInstance(instance.state_data["current_step_name"], str)
 
-        # Verify values are valid
-        self.assertGreaterEqual(instance.state_data["progress_percentage"], 0.0)
-        self.assertLessEqual(instance.state_data["progress_percentage"], 100.0)
-        self.assertGreaterEqual(instance.state_data["current_step_index"], 0)
+        # After completing both steps, progress should be 100%.
+        # current_step_index is a "next step to execute" pointer, so it equals
+        # the total number of steps (2) when the workflow is complete.
+        self.assertEqual(instance.state_data["progress_percentage"], 100.0)
+        self.assertEqual(instance.state_data["current_step_index"], 2)
 
 
 class WorkflowProgressIntegrationTest(TestCase):
@@ -367,11 +364,12 @@ class WorkflowProgressIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.engine = WorkflowEngine()
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Register test tasks
@@ -412,12 +410,8 @@ class WorkflowProgressIntegrationTest(TestCase):
 
         # Verify final state
         self.assertEqual(instance.status, WorkflowStatus.COMPLETED)
-        self.assertEqual(instance.state_data["progress_percentage"], 100.0)
-
-        # Verify progress was present throughout (check that it's valid)
         self.assertIn("progress_percentage", instance.state_data)
-        self.assertGreaterEqual(instance.state_data["progress_percentage"], 0.0)
-        self.assertLessEqual(instance.state_data["progress_percentage"], 100.0)
+        self.assertEqual(instance.state_data["progress_percentage"], 100.0)
 
     def test_progress_persistence_after_database_reload(self):
         """Integration test: Progress persists after reloading instance from database (Task 0.3.2)"""

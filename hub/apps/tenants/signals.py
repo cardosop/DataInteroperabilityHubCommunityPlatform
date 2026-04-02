@@ -4,7 +4,9 @@ Tenant Signals
 Handles post-creation tasks like default role creation and KYC status audit (feat1 2.3).
 """
 import logging
+import threading
 
+from django.db import transaction
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
@@ -12,8 +14,8 @@ from .models import Tenant
 
 logger = logging.getLogger(__name__)
 
-# Store previous kyc_status per tenant pk for post_save audit (feat1 2.3.2)
-_tenant_kyc_before_save = {}
+# Thread-safe storage for previous kyc_status per tenant pk (feat1 2.3.2)
+_thread_local = threading.local()
 
 
 @receiver(post_save, sender=Tenant)
@@ -59,41 +61,39 @@ def create_default_roles(sender, instance, created, **kwargs):
         # This prevents 6-8 second delays per tenant creation
         return
 
-    # Import here to avoid circular imports
-    # This will be implemented when users app is ready
-    try:
-        from hub.apps.users.models import Role
+    def _create_roles():
+        try:
+            from hub.apps.users.models import Role
 
-        default_roles = [
-            {
-                "name": "TENANT_ADMIN",
-                "description": "Full administrative access within tenant"
-            },
-            {
-                "name": "DATA_PROVIDER",
-                "description": "Can create and manage data assets"
-            },
-            {
-                "name": "DATA_CONSUMER",
-                "description": "Can request and access data assets"
-            },
-            {
-                "name": "AUDITOR",
-                "description": "Read-only access to compliance/DQ reports and audit logs"
-            }
-        ]
+            default_roles = [
+                {
+                    "name": "TENANT_ADMIN",
+                    "description": "Full administrative access within tenant"
+                },
+                {
+                    "name": "DATA_PROVIDER",
+                    "description": "Can create and manage data assets"
+                },
+                {
+                    "name": "DATA_CONSUMER",
+                    "description": "Can request and access data assets"
+                },
+                {
+                    "name": "AUDITOR",
+                    "description": "Read-only access to compliance/DQ reports and audit logs"
+                }
+            ]
 
-        # Create roles in a transaction (use get_or_create to avoid duplicates)
-        for role_data in default_roles:
-            Role.objects.get_or_create(
-                tenant=instance,
-                name=role_data["name"],
-                defaults={"description": role_data["description"]}
-            )
-    except ImportError:
-        # Role model doesn't exist yet, skip role creation
-        # This will be handled when users app is implemented
-        pass
+            for role_data in default_roles:
+                Role.objects.get_or_create(
+                    tenant=instance,
+                    name=role_data["name"],
+                    defaults={"description": role_data["description"]}
+                )
+        except Exception:
+            logger.exception("default_role_creation_failed")
+
+    transaction.on_commit(_create_roles)
 
 
 @receiver(pre_save, sender=Tenant)
@@ -101,21 +101,50 @@ def _store_kyc_status_before_save(sender, instance, **kwargs):
     """Store previous kyc_status for post_save audit (feat1 2.3.2)."""
     if not instance.pk:
         return
-    # Skip DB query in test mode to avoid timeouts (shared DB, lock contention)
-    import os
-    import sys
-
-    is_test_env = (
-        "pytest" in sys.modules
-        or "unittest" in sys.modules
-        or os.getenv("PYTEST_CURRENT_TEST")
-        or os.getenv("TESTING", "").lower() in ("1", "true", "yes")
-    )
-    if is_test_env:
-        return
     try:
-        old = Tenant.objects.filter(pk=instance.pk).values_list("kyc_status", flat=True).first()
-        _tenant_kyc_before_save[instance.pk] = old
+        from django.db import connection
+
+        # Use a short statement_timeout (2s) so this signal never blocks test
+        # teardown.  ROOT CAUSE FIX: during TransactionTestCase teardown, the
+        # ``flush`` command holds AccessExclusiveLock while TRUNCATE-ing tables.
+        # If the *next* test's setUp fires this signal, the SELECT here waits
+        # for that lock — up to the global statement_timeout (60 s) — causing a
+        # cascading deadlock chain that makes every subsequent test time out.
+        # A 2 s budget is generous for a single-row PK lookup; if it times out
+        # we simply skip the KYC audit (non-critical).
+        #
+        # CRITICAL: SET LOCAL must be undone before returning. Django's nested
+        # transaction.atomic() does not reliably scope SET LOCAL across pre_save
+        # / ORM execution order. Use an explicit SAVEPOINT + ROLLBACK TO so
+        # statement_timeout reverts; otherwise the outer transaction keeps 2s and
+        # later statements (e.g. Contract.objects.create) hit QueryCanceled.
+        old = None
+        qn = connection.ops.quote_name
+        tbl = qn(Tenant._meta.db_table)
+        col = qn(Tenant._meta.get_field("kyc_status").column)
+        pk_col = qn(Tenant._meta.pk.column)
+        with connection.cursor() as cursor:
+            cursor.execute("SAVEPOINT kyc_presave_snap")
+            try:
+                cursor.execute("SET LOCAL statement_timeout = '2s'")
+                cursor.execute(
+                    f"SELECT {col} FROM {tbl} WHERE {pk_col} = %s",
+                    [instance.pk],
+                )
+                row = cursor.fetchone()
+                old = row[0] if row else None
+            finally:
+                try:
+                    cursor.execute("ROLLBACK TO SAVEPOINT kyc_presave_snap")
+                except Exception:
+                    pass
+                try:
+                    cursor.execute("RELEASE SAVEPOINT kyc_presave_snap")
+                except Exception:
+                    pass
+        if not hasattr(_thread_local, 'kyc_before_save'):
+            _thread_local.kyc_before_save = {}
+        _thread_local.kyc_before_save[instance.pk] = old
     except Exception:
         pass
 
@@ -126,9 +155,13 @@ def audit_kyc_status_change(sender, instance, created, **kwargs):
     Emit KYC_STATUS_CHANGED audit event when Tenant.kyc_status changes (feat1 2.3.2).
     Catches all code paths (API, admin, service).
     """
-    if created:
+    if not hasattr(_thread_local, 'kyc_before_save'):
         return
-    old_kyc = _tenant_kyc_before_save.pop(instance.pk, None)
+    if created:
+        # Clean up pre_save entry for newly created tenants (no KYC change to audit)
+        _thread_local.kyc_before_save.pop(instance.pk, None)
+        return
+    old_kyc = _thread_local.kyc_before_save.pop(instance.pk, None)
     if old_kyc is None or old_kyc == instance.kyc_status:
         return
     try:

@@ -2,7 +2,7 @@
 Job Serializers
 """
 from rest_framework import serializers
-from .models import Job, JobType, JobStatus
+from .models import FailedJobDLQ, Job, JobType, JobStatus
 
 
 class JobSerializer(serializers.ModelSerializer):
@@ -52,4 +52,26 @@ class JobCreateSerializer(serializers.Serializer):
 class JobCancelSerializer(serializers.Serializer):
     """Serializer for job cancellation (no fields needed)"""
     pass
+
+
+class FailedJobDLQSerializer(serializers.ModelSerializer):
+    """Serializer for FailedJobDLQ (Phase 91.9)."""
+
+    class Meta:
+        model = FailedJobDLQ
+        fields = [
+            'id',
+            'job_id',
+            'queue',
+            'func_name',
+            'args_json',
+            'error_message',
+            'traceback',
+            'tenant',
+            'retry_count',
+            'resolved_at',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = fields
 

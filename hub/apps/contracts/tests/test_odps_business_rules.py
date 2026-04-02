@@ -32,6 +32,7 @@ from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+import uuid
 
 
 class ODPSBusinessRulesTestBase(ContractsTestBase):
@@ -452,11 +453,21 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
                     test_version = "1.9"
                 else:
                     continue
+                schema_url = f"https://opendataproducts.org/schema/v{test_version}"
+            elif version.startswith("bitol-"):
+                # Bitol versions use a different schema URL pattern
+                bitol_ver = version[len("bitol-"):]
+                schema_url = (
+                    f"https://bitol-io.github.io/open-data-product-standard/"
+                    f"v{bitol_ver}/schema.json"
+                )
+                test_version = version
             else:
                 test_version = version
+                schema_url = f"https://opendataproducts.org/schema/v{test_version}"
 
             odps_doc = {
-                "schema": f"https://opendataproducts.org/schema/v{test_version}",
+                "schema": schema_url,
                 "product": {
                     "details": {"en": {"productID": "test", "name": "Test"}},
                     "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
@@ -466,7 +477,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
             result = self.rules.validate_odps_version(odps_doc)
 
             self.assertTrue(
-                result.is_valid, f"Version {test_version} (normalized to {version}) should be valid"
+                result.is_valid, f"Version {test_version} should be valid"
             )
 
 
@@ -594,9 +605,10 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
     def test_validate_odps_linking_wrong_tenant(self):
         """Test validation fails when contracts belong to different tenants."""
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )

@@ -5,7 +5,8 @@ Service layer for Data Mesh operations.
 Provides business logic for domain management, policy applications, and compliance reporting.
 """
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
-from django.db import transaction
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError, ConflictError
@@ -293,6 +294,15 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         if not name or not name.strip():
             raise ValidationError("Domain name is required")
+
+        # Plan limit enforcement
+        from hub.apps.tenants.services import PlanLimitService
+        plan_limit_service = PlanLimitService(tenant_id=effective_tenant_id)
+        plan_limit_service.check_limit(
+            tenant_id=effective_tenant_id,
+            limit_key="max_mesh_domains",
+            delta=1,
+        )
 
         # Validate via DataMeshBusinessRules before any mutation
         from hub.apps.tenants.models import Tenant
@@ -706,10 +716,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                     code="BUSINESS_RULES_VALIDATION",
                     details={"name": "empty"},
                 )
-            # Check for duplicate if name changed
+            # Track name change
             if name != domain.name:
-                if DataMeshDomain.objects.filter(tenant_id=effective_tenant_id, name=name).exists():
-                    raise ConflictError(f"Domain with name '{name}' already exists for tenant")
                 changes["name"] = {"old": domain.name, "new": name}
                 domain.name = name
 
@@ -757,9 +765,23 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             changes["status"] = {"old": domain.status, "new": status}
             domain.status = status
 
-        # Run model validation
-        domain.full_clean()
-        domain.save()
+        # Run model validation and save (nested atomic block acts as savepoint)
+        try:
+            with transaction.atomic():
+                domain.full_clean()
+                domain.save()
+        except IntegrityError:
+            raise ConflictError(
+                f"Domain with name '{name}' already exists for tenant",
+                code="DOMAIN_NAME_EXISTS",
+            )
+        except DjangoValidationError as e:
+            if "already exists" in str(e):
+                raise ConflictError(
+                    f"Domain with name '{name}' already exists for tenant",
+                    code="DOMAIN_NAME_EXISTS",
+                )
+            raise
 
         # Create audit log for domain update
         if changes:

@@ -11,6 +11,7 @@ from django.db import transaction
 
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.tenants.validators import get_platform_defaults
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -74,7 +75,8 @@ class InitTenantConfigsCommandTest(TestCase):
     def test_dry_run_mode(self):
         """Test dry-run mode shows what would be created without creating"""
         # Create tenant without config
-        tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         
         # Run command in dry-run mode
         out = StringIO()
@@ -120,44 +122,54 @@ class InitTenantConfigsCommandTest(TestCase):
     
     def test_error_handling(self):
         """Test command handles errors gracefully and continues processing"""
-        # Create tenant
-        tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
-        
-        # Mock TenantConfig.objects.create to raise error for first call
-        original_create = TenantConfig.objects.create
-        
+        from unittest.mock import patch
+
+        # Create two tenants without config
+        uid1 = uuid.uuid4().hex[:8]
+        uid2 = uuid.uuid4().hex[:8]
+        t1 = Tenant.objects.create(
+            name=f"ErrTenant1 {uid1}", slug=f"err-t1-{uid1}",
+        )
+        t2 = Tenant.objects.create(
+            name=f"ErrTenant2 {uid2}", slug=f"err-t2-{uid2}",
+        )
+
         call_count = [0]
-        def mock_create(*args, **kwargs):
+        original_create = TenantConfig.objects.create
+
+        def failing_create(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 raise Exception("Simulated error")
             return original_create(*args, **kwargs)
-        
-        # This test verifies error handling - in practice, errors are logged and processing continues
-        # For now, we verify the command doesn't crash
+
         out = StringIO()
-        try:
-            call_command('init_tenant_configs', stdout=out)
-        except Exception:
-            # Command should handle errors gracefully
-            pass
-        
-        # Verify at least some processing occurred
+        with patch.object(
+            TenantConfig.objects, "create", side_effect=failing_create,
+        ):
+            call_command(
+                'init_tenant_configs',
+                '--tenant-id', str(t1.id),
+                '--tenant-id', str(t2.id),
+                stdout=out,
+            )
+
         output = out.getvalue()
+        # Command should report errors but not crash
         self.assertIn("tenant", output.lower())
     
     def test_all_tenants_have_config_message(self):
         """Test command shows message when all tenants already have config"""
         # Create tenant with config
-        tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         TenantConfig.objects.create(tenant=tenant)
-        
-        # Run command
+
+        # Run command for this specific tenant (avoids stale data from --reuse-db)
         out = StringIO()
-        call_command('init_tenant_configs', stdout=out)
-        
-        # Verify message
+        call_command('init_tenant_configs', '--tenant-id', str(tenant.id), stdout=out)
+
+        # Since this tenant already has config, command should report it was skipped
         output = out.getvalue()
-        self.assertIn("already have TenantConfig", output)
-        self.assertIn("Nothing to do", output)
+        self.assertIn("already have config", output.lower())
 

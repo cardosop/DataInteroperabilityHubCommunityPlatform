@@ -11,7 +11,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
@@ -34,16 +34,24 @@ pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
+@override_settings(WEBHOOK_ASYNC_DELIVERY=False)
 class ODPSWebhookDeliveryTest(TestCase):
     """Integration tests for ODPS webhook delivery"""
 
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        pass
+
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         reset_circuit_breaker_by_name("webhook-delivery")
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -51,7 +59,7 @@ class ODPSWebhookDeliveryTest(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

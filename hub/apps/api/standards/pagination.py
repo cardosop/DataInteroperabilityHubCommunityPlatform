@@ -156,7 +156,10 @@ def get_pagination_params(request) -> Dict[str, Any]:
     # Get page size
     try:
         page_size = int(query_params.get("page_size", 50))
-        page_size = max(1, min(page_size, 100))  # Clamp between 1 and 100
+        if page_size < 1:
+            page_size = 50  # invalid value → fall back to default
+        else:
+            page_size = min(page_size, 100)  # cap at max
     except (ValueError, TypeError):
         page_size = 50
 
@@ -205,6 +208,13 @@ def validate_pagination_params(
     return True, None
 
 
+def _encode_value(value) -> str:
+    """Serialise a field value to a JSON-safe string."""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
 def paginate_queryset_cursor(
     queryset: QuerySet,
     page_size: int = 50,
@@ -214,33 +224,49 @@ def paginate_queryset_cursor(
     """
     Paginate queryset using cursor-based pagination.
 
+    Uses a composite (field, pk) cursor so that rows with identical values
+    for the ordering field are still uniquely addressable, preventing gaps
+    or duplicate results in high-throughput / test environments where many
+    records share the same timestamp.
+
     Args:
         queryset: Django queryset
         page_size: Items per page
         cursor: Optional cursor string
-        ordering: Ordering field (default: '-created_at')
+        ordering: Primary ordering field (default: '-created_at')
 
     Returns:
         Tuple of (paginated_queryset, next_cursor, previous_cursor)
     """
-    # Ensure ordering
+    descending = ordering.startswith("-")
+    field = ordering[1:] if descending else ordering
+
+    # Stable composite ordering: primary field + pk tiebreaker
+    pk_ordering = "-pk" if descending else "pk"
     if not queryset.query.order_by:
-        queryset = queryset.order_by(ordering)
+        queryset = queryset.order_by(ordering, pk_ordering)
 
     # Apply cursor if provided
     if cursor:
-        # Decode cursor
         try:
             decoded = base64.b64decode(cursor.encode("utf-8")).decode("utf-8")
-            position = json.loads(decoded)
+            position = json.loads(decoded)  # [field_value, pk_value]
+            field_val, pk_val = position[0], position[1]
 
-            # Apply cursor filter
-            if ordering.startswith("-"):
-                field = ordering[1:]
-                queryset = queryset.filter(**{f"{field}__lt": position[0]})
+            # Composite filter: (field < val) OR (field = val AND pk < pk_val)
+            # (reversed for ascending)
+            if descending:
+                from django.db.models import Q
+                queryset = queryset.filter(
+                    Q(**{f"{field}__lt": field_val})
+                    | Q(**{f"{field}": field_val, "pk__lt": pk_val})
+                )
             else:
-                field = ordering
-                queryset = queryset.filter(**{f"{field}__gt": position[0]})
+                from django.db.models import Q
+                queryset = queryset.filter(
+                    Q(**{f"{field}__gt": field_val})
+                    | Q(**{f"{field}": field_val, "pk__gt": pk_val})
+                )
         except Exception:
             # Invalid cursor, return empty queryset
             return queryset.none(), None, None
@@ -253,17 +279,12 @@ def paginate_queryset_cursor(
     if has_next:
         items = items[:page_size]
 
-    # Generate next cursor
+    # Generate next cursor — composite (field_value, pk)
     next_cursor = None
     if has_next and items:
         last_item = items[-1]
-        if ordering.startswith("-"):
-            field = ordering[1:]
-        else:
-            field = ordering
-
         if hasattr(last_item, field):
-            position = [getattr(last_item, field)]
+            position = [_encode_value(getattr(last_item, field)), str(last_item.pk)]
             next_cursor = base64.b64encode(json.dumps(position).encode("utf-8")).decode("utf-8")
 
     # Previous cursor is the current cursor (if provided)

@@ -11,6 +11,7 @@ from datetime import datetime
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.tenants.services import get_tenant_config, get_tenant_config_value
 from hub.apps.tenants.validators import get_platform_defaults
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -21,9 +22,10 @@ class GetTenantConfigTest(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
         self.platform_defaults = get_platform_defaults()
     
@@ -109,19 +111,30 @@ class GetTenantConfigTest(TestCase):
     
     def test_timestamp_serialization(self):
         """Test timestamp serialization (ISO format)"""
-        config = TenantConfig.objects.create(tenant=self.tenant)
-        
+        from datetime import datetime as dt
+
+        TenantConfig.objects.create(tenant=self.tenant)
+
         config_dict = get_tenant_config(self.tenant)
-        
-        # Check timestamps are ISO format strings
-        if config_dict["created_at"]:
-            self.assertIsInstance(config_dict["created_at"], str)
-            # Should contain 'T' separator (ISO 8601 format)
-            self.assertIn("T", config_dict["created_at"])
-        
-        if config_dict["updated_at"]:
-            self.assertIsInstance(config_dict["updated_at"], str)
-            self.assertIn("T", config_dict["updated_at"])
+
+        # created_at must be present and parseable
+        self.assertIsNotNone(
+            config_dict["created_at"],
+            "created_at should not be None for a just-created config",
+        )
+        self.assertIsInstance(config_dict["created_at"], str)
+        # Verify it parses as ISO 8601
+        parsed = dt.fromisoformat(
+            config_dict["created_at"].replace("Z", "+00:00"),
+        )
+        self.assertIsInstance(parsed, dt)
+
+        self.assertIsNotNone(config_dict["updated_at"])
+        self.assertIsInstance(config_dict["updated_at"], str)
+        parsed2 = dt.fromisoformat(
+            config_dict["updated_at"].replace("Z", "+00:00"),
+        )
+        self.assertIsInstance(parsed2, dt)
     
     def test_none_values_are_replaced_with_platform_defaults(self):
         """Test None values are replaced with platform defaults"""
@@ -139,21 +152,29 @@ class GetTenantConfigTest(TestCase):
         self.assertEqual(config_dict["data_retention_days"], self.platform_defaults["data_retention_days"])
         self.assertEqual(config_dict["max_file_size_bytes"], self.platform_defaults["max_file_size_bytes"])
     
-    def test_empty_lists_are_preserved(self):
-        """Test empty lists are preserved (not replaced with platform defaults)"""
-        config = TenantConfig.objects.create(
+    def test_empty_lists_fall_back_to_platform_defaults(self):
+        """Test empty lists are falsy and fall back to platform defaults.
+
+        The service uses the ``or`` operator, so ``[] or default``
+        returns the platform default.  This is intentional: an empty
+        list means "no tenant override — use platform default".
+        """
+        TenantConfig.objects.create(
             tenant=self.tenant,
             allowed_compliance_regimes=[],
-            default_compliance_regimes=[]
+            default_compliance_regimes=[],
         )
-        
+
         config_dict = get_tenant_config(self.tenant)
-        
-        # Empty lists should be preserved (not replaced)
-        # Actually, the service uses `or` operator, so empty list is falsy and will use platform defaults
-        # This is the current behavior - empty list means "use platform default"
-        self.assertEqual(config_dict["allowed_compliance_regimes"], self.platform_defaults["allowed_compliance_regimes"])
-        self.assertEqual(config_dict["default_compliance_regimes"], self.platform_defaults["default_compliance_regimes"])
+
+        self.assertEqual(
+            config_dict["allowed_compliance_regimes"],
+            self.platform_defaults["allowed_compliance_regimes"],
+        )
+        self.assertEqual(
+            config_dict["default_compliance_regimes"],
+            self.platform_defaults["default_compliance_regimes"],
+        )
     
     def test_empty_dict_for_rate_limits_is_replaced_with_platform_defaults(self):
         """Test empty dict for rate_limits is replaced with platform defaults"""
@@ -198,9 +219,10 @@ class GetTenantConfigValueTest(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
         self.platform_defaults = get_platform_defaults()
     
@@ -240,8 +262,8 @@ class GetTenantConfigValueTest(TestCase):
         self.assertIsNone(value)
     
     def test_all_configuration_keys(self):
-        """Test all configuration keys (default_dq_profile, allowed_compliance_regimes, etc.)"""
-        config = TenantConfig.objects.create(
+        """Test all configuration keys return correct values."""
+        TenantConfig.objects.create(
             tenant=self.tenant,
             default_dq_profile="intake_basic_soda",
             allowed_compliance_regimes=["GDPR"],
@@ -249,21 +271,23 @@ class GetTenantConfigValueTest(TestCase):
             data_retention_days=1825,
             max_file_size_bytes=5368709120,
             max_job_concurrency=10,
-            max_queued_jobs=100
+            max_queued_jobs=100,
         )
-        
-        keys = [
-            "default_dq_profile",
-            "allowed_compliance_regimes",
-            "default_compliance_regimes",
-            "data_retention_days",
-            "rate_limits",
-            "max_file_size_bytes",
-            "max_job_concurrency",
-            "max_queued_jobs",
-        ]
-        
-        for key in keys:
+
+        expected = {
+            "default_dq_profile": "intake_basic_soda",
+            "allowed_compliance_regimes": ["GDPR"],
+            "default_compliance_regimes": ["GDPR"],
+            "data_retention_days": 1825,
+            "max_file_size_bytes": 5368709120,
+            "max_job_concurrency": 10,
+            "max_queued_jobs": 100,
+        }
+
+        for key, expected_val in expected.items():
             value = get_tenant_config_value(self.tenant, key)
-            self.assertIsNotNone(value, f"get_tenant_config_value returned None for key: {key}")
+            self.assertEqual(
+                value, expected_val,
+                f"Key {key}: expected {expected_val}, got {value}",
+            )
 

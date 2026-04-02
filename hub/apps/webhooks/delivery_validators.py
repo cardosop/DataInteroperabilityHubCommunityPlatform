@@ -271,7 +271,7 @@ class WebhookDeliveryValidator:
         details['webhook_id'] = str(webhook.id)
 
         # Get timeout configuration
-        timeout_seconds = WebhookDeliveryService.REQUEST_TIMEOUT
+        timeout_seconds = WebhookDeliveryService._get_request_timeout()
         details['timeout_seconds'] = str(timeout_seconds)
 
         # Validate timeout is positive

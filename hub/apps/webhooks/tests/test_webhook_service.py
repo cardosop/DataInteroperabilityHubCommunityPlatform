@@ -5,6 +5,8 @@ Tests for WebhookService.create_webhook and update_webhook
 with real DB and real audit events. No mocks.
 """
 
+import uuid
+
 import pytest
 from django.test import TestCase
 
@@ -22,15 +24,23 @@ pytestmark = pytest.mark.django_db(transaction=True)
 class WebhookServiceTest(TestCase):
     """Test WebhookService methods with real DB and audit (Phase 12.2.2)"""
 
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        """Skip TRUNCATE CASCADE to avoid timeout."""
+        pass
+
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

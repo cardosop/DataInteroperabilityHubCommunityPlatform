@@ -10,51 +10,32 @@ from typing import Dict, Any, Optional, List, Tuple, TYPE_CHECKING
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 
-# Import from normalization.py module (avoiding circular import with normalization package)
-# The issue: 'hub.apps.contracts.normalization' resolves to the package, not the .py file
-# Solution: Import the .py file directly using importlib and file path
-import importlib.util
-from pathlib import Path
-
-# Get the path to normalization.py (parent directory)
-_normalization_py_path = Path(__file__).parent.parent / 'normalization.py'
-
-# Load the .py file as a separate module
-_spec = importlib.util.spec_from_file_location('normalization_py_module', _normalization_py_path)
-_normalization_py_module = importlib.util.module_from_spec(_spec)
-
-# Set the module's __package__ to avoid relative import issues
-_normalization_py_module.__package__ = 'hub.apps.contracts'
-
-# Execute the module (this will run its imports)
-_spec.loader.exec_module(_normalization_py_module)
-
-# Extract the classes and functions we need
-NormalizationResult = _normalization_py_module.NormalizationResult
-SpecNormalizer = _normalization_py_module.SpecNormalizer
-_determine_normalization_status = _normalization_py_module._determine_normalization_status
-calculate_coverage = _normalization_py_module.calculate_coverage
-validate_hub_contract_dict = _normalization_py_module.validate_hub_contract_dict
-promote_context_fields = _normalization_py_module.promote_context_fields
-SourcePathTracker = _normalization_py_module.SourcePathTracker
-track_field_mapping = _normalization_py_module.track_field_mapping
-get_default_version = _normalization_py_module.get_default_version
-_map_quality_rules = _normalization_py_module._map_quality_rules
-_map_quality_contract_level = _normalization_py_module._map_quality_contract_level
-_map_service_levels = _normalization_py_module._map_service_levels
-_map_contacts = _normalization_py_module._map_contacts
-_map_support_channels = _normalization_py_module._map_support_channels
-_map_servers = _normalization_py_module._map_servers
-_map_terms = _normalization_py_module._map_terms
-_map_definitions = _normalization_py_module._map_definitions
-_build_model_from_schema = _normalization_py_module._build_model_from_schema
-_derive_schema_from_model = _normalization_py_module._derive_schema_from_model
-validate_and_enrich_contacts = _normalization_py_module.validate_and_enrich_contacts
-validate_and_enrich_servicelevels = _normalization_py_module.validate_and_enrich_servicelevels
-validate_and_enrich_roles = _normalization_py_module.validate_and_enrich_roles
-validate_and_enrich_team = _normalization_py_module.validate_and_enrich_team
-validate_and_enrich_pricing = _normalization_py_module.validate_and_enrich_pricing
-validate_and_enrich_lineage = _normalization_py_module.validate_and_enrich_lineage
+from hub.apps.contracts.normalization_engine import (
+    NormalizationResult,
+    SpecNormalizer,
+    _determine_normalization_status,
+    _map_quality_rules,
+    _map_quality_contract_level,
+    _map_service_levels,
+    _map_contacts,
+    _map_support_channels,
+    _map_servers,
+    _map_terms,
+    _map_definitions,
+    _build_model_from_schema,
+    _derive_schema_from_model,
+    validate_and_enrich_contacts,
+    validate_and_enrich_servicelevels,
+    validate_and_enrich_roles,
+    validate_and_enrich_team,
+    validate_and_enrich_pricing,
+    validate_and_enrich_lineage,
+)
+from hub.apps.contracts.source_paths import SourcePathTracker, track_field_mapping
+from hub.apps.contracts.context_fields import promote_context_fields
+from hub.apps.contracts.coverage import calculate_coverage
+from hub.apps.contracts.typed_models import validate_hub_contract_dict
+from hub.apps.contracts.versioning import get_default_version
 
 logger = structlog.get_logger(__name__)
 
@@ -298,13 +279,16 @@ class ODCSNormalizerBase(ABC):
         """
         # Try to extract from apiVersion field
         api_version = contract_data.get('apiVersion', '')
-        if isinstance(api_version, str) and '/v' in api_version:
-            # Extract version from "odcs.io/v3.0.2" format
-            try:
-                version_part = api_version.split('/v')[-1]
-                return version_part
-            except Exception:
-                pass
+        if isinstance(api_version, str):
+            if '/v' in api_version:
+                # "odcs.io/v3.0.2" format
+                try:
+                    return api_version.split('/v')[-1]
+                except Exception:
+                    pass
+            elif api_version.startswith('v') and '.' in api_version:
+                # "v3.1.0" short format (ODCS v3.1.0+)
+                return api_version[1:]
 
         # Try version field
         version = contract_data.get('version')
@@ -486,7 +470,7 @@ class ODCSNormalizerBase(ABC):
             if validation_errors:
                 errors.extend(validation_errors)
             elif validated_contract:
-                hub_contract = validated_contract.model_dump(exclude_none=True)
+                hub_contract = validated_contract.model_dump(exclude_none=True, by_alias=True)
 
             # Determine status based on completeness
             status = _determine_normalization_status(hub_contract, errors, warnings)
@@ -793,6 +777,46 @@ class ODCSNormalizerBase(ABC):
         if definitions:
             hub_contract['definitions'] = definitions
 
+    @staticmethod
+    def _parse_team_v31(team_obj: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Parse a v3.1.0-style team *object* into a flat member list.
+
+        ODCS v3.1.0 changed ``team`` from an array to::
+
+            {"members": [{name, email, role, id, description}]}
+
+        This helper is on the base class so that *all* normalizers can
+        gracefully handle a v3.1.0 team object appearing in any document
+        (e.g. when a v3.0.x contract is copied from a v3.1.0 template).
+        """
+        members_raw = team_obj.get("members")
+        if not isinstance(members_raw, list):
+            return []
+
+        parsed: List[Dict[str, Any]] = []
+        for entry in members_raw:
+            if not isinstance(entry, dict):
+                continue
+            member: Dict[str, Any] = {}
+            if "name" in entry:
+                member["member"] = entry["name"]
+                member["name"] = entry["name"]
+            if "email" in entry:
+                member["email"] = entry["email"]
+            if "role" in entry:
+                member["role"] = entry["role"]
+            if "id" in entry:
+                member["id"] = entry["id"]
+            if "description" in entry:
+                member["description"] = entry["description"]
+            for k, v in entry.items():
+                if k not in member:
+                    member[k] = v
+            if member:
+                parsed.append(member)
+        return parsed
+
     def _normalize_roles_team_pricing(
         self,
         odcs_contract: Dict[str, Any],
@@ -801,19 +825,62 @@ class ODCSNormalizerBase(ABC):
     ) -> None:
         """Normalize ODCS roles, team, and pricing to HubContract format."""
         if isinstance(odcs_contract.get('roles'), list):
-            enriched_roles, role_errors = validate_and_enrich_roles(odcs_contract.get('roles'))
+            enriched_roles, role_errors = validate_and_enrich_roles(
+                odcs_contract.get('roles')
+            )
             if role_errors:
-                warnings.extend([f"Role validation: {e}" for e in role_errors])
+                warnings.extend(
+                    [f"Role validation: {e}" for e in role_errors]
+                )
             hub_contract['roles'] = enriched_roles
-        if isinstance(odcs_contract.get('team'), list):
-            enriched_team, team_errors = validate_and_enrich_team(odcs_contract.get('team'))
+
+        team_raw = odcs_contract.get('team')
+        if isinstance(team_raw, list):
+            # v3.0.x array shape
+            enriched_team, team_errors = validate_and_enrich_team(team_raw)
             if team_errors:
-                warnings.extend([f"Team validation: {e}" for e in team_errors])
+                warnings.extend(
+                    [f"Team validation: {e}" for e in team_errors]
+                )
             hub_contract['team'] = enriched_team
+        elif isinstance(team_raw, dict) and "members" in team_raw:
+            # v3.1.0 object shape — gracefully handled by all
+            # normalizers so mixed documents don't break
+            parsed = self._parse_team_v31(team_raw)
+            if parsed:
+                enriched_team, team_errors = validate_and_enrich_team(
+                    parsed
+                )
+                if team_errors:
+                    warnings.extend(
+                        [f"Team validation: {e}" for e in team_errors]
+                    )
+                hub_contract['team'] = enriched_team
+                # Also populate info.owners from team members
+                owners = []
+                for m in parsed:
+                    owner: Dict[str, Any] = {}
+                    if "name" in m:
+                        owner["name"] = m["name"]
+                    if "email" in m:
+                        owner["email"] = m["email"]
+                    if owner:
+                        owners.append(owner)
+                if owners:
+                    hub_contract.setdefault("info", {})["owners"] = owners
+            else:
+                warnings.append(
+                    "team object has 'members' key but no valid entries"
+                )
+
         if isinstance(odcs_contract.get('price'), dict):
-            enriched_pricing, pricing_errors = validate_and_enrich_pricing(odcs_contract.get('price'))
+            enriched_pricing, pricing_errors = validate_and_enrich_pricing(
+                odcs_contract.get('price')
+            )
             if pricing_errors:
-                warnings.extend([f"Pricing validation: {e}" for e in pricing_errors])
+                warnings.extend(
+                    [f"Pricing validation: {e}" for e in pricing_errors]
+                )
             hub_contract['pricing'] = enriched_pricing
 
     def _normalize_lineage(

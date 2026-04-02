@@ -80,12 +80,13 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
         """Set up test fixtures."""
         super().setUp()
 
-        # Update tenant name/email for lineage tests
-        self.tenant.name = "Lineage Test Tenant"
-        self.tenant.slug = "lineage-test"
+        # Update tenant name/email for lineage tests (unique per run for --reuse-db)
+        uid = uuid.uuid4().hex[:8]
+        self.tenant.name = f"Lineage Test Tenant {uid}"
+        self.tenant.slug = f"lineage-test-{uid}"
         self.tenant.save()
 
-        self.user.email = "lineage@test.com"
+        self.user.email = f"lineage-{uid}@test.com"
         self.user.save()
 
         # Create real contract for resolution tests
@@ -285,9 +286,10 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
     def test_resolve_contract_cross_tenant_isolation(self):
         """Test that contract resolution respects tenant isolation."""
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant-ref",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-ref-{_uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )

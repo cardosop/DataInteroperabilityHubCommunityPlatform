@@ -15,6 +15,7 @@ from hub.apps.core.services.base import ValidationError
 from hub.apps.datasets.models import Dataset
 from hub.apps.scheduled_ingestion.models import ScheduledIngestion
 from hub.apps.tenants.models import PlanTier, Tenant, TenantPlan
+import uuid
 
 User = get_user_model()
 
@@ -29,8 +30,8 @@ class PlanLimitEnforcementIntegrationTest(TestCase):
         """Set up test data"""
         # Create plan with low limits
         self.limited_plan = TenantPlan.objects.create(
-            name="Limited Plan",
-            slug="limited",
+            name=f"Limited Plan {uuid.uuid4().hex[:8]}",
+            slug=f"limited-{uuid.uuid4().hex[:8]}",
             tier=PlanTier.FREE,
             limits_json={
                 "max_assets": 2,
@@ -40,13 +41,14 @@ class PlanLimitEnforcementIntegrationTest(TestCase):
         )
 
         # Create tenant with limited plan
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", plan=self.limited_plan
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", plan=self.limited_plan
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User",
@@ -99,37 +101,21 @@ class PlanLimitEnforcementIntegrationTest(TestCase):
     def test_dataset_creation_enforces_limit(self):
         """Test dataset creation enforces plan limit"""
         # Create datasets up to limit
-        from hub.apps.files.models import File
+        from hub.apps.files.models import File, FileStatus
 
-        # Create files first
-        file1 = File.objects.create(
+        # Create files first (must be ACTIVE for dataset creation)
+        file_defaults = dict(
             tenant=self.tenant,
-            name="file1.csv",
-            storage_path="file1.csv",
             content_type="text/csv",
             size=1000,
+            status=FileStatus.ACTIVE,
+            created_by=self.user,
+            content_sha256="abc123",
         )
-        file2 = File.objects.create(
-            tenant=self.tenant,
-            name="file2.csv",
-            storage_path="file2.csv",
-            content_type="text/csv",
-            size=1000,
-        )
-        file3 = File.objects.create(
-            tenant=self.tenant,
-            name="file3.csv",
-            storage_path="file3.csv",
-            content_type="text/csv",
-            size=1000,
-        )
-        file4 = File.objects.create(
-            tenant=self.tenant,
-            name="file4.csv",
-            storage_path="file4.csv",
-            content_type="text/csv",
-            size=1000,
-        )
+        file1 = File.objects.create(name="file1.csv", storage_path="file1.csv", **file_defaults)
+        file2 = File.objects.create(name="file2.csv", storage_path="file2.csv", **file_defaults)
+        file3 = File.objects.create(name="file3.csv", storage_path="file3.csv", **file_defaults)
+        file4 = File.objects.create(name="file4.csv", storage_path="file4.csv", **file_defaults)
 
         # Create datasets up to limit
         from hub.apps.datasets.services import DatasetService
@@ -200,9 +186,11 @@ class PlanLimitEnforcementIntegrationTest(TestCase):
     def test_unlimited_plan_allows_unlimited_resources(self):
         """Test unlimited plan (ENTERPRISE) allows unlimited resources"""
         # Create enterprise plan with unlimited limits
+        import uuid as _uuid
+        _uid = _uuid.uuid4().hex[:8]
         enterprise_plan = TenantPlan.objects.create(
-            name="Enterprise Plan",
-            slug="enterprise",
+            name=f"Enterprise Plan {_uid}",
+            slug=f"enterprise-{_uid}",
             tier=PlanTier.ENTERPRISE,
             limits_json={
                 "max_assets": None,

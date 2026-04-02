@@ -4,6 +4,7 @@ Unit tests for DataMeshService.
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
 
+import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -40,11 +41,12 @@ class DataMeshServiceInitializationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_service_initialization_with_tenant_and_user(self):
@@ -80,11 +82,12 @@ class DataMeshServiceEventPublishingTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         _ensure_tenant_admin(self.user, self.tenant)
         self.service = DataMeshService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -213,11 +216,12 @@ class DataMeshServiceEventPublishingTest(TestCase):
     def test_event_publisher_allows_override_tenant_and_user(self):
         """Test that event publisher allows overriding tenant_id and user_id per event"""
         # Create another tenant and user
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
         )
 
         service = DataMeshService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -275,11 +279,12 @@ class DataMeshServiceDomainOperationsTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         _ensure_tenant_admin(self.user, self.tenant)
         _ensure_abac_allow_domain_creation(self.tenant, self.user)
@@ -574,7 +579,7 @@ class DataMeshServiceDomainOperationsTest(TestCase):
 
         # Create another user for owner update
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=self.tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
 
         updated_domain = self.service.update_domain(
@@ -704,11 +709,12 @@ class DataMeshServicePolicyOperationsTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         _ensure_tenant_admin(self.user, self.tenant)
         self.service = DataMeshService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -801,8 +807,9 @@ class DataMeshServicePolicyOperationsTest(TestCase):
         from hub.apps.tenants.models import Tenant
 
         # Create another tenant and policy
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_policy = AccessPolicy.objects.create(
             tenant=other_tenant,
@@ -934,11 +941,12 @@ class DataMeshServicePolicyAuditLoggingTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         _ensure_tenant_admin(self.user, self.tenant)
         self.service = DataMeshService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -1153,10 +1161,10 @@ class DataMeshServiceWorkflowIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant Workflow", slug="test-tenant-workflow", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test-workflow@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-workflow-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
         _ensure_tenant_admin(self.user, self.tenant)
         _ensure_abac_allow_domain_creation(self.tenant, self.user)

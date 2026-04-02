@@ -178,21 +178,23 @@ class OpenTelemetryConfigTest(TestCase):
 
     def test_create_resource(self):
         """Test resource creation with real OpenTelemetry."""
-        from hub.apps.observability.otel_config import create_resource
+        from hub.apps.observability.otel_config import OPENTELEMETRY_AVAILABLE, create_resource
 
         with override_settings(DEBUG=True, APP_VERSION="1.0.0"):
             resource = create_resource()
 
-        # Resource may be None if OpenTelemetry not available, which is OK
-        if resource is not None:
-            # Verify resource has expected attributes
-            attributes = resource.attributes
-            self.assertIn("service.name", attributes)
-            self.assertIn("service.version", attributes)
-            self.assertIn("deployment.environment", attributes)
-            self.assertEqual(attributes["service.name"], "data-interoperability-hub-api")
-            self.assertEqual(attributes["service.version"], "1.0.0")
-            self.assertEqual(attributes["deployment.environment"], "development")
+        if not OPENTELEMETRY_AVAILABLE:
+            self.assertIsNone(resource)
+            return
+
+        self.assertIsNotNone(resource, "create_resource() returned None but OpenTelemetry IS available")
+        attributes = resource.attributes
+        self.assertIn("service.name", attributes)
+        self.assertIn("service.version", attributes)
+        self.assertIn("deployment.environment", attributes)
+        self.assertEqual(attributes["service.name"], "data-interoperability-hub-api")
+        self.assertEqual(attributes["service.version"], "1.0.0")
+        self.assertEqual(attributes["deployment.environment"], "development")
 
     def test_create_resource_not_available(self):
         """Test resource creation when OpenTelemetry not available."""
@@ -224,10 +226,9 @@ class OpenTelemetryConfigTest(TestCase):
         try:
             exporter = create_otlp_exporter()
 
-            # May be None if OTLP exporter package not installed, which is OK
-            # The function should handle ImportError gracefully
-            # We just verify it doesn't crash and returns appropriate value
-            self.assertIsInstance(exporter, (type(None), object))
+            if exporter is not None:
+                self.assertTrue(hasattr(exporter, 'export'),
+                    f"Expected a SpanExporter, got {type(exporter).__name__}")
         finally:
             # Restore original environment
             for key, original_value in original_env.items():
@@ -250,10 +251,9 @@ class OpenTelemetryConfigTest(TestCase):
         try:
             exporter = create_jaeger_exporter()
 
-            # May be None if Jaeger exporter package not installed, which is OK
-            # The function should handle ImportError gracefully
-            # We just verify it doesn't crash and returns appropriate value
-            self.assertIsInstance(exporter, (type(None), object))
+            if exporter is not None:
+                self.assertTrue(hasattr(exporter, 'export'),
+                    f"Expected a SpanExporter, got {type(exporter).__name__}")
         finally:
             # Restore original environment
             for key, original_value in original_env.items():
@@ -274,9 +274,9 @@ class OpenTelemetryConfigTest(TestCase):
         try:
             tracer = setup_opentelemetry_tracing()
 
-            # May be None if OpenTelemetry not available or exporter creation fails, which is OK
-            # We verify the function executes without crashing
-            self.assertIsInstance(tracer, (type(None), object))
+            if tracer is not None:
+                self.assertTrue(hasattr(tracer, 'start_span'),
+                    f"Expected a Tracer, got {type(tracer).__name__}")
         finally:
             # Restore original environment
             if original_exporter is None:
@@ -294,12 +294,26 @@ class OpenTelemetryConfigTest(TestCase):
 
         tracer = setup_opentelemetry_tracing()
 
-        # If OpenTelemetry not available, should return None
-        if not OPENTELEMETRY_AVAILABLE:
-            self.assertIsNone(tracer)
-        else:
-            # If available, may return tracer or None (if exporter fails)
-            self.assertIsInstance(tracer, (type(None), object))
+        try:
+            if not OPENTELEMETRY_AVAILABLE:
+                self.assertIsNone(tracer)
+            else:
+                if tracer is not None:
+                    self.assertTrue(hasattr(tracer, 'start_span'),
+                        f"Expected a Tracer, got {type(tracer).__name__}")
+        finally:
+            # Shut down the TracerProvider to stop the background
+            # BatchSpanProcessor thread from trying to flush spans
+            # to the non-existent otel-collector in the test environment.
+            try:
+                from opentelemetry import trace
+                from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
+
+                provider = trace.get_tracer_provider()
+                if isinstance(provider, SDKTracerProvider):
+                    provider.shutdown()
+            except Exception:
+                pass
 
     @override_settings(OPENTELEMETRY_ENABLED=False)
     def test_setup_opentelemetry_tracing_disabled(self):
@@ -316,12 +330,12 @@ class OpenTelemetryConfigTest(TestCase):
 
         tracer = get_tracer("test_tracer")
 
-        # May be None if OpenTelemetry not available or disabled
         if not OPENTELEMETRY_AVAILABLE:
             self.assertIsNone(tracer)
         else:
-            # If available, should return tracer or None
-            self.assertIsInstance(tracer, (type(None), object))
+            if tracer is not None:
+                self.assertTrue(hasattr(tracer, 'start_span'),
+                    f"Expected a Tracer, got {type(tracer).__name__}")
 
     @override_settings(OPENTELEMETRY_ENABLED=False)
     def test_get_tracer_disabled(self):
@@ -338,31 +352,18 @@ class OpenTelemetryConfigTest(TestCase):
 
         span = get_current_span()
 
-        # May be None if OpenTelemetry not available or no active span
         if not OPENTELEMETRY_AVAILABLE:
             self.assertIsNone(span)
         else:
-            # If available, should return span or None (if no active span)
-            self.assertIsInstance(span, (type(None), object))
+            if span is not None:
+                self.assertTrue(hasattr(span, 'set_attribute'),
+                    f"Expected a Span, got {type(span).__name__}")
 
     @override_settings(OPENTELEMETRY_ENABLED=True)
     def test_add_span_attributes(self):
         """Test adding attributes to current span with real implementation."""
-        from hub.apps.observability.otel_config import OPENTELEMETRY_AVAILABLE, add_span_attributes
+        from hub.apps.observability.otel_config import add_span_attributes
 
         attributes = {"key1": "value1", "key2": 123}
 
-        # Should not raise exception even if no active span
-        # Function handles None span gracefully
-        try:
-            add_span_attributes(attributes)
-            # If successful, attributes were added (if span exists)
-            self.assertTrue(True)
-        except Exception as e:
-            # Should not raise exception - function handles None gracefully
-            if not OPENTELEMETRY_AVAILABLE:
-                # OK if OpenTelemetry not available
-                pass
-            else:
-                # Should not raise exception even if no active span
-                self.fail(f"add_span_attributes should handle None span gracefully: {e}")
+        add_span_attributes(attributes)

@@ -9,6 +9,7 @@ Tests graceful degradation and ensures no regression in existing flows.
 Uses real services (no mocks/stubs).
 """
 
+import unittest
 import json
 import os
 import sys
@@ -361,18 +362,27 @@ class TestODCSBackwardCompatibility(TestCase):
                     f"No errors expected for version {version}. Errors: {errors}",
                 )
 
-                # Verify core fields are present
+                # Verify core fields are present — handle both dict and object APIs
+                hc_id = hub_contract.get("id") if isinstance(hub_contract, dict) else getattr(hub_contract, "id", None)
                 self.assertEqual(
-                    hub_contract.id,
+                    hc_id,
                     contract["id"],
                     f"HubContract should have correct 'id' for version {version}",
                 )
+                schema_def = (
+                    hub_contract.get("schema") if isinstance(hub_contract, dict)
+                    else getattr(hub_contract, "schema_definition", None) or getattr(hub_contract, "schema", None)
+                )
                 self.assertIsNotNone(
-                    hub_contract.schema,
+                    schema_def,
                     f"HubContract should have 'schema' for version {version}",
                 )
+                fields = (
+                    schema_def.get("fields", []) if isinstance(schema_def, dict)
+                    else getattr(schema_def, "fields", [])
+                )
                 self.assertGreater(
-                    len(hub_contract.schema.fields),
+                    len(fields),
                     0,
                     f"HubContract should have schema fields for version {version}",
                 )
@@ -520,7 +530,7 @@ class TestNoRegressionExistingFlows(TestCase):
     def test_existing_odcs_3_0_2_flow(self):
         """Test that existing ODCS 3.0.2 flow still works."""
         if not ODCS_NORMALIZATION_AVAILABLE:
-            pytest.skip("ODCS normalization not available")
+            raise unittest.SkipTest("ODCS normalization not available")
 
         # Standard ODCS 3.0.2 contract
         contract = {

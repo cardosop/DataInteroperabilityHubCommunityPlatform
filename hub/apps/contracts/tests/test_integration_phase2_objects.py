@@ -5,9 +5,11 @@ import json
 
 import pytest
 from django.test import TestCase
+from rest_framework.test import APIClient
 
 from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization import normalize_contract
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from tests.factories import AssetFactory, TenantFactory, UserFactory
 
 
@@ -142,8 +144,10 @@ class TestPhase2ObjectsIntegration(TestCase):
             ],
         }
 
-        self.client.force_authenticate(user=self.user)
-        response = self.client.post(
+        ensure_tenant_has_active_subscription(self.tenant)
+        api_client = APIClient()
+        api_client.force_authenticate(user=self.user)
+        response = api_client.post(
             "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(odcs_contract),

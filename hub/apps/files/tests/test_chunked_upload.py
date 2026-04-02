@@ -5,9 +5,9 @@ Tests use real S3StorageClient with graceful handling when storage unavailable.
 """
 
 import hashlib
+import uuid
 
 import pytest
-from django.test import TestCase
 from rest_framework import status
 
 from hub.apps.files.models import File, FileStatus
@@ -133,51 +133,64 @@ class ChunkedUploadTest(FilesAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_complete_multipart_upload_with_parts(self):
-        """Test completing multipart upload with parts"""
+        """Test completing multipart upload with real S3 parts."""
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
 
-        # Create file with multipart upload
+        # Build a small file from real parts so ETags are valid
+        part_data = b"x" * (5 * 1024 * 1024)  # 5 MiB minimum part size
+        full_content = part_data  # single part for simplicity
+
+        storage_key = f"{self.tenant.id}/{uuid.uuid4()}/large.csv"
+
         file_obj = File.objects.create(
             tenant=self.tenant,
             name="large.csv",
             content_type="text/csv",
-            size=150 * 1024 * 1024,
-            storage_path=f"{self.tenant.id}/large.csv",
+            size=len(full_content),
+            storage_path=storage_key,
             status=FileStatus.UPLOADING,
             created_by=self.user,
             metadata_json={
-                "chunk_size": 10 * 1024 * 1024,
-                "chunk_count": 15,
+                "chunk_size": len(part_data),
+                "chunk_count": 1,
             },
         )
 
-        # Initiate real multipart upload
+        # Initiate real multipart upload in S3
         upload_id = self.storage_client.initiate_multipart_upload(
-            key=file_obj.storage_path, content_type="text/csv"
+            key=storage_key, content_type="text/csv"
         )
         file_obj.metadata_json["multipart_upload_id"] = upload_id
         file_obj.save(update_fields=["metadata_json"])
 
-        sha256_hash = hashlib.sha256(b"test").hexdigest()
+        # Upload a real part to get a valid ETag
+        s3 = self.storage_client.client
+        part_resp = s3.upload_part(
+            Bucket=self.storage_client.bucket_name,
+            Key=storage_key,
+            UploadId=upload_id,
+            PartNumber=1,
+            Body=part_data,
+        )
+        real_etag = part_resp["ETag"]
 
-        # For multipart completion, we'd need actual parts from uploaded chunks
-        # In test scenario, we'll use empty parts list which may fail
-        # In real scenario, parts would come from actual multipart upload
-        parts = [
-            {"ETag": "etag1", "PartNumber": 1},
-            {"ETag": "etag2", "PartNumber": 2},
-            {"ETag": "etag3", "PartNumber": 3},
-        ]
-
+        sha256_hash = hashlib.sha256(full_content).hexdigest()
+        parts = [{"ETag": real_etag, "PartNumber": 1}]
         data = {"content_sha256": sha256_hash, "parts": parts}
 
-        response = self.client.post(f"/api/v1/files/{file_obj.id}/complete/", data, format="json")
+        response = self.client.post(
+            f"/api/v1/files/{file_obj.id}/complete/", data, format="json"
+        )
 
-        # May fail if parts don't match actual upload, but test endpoint works
-        if response.status_code == status.HTTP_200_OK:
-            file_obj.refresh_from_db()
-            self.assertEqual(file_obj.status, FileStatus.ACTIVE)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            f"Expected 200 but got {response.status_code}: "
+            f"{getattr(response, 'data', '')}",
+        )
+        file_obj.refresh_from_db()
+        self.assertEqual(file_obj.status, FileStatus.ACTIVE)
 
         # Clean up multipart upload
         try:

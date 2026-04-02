@@ -30,6 +30,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus, Role, UserRole
 from hub.apps.baas.models import APITierModel
 from hub.apps.baas.services import UsageTrackingService
+import uuid
 
 User = get_user_model()
 
@@ -134,9 +135,10 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
         APIKeyManagementWorkflow.register_tasks(self.engine)
 
         # Create test tenant and user
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
 
         # Create TENANT_ADMIN role (required for API key creation)
@@ -147,7 +149,7 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
         )
 
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -410,9 +412,10 @@ class APIKeyManagementWorkflowCompensationTest(TestCase):
         APIKeyManagementWorkflow.register_workflow(self.registry)
         APIKeyManagementWorkflow.register_tasks(self.engine)
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
 
         # Create TENANT_ADMIN role (required for API key creation)
@@ -423,7 +426,7 @@ class APIKeyManagementWorkflowCompensationTest(TestCase):
         )
 
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -531,9 +534,10 @@ class APIKeyManagementWorkflowIntegrationTest(TestCase):
         APIKeyManagementWorkflow.register_workflow(self.registry)
         APIKeyManagementWorkflow.register_tasks(self.engine)
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
 
         # Create TENANT_ADMIN role (required for API key creation)
@@ -544,7 +548,7 @@ class APIKeyManagementWorkflowIntegrationTest(TestCase):
         )
 
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -646,9 +650,10 @@ class APIKeyManagementWorkflowE2ETest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
 
         # Create TENANT_ADMIN role (required for API key creation)
@@ -659,7 +664,7 @@ class APIKeyManagementWorkflowE2ETest(TestCase):
         )
 
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

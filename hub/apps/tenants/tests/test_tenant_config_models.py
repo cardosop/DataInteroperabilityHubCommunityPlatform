@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
 from hub.apps.tenants.models import Tenant, TenantConfig, TenantStatus, KYCStatus
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -17,9 +18,10 @@ class TenantConfigModelTest(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
     
     def test_create_tenant_config(self):
@@ -218,38 +220,76 @@ class TenantConfigModelTest(TestCase):
         self.assertIsNone(config.default_dq_profile)
         config.full_clean()  # Should not raise
     
-    # GAP-0.2.1.3: Rate limits structure validation tests
-    def test_rate_limits_invalid_category(self):
-        """Test rate_limits with invalid category (not in PLATFORM_MAX_RATE_LIMITS)"""
-        # This will be caught by serializer/validator, not model
-        # Model just stores JSON, validation happens at serializer/validator level
+    # GAP-0.2.1.3: Rate limits — model stores raw JSON, serializer validates
+    def test_rate_limits_model_stores_raw_json_without_validation(self):
+        """Model JSONField stores arbitrary rate_limits without validation.
+
+        Validation of categories, negative values, and zero values is
+        enforced at the serializer/validator layer, NOT the model layer.
+        This test documents that the model is a plain storage layer.
+        """
+        # Invalid category — model stores it
         config = TenantConfig.objects.create(
             tenant=self.tenant,
-            rate_limits={"invalid_category": {"burst_per_10s": 10}}
+            rate_limits={"invalid_category": {"burst_per_10s": 10}},
         )
-        # Model accepts it (JSON field), but serializer/validator will reject it
-        self.assertEqual(config.rate_limits["invalid_category"]["burst_per_10s"], 10)
-    
-    def test_rate_limits_negative_values(self):
-        """Test rate_limits with negative values (should be invalid per MinValueValidator)"""
-        # This will be caught by RateLimitsSerializer (min_value=1)
-        # Model just stores JSON, validation happens at serializer level
-        config = TenantConfig.objects.create(
-            tenant=self.tenant,
-            rate_limits={"dq_runs": {"burst_per_10s": -10}}
+        self.assertEqual(
+            config.rate_limits["invalid_category"]["burst_per_10s"], 10,
         )
-        # Model accepts it (JSON field), but serializer will reject it
-        self.assertEqual(config.rate_limits["dq_runs"]["burst_per_10s"], -10)
-    
-    def test_rate_limits_zero_values(self):
-        """Test rate_limits with zero values (should be invalid per MinValueValidator)"""
-        # This will be caught by RateLimitsSerializer (min_value=1)
-        config = TenantConfig.objects.create(
-            tenant=self.tenant,
-            rate_limits={"dq_runs": {"burst_per_10s": 0}}
+
+        # Negative value — model stores it
+        config.rate_limits = {"dq_runs": {"burst_per_10s": -10}}
+        config.save()
+        config.refresh_from_db()
+        self.assertEqual(
+            config.rate_limits["dq_runs"]["burst_per_10s"], -10,
         )
-        # Model accepts it (JSON field), but serializer will reject it
-        self.assertEqual(config.rate_limits["dq_runs"]["burst_per_10s"], 0)
+
+        # Zero value — model stores it
+        config.rate_limits = {"dq_runs": {"burst_per_10s": 0}}
+        config.save()
+        config.refresh_from_db()
+        self.assertEqual(
+            config.rate_limits["dq_runs"]["burst_per_10s"], 0,
+        )
+
+    def test_rate_limits_invalid_values_rejected_by_serializer(self):
+        """Serializer rejects invalid rate limit values that model allows.
+
+        This verifies the validation layer catches what the model does
+        not: invalid categories, negative values, zero values.
+        """
+        from hub.apps.tenants.serializers import TenantConfigUpdateSerializer
+
+        # Invalid category
+        serializer = TenantConfigUpdateSerializer(
+            data={"rate_limits": {"bogus": {"burst_per_10s": 10}}},
+            partial=True,
+        )
+        self.assertFalse(
+            serializer.is_valid(),
+            "Serializer should reject invalid rate limit category",
+        )
+
+        # Negative value
+        serializer = TenantConfigUpdateSerializer(
+            data={"rate_limits": {"dq_runs": {"burst_per_10s": -1}}},
+            partial=True,
+        )
+        self.assertFalse(
+            serializer.is_valid(),
+            "Serializer should reject negative rate limit values",
+        )
+
+        # Zero value
+        serializer = TenantConfigUpdateSerializer(
+            data={"rate_limits": {"dq_runs": {"burst_per_10s": 0}}},
+            partial=True,
+        )
+        self.assertFalse(
+            serializer.is_valid(),
+            "Serializer should reject zero rate limit values",
+        )
     
     def test_rate_limits_partial_updates(self):
         """Test rate_limits with partial updates (only burst_per_10s, only sustained_per_min, only daily_cap)"""
@@ -261,7 +301,7 @@ class TenantConfigModelTest(TestCase):
         self.assertEqual(config1.rate_limits["dq_runs"]["burst_per_10s"], 20)
         
         # Test only sustained_per_min
-        tenant2 = Tenant.objects.create(name="Test Tenant 2", slug="test-tenant-2")
+        tenant2 = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         config2 = TenantConfig.objects.create(
             tenant=tenant2,
             rate_limits={"dq_runs": {"sustained_per_min": 60}}
@@ -269,7 +309,7 @@ class TenantConfigModelTest(TestCase):
         self.assertEqual(config2.rate_limits["dq_runs"]["sustained_per_min"], 60)
         
         # Test only daily_cap
-        tenant3 = Tenant.objects.create(name="Test Tenant 3", slug="test-tenant-3")
+        tenant3 = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         config3 = TenantConfig.objects.create(
             tenant=tenant3,
             rate_limits={"dq_runs": {"daily_cap": 10000}}
@@ -289,11 +329,13 @@ class TenantConfigModelTest(TestCase):
         self.assertFalse(TenantConfig.objects.filter(id=config_id).exists())
     
     def test_one_to_one_prevents_duplicate(self):
-        """Test OneToOne relationship prevents duplicate configs (already exists)"""
+        """Test OneToOne relationship prevents duplicate configs.
+
+        TenantConfig.save() calls full_clean() which catches the duplicate
+        at the Django level (ValidationError) before hitting the DB constraint.
+        """
         TenantConfig.objects.create(tenant=self.tenant)
-        
-        # Try to create another config for the same tenant (should fail)
-        # Django's OneToOne validation raises ValidationError in full_clean(), not IntegrityError
+
         with self.assertRaises(ValidationError):
             TenantConfig.objects.create(tenant=self.tenant)
     

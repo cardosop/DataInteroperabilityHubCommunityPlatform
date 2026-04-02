@@ -4,6 +4,7 @@ Integration tests for DatabricksConnector with real Databricks API.
 Tests use real Databricks API endpoints - no mocks or stubs.
 Uses Bearer token authentication.
 """
+import unittest
 import os
 import pytest
 from django.test import TestCase
@@ -33,7 +34,7 @@ class TestDatabricksConnectorIntegration(TestCase):
         cls.cluster_id = os.getenv('DATABRICKS_CLUSTER_ID')  # Optional
 
         if not cls.host or not cls.token:
-            pytest.skip("DATABRICKS_HOST and DATABRICKS_TOKEN not set - skipping integration tests")
+            raise unittest.SkipTest("DATABRICKS_HOST and DATABRICKS_TOKEN not set - skipping integration tests")
 
         # Create connector
         assert cls.host is not None
@@ -92,7 +93,7 @@ class TestDatabricksConnectorIntegration(TestCase):
         except ConnectionError as e:
             error_str = str(e).lower()
             if 'authentication failed' in error_str or 'unauthorized' in error_str or 'invalid token' in error_str:
-                pytest.skip(f"Databricks authentication failed (token may be expired or invalid): {e}")
+                raise unittest.SkipTest(f"Databricks authentication failed (token may be expired or invalid): {e}")
             pytest.fail(f"Authentication failed: {e}")
         except Exception as e:
             pytest.fail(f"Authentication failed: {e}")
@@ -106,7 +107,7 @@ class TestDatabricksConnectorIntegration(TestCase):
         except ConnectionError as e:
             error_str = str(e).lower()
             if 'authentication failed' in error_str or 'unauthorized' in error_str or 'invalid token' in error_str:
-                pytest.skip(f"Databricks connection test failed (token may be expired or invalid): {e}")
+                raise unittest.SkipTest(f"Databricks connection test failed (token may be expired or invalid): {e}")
             pytest.fail(f"Connection test failed: {e}")
         except Exception as e:
             pytest.fail(f"Connection test failed: {e}")
@@ -128,13 +129,13 @@ class TestDatabricksConnectorIntegration(TestCase):
         except ConnectionError as e:
             error_str = str(e).lower()
             if 'authentication failed' in error_str or 'unauthorized' in error_str:
-                pytest.skip(f"Databricks authentication failed: {e}")
+                raise unittest.SkipTest(f"Databricks authentication failed: {e}")
             pytest.fail(f"Authentication failed: {e}")
 
     def test_authenticate_with_cluster_id(self):
         """Test authentication with cluster_id if provided."""
         if not self.cluster_id:
-            pytest.skip("DATABRICKS_CLUSTER_ID not set - skipping cluster_id test")
+            raise unittest.SkipTest("DATABRICKS_CLUSTER_ID not set - skipping cluster_id test")
 
         try:
             credentials = {
@@ -148,7 +149,7 @@ class TestDatabricksConnectorIntegration(TestCase):
         except ConnectionError as e:
             error_str = str(e).lower()
             if 'authentication failed' in error_str or 'unauthorized' in error_str:
-                pytest.skip(f"Databricks authentication failed: {e}")
+                raise unittest.SkipTest(f"Databricks authentication failed: {e}")
             pytest.fail(f"Authentication failed: {e}")
 
     def test_http_client_configuration(self):

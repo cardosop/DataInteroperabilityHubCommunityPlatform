@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from hub.apps.core.events.models import Event
 from hub.apps.core.events.service_publishers import FileEventPublisher
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.tests.test_base import FilesTestBase
 
 
@@ -44,6 +44,7 @@ class FileEventPublisherIntegrationTest(FilesTestBase):
                 size=1024,
                 storage_path=f"{self.tenant.id}/test_file.csv",
                 status=FileStatus.ACTIVE,
+                scan_status=FileScanStatus.CLEAN,
                 content_sha256="abc123def456",
             )
 

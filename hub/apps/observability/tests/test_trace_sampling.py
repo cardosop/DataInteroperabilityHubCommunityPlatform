@@ -111,9 +111,10 @@ class TraceSamplingTest(TestCase):
             'http.method': 'GET'
         }
 
-        # Test multiple times to verify ratio-based sampling
+        # Test with enough trials for statistical confidence.
+        # n=1000 with p=0.1 gives σ≈0.95%, so [0.05, 0.15] is ≈±5.3σ.
         sampled_count = 0
-        total_tests = 100
+        total_tests = 1000
 
         for i in range(total_tests):
             result = sampler.should_sample(
@@ -127,7 +128,6 @@ class TraceSamplingTest(TestCase):
                 sampled_count += 1
 
         # Should sample approximately 10% (with some variance)
-        # Allow 5-15% range to account for randomness
         sampling_rate = sampled_count / total_tests
         self.assertGreaterEqual(sampling_rate, 0.05)
         self.assertLessEqual(sampling_rate, 0.15)
@@ -144,9 +144,10 @@ class TraceSamplingTest(TestCase):
             'http.method': 'GET'
         }
 
-        # Test multiple times
+        # Test with enough trials for statistical confidence.
+        # n=1000 with p=0.5 gives σ≈1.58%, so [0.40, 0.60] is ≈±6.3σ.
         sampled_count = 0
-        total_tests = 100
+        total_tests = 1000
 
         for i in range(total_tests):
             result = sampler.should_sample(

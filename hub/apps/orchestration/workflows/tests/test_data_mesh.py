@@ -21,9 +21,10 @@ class DataMeshWorkflowUnitTest(TestCase):
     """Unit tests for data mesh workflow tasks"""
 
     def setUp(self):
-        self.tenant, _ = Tenant.objects.get_or_create(name="Test Tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant, _ = Tenant.objects.get_or_create(name=f"Test Tenant {uid}")
         self.user, _ = User.objects.get_or_create(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             defaults={"password": "testpass123", "tenant": self.tenant}
         )
         self.engine = WorkflowEngine()

@@ -296,7 +296,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
             details["schedule_status_valid"] = True
 
         # Validate source_config
-        if not schedule.source_config or not isinstance(schedule.source_config, dict):
+        if not schedule.get_source_config() or not isinstance(schedule.get_source_config(), dict):
             errors.append("Source config is required and must be a dictionary")
             details["source_config_valid"] = False
         else:
@@ -615,7 +615,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         matching_sources = []
         for other_schedule in conflicting_schedules:
             # Compare source_config (deep comparison)
-            if self._source_configs_match(schedule.source_config, other_schedule.source_config):
+            if self._source_configs_match(schedule.get_source_config(), other_schedule.get_source_config()):
                 matching_sources.append(other_schedule)
 
         if not matching_sources:
@@ -678,7 +678,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         }
 
         source_type = schedule.source_type
-        source_config = schedule.source_config
+        source_config = schedule.get_source_config()
 
         if not source_config or not isinstance(source_config, dict):
             errors.append("Source config is required and must be a dictionary")
@@ -1039,7 +1039,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
 
         # Check source accessibility
         source_accessibility_result = self._validate_source_accessibility(
-            schedule.source_type, schedule.source_config or {}
+            schedule.source_type, schedule.get_source_config() or {}
         )
         if not source_accessibility_result.is_valid:
             errors.extend(source_accessibility_result.errors)
@@ -1461,7 +1461,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         # Extract source_type and source_config from source
         if isinstance(source, ScheduledIngestion):
             source_type = source.source_type
-            source_config = source.source_config or {}
+            source_config = source.get_source_config() or {}
             schedule = source
         elif isinstance(source, dict):
             source_type = source.get("source_type")
@@ -1616,7 +1616,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
 
         if isinstance(source, ScheduledIngestion):
             source_type = source.source_type
-            source_config = source.source_config or {}
+            source_config = source.get_source_config() or {}
         elif isinstance(source, dict):
             source_type = source.get("source_type")
             source_config = source.get("source_config", source)

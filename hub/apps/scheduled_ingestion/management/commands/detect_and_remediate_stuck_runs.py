@@ -17,7 +17,6 @@ Usage:
 """
 
 import os
-import sys
 from datetime import timedelta
 from typing import Optional
 
@@ -25,6 +24,7 @@ import requests
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from hub.apps.scheduled_ingestion.dead_letter_queue import DeadLetterQueueManager
 from hub.apps.scheduled_ingestion.models import ScheduledIngestionRun, ScheduledIngestionRunStatus
 
 
@@ -119,6 +119,7 @@ class Command(BaseCommand):
                         self.stdout.write(
                             self.style.SUCCESS(f"    ✅ Updated hub run to {new_status}")
                         )
+                        self._sync_dlq(run)
                         remediated_count += 1
                     elif prefect_state_type == "RUNNING":
                         # Prefect flow is still running; check if it's actually stuck
@@ -141,6 +142,7 @@ class Command(BaseCommand):
                         self.stdout.write(
                             self.style.SUCCESS("    ✅ Marked hub run as FAILED (stuck)")
                         )
+                        self._sync_dlq(run)
                         remediated_count += 1
                     else:
                         # Prefect flow in other state (PENDING, SCHEDULED, etc.)
@@ -164,6 +166,7 @@ class Command(BaseCommand):
                                 f"    ✅ Marked hub run as FAILED (Prefect: {prefect_state_type})"
                             )
                         )
+                        self._sync_dlq(run)
                         remediated_count += 1
                 else:
                     # Prefect flow run not found or unreachable
@@ -186,6 +189,7 @@ class Command(BaseCommand):
                             "    ✅ Marked hub run as FAILED (Prefect flow run not found)"
                         )
                     )
+                    self._sync_dlq(run)
                     remediated_count += 1
 
             except Exception as e:
@@ -206,6 +210,25 @@ class Command(BaseCommand):
                     f"Remediation complete: {remediated_count} run(s) remediated, "
                     f"{error_count} error(s)"
                 )
+            )
+
+    def _sync_dlq(self, run: ScheduledIngestionRun) -> None:
+        """
+        Sync DLQ items from ingestion state after marking a run as FAILED.
+
+        OOM-killed flow pods never report completion, so stuck-run remediation
+        is the only opportunity to surface permanently-failed files into the DLQ.
+        Failures here are non-fatal — the run is already marked FAILED.
+        """
+        try:
+            synced = DeadLetterQueueManager.sync_from_ingestion_state(
+                str(run.scheduled_ingestion_id)
+            )
+            if synced:
+                self.stdout.write(f"    DLQ sync: {synced} item(s) synced")
+        except Exception as e:
+            self.stdout.write(
+                self.style.WARNING(f"    ⚠️  DLQ sync failed (non-fatal): {e}")
             )
 
     def _check_prefect_flow_run_status(self, prefect_flow_run_id: str) -> Optional[dict]:

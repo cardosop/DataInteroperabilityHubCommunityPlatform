@@ -4,12 +4,15 @@ Unit tests for Virtualization Service.
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
 
+import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
+from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.core.services.base import NotFoundError, PermissionError, ValidationError
-from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
 from hub.apps.virtualization.models import (
     QueryExecution,
     QueryExecutionMode,
@@ -23,17 +26,64 @@ from hub.apps.virtualization.services import VirtualizationService
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
+# Default sources for SQL queries (sources are required for non-SPARQL query types)
+_DEFAULT_SQL_SOURCES = [{"type": "postgresql", "host": "localhost", "database": "testdb"}]
+
+
+def _ensure_tenant_has_active_subscription(tenant):
+    """Ensure tenant has an active subscription so plan-limit checks pass."""
+    plan, _ = TenantPlan.objects.get_or_create(
+        slug="virtualization-test-plan",
+        defaults={
+            "name": "Virtualization Test Plan",
+            "tier": PlanTier.PRO,
+            "limits_json": {
+                "max_assets": 100,
+                "max_storage_gb": 1000,
+                "max_virtual_datasets": 100,
+            },
+            "is_active": True,
+        },
+    )
+    if "max_virtual_datasets" not in (plan.limits_json or {}):
+        plan.limits_json = {
+            **(plan.limits_json or {}),
+            "max_storage_gb": 1000,
+            "max_virtual_datasets": 100,
+        }
+        plan.save(update_fields=["limits_json"])
+    if tenant.plan_id != plan.id:
+        tenant.plan = plan
+        tenant.save(update_fields=["plan"])
+    sub = (
+        Subscription.objects.filter(tenant_id=tenant.id)
+        .order_by("-created_at")
+        .first()
+    )
+    if not sub or sub.status not in (
+        SubscriptionStatus.ACTIVE,
+        SubscriptionStatus.TRIAL,
+    ):
+        Subscription.objects.create(
+            tenant=tenant,
+            plan=plan,
+            status=SubscriptionStatus.ACTIVE,
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now(),
+        )
+
 
 class VirtualizationServiceInitializationTest(TestCase):
     """Test VirtualizationService initialization"""
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_service_initialization_with_tenant_and_user(self):
@@ -69,11 +119,12 @@ class VirtualizationServiceEventPublishingTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.service = VirtualizationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -84,6 +135,7 @@ class VirtualizationServiceEventPublishingTest(TestCase):
             name="Test Virtual Dataset",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
     def test_publish_virtual_dataset_created_event(self):
@@ -182,6 +234,10 @@ class VirtualizationServiceEventPublishingTest(TestCase):
 
         event_id = service.publish_virtual_dataset_created(
             virtual_dataset_id=str(self.virtual_dataset.id),
+            name=self.virtual_dataset.name,
+            query_type=self.virtual_dataset.query_type,
+            status=self.virtual_dataset.status,
+            version=self.virtual_dataset.version or "1.0.0",
         )
 
         self.assertIsNotNone(event_id)
@@ -196,12 +252,14 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import Role, UserRole
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
+        _ensure_tenant_has_active_subscription(self.tenant)
 
         # Create DATA_PROVIDER role and assign to user
         provider_role, _ = Role.objects.get_or_create(
@@ -222,6 +280,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
             query="SELECT id, name FROM users WHERE status = 'active'",
             query_type=QueryType.SQL,
             description="Test SQL virtual dataset",
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         self.assertIsNotNone(dataset)
@@ -276,6 +335,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
             query="SELECT id, name, created_at FROM users",
             query_type=QueryType.SQL,
             schema=schema,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         self.assertIsNotNone(dataset)
@@ -291,6 +351,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
             version="2.1.3",
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         self.assertEqual(dataset.version, "2.1.3")
@@ -304,6 +365,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.ACTIVE,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         self.assertEqual(dataset.status, VirtualDatasetStatus.ACTIVE)
@@ -329,7 +391,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
         )
 
         self.assertIsNotNone(dataset)
-        self.assertEqual(dataset.sources, sources)
+        self.assertEqual(dataset.get_sources(), sources)
         self.assertEqual(dataset.get_source_count(), 1)
 
     def test_create_virtual_dataset_with_invalid_sql_query(self):
@@ -341,9 +403,10 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
                 name="Test Invalid SQL",
                 query="INVALID SQL QUERY",
                 query_type=QueryType.SQL,
+                sources=_DEFAULT_SQL_SOURCES,
             )
 
-        self.assertIn("SQL query should contain SQL keywords", str(cm.exception))
+        self.assertIn("SQL query must contain at least one of", str(cm.exception))
 
     def test_create_virtual_dataset_with_dangerous_sql_operation(self):
         """Test creating virtual dataset with dangerous SQL operation (INSERT, UPDATE, DELETE)"""
@@ -354,6 +417,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
                 name="Test Dangerous SQL",
                 query="INSERT INTO users (name) VALUES ('test')",
                 query_type=QueryType.SQL,
+                sources=_DEFAULT_SQL_SOURCES,
             )
 
         self.assertIn("dangerous operation", str(cm.exception).lower())
@@ -369,7 +433,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
                 query_type=QueryType.SPARQL,
             )
 
-        self.assertIn("SPARQL query should contain SPARQL keywords", str(cm.exception))
+        self.assertIn("SPARQL query must contain at least one of", str(cm.exception))
 
     def test_create_virtual_dataset_with_sparql_update_operation(self):
         """Test creating virtual dataset with SPARQL Update operation (not allowed)"""
@@ -382,7 +446,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
                 query_type=QueryType.SPARQL,
             )
 
-        self.assertIn("SPARQL Update operation", str(cm.exception))
+        self.assertIn("SPARQL query contains forbidden keyword", str(cm.exception))
 
     def test_create_virtual_dataset_with_invalid_schema(self):
         """Test creating virtual dataset with invalid schema"""
@@ -395,6 +459,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
                 query="SELECT * FROM source",
                 query_type=QueryType.SQL,
                 schema=invalid_schema,
+                sources=_DEFAULT_SQL_SOURCES,
             )
 
         self.assertIn("Schema must be a JSON object", str(cm.exception))
@@ -410,6 +475,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
                 query="SELECT * FROM source",
                 query_type=QueryType.SQL,
                 schema=invalid_schema,
+                sources=_DEFAULT_SQL_SOURCES,
             )
 
         self.assertIn("Schema 'fields' must be an array", str(cm.exception))
@@ -423,6 +489,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
                 name="Test Empty Query",
                 query="",
                 query_type=QueryType.SQL,
+                sources=_DEFAULT_SQL_SOURCES,
             )
 
         self.assertIn("Query cannot be empty", str(cm.exception))
@@ -437,6 +504,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
             query="SELECT * FROM source1",
             query_type=QueryType.SQL,
             version="1.0.0",
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         # Try to create duplicate
@@ -450,6 +518,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
                 query="SELECT * FROM source2",
                 query_type=QueryType.SQL,
                 version="1.0.0",
+                sources=_DEFAULT_SQL_SOURCES,
             )
 
         self.assertIn("already exists", str(cm.exception))
@@ -464,6 +533,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
             query="SELECT * FROM source1",
             query_type=QueryType.SQL,
             version="1.0.0",
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         # Create second dataset with same name but different version
@@ -474,6 +544,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
             query="SELECT * FROM source2",
             query_type=QueryType.SQL,
             version="2.0.0",
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         self.assertNotEqual(dataset1.id, dataset2.id)
@@ -552,6 +623,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
             name="Test Audit Log",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         # Check audit log was created
@@ -576,14 +648,30 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.users.models import Role, UserRole
+
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Integration Test Tenant",
-            slug="integration-test-tenant",
+            name=f"Integration Test Tenant {uid}",
+            slug=f"integration-test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="integration@example.com", password="testpass123", tenant=self.tenant
+            email=f"integration-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
+        _ensure_tenant_has_active_subscription(self.tenant)
+
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        UserRole.objects.get_or_create(
+            user=self.user, role=provider_role
+        )
+
         self.service = VirtualizationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
@@ -620,7 +708,7 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
         self.assertEqual(dataset.query, "SELECT id, name, value FROM test_table")
         self.assertEqual(dataset.query_type, QueryType.SQL)
         self.assertEqual(dataset.schema, schema)
-        self.assertEqual(dataset.sources, sources)
+        self.assertEqual(dataset.get_sources(), sources)
         self.assertEqual(dataset.version, "1.0.0")
         self.assertEqual(dataset.status, VirtualDatasetStatus.DRAFT)
 
@@ -636,10 +724,14 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
 
         audit_event = AuditEvent.objects.filter(
             resource_type="VIRTUAL_DATASET",
-            action="VIRTUAL_DATASET_CREATED",
+            action="CREATED",
             resource_id=str(dataset.id),
         ).first()
-        self.assertIsNotNone(audit_event)
+        self.assertIsNotNone(
+            audit_event,
+            f"No audit event found for dataset {dataset.id}. "
+            f"Existing: {list(AuditEvent.objects.filter(resource_id=str(dataset.id)).values_list('action', flat=True))}",
+        )
 
     def test_create_virtual_dataset_with_federated_query(self):
         """Test creating virtual dataset with federated query type"""
@@ -649,6 +741,7 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
             name="Federated Query Dataset",
             query="SELECT * FROM SERVICE <http://sparql.endpoint.org> { SELECT ?s ?p ?o WHERE { ?s ?p ?o } }",
             query_type=QueryType.FEDERATED,
+            sources=[{"type": "sparql", "endpoint": "http://sparql.endpoint.org"}],
         )
 
         self.assertIsNotNone(dataset)
@@ -670,6 +763,7 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
             name="WITH Clause Dataset",
             query=query.strip(),
             query_type=QueryType.SQL,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         self.assertIsNotNone(dataset)
@@ -687,6 +781,7 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
                 name="Should Not Exist",
                 query="INVALID QUERY",
                 query_type=QueryType.SQL,
+                sources=_DEFAULT_SQL_SOURCES,
             )
 
         # Verify no dataset was created
@@ -710,7 +805,7 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
         )
 
         self.assertIsNotNone(dataset)
-        self.assertEqual(len(dataset.sources), 2)
+        self.assertEqual(len(dataset.get_sources()), 2)
         self.assertEqual(dataset.get_source_count(), 2)
 
     def test_create_virtual_dataset_with_complex_schema(self):
@@ -738,6 +833,7 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
             query="SELECT id, metadata, scores FROM complex_table",
             query_type=QueryType.SQL,
             schema=schema,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         self.assertIsNotNone(dataset)
@@ -757,8 +853,9 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="Search Test Tenant", slug="search-test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="search@example.com", password="testpass123", tenant=self.tenant
+            email=f"search-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
+        _ensure_tenant_has_active_subscription(self.tenant)
 
         # Create DATA_PROVIDER role and assign to user
         provider_role, _ = Role.objects.get_or_create(
@@ -785,6 +882,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             schema={
                 "fields": [{"name": "id", "type": "integer"}, {"name": "name", "type": "string"}]
             },
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         # Verify search index was created
@@ -818,6 +916,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             query="SELECT id, name, email FROM users",
             query_type=QueryType.SQL,
             schema=schema,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         search_index = SearchIndex.objects.get(
@@ -840,6 +939,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="Owner Dataset",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         search_index = SearchIndex.objects.get(
@@ -861,6 +961,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
             description="Original description",
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         # Update dataset description
@@ -888,6 +989,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="Delete Test Dataset",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         # Verify search index exists
@@ -921,6 +1023,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
             description="This dataset should be findable via search",
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         # Search for it
@@ -957,6 +1060,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="Graceful Failure Test",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         # Dataset should be created successfully
@@ -974,6 +1078,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
             schema=None,  # No schema
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         search_index = SearchIndex.objects.get(
@@ -986,16 +1091,16 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
         self.assertEqual(search_index.schema_fields, [])
 
     def test_search_index_with_empty_sources(self):
-        """Test search indexing with empty sources list"""
+        """Test search indexing with empty sources list (SPARQL allows empty sources)"""
         from hub.apps.search.models import SearchIndex
 
         dataset = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             name="No Sources Dataset",
-            query="SELECT * FROM source",
-            query_type=QueryType.SQL,
-            sources=[],  # Empty sources
+            query="PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\nSELECT ?s ?p ?o WHERE { ?s ?p ?o }",
+            query_type=QueryType.SPARQL,
+            sources=[],  # Empty sources (allowed for SPARQL)
         )
 
         search_index = SearchIndex.objects.get(
@@ -1016,6 +1121,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="SQL Query Dataset",
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         sql_index = SearchIndex.objects.get(
@@ -1053,6 +1159,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
             description="Original description",
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         # Get initial search index
@@ -1087,6 +1194,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="To Be Deleted",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         # Verify search index exists
@@ -1139,6 +1247,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             query="SELECT id, metadata FROM complex_table",
             query_type=QueryType.SQL,
             schema=complex_schema,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         search_index = SearchIndex.objects.get(
@@ -1189,15 +1298,37 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.users.models import Role, UserRole
+
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
         )
+        _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
+        _ensure_tenant_has_active_subscription(self.tenant)
+        _ensure_tenant_has_active_subscription(self.other_tenant)
+
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        UserRole.objects.get_or_create(
+            user=self.user, role=provider_role
+        )
+
         self.service = VirtualizationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
@@ -1217,7 +1348,8 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
 
         # Create asset with compliant dataset
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", compliance_status="PASS"
+            tenant=self.tenant, key="test-asset", name="Test Asset",
+            source_type="FEDERATED", compliance_status="PASS",
         )
 
         # Create test CSV content (compliant - no PII)
@@ -1258,7 +1390,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
         )
 
         # Create source with asset_id
-        sources = [{"type": "asset", "asset_id": str(asset.id), "name": "test-source"}]
+        sources = [{"type": "federated_asset", "asset_id": str(asset.id), "name": "test-source"}]
 
         # Use real compliance service
         dataset = self.service.create_virtual_dataset(
@@ -1291,6 +1423,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             tenant=self.tenant,
             key="non-compliant-asset",
             name="Non-Compliant Asset",
+            source_type="FEDERATED",
             compliance_status="FAIL",
         )
 
@@ -1333,7 +1466,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             },
         )
 
-        sources = [{"type": "asset", "asset_id": str(asset.id), "name": "non-compliant-source"}]
+        sources = [{"type": "federated_asset", "asset_id": str(asset.id), "name": "non-compliant-source"}]
 
         # Use real compliance service - should block creation
         with self.assertRaises(ValidationError) as cm:
@@ -1359,11 +1492,12 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             tenant=self.other_tenant,
             key="other-asset",
             name="Other Asset",
+            source_type="FEDERATED",
             compliance_status="PASS",
         )
 
         sources = [
-            {"type": "asset", "asset_id": str(other_asset.id), "name": "cross-tenant-source"}
+            {"type": "federated_asset", "asset_id": str(other_asset.id), "name": "cross-tenant-source"}
         ]
 
         with self.assertRaises(ValidationError) as cm:
@@ -1376,7 +1510,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
                 sources=sources,
             )
 
-        self.assertIn("cross-tenant", str(cm.exception).lower())
+        self.assertIn("entitlement", str(cm.exception).lower())
 
     @pytest.mark.skipif(
         not compliance_service_available() or not storage_service_available(),
@@ -1397,6 +1531,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             tenant=self.other_tenant,
             key="other-asset",
             name="Other Asset",
+            source_type="FEDERATED",
             compliance_status="PASS",
             status=AssetStatus.ACTIVE,
         )
@@ -1451,7 +1586,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
         )
 
         sources = [
-            {"type": "asset", "asset_id": str(other_asset.id), "name": "cross-tenant-source"}
+            {"type": "federated_asset", "asset_id": str(other_asset.id), "name": "cross-tenant-source"}
         ]
 
         # Use real compliance service
@@ -1482,11 +1617,13 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
 
         # Create two assets
         asset1 = Asset.objects.create(
-            tenant=self.tenant, key="asset1", name="Asset 1", compliance_status="PASS"
+            tenant=self.tenant, key="asset1", name="Asset 1",
+            source_type="FEDERATED", compliance_status="PASS",
         )
 
         asset2 = Asset.objects.create(
-            tenant=self.tenant, key="asset2", name="Asset 2", compliance_status="PASS"
+            tenant=self.tenant, key="asset2", name="Asset 2",
+            source_type="FEDERATED", compliance_status="PASS",
         )
 
         # Create test CSV content for both assets
@@ -1552,8 +1689,8 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
         )
 
         sources = [
-            {"type": "asset", "asset_id": str(asset1.id), "name": "source1"},
-            {"type": "asset", "asset_id": str(asset2.id), "name": "source2"},
+            {"type": "federated_asset", "asset_id": str(asset1.id), "name": "source1"},
+            {"type": "federated_asset", "asset_id": str(asset2.id), "name": "source2"},
         ]
 
         # Use real compliance service - should validate both sources
@@ -1579,7 +1716,8 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
         from hub.apps.files.storage import S3StorageClient
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", compliance_status="PASS"
+            tenant=self.tenant, key="test-asset", name="Test Asset",
+            source_type="FEDERATED", compliance_status="PASS",
         )
 
         # Create test CSV content
@@ -1618,7 +1756,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             schema_json={"fields": [{"name": "id", "type": "integer"}]},
         )
 
-        sources = [{"type": "asset", "asset_id": str(asset.id), "name": "test-source"}]
+        sources = [{"type": "federated_asset", "asset_id": str(asset.id), "name": "test-source"}]
 
         # Create dataset with sources (real compliance service; may succeed or degrade)
         dataset = self.service.create_virtual_dataset(
@@ -1640,12 +1778,14 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
+        _ensure_tenant_has_active_subscription(self.tenant)
         self.service = VirtualizationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
@@ -1654,7 +1794,7 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
         """Test that user permissions are checked for virtual dataset creation"""
         # Create user without required role
         regular_user = User.objects.create_user(
-            email="regular@example.com", password="testpass123", tenant=self.tenant
+            email=f"regular-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
 
         service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(regular_user.id))
@@ -1669,6 +1809,7 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
                 name="Test Dataset",
                 query="SELECT * FROM source",
                 query_type=QueryType.SQL,
+                sources=_DEFAULT_SQL_SOURCES,
             )
 
         self.assertIn("required role", str(cm.exception).lower())
@@ -1692,6 +1833,7 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         self.assertIsNotNone(dataset)
@@ -1757,6 +1899,7 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
             name="Test Dataset ABAC",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         self.assertIsNotNone(dataset)
@@ -1799,6 +1942,7 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
                 name="Test Dataset Denied",
                 query="SELECT * FROM source",
                 query_type=QueryType.SQL,
+                sources=_DEFAULT_SQL_SOURCES,
             )
 
         self.assertIn("ABAC policy", str(cm.exception))
@@ -1840,6 +1984,7 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
             name="Test Dataset Limits",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         self.assertIsNotNone(dataset)
@@ -1856,8 +2001,9 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             name="Audit Test Tenant", slug="audit-test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="audit@example.com", password="testpass123", tenant=self.tenant
+            email=f"audit-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
+        _ensure_tenant_has_active_subscription(self.tenant)
 
         # Create DATA_PROVIDER role and assign to user
         provider_role, _ = Role.objects.get_or_create(
@@ -1874,8 +2020,8 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
         from hub.apps.audit.models import AuditEvent
 
         sources = [
-            {"type": "postgres", "connection": "postgresql://localhost:5432/db"},
-            {"type": "mysql", "connection": "mysql://localhost:3306/db"},
+            {"type": "postgresql", "host": "localhost", "database": "db", "port": 5432},
+            {"type": "mysql", "host": "localhost", "database": "db", "port": 3306},
         ]
 
         dataset = self.service.create_virtual_dataset(
@@ -1915,7 +2061,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
         """Test that audit event includes dataset_id, query_type, and sources"""
         from hub.apps.audit.models import AuditEvent
 
-        sources = [{"type": "postgres", "connection": "postgresql://localhost:5432/db"}]
+        sources = [{"type": "postgresql", "host": "localhost", "database": "db", "port": 5432}]
 
         dataset = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
@@ -1955,7 +2101,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             name="Update Test Dataset",
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
-            sources=[{"type": "postgres", "connection": "postgresql://localhost:5432/db"}],
+            sources=[{"type": "postgresql", "host": "localhost", "database": "db", "port": 5432}],
         )
 
         initial_audit_count = AuditEvent.objects.filter(
@@ -1996,7 +2142,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
         """Test that update audit event includes change tracking"""
         from hub.apps.audit.models import AuditEvent
 
-        sources = [{"type": "postgres", "connection": "postgresql://localhost:5432/db"}]
+        sources = [{"type": "postgresql", "host": "localhost", "database": "db", "port": 5432}]
 
         dataset = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
@@ -2046,7 +2192,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
         """Test that deleting virtual dataset creates audit event with action=DELETED"""
         from hub.apps.audit.models import AuditEvent
 
-        sources = [{"type": "postgres", "connection": "postgresql://localhost:5432/db"}]
+        sources = [{"type": "postgresql", "host": "localhost", "database": "db", "port": 5432}]
 
         # Create a dataset
         dataset = self.service.create_virtual_dataset(
@@ -2094,8 +2240,8 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
         from hub.apps.audit.models import AuditEvent
 
         sources = [
-            {"type": "postgres", "connection": "postgresql://localhost:5432/db"},
-            {"type": "mysql", "connection": "mysql://localhost:3306/db"},
+            {"type": "postgresql", "host": "localhost", "database": "db", "port": 5432},
+            {"type": "mysql", "host": "localhost", "database": "db", "port": 3306},
         ]
 
         dataset = self.service.create_virtual_dataset(
@@ -2103,7 +2249,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             user_id=str(self.user.id),
             name="Delete Fields Test",
             query="SELECT id, name FROM users",
-            query_type=QueryType.SPARQL,
+            query_type=QueryType.SQL,
             sources=sources,
         )
 
@@ -2127,7 +2273,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
 
         # Verify values
         self.assertEqual(details["dataset_id"], dataset_id)
-        self.assertEqual(details["query_type"], QueryType.SPARQL)
+        self.assertEqual(details["query_type"], QueryType.SQL)
         self.assertIsInstance(details["sources"], list)
         self.assertEqual(len(details["sources"]), 2)
 
@@ -2143,6 +2289,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             name="Graceful Failure Test",
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         # Dataset should be created successfully
@@ -2153,7 +2300,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
         """Integration test for complete audit logging workflow"""
         from hub.apps.audit.models import AuditEvent
 
-        sources = [{"type": "postgres", "connection": "postgresql://localhost:5432/db"}]
+        sources = [{"type": "postgresql", "host": "localhost", "database": "db", "port": 5432}]
 
         # Create
         dataset = self.service.create_virtual_dataset(
@@ -2213,12 +2360,14 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
         """Set up test fixtures"""
         from django.core.cache import cache
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
+        _ensure_tenant_has_active_subscription(self.tenant)
         self.service = VirtualizationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
@@ -2231,6 +2380,7 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
             query="SELECT * FROM test_table",
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.ACTIVE,
+            sources=_DEFAULT_SQL_SOURCES,
         )
 
         # Clear cache
@@ -2679,8 +2829,9 @@ class VirtualizationServiceODBCTest(TestCase):
             name="ODBC Test Tenant", slug="odbc-test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="odbc@example.com", password="testpass123", tenant=self.tenant
+            email=f"odbc-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
         )
+        _ensure_tenant_has_active_subscription(self.tenant)
         self.service = VirtualizationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )

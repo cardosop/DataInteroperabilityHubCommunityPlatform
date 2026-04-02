@@ -4,6 +4,7 @@ Unit tests for Search Indexing
 Tests for indexing contracts, assets, datasets, schemas, descriptions, and lineage.
 """
 
+import uuid
 import pytest
 from django.contrib.postgres.search import SearchVector
 from django.test import TestCase
@@ -40,12 +41,13 @@ class SearchIndexerTest(TestCase):
         except (ImportError, AttributeError):
             pass
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -231,7 +233,7 @@ class SearchIndexerTest(TestCase):
             file=self.file,
             schema_json=None,
             format="CSV",
-            version=1,
+            version=2,
             created_by=self.user,
         )
         search_index = SearchIndexer.index_dataset(dataset_no_schema)

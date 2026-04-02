@@ -8,6 +8,7 @@ Validates contract linking operations to ensure:
 """
 import structlog
 from typing import Dict, Any, Optional, Set, List
+from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from hub.apps.contracts.models import Contract, OriginalSpecType
@@ -21,13 +22,16 @@ class LinkingValidationError(ODPSLinkingError):
     pass
 
 
-def validate_contract_exists(contract_id: str, tenant_id: Optional[str] = None) -> Contract:
+def validate_contract_exists(
+    contract_id: str, tenant_id: Optional[str] = None
+) -> Contract:
     """
-    Validate that a contract exists and optionally belongs to a tenant.
+    Validate that a contract exists and belongs to the given tenant.
 
     Args:
         contract_id: Contract UUID
-        tenant_id: Optional tenant ID to verify ownership
+        tenant_id: Tenant ID to verify ownership (strongly recommended;
+                   raises LinkingValidationError if omitted)
 
     Returns:
         Contract instance
@@ -35,16 +39,23 @@ def validate_contract_exists(contract_id: str, tenant_id: Optional[str] = None) 
     Raises:
         LinkingValidationError: If contract doesn't exist or doesn't belong to tenant
     """
+    if not tenant_id:
+        raise LinkingValidationError(
+            message="tenant_id is required for contract validation",
+            error_code="TENANT_ID_REQUIRED",
+            context={"contract_id": contract_id},
+        )
+
     try:
         contract = Contract.objects.get(id=contract_id)
-    except Contract.DoesNotExist:
+    except (Contract.DoesNotExist, ValueError, ValidationError):
         raise LinkingValidationError(
             message=f"Contract not found: {contract_id}",
             error_code="CONTRACT_NOT_FOUND",
             context={"contract_id": contract_id}
         )
 
-    if tenant_id and str(contract.tenant_id) != str(tenant_id):
+    if str(contract.tenant_id) != str(tenant_id):
         raise LinkingValidationError(
             message=f"Contract {contract_id} does not belong to tenant {tenant_id}",
             error_code="TENANT_MISMATCH",
@@ -226,6 +237,18 @@ def validate_no_circular_reference(
     Raises:
         LinkingValidationError: If linking would create a circular reference
     """
+    # Self-reference is always circular
+    if odps_contract_id == odcs_contract_id:
+        raise LinkingValidationError(
+            message="Cannot link a contract to itself",
+            error_code="CIRCULAR_REFERENCE",
+            context={
+                "odps_contract_id": odps_contract_id,
+                "odcs_contract_id": odcs_contract_id,
+                "description": "Self-reference detected"
+            }
+        )
+
     # Check if linking ODPS -> ODCS would create a cycle
     if _check_circular_reference(odcs_contract_id, odps_contract_id):
         raise LinkingValidationError(
@@ -281,6 +304,28 @@ def validate_linking(
 
     # Validate compatibility
     validate_contract_compatibility(odps_contract, odcs_contract)
+
+    # Validate asset consistency: both must reference the same asset
+    # (or both be unlinked). Cross-asset linking breaks governance chain.
+    odps_asset = getattr(odps_contract, "asset", None)
+    odcs_asset = getattr(odcs_contract, "asset", None)
+    if (
+        odps_asset is not None
+        and odcs_asset is not None
+        and str(odps_asset.id) != str(odcs_asset.id)
+    ):
+        raise LinkingValidationError(
+            message=(
+                f"ODPS contract is linked to asset {odps_asset.id} "
+                f"but ODCS contract is linked to asset {odcs_asset.id}. "
+                f"Both must reference the same asset."
+            ),
+            error_code="ASSET_MISMATCH",
+            context={
+                "odps_asset_id": str(odps_asset.id),
+                "odcs_asset_id": str(odcs_asset.id),
+            },
+        )
 
     # Check if contracts are already correctly linked (idempotent behavior)
     odps_already_linked = False

@@ -4,6 +4,7 @@ Phase 23 — Marketplace demo.ckan.org fixture tests.
 Tests that use get_or_create_demo_ckan_federated_asset fixture for marketplace
 and virtualization flows. Uses real PULL from demo.ckan.org — no mocks or stubs.
 """
+import unittest
 import pytest
 from django.test import TestCase
 
@@ -13,8 +14,9 @@ from hub.apps.integrations.tests.utils.marketplace_fixtures import (
     get_or_create_demo_ckan_federated_asset,
 )
 from hub.apps.tenants.models import Tenant, KYCStatus
+import uuid
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.integration]
+pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
 def _demo_ckan_reachable() -> bool:
@@ -49,15 +51,16 @@ class MarketplaceDemoCkanFixtureTest(TestCase):
         except (ImportError, AttributeError):
             pass
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Demo CKAN Fixture Test Tenant",
-            slug="demo-ckan-fixture-test-tenant",
+            name=f"Demo CKAN Fixture Test Tenant {uid}",
+            slug=f"demo-ckan-fixture-test-{uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
         from hub.apps.users.models import User, UserStatus
 
         self.user = User.objects.create_user(
-            email="demockanfixture@example.com",
+            email=f"demockanfixture-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -69,7 +72,7 @@ class MarketplaceDemoCkanFixtureTest(TestCase):
         23.2 Marketplace: get_or_create_demo_ckan_federated_asset creates federated asset.
         """
         if not _demo_ckan_reachable():
-            pytest.skip("demo.ckan.org unreachable")
+            raise unittest.SkipTest("demo.ckan.org unreachable")
 
         asset, connection = get_or_create_demo_ckan_federated_asset(
             tenant=self.tenant,
@@ -93,7 +96,7 @@ class MarketplaceDemoCkanFixtureTest(TestCase):
         23.2 Marketplace: get_or_create returns same asset on second call (get_or_create).
         """
         if not _demo_ckan_reachable():
-            pytest.skip("demo.ckan.org unreachable")
+            raise unittest.SkipTest("demo.ckan.org unreachable")
 
         asset1, conn1 = get_or_create_demo_ckan_federated_asset(
             tenant=self.tenant,

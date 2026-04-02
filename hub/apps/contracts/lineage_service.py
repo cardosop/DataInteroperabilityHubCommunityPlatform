@@ -44,6 +44,20 @@ class LineageService(BaseService, LineageEventPublisher):
 
     service_name = "lineage_service"
 
+    def __init__(
+        self,
+        tenant_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ):
+        """Initialize LineageService with tenant and user context."""
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        self.request_id = request_id
+        # Initialize event publisher (BaseService.__init__ does not call
+        # super().__init__(), so the mixin __init__ must be invoked explicitly).
+        LineageEventPublisher.__init__(self)
+
     def get_contract_lineage(
         self, contract_id: str, tenant_id: Optional[str] = None, use_cache: bool = True
     ) -> Dict[str, Any]:

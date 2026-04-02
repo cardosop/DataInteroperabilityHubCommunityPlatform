@@ -2100,10 +2100,15 @@ class NotificationsBusinessRules(BusinessRules):
             # Try to get preferences from user model
             # This assumes preferences are stored in a field like user.notification_preferences
             # or user.preferences['notifications']
+            loaded = None
             if hasattr(user, 'notification_preferences'):
-                preferences = user.notification_preferences
+                loaded = user.notification_preferences
             elif hasattr(user, 'preferences') and isinstance(user.preferences, dict):
-                preferences = user.preferences.get('notifications')
+                loaded = user.preferences.get('notifications')
+
+            if loaded is not None:
+                preferences = loaded
+                details['preferences_loaded'] = True
             else:
                 # Default preferences if none found
                 preferences = {
@@ -2119,18 +2124,6 @@ class NotificationsBusinessRules(BusinessRules):
                 details['preferences_loaded'] = False
         else:
             details['preferences_loaded'] = True
-
-        # Ensure preferences is a dict (type guard)
-        if preferences is None:
-            preferences = {
-                'channels': {'EMAIL': True},
-                'email_types': {},
-                'opt_out': False,
-                'frequency': 'IMMEDIATE'
-            }
-            warnings.append(
-                "Preferences were None, using default preferences."
-            )
 
         # Validate preference structure first
         structure_result = self.validate_preference_structure(preferences)

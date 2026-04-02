@@ -30,18 +30,19 @@ class TenantUrlsTest(TestCase):
     def test_tenant_detail_url_resolves_with_uuid(self):
         """Success: tenant-detail name resolves with id kwarg (lookup_field=id)."""
         from hub.apps.tenants.models import Tenant
-
-        tenant = Tenant.objects.create(name="Test", slug="test-tenant")
+        import uuid as _uuid
+        _uid = _uuid.uuid4().hex[:8]
+        tenant = Tenant.objects.create(name=f"Test {_uid}", slug=f"test-tenant-{_uid}")
         url = reverse("tenant-detail", kwargs={"id": tenant.id})
         self.assertIn(str(tenant.id), url)
         self.assertIn("/tenants/", url)
 
     def test_tenant_config_detail_name_exists(self):
         """Success: tenant-config-detail name is registered."""
-        # Reverse requires tenant_id
         from hub.apps.tenants.models import Tenant
-
-        tenant = Tenant.objects.create(name="Test", slug="test-tenant")
+        import uuid as _uuid
+        _uid = _uuid.uuid4().hex[:8]
+        tenant = Tenant.objects.create(name=f"Test {_uid}", slug=f"test-tenant-{_uid}")
         url = reverse("tenant-config-detail", kwargs={"tenant_id": tenant.id})
         self.assertIn("config", url)
         self.assertIn(str(tenant.id), url)

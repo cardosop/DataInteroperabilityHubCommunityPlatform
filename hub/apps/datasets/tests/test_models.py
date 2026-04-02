@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 from django.db import IntegrityError, transaction
-from django.test import TransactionTestCase
+from django.test import TestCase
 
 from hub.apps.assets.models import Asset
 from hub.apps.datasets.models import Dataset

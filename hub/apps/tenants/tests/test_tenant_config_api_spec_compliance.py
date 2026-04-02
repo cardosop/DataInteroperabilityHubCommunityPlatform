@@ -4,6 +4,7 @@ API Spec Compliance Tests for TenantConfig endpoints.
 GAP-0.3: Comprehensive tests to verify API spec compliance for response format,
 error codes, timestamps, and OpenAPI schema.
 """
+import uuid
 import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
@@ -29,9 +30,10 @@ class APISpecComplianceTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
         
         # Create roles
@@ -43,13 +45,30 @@ class APISpecComplianceTest(TestCase):
         
         # Create tenant admin user
         self.tenant_admin = User.objects.create_user(
-            email="tenant-admin@example.com",
+            email=f"tenant-admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
-        UserRole.objects.create(user=self.tenant_admin, role=self.admin_role)
-        
+        UserRole.objects.create(
+            user=self.tenant_admin, role=self.admin_role,
+            tenant=self.tenant,
+        )
+
+        # Create subscription so middleware doesn't block write ops
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        from hub.apps.tenants.models import TenantPlan
+        free_plan = TenantPlan.objects.filter(slug="free").first()
+        if free_plan:
+            Subscription.objects.get_or_create(
+                tenant=self.tenant,
+                defaults={
+                    "plan": free_plan,
+                    "status": SubscriptionStatus.ACTIVE,
+                    "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
+                }
+            )
+
         self.platform_defaults = get_platform_defaults()
     
     # GAP-0.3.1.1: API spec format validation
@@ -216,56 +235,79 @@ class APISpecComplianceTest(TestCase):
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data["error"]["code"], "VALIDATION_ERROR")
-        
-        # Should have details
-        if "details" in response.data["error"]:
-            details = response.data["error"]["details"]
-            # Should have field-level errors
-            self.assertIn("default_dq_profile", str(details))
+
+        # Must have details with field-level errors
+        self.assertIn(
+            "details", response.data["error"],
+            "VALIDATION_ERROR must include 'details' per API spec",
+        )
+        details = response.data["error"]["details"]
+        self.assertIn("default_dq_profile", str(details))
     
     # GAP-0.3.1.2: OpenAPI schema validation
     def test_openapi_schema_includes_tenant_config_endpoints(self):
         """Generate and validate OpenAPI schema for TenantConfig endpoints"""
         self.client.force_authenticate(user=self.tenant_admin)
-        
+
         # Fetch OpenAPI schema
         response = self.client.get("/api-docs/openapi.json")
-        
-        if response.status_code == status.HTTP_200_OK:
-            schema = response.data if hasattr(response, 'data') else json.loads(response.content)
-            
-            # Verify TenantConfig endpoints are in schema
-            paths = schema.get("paths", {})
-            
-            # Check for GET endpoint
-            get_path = f"/api/v1/tenants/{{tenant_id}}/config/"
-            # Path might be normalized differently in OpenAPI
-            tenant_config_paths = [p for p in paths.keys() if "config" in p.lower() and "tenant" in p.lower()]
-            self.assertTrue(len(tenant_config_paths) > 0, "TenantConfig endpoints not found in OpenAPI schema")
-            
-            # Verify response schema matches API spec
-            for path in tenant_config_paths:
-                if "get" in paths[path]:
-                    get_op = paths[path]["get"]
-                    responses = get_op.get("responses", {})
-                    if "200" in responses:
-                        response_schema = responses["200"].get("content", {}).get("application/json", {}).get("schema", {})
-                        if "properties" in response_schema:
-                            properties = response_schema["properties"]
-                            # Verify required fields are present
-                            required_fields = [
-                                "tenant_id",
-                                "default_dq_profile",
-                                "allowed_compliance_regimes",
-                                "default_compliance_regimes",
-                                "data_retention_days",
-                                "rate_limits",
-                                "max_file_size_bytes",
-                                "max_job_concurrency",
-                                "max_queued_jobs",
-                            ]
-                            for field in required_fields:
-                                self.assertIn(field, properties, f"OpenAPI schema missing field: {field}")
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            f"OpenAPI schema endpoint must return 200, "
+            f"got {response.status_code}",
+        )
+
+        schema = (
+            response.data
+            if hasattr(response, 'data')
+            else json.loads(response.content)
+        )
+
+        # Verify TenantConfig endpoints are in schema
+        paths = schema.get("paths", {})
+
+        tenant_config_paths = [
+            p for p in paths.keys()
+            if "config" in p.lower() and "tenant" in p.lower()
+        ]
+        self.assertTrue(
+            len(tenant_config_paths) > 0,
+            "TenantConfig endpoints not found in OpenAPI schema",
+        )
+
+        # Verify response schema matches API spec
+        for path in tenant_config_paths:
+            if "get" in paths[path]:
+                get_op = paths[path]["get"]
+                responses = get_op.get("responses", {})
+                if "200" in responses:
+                    resp_content = responses["200"].get(
+                        "content", {}
+                    ).get("application/json", {})
+                    response_schema = resp_content.get(
+                        "schema", {}
+                    )
+                    if "properties" in response_schema:
+                        properties = response_schema["properties"]
+                        required_fields = [
+                            "tenant_id",
+                            "default_dq_profile",
+                            "allowed_compliance_regimes",
+                            "default_compliance_regimes",
+                            "data_retention_days",
+                            "rate_limits",
+                            "max_file_size_bytes",
+                            "max_job_concurrency",
+                            "max_queued_jobs",
+                        ]
+                        for field in required_fields:
+                            self.assertIn(
+                                field,
+                                properties,
+                                f"OpenAPI schema missing: {field}",
+                            )
     
     def test_openapi_schema_validates_request_response_against_schema(self):
         """Add OpenAPI schema tests (validate request/response against schema)"""
@@ -307,12 +349,15 @@ class APISpecComplianceTest(TestCase):
             defaults={"description": "Data Provider"}
         )
         provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
-        UserRole.objects.create(user=provider_user, role=provider_role)
+        UserRole.objects.create(
+            user=provider_user, role=provider_role,
+            tenant=self.tenant,
+        )
         
         self.client.force_authenticate(user=provider_user)
         response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
@@ -330,7 +375,7 @@ class APISpecComplianceTest(TestCase):
     def test_error_details_structure_matches_api_spec(self):
         """Verify error details structure matches API spec format"""
         self.client.force_authenticate(user=self.tenant_admin)
-        
+
         # Trigger validation error
         invalid_data = {
             "default_dq_profile": "invalid_profile",
@@ -341,15 +386,29 @@ class APISpecComplianceTest(TestCase):
             invalid_data,
             format="json"
         )
-        
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        
-        if "details" in response.data["error"]:
-            details = response.data["error"]["details"]
-            # Details should be a dict
-            self.assertIsInstance(details, dict)
-            
-            # Should contain field errors or field-level access
-            # Current implementation provides field-level access at top level
-            self.assertIn("default_dq_profile", response.data)
+
+        self.assertEqual(
+            response.status_code, status.HTTP_400_BAD_REQUEST
+        )
+
+        # Error envelope must exist
+        self.assertIn("error", response.data)
+        error = response.data["error"]
+        self.assertIn("code", error)
+        self.assertIn("message", error)
+
+        # Details must exist and contain field-level errors
+        self.assertIn(
+            "details", error,
+            "API spec requires 'details' in error response",
+        )
+        details = error["details"]
+        self.assertIsInstance(details, dict)
+        # At least one of our invalid fields should appear
+        detail_str = str(details).lower()
+        self.assertTrue(
+            "dq_profile" in detail_str
+            or "retention" in detail_str,
+            f"Details should reference invalid fields: {details}",
+        )
 

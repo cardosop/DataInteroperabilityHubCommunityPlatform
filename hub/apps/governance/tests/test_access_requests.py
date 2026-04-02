@@ -19,6 +19,7 @@ from hub.apps.users.models import User, UserStatus
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -29,22 +30,23 @@ class AccessRequestWorkflowTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         
         self.approver = User.objects.create_user(
-            email="approver@example.com",
+            email=f"approver-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -135,7 +137,7 @@ class AccessRequestWorkflowTest(TestCase):
     def test_multi_step_approval(self):
         """Test multi-step approval workflow"""
         approver2 = User.objects.create_user(
-            email="approver2@example.com",
+            email=f"approver2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

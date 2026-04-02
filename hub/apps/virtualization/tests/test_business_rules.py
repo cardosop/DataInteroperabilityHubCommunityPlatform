@@ -3,6 +3,7 @@ Unit tests for VirtualizationBusinessRules.
 
 Tests all validation methods using real services and models (no mocks/stubs).
 """
+import uuid
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.test import TestCase
@@ -32,10 +33,11 @@ class VirtualizationBusinessRulesTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -154,9 +156,10 @@ class QuerySyntaxValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -293,9 +296,10 @@ class SchemaAlignmentValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -482,9 +486,10 @@ class SourceCompatibilityValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -839,9 +844,10 @@ class CrossSourceCompatibilityValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -1106,7 +1112,8 @@ class CrossSourceCompatibilityValidationTest(TestCase):
     def test_validate_cross_source_compatibility_cross_tenant_access(self):
         """Test validate_cross_source_compatibility with cross-tenant sources."""
         # Create another tenant
-        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
 
         # Create asset in other tenant
         other_asset = Asset.objects.create(
@@ -1155,8 +1162,9 @@ class CrossSourceCompatibilityValidationTest(TestCase):
         from hub.apps.tenants.models import KYCStatus
 
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         # Create asset in other tenant
@@ -1220,7 +1228,8 @@ class CrossSourceCompatibilityValidationTest(TestCase):
     def test_validate_cross_source_compatibility_raises_exception(self):
         """Test validate_cross_source_compatibility raises exception when raise_on_error=True."""
         # Create another tenant
-        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
 
         # Create asset in other tenant
         other_asset = Asset.objects.create(
@@ -1264,10 +1273,11 @@ class QueryExecutionBusinessRulesTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -1529,10 +1539,11 @@ class ResultBusinessRulesTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -1756,19 +1767,21 @@ class CrossTenantAccessValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
-        self.other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        _uid = uuid.uuid4().hex[:8]
+        self.other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
 
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
 
         self.other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.other_tenant,
             status=UserStatus.ACTIVE,
@@ -1784,7 +1797,7 @@ class CrossTenantAccessValidationTest(TestCase):
             key="same-tenant-asset",
             name="Same Tenant Asset",
             status=(
-                AssetStatus.ACTIVE[0]
+                AssetStatus.ACTIVE
                 if isinstance(AssetStatus.ACTIVE, tuple)
                 else AssetStatus.ACTIVE
             ),
@@ -1795,7 +1808,7 @@ class CrossTenantAccessValidationTest(TestCase):
             key="other-tenant-asset",
             name="Other Tenant Asset",
             status=(
-                AssetStatus.ACTIVE[0]
+                AssetStatus.ACTIVE
                 if isinstance(AssetStatus.ACTIVE, tuple)
                 else AssetStatus.ACTIVE
             ),
@@ -1927,7 +1940,7 @@ class CrossTenantAccessValidationTest(TestCase):
         """Test result data filtering validation with cross-tenant sources"""
         # Ensure asset is ACTIVE for listing
         if isinstance(AssetStatus.ACTIVE, tuple):
-            self.asset_other_tenant.status = AssetStatus.ACTIVE[0]
+            self.asset_other_tenant.status = AssetStatus.ACTIVE
         else:
             self.asset_other_tenant.status = AssetStatus.ACTIVE
         self.asset_other_tenant.save()
@@ -2050,9 +2063,10 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -2195,9 +2209,10 @@ class VirtualDatasetQueryMappingValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -2311,9 +2326,10 @@ class VirtualDatasetCachingConfigurationValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -2448,9 +2464,10 @@ class VirtualDatasetSchemaValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -2503,9 +2520,10 @@ class QueryLanguageCompatibilityTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -2621,9 +2639,10 @@ class SourceConnectionValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

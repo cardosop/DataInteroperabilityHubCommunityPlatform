@@ -38,10 +38,10 @@ class WorkflowStatusTransitionValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Create workflow definition
@@ -166,6 +166,12 @@ class WorkflowStatusTransitionValidationTest(TestCase):
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
+        # Error should mention missing timestamp fields
+        error_text = " ".join(e.lower() for e in result.errors)
+        self.assertTrue(
+            "started_at" in error_text or "completed_at" in error_text or "timestamp" in error_text,
+            f"Error should mention missing timestamps, got: {result.errors}",
+        )
 
     def test_validate_status_transition_failed_valid(self):
         """Test status transition validation for valid FAILED workflow"""
@@ -237,10 +243,10 @@ class WorkflowStepExecutionValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Create workflow definition
@@ -413,6 +419,12 @@ class WorkflowStepExecutionValidationTest(TestCase):
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
+        # Error should reference missing timestamp fields
+        error_text = " ".join(e.lower() for e in result.errors)
+        self.assertTrue(
+            "started_at" in error_text or "completed_at" in error_text or "timestamp" in error_text,
+            f"Error should mention missing timestamps, got: {result.errors}",
+        )
 
 
 class WorkflowCompensationValidationTest(TestCase):
@@ -421,10 +433,10 @@ class WorkflowCompensationValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Create workflow definition with compensation
@@ -576,10 +588,10 @@ class WorkflowRetryValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         self.workflow_def = WorkflowDefinition.objects.create(
@@ -716,10 +728,10 @@ class WorkflowComprehensiveValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         self.workflow_def = WorkflowDefinition.objects.create(
@@ -775,6 +787,12 @@ class WorkflowComprehensiveValidationTest(TestCase):
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
+        # Comprehensive validation should catch multiple issues (missing timestamps, invalid retry)
+        error_text = " ".join(e.lower() for e in result.errors)
+        self.assertTrue(
+            "retry" in error_text or "started_at" in error_text or "timestamp" in error_text or "non-negative" in error_text,
+            f"Errors should mention specific validation failures, got: {result.errors}",
+        )
 
     def test_validate_all_with_step(self):
         """Test comprehensive validation with step"""
@@ -808,10 +826,10 @@ class WorkflowExecutionValidatorFailureTest(TestCase):
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.workflow_def = WorkflowDefinition.objects.create(
             name="test_workflow",
@@ -857,8 +875,9 @@ class WorkflowExecutionValidatorFailureTest(TestCase):
         # Validate with None step (should handle gracefully)
         result = WorkflowExecutionValidator.validate_step_execution(None, workflow_instance=workflow)
 
-        # Should either fail or handle None gracefully
+        # Should return an invalid result when step is None
         self.assertIsNotNone(result)
+        self.assertFalse(result.is_valid, "Validation with None step should return invalid result")
 
 
 class WorkflowExecutionValidatorEdgeCasesTest(TestCase):
@@ -866,10 +885,10 @@ class WorkflowExecutionValidatorEdgeCasesTest(TestCase):
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.workflow_def = WorkflowDefinition.objects.create(
             name="test_workflow",
@@ -895,8 +914,9 @@ class WorkflowExecutionValidatorEdgeCasesTest(TestCase):
 
         result = WorkflowExecutionValidator.validate_status_transition(workflow)
 
-        # Should handle old timestamps gracefully
+        # Should handle old timestamps gracefully and still validate as valid RUNNING workflow
         self.assertIsNotNone(result)
+        self.assertTrue(result.is_valid, f"Old timestamps should not invalidate a RUNNING workflow: {result.errors}")
 
     def test_validate_all_with_empty_workflow(self):
         """Test comprehensive validation with minimal workflow"""
@@ -911,8 +931,9 @@ class WorkflowExecutionValidatorEdgeCasesTest(TestCase):
 
         result = WorkflowExecutionValidator.validate_all(workflow)
 
-        # Should validate empty workflow
+        # A minimal DRAFT workflow with no steps should validate successfully
         self.assertIsNotNone(result)
+        self.assertTrue(result.is_valid, f"Minimal DRAFT workflow should be valid: {result.errors}")
 
 
 class WorkflowExecutionValidatorErrorHandlingTest(TestCase):
@@ -920,10 +941,10 @@ class WorkflowExecutionValidatorErrorHandlingTest(TestCase):
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.workflow_def = WorkflowDefinition.objects.create(
             name="test_workflow",
@@ -949,14 +970,14 @@ class WorkflowExecutionValidatorErrorHandlingTest(TestCase):
         # Corrupt workflow state (set invalid status string)
         workflow.status = "INVALID_STATUS"
 
-        # Should handle invalid status gracefully
+        # Should handle invalid status gracefully: either raise or return invalid result
         try:
             result = WorkflowExecutionValidator.validate_status_transition(workflow)
-            # If it doesn't raise, should return invalid result
-            if result:
-                self.assertFalse(result.is_valid)
+            # If it doesn't raise, must return invalid result
+            self.assertIsNotNone(result)
+            self.assertFalse(result.is_valid, "Corrupted status should produce an invalid validation result")
         except (ValueError, AttributeError):
-            # Expected to raise or handle gracefully
+            # Raising on invalid status is also acceptable behavior
             pass
 
     def test_validate_all_with_nonexistent_workflow_definition(self):

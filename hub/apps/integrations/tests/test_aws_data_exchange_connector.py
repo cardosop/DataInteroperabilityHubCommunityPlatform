@@ -31,7 +31,7 @@ from hub.apps.integrations.connectors.aws_data_exchange_connector import AWSData
 
 import pytest
 
-pytestmark = [pytest.mark.django_db(transaction=True)]
+pytestmark = [pytest.mark.django_db]
 
 
 class TestAWSDataExchangeConnectorInitialization(TestCase):

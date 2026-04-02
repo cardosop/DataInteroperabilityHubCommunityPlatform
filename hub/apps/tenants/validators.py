@@ -14,12 +14,46 @@ VALID_DQ_PROFILES = [
 ]
 
 # Platform-supported compliance regimes
+# Mirrors the canonical regulation keys in services/compliance-service/regulations/
 VALID_COMPLIANCE_REGIMES = [
+    # EU / UK
     "GDPR",
+    "GDPR_SCHREMS_II",
+    "UK_GDPR",
+    # Americas
     "LGPD",
     "CCPA",
+    "COPPA",
+    "FERPA",
+    "GLBA",
     "HIPAA",
     "SOX",
+    "PIPEDA",
+    # US state privacy laws
+    "CPA",
+    "CTDPA",
+    "ICDPA",
+    "MCDPA",
+    "MHMDA",
+    "MTCDPA",
+    "NHPA",
+    "NJDPA",
+    "OCPA",
+    "TDPSA",
+    "TIPA",
+    "UCPA",
+    "VCDPA",
+    # APAC
+    "APPI_JP",
+    "DPDP_IN",
+    "PDPA_SG",
+    "PIPA_KR",
+    "PIPL_CN",
+    "PRIVACY_ACT_AU",
+    # Africa
+    "POPIA_ZA",
+    # Industry
+    "PCI_DSS",
 ]
 
 # Platform maximum rate limits (per category)
@@ -180,7 +214,7 @@ def get_platform_defaults() -> Dict[str, Any]:
     """
     return {
         "default_dq_profile": "intake_basic_gx",
-        "allowed_compliance_regimes": ["GDPR", "LGPD", "CCPA", "HIPAA", "SOX"],
+        "allowed_compliance_regimes": list(VALID_COMPLIANCE_REGIMES),
         "default_compliance_regimes": ["GDPR", "LGPD"],
         "data_retention_days": 2555,  # 7 years
         "rate_limits": {

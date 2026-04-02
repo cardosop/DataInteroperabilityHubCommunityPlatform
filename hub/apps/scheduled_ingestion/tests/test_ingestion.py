@@ -34,7 +34,7 @@ from hub.apps.scheduled_ingestion.tests.connector_fakes import (
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 # Force MinIO endpoint and credentials in tests so we never hit real AWS.
@@ -205,7 +205,9 @@ class ScheduledIngestionProcessorTest(TestCase):
 
     def test_filter_files_size_limit(self):
         """Test file filtering with size limits."""
-        self.scheduled_ingestion.source_config["max_file_size_bytes"] = 1000
+        cfg = self.scheduled_ingestion.get_source_config()
+        cfg["max_file_size_bytes"] = 1000
+        self.scheduled_ingestion.source_config = cfg
         self.scheduled_ingestion.save()
         connector = InMemoryConnector(
             metadata={"last_modified": timezone.now(), "size": 2000},

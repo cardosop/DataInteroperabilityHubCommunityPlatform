@@ -232,16 +232,17 @@ class URLPatternReverseLookupTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.validator = URLPatternValidator()
         self.patterns = self.validator.extract_url_patterns()
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -260,56 +261,41 @@ class URLPatternReverseLookupTest(TestCase):
             if not normalized_pattern.startswith('/api/v1/') or not url_name:
                 continue
 
-            # Skip patterns that require complex kwargs for now
-            # Focus on simple patterns first
-            if '{' not in normalized_pattern:
-                try:
-                    reversed_url = reverse(url_name)
-                    successful_reverses.append({
-                        'url_name': url_name,
-                        'reversed_url': reversed_url,
-                        'expected_pattern': normalized_pattern
-                    })
-                    # Verify reversed URL matches expected pattern (allowing for trailing slash differences)
-                    if not normalized_pattern.endswith('/'):
-                        normalized_pattern = normalized_pattern + '/'
-                    if not reversed_url.endswith('/'):
-                        reversed_url = reversed_url + '/'
-                    # Basic check - reversed URL should start with /api/v1/
-                    self.assertTrue(
-                        reversed_url.startswith('/api/v1/'),
-                        f"Reversed URL should start with /api/v1/: {reversed_url}"
-                    )
-                except NoReverseMatch as e:
-                    failed_reverses.append({
-                        'url_name': url_name,
-                        'pattern': normalized_pattern,
-                        'error': str(e)
-                    })
-                except Exception as e:
-                    failed_reverses.append({
-                        'url_name': url_name,
-                        'pattern': normalized_pattern,
-                        'error': f"Unexpected error: {str(e)}"
-                    })
+            # Skip patterns that require kwargs (path converters or regex groups)
+            raw_pattern = pattern_info.get('pattern', '')
+            has_params = (
+                '{' in normalized_pattern
+                or '<' in normalized_pattern
+                or '(?P<' in raw_pattern
+            )
+            if has_params:
+                continue
 
-        # Log results
-        if successful_reverses:
-            print(f"\n✅ Successfully reversed {len(successful_reverses)} URL patterns")
+            try:
+                reversed_url = reverse(url_name)
+                # Reversed URL must be under /api/v1/ (we filtered for that above)
+                if not reversed_url.startswith('/api/v1/'):
+                    # url_name aliases to a non-API path (e.g. metrics) — skip
+                    continue
+                successful_reverses.append({
+                    'url_name': url_name,
+                    'reversed_url': reversed_url,
+                    'expected_pattern': normalized_pattern,
+                })
+            except NoReverseMatch as e:
+                failed_reverses.append({
+                    'url_name': url_name,
+                    'pattern': normalized_pattern,
+                    'error': str(e),
+                })
 
-        if failed_reverses:
-            # Don't fail the test - some patterns might not be reversible
-            # (e.g., dynamic patterns, patterns without url_name)
-            error_details = "\n".join([
-                f"  - {f['url_name']} ({f['pattern']}): {f['error']}"
-                for f in failed_reverses[:10]
-            ])
-            print(f"\n⚠️  Could not reverse {len(failed_reverses)} URL patterns:\n{error_details}")
-
-        # At least some patterns should be reversible
-        self.assertGreater(
-            len(successful_reverses), 0,
-            "At least some URL patterns should be reversible"
+        # ALL simple patterns (no kwargs) with url_name must be reversible
+        total_attempted = len(successful_reverses) + len(failed_reverses)
+        self.assertGreater(total_attempted, 0, "Should have URL patterns to test")
+        self.assertEqual(
+            len(failed_reverses), 0,
+            f"{len(failed_reverses)}/{total_attempted} URL patterns failed reverse lookup:\n"
+            + "\n".join(f"  - {f['url_name']}: {f['error']}" for f in failed_reverses[:10])
         )
 
     def test_reverse_lookup_with_kwargs(self):
@@ -333,14 +319,16 @@ class URLPatternReverseLookupTest(TestCase):
                 self.assertIn(kwargs['id'], reversed_url)
                 successful += 1
             except NoReverseMatch:
-                # Some URL names might not exist - that's okay
+                # URL name not registered — record for assertion
                 pass
             except Exception as e:
-                # Log unexpected errors but don't fail
-                print(f"⚠️  Error reversing {url_name}: {e}")
+                self.fail(f"Unexpected error reversing {url_name}: {e}")
 
-        # At least some should work
-        self.assertGreater(successful, 0, "At least some reverse lookups with kwargs should work")
+        # All known URL names with kwargs must be reversible
+        self.assertEqual(
+            successful, len(test_cases),
+            f"Only {successful}/{len(test_cases)} reverse lookups with kwargs succeeded"
+        )
 
     def test_reverse_lookup_consistency(self):
         """Test that reverse and resolve are consistent"""
@@ -462,8 +450,9 @@ class URLPatternComprehensiveTest(TestCase):
                 f"  - {p.get('normalized_pattern', 'N/A')}"
                 for p in patterns_without_name[:10]
             ])
-            print(f"\n⚠️  Found {len(patterns_without_name)} important patterns without url_name:\n{missing_names}")
-            # Don't fail - some patterns might legitimately not have names
+            self.fail(
+                f"Found {len(patterns_without_name)} important patterns without url_name:\n{missing_names}"
+            )
 
     def test_pattern_naming_standards(self):
         """Test that patterns follow naming standards (kebab-case, plural, etc.)"""
@@ -506,16 +495,17 @@ class URLPatternIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.validator = URLPatternValidator()
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -523,8 +513,7 @@ class URLPatternIntegrationTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
     def test_patterns_are_accessible(self):
-        """Test that URL patterns are accessible via HTTP"""
-        # Test a few common endpoints
+        """Test that known endpoints are reachable (not 404/500)."""
         test_endpoints = [
             '/api/v1/contracts/',
             '/api/v1/assets/',
@@ -532,23 +521,14 @@ class URLPatternIntegrationTest(TestCase):
             '/api/v1/compliance/runs/',
         ]
 
-        accessible_count = 0
         for endpoint in test_endpoints:
-            try:
-                response = self.client.get(endpoint)
-                # Accept 200, 401 (auth required), 403 (forbidden), 404 (not found)
-                # Any of these means the endpoint exists and was processed
-                if response.status_code in [200, 401, 403, 404]:
-                    accessible_count += 1
-            except Exception as e:
-                # Endpoint might not exist or might have issues
-                pass
-
-        # At least some endpoints should be accessible
-        self.assertGreater(
-            accessible_count, 0,
-            "At least some endpoints should be accessible"
-        )
+            response = self.client.get(endpoint)
+            # 200 or 403 (tenant/permission) are acceptable; 404 means endpoint
+            # is not registered; 500 means server error — both are failures.
+            self.assertIn(
+                response.status_code, [200, 403],
+                f"{endpoint} returned {response.status_code} — expected 200 or 403"
+            )
 
     def test_validation_at_startup(self):
         """Test that URL pattern validation can run at Django startup"""

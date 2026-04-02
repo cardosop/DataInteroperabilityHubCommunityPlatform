@@ -4,6 +4,7 @@ Unit tests for AssetService.
 Tests cover all service methods with 100% coverage target.
 """
 
+import uuid
 import pytest
 from django.test import TestCase
 
@@ -21,9 +22,10 @@ class AssetServiceTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.service = AssetService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -98,7 +100,7 @@ class AssetServiceTest(TestCase):
                 name="Another Asset",
             )
 
-        self.assertEqual(cm.exception.code, "CONFLICT")
+        self.assertEqual(cm.exception.code, "ASSET_KEY_EXISTS")
 
     def test_update_asset_success_updates_name(self):
         """Test successful asset update updates name"""
@@ -237,7 +239,8 @@ class AssetServiceTest(TestCase):
     def test_get_asset_wrong_tenant(self):
         """Test retrieving asset from wrong tenant (failure scenario)"""
         # Create another tenant and asset
-        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
         other_asset = Asset.objects.create(
             tenant=other_tenant, key="other-asset", name="Other Asset"
         )
@@ -289,62 +292,45 @@ class AssetServiceTest(TestCase):
         self.assertEqual(cm.exception.code, "VALIDATION_ERROR")
 
     def test_create_asset_very_long_key(self):
-        """Test creating asset with very long key (edge case)"""
-        long_key = "a" * 300  # Very long key
+        """Very long key (300 chars) is rejected by service validation."""
+        long_key = "a" * 300  # Exceeds CharField max_length=255
 
-        # Should either succeed (if key length is not limited) or fail with validation error
-        try:
-            asset = self.service.create_asset(
+        with self.assertRaises((ValidationError, Exception)):
+            self.service.create_asset(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 key=long_key,
                 name="Test Asset",
             )
-            # If succeeds, verify it was created
-            self.assertIsNotNone(asset)
-            self.assertEqual(asset.key, long_key)
-        except ValidationError as e:
-            # If fails, verify it's a validation error (could be BUSINESS_RULES_VALIDATION or VALIDATION_ERROR)
-            self.assertIn(e.code, ["VALIDATION_ERROR", "BUSINESS_RULES_VALIDATION"])
 
     def test_create_asset_special_characters_in_key(self):
-        """Test creating asset with special characters in key (edge case)"""
+        """Key with hyphens, underscores, dots is accepted by service."""
         special_key = "test-asset_123.test"
-
-        # Should either succeed or fail with validation error
-        try:
-            asset = self.service.create_asset(
-                tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id),
-                key=special_key,
-                name="Test Asset",
-            )
-            self.assertIsNotNone(asset)
-            self.assertEqual(asset.key, special_key)
-        except ValidationError as e:
-            self.assertEqual(e.code, "VALIDATION_ERROR")
+        asset = self.service.create_asset(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            key=special_key,
+            name="Test Asset",
+        )
+        self.assertEqual(asset.key, special_key)
 
     def test_update_asset_empty_name(self):
-        """Test updating asset with empty name (edge case)"""
+        """Updating asset with empty name is rejected (blank=False)."""
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Original Name", status=AssetStatus.DRAFT
+            tenant=self.tenant,
+            key="test-asset",
+            name="Original Name",
+            status=AssetStatus.DRAFT,
         )
 
-        # Empty name should either be rejected or accepted
-        try:
-            updated = self.service.update_asset(
+        with self.assertRaises(ValidationError):
+            self.service.update_asset(
                 asset_id=str(asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 name="",
                 version=asset.version,
             )
-            updated.refresh_from_db()
-            # If succeeds, verify update
-            self.assertEqual(updated.name, "")
-        except ValidationError as e:
-            # If fails, verify it's a validation error
-            self.assertEqual(e.code, "VALIDATION_ERROR")
 
     def test_get_asset_with_invalid_uuid(self):
         """Test retrieving asset with invalid UUID format (edge case)"""

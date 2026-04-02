@@ -13,6 +13,7 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.assets.tests.factories import AssetFactory
 from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.tenants.models import KYCStatus, Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -23,11 +24,12 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = AssetsBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -68,8 +70,9 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
 
         # Create dataset with different tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_file = File.objects.create(
             tenant=other_tenant,
@@ -383,53 +386,39 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
     # ========== EDGE CASES ==========
 
     def test_validate_dataset_attachment_edge_case_none_dataset(self):
-        """Test dataset attachment validation with None dataset (edge case)"""
+        """Test dataset attachment validation with None dataset raises an error"""
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
 
-        # Should handle None dataset gracefully
-        try:
-            result = self.rules.validate_dataset_attachment(
+        # None dataset must raise AttributeError or TypeError
+        with self.assertRaises((AttributeError, TypeError)):
+            self.rules.validate_dataset_attachment(
                 asset=asset, dataset=None, user=self.user
             )
-            # If succeeds, verify result structure
-            self.assertIsNotNone(result)
-        except (AttributeError, TypeError):
-            # If fails, that's acceptable for None dataset
-            pass
 
     def test_validate_dataset_attachment_edge_case_none_asset(self):
-        """Test dataset attachment validation with None asset (edge case)"""
+        """Test dataset attachment validation with None asset raises an error"""
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         dataset = DatasetFactory.create_dataset(tenant=self.tenant, file=self.file)
 
-        # Should handle None asset gracefully
-        try:
-            result = self.rules.validate_dataset_attachment(
+        # None asset must raise AttributeError or TypeError
+        with self.assertRaises((AttributeError, TypeError)):
+            self.rules.validate_dataset_attachment(
                 asset=None, dataset=dataset, user=self.user
             )
-            # If succeeds, verify result structure
-            self.assertIsNotNone(result)
-        except (AttributeError, TypeError):
-            # If fails, that's acceptable for None asset
-            pass
 
     def test_validate_dataset_attachment_edge_case_none_user(self):
-        """Test dataset attachment validation with None user (edge case)"""
+        """Test dataset attachment validation with None user succeeds (access check skipped)"""
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
 
         dataset = DatasetFactory.create_dataset(tenant=self.tenant, file=self.file)
 
-        # Should handle None user gracefully
-        try:
-            result = self.rules.validate_dataset_attachment(asset=asset, dataset=dataset, user=None)
-            # If succeeds, verify result structure
-            self.assertIsNotNone(result)
-        except (AttributeError, TypeError):
-            # If fails, that's acceptable for None user
-            pass
+        # None user is explicitly supported (see test_validate_dataset_attachment_access_no_user)
+        result = self.rules.validate_dataset_attachment(asset=asset, dataset=dataset, user=None)
+        self.assertIsNotNone(result)
+        self.assertTrue(result.is_valid)
 
     def test_validate_dataset_attachment_edge_case_same_asset_and_dataset_tenant(self):
         """Test dataset attachment with same tenant for asset and dataset (edge case)"""
@@ -465,11 +454,12 @@ class AssetsBusinessRulesDatasetAttachmentIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = AssetsBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 

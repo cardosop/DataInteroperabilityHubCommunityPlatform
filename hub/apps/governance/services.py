@@ -6,6 +6,7 @@ Extracts governance logic from access_requests.py and views.
 All create/update/approve paths call GovernanceBusinessRules before mutation.
 """
 
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from django.db import transaction
@@ -109,6 +110,15 @@ class GovernanceService(BaseService, AccessEventPublisher):
         expires_at: Optional[str] = None,
     ) -> AccessRequest:
         """Internal implementation of access request creation."""
+        # Plan limit enforcement (monthly)
+        from hub.apps.tenants.services import PlanLimitService
+        plan_limit_service = PlanLimitService(tenant_id=tenant_id)
+        plan_limit_service.check_limit(
+            tenant_id=tenant_id,
+            limit_key="max_access_requests_per_month",
+            delta=1,
+        )
+
         from hub.apps.assets.models import Asset
         from hub.apps.datasets.models import Dataset
         from hub.apps.files.models import File
@@ -258,8 +268,9 @@ class GovernanceService(BaseService, AccessEventPublisher):
         access_request.status = AccessRequestStatus.APPROVED
         access_request.approved_by = approver_user
         access_request.approved_at = timezone.now()
-        # Note: approval_comments field doesn't exist in AccessRequest model
-        # Comments would need to be stored in metadata_json if needed
+        # Set expiration if not already set (default 90 days from approval)
+        if not access_request.expires_at:
+            access_request.expires_at = timezone.now() + timedelta(days=90)
         access_request.save()
 
         return access_request

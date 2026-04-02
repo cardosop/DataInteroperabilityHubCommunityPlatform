@@ -12,11 +12,12 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.files.tests.test_base import FilesAPITestBase
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -88,27 +89,49 @@ class FileUploadDownloadTest(FilesAPITestBase):
         self.assertEqual(file_obj.status, FileStatus.UPLOADING)
         self.assertIn("multipart_upload_id", file_obj.metadata_json)
 
-    def test_init_file_upload_size_limit_browser(self):
-        """Test file upload size limit for browser uploads"""
+    def test_init_file_upload_over_browser_size_limit_rejected(self):
+        """Test that browser upload exceeding size limit is rejected."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
         from django.conf import settings
 
-        # Try to upload file exceeding browser limit
+        over_limit_size = (
+            getattr(
+                settings, "MAX_BROWSER_UPLOAD_SIZE", 100 * 1024 * 1024
+            ) + 1
+        )
         data = {
             "name": "large.csv",
             "content_type": "text/csv",
-            "size": getattr(settings, "MAX_BROWSER_UPLOAD_SIZE", 100 * 1024 * 1024)
-            + 1,  # Exceeds limit
+            "size": over_limit_size,
+            "upload_method": "browser",
+        }
+
+        response = self.client.post(
+            "/api/v1/files/init/", data, format="json"
+        )
+
+        self.assertEqual(
+            response.status_code, status.HTTP_400_BAD_REQUEST
+        )
+        self.assertIn("size", str(response.data).lower())
+
+    def test_init_file_upload_under_browser_size_limit_succeeds(self):
+        """Test that browser upload under size limit succeeds as simple upload."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        data = {
+            "name": "small.csv",
+            "content_type": "text/csv",
+            "size": 1024,
             "upload_method": "browser",
         }
 
         response = self.client.post("/api/v1/files/init/", data, format="json")
 
-        # May succeed but will use multipart, or may fail validation
-        # Depends on business rules
-        self.assertIn(
-            response.status_code,
-            [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST],
-        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(response.data["requires_multipart"])
 
     def test_init_file_upload_invalid_type(self):
         """Test file upload with invalid file type"""
@@ -166,53 +189,69 @@ class FileUploadDownloadTest(FilesAPITestBase):
         self.assertEqual(file_obj.content_sha256, sha256_hash)
 
     def test_complete_multipart_upload(self):
-        """Test multipart upload completion"""
+        """Test multipart upload completion with a real S3 part."""
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
 
-        # Create file record with multipart upload
+        # 5 MiB is the S3 minimum part size
+        part_data = b"x" * (5 * 1024 * 1024)
+        storage_key = (
+            f"{self.tenant.id}/{uuid.uuid4()}/large.csv"
+        )
+
         file_obj = File.objects.create(
             tenant=self.tenant,
             name="large.csv",
             content_type="text/csv",
-            size=150 * 1024 * 1024,
-            storage_path=f"{self.tenant.id}/large.csv",
+            size=len(part_data),
+            storage_path=storage_key,
             status=FileStatus.UPLOADING,
             created_by=self.user,
             metadata_json={
-                "multipart_upload_id": "test-upload-id",
-                "chunk_size": 5 * 1024 * 1024,
-                "chunk_count": 30,
+                "chunk_size": len(part_data),
+                "chunk_count": 1,
             },
         )
 
-        # Initiate real multipart upload
+        # Initiate real multipart upload in S3
         upload_id = self.storage_client.initiate_multipart_upload(
-            key=file_obj.storage_path, content_type="text/csv"
+            key=storage_key, content_type="text/csv"
         )
         file_obj.metadata_json["multipart_upload_id"] = upload_id
         file_obj.save(update_fields=["metadata_json"])
 
-        # Upload test content (simplified - in real scenario would upload parts)
-        test_content = b"test" * 1000
-        self.storage_client.save_file(
-            tenant_id=str(self.tenant.id),
-            file_id=str(file_obj.id),
-            file_content=ContentFile(test_content),
+        # Upload a real part to get a valid ETag
+        s3 = self.storage_client.client
+        part_resp = s3.upload_part(
+            Bucket=self.storage_client.bucket_name,
+            Key=storage_key,
+            UploadId=upload_id,
+            PartNumber=1,
+            Body=part_data,
+        )
+        real_etag = part_resp["ETag"]
+
+        sha256_hash = hashlib.sha256(part_data).hexdigest()
+        data = {
+            "content_sha256": sha256_hash,
+            "parts": [
+                {"ETag": real_etag, "PartNumber": 1},
+            ],
+        }
+
+        response = self.client.post(
+            f"/api/v1/files/{file_obj.id}/complete/",
+            data,
+            format="json",
         )
 
-        sha256_hash = hashlib.sha256(test_content).hexdigest()
-        # For multipart, we'd need actual parts, but for testing we'll skip parts
-        # In real scenario, parts would come from actual multipart upload
-        data = {"content_sha256": sha256_hash}
-
-        response = self.client.post(f"/api/v1/files/{file_obj.id}/complete/", data, format="json")
-
-        # May fail if parts are required, but test that endpoint works
-        # In real scenario, would need actual parts from multipart upload
-        if response.status_code == status.HTTP_200_OK:
-            file_obj.refresh_from_db()
-            self.assertEqual(file_obj.status, FileStatus.ACTIVE)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            f"Expected 200: {getattr(response, 'data', '')}",
+        )
+        file_obj.refresh_from_db()
+        self.assertEqual(file_obj.status, FileStatus.ACTIVE)
 
         # Clean up multipart upload
         try:
@@ -235,6 +274,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
             size=1024,
             storage_path=f"{self.tenant.id}/test.csv",
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             created_by=self.user,
         )
 
@@ -275,6 +315,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
             size=1024,
             storage_path=f"{self.tenant.id}/test.csv",
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             created_by=self.user,
         )
 
@@ -289,9 +330,10 @@ class FileUploadDownloadTest(FilesAPITestBase):
     def test_list_files_tenant_scoped(self):
         """Test that users can only see files in their tenant"""
         # Create another tenant and file
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
         other_file = File.objects.create(
@@ -301,6 +343,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
             size=1024,
             storage_path=f"{other_tenant.id}/other.csv",
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
         )
 
         # Create file in user's tenant
@@ -311,6 +354,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
             size=1024,
             storage_path=f"{self.tenant.id}/my.csv",
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             created_by=self.user,
         )
 

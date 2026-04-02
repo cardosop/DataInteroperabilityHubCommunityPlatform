@@ -15,6 +15,7 @@ from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.models import MarketplaceConnection, MarketplaceMapping
 from hub.apps.integrations.serializers import MarketplaceMappingSerializer
 from hub.apps.tenants.models import KYCStatus, Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -37,8 +38,9 @@ class MarketplaceMappingSerializerTest(TestCase):
         except (ImportError, AttributeError):
             pass
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         self.connection = MarketplaceConnection.objects.create(

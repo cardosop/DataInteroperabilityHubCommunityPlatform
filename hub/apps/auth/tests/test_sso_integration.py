@@ -4,6 +4,7 @@ Integration tests for SSO
 Tests for SSO authentication flows.
 """
 
+import uuid
 import pytest
 from django.test import TestCase
 
@@ -19,8 +20,9 @@ class SSOIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Create tenant config with SSO

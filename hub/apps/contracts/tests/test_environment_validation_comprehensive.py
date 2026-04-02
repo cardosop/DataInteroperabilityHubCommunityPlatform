@@ -20,6 +20,8 @@ All tests use real implementations (no mocks/stubs) and verify:
 import os
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.conf import settings
 from django.core.management import call_command
 from django.db import connection

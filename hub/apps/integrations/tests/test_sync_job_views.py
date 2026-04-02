@@ -34,15 +34,16 @@ class MarketplaceSyncJobViewSetTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         # Active subscription required so TenantSuspensionMiddleware allows API writes
         ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user with DATA_PROVIDER role
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -386,11 +387,12 @@ class MarketplaceSyncJobViewSetTest(TestCase):
     def test_tenant_isolation(self):
         """Test tenant isolation - users can only see their tenant's sync jobs"""
         # Create another tenant and user
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE,
@@ -419,7 +421,7 @@ class MarketplaceSyncJobViewSetTest(TestCase):
         """Test write operations require DATA_PROVIDER or TENANT_ADMIN role"""
         # Create user without DATA_PROVIDER role
         regular_user = User.objects.create_user(
-            email="regular@example.com",
+            email=f"regular-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -439,7 +441,7 @@ class MarketplaceSyncJobViewSetTest(TestCase):
         """Test read operations only require authentication"""
         # Create user without DATA_PROVIDER role
         regular_user = User.objects.create_user(
-            email="regular@example.com",
+            email=f"regular-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

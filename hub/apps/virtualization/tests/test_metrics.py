@@ -3,6 +3,7 @@ Unit tests for virtualization metrics.
 
 Tests Prometheus metrics tracking for virtualization operations.
 """
+import uuid
 import time
 from django.test import TestCase
 from django.utils import timezone
@@ -34,6 +35,7 @@ from hub.apps.virtualization.metrics import (
 from hub.apps.core.services.base import PermissionError, ValidationError
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -46,12 +48,13 @@ class VirtualizationMetricsTest(TestCase):
         """Set up test fixtures."""
         from hub.apps.users.models import Role, UserRole
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant
         )

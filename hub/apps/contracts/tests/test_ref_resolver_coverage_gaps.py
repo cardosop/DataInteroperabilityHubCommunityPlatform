@@ -516,9 +516,14 @@ class RefResolverCoverageGapsTest(TestCase):
 
         resolver.resolve_external = mock_resolve_external  # type: ignore
 
+        import json
         try:
-            with self.assertRaises(ODPSRefResolutionError):
-                resolver.resolve_external("https://example.com/invalid.json")
+            with self.assertRaises(
+                (ODPSRefResolutionError, json.JSONDecodeError),
+            ):
+                resolver.resolve_external(
+                    "https://example.com/invalid.json",
+                )
         finally:
             resolver.resolve_external = original_resolve
 

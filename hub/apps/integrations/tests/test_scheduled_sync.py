@@ -308,7 +308,7 @@ class ScheduledSyncServiceUnitTest(TestCase):
         )
 
         # Audit event is created synchronously in service; brief pause for DB flush
-        time.sleep(0.05)
+        time.sleep(0.05)  # INTENTIONAL: test-specific timing requirement
         audit_events = AuditEvent.objects.filter(
             resource_type="SCHEDULED_MARKETPLACE_SYNC",
             action="SCHEDULED_SYNC_CREATED",
@@ -341,7 +341,7 @@ class ScheduledSyncServiceUnitTest(TestCase):
             scheduled_sync_id=scheduled_sync_id, tenant_id=str(self.tenant.id)
         )
 
-        time.sleep(0.05)
+        time.sleep(0.05)  # INTENTIONAL: test-specific timing requirement
         audit_events = AuditEvent.objects.filter(
             resource_type="SCHEDULED_MARKETPLACE_SYNC",
             action="SCHEDULED_SYNC_DELETED",
@@ -400,6 +400,11 @@ class ScheduledSyncSchedulerIntegrationTest(TestCase):
             post_save.disconnect(asset_saved, sender=Asset)
         except (ImportError, AttributeError):
             pass
+
+        # Clean up any scheduled syncs left by prior test classes
+        # (transaction=True means Django TestCase doesn't roll back between classes)
+        ScheduledMarketplaceSync.objects.all().delete()
+
         self.tenant = TenantFactory.create_tenant()
         self.user = UserFactory.create_user(tenant=self.tenant)
         self.service = MarketplaceIntegrationService(
@@ -623,6 +628,11 @@ class ScheduledSyncE2ETest(TestCase):
             post_save.disconnect(asset_saved, sender=Asset)
         except (ImportError, AttributeError):
             pass
+
+        # Clean up any scheduled syncs left by prior test classes
+        # (transaction=True means Django TestCase doesn't roll back between classes)
+        ScheduledMarketplaceSync.objects.all().delete()
+
         self.tenant = TenantFactory.create_tenant()
         self.user = UserFactory.create_user(tenant=self.tenant)
         self.service = MarketplaceIntegrationService(

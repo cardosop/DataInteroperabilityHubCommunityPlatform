@@ -34,6 +34,7 @@ from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, User, UserRole, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -77,28 +78,29 @@ class ODPSAuthenticationAuthorizationValidationTest(ContractsAPITestBase):
 
         # Create additional users with different roles
         self.provider_user = User.objects.create_user(
-            email="provider@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         UserRole.objects.create(user=self.provider_user, role=self.provider_role)
 
         self.viewer_user = User.objects.create_user(
-            email="viewer@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"viewer-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         UserRole.objects.create(user=self.viewer_user, role=self.viewer_role)
 
         self.guest_user = User.objects.create_user(
-            email="guest@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"guest-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         # Guest user has no roles
 
         # Create another tenant for cross-tenant tests
+        _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.other_tenant)
 
         self.other_tenant_user = User.objects.create_user(
-            email="other-tenant@example.com", tenant=self.other_tenant, status=UserStatus.ACTIVE
+            email=f"other-tenant-{uuid.uuid4().hex[:8]}@example.com", tenant=self.other_tenant, status=UserStatus.ACTIVE
         )
 
         # Create test asset
@@ -946,7 +948,7 @@ class ODPSAuthenticationAuthorizationValidationTest(ContractsAPITestBase):
         """Test users with multiple roles have combined permissions"""
         # Create user with multiple roles
         multi_role_user = User.objects.create_user(
-            email="multirole@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"multirole-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         UserRole.objects.create(user=multi_role_user, role=self.provider_role)
         UserRole.objects.create(user=multi_role_user, role=self.viewer_role)

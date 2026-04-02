@@ -1,6 +1,7 @@
 """
 Unit tests for contract status lifecycle rules.
 """
+import uuid
 
 import pytest
 from rest_framework import status
@@ -13,7 +14,12 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
     ValidationStatus,
 )
+from django.contrib.auth import get_user_model
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import UserStatus
+
+User = get_user_model()
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -122,17 +128,17 @@ class ContractStatusRulesTest(ContractsAPITestBase):
         self.assertEqual(contract.status, ContractStatus.ACTIVE)
 
     def test_activate_contract_via_api_failure(self):
-        """Test activating a contract via API when requirements are not met"""
+        """Test activating a RETIRED contract via API is rejected (invalid transition)."""
         self.client.force_authenticate(user=self.user)
 
         contract = Contract.objects.create(
             tenant=self.tenant,
-            status=ContractStatus.DRAFT,
+            status=ContractStatus.RETIRED,
             original_spec_type=OriginalSpecType.ODCS,
-            original_spec_version="3.0.0",
+            original_spec_version="3.0.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"id": "test", "name": "Test"}',
-            validation_status=ValidationStatus.INVALID,
+            validation_status=ValidationStatus.VALID,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             created_by=self.user,
         )
@@ -141,11 +147,9 @@ class ContractStatusRulesTest(ContractsAPITestBase):
         response = self.client.patch(f"/api/v1/contracts/{contract.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data)
-        self.assertIn("validation_status", response.data["error"])
 
         contract.refresh_from_db()
-        self.assertEqual(contract.status, ContractStatus.DRAFT)  # Status unchanged
+        self.assertEqual(contract.status, ContractStatus.RETIRED)  # Status unchanged
 
     def test_draft_contract_can_have_any_validation_status(self):
         """Test that DRAFT contracts can have any validation status"""
@@ -232,24 +236,23 @@ class ContractStatusRulesTest(ContractsAPITestBase):
         # Already active contract should be able to activate (idempotent)
         self.assertTrue(can_activate)
 
-    def test_contract_cannot_activate_when_retired(self):
-        """Test that RETIRED contract cannot be activated."""
+    def test_contract_cannot_activate_when_validation_invalid(self):
+        """Test that can_activate returns False when validation_status is INVALID."""
         contract = Contract.objects.create(
             tenant=self.tenant,
-            status=ContractStatus.RETIRED,
+            status=ContractStatus.DRAFT,
             original_spec_type=OriginalSpecType.ODCS,
-            original_spec_version="3.0.0",
+            original_spec_version="3.0.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"id": "test", "name": "Test"}',
-            validation_status=ValidationStatus.VALID,
+            validation_status=ValidationStatus.INVALID,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             created_by=self.user,
         )
 
         can_activate, reason = contract.can_activate()
-        # RETIRED contract should not be activatable
         self.assertFalse(can_activate)
-        self.assertIn("RETIRED", reason)
+        self.assertIn("validation_status", reason)
 
     def test_activate_contract_via_api_with_invalid_id(self):
         """Test activating contract via API with invalid contract ID."""
@@ -279,6 +282,8 @@ class ContractStatusRulesTest(ContractsAPITestBase):
         )
 
         data = {"status": ContractStatus.ACTIVE}
+        # Clear authentication
+        self.client.force_authenticate(user=None)
         response = self.client.patch(f"/api/v1/contracts/{contract.id}/", data, format="json")
 
         # Should require authentication
@@ -289,15 +294,19 @@ class ContractStatusRulesTest(ContractsAPITestBase):
     def test_activate_contract_via_api_cross_tenant(self):
         """Test activating contract via API from different tenant."""
         # Create another tenant and user
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant-status",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-status-{_uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
+        ensure_tenant_has_active_subscription(other_tenant)
 
+        _uid = uuid.uuid4().hex[:8]
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{_uid}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE,

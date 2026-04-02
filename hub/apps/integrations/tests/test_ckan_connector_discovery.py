@@ -7,20 +7,22 @@ real CKAN instances. No mocks or stubs - all tests use actual CKAN API endpoints
 Uses centralized test utilities for consistent configuration.
 """
 
+import unittest
 import time
 
 import pytest
 from django.test import TestCase
 
-from hub.apps.core.services.base import NotFoundError
+from hub.apps.core.services.base import (
+    ConnectionError as HubConnectionError,
+    NotFoundError,
+)
 from hub.apps.integrations.base import (
     MarketplaceListing,
     MarketplaceResource,
     MarketplaceType,
 )
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
-    # Backward compatibility (deprecated)
-    ckan_available,
     create_test_connector,
     get_test_ckan_url,  # Backward compatibility
     marketplace_available,
@@ -41,14 +43,14 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         super().setUpClass()
 
         # Use centralized test utilities
-        if not ckan_available():
-            pytest.skip("No CKAN instance available for testing")
+        if not marketplace_available():
+            raise unittest.SkipTest("No CKAN instance available for testing")
 
         # Create connector using centralized utility
         cls.connector = create_test_connector(verify_connection=True)
 
         if not cls.connector:
-            pytest.skip("Cannot create or connect to CKAN instance for testing")
+            raise unittest.SkipTest("Cannot create or connect to CKAN instance for testing")
 
         # Cache connector URL for backward compatibility
         cls.ckan_url = cls.connector.base_url
@@ -304,7 +306,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         page1 = self.connector.list_listings(limit=5, offset=0)
 
         # Small delay to ensure consistency
-        time.sleep(0.5)
+        time.sleep(0.5)  # INTENTIONAL: test-specific timing requirement
 
         # Get first page again
         page1_again = self.connector.list_listings(limit=5, offset=0)
@@ -323,7 +325,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
             listings = self.connector.list_listings(limit=-1)
             # Some CKAN instances may accept negative and treat as 0 or default
             self.assertIsInstance(listings, list)
-        except (ValueError, ConnectionError):
+        except (ValueError, HubConnectionError):
             # Expected if validation is strict
             pass
 
@@ -334,7 +336,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
             listings = self.connector.list_listings(offset=-1)
             # Some CKAN instances may accept negative and treat as 0
             self.assertIsInstance(listings, list)
-        except (ValueError, ConnectionError):
+        except (ValueError, HubConnectionError):
             # Expected if validation is strict
             pass
 
@@ -343,9 +345,11 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         # Create connector with invalid URL
         from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 
-        invalid_connector = CKANConnector(base_url="https://invalid-ckan-instance-xyz-12345.com")
+        invalid_connector = CKANConnector(
+            base_url="https://invalid-ckan-instance-xyz-12345.com"
+        )
 
-        with self.assertRaises(ConnectionError):
+        with self.assertRaises(HubConnectionError):
             invalid_connector.list_listings(limit=1)
 
     def test_comprehensive_discovery_workflow(self):

@@ -14,7 +14,7 @@ from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
@@ -80,22 +80,30 @@ def _start_http_server(handler_class, port=0):
     return server, port, url
 
 
-class ODPSWebhookErrorIntegrationTest(TestCase):
+class ODPSWebhookErrorIntegrationTest(TransactionTestCase):
     """Integration tests for ODPS webhook error scenarios using real HTTP servers."""
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        """Skip TRUNCATE CASCADE to avoid timeout."""
+        pass
 
     def setUp(self):
         """Set up test fixtures."""
+        uid = uuid.uuid4().hex[:8]
         reset_circuit_breaker_by_name("webhook-delivery")
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -114,7 +122,7 @@ class ODPSWebhookErrorIntegrationTest(TestCase):
             retry_intervals=[1, 5, 30],
         )
 
-    @override_settings(WEBHOOK_DELIVERY_TIMEOUT=2)
+    @override_settings(WEBHOOK_REQUEST_TIMEOUT=2)
     def test_complete_error_handling_flow_timeout(self):
         """Test complete error handling flow for timeout via real server that delays response."""
         # Server responds after 3s; client timeout is 2s
@@ -303,7 +311,7 @@ class ODPSWebhookErrorIntegrationTest(TestCase):
 
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
-            time.sleep(0.2)
+            time.sleep(0.2)  # INTENTIONAL: wait for HTTPS server thread to start accepting connections
 
             self.webhook.url = f"https://127.0.0.1:{port}/webhook"
             self.webhook.save(update_fields=["url"])
@@ -433,7 +441,7 @@ class ODPSWebhookErrorIntegrationTest(TestCase):
         httpd = ReuseAddrHTTPServer(("127.0.0.1", port), _OkHandler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
-        time.sleep(0.2)
+        time.sleep(0.2)  # INTENTIONAL: wait for HTTP server thread to start accepting connections
 
         try:
             WebhookDeliveryService.retry_delivery(str(delivery.id))
@@ -510,9 +518,10 @@ class ODPSWebhookErrorIntegrationTest(TestCase):
 
     def test_trigger_odps_webhook_returns_zero_for_tenant_with_no_webhooks(self):
         """Failure path: tenant with no webhooks at all; trigger_odps_webhook returns 0 (no mocks)."""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -562,7 +571,7 @@ class ODPSWebhookErrorIntegrationTest(TestCase):
 
         thread = threading.Thread(target=serve_until_done, daemon=True)
         thread.start()
-        time.sleep(0.15)
+        time.sleep(0.15)  # INTENTIONAL: wait for HTTP server thread to start accepting connections
 
         webhook_real = Webhook.objects.create(
             tenant=self.tenant,

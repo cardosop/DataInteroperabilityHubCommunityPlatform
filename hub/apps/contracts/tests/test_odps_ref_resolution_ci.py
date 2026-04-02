@@ -14,6 +14,7 @@ import json
 import shutil
 import tempfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import unquote, urlparse
 from pathlib import Path
 from threading import Thread
 from typing import Any, Dict
@@ -41,6 +42,8 @@ from hub.apps.contracts.ref_resolver import (
 class TestHTTPServer:
     """Real HTTP server for external $ref resolution tests (no mocks)."""
 
+    __test__ = False  # Not a test class — prevent pytest collection warning
+
     def __init__(self, port: int = 0):
         """
         Initialize test HTTP server.
@@ -52,6 +55,7 @@ class TestHTTPServer:
         self.server = None
         self.thread = None
         self.served_content: Dict[str, Dict[str, Any]] = {}
+        self.request_count = 0
 
     def add_route(self, path: str, content: Dict[str, Any]):
         """
@@ -70,8 +74,18 @@ class TestHTTPServer:
             def do_GET(self):
                 # Get server instance from the server object
                 server = self.server.test_server
-                if self.path in server.served_content:
-                    content = server.served_content[self.path]
+                parsed = urlparse(self.path)
+                raw_path = parsed.path
+                # Match registered routes: full path+query (if any), then path-only;
+                # decode % so "/%E6%..." matches routes registered as "/测试.json".
+                candidates = []
+                for c in (unquote(self.path), unquote(raw_path), raw_path, self.path):
+                    if c and c not in candidates:
+                        candidates.append(c)
+                lookup_path = next((c for c in candidates if c in server.served_content), None)
+                if lookup_path is not None:
+                    server.request_count += 1
+                    content = server.served_content[lookup_path]
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self.send_header(
@@ -99,7 +113,7 @@ class TestHTTPServer:
         # Give server a moment to start
         import time
 
-        time.sleep(0.1)
+        time.sleep(0.1)  # INTENTIONAL: test-specific timing requirement
 
     def stop(self):
         """Stop HTTP server."""
@@ -351,7 +365,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
                 "url_allowlist": [server.get_base_url()],
                 "url_denylist": [],
             }
-            resolver = RefResolver(config=config, base_path=self.temp_dir, enable_caching=False)
+            resolver = RefResolver(config=config, base_path=self.temp_dir, enable_caching=False, tenant_id="system")
 
             document = {
                 "schema": "https://opendataproducts.org/schema/v4.1",
@@ -384,7 +398,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
                 "url_allowlist": [],
                 "url_denylist": [server.get_base_url()],
             }
-            resolver = RefResolver(config=config, base_path=self.temp_dir, enable_caching=False)
+            resolver = RefResolver(config=config, base_path=self.temp_dir, enable_caching=False, tenant_id="system")
 
             document = {
                 "schema": "https://opendataproducts.org/schema/v4.1",
@@ -416,7 +430,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
                 "url_allowlist": ["http://allowed.example.com"],
                 "url_denylist": [],
             }
-            resolver = RefResolver(config=config, base_path=self.temp_dir, enable_caching=False)
+            resolver = RefResolver(config=config, base_path=self.temp_dir, enable_caching=False, tenant_id="system")
 
             document = {
                 "schema": "https://opendataproducts.org/schema/v4.1",
@@ -454,6 +468,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
                 base_path=self.temp_dir,
                 enable_caching=False,
                 timeout_per_ref=2,  # Short timeout for CI
+                tenant_id="system",
             )
 
             document = {
@@ -532,7 +547,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
                 "url_allowlist": [server.get_base_url()],
                 "url_denylist": [],
             }
-            resolver = RefResolver(config=config, base_path=self.temp_dir, enable_caching=False)
+            resolver = RefResolver(config=config, base_path=self.temp_dir, enable_caching=False, tenant_id="system")
 
             document = {
                 "schema": "https://opendataproducts.org/schema/v4.1",
@@ -553,7 +568,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
             # Wait a bit for server to be ready
             import time
 
-            time.sleep(0.2)
+            time.sleep(0.2)  # INTENTIONAL: test-specific timing requirement
 
             original, resolved = resolver.resolve_all_refs(
                 document, preserve_original=True, external_ref_handling=ExternalRefHandling.RESOLVE

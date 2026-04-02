@@ -156,10 +156,20 @@ from .views_validation import ContractValidationMixin
                 required=False,
             ),
             OpenApiParameter(
+                name="spec_version",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Filter by original spec version. Works for both ODCS "
+                    "(e.g. '3.1.0', '3.0.2') and ODPS (e.g. '4.1', 'bitol-1.0.0')"
+                ),
+                required=False,
+            ),
+            OpenApiParameter(
                 name="odps_version",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description="Filter by ODPS version (e.g., '4.1', '4.0'). Only applies to ODPS contracts",
+                description="Filter by ODPS version (e.g., '4.1', '4.0'). Only applies to ODPS contracts. Prefer spec_version for new integrations.",
                 required=False,
             ),
             OpenApiParameter(
@@ -305,9 +315,15 @@ class ContractViewSet(
         """Filter queryset based on user permissions and query parameters (GAP-9.2.2)"""
         user = self.request.user
 
-        # Platform admins can see all contracts
-        if hasattr(user, "is_platform_admin") and user.is_platform_admin:
+        # Platform admins: if they have a tenant context, scope to that tenant
+        # (prevents returning ALL contracts when test users are platform admins).
+        # Only truly cross-tenant queries happen when the admin has no tenant.
+        is_admin = hasattr(user, "is_platform_admin") and user.is_platform_admin
+        admin_tenant_id = getattr(user, "tenant_id", None) if is_admin else None
+        if is_admin and not admin_tenant_id:
             queryset = Contract.objects.all()
+        elif is_admin and admin_tenant_id:
+            queryset = Contract.objects.filter(tenant_id=admin_tenant_id)
         else:
             # Get tenant from request (set by middleware/authentication) or user
             # Priority: request.tenant_id > request.tenant > user.tenant_id > user.tenant
@@ -357,27 +373,6 @@ class ContractViewSet(
             if not tenant_id and hasattr(user, "tenant") and user.tenant:
                 tenant_id = user.tenant.id
 
-            # DEBUG: Log tenant_id retrieval for troubleshooting (always log in test environments)
-            import logging
-            import os
-
-            # Check multiple ways to detect test mode
-            is_test = (
-                os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith("test")
-                or "test" in os.environ.get("PYTEST_CURRENT_TEST", "")
-                or "test" in str(os.environ.get("DJANGO_SETTINGS_MODULE", ""))
-            )
-
-            if is_test:
-                logger = logging.getLogger(__name__)
-                logger.warning(
-                    f"ContractViewSet.get_queryset: tenant_id={tenant_id} (type: {type(tenant_id)}), "
-                    f"user.tenant_id={getattr(user, 'tenant_id', None)}, "
-                    f"user.tenant={getattr(user, 'tenant', None)}, "
-                    f"request.tenant_id={getattr(self.request, 'tenant_id', None)} (type: {type(getattr(self.request, 'tenant_id', None))}), "
-                    f"request.tenant={getattr(self.request, 'tenant', None)}"
-                )
-
             # Regular users can only see contracts in their tenant
             if tenant_id:
                 if isinstance(tenant_id, str):
@@ -391,39 +386,6 @@ class ContractViewSet(
                         queryset = Contract.objects.filter(tenant_id=tenant_id)
                 else:
                     queryset = Contract.objects.filter(tenant_id=tenant_id)
-
-                # DEBUG: Verify queryset has contracts (only in test environments)
-                import os
-
-                # Check multiple ways to detect test mode
-                is_test = (
-                    os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith("test")
-                    or "test" in os.environ.get("PYTEST_CURRENT_TEST", "")
-                    or "pytest" in str(os.environ.get("_", ""))
-                    or "test" in str(os.environ.get("DJANGO_SETTINGS_MODULE", ""))
-                )
-
-                if is_test:
-                    count_before_filtering = queryset.count()
-                    total_for_tenant = Contract.objects.filter(tenant_id=tenant_id).count()
-                    # Always log in test mode to debug the issue
-                    import logging
-
-                    logger = logging.getLogger(__name__)
-                    logger.warning(
-                        f"ContractViewSet.get_queryset: tenant_id={tenant_id} (type: {type(tenant_id)}), "
-                        f"queryset.count()={count_before_filtering}, "
-                        f"Total contracts for tenant: {total_for_tenant}, "
-                        f"request.tenant_id={getattr(self.request, 'tenant_id', None)} (type: {type(getattr(self.request, 'tenant_id', None))}), "
-                        f"user.id={getattr(user, 'id', None) if user else None}, "
-                        f"user.tenant_id={getattr(user, 'tenant_id', None) if user else None}"
-                    )
-                    if count_before_filtering == 0 and total_for_tenant > 0:
-                        # Queryset is empty but contracts exist - this indicates a filtering issue
-                        logger.error(
-                            f"ContractViewSet.get_queryset: CRITICAL - queryset is empty but {total_for_tenant} contracts exist for tenant {tenant_id}. "
-                            f"This suggests a UUID type mismatch or filtering issue."
-                        )
             else:
                 queryset = Contract.objects.none()
                 # Log when tenant_id is None
@@ -480,6 +442,20 @@ class ContractViewSet(
         else:
             # Fallback for Django WSGIRequest (e.g., in tests with APIRequestFactory)
             query_params = request.GET
+
+        # Filter by linked asset (asset detail page, pickers). Mirrors datasets list:
+        # valid UUID filters; invalid UUID → empty (no 500).
+        # NOTE: This class overrides ContractViewSetBase._apply_filtering; duplicate
+        # must match views_base or call super() after refactor.
+        asset_id_param = query_params.get("asset_id")
+        if asset_id_param:
+            import uuid
+
+            try:
+                uuid.UUID(str(asset_id_param))
+            except (ValueError, TypeError):
+                return queryset.none()
+            queryset = queryset.filter(asset_id=asset_id_param)
 
         # Search by info.name or info.title (29.69.3 ContractPicker; LIST_API_PICKER_AUDIT)
         search_term = query_params.get("search")
@@ -663,15 +639,26 @@ class ContractViewSet(
             else:
                 queryset = queryset.none()
 
-        # Filter by server_type
+        # Filter by server_type — uses JSONB @> containment because servers is an array of objects
         server_type = query_params.get("server_type")
         if server_type:
-            queryset = queryset.filter(hub_contract_json__servers__type=server_type)
+            queryset = queryset.filter(
+                hub_contract_json__contains={"servers": [{"type": server_type}]}
+            )
 
-        # Filter by server_url
+        # Filter by server_url — iterate in Python (icontains not supported via @>)
         server_url = query_params.get("server_url")
         if server_url:
-            queryset = queryset.filter(hub_contract_json__servers__url__icontains=server_url)
+            server_url_lower = server_url.lower()
+            contract_ids = [
+                c.id for c in queryset
+                if c.hub_contract_json and any(
+                    server_url_lower in str(s.get("url", "")).lower()
+                    for s in c.hub_contract_json.get("servers", [])
+                    if isinstance(s, dict)
+                )
+            ]
+            queryset = queryset.filter(id__in=contract_ids)
 
         # Filter by min_availability (from servicelevels[])
         min_availability = query_params.get("min_availability")
@@ -740,17 +727,24 @@ class ContractViewSet(
                 else:
                     queryset = queryset.none()
 
-        # Filter by model_name
+        # Filter by model_name — uses JSONB @> containment because models is an array of objects
         model_name = query_params.get("model_name")
         if model_name:
-            queryset = queryset.filter(hub_contract_json__models__name=model_name)
+            queryset = queryset.filter(
+                hub_contract_json__contains={"models": [{"name": model_name}]}
+            )
 
         # Filter by spec_type (ODPS-specific filtering)
         spec_type = query_params.get("spec_type")
         if spec_type:
             queryset = queryset.filter(original_spec_type=spec_type)
 
-        # Filter by odps_version (ODPS-specific filtering)
+        # Filter by spec_version (universal — works for ODCS and ODPS)
+        spec_version = query_params.get("spec_version")
+        if spec_version:
+            queryset = queryset.filter(original_spec_version=spec_version)
+
+        # Filter by odps_version (legacy — prefer spec_version)
         odps_version = query_params.get("odps_version")
         if odps_version:
             # Only apply to ODPS contracts

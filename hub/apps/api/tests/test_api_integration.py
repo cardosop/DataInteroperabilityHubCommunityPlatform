@@ -3,6 +3,7 @@ Integration tests for REST API endpoints.
 
 Tests cover all major API endpoints to ensure they work correctly.
 """
+import uuid
 import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
@@ -24,17 +25,18 @@ class APIIntegrationTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -99,23 +101,24 @@ class APIIntegrationTest(TestCase):
         self.assertIsNotNone(response['X-Request-ID'])
     
     def test_rate_limit_headers(self):
-        """Test that rate limit headers are included"""
+        """Test that rate limit headers are included when rate limiting is enabled."""
+        from django.conf import settings
+
         response = self.client.get('/api/v1/')
-        
-        # Rate limit headers should be present (check response.headers dict)
-        # Root cause fix: RateLimitMiddleware adds headers only if rate_limit_results exist on request
-        # In real requests, middleware adds headers. Check if present (may not be if rate limiting disabled or no results)
-        # This test verifies middleware integration, headers may be present if middleware ran
-        if 'X-RateLimit-Limit' in response.headers:
-            self.assertIn('X-RateLimit-Limit', response.headers)
-            self.assertIn('X-RateLimit-Remaining', response.headers)
-        else:
-            # If headers not present, middleware may not have run or rate limiting disabled
-            # Skip this test if rate limiting is not enabled (acceptable for integration test)
-            from django.conf import settings
-            if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-                # Rate limiting enabled but headers missing - this is a failure
-                self.fail("Rate limit headers should be present when rate limiting is enabled")
+
+        if not getattr(settings, 'RATE_LIMIT_ENABLED', True):
+            # Rate limiting explicitly disabled — headers not expected
+            return
+
+        # When rate limiting is enabled, headers must be present
+        self.assertIn(
+            'X-RateLimit-Limit', response.headers,
+            "X-RateLimit-Limit header missing (rate limiting is enabled)"
+        )
+        self.assertIn(
+            'X-RateLimit-Remaining', response.headers,
+            "X-RateLimit-Remaining header missing (rate limiting is enabled)"
+        )
     
     def test_authentication_required(self):
         """Test that authentication is required for protected endpoints"""

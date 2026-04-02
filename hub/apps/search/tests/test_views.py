@@ -4,6 +4,7 @@ Integration tests for Search API Views
 Tests for search endpoints, suggestions, analytics, and index rebuild.
 """
 
+import uuid
 import pytest
 from django.test import TestCase
 from django.urls import reverse
@@ -17,6 +18,7 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.search.indexing import SearchIndexer
 from hub.apps.search.models import SearchAnalytics, SearchIndex
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -42,12 +44,14 @@ class SearchViewSetTest(TestCase):
 
         self.client = APIClient()
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="VERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -171,7 +175,7 @@ class SearchViewSetTest(TestCase):
     def test_search_without_tenant_returns_400(self):
         """Search when user has no tenant returns 400 with error message."""
         user_no_tenant = User.objects.create_user(
-            email="notenant@example.com",
+            email=f"notenant-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status=UserStatus.ACTIVE,
@@ -211,7 +215,7 @@ class SearchViewSetTest(TestCase):
     def test_suggestions_without_tenant_returns_400(self):
         """Suggestions when user has no tenant returns 400."""
         user_no_tenant = User.objects.create_user(
-            email="notenant2@example.com",
+            email=f"notenant2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status=UserStatus.ACTIVE,
@@ -250,10 +254,10 @@ class SearchViewSetTest(TestCase):
         self.assertIn("error", response.data)
         self.assertIn("not found", response.data["error"].lower())
 
-    def test_analytics_without_tenant_returns_400(self):
-        """Analytics endpoint when user has no tenant returns 400."""
+    def test_analytics_without_tenant_returns_error(self):
+        """Analytics endpoint when user has no tenant returns 403 (no auditor role)."""
         user_no_tenant = User.objects.create_user(
-            email="notenant3@example.com",
+            email=f"notenant3-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status=UserStatus.ACTIVE,
@@ -261,9 +265,8 @@ class SearchViewSetTest(TestCase):
         self.client.force_authenticate(user=user_no_tenant)
         url = reverse("search-analytics")
         response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data)
-        self.assertIn("tenant", response.data["error"].lower())
+        # Analytics requires IsAuditor permission; tenant-less user has no roles → 403
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_search_response_structure_tdd(self):
         """TDD: Search response contains required keys and types."""

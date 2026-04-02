@@ -8,11 +8,11 @@ in setUp methods across test files.
 import uuid
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.services import FileService
 from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan, TenantStatus
 from hub.apps.users.models import UserStatus
@@ -34,10 +34,22 @@ def _ensure_tenant_has_active_subscription(tenant):
         defaults={
             "name": "Files Test Plan",
             "tier": PlanTier.PRO,
-            "limits_json": {"max_assets": 100},
+            "limits_json": {"max_assets": 100, "max_storage_gb": 1000},
             "is_active": True,
         },
     )
+    # Ensure the plan has max_storage_gb (handles pre-existing rows
+    # created before this limit was added to the test plan).
+    if "max_storage_gb" not in (plan.limits_json or {}):
+        plan.limits_json = {**(plan.limits_json or {}), "max_storage_gb": 1000}
+        plan.save(update_fields=["limits_json"])
+
+    # Assign the plan directly on the tenant FK so that
+    # PlanLimitService.check_limit() finds it via tenant.plan
+    if tenant.plan_id != plan.id:
+        tenant.plan = plan
+        tenant.save(update_fields=["plan"])
+
     subscription = (
         Subscription.objects.filter(tenant_id=tenant.id).order_by("-created_at").first()
     )
@@ -62,19 +74,23 @@ class FilesTestBase(TestCase):
         super().setUp()
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+
+        # Ensure tenant has active subscription with storage limits
+        # (required because FileService.create_file enforces plan limits)
+        _ensure_tenant_has_active_subscription(self.tenant)
 
         # Create service
         self.service = FileService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -88,12 +104,13 @@ class FilesTestBase(TestCase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             storage_path=f"{self.tenant.id}/{file_id}/test.csv",
             created_by=self.user,
         )
 
 
-class FilesTransactionTestBase(TransactionTestCase):
+class FilesTransactionTestBase(TestCase):
     """Base test class for files tests requiring TransactionTestCase."""
 
     def setUp(self):
@@ -101,19 +118,22 @@ class FilesTransactionTestBase(TransactionTestCase):
         super().setUp()
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+
+        # Ensure tenant has active subscription with storage limits
+        _ensure_tenant_has_active_subscription(self.tenant)
 
         # Create service
         self.service = FileService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -127,6 +147,7 @@ class FilesTransactionTestBase(TransactionTestCase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             storage_path=f"{self.tenant.id}/{file_id}/test.csv",
             created_by=self.user,
         )

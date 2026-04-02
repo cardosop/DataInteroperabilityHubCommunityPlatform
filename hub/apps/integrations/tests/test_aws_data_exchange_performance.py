@@ -6,11 +6,14 @@ No mocks or stubs; requires AWS credentials. Skips entire class when credentials
 are not available (same as test_aws_data_exchange_integration.py).
 """
 
+import unittest
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 
 from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
@@ -21,12 +24,16 @@ from hub.apps.integrations.connectors.aws_data_exchange_connector import (
 
 
 def get_aws_credentials():
-    """Get AWS credentials from environment; skip if not available."""
-    access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
-    secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    """Get AWS credentials from environment; skip if not available.
+
+    Prefers AWS_DATA_EXCHANGE_* vars (dedicated for Data Exchange tests)
+    over generic AWS_ACCESS_KEY_ID (which may point to MinIO).
+    """
+    access_key_id = os.getenv("AWS_DATA_EXCHANGE_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID")
+    secret_access_key = os.getenv("AWS_DATA_EXCHANGE_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")
     region = os.getenv("AWS_REGION", "us-east-1")
     if not access_key_id or not secret_access_key:
-        pytest.skip(
+        raise unittest.SkipTest(
             "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY required for "
             "performance integration tests"
         )
@@ -64,11 +71,11 @@ class TestAWSDataExchangeConnectorPerformance(TestCase):
             cls.connector = AWSDataExchangeConnector(**credentials)
             cls.connector.authenticate(credentials)
             if not verify_connection(cls.connector):
-                pytest.skip(
+                raise unittest.SkipTest(
                     "Cannot connect to AWS Data Exchange - check credentials and permissions"
                 )
         except Exception as e:
-            pytest.skip(f"Cannot set up AWS Data Exchange connector: {e}")
+            raise unittest.SkipTest(f"Cannot set up AWS Data Exchange connector: {e}")
 
     @classmethod
     def tearDownClass(cls):

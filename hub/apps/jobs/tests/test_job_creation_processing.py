@@ -16,7 +16,7 @@ from hub.apps.users.models import UserStatus
 
 from hub.apps.jobs.tests.billing_support import ensure_tenant_has_active_subscription
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
@@ -28,11 +28,11 @@ class JobCreationProcessingTest(TestCase):
         self.client = APIClient()
 
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -42,7 +42,7 @@ class JobCreationProcessingTest(TestCase):
 
         # Create user without tenant
         self.user_no_tenant = User.objects.create_user(
-            email="no_tenant@example.com",
+            email=f"no_tenant-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status=UserStatus.ACTIVE,
@@ -294,8 +294,9 @@ class JobCreationProcessingTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Create another tenant and job
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         other_job = Job.objects.create(
             tenant=other_tenant,

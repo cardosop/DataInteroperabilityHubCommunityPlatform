@@ -18,6 +18,7 @@ from hub.apps.core.events.models import Event
 @override_settings(
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Disable async persistence for tests
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,  # Disable write-behind for tests
+    EVENT_BUS_ENABLE_PERSISTENCE=True,
 )
 class LineageServiceEventPublishingTest(ContractsTestBase):
     """Integration tests for LineageService event publishing using real EventPublisher."""
@@ -25,6 +26,10 @@ class LineageServiceEventPublishingTest(ContractsTestBase):
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
+
+        # Reset event bus singleton so override_settings takes effect
+        import hub.apps.core.events.bus as _bus_mod
+        _bus_mod._event_bus = None
 
         self.service = LineageService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 

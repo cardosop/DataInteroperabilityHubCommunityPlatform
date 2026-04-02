@@ -4,11 +4,12 @@ DLQ (via mark_file_failed), Notifications (at run completion); Compliance and
 Semantic when configured. No mocks: real services.
 """
 
+import unittest
 import os
 import uuid
 
 import pytest
-from django.test import TransactionTestCase, override_settings
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 # Force MinIO endpoint and credentials in tests so we never hit real AWS.
@@ -58,7 +59,7 @@ from hub.apps.users.models import User, UserStatus
 # TransactionTestCase flush (teardown) can exceed 300s with many tables; allow 600s so
 # test body + teardown complete (real DQ, MinIO, Semantic, DB flush).
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.timeout(600),
 ]
 
@@ -83,7 +84,7 @@ def _create_worker_api_key(tenant, user):
     AWS_S3_ENDPOINT_URL=_TEST_S3_ENDPOINT,
     AWS_S3_USE_SSL=_TEST_S3_USE_SSL,
 )
-class ProcessFileIntegrationsTest(TransactionTestCase):
+class ProcessFileIntegrationsTest(TestCase):
     """
     Verify process-file path uses real DQ, Files, Datasets, Search, DLQ;
     Compliance and Semantic when configured. No mocks.
@@ -160,7 +161,7 @@ class ProcessFileIntegrationsTest(TransactionTestCase):
     def test_process_file_creates_file_and_dataset_and_indexes(self):
         """process_file_for_run creates File, Dataset, and indexes (Search); real services."""
         if not self._storage_available:
-            pytest.skip("MinIO storage not available in test environment")
+            raise unittest.SkipTest("MinIO storage not available in test environment")
         csv_content = b"id,name\n1,alpha\n2,beta\n"
         result = process_file_for_run(
             run_id=str(self.ingestion_run.id),
@@ -203,8 +204,10 @@ class ProcessFileIntegrationsTest(TransactionTestCase):
     def test_process_file_with_run_compliance_creates_compliance_run_when_configured(self):
         """When source_config.run_compliance is True, process_file_for_run creates a compliance run for the dataset."""
         if not self._storage_available:
-            pytest.skip("MinIO storage not available in test environment")
-        self.scheduled_ingestion.source_config["run_compliance"] = True
+            raise unittest.SkipTest("MinIO storage not available in test environment")
+        cfg = self.scheduled_ingestion.get_source_config()
+        cfg["run_compliance"] = True
+        self.scheduled_ingestion.source_config = cfg
         self.scheduled_ingestion.save(update_fields=["source_config"])
         csv_content = b"id,name\n1,alpha\n2,beta\n"
         result = process_file_for_run(
@@ -228,8 +231,10 @@ class ProcessFileIntegrationsTest(TransactionTestCase):
     def test_process_file_with_run_semantic_mapping_invokes_semantic_path(self):
         """When source_config.run_semantic_mapping is True, process_file_for_run invokes semantic mapping (non-fatal)."""
         if not self._storage_available:
-            pytest.skip("MinIO storage not available in test environment")
-        self.scheduled_ingestion.source_config["run_semantic_mapping"] = True
+            raise unittest.SkipTest("MinIO storage not available in test environment")
+        cfg = self.scheduled_ingestion.get_source_config()
+        cfg["run_semantic_mapping"] = True
+        self.scheduled_ingestion.source_config = cfg
         self.scheduled_ingestion.save(update_fields=["source_config"])
         csv_content = b"id,name\n1,alpha\n2,beta\n"
         result = process_file_for_run(

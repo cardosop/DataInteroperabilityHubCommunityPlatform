@@ -31,6 +31,10 @@ from hub.apps.observability.span_instrumentation import (
 )
 from opentelemetry.trace import StatusCode
 from hub.apps.core.services.base import NotFoundError, ValidationError, ServiceError
+from hub.apps.integrations.error_classification import (
+    classify_connector_error,
+    ConnectorErrorType,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -778,7 +782,7 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                 raise ServiceError(error_msg)
 
         except ValueError as e:
-            # Validation errors - don't retry
+            # Validation errors — always permanent, don't retry
             final_status = "failed"
             correlation_context = get_correlation_context()
             log_sync_job(
@@ -796,47 +800,93 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                 set_span_status(StatusCode.ERROR)
             raise
 
-        except ConnectionError as e:
-            # Connection errors - may be transient, allow retry
-            final_status = "failed"
-            error_msg = f"Connection error during sync: {str(e)}"
-            correlation_context = get_correlation_context()
-            log_sync_job(
-                "sync_connection_error",
-                level="error",
-                sync_job_id=str(sync_job.id),
-                error_type=type(e).__name__,
-                error_message=str(e),
-                **correlation_context,
-                exc_info=True,
-            )
-            sync_job.add_error(error_msg, save=True)
-            if span:
-                record_span_exception(e)
-                add_span_attributes({"error.retryable": True})
-                set_span_status(StatusCode.ERROR)
-            # Re-raise to trigger retry
-            raise
-
         except Exception as e:
-            # Other errors - log and mark failed
+            # ── Phase 77: classify error for retry decision ─────
+            error_class = classify_connector_error(e)
+            error_msg = f"{error_class.value.title()} error during sync: {str(e)}"
             final_status = "failed"
-            error_msg = f"Unexpected error during sync: {str(e)}"
             correlation_context = get_correlation_context()
             log_sync_job(
-                "sync_unexpected_error",
+                "sync_classified_error",
                 level="error",
                 sync_job_id=str(sync_job.id),
                 error_type=type(e).__name__,
+                error_class=error_class.value,
                 error_message=str(e),
+                retry_count=retry_count,
                 **correlation_context,
                 exc_info=True,
             )
-            sync_job.mark_failed(error_message=error_msg)
-            if span:
-                record_span_exception(e)
-                set_span_status(StatusCode.ERROR)
-            raise ServiceError(error_msg) from e
+
+            if error_class == ConnectorErrorType.PERMANENT:
+                # Permanent — fail immediately, no retry.
+                # add_error first (with error_type), then
+                # mark_failed WITHOUT error_message to avoid
+                # a duplicate entry (mark_failed calls add_error
+                # internally when error_message is provided).
+                sync_job.add_error(
+                    error_msg, save=False,
+                    error_type=error_class.value,
+                )
+                sync_job.mark_failed()
+                if span:
+                    record_span_exception(e)
+                    add_span_attributes({
+                        "error.retryable": False,
+                        "error.class": error_class.value,
+                    })
+                    set_span_status(StatusCode.ERROR)
+                raise ServiceError(error_msg) from e
+
+            elif error_class == ConnectorErrorType.TRANSIENT:
+                # Transient — record error and re-raise for retry
+                sync_job.add_error(
+                    error_msg, save=True,
+                    error_type=error_class.value,
+                )
+                if span:
+                    record_span_exception(e)
+                    add_span_attributes({
+                        "error.retryable": True,
+                        "error.class": error_class.value,
+                    })
+                    set_span_status(StatusCode.ERROR)
+                raise
+
+            else:
+                # Unknown — retry once then fail
+                max_unknown_retries = 1
+                sync_job.add_error(
+                    error_msg, save=False,
+                    error_type=error_class.value,
+                )
+                if retry_count < max_unknown_retries:
+                    sync_job.save(
+                        update_fields=["errors", "updated_at"],
+                    )
+                    if span:
+                        record_span_exception(e)
+                        add_span_attributes({
+                            "error.retryable": True,
+                            "error.class": error_class.value,
+                            "error.retry_count": retry_count,
+                        })
+                        set_span_status(StatusCode.ERROR)
+                    raise
+                else:
+                    # Exhausted unknown retries — fail.
+                    # Don't pass error_message to mark_failed;
+                    # it was already recorded by add_error above.
+                    sync_job.mark_failed()
+                    if span:
+                        record_span_exception(e)
+                        add_span_attributes({
+                            "error.retryable": False,
+                            "error.class": error_class.value,
+                            "error.retry_count": retry_count,
+                        })
+                        set_span_status(StatusCode.ERROR)
+                    raise ServiceError(error_msg) from e
 
     except Exception as e:
         # Catch-all for any unhandled errors

@@ -26,6 +26,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from hub.apps.observability.otel_metrics import (
+    contract_export_total,
     odcs_export_duration_seconds,
     odcs_export_size_bytes,
     odcs_export_total,
@@ -48,6 +49,52 @@ class ContractExportMixin:
     Provides export, download, and ODPS generation endpoints.
     """
 
+    @extend_schema(
+        summary="Export contract",
+        description=(
+            "Export a contract in ODCS, ODPS, or HubContract format. "
+            "Use `version` to request a specific spec version; "
+            "downgrade warnings are returned via "
+            "`X-Export-Downgrade-Warnings` header."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="format",
+                type=OpenApiTypes.STR,
+                enum=["odcs", "odps", "hubcontract"],
+                description="Target format (default: hubcontract)",
+            ),
+            OpenApiParameter(
+                name="output_format",
+                type=OpenApiTypes.STR,
+                enum=["json", "yaml"],
+                description="Output serialization (default: json)",
+            ),
+            OpenApiParameter(
+                name="version",
+                type=OpenApiTypes.STR,
+                enum=[
+                    "2.2.2", "3.0.0", "3.0.1", "3.0.2",
+                    "3.1.0", "bitol-1.0.0",
+                ],
+                description=(
+                    "Target spec version "
+                    "(default: original spec version)"
+                ),
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description="Exported contract document",
+            ),
+            400: OpenApiResponse(
+                description="Invalid format or version",
+            ),
+            404: OpenApiResponse(
+                description="Contract not found",
+            ),
+        },
+    )
     @action(detail=True, methods=["get"], url_path="export")
     def export_contract(self, request, id=None):
         # ROOT CAUSE FIX: Ensure self.request and self.kwargs are set correctly
@@ -242,7 +289,19 @@ class ContractExportMixin:
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                contract_data = contract.hub_contract_json
+                contract_data = dict(contract.hub_contract_json)
+
+                # Ensure hub_contract_version from the model field is
+                # present in the exported dict.  The ODPS normalizer
+                # stores version as a separate DB column, not inside
+                # hub_contract_json, so the export must merge it back.
+                if (
+                    contract.hub_contract_version
+                    and "hub_contract_version" not in contract_data
+                ):
+                    contract_data["hub_contract_version"] = (
+                        contract.hub_contract_version
+                    )
 
                 # Format output
                 if output_format == "yaml":
@@ -532,17 +591,66 @@ class ContractExportMixin:
                             extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
                         )
 
+                    # Phase 26.4.4: Downgrade warning headers
+                    downgrade_warnings = []
+                    orig_ver = getattr(
+                        contract, "original_spec_version", None,
+                    ) or ""
+
+                    def _ver_tuple(v: str):
+                        """Parse '3.1.0' → (3, 1, 0) for safe comparison."""
+                        try:
+                            return tuple(int(x) for x in v.split(".")[:3])
+                        except (ValueError, AttributeError):
+                            return (0,)
+
+                    if (
+                        odcs_version
+                        and orig_ver
+                        and odcs_version != orig_ver
+                        and _ver_tuple(orig_ver) > _ver_tuple(odcs_version)
+                    ):
+                        if orig_ver.startswith("3.1"):
+                            if odcs_version.startswith("2."):
+                                downgrade_warnings = [
+                                    "relationships_dropped",
+                                    "ids_dropped",
+                                    "team_format_changed",
+                                    "quality_library_dropped",
+                                ]
+                            elif odcs_version.startswith("3.0"):
+                                downgrade_warnings = [
+                                    "relationships_dropped",
+                                    "ids_dropped",
+                                    "team_format_changed",
+                                ]
+
                     # Return response
                     if output_format == "yaml":
                         from django.http import HttpResponse
 
-                        return HttpResponse(output, content_type=content_type)
+                        resp = HttpResponse(output, content_type=content_type)
                     else:
                         # For JSON, parse back to dict for DRF serialization
                         import json
 
                         contract_data = json.loads(output)
-                        return Response(contract_data, content_type=content_type)
+                        resp = Response(contract_data, content_type=content_type)
+
+                    if downgrade_warnings:
+                        resp["X-Export-Downgrade-Warnings"] = ",".join(downgrade_warnings)
+
+                    # 26.17: Unified export counter with downgrade tracking
+                    try:
+                        contract_export_total.labels(
+                            status="success",
+                            downgrade="true" if downgrade_warnings else "false",
+                            tenant_id=tenant_id,
+                        ).inc()
+                    except Exception:
+                        pass
+
+                    return resp
 
                 except Exception as e:
                     # Record failure metric
@@ -642,6 +750,16 @@ class ContractExportMixin:
                     odps_export_total.labels(
                         status="success", format=output_format, tenant_id=tenant_id
                     ).inc()
+
+                    # 26.17: Unified export counter (ODPS has no downgrade)
+                    try:
+                        contract_export_total.labels(
+                            status="success",
+                            downgrade="false",
+                            tenant_id=tenant_id,
+                        ).inc()
+                    except Exception:
+                        pass
 
                     return Response(output, content_type=content_type)
 
@@ -1097,6 +1215,16 @@ class ContractExportMixin:
                             "odcs_export_metrics_failed",
                             extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
                         )
+
+                    # 26.17: Unified export counter for downloads
+                    try:
+                        contract_export_total.labels(
+                            status="success",
+                            downgrade="false",
+                            tenant_id=tenant_id,
+                        ).inc()
+                    except Exception:
+                        pass
 
                     # Return response with Content-Disposition header
                     response = HttpResponse(output, content_type=content_type)

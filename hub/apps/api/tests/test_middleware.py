@@ -87,8 +87,9 @@ class RequestIDMiddlewareTest(TestCase):
     def test_binds_tenant_id_to_structlog(self):
         """Test that middleware binds tenant_id to structlog in response"""
         from hub.apps.tenants.models import Tenant
-        
-        tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+
+        uid = uuid.uuid4().hex[:8]
+        tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         request = self.factory.get("/api/v1/assets/")
         request.tenant = tenant
         
@@ -98,7 +99,7 @@ class RequestIDMiddlewareTest(TestCase):
             self.middleware.process_response(request, response)
             
             # Should bind tenant_id
-            mock_bind.assert_called()
+            mock_bind.assert_called_once()
             # Check if tenant_id was bound
             calls = [call[1] for call in mock_bind.call_args_list if 'tenant_id' in call[1]]
             if calls:
@@ -108,10 +109,11 @@ class RequestIDMiddlewareTest(TestCase):
         """Test that middleware binds user_id to structlog in response"""
         from hub.apps.users.models import User
         from hub.apps.tenants.models import Tenant
-        
-        tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+
+        uid = uuid.uuid4().hex[:8]
+        tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=tenant
         )
@@ -125,7 +127,7 @@ class RequestIDMiddlewareTest(TestCase):
             self.middleware.process_response(request, response)
             
             # Should bind user_id
-            mock_bind.assert_called()
+            mock_bind.assert_called_once()
             # Check if user_id was bound
             calls = [call[1] for call in mock_bind.call_args_list if 'user_id' in call[1]]
             if calls:

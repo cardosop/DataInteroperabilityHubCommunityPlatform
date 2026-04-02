@@ -33,6 +33,7 @@ from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus, Role, UserRole
 from hub.apps.core.services.base import ValidationError
+import uuid
 
 UserModel = get_user_model()
 
@@ -43,8 +44,8 @@ class PolicyBusinessRulesTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.tenant_id = str(self.tenant.id)
 
@@ -57,7 +58,7 @@ class PolicyBusinessRulesTest(TestCase):
 
         # Create tenant admin user
         self.tenant_admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -131,9 +132,10 @@ class PolicyBusinessRulesTest(TestCase):
 
     def test_validate_policy_application_tenant_mismatch(self):
         """Test policy application validation fails for tenant mismatch"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}"
         )
         other_policy = AccessPolicy.objects.create(
             tenant=other_tenant,
@@ -314,8 +316,8 @@ class TopologyBusinessRulesTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.tenant_id = str(self.tenant.id)
 

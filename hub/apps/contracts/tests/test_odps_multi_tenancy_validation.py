@@ -29,6 +29,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
+from tests.utils.wait_helpers import wait_for_event_persistence
+
 from django.db import transaction
 from django.test import TransactionTestCase
 
@@ -47,6 +49,7 @@ from hub.apps.core.events.models import Event
 from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 
 class ODPSMultiTenancyTestBase(ContractsTestBase):
@@ -56,36 +59,37 @@ class ODPSMultiTenancyTestBase(ContractsTestBase):
         """Set up test fixtures."""
         super().setUp()
 
-        # Use base tenant/user as Tenant A/User A
+        # Use base tenant/user as Tenant A/User A (unique per run for --reuse-db)
+        uid = uuid.uuid4().hex[:8]
         self.tenant_a = self.tenant
-        self.tenant_a.name = "Tenant A"
-        self.tenant_a.slug = "tenant-a"
+        self.tenant_a.name = f"Tenant A {uid}"
+        self.tenant_a.slug = f"tenant-a-{uid}"
         self.tenant_a.save()
 
         self.user_a = self.user
-        self.user_a.email = "user_a@example.com"
+        self.user_a.email = f"user_a-{uid}@example.com"
         self.user_a.display_name = "User A"
         self.user_a.save()
 
         # Create Tenant B
         self.tenant_b = Tenant.objects.create(
-            name="Tenant B",
-            slug="tenant-b",
+            name=f"Tenant B {uid}",
+            slug=f"tenant-b-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
 
         # Create Tenant C (for concurrent operations)
         self.tenant_c = Tenant.objects.create(
-            name="Tenant C",
-            slug="tenant-c",
+            name=f"Tenant C {uid}",
+            slug=f"tenant-c-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
 
         # Create users for tenants B and C
         self.user_b = User.objects.create_user(
-            email="user_b@example.com",
+            email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant_b,
             status=UserStatus.ACTIVE,
@@ -93,7 +97,7 @@ class ODPSMultiTenancyTestBase(ContractsTestBase):
         )
 
         self.user_c = User.objects.create_user(
-            email="user_c@example.com",
+            email=f"user_c-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant_c,
             status=UserStatus.ACTIVE,
@@ -697,9 +701,7 @@ class TenantScopedEventTest(ODPSMultiTenancyTestBase, TransactionTestCase):
 
         # With synchronous persistence, events should be immediately available
         # But allow a small delay for transaction commit
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
 
         # Query events from database
         events_a = Event.objects.filter(
@@ -775,9 +777,7 @@ class TenantScopedEventTest(ODPSMultiTenancyTestBase, TransactionTestCase):
 
         # With synchronous persistence, events should be immediately available
         # But allow a small delay for transaction commit
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
 
         # Get events from database
         all_odps_events = Event.objects.filter(event_type__startswith="odps.")
@@ -851,9 +851,7 @@ class TenantScopedEventTest(ODPSMultiTenancyTestBase, TransactionTestCase):
 
         # With synchronous persistence, events should be immediately available
         # But allow a small delay for transaction commit
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
 
         # Get events and verify tenant filtering
         # Event subscribers should only process events for their tenant

@@ -3,6 +3,7 @@ Integration tests for Asset Health Score
 
 Tests for health score calculation in the context of asset workflows.
 """
+import uuid
 
 from datetime import timedelta
 
@@ -27,12 +28,13 @@ class AssetHealthScoreIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -228,20 +230,18 @@ class AssetHealthScoreIntegrationTest(TestCase):
     # ========== FAILURE SCENARIOS ==========
 
     def test_health_score_integration_failure_nonexistent_asset(self):
-        """Test health score calculation with non-existent asset (failure scenario)"""
+        """Health score for unsaved asset raises because the service
+        persists the computed score via asset.save()."""
         import uuid
 
-        fake_asset_id = uuid.uuid4()
-        fake_asset = Asset(id=fake_asset_id, tenant=self.tenant, key="fake")
+        fake_asset = Asset(
+            id=uuid.uuid4(), tenant=self.tenant, key="fake",
+        )
 
-        # Should handle non-existent asset gracefully
-        try:
-            health_score = AssetHealthScoreService.calculate_health_score(fake_asset)
-            # If succeeds, should return score or handle gracefully
-            self.assertIsNotNone(health_score) or self.assertIsNone(health_score)
-        except Exception:
-            # If fails, that's acceptable for non-existent asset
-            pass
+        # The service calls asset.save() to persist health_score,
+        # which fails for an unsaved object with a fabricated PK.
+        with self.assertRaises(Exception):
+            AssetHealthScoreService.calculate_health_score(fake_asset)
 
     def test_health_score_integration_failure_no_datasets(self):
         """Test health score calculation with no datasets (failure scenario)"""

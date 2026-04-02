@@ -11,6 +11,7 @@ Comprehensive tests for marketplace synchronization workflow including:
 All tests use real services and connectors - no mocks/stubs.
 """
 
+import uuid
 import json
 import os
 import tempfile
@@ -18,7 +19,7 @@ import tempfile
 import pytest
 from django.contrib.auth import get_user_model
 from django.db import models
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetSourceType, AssetStatus
@@ -49,13 +50,14 @@ from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.workflows.marketplace_sync import MarketplaceSyncWorkflow
 from hub.apps.tenants.models import KYCStatus, Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 User = get_user_model()
 
 
-class TestMarketplaceConnector(DataMarketplaceConnector):
+class StubMarketplaceConnector(DataMarketplaceConnector):
     """Real test connector implementation (no mocks)"""
 
     def __init__(self):
@@ -170,6 +172,9 @@ class MarketplaceSyncWorkflowRegistrationTest(TestCase):
     """Test MarketplaceSyncWorkflow registration"""
 
     def setUp(self):
+        # Stale data cleanup is handled by the autouse fixture in
+        # hub/apps/orchestration/tests/conftest.py — no manual
+        # cleanup needed here.
         self.registry = WorkflowRegistry()
 
     def test_workflow_registration_push(self):
@@ -258,11 +263,16 @@ class MarketplaceSyncWorkflowTaskExecutionTest(TestCase):
     """Test MarketplaceSyncWorkflow task execution"""
 
     def setUp(self):
+        # Clean up stale workflow definitions from previous --reuse-db runs
+        WorkflowDefinition.objects.filter(
+            name__in=["marketplace_sync_push", "marketplace_sync_pull"]
+        ).delete()
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
@@ -280,11 +290,11 @@ class MarketplaceSyncWorkflowTaskExecutionTest(TestCase):
         """Test validate_connection task with valid connection"""
         # Register real test connector (no mocks)
         MarketplaceConnectorFactory.register_connector(
-            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, TestMarketplaceConnector
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, StubMarketplaceConnector
         )
 
         # Get workflow definition
-        workflow_def = WorkflowDefinition.objects.get(name="marketplace_sync_push")
+        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
 
         # Create workflow instance
         instance = WorkflowInstance.objects.create(
@@ -310,7 +320,7 @@ class MarketplaceSyncWorkflowTaskExecutionTest(TestCase):
         """Test validate_connection task with invalid connection"""
 
         # Create a connector that fails connection test
-        class FailingConnector(TestMarketplaceConnector):
+        class FailingConnector(StubMarketplaceConnector):
             def test_connection(self):
                 return False  # Always fail
 
@@ -320,7 +330,7 @@ class MarketplaceSyncWorkflowTaskExecutionTest(TestCase):
         )
 
         # Get workflow definition
-        workflow_def = WorkflowDefinition.objects.get(name="marketplace_sync_push")
+        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
 
         # Create workflow instance
         instance = WorkflowInstance.objects.create(
@@ -358,7 +368,7 @@ class MarketplaceSyncWorkflowTaskExecutionTest(TestCase):
         )
 
         # Get workflow definition
-        workflow_def = WorkflowDefinition.objects.get(name="marketplace_sync_push")
+        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
 
         # Create workflow instance with connection_id
         instance = WorkflowInstance.objects.create(
@@ -392,7 +402,7 @@ class MarketplaceSyncWorkflowTaskExecutionTest(TestCase):
         )
 
         # Get workflow definition
-        workflow_def = WorkflowDefinition.objects.get(name="marketplace_sync_push")
+        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
 
         # Create workflow instance
         instance = WorkflowInstance.objects.create(
@@ -419,9 +429,14 @@ class MarketplaceSyncWorkflowCompensationTest(TestCase):
     """Test MarketplaceSyncWorkflow compensation logic"""
 
     def setUp(self):
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant", status="ACTIVE")
+        # Clean up stale workflow definitions from previous --reuse-db runs
+        WorkflowDefinition.objects.filter(
+            name__in=["marketplace_sync_push", "marketplace_sync_pull"]
+        ).delete()
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE")
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
@@ -436,7 +451,7 @@ class MarketplaceSyncWorkflowCompensationTest(TestCase):
 
     def test_rollback_connection_validation(self):
         """Test rollback_connection_validation (no-op)"""
-        workflow_def = WorkflowDefinition.objects.get(name="marketplace_sync_push")
+        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
         instance = WorkflowInstance.objects.create(
             workflow_name="marketplace_sync_push",
             workflow_definition=workflow_def,
@@ -451,7 +466,7 @@ class MarketplaceSyncWorkflowCompensationTest(TestCase):
 
     def test_rollback_asset_validation(self):
         """Test rollback_asset_validation (no-op)"""
-        workflow_def = WorkflowDefinition.objects.get(name="marketplace_sync_push")
+        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
         instance = WorkflowInstance.objects.create(
             workflow_name="marketplace_sync_push",
             workflow_definition=workflow_def,
@@ -481,7 +496,7 @@ class MarketplaceSyncWorkflowCompensationTest(TestCase):
             external_listing_id="listing-123",
         )
 
-        workflow_def = WorkflowDefinition.objects.get(name="marketplace_sync_push")
+        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
         instance = WorkflowInstance.objects.create(
             workflow_name="marketplace_sync_push",
             workflow_definition=workflow_def,
@@ -542,7 +557,7 @@ class MarketplaceSyncWorkflowCompensationTest(TestCase):
             status=ContractStatus.ACTIVE,
         )
 
-        workflow_def = WorkflowDefinition.objects.get(name="marketplace_sync_pull")
+        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_pull").order_by("-created_at").first()
         instance = WorkflowInstance.objects.create(
             workflow_name="marketplace_sync_pull",
             workflow_definition=workflow_def,
@@ -574,11 +589,12 @@ class MarketplaceSyncWorkflowIntegrationTest(TestCase):
     """Integration tests for MarketplaceSyncWorkflow"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
@@ -614,7 +630,7 @@ class MarketplaceSyncWorkflowIntegrationTest(TestCase):
 
         # Register real test connector (no mocks)
         MarketplaceConnectorFactory.register_connector(
-            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, TestMarketplaceConnector
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, StubMarketplaceConnector
         )
 
         # Create workflow instance
@@ -675,11 +691,12 @@ class MarketplaceSyncWorkflowE2ETest(TestCase):
     """E2E tests for complete marketplace sync workflow"""
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
@@ -694,6 +711,7 @@ class MarketplaceSyncWorkflowE2ETest(TestCase):
         MarketplaceSyncWorkflow.register_workflow(self.registry)
         MarketplaceSyncWorkflow.register_tasks(self.engine)
 
+    @override_settings(SEMANTIC_SERVICE_TIMEOUT=5)
     def test_pull_workflow_e2e(self):
         """Test complete PULL workflow end-to-end"""
         # Create sync job
@@ -706,7 +724,7 @@ class MarketplaceSyncWorkflowE2ETest(TestCase):
 
         # Register real test connector (no mocks)
         MarketplaceConnectorFactory.register_connector(
-            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, TestMarketplaceConnector
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, StubMarketplaceConnector
         )
 
         # Create workflow instance

@@ -12,8 +12,13 @@ from rest_framework.exceptions import ValidationError, NotFound
 from rest_framework.filters import OrderingFilter, SearchFilter
 
 from hub.apps.tenants.request_tenant import get_request_tenant_id
-from .models import Job, JobStatus, JobType
-from .serializers import JobSerializer, JobCreateSerializer, JobCancelSerializer
+from .models import FailedJobDLQ, Job, JobStatus, JobType
+from .serializers import (
+    FailedJobDLQSerializer,
+    JobSerializer,
+    JobCreateSerializer,
+    JobCancelSerializer,
+)
 from .utils import create_job, get_queue_for_job_type
 from hub.apps.audit.utils import create_audit_event
 import structlog
@@ -39,8 +44,9 @@ class JobViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter queryset based on user permissions (Phase 16: central helper)."""
         user = self.request.user
+        qs = Job.objects.select_related("tenant")
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            return Job.objects.all()
+            return qs
         tenant_id_str = get_request_tenant_id(self.request)
         if not tenant_id_str:
             return Job.objects.none()
@@ -49,7 +55,7 @@ class JobViewSet(viewsets.ModelViewSet):
             tenant_id = uuid.UUID(tenant_id_str)
         except (ValueError, TypeError):
             return Job.objects.none()
-        return Job.objects.filter(tenant_id=tenant_id)
+        return qs.filter(tenant_id=tenant_id)
 
     @transaction.atomic
     def create(self, request):
@@ -257,4 +263,149 @@ class JobViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         """Retrieve job by ID"""
         return super().retrieve(request, *args, **kwargs)
+
+
+class FailedJobDLQViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Phase 91.9 — Admin view for the dead-letter queue.
+
+    Provides list, detail, retry (re-enqueue), and purge actions.
+    Restricted to platform admins.
+    """
+    queryset = FailedJobDLQ.objects.all()
+    serializer_class = FailedJobDLQSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "id"
+    filter_backends = [OrderingFilter, SearchFilter]
+    search_fields = ['queue', 'func_name', 'error_message']
+    ordering_fields = ['created_at', 'resolved_at']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        """Tenant-scoped; platform admins see all."""
+        user = self.request.user
+        if hasattr(user, "is_platform_admin") and user.is_platform_admin:
+            qs = FailedJobDLQ.objects.all()
+        else:
+            tenant_id_str = get_request_tenant_id(self.request)
+            if not tenant_id_str:
+                return FailedJobDLQ.objects.none()
+            import uuid as _uuid
+            try:
+                tid = _uuid.UUID(tenant_id_str)
+            except (ValueError, TypeError):
+                return FailedJobDLQ.objects.none()
+            qs = FailedJobDLQ.objects.filter(tenant_id=tid)
+
+        # Filter: ?resolved=false shows unresolved only
+        resolved_param = self.request.query_params.get('resolved')
+        if resolved_param == 'false':
+            qs = qs.filter(resolved_at__isnull=True)
+        elif resolved_param == 'true':
+            qs = qs.filter(resolved_at__isnull=False)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def retry(self, request, id=None):
+        """
+        Re-enqueue a DLQ entry as a new PENDING job.
+
+        POST /dlq/{id}/retry/
+        """
+        entry = self.get_object()
+        if entry.resolved_at is not None:
+            return Response(
+                {"error": "Entry already resolved"},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        args = entry.args_json or {}
+        job_id = args.get("job_id")
+        job_type = args.get("job_type")
+
+        if not job_id or not job_type:
+            return Response(
+                {"error": "Cannot retry: missing job_id or job_type"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check if original job still exists
+        try:
+            job_obj = Job.objects.get(id=job_id)
+        except Job.DoesNotExist:
+            return Response(
+                {"error": f"Original job {job_id} not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Reset the job to PENDING so the worker picks it up
+        job_obj.status = JobStatus.PENDING
+        job_obj.started_at = None
+        job_obj.completed_at = None
+        job_obj.error_message = None
+        if job_obj.details_json is None:
+            job_obj.details_json = {}
+        job_obj.details_json["dlq_retry"] = True
+        job_obj.details_json["dlq_entry_id"] = str(entry.id)
+        job_obj.save(update_fields=[
+            "status", "started_at", "completed_at",
+            "error_message", "details_json", "updated_at",
+        ])
+
+        # Enqueue the job
+        from .tasks_base import process_job
+        from .utils import get_job_timeout
+        queue_name = get_queue_for_job_type(job_type)
+        from django_rq import get_queue
+        queue = get_queue(queue_name)
+        queue.enqueue(
+            process_job,
+            str(job_obj.id),
+            job_type=job_type,
+            timeout=get_job_timeout(job_type),
+        )
+
+        # Update DLQ entry
+        entry.retry_count += 1
+        entry.resolved_at = timezone.now()
+        entry.save(update_fields=[
+            "retry_count", "resolved_at", "updated_at",
+        ])
+
+        logger.info(
+            "dlq_entry_retried",
+            dlq_id=str(entry.id),
+            job_id=job_id,
+            job_type=job_type,
+        )
+
+        return Response(
+            {"status": "retried", "job_id": job_id},
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=['post'])
+    def purge_resolved(self, request):
+        """
+        Delete all resolved DLQ entries.
+
+        POST /dlq/purge_resolved/
+        """
+        user = request.user
+        if not (hasattr(user, "is_platform_admin")
+                and user.is_platform_admin):
+            return Response(
+                {"error": "Platform admin required"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        count, _ = FailedJobDLQ.objects.filter(
+            resolved_at__isnull=False,
+        ).delete()
+
+        logger.info("dlq_purge_resolved", count=count)
+        return Response(
+            {"status": "purged", "count": count},
+            status=status.HTTP_200_OK,
+        )
 

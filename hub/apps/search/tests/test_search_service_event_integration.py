@@ -32,12 +32,32 @@ from hub.apps.users.models import User, UserStatus
 @override_settings(
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Disable async persistence for tests
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,  # Disable write-behind for tests
+    EVENT_BUS_FORCE_SYNC_PERSISTENCE=True,  # Force synchronous persistence so Event.objects.get() sees rows
 )
 class SearchServiceEventIntegrationTest(TestCase):
     """Integration tests for SearchService event publishing."""
 
     def setUp(self):
         """Set up test data"""
+        # Ensure clean DB connection (previous test may have poisoned the transaction)
+        from django.db import connection
+        if connection.needs_rollback:
+            connection.rollback()
+
+        # Reset the global event bus singleton so overridden settings take effect
+        import hub.apps.core.events.bus as bus_module
+        bus_module._event_bus = None
+
+        # Flush Redis dedup keys so events are persisted fresh each run
+        try:
+            from hub.apps.core.events.deduplication import get_redis_client, DEDUPLICATION_KEY_PREFIX
+            redis_client = get_redis_client()
+            if redis_client:
+                for key in redis_client.scan_iter(f"{DEDUPLICATION_KEY_PREFIX}:*"):
+                    redis_client.delete(key)
+        except Exception:
+            pass
+
         # CRITICAL: Disconnect semantic service signals to prevent timeouts
         from django.db.models.signals import post_save
 
@@ -52,10 +72,10 @@ class SearchServiceEventIntegrationTest(TestCase):
             pass
 
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -549,7 +569,10 @@ class SearchServiceEventIntegrationTest(TestCase):
         # This test ensures search doesn't fail even if events are published
 
     def tearDown(self):
-        """Reconnect signals after test"""
+        """Reconnect signals and reset event bus after test."""
+        import hub.apps.core.events.bus as bus_module
+        bus_module._event_bus = None
+
         from django.db.models.signals import post_save
 
         try:

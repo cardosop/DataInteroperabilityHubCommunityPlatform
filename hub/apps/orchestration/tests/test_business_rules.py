@@ -6,6 +6,8 @@ Tests for orchestration business rules validation, including:
 - Rule registration in business rules registry
 - OrchestrationRuleExecutionContext
 """
+import uuid
+
 from django.test import TestCase
 
 from hub.apps.orchestration.business_rules import (
@@ -30,12 +32,12 @@ class OrchestrationBusinessRulesInitializationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -114,20 +116,22 @@ class OrchestrationRuleExecutionContextTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        self.uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         # Create workflow definition
+        self.wf_name = f"test_workflow_{self.uid}"
         self.workflow_definition = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.wf_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -144,7 +148,7 @@ class OrchestrationRuleExecutionContextTest(TestCase):
         # Create workflow instance
         self.workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_definition,
-            workflow_name="test_workflow",
+            workflow_name=self.wf_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.DRAFT,
@@ -160,7 +164,7 @@ class OrchestrationRuleExecutionContextTest(TestCase):
         )
 
     def test_orchestration_rule_execution_context_creation(self):
-        """Test OrchestrationRuleExecutionContext creation"""
+        """Test OrchestrationRuleExecutionContext creation and behavior"""
         context = OrchestrationRuleExecutionContext(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -177,6 +181,13 @@ class OrchestrationRuleExecutionContextTest(TestCase):
         self.assertEqual(context.workflow_definition, self.workflow_definition)
         self.assertEqual(context.tenant, self.tenant)
         self.assertEqual(context.user, self.user)
+
+        # Verify behavior: to_dict() produces a dict with the expected keys
+        context_dict = context.to_dict()
+        self.assertIsInstance(context_dict, dict)
+        self.assertEqual(context_dict['tenant_id'], str(self.tenant.id))
+        self.assertEqual(context_dict['workflow_id'], str(self.workflow.id))
+        self.assertEqual(context_dict['step_name'], self.step.step_name)
 
     def test_orchestration_rule_execution_context_to_dict(self):
         """Test OrchestrationRuleExecutionContext to_dict method"""
@@ -210,13 +221,14 @@ class WorkflowDefinitionValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        self.uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -229,7 +241,7 @@ class WorkflowDefinitionValidationTest(TestCase):
     def test_validate_workflow_structure_valid(self):
         """Test workflow structure validation with valid workflow"""
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -246,7 +258,10 @@ class WorkflowDefinitionValidationTest(TestCase):
         result = self.rules._validate_workflow_structure(workflow_def)
         self.assertTrue(result.is_valid)
         self.assertTrue(result.details.get('dsl_valid', False))
-        self.assertTrue(result.details.get('structure_validation') == 'structure')
+        # Verify structure_validation is present and truthy (valid structure was checked)
+        self.assertIn('structure_validation', result.details)
+        self.assertTrue(result.details['structure_validation'],
+                        f"structure_validation should be truthy, got: {result.details.get('structure_validation')}")
 
     def test_validate_workflow_structure_missing_name(self):
         """Test workflow structure validation with missing name"""
@@ -299,7 +314,7 @@ class WorkflowDefinitionValidationTest(TestCase):
     def test_validate_workflow_steps_valid(self):
         """Test workflow step validation with valid steps"""
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -326,7 +341,7 @@ class WorkflowDefinitionValidationTest(TestCase):
     def test_validate_workflow_steps_duplicate_names(self):
         """Test workflow step validation with duplicate step names"""
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -352,7 +367,7 @@ class WorkflowDefinitionValidationTest(TestCase):
     def test_validate_workflow_steps_invalid_type(self):
         """Test workflow step validation with invalid step type"""
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -373,7 +388,7 @@ class WorkflowDefinitionValidationTest(TestCase):
     def test_validate_workflow_steps_task_missing_task_field(self):
         """Test workflow step validation with task step missing task field"""
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -394,7 +409,7 @@ class WorkflowDefinitionValidationTest(TestCase):
     def test_validate_workflow_steps_parallel_missing_steps(self):
         """Test workflow step validation with parallel step missing steps field"""
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -415,7 +430,7 @@ class WorkflowDefinitionValidationTest(TestCase):
     def test_validate_workflow_steps_retry_invalid_max_retries(self):
         """Test workflow step validation with retry step having invalid max_retries"""
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -442,9 +457,10 @@ class WorkflowDefinitionValidationTest(TestCase):
 
     def test_validate_workflow_cycles_no_cycles(self):
         """Test workflow cycle detection with no cycles"""
+        dep_name = f"dependency_workflow_{self.uid}"
         # Create dependency workflow
         dep_workflow = WorkflowDefinition.objects.create(
-            name="dependency_workflow",
+            name=dep_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -460,11 +476,11 @@ class WorkflowDefinitionValidationTest(TestCase):
             created_by=self.user
         )
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
-                "dependencies": ["dependency_workflow"],
+                "dependencies": [dep_name],
                 "steps": [
                     {
                         "name": "step1",
@@ -481,12 +497,13 @@ class WorkflowDefinitionValidationTest(TestCase):
 
     def test_validate_workflow_cycles_self_dependency(self):
         """Test workflow cycle detection with self-dependency"""
+        wf_name = f"test_workflow_{self.uid}"
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=wf_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
-                "dependencies": ["test_workflow"],  # Self-dependency
+                "dependencies": [wf_name],  # Self-dependency
                 "steps": [
                     {
                         "name": "step1",
@@ -503,9 +520,10 @@ class WorkflowDefinitionValidationTest(TestCase):
 
     def test_validate_workflow_resources_valid_dependencies(self):
         """Test workflow resource validation with valid dependencies"""
+        dep_name = f"dependency_workflow_{self.uid}"
         # Create dependency workflow
         dep_workflow = WorkflowDefinition.objects.create(
-            name="dependency_workflow",
+            name=dep_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -521,11 +539,11 @@ class WorkflowDefinitionValidationTest(TestCase):
             created_by=self.user
         )
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
-                "dependencies": ["dependency_workflow"],
+                "dependencies": [dep_name],
                 "steps": [
                     {
                         "name": "step1",
@@ -543,7 +561,7 @@ class WorkflowDefinitionValidationTest(TestCase):
     def test_validate_workflow_resources_missing_dependency(self):
         """Test workflow resource validation with missing dependency"""
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -565,7 +583,7 @@ class WorkflowDefinitionValidationTest(TestCase):
     def test_validate_workflow_definition_comprehensive(self):
         """Test comprehensive workflow definition validation"""
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -597,7 +615,7 @@ class WorkflowDefinitionValidationTest(TestCase):
 
         # Create workflow definition
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",

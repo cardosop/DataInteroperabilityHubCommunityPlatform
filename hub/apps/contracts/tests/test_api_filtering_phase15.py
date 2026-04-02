@@ -27,9 +27,9 @@ class APIFilteringPhase15TestCase(ContractsAPITestBase):
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
-        self.asset = AssetFactory(tenant=self.tenant)
-        
-        # Create test contracts with various configurations
+
+        # Create test contracts with various configurations.
+        # Each contract gets its own asset to avoid unique_contract_version_per_asset constraint.
         self.contract1 = self._create_contract(
             name="Contract 1",
             contact=[{"email": "contact1@example.com", "name": "Contact One"}],
@@ -37,7 +37,7 @@ class APIFilteringPhase15TestCase(ContractsAPITestBase):
             servicelevels=[{"property": "availability", "target": 99.9}],
             models=[{"name": "model1", "fields": []}]
         )
-        
+
         self.contract2 = self._create_contract(
             name="Contract 2",
             contact=[{"email": "contact2@example.com", "name": "Contact Two"}],
@@ -45,7 +45,7 @@ class APIFilteringPhase15TestCase(ContractsAPITestBase):
             servicelevels=[{"property": "latency", "target": 100, "metric": "latency_ms"}],
             models=[{"name": "model2", "fields": []}]
         )
-        
+
         self.contract3 = self._create_contract(
             name="Contract 3",
             contact=[{"email": "contact3@example.com", "name": "Contact Three"}],
@@ -56,16 +56,21 @@ class APIFilteringPhase15TestCase(ContractsAPITestBase):
             ],
             models=[{"name": "model1", "fields": []}, {"name": "model3", "fields": []}]
         )
-    
+
     def _create_contract(self, name, contact=None, servers=None, servicelevels=None, models=None):
-        """Helper to create a contract with specific configuration."""
+        """Helper to create a contract with specific configuration.
+
+        Each call creates its own asset so the unique constraint
+        (tenant, asset, version) is never violated.
+        """
+        asset = AssetFactory(tenant=self.tenant)
         hub_contract = {
             "hub_contract_version": "1.0.0",
             "id": f"{name.lower().replace(' ', '-')}",
             "info": {"name": name},
             "schema": {"fields": [{"name": "id", "type": "string"}]}
         }
-        
+
         if contact:
             hub_contract["contact"] = contact
         if servers:
@@ -74,10 +79,10 @@ class APIFilteringPhase15TestCase(ContractsAPITestBase):
             hub_contract["servicelevels"] = servicelevels
         if models:
             hub_contract["models"] = models
-        
+
         return Contract.objects.create(
             tenant=self.tenant,
-            asset=self.asset,
+            asset=asset,
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.0.2",
             original_format="JSON",

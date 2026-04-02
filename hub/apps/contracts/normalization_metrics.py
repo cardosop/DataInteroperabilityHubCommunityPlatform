@@ -13,6 +13,8 @@ try:
         contract_json_size_bytes,
         contract_missing_objects_total,
         contract_broken_lineage_links_total,
+        odcs_v310_relationships_count,
+        odcs_v310_fallback_total,
     )
     METRICS_AVAILABLE = True
 except ImportError:
@@ -144,14 +146,53 @@ def record_broken_lineage_links(
             contract_broken_lineage_links_total.labels(**labels).inc()
 
 
+def record_v310_relationships_count(
+    hub_contract: Dict[str, Any],
+    tenant_id: Optional[str] = None,
+) -> None:
+    """Record count of relationships mapped in a v3.1.0 normalisation."""
+    if not METRICS_AVAILABLE or not hub_contract:
+        return
+    count = 0
+    for model in hub_contract.get("models", []):
+        if isinstance(model, dict):
+            rels = model.get("relationships")
+            if isinstance(rels, list):
+                count += len(rels)
+    schema = hub_contract.get("schema")
+    if isinstance(schema, dict):
+        rels = schema.get("relationships")
+        if isinstance(rels, list):
+            count += len(rels)
+    labels: Dict[str, str] = {}
+    if tenant_id:
+        labels["tenant_id"] = str(tenant_id)
+    odcs_v310_relationships_count.labels(**labels).inc(count)
+
+
+def record_v310_fallback(
+    fallback_normalizer: str,
+    tenant_id: Optional[str] = None,
+) -> None:
+    """Record when a v3.1.0 contract falls back to a non-v3.1.0 normalizer."""
+    if not METRICS_AVAILABLE:
+        return
+    labels: Dict[str, str] = {
+        "fallback_normalizer": fallback_normalizer,
+    }
+    if tenant_id:
+        labels["tenant_id"] = str(tenant_id)
+    odcs_v310_fallback_total.labels(**labels).inc()
+
+
 def record_all_normalization_metrics(
     hub_contract: Dict[str, Any],
     broken_links: Optional[List[Dict[str, Any]]] = None,
-    tenant_id: Optional[str] = None
+    tenant_id: Optional[str] = None,
 ) -> None:
     """
     Record all normalization metrics at once.
-    
+
     Args:
         hub_contract: Normalized HubContract JSON
         broken_links: List of broken lineage links (optional)
@@ -160,7 +201,7 @@ def record_all_normalization_metrics(
     record_normalization_coverage(hub_contract, tenant_id)
     record_contract_json_size(hub_contract, tenant_id)
     record_missing_objects(hub_contract, tenant_id)
-    
+
     if broken_links:
         record_broken_lineage_links(hub_contract, broken_links, tenant_id)
 

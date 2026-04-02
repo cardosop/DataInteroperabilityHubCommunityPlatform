@@ -9,9 +9,9 @@ These tests verify:
 - ODPS progress events real-time updates (Task 7.3.2)
 """
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import AsyncMock, MagicMock, patch
-from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTransactionTestCase
 from django.utils import timezone as django_timezone
 from asgiref.sync import sync_to_async
 
@@ -27,7 +27,7 @@ from hub.apps.core.events.models import Event as EventModel
 from hub.apps.core.events.bus import get_event_bus
 
 
-class EventConsumerODPSEventTest(AsyncWebSocketTestCase):
+class EventConsumerODPSEventTest(AsyncWebSocketTransactionTestCase):
     """Test ODPS event handling in EventConsumer."""
 
     def setUp(self):
@@ -50,11 +50,13 @@ class EventConsumerODPSEventTest(AsyncWebSocketTestCase):
         consumer.send_json_message = AsyncMock()
         consumer.send = AsyncMock()
         consumer.close = AsyncMock()
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
         consumer._connection_closed = False
         consumer.replay_enabled = True
         consumer.replay_window_seconds = 3600
         consumer.last_event_timestamps = {}
+        # Prevent real Redis connections; dedup functions are patched
+        consumer._get_deduplication_redis_client = MagicMock(return_value=None)
         return consumer
 
     async def test_odps_event_type_filtering_exact_match(self):
@@ -149,7 +151,7 @@ class EventConsumerODPSEventTest(AsyncWebSocketTestCase):
             "event_id": event_id,
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant.id)},
             "data": {"contract_id": contract_id}
         }
@@ -220,7 +222,7 @@ class EventConsumerODPSEventTest(AsyncWebSocketTestCase):
         )
 
         # Mock deduplication to allow replay
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
             # Subscribe to ODPS events (this should trigger replay)
             message = WebSocketMessage(
                 type=WebSocketMessageType.SUBSCRIBE.value,
@@ -270,7 +272,7 @@ class EventConsumerODPSEventTest(AsyncWebSocketTestCase):
         )
 
         # Mock deduplication
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
             # Subscribe to workflow events
             message = WebSocketMessage(
                 type=WebSocketMessageType.SUBSCRIBE.value,
@@ -290,7 +292,7 @@ class EventConsumerODPSEventTest(AsyncWebSocketTestCase):
         consumer = self._create_consumer()
         consumer.subscribed_event_types = {"odps.*"}
 
-        event_time = datetime.utcnow()
+        event_time = datetime.now(dt_timezone.utc)
         event = {
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
@@ -301,8 +303,8 @@ class EventConsumerODPSEventTest(AsyncWebSocketTestCase):
         }
 
         # Mock deduplication
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.core.events.deduplication.store_event_id'):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                 await consumer.send_event(event)
 
                 # Verify timestamp was tracked
@@ -348,7 +350,7 @@ class EventConsumerODPSEventTest(AsyncWebSocketTestCase):
         )
 
         # Mock deduplication
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
             # Subscribe with resource_id filter
             message = WebSocketMessage(
                 type=WebSocketMessageType.SUBSCRIBE.value,
@@ -398,7 +400,7 @@ class EventConsumerODPSEventTest(AsyncWebSocketTestCase):
         self.assertEqual(consumer.send_json_message.call_count, 1)
 
 
-class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
+class EventConsumerODPSIntegrationTest(AsyncWebSocketTransactionTestCase):
     """Integration tests for ODPS WebSocket events with real event bus."""
 
     def setUp(self):
@@ -421,11 +423,13 @@ class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
         consumer.send_json_message = AsyncMock()
         consumer.send = AsyncMock()
         consumer.close = AsyncMock()
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
         consumer._connection_closed = False
         consumer.replay_enabled = True
         consumer.replay_window_seconds = 3600
         consumer.last_event_timestamps = {}
+        # Prevent real Redis connections; dedup functions are patched
+        consumer._get_deduplication_redis_client = MagicMock(return_value=None)
         return consumer
 
     async def test_odps_created_event_delivery(self):
@@ -462,7 +466,7 @@ class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {
                 "tenant_id": str(self.tenant.id),
                 "user_id": str(self.user.id),
@@ -478,8 +482,8 @@ class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
         }
 
         # Mock deduplication
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.core.events.deduplication.store_event_id'):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                 await consumer.send_event(event)
 
                 # Verify event was sent
@@ -502,7 +506,7 @@ class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.linked",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {
                 "tenant_id": str(self.tenant.id),
                 "user_id": str(self.user.id),
@@ -516,8 +520,8 @@ class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
         }
 
         # Mock deduplication
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.core.events.deduplication.store_event_id'):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                 await consumer.send_event(event)
 
                 # Verify event was sent
@@ -541,7 +545,7 @@ class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.workflow.started",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {
                 "tenant_id": str(self.tenant.id),
                 "user_id": str(self.user.id),
@@ -555,8 +559,8 @@ class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
         }
 
         # Mock deduplication
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.core.events.deduplication.store_event_id'):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                 await consumer.send_event(event1)
 
                 # Verify event was sent
@@ -605,7 +609,7 @@ class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
         )
 
         # Mock deduplication to allow replay
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
             # Subscribe to ODPS events (triggers replay)
             message = WebSocketMessage(
                 type=WebSocketMessageType.SUBSCRIBE.value,
@@ -626,7 +630,7 @@ class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
                 call for call in calls
                 if call[0][0].type == WebSocketMessageType.EVENT.value
             ]
-            self.assertGreaterEqual(len(event_calls), 0)  # Events may be replayed
+            self.assertGreaterEqual(len(event_calls), 1, "Expected at least 1 replayed ODPS event")
 
     async def test_odps_event_filtering_integration(self):
         """Integration test: ODPS events are filtered correctly."""
@@ -644,7 +648,7 @@ class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {
                 "tenant_id": str(self.tenant.id),
                 "user_id": str(self.user.id),
@@ -658,7 +662,7 @@ class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {
                 "tenant_id": str(self.tenant.id),
                 "user_id": str(self.user.id),
@@ -668,8 +672,8 @@ class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
         }
 
         # Mock deduplication
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.core.events.deduplication.store_event_id'):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                 # Send matching event
                 await consumer.send_event(event1)
                 self.assertTrue(consumer.send_json_message.called)
@@ -683,7 +687,7 @@ class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
                 self.assertFalse(consumer.send_json_message.called)
 
 
-class EventConsumerODPSProgressEventsTest(AsyncWebSocketTestCase):
+class EventConsumerODPSProgressEventsTest(AsyncWebSocketTransactionTestCase):
     """Test ODPS progress events real-time updates (Task 7.3.2)"""
 
     def setUp(self):
@@ -707,11 +711,13 @@ class EventConsumerODPSProgressEventsTest(AsyncWebSocketTestCase):
         consumer.send_json_message = AsyncMock()
         consumer.send = AsyncMock()
         consumer.close = AsyncMock()
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
         consumer._connection_closed = False
         consumer.replay_enabled = True
         consumer.replay_window_seconds = 3600
         consumer.last_event_timestamps = {}
+        # Prevent real Redis connections; dedup functions are patched
+        consumer._get_deduplication_redis_client = MagicMock(return_value=None)
         return consumer
 
     async def test_odps_creation_progress_event_received(self):
@@ -726,7 +732,7 @@ class EventConsumerODPSProgressEventsTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.creation.progress",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
             "data": {
                 "contract_id": contract_id,
@@ -760,7 +766,7 @@ class EventConsumerODPSProgressEventsTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.normalization.progress",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
             "data": {
                 "contract_id": contract_id,
@@ -795,7 +801,7 @@ class EventConsumerODPSProgressEventsTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.ref.progress",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
             "data": {
                 "contract_id": contract_id,
@@ -829,7 +835,7 @@ class EventConsumerODPSProgressEventsTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.linking.status",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
             "data": {
                 "odps_contract_id": odps_contract_id,
@@ -864,7 +870,7 @@ class EventConsumerODPSProgressEventsTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.export.progress",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
             "data": {
                 "contract_id": contract_id,
@@ -906,7 +912,7 @@ class EventConsumerODPSProgressEventsTest(AsyncWebSocketTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": event_type,
                 "event_version": "1.0.0",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
                 "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
                 "data": {"progress_percentage": 50.0}
             }

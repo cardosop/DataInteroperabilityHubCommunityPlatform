@@ -263,8 +263,8 @@ class SSOService:
             
             if not config or not config.sso_config:
                 return None
-            
-            sso_config = config.sso_config.get(provider_type.lower())
+
+            sso_config = config.get_sso_config().get(provider_type.lower())
             if not sso_config:
                 return None
             

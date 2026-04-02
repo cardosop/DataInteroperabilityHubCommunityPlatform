@@ -38,6 +38,14 @@ class WorkflowCompensation:
             self.task_registry = {}
         else:
             self.task_registry = task_registry
+        # Compensation script handler registry
+        self._compensation_handlers: Dict[str, Any] = {}
+
+    def register_compensation_handler(
+        self, script_name: str, handler: Any
+    ) -> None:
+        """Register a compensation script handler."""
+        self._compensation_handlers[script_name] = handler
 
     @transaction.atomic
     def rollback_workflow(
@@ -122,10 +130,21 @@ class WorkflowCompensation:
             logger.info(f"Workflow instance {instance.id} rolled back successfully")
 
         except Exception as e:
+            # Phase 68.1.3: COMPENSATION_INCOMPLETE instead of FAILED
+            # so the recovery command can re-attempt failed compensation steps.
             logger.exception(f"Error rolling back workflow instance {instance.id}: {str(e)}")
-            instance.status = WorkflowStatus.FAILED
-            instance.error_message = f"Rollback failed: {str(e)}"
-            instance.save(update_fields=['status', 'error_message', 'updated_at'])
+            failed_comp_steps = [
+                r.get("step_name", "unknown")
+                for r in compensation_results
+                if isinstance(r, dict) and r.get("status") == "error"
+            ]
+            instance.status = WorkflowStatus.COMPENSATION_INCOMPLETE
+            instance.error_message = f"Compensation incomplete: {str(e)}"
+            instance.error_details = {
+                **(instance.error_details or {}),
+                "compensation_failures": failed_comp_steps,
+            }
+            instance.save(update_fields=['status', 'error_message', 'error_details', 'updated_at'])
 
         return instance
 
@@ -232,6 +251,20 @@ class WorkflowCompensation:
                 "status": "failed",
                 "error": str(e)
             })
+            # Phase 78: Prometheus counter for compensation failures
+            try:
+                from hub.apps.observability.otel_metrics import (
+                    workflow_compensation_failures_total,
+                )
+                wf_name = ""
+                if instance.workflow_definition:
+                    wf_name = getattr(instance.workflow_definition, "name", "")
+                workflow_compensation_failures_total.labels(
+                    workflow_name=wf_name,
+                    step_name=step.step_name,
+                ).inc()
+            except Exception:
+                pass
             return {"status": "failed", "error": str(e)}
 
     def _execute_compensation_task(
@@ -305,11 +338,18 @@ class WorkflowCompensation:
 
         logger.info(f"Executing compensation script for step {step.step_name}")
 
-        # In a real implementation, this would execute the script
-        # For now, return a success result
+        # Resolve handler from compensation_handlers registry
+        handler = self._compensation_handlers.get(script)
+        if handler and callable(handler):
+            return handler(instance, step, compensation_def)
+
+        # No registered handler — return handler_not_found
+        logger.warning(
+            f"No compensation handler registered for script: {script}"
+        )
         return {
             "script": script,
-            "status": "executed",
-            "step_output": step.output_data
+            "status": "handler_not_found",
+            "step_output": step.output_data,
         }
 

@@ -26,6 +26,7 @@ from hub.apps.jobs.utils import (
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
+import uuid
 
 
 class JobQueueInfrastructureTest(TestCase):
@@ -38,11 +39,11 @@ class JobQueueInfrastructureTest(TestCase):
         
         # Create test tenant and user
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )

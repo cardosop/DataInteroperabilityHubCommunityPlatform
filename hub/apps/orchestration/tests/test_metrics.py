@@ -4,6 +4,7 @@ Unit tests for workflow orchestration metrics.
 
 import json
 import time
+import uuid
 
 from django.test import TestCase
 from django.utils import timezone
@@ -36,9 +37,9 @@ class WorkflowMetricsTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Create workflow definition
@@ -211,10 +212,10 @@ class WorkflowMetricsIntegrationTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Create workflow definition

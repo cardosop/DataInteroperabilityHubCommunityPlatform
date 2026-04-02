@@ -13,7 +13,7 @@ All tests use the actual event system (Event model, sync persistence) without mo
 try:
     import pytest
 
-    pytestmark = pytest.mark.django_db(transaction=True)
+    pytestmark = pytest.mark.django_db
 except ImportError:
     # pytest not available, using Django test runner
     pytest = None
@@ -53,11 +53,12 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
         bus_module._event_bus = None
 
         self.engine = WorkflowEngine()
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Register a test task
@@ -389,11 +390,12 @@ class WorkflowProgressWebSocketEventsTest(TestCase):
         bus_module._event_bus = None
 
         self.engine = WorkflowEngine()
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Register a test task

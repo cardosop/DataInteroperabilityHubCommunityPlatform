@@ -33,6 +33,7 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.search.indexing import SearchIndexer
 from hub.apps.search.models import SearchIndex
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
 User = get_user_model()
@@ -41,6 +42,7 @@ User = get_user_model()
 @override_settings(
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Disable async persistence for tests
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,  # Disable write-behind for tests
+    EVENT_BUS_FORCE_SYNC_PERSISTENCE=True,  # Force synchronous persistence so Event.objects.get() sees rows
     RATE_LIMIT_ENABLED=False,  # Disable rate limiting for E2E tests
 )
 class SearchViewsEventPublishingE2ETest(TestCase):
@@ -48,6 +50,20 @@ class SearchViewsEventPublishingE2ETest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # Reset the global event bus singleton so overridden settings take effect
+        import hub.apps.core.events.bus as bus_module
+        bus_module._event_bus = None
+
+        # Flush Redis dedup keys so events are persisted fresh each run
+        try:
+            from hub.apps.core.events.deduplication import get_redis_client, DEDUPLICATION_KEY_PREFIX
+            redis_client = get_redis_client()
+            if redis_client:
+                for key in redis_client.scan_iter(f"{DEDUPLICATION_KEY_PREFIX}:*"):
+                    redis_client.delete(key)
+        except Exception:
+            pass
+
         # CRITICAL: Disconnect semantic service signals to prevent timeouts
         from django.db.models.signals import post_save
 
@@ -65,12 +81,13 @@ class SearchViewsEventPublishingE2ETest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -379,7 +396,10 @@ class SearchViewsEventPublishingE2ETest(TestCase):
         self.assertEqual(count_before, count_after)
 
     def tearDown(self):
-        """Reconnect signals after test"""
+        """Reconnect signals and reset event bus after test."""
+        import hub.apps.core.events.bus as bus_module
+        bus_module._event_bus = None
+
         from django.db.models.signals import post_save
 
         try:
@@ -391,5 +411,3 @@ class SearchViewsEventPublishingE2ETest(TestCase):
             post_save.connect(asset_saved, sender=Asset, weak=False)
         except (ImportError, AttributeError):
             pass
-        # Note: Removed erroneous assertion that referenced undefined variables
-        # This was causing NameError in tearDown

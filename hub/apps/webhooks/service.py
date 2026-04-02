@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import hmac
 import hashlib
+import random
 from typing import Any, Dict, Optional
 from django.utils import timezone
 from datetime import timedelta
@@ -25,6 +26,7 @@ from .odps_webhook_errors import (
     ODPSWebhookPayloadError,
 )
 from .odps_webhook_validators import validate_odps_webhook_payload
+from .ssrf_guard import SSRFViolationError, validate_webhook_url
 from hub.apps.contracts.odps_errors import RecoveryStrategy
 
 logger = structlog.get_logger(__name__)
@@ -35,15 +37,22 @@ class WebhookDeliveryService:
     Service for delivering webhooks with retry logic.
     """
 
-    DEFAULT_RETRY_INTERVALS = [1, 5, 30, 300, 1800]  # 1s, 5s, 30s, 5m, 30m
-    REQUEST_TIMEOUT = 30  # seconds (default when WEBHOOK_DELIVERY_TIMEOUT not set)
-
     @staticmethod
     def _get_request_timeout() -> int:
-        """Return configured webhook delivery timeout (for tests and production)."""
-        return getattr(
-            django_settings, "WEBHOOK_DELIVERY_TIMEOUT", WebhookDeliveryService.REQUEST_TIMEOUT
-        )
+        """Return configured webhook delivery timeout.
+
+        Checks WEBHOOK_REQUEST_TIMEOUT first, falls back to legacy
+        WEBHOOK_DELIVERY_TIMEOUT for backward compatibility.
+        """
+        timeout = getattr(django_settings, "WEBHOOK_REQUEST_TIMEOUT", None)
+        if timeout is not None:
+            return timeout
+        return getattr(django_settings, "WEBHOOK_DELIVERY_TIMEOUT", 30)
+
+    @staticmethod
+    def _get_retry_intervals() -> list[int]:
+        """Return configured webhook retry intervals."""
+        return getattr(django_settings, "WEBHOOK_RETRY_INTERVALS", [1, 5, 30, 300, 1800])
 
     @staticmethod
     def trigger_webhook(
@@ -67,8 +76,8 @@ class WebhookDeliveryService:
             Number of webhooks triggered
         """
         # Find active webhooks for this event type
-        # For JSONField arrays, __contains checks if the array contains the value (not a list)
-        webhooks = Webhook.objects.filter(
+        # select_related("tenant") avoids N+1 queries when accessing webhook.tenant
+        webhooks = Webhook.objects.select_related("tenant").filter(
             tenant_id=tenant_id,
             status=WebhookStatus.ACTIVE,
             event_types__contains=event_type
@@ -81,7 +90,7 @@ class WebhookDeliveryService:
                 event_type,
                 resource_type,
                 resource_id,
-                event_data
+                event_data,
             )
             count += 1
 
@@ -147,6 +156,14 @@ class WebhookDeliveryService:
             "data": event_data
         }
 
+        # Promote event_id / id from event_data to top-level
+        # ``event_id`` so the idempotency guard
+        # (payload__event_id lookup) can match them.  Always
+        # normalise to ``event_id`` for query consistency.
+        _eid = event_data.get("event_id") or event_data.get("id")
+        if _eid:
+            payload["event_id"] = _eid
+
         # Validate payload for ODPS events
         if WebhookEventType.is_odps_event_type(event_type):
             try:
@@ -203,6 +220,23 @@ class WebhookDeliveryService:
                 cause=e,
             )
 
+        # Phase 93.7: Idempotency check — skip if this exact event
+        # was already successfully delivered to this webhook.
+        event_id = payload.get("event_id") or payload.get("id")
+        if event_id:
+            already_delivered = WebhookDelivery.objects.filter(
+                webhook=webhook,
+                status=DeliveryStatus.SUCCESS,
+                payload__event_id=event_id,
+            ).exists()
+            if already_delivered:
+                logger.info(
+                    "webhook_delivery_skipped_duplicate",
+                    webhook_id=str(webhook.id),
+                    event_id=event_id,
+                )
+                return
+
         # Create delivery record
         try:
             delivery = WebhookDelivery.objects.create(
@@ -224,8 +258,21 @@ class WebhookDeliveryService:
                 cause=e,
             )
 
-        # Schedule delivery (async via job queue in production)
-        WebhookDeliveryService._attempt_delivery(delivery)
+        # Enqueue async delivery via RQ (13.6): decouples HTTP fan-out from
+        # the request thread.  In tests WEBHOOK_ASYNC_DELIVERY=False falls
+        # back to synchronous _attempt_delivery so existing test fixtures
+        # don't need Redis.
+        # Wrapped in on_commit so the delivery record is visible to the
+        # worker — prevents the task racing a still-uncommitted row.
+        from django.conf import settings as _s
+        if getattr(_s, "WEBHOOK_ASYNC_DELIVERY", True):
+            from hub.apps.webhooks import tasks as _wh_tasks
+            _did = str(delivery.id)
+            transaction.on_commit(
+                lambda: _wh_tasks.deliver_webhook.delay(_did)
+            )
+        else:
+            WebhookDeliveryService._attempt_delivery(delivery)
 
     @staticmethod
     def _attempt_delivery(delivery: WebhookDelivery):
@@ -287,6 +334,31 @@ class WebhookDeliveryService:
         webhook_client = WebhookDeliveryClient(
             timeout=WebhookDeliveryService._get_request_timeout()
         )
+
+        # DNS-rebinding re-validation: check URL immediately before delivery so
+        # that a hostname that resolved to a public IP at registration time but
+        # has since been rebound to a private IP is caught before the request.
+        # Runs outside the httpx exception handler so the error is NOT
+        # double-wrapped as a generic network error.
+        if getattr(django_settings, "WEBHOOK_SSRF_ENABLED", True):
+            try:
+                validate_webhook_url(webhook.url, raise_as_validation_error=False)
+            except SSRFViolationError as ssrf_exc:
+                ssrf_error = ODPSWebhookDeliveryError(
+                    message=f"SSRF protection blocked delivery: {ssrf_exc}",
+                    error_code=ODPSWebhookDeliveryError.ERROR_CODE_NETWORK_ERROR,
+                    user_message=(
+                        "SSRF protection: webhook URL targets a "
+                        "private/reserved address and delivery was blocked."
+                    ),
+                    tenant_id=str(webhook.tenant_id),
+                    webhook_id=str(webhook.id),
+                    delivery_id=str(delivery.id),
+                    event_type=delivery.event_type,
+                    cause=ssrf_exc,
+                )
+                WebhookDeliveryService._handle_delivery_error(delivery, ssrf_error)
+                return
 
         try:
             # Make HTTP request using service client
@@ -508,11 +580,14 @@ class WebhookDeliveryService:
             return
 
         # Calculate next retry time using current attempt_number (before incrementing)
-        retry_intervals = webhook.retry_intervals or WebhookDeliveryService.DEFAULT_RETRY_INTERVALS
+        retry_intervals = webhook.retry_intervals or WebhookDeliveryService._get_retry_intervals()
         attempt_index = min(delivery.attempt_number, len(retry_intervals) - 1)
-        retry_interval = retry_intervals[attempt_index]
+        base_interval = retry_intervals[attempt_index]
 
-        next_retry_at = timezone.now() + timedelta(seconds=retry_interval)
+        # Add ±25% jitter to prevent thundering herd
+        jittered_interval = base_interval * (0.75 + random.random() * 0.5)
+
+        next_retry_at = timezone.now() + timedelta(seconds=jittered_interval)
 
         # Update delivery (increment attempt_number after calculating interval)
         delivery.status = DeliveryStatus.FAILED

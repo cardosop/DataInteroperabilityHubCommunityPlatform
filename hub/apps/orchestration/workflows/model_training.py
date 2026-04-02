@@ -806,9 +806,35 @@ class ModelTrainingWorkflow:
         # Update progress
         ModelTrainingWorkflow._update_progress(instance, 95, "update_semantic_layer")
 
-        # For now, we'll just log the semantic layer update
-        # In a real implementation, this would update the semantic layer service
-        # with model metadata, schema information, etc.
+        # Ingest ML model RDF triples into the semantic layer
+        try:
+            from hub.apps.semantic.service_client import SemanticServiceClient
+            semantic_client = SemanticServiceClient()
+            rdf_triples = (
+                f"@prefix odh: <http://odh.io/ontology/> .\n"
+                f"@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n"
+                f"odh:model/{model.odh_model_id} a odh:MLModel ;\n"
+                f'  odh:modelType "{model.model_type}" ;\n'
+                f'  odh:odhModelId "{model.odh_model_id}" ;\n'
+                f'  odh:odhModelVersion "{model.odh_model_version}" ;\n'
+                f'  odh:created "{model.created_at.isoformat()}"^^xsd:dateTime .\n'
+            )
+            if model.training_dataset_id:
+                rdf_triples += (
+                    f"odh:model/{model.odh_model_id} "
+                    f"odh:trainingDataset odh:dataset/{model.training_dataset_id} .\n"
+                )
+            semantic_client.ingest_rdf(
+                graph_data=rdf_triples,
+                tenant_id=str(tenant_id),
+                format="turtle",
+            )
+        except Exception as e:
+            logger.warning(
+                f"Semantic layer update failed (non-fatal): {e}",
+                workflow_instance_id=str(instance.id),
+                model_id=str(model.id),
+            )
 
         logger.info(
             "Semantic layer updated with model metadata",

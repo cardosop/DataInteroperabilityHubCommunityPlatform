@@ -11,6 +11,19 @@ from django.core.validators import MaxValueValidator, MinValueValidator, RegexVa
 from django.db import models
 from django.utils import timezone
 
+from hub.apps.integrations.encryption import (
+    decrypt_json_field,
+    encrypt_json_field,
+    EncryptionError,
+)
+
+
+class ActiveTenantManager(models.Manager):
+    """Default manager that excludes soft-deleted tenants."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
 
 def default_empty_list():
     """Return a new empty list. Used as default for JSONField to avoid mutable default argument."""
@@ -46,13 +59,68 @@ class PlanTier(models.TextChoices):
     ENTERPRISE = "ENTERPRISE", "Enterprise"
 
 
+class PlanCategory(models.TextChoices):
+    """Plan category enumeration — separates base platform from ML/AI packages."""
+
+    BASE = "BASE", "Base Platform"
+    ML_AI = "ML_AI", "ML / AI"
+
+
 class TenantPlan(models.Model):
     """
     Tenant Plan model representing subscription plans with limits.
 
     Plans define resource limits (max_assets, max_api_calls_per_month, etc.)
-    that are enforced per tenant.
+    that are enforced per tenant. Each plan belongs to a category (BASE or ML_AI)
+    so tenants can subscribe to platform and ML packages independently.
     """
+
+    # Canonical set of recognised limit keys. Serializers and admin
+    # validation use this to reject unknown keys in limits_json.
+    KNOWN_LIMIT_KEYS = frozenset(
+        {
+            # ── Base platform limits ──
+            "max_assets",
+            "max_datasets",
+            "max_contracts",
+            "max_webhooks",
+            "max_mesh_domains",
+            "max_users",
+            "max_marketplace_listings",
+            "max_marketplace_connections",
+            "max_virtual_datasets",
+            "max_scheduled_ingestions",
+            "max_scheduled_exports",
+            "max_scheduled_runs_per_month",
+            "max_export_runs_per_month",
+            "max_api_calls_per_month",
+            "max_compliance_runs_per_month",
+            "max_dq_runs_per_month",
+            "max_access_requests_per_month",
+            "max_storage_gb",
+            # ── ML / AI limits (Phase 114A) ──
+            "max_ml_models",
+            "max_ml_training_jobs_per_month",
+            "max_ml_inference_requests_per_month",
+            "max_ml_deployed_models",
+            "max_ml_storage_gb",
+            # ── Transformation limits (Phase 115A) ──
+            "max_transformation_pipelines",
+            "max_transformation_runs_per_month",
+            # ── ODPS limits (Phase 117A) ──
+            "max_odps_documents",
+        }
+    )
+
+    ML_LIMIT_KEYS = frozenset(
+        {
+            "max_ml_models",
+            "max_ml_training_jobs_per_month",
+            "max_ml_inference_requests_per_month",
+            "max_ml_deployed_models",
+            "max_ml_storage_gb",
+        }
+    )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(
@@ -66,24 +134,66 @@ class TenantPlan(models.Model):
     tier = models.CharField(
         max_length=20, choices=PlanTier.choices, help_text="Plan tier: FREE, PRO, or ENTERPRISE"
     )
+    category = models.CharField(
+        max_length=20,
+        choices=PlanCategory.choices,
+        default=PlanCategory.BASE,
+        help_text="Plan category: BASE (platform) or ML_AI (ML/AI package)",
+    )
+    order = models.IntegerField(
+        default=0,
+        help_text="Tier ordering for upgrade/downgrade validation (FREE=0, PRO=1, ENTERPRISE=2)",
+    )
     limits_json = models.JSONField(
         default=default_empty_dict,
-        help_text="Plan limits as JSON (e.g., {'max_assets': 10, 'max_api_calls_per_month': 10000, 'max_scheduled_runs_per_month': 100})",
+        help_text="Plan limits as JSON (e.g., {'max_assets': 10, 'max_api_calls_per_month': 10000})",
     )
     is_active = models.BooleanField(
         default=True,
         help_text="Whether this plan is currently active and available for subscription",
+    )
+    price_amount_cents = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Price amount in cents (e.g., 2999 = $29.99). 0 for free plans.",
+    )
+    price_currency = models.CharField(
+        max_length=3,
+        default="usd",
+        help_text="ISO 4217 currency code (e.g., 'usd', 'eur', 'brl')",
+    )
+    billing_interval = models.CharField(
+        max_length=10,
+        choices=[("month", "Monthly"), ("year", "Yearly")],
+        default="month",
+        help_text="Billing interval for recurring subscriptions",
+    )
+    stripe_product_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="Stripe Product ID (prod_...)",
+    )
+    stripe_price_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="Stripe Price ID (price_...)",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "tenant_plans"
-        ordering = ["name"]
+        ordering = ["order", "name"]
         indexes = [
             models.Index(fields=["slug"]),
             models.Index(fields=["tier"]),
             models.Index(fields=["is_active"]),
+            models.Index(fields=["order"]),
+            models.Index(fields=["category"]),
         ]
 
     def __str__(self):
@@ -109,6 +219,9 @@ class Tenant(models.Model):
 
     Each tenant is isolated from others with row-level security.
     """
+
+    objects = ActiveTenantManager()
+    all_objects = models.Manager()
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(
@@ -148,6 +261,20 @@ class Tenant(models.Model):
         blank=True,
         help_text="Subscription plan for this tenant",
     )
+    ml_plan = models.ForeignKey(
+        "tenants.TenantPlan",
+        on_delete=models.SET_NULL,
+        related_name="ml_tenants",
+        null=True,
+        blank=True,
+        help_text="ML/AI package plan for this tenant",
+    )
+    kyc_verified_at = models.DateTimeField(
+        null=True, blank=True, help_text="Timestamp when KYC was last verified"
+    )
+    kyc_expires_at = models.DateTimeField(
+        null=True, blank=True, help_text="Timestamp when KYC verification expires"
+    )
     deleted_at = models.DateTimeField(
         null=True, blank=True, help_text="Timestamp when tenant was marked for deletion"
     )
@@ -157,6 +284,7 @@ class Tenant(models.Model):
     class Meta:
         db_table = "tenants"
         ordering = ["name"]
+        default_manager_name = "all_objects"
         indexes = [
             models.Index(fields=["slug"]),
             models.Index(fields=["status"]),
@@ -181,8 +309,12 @@ class Tenant(models.Model):
         return self.status == TenantStatus.DELETED
 
     def can_publish_to_marketplace(self) -> bool:
-        """Check if tenant can publish to marketplace (requires KYC verification)"""
-        return self.kyc_status == KYCStatus.VERIFIED and self.is_active()
+        """Check if tenant can publish to marketplace (requires valid KYC)"""
+        if self.kyc_status != KYCStatus.VERIFIED or not self.is_active():
+            return False
+        if self.kyc_expires_at and self.kyc_expires_at < timezone.now():
+            return False
+        return True
 
     def suspend(self):
         """Suspend the tenant (read-only mode)"""
@@ -202,6 +334,12 @@ class Tenant(models.Model):
         """Mark tenant for deletion (soft delete)"""
         self.status = TenantStatus.DELETED
         self.deleted_at = timezone.now()
+        self.save(update_fields=["status", "deleted_at", "updated_at"])
+
+    def restore(self):
+        """Restore a soft-deleted tenant."""
+        self.status = TenantStatus.ACTIVE
+        self.deleted_at = None
         self.save(update_fields=["status", "deleted_at", "updated_at"])
 
 
@@ -361,9 +499,42 @@ class TenantConfig(models.Model):
                 )
 
     def save(self, *args, **kwargs):
-        """Override save to run clean validation"""
+        """Override save to run clean validation and encrypt sso_config."""
         self.full_clean()
+
+        # Encrypt sso_config if plaintext dict (not already encrypted)
+        if (
+            isinstance(self.sso_config, dict)
+            and self.sso_config
+            and not self.sso_config.get("_encrypted")
+        ):
+            try:
+                encrypted = encrypt_json_field(self.sso_config)
+                self.sso_config = {"_encrypted": encrypted}
+            except EncryptionError as e:
+                raise ValidationError(
+                    {"sso_config": f"Failed to encrypt: {e}"}
+                ) from e
+
         super().save(*args, **kwargs)
+
+    def get_sso_config(self) -> dict:
+        """
+        Get decrypted SSO configuration.
+
+        Returns:
+            Decrypted SSO config dictionary.
+            Legacy plaintext dicts (pre-migration) returned as-is.
+        """
+        if not self.sso_config:
+            return {}
+        if isinstance(self.sso_config, dict):
+            if "_encrypted" in self.sso_config:
+                return decrypt_json_field(
+                    self.sso_config["_encrypted"]
+                )
+            return self.sso_config
+        return {}
 
 
 class TenantUsageSummary(models.Model):

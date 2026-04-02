@@ -33,6 +33,7 @@ from hub.apps.assets.caching import (
 )
 from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
 from hub.apps.tenants.models import Tenant
+import uuid
 
 
 class TestAssetCachingUtilities(TestCase):
@@ -184,59 +185,49 @@ class TestAssetCachingUtilities(TestCase):
         results = [{"id": "1"}]
         total_count = 1
 
-        # Should handle None tenant_id gracefully
+        # Caching with None tenant_id should either store with a None-based key
+        # (and return None on retrieval) or raise TypeError/ValueError
         try:
             cache_asset_list(invalid_tenant_id, filters_hash, results, total_count)
-            # If succeeds, verify cache was set
-            cached = get_cached_asset_list(invalid_tenant_id, filters_hash)
-            # May be None if None tenant_id is rejected
-            self.assertIsNone(cached)
         except (TypeError, ValueError):
-            # If fails, that's acceptable for None tenant_id
-            pass
+            return  # Raising on None tenant_id is acceptable behaviour
+
+        # If it didn't raise, retrieval for None tenant must return None
+        cached = get_cached_asset_list(invalid_tenant_id, filters_hash)
+        self.assertIsNone(cached)
 
     def test_cache_asset_detail_invalid_asset_id(self):
         """Test caching with invalid asset_id (error handling)"""
         invalid_asset_id = None
         asset_data = {"id": None, "name": "Test"}
 
-        # Should handle None asset_id gracefully
+        # Caching with None asset_id should either store with a None-based key
+        # (and return None on retrieval) or raise TypeError/ValueError
         try:
             cache_asset_detail(invalid_asset_id, asset_data)
-            # If succeeds, verify cache was set
-            cached = get_cached_asset_detail(invalid_asset_id)
-            # May be None if None asset_id is rejected
-            self.assertIsNone(cached)
         except (TypeError, ValueError):
-            # If fails, that's acceptable for None asset_id
-            pass
+            return  # Raising on None asset_id is acceptable behaviour
+
+        # If it didn't raise, retrieval for None asset must return None
+        cached = get_cached_asset_detail(invalid_asset_id)
+        self.assertIsNone(cached)
 
     def test_get_cached_asset_list_cache_error_handling(self):
         """Test error handling when cache retrieval fails"""
         tenant_id = "123e4567-e89b-12d3-a456-426614174000"
         filters_hash = "abc123"
 
-        # Should handle cache errors gracefully
-        try:
-            cached = get_cached_asset_list(tenant_id, filters_hash)
-            # Should return None if not cached or handle errors
-            self.assertIsNone(cached)
-        except Exception:
-            # If cache raises exception, that's a problem but test verifies it's handled
-            pass
+        # Retrieving a non-existent cache entry must return None, not raise
+        cached = get_cached_asset_list(tenant_id, filters_hash)
+        self.assertIsNone(cached)
 
     def test_get_cached_asset_detail_cache_error_handling(self):
         """Test error handling when cache retrieval fails"""
         asset_id = "123e4567-e89b-12d3-a456-426614174000"
 
-        # Should handle cache errors gracefully
-        try:
-            cached = get_cached_asset_detail(asset_id)
-            # Should return None if not cached or handle errors
-            self.assertIsNone(cached)
-        except Exception:
-            # If cache raises exception, that's a problem but test verifies it's handled
-            pass
+        # Retrieving a non-existent cache entry must return None, not raise
+        cached = get_cached_asset_detail(asset_id)
+        self.assertIsNone(cached)
 
     def test_invalidate_asset_detail_cache_nonexistent(self):
         """Test invalidating non-existent cache entry (error handling)"""
@@ -275,9 +266,10 @@ class TestAssetCachingIntegration(TestCase):
         # Create test tenant
         from hub.apps.tenants.models import KYCStatus, TenantStatus
 
+        _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {_uid}",
+            slug=f"test-tenant-{_uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -288,8 +280,9 @@ class TestAssetCachingIntegration(TestCase):
 
         # Create test user with DATA_PROVIDER role (required for asset create via API)
         User = get_user_model()
+        _uid = uuid.uuid4().hex[:8]
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{_uid}@example.com", password="testpass123", tenant=self.tenant
         )
         ensure_user_has_data_provider_role(self.user)
 
@@ -367,7 +360,7 @@ class TestAssetCachingIntegration(TestCase):
         response2 = self.client.get("/api/v1/assets/")
         count2 = response2.json().get("count", 0)
 
-        self.assertGreaterEqual(count2, count1)
+        self.assertGreater(count2, count1)
 
     def test_list_view_cache_invalidation_on_update_updates_asset(self):
         """Test updating asset triggers cache invalidation."""
@@ -408,6 +401,8 @@ class TestAssetCachingIntegration(TestCase):
         response2 = self.client.get("/api/v1/assets/")
         count2 = response2.json().get("count", 0)
 
+        # Soft-delete may not reduce count (RETIRED assets may still
+        # appear in unfiltered listing). Verify count changed or stayed.
         self.assertLessEqual(count2, count1)
 
     def test_detail_view_returns_200_status(self):
@@ -485,11 +480,30 @@ class TestAssetCachingIntegration(TestCase):
 
     def test_list_view_different_filters_use_different_cache_entries(self):
         """Test different filters use different cache entries."""
+        # Create an asset with domain=marketing so filtered vs unfiltered results differ
+        Asset.objects.create(
+            tenant=self.tenant,
+            key="asset-marketing",
+            name="Marketing Asset",
+            domain="marketing",
+            status=AssetStatus.DRAFT,
+            visibility=AssetVisibility.INTERNAL,
+            created_by=self.user,
+        )
+
         response1 = self.client.get("/api/v1/assets/?domain=marketing")
         response2 = self.client.get("/api/v1/assets/")
 
-        self.assertIsNotNone(response1.json())
-        self.assertIsNotNone(response2.json())
+        data1 = response1.json()
+        data2 = response2.json()
+
+        self.assertIsNotNone(data1)
+        self.assertIsNotNone(data2)
+
+        # Filtered response must return fewer results than unfiltered
+        count_filtered = data1.get("count", len(data1.get("results", [])))
+        count_all = data2.get("count", len(data2.get("results", [])))
+        self.assertGreater(count_all, count_filtered)
 
     def test_get_tenant_id_from_request_returns_tenant_id(self):
         """Test get_tenant_id_from_request returns tenant ID."""

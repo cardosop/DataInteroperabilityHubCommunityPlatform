@@ -8,7 +8,7 @@ import hashlib
 from typing import Optional, Dict, Any
 from django.contrib.auth import get_user_model
 
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.tenants.models import Tenant
 
 User = get_user_model()
@@ -70,7 +70,14 @@ class FileFactory:
                 "upload_method": "browser",
                 "chunk_count": 1
             }
-        
+
+        scan_status = kwargs.pop("scan_status", None)
+        if scan_status is None:
+            if status in (FileStatus.ACTIVE, FileStatus.COMPLETED):
+                scan_status = FileScanStatus.CLEAN
+            else:
+                scan_status = FileScanStatus.PENDING_SCAN
+
         return File.objects.create(
             tenant=tenant,
             name=name,
@@ -79,6 +86,7 @@ class FileFactory:
             content_sha256=content_sha256,
             storage_path=storage_path,
             status=status,
+            scan_status=scan_status,
             metadata_json=metadata_json,
             created_by=created_by,
             **kwargs

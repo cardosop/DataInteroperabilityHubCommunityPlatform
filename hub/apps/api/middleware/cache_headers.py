@@ -336,8 +336,11 @@ class CacheHeadersMiddleware(MiddlewareMixin):
                 try:
                     content_str = response.content.decode('utf-8') if isinstance(response.content, bytes) else str(response.content)
                     etag = generate_etag(content_str)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(
+                        "cache_etag_content_encode_error",
+                        error=str(exc),
+                    )
 
         # Get Last-Modified timestamp
         last_modified = None

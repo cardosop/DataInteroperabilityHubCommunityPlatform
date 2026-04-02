@@ -11,7 +11,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TransactionTestCase
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -20,6 +20,7 @@ from hub.apps.dq.service_client import DQServiceClient
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.tenants.services import get_tenant_dq_profile
 from hub.apps.tenants.validators import get_platform_defaults
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -35,7 +36,8 @@ def check_dq_service_available():
         return False
 
 
-class TenantConfigDQIntegrationTest(TransactionTestCase):
+# Using TestCase since _fixture_teardown is pass (no flush needed)
+class TenantConfigDQIntegrationTest(TestCase):
     """Test DQ service integration with tenant configuration"""
 
     # Disable automatic database flush to avoid foreign key constraint issues
@@ -62,7 +64,43 @@ class TenantConfigDQIntegrationTest(TransactionTestCase):
             email=f"user-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
+
+        # Assign DATA_PROVIDER role so user passes permission checks
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        UserRole.objects.create(user=self.user, role=provider_role)
+
+        # Create subscription so middleware doesn't block write ops
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        from hub.apps.tenants.models import TenantPlan
+        free_plan = TenantPlan.objects.filter(slug="free").first()
+        if free_plan:
+            Subscription.objects.get_or_create(
+                tenant=self.tenant,
+                defaults={
+                    "plan": free_plan,
+                    "status": SubscriptionStatus.ACTIVE,
+                    "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
+                }
+            )
+
+        # Create a real File so the DQ endpoint can find it
+        from hub.apps.files.models import File, FileStatus
+        self.test_file = File.objects.create(
+            tenant=self.tenant,
+            name="test-data.csv",
+            content_type="text/csv",
+            size=1024,
+            storage_path=f"tenants/{self.tenant.id}/files/test-data.csv",
+            status=FileStatus.ACTIVE,
+            created_by=self.user,
+        )
+        self.file_id = str(self.test_file.id)
 
         self.platform_defaults = get_platform_defaults()
 
@@ -83,31 +121,40 @@ class TenantConfigDQIntegrationTest(TransactionTestCase):
         response = self.client.post(
             "/api/v1/dq/runs/",
             {
-                "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                "file_id": self.file_id,
                 # profile_key omitted - will use tenant config default
             },
             format="json",
         )
 
-        # Verify tenant config profile was used
-        # The profile_key should be "intake_basic_soda" from tenant config
-        # This is verified by checking the DQRun record
-        # Response may be 201/202 (success), 400/404 (validation/routing), or 500/503 (service error)
+        # Only 201/202 indicates the system actually processed the request.
+        # 400 (bad file_id) or 503 (service down) mean the test can't verify
+        # profile propagation — skip rather than silently pass.
+        if response.status_code in [
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_404_NOT_FOUND,
+        ]:
+            self.skipTest(
+                f"DQ API returned {response.status_code} (likely invalid file_id) "
+                f"— cannot verify profile propagation"
+            )
+        if response.status_code in [
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        ]:
+            self.skipTest(
+                f"DQ service error ({response.status_code}) — cannot verify profile propagation"
+            )
+
         self.assertIn(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_202_ACCEPTED,
-                status.HTTP_400_BAD_REQUEST,  # Validation error (e.g., file_id doesn't exist)
-                status.HTTP_404_NOT_FOUND,  # Route not found or resource not found
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            ],
+            [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED],
+            f"Expected 201/202 but got {response.status_code}: "
+            f"{getattr(response, 'data', response.content)}",
         )
 
-        if response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
-            dq_run = DQRun.objects.latest("created_at")
-            self.assertEqual(dq_run.profile_key, "intake_basic_soda")
+        dq_run = DQRun.objects.latest("created_at")
+        self.assertEqual(dq_run.profile_key, "intake_basic_soda")
 
     def test_dq_run_with_platform_default(self):
         """Test DQ run uses platform default when tenant config not set using real DQServiceClient"""
@@ -122,26 +169,35 @@ class TenantConfigDQIntegrationTest(TransactionTestCase):
         # Use real DQServiceClient (no mock)
         # Create DQ run without explicit profile_key (should use platform default)
         response = self.client.post(
-            "/api/v1/dq/runs/", {"file_id": "123e4567-e89b-12d3-a456-426614174000"}, format="json"
+            "/api/v1/dq/runs/", {"file_id": self.file_id}, format="json"
         )
 
-        # Verify platform default profile was used
-        # Response may be 201/202 (success), 400/404 (validation/routing), or 500/503 (service error)
+        # Only 201/202 indicates the system actually processed the request.
+        if response.status_code in [
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_404_NOT_FOUND,
+        ]:
+            self.skipTest(
+                f"DQ API returned {response.status_code} (likely invalid file_id) "
+                f"— cannot verify profile propagation"
+            )
+        if response.status_code in [
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        ]:
+            self.skipTest(
+                f"DQ service error ({response.status_code}) — cannot verify profile propagation"
+            )
+
         self.assertIn(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_202_ACCEPTED,
-                status.HTTP_400_BAD_REQUEST,  # Validation error (e.g., file_id doesn't exist)
-                status.HTTP_404_NOT_FOUND,  # Route not found or resource not found
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            ],
+            [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED],
+            f"Expected 201/202 but got {response.status_code}: "
+            f"{getattr(response, 'data', response.content)}",
         )
 
-        if response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
-            dq_run = DQRun.objects.latest("created_at")
-            self.assertEqual(dq_run.profile_key, self.platform_defaults["default_dq_profile"])
+        dq_run = DQRun.objects.latest("created_at")
+        self.assertEqual(dq_run.profile_key, self.platform_defaults["default_dq_profile"])
 
     def test_dq_run_with_explicit_profile_overrides_tenant_config(self):
         """Test explicit profile_key in request overrides tenant config using real DQServiceClient"""
@@ -159,29 +215,38 @@ class TenantConfigDQIntegrationTest(TransactionTestCase):
         response = self.client.post(
             "/api/v1/dq/runs/",
             {
-                "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                "file_id": self.file_id,
                 "profile_key": "intake_basic_gx",  # Explicit override
             },
             format="json",
         )
 
-        # Verify explicit profile was used (not tenant config)
-        # Response may be 201/202 (success), 400/404 (validation/routing), or 500/503 (service error)
+        # Only 201/202 indicates the system actually processed the request.
+        if response.status_code in [
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_404_NOT_FOUND,
+        ]:
+            self.skipTest(
+                f"DQ API returned {response.status_code} (likely invalid file_id) "
+                f"— cannot verify profile override"
+            )
+        if response.status_code in [
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        ]:
+            self.skipTest(
+                f"DQ service error ({response.status_code}) — cannot verify profile override"
+            )
+
         self.assertIn(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_202_ACCEPTED,
-                status.HTTP_400_BAD_REQUEST,  # Validation error (e.g., file_id doesn't exist)
-                status.HTTP_404_NOT_FOUND,  # Route not found or resource not found
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            ],
+            [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED],
+            f"Expected 201/202 but got {response.status_code}: "
+            f"{getattr(response, 'data', response.content)}",
         )
 
-        if response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
-            dq_run = DQRun.objects.latest("created_at")
-            self.assertEqual(dq_run.profile_key, "intake_basic_gx")
+        dq_run = DQRun.objects.latest("created_at")
+        self.assertEqual(dq_run.profile_key, "intake_basic_gx")
 
     def test_get_tenant_dq_profile_utility_function(self):
         """Test get_tenant_dq_profile utility function"""
@@ -208,28 +273,37 @@ class TenantConfigDQIntegrationTest(TransactionTestCase):
         # Use real DQServiceClient (no mock)
         # Create DQ run
         response = self.client.post(
-            "/api/v1/dq/runs/", {"file_id": "123e4567-e89b-12d3-a456-426614174000"}, format="json"
+            "/api/v1/dq/runs/", {"file_id": self.file_id}, format="json"
         )
 
-        # Verify DQ run was created with tenant config profile
-        # Response may be 201/202 (success), 400/404 (validation/routing), or 500/503 (service error)
+        # Only 201/202 indicates the system actually processed the request.
+        if response.status_code in [
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_404_NOT_FOUND,
+        ]:
+            self.skipTest(
+                f"DQ API returned {response.status_code} (likely invalid file_id) "
+                f"— cannot verify profile propagation"
+            )
+        if response.status_code in [
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        ]:
+            self.skipTest(
+                f"DQ service error ({response.status_code}) — cannot verify profile propagation"
+            )
+
         self.assertIn(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_202_ACCEPTED,
-                status.HTTP_400_BAD_REQUEST,  # Validation error (e.g., file_id doesn't exist)
-                status.HTTP_404_NOT_FOUND,  # Route not found or resource not found
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            ],
+            [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED],
+            f"Expected 201/202 but got {response.status_code}: "
+            f"{getattr(response, 'data', response.content)}",
         )
 
-        if response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
-            # Check that DQRun has the profile from tenant config
-            # The actual call happens in the worker task, so we verify the DQRun has the profile
-            dq_run = DQRun.objects.latest("created_at")
-            self.assertEqual(dq_run.profile_key, "intake_basic_soda")
+        # Check that DQRun has the profile from tenant config
+        # The actual call happens in the worker task, so we verify the DQRun has the profile
+        dq_run = DQRun.objects.latest("created_at")
+        self.assertEqual(dq_run.profile_key, "intake_basic_soda")
 
     def test_invalid_profile_key_validation_error(self):
         """Test invalid profile_key returns validation error using real DQServiceClient"""
@@ -239,20 +313,25 @@ class TenantConfigDQIntegrationTest(TransactionTestCase):
         # Try to create DQ run with invalid profile
         response = self.client.post(
             "/api/v1/dq/runs/",
-            {"file_id": "123e4567-e89b-12d3-a456-426614174000", "profile_key": "invalid_profile"},
+            {"file_id": self.file_id, "profile_key": "invalid_profile"},
             format="json",
         )
 
-        # Should return validation error (invalid profile_key)
-        # Response may be 400 (validation error) or 500/503 (service error)
-        self.assertIn(
+        # Should return 400 validation error for invalid profile_key.
+        # 500/503 means the service is down — skip rather than silently pass.
+        if response.status_code in [
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        ]:
+            self.skipTest(
+                f"DQ service error ({response.status_code}) — cannot verify validation behavior"
+            )
+
+        self.assertEqual(
             response.status_code,
-            [
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            ],
+            status.HTTP_400_BAD_REQUEST,
+            f"Expected 400 for invalid profile_key but got {response.status_code}: "
+            f"{getattr(response, 'data', response.content)}",
         )
 
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            self.assertIn("error", response.data)
+        self.assertIn("error", response.data)

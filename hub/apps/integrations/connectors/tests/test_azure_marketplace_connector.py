@@ -128,7 +128,7 @@ def azure_connector(azure_test_server, request):
     return connector
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 class TestAzureMarketplaceConnector:
     """Unit/integration tests for Azure Marketplace connector (real HTTP)."""
 

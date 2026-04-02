@@ -354,6 +354,10 @@ class ODPSLinkIndexPerformanceTest(ContractsTestBase):
             count_before = cursor.fetchone()[0]
             self.assertEqual(count_before, 1, "Index should exist before drop")
 
+            # DROP INDEX needs AccessExclusiveLock on the table.  On a
+            # shared test DB other sessions (web, worker) may hold locks,
+            # so extend lock_timeout to avoid LockNotAvailable.
+            cursor.execute("SET lock_timeout = '30s'")
             # Drop index
             cursor.execute("DROP INDEX IF EXISTS idx_contracts_extensions_odps_link;")
 
@@ -405,6 +409,9 @@ class ODPSLinkIndexPerformanceTest(ContractsTestBase):
             count_before = cursor.fetchone()[0]
             self.assertEqual(count_before, 1, "Index should exist before reverse")
 
+            # DROP INDEX needs AccessExclusiveLock; extend lock_timeout
+            # for shared test DB where other sessions may hold locks.
+            cursor.execute("SET lock_timeout = '30s'")
             # Execute reverse SQL (drop index)
             cursor.execute("DROP INDEX IF EXISTS idx_contracts_extensions_odps_link;")
 

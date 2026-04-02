@@ -9,9 +9,9 @@ These tests verify:
 - Query execution progress events real-time updates
 """
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import AsyncMock, MagicMock, patch
-from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTransactionTestCase
 from django.utils import timezone as django_timezone
 from asgiref.sync import sync_to_async
 
@@ -27,7 +27,7 @@ from hub.apps.core.events.models import Event as EventModel
 from hub.apps.core.events.bus import get_event_bus
 
 
-class EventConsumerVirtualizationEventTest(AsyncWebSocketTestCase):
+class EventConsumerVirtualizationEventTest(AsyncWebSocketTransactionTestCase):
     """Test Virtualization event handling in EventConsumer."""
 
     def setUp(self):
@@ -50,7 +50,7 @@ class EventConsumerVirtualizationEventTest(AsyncWebSocketTestCase):
         consumer.send_json_message = AsyncMock()
         consumer.send = AsyncMock()
         consumer.close = AsyncMock()
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
         consumer._connection_closed = False
         consumer.replay_enabled = True
         consumer.replay_window_seconds = 3600

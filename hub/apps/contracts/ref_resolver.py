@@ -47,6 +47,7 @@ from hub.apps.contracts.odps_security_logging import (
 )
 from hub.apps.contracts.odps_rate_limiting import check_rate_limit
 from hub.apps.contracts.odps_errors import ODPSRefResolutionError
+from hub.apps.webhooks.ssrf_guard import is_safe_url
 from hub.apps.contracts.source_paths import resolve_json_pointer
 from hub.apps.observability.otel_metrics import (
     odps_ref_resolution_total,
@@ -70,6 +71,11 @@ except ImportError:
     redis = None
 
 logger = structlog.get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# SSRF protection — delegates to hub.apps.webhooks.ssrf_guard (Phase 45)
+# ---------------------------------------------------------------------------
+
 
 # Default configuration values
 DEFAULT_TIMEOUT_PER_REF = 5  # seconds
@@ -132,6 +138,7 @@ class RefResolver:
         max_total_size: int = DEFAULT_MAX_TOTAL_SIZE,
         cache_ttl: int = DEFAULT_CACHE_TTL,
         enable_caching: bool = True,
+        httpx_transport: Optional[Any] = None,
     ):
         """
         Initialize RefResolver.
@@ -147,6 +154,8 @@ class RefResolver:
             max_total_size: Maximum total size for all resolved refs in bytes.
             cache_ttl: Cache TTL in seconds for external refs.
             enable_caching: Whether to enable Redis caching for external refs.
+            httpx_transport: Optional httpx transport (e.g. MockTransport) for tests;
+                when set, used for external fetches so caching/instrumentation stay real.
         """
         self.config = config or get_odps_refs_config()
         self.base_path = base_path or Path.cwd()
@@ -158,6 +167,7 @@ class RefResolver:
         self.max_total_size = max_total_size
         self.cache_ttl = cache_ttl
         self.enable_caching = enable_caching
+        self._httpx_transport = httpx_transport
 
         # Track total size of resolved refs
         self._total_size = 0
@@ -201,6 +211,16 @@ class RefResolver:
                 message="External ref caching will be disabled"
             )
             return None
+
+    def _redis_cache_stats_key(self, kind: str) -> str:
+        """
+        Redis keys for ref-cache hit/miss/write counters, scoped per tenant.
+
+        Global keys caused incorrect hit rates under multi-tenancy and flaky tests
+        when other tenants or suites incremented shared counters.
+        """
+        tid = (self.tenant_id or "unknown").replace(":", "_")
+        return f"{REDIS_CACHE_STATS_PREFIX}{tid}:{kind}"
 
     def _get_cache_key(self, ref_path: str, content_hash: Optional[str] = None) -> str:
         """
@@ -522,7 +542,7 @@ class RefResolver:
             return
 
         try:
-            stats_key = f"{REDIS_CACHE_STATS_PREFIX}writes"
+            stats_key = self._redis_cache_stats_key("writes")
             self._redis_client.incr(stats_key)
             self._redis_client.expire(stats_key, self.cache_ttl * 24)  # Keep stats for 24 hours
 
@@ -544,8 +564,8 @@ class RefResolver:
             return
 
         try:
-            hits_key = f"{REDIS_CACHE_STATS_PREFIX}hits"
-            misses_key = f"{REDIS_CACHE_STATS_PREFIX}misses"
+            hits_key = self._redis_cache_stats_key("hits")
+            misses_key = self._redis_cache_stats_key("misses")
 
             hits_bytes = self._redis_client.get(hits_key)
             misses_bytes = self._redis_client.get(misses_key)
@@ -646,7 +666,7 @@ class RefResolver:
             return
 
         try:
-            stats_key = f"{REDIS_CACHE_STATS_PREFIX}hits"
+            stats_key = self._redis_cache_stats_key("hits")
             self._redis_client.incr(stats_key)
             self._redis_client.expire(stats_key, self.cache_ttl * 24)  # Keep stats for 24 hours
         except Exception:
@@ -669,7 +689,7 @@ class RefResolver:
             return
 
         try:
-            stats_key = f"{REDIS_CACHE_STATS_PREFIX}misses"
+            stats_key = self._redis_cache_stats_key("misses")
             self._redis_client.incr(stats_key)
             self._redis_client.expire(stats_key, self.cache_ttl * 24)  # Keep stats for 24 hours
         except Exception:
@@ -697,8 +717,8 @@ class RefResolver:
             return None
 
         try:
-            hits_key = f"{REDIS_CACHE_STATS_PREFIX}hits"
-            misses_key = f"{REDIS_CACHE_STATS_PREFIX}misses"
+            hits_key = self._redis_cache_stats_key("hits")
+            misses_key = self._redis_cache_stats_key("misses")
 
             hits = self._redis_client.get(hits_key)
             misses = self._redis_client.get(misses_key)
@@ -921,17 +941,28 @@ class RefResolver:
                 user_id=self.user_id,
             )
 
-        # Additional host validation: check for suspicious patterns
-        # Reject localhost/private IPs unless explicitly allowed (security measure)
-        host_lower = parsed.netloc.lower()
-        if host_lower.startswith('localhost') or host_lower.startswith('127.') or host_lower.startswith('0.0.0.0'):
-            # This is a security measure - localhost URLs could be used for SSRF attacks
-            # In production, you might want to allow this based on configuration
-            logger.warning(
-                "ref_resolver_localhost_url",
-                url=url,
-                host=parsed.netloc,
-                message="External $ref URL points to localhost - potential SSRF risk"
+        # Additional host validation: block all private/reserved IP ranges to
+        # prevent SSRF.  Delegates to ssrf_guard.is_safe_url (Phase 45).
+        # Uses WEBHOOK_SSRF_ENABLED (same flag as webhook delivery) so test/dev
+        # stacks can resolve $ref against local HTTP servers when SSRF is off.
+        # Production defaults to True. Tests that assert SSRF blocking use
+        # @override_settings(WEBHOOK_SSRF_ENABLED=True).
+        ssrf_enabled = getattr(settings, "WEBHOOK_SSRF_ENABLED", True)
+        if ssrf_enabled and not is_safe_url(url):
+            self._security_logger.log_security_violation(
+                event_type=SecurityEventType.INVALID_URL,
+                severity=SecuritySeverity.HIGH,
+                violation_type="SSRF blocked",
+                description=f"External $ref URL '{url}' targets a private/reserved host '{parsed.netloc}'",
+                attempted_url=url,
+                tenant_id=self.tenant_id,
+                user_id=self.user_id,
+            )
+            raise ODPSRefResolutionError(
+                message=f"External $ref URL '{url}' targets a private/reserved host — blocked by SSRF protection",
+                error_code=ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION,
+                tenant_id=self.tenant_id,
+                user_id=self.user_id,
             )
 
     def _detect_mode(self, ref_path: str) -> RefMode:
@@ -1636,7 +1667,10 @@ class RefResolver:
 
             # Fetch from URL
             fetch_start_time = time.time()
-            with httpx.Client(timeout=self.timeout_per_ref) as client:
+            client_kwargs: Dict[str, Any] = {"timeout": self.timeout_per_ref}
+            if self._httpx_transport is not None:
+                client_kwargs["transport"] = self._httpx_transport
+            with httpx.Client(**client_kwargs) as client:
                 response = client.get(ref_path)
                 response.raise_for_status()
 
@@ -2117,6 +2151,77 @@ class RefResolver:
             external_ref_handling=ExternalRefHandling.REMOVE
         )
         return resolved
+
+    # ------------------------------------------------------------------
+    # ODCS v3.1.0: Relationship target_contract URL resolution
+    # ------------------------------------------------------------------
+
+    def resolve_relationship_target_refs(
+        self,
+        hub_contract: Dict[str, Any],
+    ) -> Tuple[Dict[str, Any], List[str]]:
+        """
+        Resolve URL-based ``target_contract`` values in v3.1.0
+        relationships.
+
+        ODCS v3.1.0 allows ``relationships[].target_contract`` to
+        contain a URL (``$ref``-style external ref) in addition to a
+        namespace/name string.  This method walks all relationships
+        in the hub_contract and resolves URL values using the same
+        SSRF guard, rate limiting, and audit logging as existing
+        external ``$ref`` resolution.
+
+        Non-URL values (plain names/UUIDs) are left untouched.
+
+        Args:
+            hub_contract: Normalised HubContract dict (mutated in-place)
+
+        Returns:
+            Tuple of (hub_contract, warnings) — warnings list for any
+            resolution failures (non-fatal).
+        """
+        warnings: List[str] = []
+
+        # Collect all relationship lists: models[].relationships + schema.relationships
+        rel_lists: List[List[Dict[str, Any]]] = []
+        for model in hub_contract.get("models", []):
+            if isinstance(model, dict) and isinstance(model.get("relationships"), list):
+                rel_lists.append(model["relationships"])
+        schema = hub_contract.get("schema")
+        if isinstance(schema, dict) and isinstance(schema.get("relationships"), list):
+            rel_lists.append(schema["relationships"])
+
+        for rels in rel_lists:
+            for rel in rels:
+                if not isinstance(rel, dict):
+                    continue
+                target = rel.get("target_contract")
+                if not isinstance(target, str):
+                    continue
+                # Only resolve if target looks like a URL
+                if not (target.startswith("http://") or target.startswith("https://")):
+                    continue
+                try:
+                    resolved = self.resolve_external(target)
+                    # Store the resolved contract data alongside the ref
+                    rel["_resolved_target"] = resolved
+                    # Log the fetch via the existing audit method
+                    self._security_logger.log_external_ref_fetch(
+                        ref_path=target,
+                        success=True,
+                        tenant_id=self.tenant_id,
+                        user_id=self.user_id,
+                        metadata={
+                            "context": "relationship_target_contract",
+                        },
+                    )
+                except Exception as exc:
+                    warnings.append(
+                        f"Failed to resolve relationship target_contract "
+                        f"URL '{target}': {exc}"
+                    )
+
+        return hub_contract, warnings
 
 
 def resolve_odps_refs(

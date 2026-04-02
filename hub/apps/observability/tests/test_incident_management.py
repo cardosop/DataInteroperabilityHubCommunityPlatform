@@ -26,11 +26,12 @@ class IncidentManagerTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -204,11 +205,12 @@ class IncidentManagerSuccessTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -252,11 +254,12 @@ class IncidentManagerFailureTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_create_incident_missing_required_fields(self):
@@ -318,11 +321,12 @@ class IncidentManagerEdgeCasesTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_create_incident_with_very_long_title(self):
@@ -346,7 +350,8 @@ class IncidentManagerEdgeCasesTest(TestCase):
             incident_type="QUALITY_VIOLATION",
         )
 
-        self.assertIn("!", incident.title)
+        self.assertEqual(incident.title, "Test!@#$%^&*() Incident")
+        self.assertEqual(incident.description, "Test description with special chars: !@#$%^&*()")
 
     def test_create_incident_with_unicode(self):
         """Test creating incident with unicode characters"""
@@ -374,7 +379,7 @@ class IncidentManagerEdgeCasesTest(TestCase):
             tenant_id=str(self.tenant.id), limit=1000
         )
 
-        self.assertGreaterEqual(len(dashboard["results"]), 50)
+        self.assertEqual(len(dashboard["results"]), 50)
 
     def test_get_incidents_dashboard_with_small_limit(self):
         """Test getting incidents dashboard with small limit"""
@@ -389,7 +394,7 @@ class IncidentManagerEdgeCasesTest(TestCase):
 
         dashboard = IncidentManager.get_incidents_dashboard(tenant_id=str(self.tenant.id), limit=5)
 
-        self.assertLessEqual(len(dashboard["results"]), 5)
+        self.assertEqual(len(dashboard["results"]), 5)
 
 
 class IncidentManagerErrorHandlingTest(TestCase):
@@ -397,15 +402,16 @@ class IncidentManagerErrorHandlingTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_resolve_incident_without_resolved_by(self):
-        """Test resolving incident without resolved_by_id"""
+        """Test resolving incident without resolved_by_id succeeds (it's optional)"""
         incident = IncidentManager.create_incident(
             tenant_id=str(self.tenant.id),
             title="Test Incident",
@@ -413,19 +419,17 @@ class IncidentManagerErrorHandlingTest(TestCase):
             incident_type="FRESHNESS_VIOLATION",
         )
 
-        # Should handle missing resolved_by_id gracefully
-        try:
-            resolved = IncidentManager.resolve_incident(
-                incident_id=str(incident.id),
-                resolution_notes="Fixed",
-                root_cause="Root cause",
-                # Missing resolved_by_id
-            )
-            # May succeed or fail depending on implementation
-            self.assertIsNotNone(resolved)
-        except Exception:
-            # Exception acceptable if resolved_by_id is required
-            pass
+        resolved = IncidentManager.resolve_incident(
+            incident_id=str(incident.id),
+            resolution_notes="Fixed",
+            root_cause="Root cause",
+        )
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.status, "RESOLVED")
+        self.assertEqual(resolved.resolution_notes, "Fixed")
+        self.assertEqual(resolved.root_cause, "Root cause")
+        self.assertIsNone(resolved.resolved_by_id)
+        self.assertIsNotNone(resolved.resolved_at)
 
     def test_update_incident_status_multiple_times(self):
         """Test updating incident status multiple times"""
@@ -459,3 +463,5 @@ class IncidentManagerErrorHandlingTest(TestCase):
         # Should return empty results or handle gracefully
         self.assertIn("results", dashboard)
         self.assertIn("summary", dashboard)
+        self.assertEqual(len(dashboard["results"]), 0,
+            "Invalid status filter should return no matching incidents")

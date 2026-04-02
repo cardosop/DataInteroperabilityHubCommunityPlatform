@@ -30,6 +30,7 @@ except ImportError:
     GOOGLE_CLOUD_AVAILABLE = False
 
 import pytest
+import uuid
 
 pytestmark = pytest.mark.skipif(
     not GOOGLE_CLOUD_AVAILABLE, reason="Google Cloud libraries not installed"
@@ -82,7 +83,7 @@ class TestGCPMarketplaceConnectorSecurity(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant Security", slug="test-tenant-security"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
 
     def test_service_account_json_validation(self):

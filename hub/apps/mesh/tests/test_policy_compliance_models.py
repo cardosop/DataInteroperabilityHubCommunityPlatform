@@ -8,6 +8,8 @@ from django.test import TestCase
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 
+import uuid
+
 from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.mesh.models import (
     DataMeshDomain,
@@ -26,13 +28,14 @@ class PolicyApplicationModelTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -151,9 +154,10 @@ class PolicyApplicationModelTest(TestCase):
 
     def test_policy_application_clean_validation_policy_different_tenant(self):
         """Test policy application clean() validation for policy from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         from hub.apps.governance.models import AccessPolicy
@@ -176,13 +180,14 @@ class PolicyApplicationModelTest(TestCase):
 
     def test_policy_application_clean_validation_applied_by_different_tenant(self):
         """Test policy application clean() validation for applied_by from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant
         )
@@ -277,13 +282,14 @@ class ComplianceReportModelTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -400,9 +406,10 @@ class ComplianceReportModelTest(TestCase):
 
     def test_compliance_report_clean_validation_asset_different_tenant(self):
         """Test compliance report clean() validation for asset from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility

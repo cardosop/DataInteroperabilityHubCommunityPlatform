@@ -22,7 +22,7 @@ from pathlib import Path
 import redis
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TestCase, TransactionTestCase
 
 from hub.apps.contracts.models import NormalizationStatus
 from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
@@ -58,7 +58,7 @@ User = get_user_model()
 def get_real_redis_client_or_none():
     """Get real Redis client or return None if unavailable."""
     try:
-        redis_url = getattr(settings, "REDIS_URL", "redis://redis:6379/0")
+        redis_url = getattr(settings, "REDIS_URL", None) or "redis://redis-cache-test:6379/0"
         client = redis.from_url(
             redis_url,
             decode_responses=False,  # Keep binary for JSON storage
@@ -345,9 +345,14 @@ ODPS_METRICS_TEST_TIMEOUT_PER_REF = 1
 ODPS_METRICS_TEST_TIMEOUT_TOTAL = 5
 
 
-@override_settings(REDIS_URL="redis://redis:6379/0")
 class ODPSMetricsTestBaseWithRedis(TransactionTestCase):
     """Base test class for ODPS metrics tests with real Redis when available."""
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        pass
 
     def setUp(self):
         """Set up test fixtures. Redis is optional; tests run with or without it."""

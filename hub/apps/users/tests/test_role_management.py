@@ -10,6 +10,7 @@ from rest_framework import status
 from hub.apps.users.models import User, Role, UserRole, UserStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -24,9 +25,10 @@ class RoleManagementTest(TestCase):
         self.client = APIClient()
         
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
@@ -45,7 +47,7 @@ class RoleManagementTest(TestCase):
         
         # Create tenant admin user
         self.tenant_admin = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -54,7 +56,7 @@ class RoleManagementTest(TestCase):
 
         # Create regular user
         self.regular_user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -130,9 +132,10 @@ class RoleManagementTest(TestCase):
         self.client.force_authenticate(user=self.tenant_admin)
         
         # Create another tenant and role
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )

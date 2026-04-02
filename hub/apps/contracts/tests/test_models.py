@@ -5,7 +5,7 @@ Unit tests for Contract model.
 try:
     import pytest
 
-    pytestmark = pytest.mark.django_db(transaction=True)
+    pytestmark = pytest.mark.django_db
 except ImportError:
     # pytest not available, using Django test runner
     pytest = None

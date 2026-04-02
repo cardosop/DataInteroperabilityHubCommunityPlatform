@@ -29,6 +29,7 @@ from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
 from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
+import uuid
 
 
 class AssetActivationSagaTest(TestCase):
@@ -37,11 +38,11 @@ class AssetActivationSagaTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )

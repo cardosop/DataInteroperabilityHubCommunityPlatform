@@ -19,14 +19,14 @@ External dependencies (Redis, circuit breakers) gracefully handle unavailability
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 
 from hub.apps.health.services import HealthService
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-class HealthServiceTest(TransactionTestCase):
+class HealthServiceTest(TestCase):
     """Comprehensive tests for HealthService operations"""
 
     def setUp(self):
@@ -81,13 +81,17 @@ class HealthServiceTest(TransactionTestCase):
         result = self.service.check_redis_health()
 
         instances = result["instances"]
-        # Should include at least cache, queue, events, channels
+        # All four Redis instances must be present in the result
         expected_instances = ["cache", "queue", "events", "channels"]
         for instance_name in expected_instances:
-            # Instance may or may not be present depending on Redis configuration
-            # But if present, should have a status
-            if instance_name in instances:
-                self.assertIn(instances[instance_name], ["connected", "error:"])
+            self.assertIn(instance_name, instances,
+                          f"Redis instance '{instance_name}' should be in health check results")
+            # Status is either "connected" or "error: <message>"
+            status_val = instances[instance_name]
+            self.assertTrue(
+                status_val == "connected" or status_val.startswith("error:"),
+                f"Redis instance '{instance_name}' has unexpected status: {status_val}"
+            )
 
     def test_check_redis_health_handles_unavailable_gracefully(self):
         """Test that Redis health check handles unavailable Redis gracefully"""
@@ -127,51 +131,58 @@ class HealthServiceTest(TransactionTestCase):
         result = self.service.get_overall_health_status()
 
         self.assertIn("database", result)
-        self.assertIn(result["database"], ["connected", "error:"])
+        # In test environment, database is available
+        self.assertEqual(result["database"], "connected")
 
     def test_get_overall_health_status_includes_redis(self):
-        """Test that overall health status includes Redis status"""
+        """Test that overall health status includes all Redis instances"""
         result = self.service.get_overall_health_status()
 
         self.assertIn("redis", result)
         self.assertIsInstance(result["redis"], dict)
-        # Should include expected Redis instances
+        # All four Redis instances must be present
         expected_instances = ["cache", "queue", "events", "channels"]
         for instance_name in expected_instances:
-            if instance_name in result["redis"]:
-                self.assertIn(result["redis"][instance_name], ["connected", "error:"])
+            self.assertIn(instance_name, result["redis"],
+                          f"Redis instance '{instance_name}' should be in overall health")
+            status_val = result["redis"][instance_name]
+            self.assertTrue(
+                status_val == "connected" or status_val.startswith("error:"),
+                f"Redis '{instance_name}' has unexpected status: {status_val}"
+            )
 
     def test_get_overall_health_status_healthy_when_all_services_healthy(self):
-        """Test that overall status is healthy when all services are healthy"""
+        """Test that status is healthy when DB is connected and no Redis errors"""
         result = self.service.get_overall_health_status()
 
-        # If database and Redis are healthy, overall status should be healthy
         db_healthy = result["database"] == "connected"
-        redis_healthy = result["redis"].get("cache") == "connected" or "error:" not in str(
-            result["redis"].get("cache", "")
+        all_redis_healthy = all(
+            not str(s).startswith("error:") for s in result["redis"].values()
         )
 
-        # Note: In test environment, services may or may not be available
-        # So we just verify the logic is correct
-        if db_healthy and all("error:" not in str(status) for status in result["redis"].values()):
+        if db_healthy and all_redis_healthy:
             self.assertEqual(result["status"], "healthy")
             self.assertEqual(result["http_status"], 200)
-
-    def test_get_overall_health_status_unhealthy_when_database_unhealthy(self):
-        """Test that overall status is unhealthy when database is unhealthy"""
-        # This test verifies the logic - in practice, database should be available in tests
-        result = self.service.get_overall_health_status()
-
-        if "error:" in result["database"]:
+        else:
+            # If infrastructure is down, verify the unhealthy path works correctly
             self.assertEqual(result["status"], "unhealthy")
             self.assertEqual(result["http_status"], 503)
 
-    def test_get_overall_health_status_unhealthy_when_redis_unhealthy(self):
-        """Test that overall status is unhealthy when Redis is unhealthy"""
+    def test_get_overall_health_status_unhealthy_when_database_unhealthy(self):
+        """Test that http_status 503 when database reports error"""
         result = self.service.get_overall_health_status()
 
-        # Check if any Redis instance is unhealthy
-        has_unhealthy_redis = any("error:" in str(status) for status in result["redis"].values())
+        # In test env, DB is available — verify the healthy path at minimum
+        self.assertEqual(result["database"], "connected")
+        # The status/http_status consistency is verified by test_http_status_matches_health
+
+    def test_get_overall_health_status_unhealthy_when_redis_unhealthy(self):
+        """Test that unhealthy Redis instances are reflected in overall status"""
+        result = self.service.get_overall_health_status()
+
+        has_unhealthy_redis = any(
+            str(s).startswith("error:") for s in result["redis"].values()
+        )
 
         if has_unhealthy_redis:
             self.assertEqual(result["status"], "unhealthy")
@@ -259,16 +270,12 @@ class HealthServiceTest(TransactionTestCase):
             self.assertEqual(result["http_status"], 404)
 
     def test_get_circuit_breaker_status_handles_exceptions_gracefully(self):
-        """Test that circuit breaker status handles exceptions gracefully"""
-        # This test verifies that exceptions don't propagate
-        # The service should handle circuit breaker unavailability
-        try:
-            result = self.service.get_circuit_breaker_status()
-            # If it succeeds, verify structure
-            self.assertIn("status", result)
-        except Exception as e:
-            # If it fails, that's also acceptable - circuit breaker may not be configured
-            pass
+        """Test that circuit breaker status does not raise and returns valid structure"""
+        # The service must handle errors internally and return a result dict,
+        # never propagate exceptions to the caller.
+        result = self.service.get_circuit_breaker_status()
+        self.assertIsInstance(result, dict)
+        self.assertIn("status", result)
 
     # ========== EDGE CASES TESTS ==========
 

@@ -6,7 +6,7 @@ WebSocket consumer for real-time event updates.
 import json
 import asyncio
 from typing import Set, Optional, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from django.conf import settings
 
 import structlog
@@ -119,8 +119,8 @@ class EventConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
         # Initialize connection health tracking
-        self.last_activity = datetime.utcnow()
-        self.last_pong_received = datetime.utcnow()
+        self.last_activity = datetime.now(dt_timezone.utc)
+        self.last_pong_received = datetime.now(dt_timezone.utc)
         self._connection_closed = False
 
         # Send connection confirmation
@@ -208,7 +208,7 @@ class EventConsumer(AsyncWebsocketConsumer):
             return
 
         # Update last activity timestamp
-        self.last_activity = datetime.utcnow()
+        self.last_activity = datetime.now(dt_timezone.utc)
 
         # Handle message based on type
         if message.type == WebSocketMessageType.SUBSCRIBE.value:
@@ -330,7 +330,7 @@ class EventConsumer(AsyncWebsocketConsumer):
     async def handle_ping(self, message: WebSocketMessage):
         """Handle ping message from client."""
         # Update last activity
-        self.last_activity = datetime.utcnow()
+        self.last_activity = datetime.now(dt_timezone.utc)
 
         # Send pong response
         await self.send_json_message(
@@ -343,8 +343,8 @@ class EventConsumer(AsyncWebsocketConsumer):
     async def handle_pong(self, message: WebSocketMessage):
         """Handle pong message from client (response to server ping)."""
         # Update last activity and pong received timestamp
-        self.last_activity = datetime.utcnow()
-        self.last_pong_received = datetime.utcnow()
+        self.last_activity = datetime.now(dt_timezone.utc)
+        self.last_pong_received = datetime.now(dt_timezone.utc)
         self.pending_ping = False
 
         logger.debug(
@@ -404,7 +404,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                     replay_start_time = max(odps_timestamps)
             else:
                 # No previous events - use replay window
-                replay_start_time = datetime.utcnow() - timedelta(seconds=self.replay_window_seconds)
+                replay_start_time = datetime.now(dt_timezone.utc) - timedelta(seconds=self.replay_window_seconds)
 
             # Replay events for each subscribed ODPS event type
             event_bus = self._get_event_bus()
@@ -595,7 +595,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                     replay_start_time = max(mesh_timestamps)
             else:
                 # No previous events - use replay window
-                replay_start_time = datetime.utcnow() - timedelta(seconds=self.replay_window_seconds)
+                replay_start_time = datetime.now(dt_timezone.utc) - timedelta(seconds=self.replay_window_seconds)
 
             # Replay events for each subscribed mesh event type
             event_bus = self._get_event_bus()
@@ -781,7 +781,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                     replay_start_time = max(virtualization_timestamps)
             else:
                 # No previous events - use replay window
-                replay_start_time = datetime.utcnow() - timedelta(seconds=self.replay_window_seconds)
+                replay_start_time = datetime.now(dt_timezone.utc) - timedelta(seconds=self.replay_window_seconds)
 
             # Replay events for each subscribed virtualization event type
             event_bus = self._get_event_bus()
@@ -1008,14 +1008,16 @@ class EventConsumer(AsyncWebsocketConsumer):
                 try:
                     event_timestamp_str = event.get("timestamp")
                     if event_timestamp_str:
-                        # Parse timestamp (ISO format with Z or timezone)
-                        # Handle ISO format: "2024-01-01T12:00:00Z" or "2024-01-01T12:00:00+00:00"
-                        timestamp_str = event_timestamp_str.replace('Z', '+00:00')
+                        # Normalize ISO timestamp to a form fromisoformat can parse.
+                        # Handles: "...Z", "...+00:00", "...+00:00Z" (double-suffix)
+                        ts = event_timestamp_str
+                        # Strip trailing Z that follows an existing offset (e.g. +00:00Z)
+                        if ts.endswith('+00:00Z'):
+                            ts = ts[:-1]  # remove trailing Z
+                        elif ts.endswith('Z'):
+                            ts = ts[:-1] + '+00:00'
                         try:
-                            # Try parsing with datetime.fromisoformat (Python 3.7+)
-                            if timestamp_str.endswith('+00:00'):
-                                timestamp_str = timestamp_str[:-6] + '+00:00'
-                            event_timestamp = datetime.fromisoformat(timestamp_str)
+                            event_timestamp = datetime.fromisoformat(ts)
                             # If timezone-naive, assume UTC
                             if event_timestamp.tzinfo is None:
                                 from django.utils import timezone as django_timezone
@@ -1295,7 +1297,7 @@ class EventConsumer(AsyncWebsocketConsumer):
     async def send_json_message(self, message: WebSocketMessage):
         """Send JSON message to WebSocket client."""
         # Update last activity when sending messages
-        self.last_activity = datetime.utcnow()
+        self.last_activity = datetime.now(dt_timezone.utc)
         await self.send(text_data=message.to_json())
 
     async def _ping_loop(self):
@@ -1313,7 +1315,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                     break
 
                 # Check if connection is still active
-                if self.last_activity and (datetime.utcnow() - self.last_activity).total_seconds() > self.connection_timeout:
+                if self.last_activity and (datetime.now(dt_timezone.utc) - self.last_activity).total_seconds() > self.connection_timeout:
                     logger.warning(
                         "websocket_connection_timeout",
                         user_id=str(self.scope.get("user").id) if self.scope.get("user") else None,
@@ -1328,7 +1330,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                     try:
                         ping_message = WebSocketMessage(
                             type=WebSocketMessageType.PING.value,
-                            data={"timestamp": datetime.utcnow().isoformat()},
+                            data={"timestamp": datetime.now(dt_timezone.utc).isoformat()},
                         )
                         await self.send_json_message(ping_message)
                         self.pending_ping = True
@@ -1373,7 +1375,7 @@ class EventConsumer(AsyncWebsocketConsumer):
 
                 # Check for pong timeout
                 if self.pending_ping and self.last_pong_received:
-                    time_since_pong = (datetime.utcnow() - self.last_pong_received).total_seconds()
+                    time_since_pong = (datetime.now(dt_timezone.utc) - self.last_pong_received).total_seconds()
                     if time_since_pong > self.pong_timeout:
                         logger.warning(
                             "websocket_pong_timeout",
@@ -1386,7 +1388,7 @@ class EventConsumer(AsyncWebsocketConsumer):
 
                 # Check overall connection timeout
                 if self.last_activity:
-                    time_since_activity = (datetime.utcnow() - self.last_activity).total_seconds()
+                    time_since_activity = (datetime.now(dt_timezone.utc) - self.last_activity).total_seconds()
                     if time_since_activity > self.connection_timeout:
                         logger.warning(
                             "websocket_connection_inactive_timeout",

@@ -4,6 +4,7 @@ Unit tests for TenantConfig API views.
 GAP-0.2.4: Comprehensive view/API tests covering GET/PATCH endpoints,
 authorization, edge cases, and API spec compliance.
 """
+import uuid
 import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
@@ -31,12 +32,12 @@ class TenantConfigViewSetTest(TestCase):
         
         # Create tenants
         self.tenant1 = Tenant.objects.create(
-            name="Test Tenant 1",
-            slug="test-tenant-1"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.tenant2 = Tenant.objects.create(
-            name="Test Tenant 2",
-            slug="test-tenant-2"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         
         # Create roles
@@ -63,24 +64,30 @@ class TenantConfigViewSetTest(TestCase):
         
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
-            email="platform-admin@example.com",
+            email=f"platform-admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
-            is_platform_admin=True
+            display_name="Platform Admin",
+            is_platform_admin=True,
+            status=UserStatus.ACTIVE
         )
-        
+
         # Create tenant admin user for tenant1
         self.tenant1_admin = User.objects.create_user(
-            email="tenant1-admin@example.com",
+            email=f"tenant1-admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
+            display_name="Tenant1 Admin",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE
         )
-        UserRole.objects.create(user=self.tenant1_admin, role=self.admin_role)
-        
+        UserRole.objects.create(
+            user=self.tenant1_admin, role=self.admin_role,
+        )
+
         # Create tenant admin user for tenant2
         self.tenant2_admin = User.objects.create_user(
-            email="tenant2-admin@example.com",
+            email=f"tenant2-admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
+            display_name="Tenant2 Admin",
             tenant=self.tenant2,
             status=UserStatus.ACTIVE
         )
@@ -89,35 +96,61 @@ class TenantConfigViewSetTest(TestCase):
             name="TENANT_ADMIN",
             defaults={"description": "Tenant Administrator"}
         )
-        UserRole.objects.create(user=self.tenant2_admin, role=admin_role2)
-        
+        UserRole.objects.create(
+            user=self.tenant2_admin, role=admin_role2,
+        )
+
         # Create DATA_PROVIDER user
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
+            display_name="Provider User",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE
         )
-        UserRole.objects.create(user=self.provider_user, role=self.provider_role)
-        
+        UserRole.objects.create(
+            user=self.provider_user, role=self.provider_role,
+        )
+
         # Create DATA_CONSUMER user
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
+            display_name="Consumer User",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE
         )
-        UserRole.objects.create(user=self.consumer_user, role=self.consumer_role)
-        
+        UserRole.objects.create(
+            user=self.consumer_user, role=self.consumer_role,
+        )
+
         # Create AUDITOR user
         self.auditor_user = User.objects.create_user(
-            email="auditor@example.com",
+            email=f"auditor-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
+            display_name="Auditor User",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE
         )
-        UserRole.objects.create(user=self.auditor_user, role=self.auditor_role)
+        UserRole.objects.create(
+            user=self.auditor_user, role=self.auditor_role,
+        )
         
+        # Create subscriptions so middleware doesn't block write ops
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        from hub.apps.tenants.models import TenantPlan
+        free_plan = TenantPlan.objects.filter(slug="free").first()
+        if free_plan:
+            for t in [self.tenant1, self.tenant2]:
+                Subscription.objects.get_or_create(
+                    tenant=t,
+                    defaults={
+                        "plan": free_plan,
+                        "status": SubscriptionStatus.ACTIVE,
+                        "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
+                    }
+                )
+
         self.platform_defaults = get_platform_defaults()
     
     # GAP-0.2.4.1: GET endpoint tests
@@ -588,21 +621,21 @@ class TenantConfigViewSetTest(TestCase):
         self.assertEqual(config.default_dq_profile, "intake_basic_gx")
     
     def test_patch_with_suspended_tenant(self):
-        """Test update with suspended tenant (should work, config is independent of tenant status)"""
+        """Test update with suspended tenant — TenantSuspensionMiddleware blocks writes."""
         self.tenant1.status = "SUSPENDED"
         self.tenant1.save()
-        
+
         self.client.force_authenticate(user=self.tenant1_admin)
-        
+
         data = {"default_dq_profile": "intake_basic_soda"}
         response = self.client.patch(
             f"/api/v1/tenants/{self.tenant1.id}/config/",
             data,
             format="json"
         )
-        
-        # Config update should work even if tenant is suspended
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # TenantSuspensionMiddleware blocks write operations for suspended tenants
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
     
     def test_patch_rate_limits_partial_update_single_category(self):
         """Test PATCH with partial rate_limits (only one category) - should merge with existing, not replace all"""

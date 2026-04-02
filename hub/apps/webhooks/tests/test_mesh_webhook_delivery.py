@@ -8,7 +8,7 @@ Uses wait_until for delivery state (no fixed time.sleep) per FIX_PLAN_FLAKY_TEST
 import uuid
 
 import pytest
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from tests.utils.polling import wait_until
@@ -23,17 +23,25 @@ from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookSer
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
+@override_settings(WEBHOOK_ASYNC_DELIVERY=False)
 class MeshWebhookDeliveryTest(TestCase):
     """Test webhook delivery for mesh events"""
 
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        pass
+
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
         self.mesh_event_types = [

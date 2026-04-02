@@ -2,6 +2,8 @@
 Unit tests for asset CRUD operations.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -26,15 +28,16 @@ class AssetCRUDTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         # Active subscription required so TenantSuspensionMiddleware allows writes.
         ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user with DATA_PROVIDER role (required for asset create/update)
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -343,8 +346,9 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Create another tenant and asset
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         other_asset = Asset.objects.create(
             tenant=other_tenant, key="other-asset", name="Other Asset"
@@ -501,6 +505,11 @@ class AssetCRUDTest(TestCase):
         response = self.client.get("/api/v1/assets/?ordering=-name")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = [a["name"] for a in response.data["results"]]
+        asset_a_index = names.index("Asset A")
+        asset_b_index = names.index("Asset B")
+        # Descending: B should come before A
+        self.assertGreater(asset_a_index, asset_b_index)
 
     def test_list_assets_ordering_descending_orders_correctly(self):
         """Test ordering assets by name descending orders correctly."""
@@ -521,7 +530,7 @@ class AssetCRUDTest(TestCase):
         self.assertGreater(asset_a_index, asset_b_index)
 
     def test_list_assets_search(self):
-        """Test searching assets"""
+        """Test searching assets returns matching results"""
         self.client.force_authenticate(user=self.user)
 
         # Create assets with different names
@@ -544,6 +553,9 @@ class AssetCRUDTest(TestCase):
         response = self.client.get("/api/v1/assets/?search=Searchable")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        asset_ids = [a["id"] for a in response.data["results"]]
+        self.assertIn(str(searchable_asset.id), asset_ids)
+        self.assertNotIn(str(other_asset.id), asset_ids)
 
     def test_list_assets_search_includes_searchable_asset(self):
         """Test searching assets includes searchable asset."""
@@ -653,8 +665,10 @@ class AssetCRUDTest(TestCase):
 
         response = self.client.post("/api/v1/assets/", data, format="json")
 
-        # Should return 400 or accept and use default status
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_201_CREATED])
+        # DRF ignores unknown/non-writable fields: "status" is not part of
+        # AssetCreateSerializer (it is set automatically to DRAFT), so the
+        # extra field is silently discarded and creation succeeds.
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_retrieve_asset_not_found(self):
         """Test retrieving non-existent asset (error handling)"""
@@ -696,8 +710,9 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Create another tenant and asset
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         other_asset = Asset.objects.create(
             tenant=other_tenant, key="other-asset", name="Other Asset"
@@ -725,8 +740,9 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Create another tenant and asset
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         other_asset = Asset.objects.create(
             tenant=other_tenant, key="other-asset", name="Other Asset"
@@ -736,24 +752,19 @@ class AssetCRUDTest(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_list_assets_database_error_handling(self):
-        """Test error handling when database query fails"""
+    def test_list_assets_returns_200(self):
+        """Test listing assets returns 200"""
         self.client.force_authenticate(user=self.user)
 
-        # Use valid query parameters
         response = self.client.get("/api/v1/assets/")
 
-        # Should return 200 even if there are issues (graceful degradation)
-        # Or should return appropriate error code
-        self.assertIn(
-            response.status_code, [status.HTTP_200_OK, status.HTTP_500_INTERNAL_SERVER_ERROR]
-        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_recommendations_no_tenant_returns_empty_list(self):
         """Recommendations endpoint returns 200 with empty list when user has no tenant (graceful degradation)."""
         # User without tenant (e.g. legacy user, platform admin, or pre-migration)
         user_no_tenant = User.objects.create_user(
-            email="no-tenant@example.com",
+            email=f"no-tenant-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status=UserStatus.ACTIVE,

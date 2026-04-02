@@ -44,7 +44,7 @@ class TenantPropagationIntegrationTest(TestCase):
             kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email="propagation@example.com",
+            email=f"propagation-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -87,7 +87,7 @@ class TenantPropagationIntegrationTest(TestCase):
                 return
             except Exception:
                 if attempt < max_attempts - 1:
-                    time.sleep(delay_seconds)
+                    time.sleep(delay_seconds)  # INTENTIONAL: test-specific timing requirement
                     continue
                 self.storage_available = False
 
@@ -116,6 +116,22 @@ class TenantPropagationIntegrationTest(TestCase):
         execute_compliance_run(str(compliance_run.id))
 
         compliance_run.refresh_from_db()
+
+        # The compliance service may accept the job asynchronously (202 → QUEUED).
+        # In that case no Hub RQ worker is running during unit tests, so we drive
+        # the poll task inline to let the result settle to a terminal state.
+        if compliance_run.status == ComplianceRunStatus.QUEUED:
+            from hub.apps.compliance.tasks import poll_compliance_job
+            for _attempt in range(30):
+                poll_compliance_job(compliance_run.id)
+                compliance_run.refresh_from_db()
+                if compliance_run.status in (
+                    ComplianceRunStatus.SUCCEEDED,
+                    ComplianceRunStatus.FAILED,
+                ):
+                    break
+                time.sleep(2)  # INTENTIONAL: test-specific timing requirement
+
         self.assertEqual(compliance_run.status, ComplianceRunStatus.SUCCEEDED)
 
         # Compliance-service must have received tenant_id; it appears in Prometheus metrics

@@ -13,7 +13,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.contracts.odps_errors import RecoveryStrategy
@@ -40,6 +40,7 @@ from hub.apps.webhooks.odps_webhook_validators import (
 )
 from hub.apps.webhooks.service import WebhookDeliveryService
 from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
+from tests.utils.wait_helpers import wait_for_event_persistence
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -144,9 +145,10 @@ class ODPSWebhookPayloadValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -355,16 +357,17 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -381,9 +384,12 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
             created_by=self.user,
         )
 
+    @override_settings(WEBHOOK_REQUEST_TIMEOUT=2)
     def test_delivery_timeout_error(self):
-        """Test handling of timeout errors via real server with long delay (35s)."""
-        with TestWebhookServer(response_status=200, response_delay=35.0) as server:
+        """Test handling of timeout errors via real server with delay exceeding client timeout."""
+        # Delay (15s) must exceed WEBHOOK_REQUEST_TIMEOUT (overridden to 2s)
+        # so the client times out before the server responds.
+        with TestWebhookServer(response_status=200, response_delay=15.0) as server:
             webhook = Webhook.objects.create(
                 tenant=self.tenant,
                 name="ODPS Webhook",
@@ -401,7 +407,7 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
                 resource_id=str(uuid.uuid4()),
                 event_data=event_data,
             )
-            time.sleep(1)
+            wait_for_event_persistence(timeout=5.0)
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
             self.assertIsNotNone(delivery)
             self.assertEqual(delivery.status, DeliveryStatus.FAILED)
@@ -432,7 +438,7 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
             resource_id=str(uuid.uuid4()),
             event_data=event_data,
         )
-        time.sleep(0.5)
+        wait_for_event_persistence()
         delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
         self.assertIsNotNone(delivery)
         self.assertEqual(delivery.status, DeliveryStatus.FAILED)
@@ -459,7 +465,7 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
                 resource_id=str(uuid.uuid4()),
                 event_data=event_data,
             )
-            time.sleep(0.5)
+            wait_for_event_persistence()
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
             self.assertIsNotNone(delivery)
             self.assertEqual(delivery.status, DeliveryStatus.FAILED)
@@ -486,7 +492,7 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
                 resource_id=str(uuid.uuid4()),
                 event_data=event_data,
             )
-            time.sleep(0.5)
+            wait_for_event_persistence()
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
             self.assertIsNotNone(delivery)
             self.assertEqual(delivery.status, DeliveryStatus.FAILED)
@@ -511,7 +517,7 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
             resource_id=str(uuid.uuid4()),
             event_data=event_data,
         )
-        time.sleep(0.5)
+        wait_for_event_persistence()
         delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
         self.assertIsNotNone(delivery)
         self.assertEqual(delivery.status, DeliveryStatus.FAILED)

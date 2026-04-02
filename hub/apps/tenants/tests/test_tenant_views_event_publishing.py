@@ -8,9 +8,11 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus, TenantConfig
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus, TenantConfig, TenantPlan
 from hub.apps.users.models import User, UserStatus, Role, UserRole
 from hub.apps.core.events.models import Event
+import uuid
 
 
 @override_settings(
@@ -26,7 +28,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
 
         # Create platform admin user for tenant operations
         self.platform_admin = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,  # Platform admin has no tenant
             status=UserStatus.ACTIVE,
@@ -75,9 +77,10 @@ class TenantViewsEventPublishingE2ETest(TestCase):
     def test_update_tenant_via_api_publishes_updated_event(self):
         """Test that updating tenant via PUT /api/v1/tenants/{id}/ publishes tenant.updated event."""
         # Create tenant
+        original_name = f"Test Tenant {uuid.uuid4().hex[:8]}"
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=original_name,
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.UNVERIFIED
         )
@@ -109,15 +112,15 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         self.assertEqual(event.data["tenant_id"], str(tenant.id))
         self.assertIn("name", event.data["changes"])
         self.assertIn("kyc_status", event.data["changes"])
-        self.assertEqual(event.data["changes"]["name"]["old"], "Test Tenant")
+        self.assertEqual(event.data["changes"]["name"]["old"], original_name)
         self.assertEqual(event.data["changes"]["name"]["new"], "Updated Tenant via API")
 
     def test_partial_update_tenant_via_api_publishes_updated_event(self):
         """Test that partial updating tenant via PATCH /api/v1/tenants/{id}/ publishes tenant.updated event."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.UNVERIFIED
         )
@@ -149,8 +152,8 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         """Test that deleting tenant via DELETE /api/v1/tenants/{id}/ publishes tenant.deleted event."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
@@ -180,14 +183,14 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         """Test that updating tenant config via PATCH /api/v1/tenants/{tenant_id}/config/ publishes quota.changed events."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
         # Create tenant admin user
         tenant_admin = User.objects.create_user(
-            email="admin@tenant.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@tenant.com",
             password="testpass123",
             tenant=tenant,
             status=UserStatus.ACTIVE
@@ -199,7 +202,21 @@ class TenantViewsEventPublishingE2ETest(TestCase):
             name="TENANT_ADMIN",
             defaults={"description": "Tenant Administrator"}
         )
-        UserRole.objects.create(user=tenant_admin, role=tenant_admin_role)
+        UserRole.objects.create(
+            user=tenant_admin, role=tenant_admin_role, tenant=tenant
+        )
+
+        # Create subscription so middleware doesn't block write ops
+        free_plan = TenantPlan.objects.filter(slug="free").first()
+        if free_plan:
+            Subscription.objects.get_or_create(
+                tenant=tenant,
+                defaults={
+                    "plan": free_plan,
+                    "status": SubscriptionStatus.ACTIVE,
+                    "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
+                }
+            )
 
         # Authenticate as tenant admin
         self.client.force_authenticate(user=tenant_admin)
@@ -246,8 +263,8 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         """Test that updating tenant config with compliance regimes publishes quota.changed event."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
@@ -259,7 +276,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
 
         # Create tenant admin user
         tenant_admin = User.objects.create_user(
-            email="admin@tenant.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@tenant.com",
             password="testpass123",
             tenant=tenant,
             status=UserStatus.ACTIVE
@@ -271,7 +288,21 @@ class TenantViewsEventPublishingE2ETest(TestCase):
             name="TENANT_ADMIN",
             defaults={"description": "Tenant Administrator"}
         )
-        UserRole.objects.create(user=tenant_admin, role=tenant_admin_role)
+        UserRole.objects.create(
+            user=tenant_admin, role=tenant_admin_role, tenant=tenant
+        )
+
+        # Create subscription so middleware doesn't block write ops
+        free_plan = TenantPlan.objects.filter(slug="free").first()
+        if free_plan:
+            Subscription.objects.get_or_create(
+                tenant=tenant,
+                defaults={
+                    "plan": free_plan,
+                    "status": SubscriptionStatus.ACTIVE,
+                    "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
+                }
+            )
 
         # Authenticate as tenant admin
         self.client.force_authenticate(user=tenant_admin)
@@ -305,8 +336,8 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         """Test that updating tenant config with rate limits publishes quota.changed event."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
@@ -318,7 +349,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
 
         # Create tenant admin user
         tenant_admin = User.objects.create_user(
-            email="admin@tenant.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@tenant.com",
             password="testpass123",
             tenant=tenant,
             status=UserStatus.ACTIVE
@@ -330,7 +361,21 @@ class TenantViewsEventPublishingE2ETest(TestCase):
             name="TENANT_ADMIN",
             defaults={"description": "Tenant Administrator"}
         )
-        UserRole.objects.create(user=tenant_admin, role=tenant_admin_role)
+        UserRole.objects.create(
+            user=tenant_admin, role=tenant_admin_role, tenant=tenant
+        )
+
+        # Create subscription so middleware doesn't block write ops
+        free_plan = TenantPlan.objects.filter(slug="free").first()
+        if free_plan:
+            Subscription.objects.get_or_create(
+                tenant=tenant,
+                defaults={
+                    "plan": free_plan,
+                    "status": SubscriptionStatus.ACTIVE,
+                    "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
+                }
+            )
 
         # Authenticate as tenant admin
         self.client.force_authenticate(user=tenant_admin)
@@ -368,15 +413,15 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         """Test that updating tenant with same values does not publish event."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
         url = reverse("tenant-detail", kwargs={"id": str(tenant.id)})
         data = {
-            "name": "Test Tenant",  # Same value
-            "slug": "test-tenant"  # Same value
+            "name": tenant.name,  # Same value
+            "slug": tenant.slug  # Same value
         }
 
         response = self.client.patch(url, data, format="json")

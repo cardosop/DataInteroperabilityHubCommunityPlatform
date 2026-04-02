@@ -14,8 +14,11 @@ class ContractsConfig(AppConfig):
         Initialize contracts app when Django is ready.
 
         This method is called when Django starts up and is used to:
+        - Register post_save signals for Redis cache invalidation (15.2)
         - Initialize cache warming on startup (deferred during tests)
         """
+        # Always register signals so cache invalidation fires in all environments
+        import hub.apps.contracts.signals  # noqa: F401 — registers @receiver decorators
         # Skip initialization during tests and migrations for performance
         if should_skip_initialization():
             logger.debug("contracts_app_init_skipped", reason="test_or_migration_mode")

@@ -9,6 +9,12 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
+from hub.apps.integrations.encryption import (
+    decrypt_json_field,
+    encrypt_json_field,
+    EncryptionError,
+)
+
 
 def default_empty_dict():
     """Return a new empty dict. Used as default for JSONField to avoid mutable default argument."""
@@ -197,11 +203,14 @@ class VirtualDataset(models.Model):
                 "schema": "Schema must be a JSON object"
             })
 
-        # Validate sources is a list
-        if self.sources is not None and not isinstance(self.sources, list):
-            raise ValidationError({
-                "sources": "Sources must be a JSON array"
-            })
+        # Validate sources is a list (skip if already encrypted)
+        if self.sources is not None:
+            if isinstance(self.sources, dict) and "_encrypted" in self.sources:
+                pass  # Already encrypted, skip validation
+            elif not isinstance(self.sources, list):
+                raise ValidationError({
+                    "sources": "Sources must be a JSON array"
+                })
 
         # Validate version format (basic semantic versioning check)
         if self.version:
@@ -237,13 +246,46 @@ class VirtualDataset(models.Model):
 
     def save(self, *args, **kwargs):
         """
-        Save the virtual dataset with validation.
+        Save the virtual dataset with validation and sources encryption.
 
         Raises:
             ValidationError: If validation fails
         """
         self.full_clean()
+
+        # Encrypt sources if plaintext list (not already encrypted)
+        if isinstance(self.sources, list) and self.sources:
+            try:
+                wrapper = {"_items": self.sources}
+                encrypted = encrypt_json_field(wrapper)
+                self.sources = {"_encrypted": encrypted}
+            except EncryptionError as e:
+                raise ValidationError(
+                    {"sources": f"Failed to encrypt: {e}"}
+                ) from e
+
         super().save(*args, **kwargs)
+
+    def get_sources(self) -> list:
+        """
+        Get decrypted sources list.
+
+        Returns:
+            Decrypted sources list.
+            Legacy plaintext lists (pre-migration) returned as-is.
+        """
+        if not self.sources:
+            return []
+        if isinstance(self.sources, dict):
+            if "_encrypted" in self.sources:
+                decrypted = decrypt_json_field(
+                    self.sources["_encrypted"]
+                )
+                return decrypted.get("_items", [])
+            return []
+        if isinstance(self.sources, list):
+            return self.sources
+        return []
 
     def get_schema_fields(self):
         """
@@ -271,9 +313,7 @@ class VirtualDataset(models.Model):
         Returns:
             Integer count of sources, or 0 if sources is not defined
         """
-        if not self.sources or not isinstance(self.sources, list):
-            return 0
-        return len(self.sources)
+        return len(self.get_sources())
 
     def is_active(self):
         """

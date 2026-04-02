@@ -18,7 +18,7 @@ from hub.apps.testing.billing_support import ensure_tenant_has_active_subscripti
 from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class CostTrackingServiceTest(TestCase):

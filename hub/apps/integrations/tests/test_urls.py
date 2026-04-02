@@ -5,6 +5,7 @@ Tests verify that URL patterns are correctly configured and resolve to the
 expected views with proper routing.
 """
 
+import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -28,6 +29,7 @@ from hub.apps.integrations.views import (
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserStatus
+import uuid
 
 User = get_user_model()
 
@@ -52,11 +54,12 @@ class MarketplaceIntegrationURLPatternResolutionTest(TestCase):
         except (ImportError, AttributeError):
             pass
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -226,14 +229,15 @@ class MarketplaceIntegrationURLIntegrationTest(TestCase):
             pass
         self.client = APIClient()
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         # Active subscription required so TenantSuspensionMiddleware allows API writes
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

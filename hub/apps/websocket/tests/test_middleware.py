@@ -1,6 +1,8 @@
 """
 Comprehensive tests for WebSocket authentication middleware.
 """
+import uuid
+from datetime import timedelta
 
 import pytest
 
@@ -9,16 +11,17 @@ try:
     from channels.db import database_sync_to_async
     CHANNELS_AVAILABLE = True
 except ImportError:
-    # Fallback to asgiref if channels not available
     from asgiref.sync import sync_to_async
     database_sync_to_async = sync_to_async
     CHANNELS_AVAILABLE = False
 
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 # Skip tests if channels not available
-pytestmark = pytest.mark.skipif(not CHANNELS_AVAILABLE, reason="Django Channels not installed")
-from django.db import connections, close_old_connections
+pytestmark = pytest.mark.skipif(
+    not CHANNELS_AVAILABLE, reason="Django Channels not installed"
+)
 
 from hub.apps.auth.models import APIKey
 from hub.apps.tenants.models import Tenant
@@ -26,273 +29,43 @@ from hub.apps.websocket.middleware.auth import (
     get_user_from_api_key,
     get_user_from_token,
 )
-from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTransactionTestCase
 
 User = get_user_model()
 
 
 @pytest.mark.django_db(transaction=True)
-class TestWebSocketAuthMiddleware(AsyncWebSocketTestCase):
+class TestWebSocketAuthMiddleware(AsyncWebSocketTransactionTestCase):
     """Test WebSocket authentication middleware."""
 
     def setUp(self):
         """Set up test fixtures."""
-        # #region agent log
-        import json
-        import threading
-        import time
+        super().setUp()
 
-        try:
-            with open("/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "A",
-                            "location": "test_middleware.py:setUp:entry",
-                            "message": "setUp entry",
-                            "data": {
-                                "thread_id": threading.get_ident(),
-                                "thread_name": threading.current_thread().name,
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-        # Ensure database connection is open and properly initialized
-        # This is critical for database_sync_to_async in async tests
-        # We need to ensure the connection is available in the thread
-        # that database_sync_to_async uses
-        connection = connections["default"]
-        # #region agent log
-        try:
-            conn_state = {
-                "has_connection": connection.connection is not None,
-                "connection_closed": (
-                    hasattr(connection.connection, "closed") and connection.connection.closed
-                    if connection.connection
-                    else None
-                ),
-                "thread_id": threading.get_ident(),
-            }
-            with open("/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "A",
-                            "location": "test_middleware.py:setUp:before_ensure",
-                            "message": "Connection state before ensure_connection",
-                            "data": conn_state,
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-        if connection.connection is None or (
-            hasattr(connection.connection, "closed") and connection.connection.closed
-        ):
-            connection.close()
-        connection.ensure_connection()
-
-        # #region agent log
-        try:
-            conn_state_after = {
-                "has_connection": connection.connection is not None,
-                "connection_closed": (
-                    hasattr(connection.connection, "closed") and connection.connection.closed
-                    if connection.connection
-                    else None
-                ),
-                "thread_id": threading.get_ident(),
-            }
-            with open("/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "A",
-                            "location": "test_middleware.py:setUp:after_ensure",
-                            "message": "Connection state after ensure_connection",
-                            "data": conn_state_after,
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-
-        # Force a query to ensure the connection is fully initialized
-        # This helps ensure the connection is available in async contexts
-        try:
-            User.objects.first()
-        except Exception:
-            pass
-
-        # Create tenant with unique name/slug to avoid conflicts
-        import uuid
-        unique_id = uuid.uuid4().hex[:8]
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {unique_id}",
-            slug=f"test-tenant-{unique_id}",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
         )
 
-        # Create user with unique email to avoid conflicts
         self.user = self.create_unique_user(
             tenant=self.tenant,
             password="testpass123",
         )
-
-        # #region agent log
-        try:
-            with open("/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "B",
-                            "location": "test_middleware.py:setUp:user_created",
-                            "message": "User created",
-                            "data": {
-                                "user_id": str(self.user.id),
-                                "thread_id": threading.get_ident(),
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-
-        # Refresh user from database to ensure it's in sync
-        # This ensures the user object has the latest data from the database
         self.user.refresh_from_db()
 
-        # Generate JWT token in sync context
-        # This ensures the token is generated with the user's current token_version
+        # Generate JWT token
         from hub.apps.auth.jwt_utils import JWTTokenGenerator
 
         self.token = JWTTokenGenerator.generate_access_token(self.user)
 
-        # Verify the token can be decoded (sanity check)
-        payload = JWTTokenGenerator.decode_access_token(self.token)
-        assert payload is not None, "Token should be decodable"
-        assert payload.get("sub") == str(self.user.id), "Token should contain user ID"
-
-        # #region agent log
-        try:
-            with open("/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "A",
-                            "location": "test_middleware.py:setUp:exit",
-                            "message": "setUp exit",
-                            "data": {
-                                "user_id": str(self.user.id),
-                                "thread_id": threading.get_ident(),
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-
     async def test_get_user_from_token_valid(self):
         """Test getting user from valid JWT token."""
-        # #region agent log
-        import json
-        import threading
-        import time
-
-        try:
-            with open("/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "A",
-                            "location": "test_middleware.py:test_get_user_from_token_valid:entry",
-                            "message": "Test entry",
-                            "data": {
-                                "thread_id": threading.get_ident(),
-                                "thread_name": threading.current_thread().name,
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-
-        # Initialize database connection by querying the user with database_sync_to_async
-        # This is similar to how API key tests work - they create the API key using
-        # database_sync_to_async which initializes the connection properly.
-        # By querying the user here, we ensure the connection is initialized in the
-        # async test context before we try to get the user from the token.
-        user_exists = await database_sync_to_async(
-            lambda: User.objects.filter(id=self.user.id).exists()
-        )()
-        self.assertTrue(user_exists, "User should exist in database")
-
-        # Token was generated in setUp with user's current token_version
-        # The token should work as-is since it was generated with the user's token_version
-        # database_sync_to_async will handle connection management automatically
         user = await get_user_from_token(self.token)
 
-        # #region agent log
-        try:
-            with open("/home/ph/Desktop/DataInteroperabilityHub/.cursor/debug.log", "a") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "A",
-                            "location": "test_middleware.py:test_get_user_from_token_valid:after_call",
-                            "message": "After get_user_from_token call",
-                            "data": {
-                                "user_found": user is not None,
-                                "user_id": str(user.id) if user else None,
-                                "expected_user_id": str(self.user.id),
-                                "thread_id": threading.get_ident(),
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-
         self.assertIsNotNone(user, "User should be found from valid token")
-        if user:
-            self.assertEqual(user.id, self.user.id)
+        self.assertEqual(user.id, self.user.id)
 
     async def test_get_user_from_token_invalid(self):
         """Test getting user from invalid JWT token."""
@@ -302,18 +75,15 @@ class TestWebSocketAuthMiddleware(AsyncWebSocketTestCase):
 
     async def test_get_user_from_api_key_valid(self):
         """Test getting user from valid API key."""
-        # Create API key using database_sync_to_async to ensure proper connection handling
-        # database_sync_to_async will handle connection management automatically
-        plaintext_key = "test-api-key-valid"
+        plaintext_key = f"test-api-key-valid-{uuid.uuid4().hex[:12]}"
         key_hash = APIKey.hash_key(plaintext_key)
-        api_key_obj = await database_sync_to_async(APIKey.objects.create)(
+        await database_sync_to_async(APIKey.objects.create)(
             tenant=self.tenant,
             user=self.user,
             name="Test API Key",
             key_hash=key_hash,
         )
 
-        # Now test async lookup
         user = await get_user_from_api_key(plaintext_key)
 
         self.assertIsNotNone(user)
@@ -327,19 +97,14 @@ class TestWebSocketAuthMiddleware(AsyncWebSocketTestCase):
 
     async def test_get_user_from_api_key_inactive(self):
         """Test getting user from expired (inactive) API key."""
-        # Create expired API key using database_sync_to_async to ensure proper connection handling
-        # database_sync_to_async will handle connection management automatically
-        from django.utils import timezone
-        from datetime import timedelta
-
-        plaintext_key = "test-api-key-inactive"
+        plaintext_key = f"test-api-key-inactive-{uuid.uuid4().hex[:12]}"
         key_hash = APIKey.hash_key(plaintext_key)
-        api_key_obj = await database_sync_to_async(APIKey.objects.create)(
+        await database_sync_to_async(APIKey.objects.create)(
             tenant=self.tenant,
             user=self.user,
             name="Test API Key",
             key_hash=key_hash,
-            expires_at=timezone.now() - timedelta(days=1),  # Expired yesterday
+            expires_at=timezone.now() - timedelta(days=1),
         )
 
         user = await get_user_from_api_key(plaintext_key)

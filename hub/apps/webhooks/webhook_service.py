@@ -73,7 +73,16 @@ class WebhookService(BaseService):
             ValidationError: If validation fails
         """
         from hub.apps.tenants.models import Tenant
+        from hub.apps.tenants.services import PlanLimitService
         from hub.apps.users.models import User
+
+        # Plan limit enforcement
+        plan_limit_service = PlanLimitService(tenant_id=tenant_id)
+        plan_limit_service.check_limit(
+            tenant_id=tenant_id,
+            limit_key="max_webhooks",
+            delta=1,
+        )
 
         # Resolve tenant and user
         tenant = Tenant.objects.get(id=tenant_id)

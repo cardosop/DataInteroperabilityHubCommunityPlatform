@@ -73,14 +73,13 @@ class TestHealthCheck(TestCase):
         self.assertIsInstance(data["redis"], dict)
 
     def test_health_check_database_connected(self):
-        """Test that database connection is checked"""
+        """Test that database connection is reported as connected"""
         request = self.factory.get("/health/")
         response = health_check(request)
 
         data = json.loads(response.content)
-        # Database should be 'connected' if healthy
-        self.assertIn(data["database"], ["connected", "error:"])
-        self.assertIn(data["database"], ["connected", "error:"])
+        # In test environment, the database is available
+        self.assertEqual(data["database"], "connected")
 
     def test_health_check_redis_structure(self):
         """Test that Redis health check includes all instances"""
@@ -94,15 +93,15 @@ class TestHealthCheck(TestCase):
         self.assertIn("events", redis_status)
         self.assertIn("channels", redis_status)
 
-    def test_health_check_unhealthy_on_database_error(self):
-        """Test that health check returns unhealthy on database error"""
-        # This test verifies the error handling path
-        # In practice, database should be available in test environment
+    def test_health_check_reports_healthy_when_db_available(self):
+        """Test that health check reports healthy when database is available"""
         request = self.factory.get("/health/")
         response = health_check(request)
 
         data = json.loads(response.content)
-        # Status should be 'healthy' or 'unhealthy' based on actual connections
+        self.assertEqual(data["database"], "connected")
+        # With DB connected, status should be healthy (unless Redis is down)
+        # At minimum, the status field must be a valid value
         self.assertIn(data["status"], ["healthy", "unhealthy"])
 
     # ========== EDGE CASES TESTS ==========

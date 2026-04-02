@@ -19,7 +19,7 @@ import uuid
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from hub.apps.contracts.odcs_errors import ODCSExportError, ODCSGenerationError
 
@@ -2754,6 +2754,8 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
 _ODCS_GENERATOR_REGISTRY: Dict[str, ODCSGeneratorBase] = {}
 
 # Latest ODCS version (used as fallback)
+# Default export version — kept at 3.0.2 for backward compatibility.
+# v3.1.0 is available via explicit version=3.1.0 query param.
 _LATEST_ODCS_VERSION = "3.0.2"
 
 
@@ -2933,9 +2935,229 @@ def get_supported_odcs_versions() -> List[str]:
     return sorted(_ODCS_GENERATOR_REGISTRY.keys())
 
 
+# =========================================================================
+# Phase 26.4.1 — ODCS 3.1.0 Generator
+# =========================================================================
+
+class ODCSGeneratorV3_1_0(ODCSGeneratorV3_0_2):
+    """
+    ODCS 3.1.0 Generator — extends v3.0.2 with v3.1.0 fields.
+
+    Additional mappings over v3.0.2:
+    - relationships[] on schema objects and fields
+    - element_id → id on schema objects and fields
+    - info.owners → team.members (object, not array)
+    - quality.library[] built-in metric types
+    - Excludes deprecated slaDefaultElement
+    - logicalType / logicalTypeOptions.timezone
+    """
+
+    def generate_odcs_from_hubcontract(
+        self,
+        hub_contract: Dict[str, Any],
+        target_version: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if target_version is None:
+            target_version = "3.1.0"
+
+        # Generate base v3.0.2 document
+        odcs_doc = super().generate_odcs_from_hubcontract(
+            hub_contract, target_version=target_version,
+        )
+
+        # Ensure apiVersion uses consistent format
+        odcs_doc["apiVersion"] = f"v{target_version}"
+        odcs_doc["kind"] = "DataContract"
+
+        # --- team: object with members[] ---
+        self._map_team_v31(hub_contract, odcs_doc)
+
+        # --- schema: relationships + element_id ---
+        self._map_v31_schema_extensions(hub_contract, odcs_doc)
+
+        # --- quality.library ---
+        self._map_v31_quality_library(hub_contract, odcs_doc)
+
+        # --- strip slaDefaultElement ---
+        self._strip_sla_default_element(odcs_doc)
+
+        return odcs_doc
+
+    # -- v3.1.0-specific helpers --
+
+    def _map_team_v31(
+        self,
+        hub_contract: Dict[str, Any],
+        odcs_doc: Dict[str, Any],
+    ) -> None:
+        """Map info.owners → team.members (object structure)."""
+        # Remove array-style team if base generator added it
+        odcs_doc.pop("team", None)
+
+        owners = hub_contract.get("info", {}).get("owners", [])
+        team_list = hub_contract.get("team", [])
+        members = []
+
+        # Prefer team[] if available (richer data)
+        if team_list and isinstance(team_list, list):
+            for t in team_list:
+                if not isinstance(t, dict):
+                    continue
+                member: Dict[str, Any] = {}
+                if "member" in t or "name" in t:
+                    member["name"] = t.get("name") or t.get("member")
+                if "email" in t:
+                    member["email"] = t["email"]
+                if "role" in t:
+                    member["role"] = t["role"]
+                if "id" in t:
+                    member["id"] = t["id"]
+                if "description" in t:
+                    member["description"] = t["description"]
+                if member:
+                    members.append(member)
+        elif owners and isinstance(owners, list):
+            for o in owners:
+                if not isinstance(o, dict):
+                    continue
+                member = {}
+                if "name" in o:
+                    member["name"] = o["name"]
+                if "email" in o:
+                    member["email"] = o["email"]
+                if member:
+                    members.append(member)
+
+        if members:
+            odcs_doc["team"] = {"members": members}
+
+    def _map_v31_schema_extensions(
+        self,
+        hub_contract: Dict[str, Any],
+        odcs_doc: Dict[str, Any],
+    ) -> None:
+        """Add relationships[], element_id, logicalType to schema."""
+        models = hub_contract.get("models", [])
+        if not models or not isinstance(models, list):
+            return
+
+        # Get the already-generated schema entries
+        odcs_schema = odcs_doc.get("schema")
+        if odcs_schema is None:
+            return
+
+        # Normalize to list for iteration
+        if isinstance(odcs_schema, dict):
+            schema_list = [odcs_schema]
+        elif isinstance(odcs_schema, list):
+            schema_list = odcs_schema
+        else:
+            return
+
+        for i, model in enumerate(models):
+            if not isinstance(model, dict) or i >= len(schema_list):
+                continue
+            odcs_entry = schema_list[i]
+            if not isinstance(odcs_entry, dict):
+                continue
+
+            # element_id → id
+            eid = model.get("element_id")
+            if eid:
+                odcs_entry["id"] = eid
+
+            # data_granularity_description
+            dgd = model.get("data_granularity_description")
+            if dgd:
+                odcs_entry["dataGranularityDescription"] = dgd
+
+            # relationships[]
+            rels = model.get("relationships")
+            if rels and isinstance(rels, list):
+                odcs_rels = []
+                for r in rels:
+                    if not isinstance(r, dict):
+                        continue
+                    odcs_rel: Dict[str, Any] = {}
+                    if r.get("id"):
+                        odcs_rel["id"] = r["id"]
+                    if r.get("name"):
+                        odcs_rel["name"] = r["name"]
+                    if r.get("type"):
+                        odcs_rel["type"] = r["type"]
+                    if r.get("source"):
+                        odcs_rel["source"] = r["source"]
+                    if r.get("target_contract"):
+                        odcs_rel["targetContract"] = r["target_contract"]
+                    if r.get("target_model"):
+                        odcs_rel["targetModel"] = r["target_model"]
+                    if r.get("target_properties"):
+                        odcs_rel["targetProperties"] = r["target_properties"]
+                    if r.get("description"):
+                        odcs_rel["description"] = r["description"]
+                    if r.get("custom_properties"):
+                        odcs_rel["customProperties"] = r["custom_properties"]
+                    if odcs_rel:
+                        odcs_rels.append(odcs_rel)
+                if odcs_rels:
+                    odcs_entry["relationships"] = odcs_rels
+
+            # field-level: element_id + logicalType
+            model_fields = model.get("fields", [])
+            odcs_fields = odcs_entry.get("fields", [])
+            for j, mf in enumerate(model_fields):
+                if not isinstance(mf, dict) or j >= len(odcs_fields):
+                    continue
+                of = odcs_fields[j]
+                if not isinstance(of, dict):
+                    continue
+                feid = mf.get("element_id")
+                if feid:
+                    of["id"] = feid
+                lt = mf.get("logicalType")
+                if lt:
+                    of["logicalType"] = lt
+                lto = mf.get("logicalTypeOptions")
+                if isinstance(lto, dict) and lto:
+                    of["logicalTypeOptions"] = lto
+
+    def _map_v31_quality_library(
+        self,
+        hub_contract: Dict[str, Any],
+        odcs_doc: Dict[str, Any],
+    ) -> None:
+        """Map quality rules with v3.1.0 library types."""
+        _LIB_TYPES = {
+            "rowCount", "nullValues", "invalidValues",
+            "duplicateValues", "missingValues",
+        }
+        quality = hub_contract.get("quality", {})
+        if not isinstance(quality, dict):
+            return
+        rules = quality.get("rules", [])
+        library_entries = []
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            if rule.get("type") in _LIB_TYPES:
+                library_entries.append(rule)
+
+        if library_entries:
+            odcs_quality = odcs_doc.setdefault("quality", {})
+            odcs_quality["library"] = library_entries
+
+    @staticmethod
+    def _strip_sla_default_element(odcs_doc: Dict[str, Any]) -> None:
+        """Remove deprecated slaDefaultElement from SLA entries."""
+        for sl in odcs_doc.get("slaProperties", []):
+            if isinstance(sl, dict):
+                sl.pop("slaDefaultElement", None)
+
+
 # Initialize registry with all available generators
 def _initialize_generator_registry() -> None:
     """Initialize the generator registry with all available generators."""
+    register_odcs_generator("3.1.0", ODCSGeneratorV3_1_0())
     register_odcs_generator("3.0.2", ODCSGeneratorV3_0_2())
     register_odcs_generator("3.0.1", ODCSGeneratorV3_0_1())
     register_odcs_generator("3.0.0", ODCSGeneratorV3_0_0())
@@ -3544,7 +3766,7 @@ def generate_odcs_from_schema(
 
         # Add metadata
         odcs_contract["metadata"] = {
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "generated_from": "inferred_schema",
             "row_count_estimated": inferred_schema.get("row_count_estimated")
         }

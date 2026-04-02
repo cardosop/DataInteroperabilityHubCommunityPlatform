@@ -278,7 +278,9 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
             "url_allowlist": [self.test_base_url],
             "url_denylist": [],
         }
-        resolver = RefResolver(config=config, enable_caching=False)
+        resolver = RefResolver(
+            config=config, enable_caching=False, tenant_id="system",
+        )
 
         # Test that URL not in allowlist is rejected
         with self.assertRaises(ODPSRefResolutionError) as cm:
@@ -299,7 +301,9 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
             "url_allowlist": [],  # Empty allowlist means all allowed (unless in denylist)
             "url_denylist": ["https://blocked.com"],
         }
-        resolver = RefResolver(config=config, enable_caching=False)
+        resolver = RefResolver(
+            config=config, enable_caching=False, tenant_id="system",
+        )
 
         # Test that URL in denylist is rejected
         with self.assertRaises(ODPSRefResolutionError) as cm:
@@ -319,7 +323,9 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
             "url_allowlist": [],  # Allow all for this test
             "url_denylist": [],
         }
-        resolver = RefResolver(config=config, enable_caching=False)
+        resolver = RefResolver(
+            config=config, enable_caching=False, tenant_id="system",
+        )
 
         # Test invalid URL format
         with self.assertRaises(ODPSRefResolutionError):
@@ -333,7 +339,10 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
             "url_allowlist": [],  # Allow all for this test
             "url_denylist": [],
         }
-        resolver = RefResolver(config=config, enable_caching=False, timeout_per_ref=2)
+        resolver = RefResolver(
+            config=config, enable_caching=False,
+            timeout_per_ref=2, tenant_id="system",
+        )
 
         # Test URL that doesn't exist (should timeout or fail)
         with self.assertRaises(ODPSRefResolutionError):

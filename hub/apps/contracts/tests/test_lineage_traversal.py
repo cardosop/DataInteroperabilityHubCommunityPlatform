@@ -351,7 +351,8 @@ class TestLineageTraversal(ContractsTestBase):
     def test_traverse_top_down_tenant_isolation(self):
         """Test that traversal respects tenant isolation (edge case)."""
         # Create another tenant
-        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
 
         # Create contract in other tenant (for cross-tenant reference test)
         Contract.objects.create(

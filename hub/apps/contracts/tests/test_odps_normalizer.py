@@ -16,7 +16,7 @@ from django.test import SimpleTestCase, TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 
-# Import from normalization package (which re-exports from normalization.py)
+# Import from normalization package (which re-exports from normalization_engine.py)
 from hub.apps.contracts.normalization import NormalizationResult, SpecNormalizer
 from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
 from hub.apps.contracts.odps_errors import ODPSNormalizationError

@@ -76,9 +76,10 @@ class UserTenantMembershipServiceAddMembershipTest(TestCase):
         """add_membership(user, tenant) creates UserTenantMembership."""
         from hub.apps.users.services import UserTenantMembershipService
 
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant-add",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-add-{_uid}",
         )
         service = UserTenantMembershipService()
         service.add_membership(self.user, other_tenant)

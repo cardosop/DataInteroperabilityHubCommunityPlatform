@@ -78,11 +78,18 @@ def _wait_for_vault(addr: str, timeout: float = 20.0) -> None:
         try:
             client = hvac.Client(url=addr)
             resp = client.sys.read_health_status(method="GET")
-            if resp.ok:
+            # hvac >= 2.3 returns a dict (parsed JSON) on success,
+            # older versions return a requests.Response with .ok attribute.
+            if isinstance(resp, dict):
+                # Dict means the health endpoint returned valid JSON — server is ready
+                return
+            elif hasattr(resp, "ok") and resp.ok:
+                return
+            elif hasattr(resp, "status_code") and resp.status_code == 200:
                 return
         except Exception:
             pass
-        time.sleep(0.25)
+        time.sleep(0.25)  # INTENTIONAL: test-specific timing requirement
     raise TimeoutError(
         f"Vault dev server at {addr} did not become ready within {timeout}s"
     )
@@ -136,6 +143,17 @@ def vault_server() -> Generator[VaultInfo, None, None]:
     addr = f"http://127.0.0.1:{port}"
     root_token = "dev-root-token"
 
+    # Build env: start from os.environ, override Vault vars.
+    # VAULT_DISABLE_MLOCK=1: required in containers without IPC_LOCK.
+    # HOME=/tmp: Vault 1.21+ tries to write .vault-token to $HOME;
+    #   the default HOME in slim containers may not be writable.
+    cli_env: dict[str, str] = dict(os.environ)
+    cli_env["VAULT_ADDR"] = addr
+    cli_env["VAULT_TOKEN"] = root_token
+    cli_env["VAULT_SKIP_VERIFY"] = "true"
+    cli_env["VAULT_DISABLE_MLOCK"] = "1"
+    cli_env["HOME"] = "/tmp"
+
     proc = subprocess.Popen(
         [
             "vault", "server",
@@ -145,13 +163,18 @@ def vault_server() -> Generator[VaultInfo, None, None]:
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=cli_env,
     )
 
-    # Build env for CLI calls: start from os.environ, then override Vault vars.
-    cli_env: dict[str, str] = dict(os.environ)
-    cli_env["VAULT_ADDR"] = addr
-    cli_env["VAULT_TOKEN"] = root_token
-    cli_env["VAULT_SKIP_VERIFY"] = "true"
+    # Give the process a moment to start, then check it's alive
+    time.sleep(1)
+    if proc.poll() is not None:
+        stdout = proc.stdout.read().decode() if proc.stdout else ""
+        stderr = proc.stderr.read().decode() if proc.stderr else ""
+        pytest.skip(
+            f"Vault dev server exited (rc={proc.returncode}). "
+            f"stdout: {stdout[:500]} | stderr: {stderr[:500]}"
+        )
 
     try:
         _wait_for_vault(addr)
@@ -252,7 +275,7 @@ def configured_vault(vault_server: VaultInfo) -> VaultInfo:
 
     secret_id: str = json.loads(
         _vault_cli(
-            ["-format=json", "write", "-force", "auth/approle/role/hub-api/secret-id"],
+            ["write", "-format=json", "-force", "auth/approle/role/hub-api/secret-id"],
             cli_env,
         ).stdout
     )["data"]["secret_id"]

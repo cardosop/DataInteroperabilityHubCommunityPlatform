@@ -13,6 +13,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
+import uuid
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -28,14 +29,14 @@ class TestPlatformTenantViewSetPermissions(TestCase):
             slug="platform-test-tenant",
         )
         self.platform_admin = User.objects.create_user(
-            email="platform-admin@example.com",
+            email=f"platform-admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             is_platform_admin=True,
             status=UserStatus.ACTIVE,
         )
         self.regular_user = User.objects.create_user(
-            email="regular@example.com",
+            email=f"regular-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             is_platform_admin=False,
@@ -195,14 +196,14 @@ class TestPlatformUserViewSetPermissions(TestCase):
             slug="platform-user-test-tenant",
         )
         self.platform_admin = User.objects.create_user(
-            email="platform-admin2@example.com",
+            email=f"platform-admin2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             is_platform_admin=True,
             status=UserStatus.ACTIVE,
         )
         self.regular_user = User.objects.create_user(
-            email="regular2@example.com",
+            email=f"regular2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             is_platform_admin=False,

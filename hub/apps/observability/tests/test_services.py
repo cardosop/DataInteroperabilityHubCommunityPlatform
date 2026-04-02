@@ -23,11 +23,12 @@ class ObservabilityServiceTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.service = ObservabilityService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -72,11 +73,12 @@ class ObservabilityServiceFailureTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.service = ObservabilityService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -105,11 +107,12 @@ class ObservabilityServiceEdgeCasesTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.service = ObservabilityService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -165,11 +168,12 @@ class ObservabilityServiceErrorHandlingTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.service = ObservabilityService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)

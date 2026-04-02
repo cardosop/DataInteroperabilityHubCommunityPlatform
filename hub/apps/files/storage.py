@@ -643,12 +643,17 @@ class S3StorageClient:
             else:
                 content = file_content
 
-            self.client.put_object(
-                Bucket=self.bucket_name,
-                Key=key,
-                Body=content,
-                ContentType=content_type
-            )
+            put_kwargs = {
+                "Bucket": self.bucket_name,
+                "Key": key,
+                "Body": content,
+                "ContentType": content_type,
+            }
+            # Explicitly set ContentLength for bytes/memoryview to avoid
+            # IncompleteBody errors with some S3-compatible stores (e.g. MinIO).
+            if isinstance(content, (bytes, bytearray, memoryview)):
+                put_kwargs["ContentLength"] = len(content)
+            self.client.put_object(**put_kwargs)
 
             return key
         except (ClientError, Exception) as e:
@@ -662,12 +667,7 @@ class S3StorageClient:
                 self._bucket_checked = True
                 # Retry the operation
                 try:
-                    self.client.put_object(
-                        Bucket=self.bucket_name,
-                        Key=key,
-                        Body=content,
-                        ContentType=content_type
-                    )
+                    self.client.put_object(**put_kwargs)
                     return key
                 except (ClientError, Exception) as retry_error:
                     raise Exception(f"Failed to save file after retry: {str(retry_error)}")

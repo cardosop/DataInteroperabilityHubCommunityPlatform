@@ -4,6 +4,7 @@ Unit tests for audit views (AuditEventViewSet).
 Tests cover all viewset methods: list, retrieve, export with comprehensive
 scenarios including success, failure, edge cases, and error handling.
 """
+import uuid
 
 import json
 from datetime import timedelta
@@ -47,13 +48,13 @@ class AuditEventViewSetTest(TestCase):
 
         # Create users
         self.user1 = User.objects.create_user(
-            email="viewuser1@example.com",
+            email=f"viewuser1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE,
         )
         self.user2 = User.objects.create_user(
-            email="viewuser2@example.com",
+            email=f"viewuser2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant2,
             status=UserStatus.ACTIVE,
@@ -61,7 +62,7 @@ class AuditEventViewSetTest(TestCase):
 
         # Create platform admin
         self.platform_admin = User.objects.create_user(
-            email="viewadmin@example.com",
+            email=f"viewadmin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             is_platform_admin=True,
             status=UserStatus.ACTIVE,
@@ -505,54 +506,52 @@ class AuditEventViewSetTest(TestCase):
 
         self.assertIn("Resource Type", lines[0])
 
-    def test_export_audit_events_size_limit_exceeded_returns_400(self):
-        """Test exporting audit events exceeding size limit returns 400."""
-        self.client.force_authenticate(user=self.user1)
+    def _create_bulk_audit_events(self, count):
+        """Create *count* audit events via bulk_create (fast)."""
+        from hub.apps.audit.models import AuditEvent
 
-        # Create many events (more than limit)
-        for i in range(10001):
-            create_audit_event(
+        events = [
+            AuditEvent(
                 resource_type="TEST",
                 action=f"TEST_ACTION_{i}",
                 actor_user=self.user1,
                 tenant=self.tenant1,
+                result="SUCCESS",
             )
+            for i in range(count)
+        ]
+        AuditEvent.objects.bulk_create(events, batch_size=2000)
 
-        response = self.client.get("/api/v1/audit/audit-events/export/?format=json")
+    def test_export_audit_events_size_limit_exceeded_returns_400(self):
+        """Test exporting audit events exceeding size limit returns 400."""
+        self.client.force_authenticate(user=self.user1)
+        self._create_bulk_audit_events(10001)
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        response = self.client.get(
+            "/api/v1/audit/audit-events/export/?format=json",
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_400_BAD_REQUEST,
+        )
 
     def test_export_audit_events_size_limit_exceeded_has_error_key(self):
         """Test exporting audit events exceeding size limit has error key."""
         self.client.force_authenticate(user=self.user1)
+        self._create_bulk_audit_events(10001)
 
-        # Create many events (more than limit)
-        for i in range(10001):
-            create_audit_event(
-                resource_type="TEST",
-                action=f"TEST_ACTION_{i}",
-                actor_user=self.user1,
-                tenant=self.tenant1,
-            )
-
-        response = self.client.get("/api/v1/audit/audit-events/export/?format=json")
-
+        response = self.client.get(
+            "/api/v1/audit/audit-events/export/?format=json",
+        )
         self.assertIn("error", response.data)
 
     def test_export_audit_events_size_limit_error_message(self):
         """Test exporting audit events size limit error message."""
         self.client.force_authenticate(user=self.user1)
+        self._create_bulk_audit_events(10001)
 
-        # Create many events (more than limit)
-        for i in range(10001):
-            create_audit_event(
-                resource_type="TEST",
-                action=f"TEST_ACTION_{i}",
-                actor_user=self.user1,
-                tenant=self.tenant1,
-            )
-
-        response = self.client.get("/api/v1/audit/audit-events/export/?format=json")
+        response = self.client.get(
+            "/api/v1/audit/audit-events/export/?format=json",
+        )
 
         self.assertIn("maximum", response.data["error"].lower())
 

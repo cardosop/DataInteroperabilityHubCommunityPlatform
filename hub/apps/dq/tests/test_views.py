@@ -85,16 +85,17 @@ class DQRunViewSetTest(DQAPITestBase):
         )
 
         # Create another tenant and user for isolation tests
+        _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
         ensure_tenant_has_active_subscription(self.other_tenant)
 
         self.other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.other_tenant,
             status="ACTIVE",
@@ -173,6 +174,9 @@ class DQRunViewSetTest(DQAPITestBase):
         # Should only return pending runs
         for result in results:
             self.assertEqual(result["status"], "PENDING")
+        # Verify non-PENDING run (self.dq_run with SUCCEEDED status) is excluded
+        result_ids = [r["id"] for r in results]
+        self.assertNotIn(str(self.dq_run.id), result_ids)
 
     def test_list_dq_runs_filter_by_dataset_id(self):
         """Test filtering DQ runs by dataset_id"""
@@ -338,12 +342,13 @@ class DQRunViewSetTest(DQAPITestBase):
 
         response = self.client.post("/api/v1/dq/runs/", data, format="json")
 
-        # May return 201 or 400 depending on service availability
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        if response.status_code == status.HTTP_400_BAD_REQUEST:
+            self.skipTest(f"DQ service unavailable: {response.data}")
 
-        if response.status_code == status.HTTP_201_CREATED:
-            self.assertIn("id", response.data)
-            self.assertEqual(str(response.data["asset"]), str(self.asset.id))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("id", response.data)
+        self.assertIn("status", response.data)
+        self.assertEqual(str(response.data["asset"]), str(self.asset.id))
 
     def test_create_dq_run_success_with_dataset_id(self):
         """Test creating a DQ run successfully with dataset_id"""
@@ -351,12 +356,13 @@ class DQRunViewSetTest(DQAPITestBase):
 
         response = self.client.post("/api/v1/dq/runs/", data, format="json")
 
-        # May return 201 or 400 depending on service availability
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        if response.status_code == status.HTTP_400_BAD_REQUEST:
+            self.skipTest(f"DQ service unavailable: {response.data}")
 
-        if response.status_code == status.HTTP_201_CREATED:
-            self.assertIn("id", response.data)
-            self.assertEqual(str(response.data["dataset"]), str(self.dataset.id))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("id", response.data)
+        self.assertIn("status", response.data)
+        self.assertEqual(str(response.data["dataset"]), str(self.dataset.id))
 
     def test_create_dq_run_success_with_file_id(self):
         """Test creating a DQ run successfully with file_id"""
@@ -364,12 +370,13 @@ class DQRunViewSetTest(DQAPITestBase):
 
         response = self.client.post("/api/v1/dq/runs/", data, format="json")
 
-        # May return 201 or 400 depending on service availability
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        if response.status_code == status.HTTP_400_BAD_REQUEST:
+            self.skipTest(f"DQ service unavailable: {response.data}")
 
-        if response.status_code == status.HTTP_201_CREATED:
-            self.assertIn("id", response.data)
-            self.assertEqual(str(response.data["file"]), str(self.file.id))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("id", response.data)
+        self.assertIn("status", response.data)
+        self.assertEqual(str(response.data["file"]), str(self.file.id))
 
     def test_create_dq_run_success_with_profile_key(self):
         """Test creating a DQ run successfully with explicit profile_key"""
@@ -377,11 +384,13 @@ class DQRunViewSetTest(DQAPITestBase):
 
         response = self.client.post("/api/v1/dq/runs/", data, format="json")
 
-        # May return 201 or 400 depending on service availability
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        if response.status_code == status.HTTP_400_BAD_REQUEST:
+            self.skipTest(f"DQ service unavailable: {response.data}")
 
-        if response.status_code == status.HTTP_201_CREATED:
-            self.assertEqual(response.data["profile_key"], "intake_basic_soda")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("id", response.data)
+        self.assertIn("status", response.data)
+        self.assertEqual(response.data["profile_key"], "intake_basic_soda")
 
     def test_create_dq_run_missing_resource_ids(self):
         """Test creating DQ run with missing resource IDs (error handling)"""
@@ -448,15 +457,21 @@ class DQRunViewSetTest(DQAPITestBase):
 
     def test_update_dq_run_success(self):
         """Test updating a DQ run successfully"""
-        # DQ runs are mostly read-only, but test that update endpoint exists
-        updated_data = {"profile_key": "intake_basic_soda"}
+        updated_data = {
+            "profile_key": "intake_basic_soda",
+            "engine": self.dq_run.engine,
+        }
 
         response = self.client.put(
             f"/api/v1/dq/runs/{self.dq_run.id}/", updated_data, format="json"
         )
 
-        # May return 200 or 400 depending on serializer validation
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        if response.status_code == status.HTTP_400_BAD_REQUEST:
+            self.skipTest(
+                f"Update not supported or validation failed: {response.data}"
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_update_dq_run_not_found(self):
         """Test updating non-existent DQ run"""
@@ -475,8 +490,10 @@ class DQRunViewSetTest(DQAPITestBase):
             f"/api/v1/dq/runs/{self.dq_run.id}/", updated_data, format="json"
         )
 
-        # May return 200 or 400 depending on serializer validation
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        if response.status_code == status.HTTP_400_BAD_REQUEST:
+            self.skipTest(f"Partial update not supported or validation failed: {response.data}")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     # ========== DESTROY ENDPOINT TESTS ==========
 
@@ -685,7 +702,7 @@ class DQRunViewSetTest(DQAPITestBase):
         """Test creating DQ run with user that doesn't belong to tenant (edge case)"""
         # Create user without tenant
         user_no_tenant = User.objects.create_user(
-            email="notenant@example.com",
+            email=f"notenant-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status="ACTIVE",

@@ -30,8 +30,8 @@ class DataMeshGovernanceIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.tenant_id = str(self.tenant.id)
 
@@ -49,7 +49,7 @@ class DataMeshGovernanceIntegrationTest(TestCase):
 
         # Create tenant admin user
         self.tenant_admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -61,7 +61,7 @@ class DataMeshGovernanceIntegrationTest(TestCase):
 
         # Create regular user (without TENANT_ADMIN role)
         self.regular_user = User.objects.create_user(
-            email="regular@example.com",
+            email=f"regular-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -69,7 +69,7 @@ class DataMeshGovernanceIntegrationTest(TestCase):
 
         # Create platform admin user
         self.platform_admin_user = User.objects.create_user(
-            email="platform@example.com",
+            email=f"platform-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status=UserStatus.ACTIVE,
@@ -147,9 +147,10 @@ class DataMeshGovernanceIntegrationTest(TestCase):
 
     def test_create_domain_fails_with_wrong_tenant(self):
         """Test domain creation fails for user from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}"
         )
         other_role, _ = Role.objects.get_or_create(
             tenant=other_tenant,
@@ -157,7 +158,7 @@ class DataMeshGovernanceIntegrationTest(TestCase):
             defaults={"description": "Tenant admin role"}
         )
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE
@@ -432,8 +433,8 @@ class DataMeshGovernanceIntegrationRealServicesTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.tenant_id = str(self.tenant.id)
 
@@ -444,7 +445,7 @@ class DataMeshGovernanceIntegrationRealServicesTest(TestCase):
             defaults={"description": "Tenant admin role"}
         )
         self.user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

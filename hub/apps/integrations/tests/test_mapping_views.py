@@ -74,14 +74,15 @@ class MarketplaceMappingViewSetTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         _ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user with DATA_PROVIDER role
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -360,7 +361,7 @@ class MarketplaceMappingViewSetTest(TestCase):
         """Test that delete requires integrations:write scope"""
         # Create user without write scope
         user_no_write = User.objects.create_user(
-            email="nowrite@example.com",
+            email=f"nowrite-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -520,7 +521,7 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
 
         # Create user for tenant 1
         self.user1 = User.objects.create_user(
-            email="user1@example.com",
+            email=f"user1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE,
@@ -528,7 +529,7 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
 
         # Create user for tenant 2
         self.user2 = User.objects.create_user(
-            email="user2@example.com",
+            email=f"user2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant2,
             status=UserStatus.ACTIVE,
@@ -689,7 +690,7 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
         """Test that delete requires DATA_PROVIDER or TENANT_ADMIN role"""
         # Create user without DATA_PROVIDER role
         user_no_role = User.objects.create_user(
-            email="norole@example.com",
+            email=f"norole-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE,
@@ -729,7 +730,7 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
             )
 
         user_admin = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE,

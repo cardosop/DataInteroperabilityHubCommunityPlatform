@@ -9,7 +9,7 @@ Client for delivering webhooks with circuit breaker and retry logic.
 - Provides retry logic, circuit breaker, and distributed tracing
 """
 import httpx
-import logging
+import structlog
 import time
 from typing import Dict, Any, Optional, Tuple
 from django.conf import settings
@@ -19,7 +19,7 @@ from hub.apps.core.resilience.circuit_breaker import (
     get_redis_client,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class WebhookDeliveryClient:
@@ -92,8 +92,11 @@ class WebhookDeliveryClient:
                 if e.response.status_code >= 500 and attempt < self.max_retries:
                     delay = self.backoff_factor * (2 ** attempt)
                     logger.warning(
-                        f"Webhook delivery returned {e.response.status_code}. "
-                        f"Retrying in {delay}s... (attempt {attempt + 1}/{self.max_retries + 1})"
+                        "webhook_delivery_http_retry",
+                        status_code=e.response.status_code,
+                        delay=delay,
+                        attempt=attempt + 1,
+                        max_attempts=self.max_retries + 1,
                     )
                     time.sleep(delay)
                     continue
@@ -104,8 +107,11 @@ class WebhookDeliveryClient:
                 if attempt < self.max_retries:
                     delay = self.backoff_factor * (2 ** attempt)
                     logger.warning(
-                        f"Network error during webhook delivery: {e}. "
-                        f"Retrying in {delay}s... (attempt {attempt + 1}/{self.max_retries + 1})"
+                        "webhook_delivery_network_retry",
+                        error=str(e),
+                        delay=delay,
+                        attempt=attempt + 1,
+                        max_attempts=self.max_retries + 1,
                     )
                     time.sleep(delay)
                     continue
@@ -172,7 +178,7 @@ class WebhookDeliveryClient:
 
             return True, "Webhook delivery client is healthy"
         except Exception as e:
-            logger.error(f"Webhook delivery client health check failed: {e}")
+            logger.error("webhook_client_health_check_failed", error=str(e))
             return False, f"Health check error: {str(e)}"
 
     def close(self):
@@ -186,7 +192,7 @@ class WebhookDeliveryClient:
             try:
                 self.client.close()
             except Exception as e:
-                logger.debug(f"Error closing WebhookDeliveryClient: {e}")
+                logger.debug("webhook_client_close_error", error=str(e))
 
     def __del__(self):
         """

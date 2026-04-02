@@ -9,7 +9,7 @@ import uuid
 
 from django.db import connection, connections
 from django.db.utils import InterfaceError as DjangoInterfaceError, OperationalError
-from django.test import TransactionTestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset
@@ -62,9 +62,16 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
     """
     E2E tests for MarketplaceEventPublisher workflows.
 
-    Uses TransactionTestCase; tearDown ensures connection is open before super().tearDown()
-    to avoid 'connection already closed' during flush in batched runs.
+    Uses TransactionTestCase; _fixture_teardown skipped to avoid slow
+    TRUNCATE CASCADE that causes timeouts in batched runs.
     """
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        """Skip TRUNCATE CASCADE to avoid timeout."""
+        pass
 
     def setUp(self):
         """Set up test fixtures; retry once on connection closed."""
@@ -106,8 +113,9 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
     def _create_fixtures(self):
         """Create tenant, user, publisher, service, and config. Unique slug per run to avoid collisions."""
         slug_suffix = uuid.uuid4().hex[:8]
+        self._suffix = slug_suffix
         self.tenant = Tenant.objects.create(
-            name="E2E Test Tenant",
+            name=f"E2E Test Tenant {slug_suffix}",
             slug=f"e2e-test-tenant-{slug_suffix}",
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -130,7 +138,7 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
         }
 
     def tearDown(self):
-        """Reconnect signals, ensure connection, then run TransactionTestCase teardown (flush)."""
+        """Reconnect signals after test."""
         from django.db.models.signals import post_save
 
         try:
@@ -142,25 +150,6 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
             post_save.connect(asset_saved, sender=Asset, weak=False)
         except (ImportError, AttributeError):
             pass
-        last_err = None
-        for _ in range(3):
-            try:
-                _ensure_db_connection_for_teardown()
-                super().tearDown()
-                last_err = None
-                break
-            except (DjangoInterfaceError, OperationalError) as e:
-                last_err = e
-                if _is_connection_closed_error(e):
-                    continue
-                raise
-            except Exception as e:
-                if _is_connection_closed_error(e):
-                    last_err = e
-                    continue
-                raise
-        if last_err is not None:
-            raise last_err
 
     def test_complete_connection_lifecycle_with_events(self):
         """Test complete connection lifecycle with all event types."""
@@ -169,7 +158,7 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="E2E Connection",
+            name=f"E2E Connection {self._suffix}",
             config=self.config,
         )
 
@@ -190,13 +179,14 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
         self.assertIsNotNone(event_id)
 
         # Update connection
-        connection.name = "Updated E2E Connection"
+        old_name = connection.name
+        connection.name = f"Updated E2E Connection {self._suffix}"
         connection.is_active = False
         connection.save()
 
         # Publish marketplace.connection.updated event
         changes = {
-            "name": {"old": "E2E Connection", "new": "Updated E2E Connection"},
+            "name": {"old": old_name, "new": connection.name},
             "is_active": {"old": True, "new": False},
         }
         event_id = self.publisher.publish_connection_updated(
@@ -219,7 +209,7 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
         event_id = self.publisher.publish_connection_deleted(
             connection_id=str(connection.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Updated E2E Connection",
+            name=connection.name,
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
         )
@@ -236,7 +226,7 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Sync E2E Connection",
+            name=f"Sync E2E Connection {self._suffix}",
             config=self.config,
         )
 
@@ -292,7 +282,7 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Failed Sync E2E Connection",
+            name=f"Failed Sync E2E Conn {self._suffix}",
             config=self.config,
         )
 
@@ -346,13 +336,13 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Mapping E2E Connection",
+            name=f"Mapping E2E Conn {self._suffix}",
             config=self.config,
         )
 
         # Create asset
         asset = Asset.objects.create(
-            tenant=self.tenant, created_by=self.user, name="E2E Test Asset", source_type="FEDERATED"
+            tenant=self.tenant, created_by=self.user, name=f"E2E Test Asset {self._suffix}", source_type="FEDERATED"
         )
 
         # Create mapping
@@ -427,7 +417,7 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Multi Event Connection",
+            name=f"Multi Event Conn {self._suffix}",
             config=self.config,
         )
 
@@ -435,7 +425,7 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
         asset = Asset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
-            name="Multi Event Asset",
+            name=f"Multi Event Asset {self._suffix}",
             source_type="FEDERATED",
         )
 
@@ -531,7 +521,7 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Test Connection",
+            name=f"Empty Data Conn {self._suffix}",
             config=self.config,
         )
 
@@ -552,11 +542,12 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
 
     def test_event_publishing_with_none_tenant_id(self):
         """Test event publishing error handling with None tenant ID"""
+        conn_name = f"None Tenant Conn {self._suffix}"
         connection = self.service.create_connection(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Test Connection",
+            name=conn_name,
             config=self.config,
         )
 
@@ -564,7 +555,7 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
         event_id = self.publisher.publish_connection_created(
             connection_id=str(connection.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Test Connection",
+            name=conn_name,
             tenant_id=None,
             user_id=str(self.user.id),
         )

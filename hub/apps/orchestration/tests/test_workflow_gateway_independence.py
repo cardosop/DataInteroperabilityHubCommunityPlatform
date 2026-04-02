@@ -49,13 +49,14 @@ class WorkflowGatewayIndependenceTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         # Create tenant (using same pattern as other tests)
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         # Create user (using same pattern as other tests)
         self.user = User.objects.create(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Assign TENANT_ADMIN role (using the same pattern as other tests)
@@ -196,14 +197,14 @@ class WorkflowGatewayIndependenceTest(TestCase):
         self.assertEqual(instance.tenant_id, self.tenant.id)
         self.assertEqual(instance.created_by_id, self.user.id)
 
-        # Store result for comparison
-        gateway_result = {
+        # Store result for comparison in instance attribute (for reuse
+        # by test_workflow_execution_independence).  Test methods must
+        # NOT return a value — Python 3.12 raises DeprecationWarning.
+        self._gateway_result = {
             "workflow_instance_id": str(instance.id),
             "status": instance.status,
             "input_data": instance.input_data,
         }
-
-        return gateway_result
 
     def test_workflow_execution_independence(self):
         """Test that workflow execution is identical via gateway or direct access"""

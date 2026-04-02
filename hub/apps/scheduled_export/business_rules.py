@@ -446,7 +446,7 @@ class ScheduledExportBusinessRules(BusinessRules):
             )
 
         destination_type = context.scheduled_export.destination_type
-        destination_config = context.scheduled_export.destination_config
+        destination_config = context.scheduled_export.get_destination_config()
 
         details["destination_type"] = destination_type
 

@@ -4,6 +4,7 @@ Marketplace Integration Serializers Tests
 Comprehensive unit tests for marketplace connection serializers.
 """
 
+import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -29,8 +30,9 @@ class MarketplaceConnectionSerializerTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         self.connection = MarketplaceConnection.objects.create(
@@ -82,8 +84,9 @@ class MarketplaceConnectionCreateSerializerTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         self.valid_data = {
@@ -290,8 +293,9 @@ class MarketplaceConnectionTestResponseSerializerTest(TestCase):
 
         from django.utils import timezone
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         self.connection = MarketplaceConnection.objects.create(

@@ -22,8 +22,10 @@ from typing import Dict, Any, List, Optional
 from queue import Queue
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.webhooks.models import (
@@ -41,6 +43,7 @@ from hub.apps.testing.billing_support import ensure_tenant_has_active_subscripti
 from hub.apps.users.models import UserStatus
 from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.core.events.bus import get_event_bus
+from tests.utils.wait_helpers import wait_for_event_persistence
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -72,7 +75,10 @@ class WebhookReceiverHandler(BaseHTTPRequestHandler):
         self.request_queue.put(request_data)
 
         if self.response_delay > 0:
-            time.sleep(self.response_delay)
+            remaining = self.response_delay
+            while remaining > 0:
+                time.sleep(min(remaining, 0.5))  # INTENTIONAL: simulates slow webhook receiver
+                remaining -= 0.5
 
         self.send_response(self.response_status)
         self.send_header('Content-Type', 'application/json')
@@ -87,6 +93,8 @@ class WebhookReceiverHandler(BaseHTTPRequestHandler):
 
 class TestWebhookServer:
     """Test HTTP server for receiving webhook deliveries."""
+
+    __test__ = False  # Not a test class — prevent pytest collection warning
 
     def __init__(self, port: int = 0, response_status: int = 200,
                  response_delay: float = 0.0):
@@ -114,10 +122,15 @@ class TestWebhookServer:
         self.thread.start()
 
     def stop(self):
-        """Stop the HTTP server."""
+        """Stop the HTTP server without blocking on in-flight requests."""
         if self.server:
-            self.server.shutdown()
-            self.server.server_close()
+            shutdown_thread = threading.Thread(target=self.server.shutdown, daemon=True)
+            shutdown_thread.start()
+            shutdown_thread.join(timeout=5)
+            try:
+                self.server.server_close()
+            except Exception:
+                pass
             self.server = None
             self.thread = None
 
@@ -156,16 +169,24 @@ class TestWebhookServer:
         self.stop()
 
 
+@override_settings(WEBHOOK_ASYNC_DELIVERY=False)
 class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
     """Comprehensive tests for ODPS webhook events"""
 
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        pass
+
     def setUp(self):
         """Set up test fixtures."""
+        uid = uuid.uuid4().hex[:8]
         reset_circuit_breaker_by_name("webhook-delivery")
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -173,7 +194,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -212,7 +233,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
             )
 
             self.assertEqual(count, 1)
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             # Verify delivery
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
@@ -259,7 +280,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
             )
 
             self.assertEqual(count, 1)
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
             self.assertIsNotNone(delivery)
@@ -293,7 +314,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
             )
 
             self.assertEqual(count, 1)
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
             self.assertIsNotNone(delivery)
@@ -330,7 +351,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
             )
 
             self.assertEqual(count, 1)
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
             self.assertIsNotNone(delivery)
@@ -367,7 +388,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
             )
 
             self.assertEqual(count, 1)
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
             self.assertIsNotNone(delivery)
@@ -404,7 +425,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
             )
 
             self.assertEqual(count, 1)
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
             self.assertIsNotNone(delivery)
@@ -440,7 +461,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
             )
 
             self.assertEqual(count, 1)
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
             self.assertIsNotNone(delivery)
@@ -476,7 +497,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
             )
 
             self.assertEqual(count, 1)
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
             self.assertIsNotNone(delivery)
@@ -512,7 +533,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
             )
 
             self.assertEqual(count, 1)
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
             self.assertIsNotNone(delivery)
@@ -558,7 +579,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
                 event_data={"contract_id": contract_id},
             )
             self.assertEqual(count, 2)
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             # Trigger ODPS_UPDATED - only webhook1 should receive
             count = WebhookDeliveryService.trigger_odps_webhook(
@@ -569,7 +590,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
                 event_data={"contract_id": contract_id},
             )
             self.assertEqual(count, 1)
-            time.sleep(0.5)
+            wait_for_event_persistence()
 
             # Verify deliveries
             deliveries1 = WebhookDelivery.objects.filter(webhook=webhook1)
@@ -606,7 +627,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
             )
 
             self.assertEqual(count, 1)
-            time.sleep(1.0)
+            wait_for_event_persistence(timeout=2.0)
 
             # Verify delivery was created
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
@@ -649,7 +670,7 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
         )
 
         self.assertEqual(count, 1)
-        time.sleep(2.0)
+        wait_for_event_persistence(timeout=2.0)
 
         # Run _attempt_delivery and _schedule_retry until DEAD_LETTER (same pattern as
         # test_error_handling_max_retries_exceeded)

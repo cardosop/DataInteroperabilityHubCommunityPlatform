@@ -10,6 +10,7 @@ from rest_framework import status
 from hub.apps.users.models import User, UserStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -24,20 +25,28 @@ class UserDeletionTest(TestCase):
         self.client = APIClient()
         
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
-        # Create tenant admin user
+        # Create tenant admin user with TENANT_ADMIN role (required for delete permission)
         self.tenant_admin = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+        from hub.apps.users.models import Role, UserRole
+        tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.tenant_admin, role=tenant_admin_role)
 
         # Active subscription required so TenantSuspensionMiddleware allows DELETE
         ensure_tenant_has_active_subscription(self.tenant)
@@ -48,7 +57,7 @@ class UserDeletionTest(TestCase):
         
         # Create a user with no resources
         test_user = User.objects.create_user(
-            email="todelete@example.com",
+            email=f"todelete-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -67,7 +76,7 @@ class UserDeletionTest(TestCase):
         
         # Create a user
         test_user = User.objects.create_user(
-            email="todelete@example.com",
+            email=f"todelete-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -105,7 +114,7 @@ class UserDeletionTest(TestCase):
         
         # Create an invited user
         invited_user = User.objects.create_user(
-            email="invited@example.com",
+            email=f"invited-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.INVITED
         )
@@ -123,7 +132,7 @@ class UserDeletionTest(TestCase):
         
         # Create a disabled user
         disabled_user = User.objects.create_user(
-            email="disabled@example.com",
+            email=f"disabled-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.DISABLED
         )

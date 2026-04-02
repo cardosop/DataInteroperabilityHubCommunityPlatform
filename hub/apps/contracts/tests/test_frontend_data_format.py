@@ -216,9 +216,13 @@ class FrontendDataFormatTest(ContractsAPITestBase):
     def test_api_responses_handle_null_values(self):
         """Test API responses handle null values properly"""
         # Create contract with some null/None fields
+        from hub.apps.assets.models import Asset, AssetStatus
+        null_asset = Asset.objects.create(
+            tenant=self.tenant, key="null-test-asset", name="Null Asset", status=AssetStatus.ACTIVE
+        )
         contract_with_nulls = Contract.objects.create(
             tenant=self.tenant,
-            asset=self.asset,
+            asset=null_asset,
             original_raw=json.dumps(self.valid_odps),
             original_format=OriginalFormat.JSON,
             original_spec_type=OriginalSpecType.ODPS,
@@ -226,7 +230,6 @@ class FrontendDataFormatTest(ContractsAPITestBase):
             status=ContractStatus.DRAFT,
             version=1,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            deleted_at=None,  # Explicit None
         )
 
         response = self.client.get(f"/api/v1/contracts/{contract_with_nulls.id}/")
@@ -266,9 +269,12 @@ class FrontendDataFormatTest(ContractsAPITestBase):
         odps_with_unicode = self.valid_odps.copy()
         odps_with_unicode["product"]["details"]["en"]["name"] = "Test 产品 🚀"
 
+        unicode_asset = Asset.objects.create(
+            tenant=self.tenant, key="unicode-test-asset", name="Unicode Asset", status=AssetStatus.ACTIVE
+        )
         contract_unicode = Contract.objects.create(
             tenant=self.tenant,
-            asset=self.asset,
+            asset=unicode_asset,
             original_raw=json.dumps(odps_with_unicode),
             original_format=OriginalFormat.JSON,
             original_spec_type=OriginalSpecType.ODPS,
@@ -296,9 +302,12 @@ class FrontendDataFormatTest(ContractsAPITestBase):
             "name"
         ] = "Test & Product <script>alert('xss')</script>"
 
+        special_asset = Asset.objects.create(
+            tenant=self.tenant, key="special-test-asset", name="Special Asset", status=AssetStatus.ACTIVE
+        )
         contract_special = Contract.objects.create(
             tenant=self.tenant,
-            asset=self.asset,
+            asset=special_asset,
             original_raw=json.dumps(odps_with_special),
             original_format=OriginalFormat.JSON,
             original_spec_type=OriginalSpecType.ODPS,
@@ -318,11 +327,15 @@ class FrontendDataFormatTest(ContractsAPITestBase):
 
     def test_api_list_responses_have_pagination_structure(self):
         """Test API list responses have pagination structure"""
-        # Create multiple contracts
+        # Create multiple contracts — each needs its own asset
+        from hub.apps.assets.models import Asset, AssetStatus
         for i in range(5):
+            page_asset = Asset.objects.create(
+                tenant=self.tenant, key=f"page-asset-{i}", name=f"Page {i}", status=AssetStatus.ACTIVE
+            )
             Contract.objects.create(
                 tenant=self.tenant,
-                asset=self.asset,
+                asset=page_asset,
                 original_raw=json.dumps(self.valid_odps),
                 original_format=OriginalFormat.JSON,
                 original_spec_type=OriginalSpecType.ODPS,

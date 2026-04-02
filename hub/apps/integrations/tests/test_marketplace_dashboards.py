@@ -9,6 +9,7 @@ Tests verify:
 
 All tests use real implementations (no mocks/stubs).
 """
+import unittest
 import json
 import pytest
 from pathlib import Path
@@ -186,7 +187,7 @@ class MarketplaceDashboardsTest(TestCase):
         try:
             import yaml
         except ImportError:
-            pytest.skip("PyYAML not available for YAML validation")
+            raise unittest.SkipTest("PyYAML not available for YAML validation")
 
         alerts_file = self.alerts_dir / 'marketplace-alerts.yml'
         try:
@@ -218,7 +219,7 @@ class MarketplaceDashboardsTest(TestCase):
         try:
             import yaml
         except ImportError:
-            pytest.skip("PyYAML not available for YAML validation")
+            raise unittest.SkipTest("PyYAML not available for YAML validation")
 
         alerts_file = self.alerts_dir / 'marketplace-alerts.yml'
         content = alerts_file.read_text(encoding='utf-8')

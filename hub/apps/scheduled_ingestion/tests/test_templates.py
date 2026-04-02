@@ -33,7 +33,7 @@ class IngestionTemplateTest(TestCase):
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -89,7 +89,8 @@ class IngestionTemplateTest(TestCase):
             file_pattern_template=".*"
         )
         
-        with self.assertRaises(Exception):
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
             template.clean()
     
     def test_template_clean_non_system_without_tenant(self):
@@ -105,7 +106,8 @@ class IngestionTemplateTest(TestCase):
             file_pattern_template=".*"
         )
         
-        with self.assertRaises(Exception):
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
             template.clean()
 
 
@@ -123,7 +125,7 @@ class IngestionTemplateManagerTest(TestCase):
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -177,9 +179,9 @@ class IngestionTemplateManagerTest(TestCase):
         self.assertEqual(scheduled_ingestion.source_type, "S3")
         
         # Verify source config was resolved
-        self.assertEqual(scheduled_ingestion.source_config["bucket_name"], "my-bucket")
-        self.assertEqual(scheduled_ingestion.source_config["prefix"], "data/")
-        self.assertEqual(scheduled_ingestion.source_config["region"], "us-east-1")
+        self.assertEqual(scheduled_ingestion.get_source_config()["bucket_name"], "my-bucket")
+        self.assertEqual(scheduled_ingestion.get_source_config()["prefix"], "data/")
+        self.assertEqual(scheduled_ingestion.get_source_config()["region"], "us-east-1")
         
         # Verify file pattern was resolved
         self.assertEqual(scheduled_ingestion.file_pattern, ".*\\.csv")
@@ -285,8 +287,9 @@ class IngestionTemplateManagerTest(TestCase):
         
         # Create another tenant's template (unique slug to avoid collision with --reuse-db)
         other_slug = f"other-tenant-{uuid.uuid4().hex[:8]}"
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
+            name=f"Other Tenant {_uid}",
             slug=other_slug,
             status="ACTIVE",
             kyc_status="UNVERIFIED",

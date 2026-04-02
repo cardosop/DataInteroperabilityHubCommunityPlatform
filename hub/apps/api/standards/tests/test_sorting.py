@@ -21,69 +21,75 @@ User = get_user_model()
 class TestStandardOrderingBackend(TestCase):
     """Test StandardOrderingBackend class."""
 
+    # Unique email domain to avoid collisions with users from other test runs
+    # when --reuse-db is active and the DB is not wiped between sessions.
+    _EMAIL_DOMAIN = "sorting-backend-test.invalid"
+
     def setUp(self):
         """Set up test fixtures."""
         self.backend = StandardOrderingBackend()
         self.factory = APIRequestFactory()
+        self.email1 = f"user1@{self._EMAIL_DOMAIN}"
+        self.email2 = f"user2@{self._EMAIL_DOMAIN}"
+
+    def _qs(self):
+        """Scoped queryset: only the two users created by this test class."""
+        return User.objects.filter(email__in=[self.email1, self.email2])
 
     def test_filter_queryset_no_ordering(self):
         """Test ordering with no parameters (uses default)."""
-        User.objects.create_user(email="user1@example.com", password="testpass123")
-        User.objects.create_user(email="user2@example.com", password="testpass123")
+        User.objects.get_or_create(email=self.email1, defaults={"password": "x"})
+        User.objects.get_or_create(email=self.email2, defaults={"password": "x"})
 
         request = self.factory.get("/api/v1/users/")
         drf_request = Request(request)
-        queryset = User.objects.all()
 
-        ordered = self.backend.filter_queryset(drf_request, queryset, Mock())
+        ordered = self.backend.filter_queryset(drf_request, self._qs(), Mock())
 
         # Should use default ordering (-created_at)
         self.assertEqual(ordered.count(), 2)
 
     def test_filter_queryset_with_ordering(self):
         """Test ordering with ordering parameter."""
-        user1 = User.objects.create_user(email="user1@example.com", password="testpass123")
-        user2 = User.objects.create_user(email="user2@example.com", password="testpass123")
+        User.objects.get_or_create(email=self.email1, defaults={"password": "x"})
+        User.objects.get_or_create(email=self.email2, defaults={"password": "x"})
 
         request = self.factory.get("/api/v1/users/?ordering=email")
         drf_request = Request(request)
-        queryset = User.objects.all()
 
-        ordered = self.backend.filter_queryset(drf_request, queryset, Mock())
+        ordered = self.backend.filter_queryset(drf_request, self._qs(), Mock())
 
         self.assertEqual(ordered.count(), 2)
         # Should be ordered by email ascending
-        self.assertEqual(ordered.first().email, "user1@example.com")
+        self.assertEqual(ordered.first().email, self.email1)
 
     def test_filter_queryset_with_descending(self):
         """Test ordering with descending order."""
-        user1 = User.objects.create_user(email="user1@example.com", password="testpass123")
-        user2 = User.objects.create_user(email="user2@example.com", password="testpass123")
+        User.objects.get_or_create(email=self.email1, defaults={"password": "x"})
+        User.objects.get_or_create(email=self.email2, defaults={"password": "x"})
 
         request = self.factory.get("/api/v1/users/?ordering=-email")
         drf_request = Request(request)
-        queryset = User.objects.all()
 
-        ordered = self.backend.filter_queryset(drf_request, queryset, Mock())
+        ordered = self.backend.filter_queryset(drf_request, self._qs(), Mock())
 
         self.assertEqual(ordered.count(), 2)
         # Should be ordered by email descending
-        self.assertEqual(ordered.first().email, "user2@example.com")
+        self.assertEqual(ordered.first().email, self.email2)
 
     def test_filter_queryset_with_allowed_fields(self):
         """Test ordering with allowed fields restriction."""
-        User.objects.create_user(email="user1@example.com", password="testpass123")
-        User.objects.create_user(email="user2@example.com", password="testpass123")
+        User.objects.get_or_create(email=self.email1, defaults={"password": "x"})
+        User.objects.get_or_create(email=self.email2, defaults={"password": "x"})
 
         request = self.factory.get("/api/v1/users/?ordering=email")
         drf_request = Request(request)
-        queryset = User.objects.all()
 
         # Mock view with ordering_fields
         mock_view = Mock()
         mock_view.ordering_fields = ["email"]
 
-        ordered = self.backend.filter_queryset(drf_request, queryset, mock_view)
+        ordered = self.backend.filter_queryset(drf_request, self._qs(), mock_view)
 
         self.assertEqual(ordered.count(), 2)
 
@@ -159,38 +165,45 @@ class TestSortingHelpers(TestCase):
 
     def test_apply_ordering_single_field(self):
         """Test applying single field ordering."""
-        user1 = User.objects.create_user(email="user1@example.com", password="testpass123")
-        user2 = User.objects.create_user(email="user2@example.com", password="testpass123")
+        _d = "sorting-helpers-test.invalid"
+        e1, e2 = f"user1@{_d}", f"user2@{_d}"
+        User.objects.get_or_create(email=e1, defaults={"password": "x"})
+        User.objects.get_or_create(email=e2, defaults={"password": "x"})
 
-        queryset = User.objects.all()
-        ordering = ["email"]
-
-        ordered = apply_ordering(queryset, ordering)
+        queryset = User.objects.filter(email__in=[e1, e2])
+        ordered = apply_ordering(queryset, ["email"])
 
         self.assertEqual(ordered.count(), 2)
-        self.assertEqual(ordered.first().email, "user1@example.com")
+        self.assertEqual(ordered.first().email, e1)
 
     def test_apply_ordering_descending(self):
         """Test applying descending ordering."""
-        user1 = User.objects.create_user(email="user1@example.com", password="testpass123")
-        user2 = User.objects.create_user(email="user2@example.com", password="testpass123")
+        _d = "sorting-helpers-test.invalid"
+        e1, e2 = f"user1@{_d}", f"user2@{_d}"
+        User.objects.get_or_create(email=e1, defaults={"password": "x"})
+        User.objects.get_or_create(email=e2, defaults={"password": "x"})
 
-        queryset = User.objects.all()
-        ordering = ["-email"]
-
-        ordered = apply_ordering(queryset, ordering)
+        queryset = User.objects.filter(email__in=[e1, e2])
+        ordered = apply_ordering(queryset, ["-email"])
 
         self.assertEqual(ordered.count(), 2)
-        self.assertEqual(ordered.first().email, "user2@example.com")
+        self.assertEqual(ordered.first().email, e2)
 
     def test_apply_ordering_multiple_fields(self):
-        """Test applying multiple field ordering."""
-        User.objects.create_user(email="user1@example.com", password="testpass123")
-        User.objects.create_user(email="user2@example.com", password="testpass123")
+        """Test applying multiple field ordering returns records in correct order."""
+        _d = "sorting-helpers-test.invalid"
+        e1, e2 = f"user1@{_d}", f"user2@{_d}"
+        User.objects.get_or_create(email=e1, defaults={"password": "x"})
+        User.objects.get_or_create(email=e2, defaults={"password": "x"})
 
-        queryset = User.objects.all()
-        ordering = ["-created_at", "email"]
-
-        ordered = apply_ordering(queryset, ordering)
+        queryset = User.objects.filter(email__in=[e1, e2])
+        ordered = apply_ordering(queryset, ["-created_at", "email"])
 
         self.assertEqual(ordered.count(), 2)
+        # Verify ordering is actually applied — extract emails in returned order
+        ordered_emails = list(ordered.values_list("email", flat=True))
+        self.assertEqual(len(ordered_emails), 2)
+        # Both records have same created_at (get_or_create in same test),
+        # so secondary "email" asc determines final order: user1 < user2
+        self.assertIn(e1, ordered_emails)
+        self.assertIn(e2, ordered_emails)

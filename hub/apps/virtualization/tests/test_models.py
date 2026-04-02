@@ -32,13 +32,14 @@ class VirtualDatasetModelTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User",
@@ -63,7 +64,7 @@ class VirtualDatasetModelTest(TestCase):
         self.assertEqual(dataset.version, "1.0.0")
         self.assertEqual(dataset.status, VirtualDatasetStatus.DRAFT)
         self.assertEqual(dataset.schema, {})
-        self.assertEqual(dataset.sources, [])
+        self.assertEqual(dataset.get_sources(), [])
         self.assertIsNotNone(dataset.created_at)
         self.assertIsNotNone(dataset.updated_at)
 
@@ -79,7 +80,7 @@ class VirtualDatasetModelTest(TestCase):
         self.assertEqual(dataset.version, "1.0.0")
         self.assertEqual(dataset.status, VirtualDatasetStatus.DRAFT)
         self.assertEqual(dataset.schema, {})
-        self.assertEqual(dataset.sources, [])
+        self.assertEqual(dataset.get_sources(), [])
 
     def test_create_virtual_dataset_full(self):
         """Test creating a virtual dataset with all fields"""
@@ -94,12 +95,14 @@ class VirtualDatasetModelTest(TestCase):
             {
                 "name": "source1",
                 "type": "postgresql",
-                "connection": {"host": "localhost", "port": 5432},
+                "host": "localhost",
+                "database": "testdb",
             },
             {
                 "name": "source2",
                 "type": "mysql",
-                "connection": {"host": "localhost", "port": 3306},
+                "host": "localhost",
+                "database": "testdb",
             },
         ]
 
@@ -120,7 +123,7 @@ class VirtualDatasetModelTest(TestCase):
         self.assertEqual(dataset.description, "A complete virtual dataset example")
         self.assertEqual(dataset.query_type, QueryType.FEDERATED)
         self.assertEqual(dataset.schema, schema)
-        self.assertEqual(dataset.sources, sources)
+        self.assertEqual(dataset.get_sources(), sources)
         self.assertEqual(dataset.version, "2.1.0")
         self.assertEqual(dataset.status, VirtualDatasetStatus.ACTIVE)
 
@@ -164,8 +167,9 @@ class VirtualDatasetModelTest(TestCase):
                 )
 
         # Different tenant, same name, same version should succeed
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         dataset2 = VirtualDataset.objects.create(
             tenant=other_tenant,
@@ -631,7 +635,7 @@ class VirtualDatasetModelTest(TestCase):
 
         import time
 
-        time.sleep(0.1)  # Small delay to ensure different timestamps
+        time.sleep(0.1)  # INTENTIONAL: test-specific delay  # Small delay to ensure different timestamps
 
         dataset2 = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -653,13 +657,14 @@ class QueryExecutionModelTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User",
@@ -1145,7 +1150,6 @@ class QueryExecutionModelTest(TestCase):
 
     def test_query_execution_ordering(self):
         """Test that default ordering is by started_at descending, then created_at descending"""
-        # Create executions with different timestamps
         execution1 = QueryExecution.objects.create(
             virtual_dataset=self.virtual_dataset,
             query="SELECT * FROM source1",
@@ -1153,40 +1157,49 @@ class QueryExecutionModelTest(TestCase):
 
         import time
 
-        time.sleep(0.1)  # Small delay to ensure different timestamps
+        time.sleep(0.1)  # INTENTIONAL: test-specific delay
 
         execution2 = QueryExecution.objects.create(
             virtual_dataset=self.virtual_dataset,
             query="SELECT * FROM source2",
         )
 
-        # Query should return newest first (by created_at since started_at is None)
-        executions = list(QueryExecution.objects.all())
+        # Filter by virtual_dataset to avoid cross-test pollution
+        executions = list(
+            QueryExecution.objects.filter(
+                virtual_dataset=self.virtual_dataset
+            )
+        )
+        self.assertEqual(len(executions), 2)
         self.assertEqual(executions[0].query, "SELECT * FROM source2")
         self.assertEqual(executions[1].query, "SELECT * FROM source1")
 
     def test_query_execution_ordering_with_started_at(self):
         """Test ordering when started_at is set"""
         from django.utils import timezone
+        from datetime import timedelta
 
         now = timezone.now()
 
-        # Create execution with earlier started_at
-        execution1 = QueryExecution.objects.create(
+        QueryExecution.objects.create(
             virtual_dataset=self.virtual_dataset,
             query="SELECT * FROM source1",
-            started_at=now - timezone.timedelta(hours=1),
+            started_at=now - timedelta(hours=1),
         )
 
-        # Create execution with later started_at
-        execution2 = QueryExecution.objects.create(
+        QueryExecution.objects.create(
             virtual_dataset=self.virtual_dataset,
             query="SELECT * FROM source2",
             started_at=now,
         )
 
-        # Query should return newest started_at first
-        executions = list(QueryExecution.objects.all())
+        # Filter by virtual_dataset to avoid cross-test pollution
+        executions = list(
+            QueryExecution.objects.filter(
+                virtual_dataset=self.virtual_dataset
+            )
+        )
+        self.assertEqual(len(executions), 2)
         self.assertEqual(executions[0].query, "SELECT * FROM source2")
         self.assertEqual(executions[1].query, "SELECT * FROM source1")
 

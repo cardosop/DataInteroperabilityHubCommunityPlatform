@@ -37,11 +37,12 @@ class JobUtilsTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -176,9 +177,14 @@ class JobUtilsTest(TestCase):
             resource_id=str(resource_id),
         )
 
-        self.assertIsNotNone(job.id)
+        self.assertIsInstance(job.id, uuid.UUID)
+        self.assertTrue(
+            Job.objects.filter(id=job.id).exists(),
+            "Job should be persisted in the database",
+        )
         self.assertIsNone(job.tenant)
         self.assertIsNone(job.created_by)
+        self.assertEqual(job.status, JobStatus.PENDING)
 
     def test_create_job_success_without_user(self):
         """Test successful job creation without user"""
@@ -191,8 +197,9 @@ class JobUtilsTest(TestCase):
             resource_id=str(resource_id),
         )
 
-        self.assertIsNotNone(job.id)
+        self.assertIsInstance(job.id, uuid.UUID)
         self.assertIsNone(job.created_by)
+        self.assertEqual(job.tenant, self.tenant)
 
     def test_create_job_success_all_job_types(self):
         """Test successful job creation for all job types"""
@@ -222,8 +229,12 @@ class JobUtilsTest(TestCase):
             executed_by_prefect=True,
         )
 
-        self.assertIsNotNone(job.id)
-        self.assertTrue(job.details_json.get("executed_by_prefect"))
+        self.assertIsInstance(job.id, uuid.UUID)
+        self.assertIsInstance(job.details_json, dict)
+        self.assertTrue(
+            job.details_json.get("executed_by_prefect")
+        )
+        self.assertEqual(job.status, JobStatus.PENDING)
 
     # ========== CREATE_JOB FAILURE TESTS ==========
 
@@ -262,8 +273,12 @@ class JobUtilsTest(TestCase):
             )
 
     def test_create_job_failure_invalid_resource_id_format(self):
-        """Test job creation failure with invalid resource_id format"""
-        # create_job may accept string UUID, but invalid format should fail
+        """Test job creation with invalid resource_id format.
+
+        Django UUIDField raises ValueError on invalid UUID strings
+        at save time. If the field accepts the value (e.g.
+        CharField), the job is created and stored as-is.
+        """
         try:
             job = create_job(
                 tenant=self.tenant,
@@ -272,30 +287,40 @@ class JobUtilsTest(TestCase):
                 resource_type="ASSET",
                 resource_id="not-a-uuid",
             )
-            # If job created, UUID validation happens elsewhere (acceptable)
-            self.assertIsNotNone(job)
-        except (ValueError, TypeError):
-            # Expected if UUID validation fails
-            pass
+            # Model accepted the value -- verify it persisted
+            self.assertIsNotNone(
+                job.id, "Job should be saved to the database"
+            )
+            self.assertEqual(
+                str(job.resource_id), "not-a-uuid"
+            )
+        except (ValueError, TypeError, ValidationError) as exc:
+            # UUID validation rejects the invalid format
+            self.assertIn(
+                "uuid" if isinstance(exc, ValueError) else "",
+                str(exc).lower(),
+            )
 
     def test_create_job_failure_tenant_limits_exceeded(self):
-        """Test job creation failure when tenant limits are exceeded"""
-        # This tests the error path - actual limit checking is tested elsewhere
+        """Test job creation succeeds when tenant is within limits.
+
+        With a fresh test tenant, limits should never be exceeded, so the job
+        should always be created. We verify the job is in PENDING status and
+        belongs to the correct tenant.
+        """
         resource_id = uuid.uuid4()
 
-        try:
-            job = create_job(
-                tenant=self.tenant,
-                user=self.user,
-                job_type=JobType.DQ_RUN,
-                resource_type="ASSET",
-                resource_id=str(resource_id),
-            )
-            # If job created, limits were not exceeded (acceptable in test)
-            self.assertIsNotNone(job)
-        except ValidationError as e:
-            # Expected if limits exceeded
-            self.assertIn("limit", str(e).lower() or "rate", str(e).lower())
+        job = create_job(
+            tenant=self.tenant,
+            user=self.user,
+            job_type=JobType.DQ_RUN,
+            resource_type="ASSET",
+            resource_id=str(resource_id),
+        )
+        # Fresh tenant should be within limits
+        self.assertIsNotNone(job.id, "Job should be persisted")
+        self.assertEqual(job.status, JobStatus.PENDING)
+        self.assertEqual(job.tenant, self.tenant)
 
     # ========== CREATE_JOB EDGE CASES ==========
 
@@ -344,9 +369,15 @@ class JobUtilsTest(TestCase):
             resource_id=str(resource_id),
         )
 
-        self.assertIsNotNone(job.id)
-        self.assertTrue(job.details_json.get("executed_by_prefect"))
-        self.assertEqual(queue.count, initial_count, "SCHEDULED_INGESTION must never be enqueued")
+        self.assertIsInstance(job.id, uuid.UUID)
+        self.assertIsInstance(job.details_json, dict)
+        self.assertTrue(
+            job.details_json.get("executed_by_prefect")
+        )
+        self.assertEqual(
+            queue.count, initial_count,
+            "SCHEDULED_INGESTION must never be enqueued"
+        )
 
     def test_create_job_edge_case_large_details_json(self):
         """Test job creation with large details_json"""
@@ -388,32 +419,37 @@ class JobUtilsTest(TestCase):
     # ========== CREATE_JOB ERROR HANDLING ==========
 
     def test_create_job_error_handling_redis_unavailable(self):
-        """Test graceful error handling when Redis is unavailable"""
+        """Test that job creation succeeds even if Redis enqueue may fail.
+
+        In test mode (RQ ASYNC=False), jobs run synchronously so Redis errors
+        are unlikely. This test verifies the job record is created in the DB
+        regardless of the enqueue outcome.
+        """
         resource_id = uuid.uuid4()
 
-        try:
-            job = create_job(
-                tenant=self.tenant,
-                user=self.user,
-                job_type=JobType.DQ_RUN,
-                resource_type="ASSET",
-                resource_id=str(resource_id),
-            )
-            # Job should be created even if Redis enqueue fails
-            self.assertIsNotNone(job)
-            self.assertEqual(job.status, JobStatus.PENDING)
-        except Exception as e:
-            # If Redis is completely unavailable and causes creation to fail,
-            # that's acceptable - the important thing is error is handled gracefully
-            error_msg = str(e).lower()
-            if "redis" not in error_msg and "connection" not in error_msg:
-                raise  # Re-raise unexpected errors
+        job = create_job(
+            tenant=self.tenant,
+            user=self.user,
+            job_type=JobType.DQ_RUN,
+            resource_type="ASSET",
+            resource_id=str(resource_id),
+        )
+        # Job record should always be persisted to the database
+        self.assertIsNotNone(job.id, "Job should be saved to the database")
+        self.assertEqual(job.status, JobStatus.PENDING)
+        self.assertEqual(job.type, JobType.DQ_RUN)
+        # Verify job can be retrieved from DB
+        db_job = Job.objects.get(id=job.id)
+        self.assertEqual(db_job.tenant, self.tenant)
 
     def test_create_job_error_handling_invalid_priority(self):
-        """Test error handling with invalid priority"""
+        """Test that create_job with invalid priority either rejects or uses default.
+
+        If create_job validates priority eagerly, it should raise ValueError/TypeError.
+        If it defers validation, the job is created with a default priority.
+        """
         resource_id = uuid.uuid4()
 
-        # create_job should handle invalid priority gracefully
         try:
             job = create_job(
                 tenant=self.tenant,
@@ -423,11 +459,12 @@ class JobUtilsTest(TestCase):
                 resource_id=str(resource_id),
                 priority="INVALID_PRIORITY",
             )
-            # If job created, priority validation happens elsewhere (acceptable)
-            self.assertIsNotNone(job)
-        except (ValueError, TypeError):
-            # Expected if priority validation fails
-            pass
+            # If job created, verify it was saved and has a valid status
+            self.assertIsNotNone(job.id, "Job should be saved to the database")
+            self.assertEqual(job.status, JobStatus.PENDING)
+        except (ValueError, TypeError) as exc:
+            # Expected: priority validation rejects the invalid value
+            self.assertTrue(str(exc), "Exception should have a descriptive message")
 
     # ========== GET_JOB_PRIORITY TESTS ==========
 

@@ -10,7 +10,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from tests.utils.polling import wait_until
@@ -35,15 +35,23 @@ pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
+@override_settings(WEBHOOK_ASYNC_DELIVERY=False)
 class ODPSWebhookEventIntegrationTest(TestCase):
     """Integration tests for ODPS webhook delivery from event bus"""
 
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        pass
+
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -51,7 +59,7 @@ class ODPSWebhookEventIntegrationTest(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -185,9 +193,10 @@ class ODPSWebhookEventIntegrationTest(TestCase):
                 created_by=self.user,
             )
 
+            _uid = uuid.uuid4().hex[:8]
             other_tenant = Tenant.objects.create(
-                name="Other Tenant",
-                slug="other-tenant",
+                name=f"Other Tenant {_uid}",
+                slug=f"other-tenant-{_uid}",
                 status=TenantStatus.ACTIVE,
                 kyc_status=KYCStatus.VERIFIED,
             )
@@ -234,6 +243,8 @@ class ODPSWebhookEventIntegrationTest(TestCase):
 
     def test_odps_event_subscriber_handles_missing_tenant_id(self):
         """Test that ODPS event subscriber handles events without tenant_id gracefully"""
+        count_before = WebhookDelivery.objects.count()
+
         subscriber = get_odps_event_subscriber()
         event = {
             "event_id": str(uuid.uuid4()),
@@ -250,12 +261,13 @@ class ODPSWebhookEventIntegrationTest(TestCase):
         # Should not raise exception
         subscriber._handle_odps_event(event)
 
-        # Verify no deliveries were created
-        deliveries = WebhookDelivery.objects.all()
-        self.assertEqual(deliveries.count(), 0)
+        # Verify no new deliveries were created
+        self.assertEqual(WebhookDelivery.objects.count(), count_before)
 
     def test_odps_event_subscriber_handles_missing_contract_id(self):
         """Test that ODPS event subscriber handles events without contract_id gracefully"""
+        count_before = WebhookDelivery.objects.count()
+
         subscriber = get_odps_event_subscriber()
         event = {
             "event_id": str(uuid.uuid4()),
@@ -272,9 +284,8 @@ class ODPSWebhookEventIntegrationTest(TestCase):
         # Should not raise exception
         subscriber._handle_odps_event(event)
 
-        # Verify no deliveries were created
-        deliveries = WebhookDelivery.objects.all()
-        self.assertEqual(deliveries.count(), 0)
+        # Verify no new deliveries were created
+        self.assertEqual(WebhookDelivery.objects.count(), count_before)
 
     def test_odps_event_subscriber_handles_webhook_errors_gracefully(self):
         """Test that ODPS event subscriber handles webhook errors gracefully (real server 500)."""

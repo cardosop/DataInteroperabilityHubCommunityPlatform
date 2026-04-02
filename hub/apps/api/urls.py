@@ -12,13 +12,13 @@ from .views import (
     ensure_e2e_tenant_switch_setup,
 )
 
+# Non-MVP areas remain mounted so URLconf is stable across Django settings reloads
+# (e.g. tests using @override_settings). When MVP_MODE is True, access is blocked
+# by MvpModeApiGateMiddleware and omitted from OpenAPI via postprocess_drop_mvp_gated_paths.
 urlpatterns = [
-    # API info endpoint
     path("", api_info, name="api-info"),
-    # OpenAPI schema endpoints
     path("openapi.json", OpenAPISchemaView.as_view(), name="openapi-schema-v1"),
     path("openapi.yaml", OpenAPIYAMLView.as_view(), name="openapi-schema-yaml"),
-    # API v1 endpoints
     path("auth/", include("hub.apps.auth.urls")),
     path("tenants/", include("hub.apps.tenants.urls")),
     path("users/", include("hub.apps.users.urls")),
@@ -41,9 +41,6 @@ urlpatterns = [
     path("events/", include("hub.apps.core.events.urls")),
     path("", include("hub.apps.api.analytics.urls")),
     path("governance/", include("hub.apps.governance.urls")),
-    # Note: observability.urls includes /metrics/ endpoint, but metrics endpoint should NOT be under /api/v1/
-    # because it needs to bypass DRF authentication for Prometheus scraping
-    # Import the API v1 specific URL patterns (without metrics endpoint)
     path("", include("hub.apps.observability.urls_api_v1")),
     path("ai/", include("hub.apps.ai.urls")),
     path("", include("hub.apps.social.urls")),
@@ -60,9 +57,6 @@ urlpatterns = [
     path("test/ensure-e2e-subscription/", ensure_e2e_subscription, name="ensure-e2e-subscription"),
     path("test/ensure-e2e-invitation-token/", ensure_e2e_invitation_token, name="ensure-e2e-invitation-token"),
     path("test/ensure-e2e-tenant-switch-setup/", ensure_e2e_tenant_switch_setup, name="ensure-e2e-tenant-switch-setup"),
-    # Catch-all for non-existent API endpoints (must be last)
-    # This will only match if none of the above patterns matched
-    # Use a more specific pattern that doesn't interfere with router actions
     re_path(
         r"^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|test/).*$",
         api_not_found,

@@ -15,6 +15,7 @@ from django.test import TestCase
 from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.tenants.models import TenantConfig
 from hub.apps.users.models import Role, User, UserRole
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -47,8 +48,9 @@ class MigrationCreatePersonalTenantsTest(TestCase):
         """Users with tenant_id=None and is_platform_admin=False get personal tenant."""
         create_personal_tenants_for_users_without_tenant = _get_migration_func()
 
+        email = f"migration-test-user-{uuid.uuid4().hex[:8]}@example.com"
         user = User.objects.create_user(
-            email="migration-test-user@example.com",
+            email=email,
             password="testpass123",
             tenant=None,
             is_platform_admin=False,
@@ -61,7 +63,7 @@ class MigrationCreatePersonalTenantsTest(TestCase):
         self.assertIsNotNone(user.tenant_id, "User should have tenant assigned")
         tenant = user.tenant
         self.assertTrue(
-            tenant.name.startswith("Personal - migration-test-user@example.com"),
+            tenant.name.startswith(f"Personal - {email}"),
             f"Tenant name should start with 'Personal - {{email}}', got {tenant.name}",
         )
         self.assertTrue(tenant.slug.startswith("personal-"))
@@ -85,7 +87,7 @@ class MigrationCreatePersonalTenantsTest(TestCase):
         create_personal_tenants_for_users_without_tenant = _get_migration_func()
 
         platform_admin = User.objects.create_user(
-            email="platform-admin-migration@example.com",
+            email=f"platform-admin-migration-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             is_platform_admin=True,
@@ -105,7 +107,7 @@ class MigrationCreatePersonalTenantsTest(TestCase):
         create_personal_tenants_for_users_without_tenant = _get_migration_func()
 
         user = User.objects.create_user(
-            email="idempotent-test@example.com",
+            email=f"idempotent-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             is_platform_admin=False,

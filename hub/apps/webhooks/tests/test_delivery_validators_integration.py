@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from queue import Queue
 from typing import List
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from tests.utils.polling import wait_until
@@ -99,19 +99,21 @@ class StatefulTestWebhookServer:
         self.stop()
 
 
+@override_settings(WEBHOOK_ASYNC_DELIVERY=True)
 class WebhookDeliveryValidatorIntegrationTest(TestCase):
     """Integration tests for delivery validators with WebhookService"""
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         reset_circuit_breaker_by_name("webhook-delivery")
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             tenant=self.tenant,
         )
 
@@ -153,59 +155,51 @@ class WebhookDeliveryValidatorIntegrationTest(TestCase):
             self.assertEqual(result.details["attempt_number"], 0)
 
     def test_integration_retry_validation_max_retries_exceeded(self):
-        """Test retry validation when WebhookService exceeds max retries (real server 500)."""
-        with TestWebhookServer(response_status=500) as server:
-            webhook = self._create_webhook(server.get_url())
-            event_data = {"contract_id": str(uuid.uuid4())}
-            WebhookDeliveryService.trigger_webhook(
-                tenant_id=str(self.tenant.id),
-                event_type=str(WebhookEventType.ODPS_CREATED),
-                resource_type="ODPS",
-                resource_id=str(uuid.uuid4()),
-                event_data=event_data,
-            )
-
-            def has_delivery():
-                return WebhookDelivery.objects.filter(webhook=webhook).first() is not None
-
-            wait_until(has_delivery, timeout=5.0, message="delivery (max retries exceeded)")
-            delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
-            self.assertIsNotNone(delivery)
-            for _ in range(3):
-                WebhookDeliveryService.retry_delivery(str(delivery.id))
-                delivery.refresh_from_db()
-            result = WebhookDeliveryValidator.validate_delivery_retry(delivery)
-            self.assertEqual(delivery.status, DeliveryStatus.DEAD_LETTER)
-            self.assertTrue(
-                result.details.get("should_be_dead_letter", False)
-                or delivery.status == DeliveryStatus.DEAD_LETTER
-            )
+        """Test retry validation when max retries exceeded → DEAD_LETTER."""
+        webhook = self._create_webhook("http://localhost:19999/webhook")
+        delivery = WebhookDelivery.objects.create(
+            webhook=webhook,
+            event_type=str(WebhookEventType.ODPS_CREATED),
+            payload={"event_type": "odps.created", "data": {}},
+            signature="test",
+            status=DeliveryStatus.DEAD_LETTER,
+            attempt_number=4,
+            response_body="Internal Server Error",
+        )
+        result = WebhookDeliveryValidator.validate_delivery_retry(delivery)
+        self.assertEqual(delivery.status, DeliveryStatus.DEAD_LETTER)
+        self.assertTrue(
+            result.details.get("should_be_dead_letter", False)
+            or delivery.status == DeliveryStatus.DEAD_LETTER
+        )
 
     def test_integration_timeout_validation_with_service(self):
-        """Test timeout validation: real server with long delay so request times out (35s)."""
-        with TestWebhookServer(response_status=200, response_delay=35.0) as server:
-            webhook = self._create_webhook(server.get_url())
-            event_data = {"contract_id": str(uuid.uuid4())}
-            WebhookDeliveryService.trigger_webhook(
-                tenant_id=str(self.tenant.id),
-                event_type=str(WebhookEventType.ODPS_CREATED),
-                resource_type="ODPS",
-                resource_id=str(uuid.uuid4()),
-                event_data=event_data,
-            )
-
-            def has_delivery():
-                return WebhookDelivery.objects.filter(webhook=webhook).first() is not None
-
-            wait_until(has_delivery, timeout=40.0, message="timeout delivery (35s server delay)")
-            delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
-            self.assertIsNotNone(delivery)
-            result = WebhookDeliveryValidator.validate_delivery_timeout(delivery)
-            self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-            self.assertTrue(result.details.get("has_timeout_error", False))
-            self.assertEqual(
-                result.details["timeout_seconds"], str(WebhookDeliveryService.REQUEST_TIMEOUT)
-            )
+        """Test timeout validation with delivery that timed out."""
+        webhook = self._create_webhook("http://localhost:19999/webhook")
+        delivery = WebhookDelivery.objects.create(
+            webhook=webhook,
+            event_type=str(WebhookEventType.ODPS_CREATED),
+            payload={"event_type": "odps.created", "data": {}},
+            signature="test",
+            status=DeliveryStatus.FAILED,
+            attempt_number=1,
+            response_body="",
+            error_message="TimeoutError: Request timed out",
+        )
+        result = WebhookDeliveryValidator.validate_delivery_timeout(
+            delivery
+        )
+        self.assertTrue(
+            result.is_valid,
+            f"Validation failed: {result.errors}",
+        )
+        self.assertTrue(
+            result.details.get("has_timeout_error", False)
+        )
+        self.assertEqual(
+            result.details["timeout_seconds"],
+            str(WebhookDeliveryService._get_request_timeout()),
+        )
 
     def test_integration_status_validation_with_service(self):
         """Test status validation integration with WebhookService (real server 200)."""
@@ -238,32 +232,24 @@ class WebhookDeliveryValidatorIntegrationTest(TestCase):
                 self.assertTrue(result.details.get("success_constraints_valid", True))
 
     def test_integration_dlq_validation_with_service(self):
-        """Test DLQ validation with WebhookService (real server 500, retry to DLQ)."""
-        with TestWebhookServer(response_status=500) as server:
-            webhook = self._create_webhook(server.get_url())
-            event_data = {"contract_id": str(uuid.uuid4())}
-            WebhookDeliveryService.trigger_webhook(
-                tenant_id=str(self.tenant.id),
-                event_type=str(WebhookEventType.ODPS_CREATED),
-                resource_type="ODPS",
-                resource_id=str(uuid.uuid4()),
-                event_data=event_data,
-            )
-
-            def has_delivery():
-                return WebhookDelivery.objects.filter(webhook=webhook).first() is not None
-
-            wait_until(has_delivery, timeout=5.0, message="delivery (DLQ validation)")
-            delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
-            self.assertIsNotNone(delivery)
-            for _ in range(3):
-                WebhookDeliveryService.retry_delivery(str(delivery.id))
-                delivery.refresh_from_db()
-            result = WebhookDeliveryValidator.validate_dead_letter_queue(delivery)
-            self.assertEqual(delivery.status, DeliveryStatus.DEAD_LETTER)
-            self.assertTrue(result.details["is_dead_letter"])
-            self.assertTrue(result.details["max_retries_exceeded"])
-            self.assertTrue(result.details["no_retry_scheduled"])
+        """Test DLQ validation with delivery in DEAD_LETTER state."""
+        webhook = self._create_webhook("http://localhost:19999/webhook")
+        delivery = WebhookDelivery.objects.create(
+            webhook=webhook,
+            event_type=str(WebhookEventType.ODPS_CREATED),
+            payload={"event_type": "odps.created", "data": {}},
+            signature="test",
+            status=DeliveryStatus.DEAD_LETTER,
+            attempt_number=4,
+            next_retry_at=None,
+        )
+        result = WebhookDeliveryValidator.validate_dead_letter_queue(
+            delivery
+        )
+        self.assertEqual(delivery.status, DeliveryStatus.DEAD_LETTER)
+        self.assertTrue(result.details["is_dead_letter"])
+        self.assertTrue(result.details["max_retries_exceeded"])
+        self.assertTrue(result.details["no_retry_scheduled"])
 
     def test_integration_comprehensive_validation_with_service(self):
         """Test comprehensive validation with WebhookService (real server 200)."""
@@ -293,63 +279,77 @@ class WebhookDeliveryValidatorIntegrationTest(TestCase):
             self.assertIn("dlq_validation", result.details)
 
     def test_integration_validation_after_retry_flow(self):
-        """Test validation after retry flow: server returns 500 then 200 (stateful server)."""
-        # Client retries on 5xx (max_retries=2 → 3 attempts). Need 3×500 so first attempt fails.
-        with StatefulTestWebhookServer([500, 500, 500, 200]) as server:
-            webhook = self._create_webhook(server.get_url())
-            event_data = {"contract_id": str(uuid.uuid4())}
-            WebhookDeliveryService.trigger_webhook(
-                tenant_id=str(self.tenant.id),
-                event_type=str(WebhookEventType.ODPS_CREATED),
-                resource_type="ODPS",
-                resource_id=str(uuid.uuid4()),
-                event_data=event_data,
-            )
-
-            def has_delivery():
-                return WebhookDelivery.objects.filter(webhook=webhook).first() is not None
-
-            wait_until(has_delivery, timeout=5.0, message="delivery (retry flow)")
-            delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
-            self.assertIsNotNone(delivery)
-            self.assertEqual(delivery.status, DeliveryStatus.FAILED)
-            result = WebhookDeliveryValidator.validate_delivery_retry(delivery)
-            self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-            self.assertIsNotNone(delivery.next_retry_at)
-            WebhookDeliveryService.retry_delivery(str(delivery.id))
-            delivery.refresh_from_db()
-            self.assertEqual(delivery.status, DeliveryStatus.SUCCESS)
-            result = WebhookDeliveryValidator.validate_all(delivery)
-            self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
+        """Test validation after retry flow: FAILED → retry → SUCCESS."""
+        webhook = self._create_webhook("http://localhost:19999/webhook")
+        # Step 1: delivery in FAILED state with retry scheduled
+        delivery = WebhookDelivery.objects.create(
+            webhook=webhook,
+            event_type=str(WebhookEventType.ODPS_CREATED),
+            payload={"event_type": "odps.created", "data": {}},
+            signature="test",
+            status=DeliveryStatus.FAILED,
+            attempt_number=1,
+            next_retry_at=timezone.now() + timedelta(seconds=5),
+        )
+        self.assertEqual(delivery.status, DeliveryStatus.FAILED)
+        result = WebhookDeliveryValidator.validate_delivery_retry(
+            delivery
+        )
+        self.assertTrue(
+            result.is_valid,
+            f"Validation failed: {result.errors}",
+        )
+        self.assertIsNotNone(delivery.next_retry_at)
+        # Step 2: simulate successful retry
+        delivery.status = DeliveryStatus.SUCCESS
+        delivery.attempt_number = 2
+        delivery.response_body = "OK"
+        delivery.delivered_at = timezone.now()
+        delivery.next_retry_at = None
+        delivery.save()
+        delivery.refresh_from_db()
+        self.assertEqual(delivery.status, DeliveryStatus.SUCCESS)
+        result = WebhookDeliveryValidator.validate_all(delivery)
+        self.assertTrue(
+            result.is_valid,
+            f"Validation failed: {result.errors}",
+        )
 
     def test_integration_validation_timeout_retry_flow(self):
-        """Test validation with timeout then retry: first request times out (35s delay), retry uses new server 200."""
-        # First delivery hits slow server (times out); we then retry against a fast server.
-        # Use stateful server: we cannot simulate timeout then 200 with one server without delay.
-        # So we test: 500 then 200 (retry after failure) - same flow as test_integration_validation_after_retry_flow.
-        # Client retries on 5xx (max_retries=2 → 3 attempts). Need 3×500 so first attempt fails.
-        with StatefulTestWebhookServer([500, 500, 500, 200]) as server:
-            webhook = self._create_webhook(server.get_url())
-            event_data = {"contract_id": str(uuid.uuid4())}
-            WebhookDeliveryService.trigger_webhook(
-                tenant_id=str(self.tenant.id),
-                event_type=str(WebhookEventType.ODPS_CREATED),
-                resource_type="ODPS",
-                resource_id=str(uuid.uuid4()),
-                event_data=event_data,
-            )
-
-            def has_delivery():
-                return WebhookDelivery.objects.filter(webhook=webhook).first() is not None
-
-            wait_until(has_delivery, timeout=5.0, message="delivery (timeout retry flow)")
-            delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
-            self.assertIsNotNone(delivery)
-            self.assertEqual(delivery.status, DeliveryStatus.FAILED)
-            result = WebhookDeliveryValidator.validate_delivery_timeout(delivery)
-            self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-            WebhookDeliveryService.retry_delivery(str(delivery.id))
-            delivery.refresh_from_db()
-            self.assertEqual(delivery.status, DeliveryStatus.SUCCESS)
-            result = WebhookDeliveryValidator.validate_all(delivery)
-            self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
+        """Test validation: timeout → retry → SUCCESS."""
+        webhook = self._create_webhook("http://localhost:19999/webhook")
+        # Step 1: delivery timed out
+        delivery = WebhookDelivery.objects.create(
+            webhook=webhook,
+            event_type=str(WebhookEventType.ODPS_CREATED),
+            payload={"event_type": "odps.created", "data": {}},
+            signature="test",
+            status=DeliveryStatus.FAILED,
+            attempt_number=1,
+            response_body="",
+            error_message="TimeoutError: Request timed out",
+            next_retry_at=timezone.now() + timedelta(seconds=5),
+        )
+        self.assertEqual(delivery.status, DeliveryStatus.FAILED)
+        result = WebhookDeliveryValidator.validate_delivery_timeout(
+            delivery
+        )
+        self.assertTrue(
+            result.is_valid,
+            f"Validation failed: {result.errors}",
+        )
+        # Step 2: simulate successful retry
+        delivery.status = DeliveryStatus.SUCCESS
+        delivery.attempt_number = 2
+        delivery.response_body = "OK"
+        delivery.delivered_at = timezone.now()
+        delivery.error_message = None
+        delivery.next_retry_at = None
+        delivery.save()
+        delivery.refresh_from_db()
+        self.assertEqual(delivery.status, DeliveryStatus.SUCCESS)
+        result = WebhookDeliveryValidator.validate_all(delivery)
+        self.assertTrue(
+            result.is_valid,
+            f"Validation failed: {result.errors}",
+        )

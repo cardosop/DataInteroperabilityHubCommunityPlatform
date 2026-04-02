@@ -239,7 +239,6 @@ class TestRequestResponseSerialization(TestCase):
 class TestRedisOperations(TestCase):
     """Test Redis operations for idempotency with real Redis."""
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_get_redis_client_success(self):
         """Test getting Redis client successfully."""
         try:
@@ -250,7 +249,6 @@ class TestRedisOperations(TestCase):
         except (redis.ConnectionError, Exception) as e:
             self.skipTest(f"Redis not available: {e}")
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_store_and_get_idempotency_record(self):
         """Test storing and retrieving idempotency record."""
         redis_client = get_real_redis_client_or_skip()
@@ -281,14 +279,12 @@ class TestRedisOperations(TestCase):
         # Cleanup
         redis_client.delete(redis_key)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_get_idempotency_record_not_found(self):
         """Test retrieving non-existent idempotency record."""
         redis_client = get_real_redis_client_or_skip()
         record = get_idempotency_record(redis_client, f"nonexistent-key:{uuid.uuid4()}")
         self.assertIsNone(record)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_get_idempotency_record_invalid_json(self):
         """Test handling invalid JSON in stored record."""
         redis_client = get_real_redis_client_or_skip()
@@ -311,7 +307,6 @@ class TestRedisOperations(TestCase):
 class TestLockOperations(TestCase):
     """Test distributed lock operations with real Redis."""
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_acquire_lock_success(self):
         """Test successfully acquiring lock."""
         redis_client = get_real_redis_client_or_skip()
@@ -323,7 +318,6 @@ class TestLockOperations(TestCase):
         # Cleanup
         release_lock(redis_client, lock_key)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_acquire_lock_timeout(self):
         """Test lock acquisition timeout."""
         redis_client = get_real_redis_client_or_skip()
@@ -340,7 +334,6 @@ class TestLockOperations(TestCase):
         # Cleanup
         release_lock(redis_client, lock_key)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_release_lock(self):
         """Test releasing lock."""
         redis_client = get_real_redis_client_or_skip()
@@ -490,7 +483,6 @@ class TestIdempotencyMiddleware(TestCase):
         self.factory = RequestFactory()
         self.get_response = lambda req: JsonResponse({"id": "123"}, status=201)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_middleware_processes_request_with_key(self):
         """Test middleware processes request with idempotency key."""
         redis_client = get_real_redis_client_or_skip()
@@ -518,7 +510,6 @@ class TestIdempotencyMiddleware(TestCase):
         )
         redis_client.delete(redis_key)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_middleware_returns_cached_response(self):
         """Test middleware returns cached response for duplicate request."""
         redis_client = get_real_redis_client_or_skip()
@@ -567,7 +558,6 @@ class TestIdempotencyMiddleware(TestCase):
         # Cleanup
         redis_client.delete(redis_key)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_middleware_skips_non_api_endpoints(self):
         """Test middleware skips non-API endpoints."""
         middleware = IdempotencyMiddleware(self.get_response)
@@ -584,7 +574,6 @@ class TestIdempotencyMiddleware(TestCase):
         # Should not have Idempotency-Replayed header
         self.assertNotIn('Idempotency-Replayed', response)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_middleware_handles_invalid_key_format(self):
         """Test middleware handles invalid idempotency key format."""
         middleware = IdempotencyMiddleware(self.get_response)
@@ -617,7 +606,6 @@ class TestIdempotencyMiddleware(TestCase):
         response = middleware(request)
         self.assertEqual(response.status_code, 201)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_middleware_handles_concurrent_requests(self):
         """Test middleware handles concurrent requests with same key."""
         redis_client = get_real_redis_client_or_skip()
@@ -646,7 +634,6 @@ class TestIdempotencyMiddleware(TestCase):
         lock_key = build_lock_key(redis_key)
         redis_client.delete(lock_key)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     @patch('hub.apps.api.middleware.idempotency.get_redis_client')
     @patch('hub.apps.api.middleware.idempotency_utils.acquire_lock')
     @patch('hub.apps.api.middleware.idempotency_utils.release_lock')
@@ -678,7 +665,6 @@ class TestIdempotencyMiddleware(TestCase):
         # Should NOT have Idempotency-Replayed header for new request
         self.assertNotIn('Idempotency-Replayed', response)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     @patch('hub.apps.api.middleware.idempotency.get_redis_client')
     def test_middleware_adds_idempotency_replayed_header_for_cached_response(self, mock_get_redis):
         """Test middleware adds Idempotency-Replayed header when returning cached response."""
@@ -718,7 +704,6 @@ class TestIdempotencyMiddleware(TestCase):
         # Should not call get_response for cached response
         get_response.assert_not_called()
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     @patch('hub.apps.api.middleware.idempotency.get_redis_client')
     def test_middleware_adds_idempotency_key_header_on_conflict_error(self, mock_get_redis):
         """Test middleware adds Idempotency-Key header even on conflict error."""
@@ -761,7 +746,6 @@ class TestIdempotencyMiddleware(TestCase):
         # Should not call get_response for conflict error
         get_response.assert_not_called()
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     @patch('hub.apps.api.middleware.idempotency.get_redis_client')
     def test_middleware_adds_idempotency_key_header_on_invalid_key_error(self, mock_get_redis):
         """Test middleware error response for invalid idempotency key format."""
@@ -843,7 +827,6 @@ class TestEdgeCases(TestCase):
 class TestIdempotencyIntegration(TestCase):
     """Integration tests with real Redis connection."""
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_real_redis_store_and_retrieve(self):
         """Test storing and retrieving from real Redis."""
         redis_client = get_real_redis_client_or_skip()
@@ -874,7 +857,6 @@ class TestIdempotencyIntegration(TestCase):
         # Cleanup
         redis_client.delete(redis_key)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_real_redis_lock_operations(self):
         """Test lock operations with real Redis."""
         redis_client = get_real_redis_client_or_skip()
@@ -958,7 +940,6 @@ class TestEdgeCases(TestCase):
 class TestIdempotencyIntegration(TestCase):
     """Integration tests with real Redis connection."""
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_real_redis_store_and_retrieve(self):
         """Test storing and retrieving from real Redis."""
         redis_client = get_real_redis_client_or_skip()
@@ -989,7 +970,6 @@ class TestIdempotencyIntegration(TestCase):
         # Cleanup
         redis_client.delete(redis_key)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_real_redis_lock_operations(self):
         """Test lock operations with real Redis."""
         redis_client = get_real_redis_client_or_skip()

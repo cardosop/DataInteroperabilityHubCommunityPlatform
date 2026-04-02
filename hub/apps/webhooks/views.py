@@ -12,6 +12,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import NotFoundError
@@ -62,15 +63,16 @@ class WebhookViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         # Platform admins can see all webhooks
+        qs = Webhook.objects.select_related("tenant", "created_by")
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            return Webhook.objects.all()
+            return qs
 
         # Get tenant from request
         tenant_id = _resolve_tenant_id(self.request)
         if not tenant_id:
             return Webhook.objects.none()
 
-        return Webhook.objects.filter(tenant_id=tenant_id)
+        return qs.filter(tenant_id=tenant_id)
 
     def _get_tenant_id(self):
         return _resolve_tenant_id(self.request)
@@ -187,9 +189,15 @@ class WebhookViewSet(viewsets.ModelViewSet):
         """
         webhook = self.get_object()
 
-        deliveries = WebhookDelivery.objects.filter(webhook=webhook).order_by("-created_at")[:100]
+        queryset = WebhookDelivery.objects.filter(webhook=webhook).order_by("-created_at")
 
-        serializer = WebhookDeliverySerializer(deliveries, many=True)
+        paginator = StandardPageNumberPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        if page is not None:
+            serializer = WebhookDeliverySerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+
+        serializer = WebhookDeliverySerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="event-types")

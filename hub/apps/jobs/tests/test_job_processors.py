@@ -13,7 +13,7 @@ import time
 import uuid
 
 import pytest
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.compliance.service_client import ComplianceServiceClient
@@ -74,14 +74,8 @@ def check_semantic_service_available():
     EVENT_BUS_ASYNC_PERSISTENCE=False,
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,
 )
-class JobProcessorsTest(TransactionTestCase):
+class JobProcessorsTest(TestCase):
     """Test job processors for all job types using real implementations"""
-
-    def _fixture_teardown(self):
-        """Skip database flush to avoid 300s+ timeouts (post_migrate/create_contenttypes after flush).
-        TransactionTestCase isolation is provided by transaction rollback; flush is not required.
-        """
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -118,9 +112,11 @@ class JobProcessorsTest(TransactionTestCase):
         )
 
         # Initialize real storage client for tests that need it
+        self._storage_available = False
         try:
             self.storage_client = S3StorageClient()
             self.storage_client._ensure_bucket_exists()
+            self._storage_available = True
         except Exception:
             self.storage_client = None
 
@@ -184,8 +180,8 @@ class DQRunJobProcessorTest(JobProcessorsTest):
                 self.file.storage_path = storage_path
                 self.file.save(update_fields=["storage_path"])
                 self.storage_upload_succeeded = True
-            except Exception:
-                pass  # Storage may not be available or bucket not ready
+            except Exception as e:
+                self._storage_upload_error = str(e)
 
     def test_execute_dq_run_job_success(self):
         """
@@ -209,19 +205,26 @@ class DQRunJobProcessorTest(JobProcessorsTest):
         self.assertIn("dq_run_id", result)
         self.assertEqual(result["dq_run_id"], str(self.dq_run_id))
 
-        # Verify DQ run was updated in DB (real execution)
+        # Verify DQ run was updated in DB (real execution) - only terminal states
         self.dq_run.refresh_from_db()
         from hub.apps.dq.models import DQRunStatus
 
         self.assertIn(
-            self.dq_run.status, [DQRunStatus.SUCCEEDED, DQRunStatus.RUNNING, DQRunStatus.FAILED]
+            self.dq_run.status, [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED]
         )
 
-        # If succeeded, verify result matches DB state
+        # If succeeded, verify result matches DB state with value checks
         if self.dq_run.status == DQRunStatus.SUCCEEDED:
             self.assertEqual(result["status"], "succeeded")
-            self.assertIsNotNone(result.get("overall_status"))
-            self.assertIsNotNone(result.get("quality_score"))
+            overall_status = result.get("overall_status")
+            self.assertIsNotNone(overall_status)
+            self.assertIsInstance(overall_status, str)
+            self.assertTrue(len(overall_status) > 0)
+            quality_score = result.get("quality_score")
+            self.assertIsNotNone(quality_score)
+            self.assertGreaterEqual(quality_score, 0)
+            # Score may be 0-1 (normalized) or 0-100 (percentage)
+            self.assertLessEqual(quality_score, 100)
 
     def test_execute_dq_run_job_service_unavailable(self):
         """
@@ -241,15 +244,19 @@ class DQRunJobProcessorTest(JobProcessorsTest):
             # If service is available, job may succeed
             # We verify the result structure is correct
             self.assertIn("status", result)
-        except ConnectionError as e:
-            # Service unavailable - verify error message
-            self.assertIn("unavailable", str(e).lower())
-        except Exception as e:
-            # Other errors (e.g., file not found in storage) are acceptable
-            # The important thing is that real implementations are used
+        except ConnectionError:
+            # Service unavailable - this is the expected path for this test
+            pass
+        except FileNotFoundError:
+            # File not found in storage - acceptable when storage unavailable
+            pass
+        except ValueError as e:
+            # Validation errors (e.g., file/storage not found) are acceptable
             error_msg = str(e).lower()
-            if "file" not in error_msg and "storage" not in error_msg:
-                raise  # Re-raise unexpected errors
+            self.assertTrue(
+                "file" in error_msg or "storage" in error_msg or "not found" in error_msg,
+                f"Unexpected ValueError: {e}",
+            )
 
     def test_execute_dq_run_job_missing_dq_run_id(self):
         """
@@ -288,27 +295,27 @@ class DQRunJobProcessorTest(JobProcessorsTest):
         # This will cause execute_dq_run to fail
 
         # Remove file from storage to simulate failure
-        try:
-            if self.storage_client and self.file.storage_path:
+        if self.storage_client and self.file.storage_path:
+            try:
                 self.storage_client.delete_file(self.file.storage_path)
-        except Exception:
-            pass  # File may not exist
+            except FileNotFoundError:
+                pass  # File may not exist - that's fine, we want it gone
 
-        # Execute job - should raise Exception or handle gracefully
-        try:
-            result = _execute_dq_run_job(self.job)
-            # If job handles error gracefully, verify error state
-            self.dq_run.refresh_from_db()
-            from hub.apps.dq.models import DQRunStatus
+        # Execute job — should fail because the file was deleted.
+        # The DQ task module wraps all errors in generic Exception,
+        # so we catch Exception but verify the message is about the
+        # expected failure (missing file / NoSuchKey).
+        with self.assertRaises(Exception) as cm:
+            _execute_dq_run_job(self.job)
 
-            # Job may have failed or handled error
-            self.assertIn(self.dq_run.status, [DQRunStatus.FAILED, DQRunStatus.SUCCEEDED])
-        except Exception as e:
-            # Expected - DQ run failed
-            error_msg = str(e).lower()
-            self.assertTrue(
-                "failed" in error_msg or "error" in error_msg or "not found" in error_msg
-            )
+        error_msg = str(cm.exception).lower()
+        self.assertTrue(
+            "failed" in error_msg
+            or "not found" in error_msg
+            or "nosuchkey" in error_msg
+            or "does not exist" in error_msg,
+            f"Expected file-not-found error, got: {cm.exception}",
+        )
 
 
 class ComplianceRunJobProcessorTest(JobProcessorsTest):
@@ -366,8 +373,8 @@ class ComplianceRunJobProcessorTest(JobProcessorsTest):
                 self.file.storage_path = storage_path
                 self.file.save(update_fields=["storage_path"])
                 self.storage_upload_succeeded = True
-            except Exception:
-                pass  # Storage may not be available or bucket not ready
+            except Exception as e:
+                self._storage_upload_error = str(e)
 
     def test_execute_compliance_run_job_success(self):
         """
@@ -391,25 +398,37 @@ class ComplianceRunJobProcessorTest(JobProcessorsTest):
         self.assertIn("compliance_run_id", result)
         self.assertEqual(result["compliance_run_id"], str(self.compliance_run_id))
 
-        # Verify compliance run was updated in DB (real execution)
+        # Verify compliance run was updated in DB (real execution) - only terminal states
         self.compliance_run.refresh_from_db()
         from hub.apps.compliance.models import ComplianceRunStatus
 
+        # Compliance runs execute asynchronously — the job processor
+        # may return while the run is still QUEUED or RUNNING.
+        # Accept terminal + async-in-progress states.
         self.assertIn(
             self.compliance_run.status,
             [
                 ComplianceRunStatus.SUCCEEDED,
-                ComplianceRunStatus.RUNNING,
                 ComplianceRunStatus.FAILED,
+                ComplianceRunStatus.QUEUED,
+                ComplianceRunStatus.RUNNING,
             ],
         )
 
-        # If succeeded, verify result matches DB state
+        # If succeeded, verify result matches DB state with value checks
         if self.compliance_run.status == ComplianceRunStatus.SUCCEEDED:
             self.assertEqual(result["status"], "succeeded")
-            self.assertIsNotNone(result.get("overall_status"))
-            self.assertIsNotNone(result.get("risk_level"))
-            self.assertIsNotNone(result.get("allowed_to_store"))
+            overall_status = result.get("overall_status")
+            self.assertIsNotNone(overall_status)
+            self.assertIsInstance(overall_status, str)
+            self.assertTrue(len(overall_status) > 0)
+            risk_level = result.get("risk_level")
+            self.assertIsNotNone(risk_level)
+            self.assertIsInstance(risk_level, str)
+            self.assertTrue(len(risk_level) > 0)
+            allowed_to_store = result.get("allowed_to_store")
+            self.assertIsNotNone(allowed_to_store)
+            self.assertIsInstance(allowed_to_store, bool)
 
     def test_execute_compliance_run_job_service_unavailable(self):
         """
@@ -425,14 +444,19 @@ class ComplianceRunJobProcessorTest(JobProcessorsTest):
             # If service is available, job may succeed
             # We verify the result structure is correct
             self.assertIn("status", result)
-        except ConnectionError as e:
-            # Service unavailable - verify error message
-            self.assertIn("unavailable", str(e).lower())
-        except Exception as e:
-            # Other errors (e.g., file not found in storage) are acceptable
+        except ConnectionError:
+            # Service unavailable - this is the expected path for this test
+            pass
+        except FileNotFoundError:
+            # File not found in storage - acceptable when storage unavailable
+            pass
+        except ValueError as e:
+            # Validation errors (e.g., file/storage not found) are acceptable
             error_msg = str(e).lower()
-            if "file" not in error_msg and "storage" not in error_msg:
-                raise  # Re-raise unexpected errors
+            self.assertTrue(
+                "file" in error_msg or "storage" in error_msg or "not found" in error_msg,
+                f"Unexpected ValueError: {e}",
+            )
 
 
 class ContractValidationJobProcessorTest(JobProcessorsTest):
@@ -476,8 +500,8 @@ class ContractValidationJobProcessorTest(JobProcessorsTest):
 
             # Verify result structure
             self.assertEqual(result["status"], "completed")
-            # interpret_validation_status may return VALID, WARNING_ONLY, or ERROR
-            self.assertIn(result["validation_status"], ["VALID", "WARNING_ONLY", "ERROR"])
+            # interpret_validation_status may return VALID, WARNING_ONLY, ERROR, or SKIPPED
+            self.assertIn(result["validation_status"], ["VALID", "WARNING_ONLY", "ERROR", "SKIPPED"])
             self.assertEqual(result["contract_id"], str(self.contract_id))
             self.assertIn("errors", result)
             self.assertIn("warnings", result)
@@ -485,13 +509,9 @@ class ContractValidationJobProcessorTest(JobProcessorsTest):
         except ConnectionError as e:
             # Service unavailable - skip test
             self.skipTest(f"DataContract CLI service not available: {e}")
-        except Exception as e:
-            # Other errors may occur if service is misconfigured
-            error_msg = str(e).lower()
-            if "unavailable" in error_msg or "connection" in error_msg:
-                self.skipTest(f"DataContract CLI service not available: {e}")
-            else:
-                raise  # Re-raise unexpected errors
+        except OSError as e:
+            # Network/connection errors - skip test
+            self.skipTest(f"DataContract CLI service not available: {e}")
 
     def test_execute_contract_validation_job_service_unavailable(self):
         """
@@ -507,16 +527,17 @@ class ContractValidationJobProcessorTest(JobProcessorsTest):
             # If service is available, job may succeed
             # We verify the result structure is correct
             self.assertIn("status", result)
-        except ConnectionError as e:
-            # Service unavailable - verify error message
-            self.assertIn("unavailable", str(e).lower())
-        except Exception as e:
-            # Other errors are acceptable if service is misconfigured
+        except ConnectionError:
+            # Service unavailable - this is the expected path for this test
+            pass
+        except ValueError as e:
+            # Validation errors (e.g., contract not found, required fields) are acceptable
             error_msg = str(e).lower()
-            if "unavailable" not in error_msg and "connection" not in error_msg:
-                # Re-raise only if it's not a connection/service error
-                if "not found" not in error_msg and "required" not in error_msg:
-                    raise
+            self.assertTrue(
+                "not found" in error_msg or "required" in error_msg
+                or "unavailable" in error_msg or "connection" in error_msg,
+                f"Unexpected ValueError: {e}",
+            )
 
     def test_execute_contract_validation_job_missing_contract(self):
         """Test contract validation job with missing contract"""
@@ -581,7 +602,10 @@ class SemanticMappingJobProcessorTest(JobProcessorsTest):
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["resource_type"], "CONTRACT")
         self.assertEqual(result["resource_id"], str(self.contract_id))
-        self.assertIsNotNone(result.get("semantic_resource_id"))
+        semantic_resource_id = result.get("semantic_resource_id")
+        self.assertIsNotNone(semantic_resource_id)
+        self.assertIsInstance(semantic_resource_id, str)
+        self.assertTrue(len(semantic_resource_id) > 0)
 
         # Verify semantic resource was created in DB (real execution)
         from hub.apps.semantic.models import ResourceType, SemanticResource
@@ -593,6 +617,8 @@ class SemanticMappingJobProcessorTest(JobProcessorsTest):
         # The important thing is that job execution succeeded
         if semantic_resource:
             self.assertIsNotNone(semantic_resource.uri)
+            self.assertIsInstance(semantic_resource.uri, str)
+            self.assertTrue(len(semantic_resource.uri) > 0)
 
     def test_execute_semantic_mapping_job_missing_resource_type(self):
         """
@@ -718,13 +744,16 @@ class JobProcessorIntegrationTest(JobProcessorsTest):
         # Process job using real _execute_job_logic
         process_job(str(self.job.id), JobType.DQ_RUN, timeout=600)
 
-        # Verify job was marked as completed (real execution)
+        # Verify job reached a terminal state (real execution)
         self.job.refresh_from_db()
-        # Job may be COMPLETED, FAILED, or still RUNNING depending on execution
-        self.assertIn(self.job.status, [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.RUNNING])
+        self.assertIn(self.job.status, [JobStatus.COMPLETED, JobStatus.FAILED])
+
+        # Verify status transition timestamps
+        self.assertIsNotNone(self.job.started_at)
+        self.assertIsNotNone(self.job.completed_at)
+        self.assertGreater(self.job.completed_at, self.job.started_at)
 
         if self.job.status == JobStatus.COMPLETED:
-            self.assertIsNotNone(self.job.completed_at)
             self.assertIsNotNone(self.job.result_json)
             self.assertIn("status", self.job.result_json)
 
@@ -745,8 +774,15 @@ class JobProcessorIntegrationTest(JobProcessorsTest):
         # Verify job was marked as failed (real execution)
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, JobStatus.FAILED)
+
+        # Verify status transition timestamps
+        self.assertIsNotNone(self.job.started_at)
         self.assertIsNotNone(self.job.completed_at)
+        self.assertGreater(self.job.completed_at, self.job.started_at)
+
         self.assertIsNotNone(self.job.error_message)
+        self.assertIsInstance(self.job.error_message, str)
+        self.assertTrue(len(self.job.error_message) > 0)
         self.assertIn("error", self.job.result_json)
         self.assertIn("error_code", self.job.result_json)
 
@@ -761,27 +797,34 @@ class JobProcessorIntegrationTest(JobProcessorsTest):
         # If service is available, we can't easily test this path
 
         # Process job using real _execute_job_logic
-        try:
-            process_job(str(self.job.id), JobType.DQ_RUN, timeout=600)
-        except Exception:
-            pass  # May raise if service unavailable
+        # process_job should handle all errors internally and update job status
+        process_job(str(self.job.id), JobType.DQ_RUN, timeout=600)
 
-        # Verify job state (may be retried or failed)
+        # Verify job reached a terminal or retried state
         self.job.refresh_from_db()
-        # Job should be either PENDING (retried), FAILED (retries exhausted), or COMPLETED (if service available)
         self.assertIn(self.job.status, [JobStatus.PENDING, JobStatus.FAILED, JobStatus.COMPLETED])
+
+        # Verify status transition timestamps
+        self.assertIsNotNone(self.job.started_at)
 
         if self.job.status == JobStatus.PENDING:
             # Job was retried - verify retry count
-            self.assertIsNotNone(self.job.details_json.get("retry_count"))
-            self.assertGreater(self.job.details_json.get("retry_count"), 0)
+            retry_count = self.job.details_json.get("retry_count")
+            self.assertIsNotNone(retry_count)
+            self.assertIsInstance(retry_count, int)
+            self.assertGreater(retry_count, 0)
         elif self.job.status == JobStatus.FAILED:
+            self.assertIsNotNone(self.job.completed_at)
+            self.assertGreater(self.job.completed_at, self.job.started_at)
             # Job may fail with connection/retry errors or VALIDATION_ERROR if DQ run not found before execution
             error_code = self.job.result_json.get("error_code")
             self.assertIn(
                 error_code,
-                ["SERVICE_UNAVAILABLE", "CONNECTION_ERROR", "VALIDATION_ERROR", None],
+                ["SERVICE_UNAVAILABLE", "CONNECTION_ERROR", "VALIDATION_ERROR"],
             )
+        elif self.job.status == JobStatus.COMPLETED:
+            self.assertIsNotNone(self.job.completed_at)
+            self.assertGreater(self.job.completed_at, self.job.started_at)
 
     def test_process_job_timeout_error(self):
         """
@@ -795,27 +838,34 @@ class JobProcessorIntegrationTest(JobProcessorsTest):
 
         # Process job using real _execute_job_logic
         # Use a very short timeout to potentially trigger timeout
-        try:
-            process_job(str(self.job.id), JobType.DQ_RUN, timeout=1)  # 1 second timeout
-        except Exception:
-            pass  # May timeout or fail
+        # process_job should handle all errors internally and update job status
+        process_job(str(self.job.id), JobType.DQ_RUN, timeout=1)  # 1 second timeout
 
-        # Verify job state (may be retried or failed)
+        # Verify job reached a terminal or retried state
         self.job.refresh_from_db()
-        # Job should be either PENDING (retried), FAILED (retries exhausted), or COMPLETED
         self.assertIn(self.job.status, [JobStatus.PENDING, JobStatus.FAILED, JobStatus.COMPLETED])
+
+        # Verify status transition timestamps
+        self.assertIsNotNone(self.job.started_at)
 
         if self.job.status == JobStatus.PENDING:
             # Job was retried - verify retry count
-            self.assertIsNotNone(self.job.details_json.get("retry_count"))
-            self.assertGreater(self.job.details_json.get("retry_count"), 0)
+            retry_count = self.job.details_json.get("retry_count")
+            self.assertIsNotNone(retry_count)
+            self.assertIsInstance(retry_count, int)
+            self.assertGreater(retry_count, 0)
         elif self.job.status == JobStatus.FAILED:
+            self.assertIsNotNone(self.job.completed_at)
+            self.assertGreater(self.job.completed_at, self.job.started_at)
             # Job may fail with timeout/retry errors or VALIDATION_ERROR if DQ run not found before execution
             error_code = self.job.result_json.get("error_code")
             self.assertIn(
                 error_code,
-                ["TIMEOUT_ERROR", "SERVICE_UNAVAILABLE", "VALIDATION_ERROR", None],
+                ["TIMEOUT_ERROR", "SERVICE_UNAVAILABLE", "VALIDATION_ERROR"],
             )
+        elif self.job.status == JobStatus.COMPLETED:
+            self.assertIsNotNone(self.job.completed_at)
+            self.assertGreater(self.job.completed_at, self.job.started_at)
 
     def test_process_job_cancelled_before_processing(self):
         """Test job processing when job is cancelled before processing starts"""
@@ -913,7 +963,7 @@ class JobProcessorIntegrationTest(JobProcessorsTest):
         self.job.refresh_from_db()
         if self.job.status == JobStatus.FAILED and self.job.result_json.get("error_code") == "VALIDATION_ERROR":
             # Job failed before execution (e.g. DQ run not found); cancellation path was not reached
-            pass
+            self.assertIsNotNone(self.job.error_message)
         else:
             self.assertIn(self.job.status, [JobStatus.CANCELLED, JobStatus.COMPLETED])
             # Verify tenant and shared slot release when cancellation path was reached

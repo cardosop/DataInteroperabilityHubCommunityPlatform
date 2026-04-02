@@ -143,7 +143,7 @@ class TestCKANInstancesRegistry(TestCase):
         self.assertEqual(config.base_url, "https://demo.ckan.org")
         self.assertEqual(config.connector_type, "ckan")  # Standard CKAN API
         self.assertFalse(config.is_production)
-        self.assertTrue(config.is_test_default)
+        self.assertFalse(config.is_test_default)
 
         # Test backward compatibility alias
         self.assertIsInstance(config, CKANInstanceConfig)  # Should work via alias
@@ -247,13 +247,13 @@ class TestGetCKANInstanceConfig(TestCase):
 class TestGetDefaultTestInstance(TestCase):
     """Test get_default_test_instance helper function"""
 
-    def test_get_default_test_instance_returns_demo(self):
-        """Test that get_default_test_instance returns demo.ckan.org"""
+    def test_get_default_test_instance_returns_default(self):
+        """Test that get_default_test_instance returns the ckan-test local instance"""
         config = get_default_test_instance()
 
         self.assertIsNotNone(config)
         self.assertIsInstance(config, CKANInstanceConfig)
-        self.assertEqual(config.name, "demo.ckan.org")
+        self.assertEqual(config.name, "ckan-test")
         self.assertTrue(config.is_test_default)
 
     def test_default_test_instance_is_registered(self):

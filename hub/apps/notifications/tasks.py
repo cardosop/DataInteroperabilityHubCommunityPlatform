@@ -11,10 +11,12 @@ from django.contrib.auth import get_user_model
 import structlog
 import json
 
+from .business_rules import NotificationsBusinessRules
 from .services import get_email_service, EmailServiceError
 from .templates import (
     render_email_template,
     build_invitation_url,
+    build_email_verification_url,
     build_password_reset_url,
     build_job_url,
     build_contract_url,
@@ -98,6 +100,44 @@ def send_email_async(
     Returns:
         Dict with 'success' (bool) and 'delivery_id' (str)
     """
+    # Validate via NotificationsBusinessRules before sending (Phase 75.1)
+    #
+    # Guard: reject empty / missing-@ recipients upfront because the
+    # base validate() truthiness guard (``if recipient``) silently
+    # skips falsy values like "".
+    if not to_email or not to_email.strip():
+        raise ValueError(
+            "Notification business rules validation failed: "
+            "Recipient email must be provided"
+        )
+    if "@" not in to_email:
+        raise ValueError(
+            "Notification business rules validation failed: "
+            f"Recipient '{to_email}' does not appear to be a "
+            "valid email address"
+        )
+
+    rules = NotificationsBusinessRules(
+        tenant_id=tenant_id, user_id=user_id,
+    )
+    validation_result = rules.validate(
+        recipient=to_email,
+        template=template_name,
+        validation_type="all",
+    )
+    if not validation_result.is_valid:
+        error_msg = "; ".join(validation_result.errors)
+        logger.error(
+            "email_validation_failed",
+            email_type=email_type,
+            to_email=to_email,
+            errors=validation_result.errors,
+        )
+        raise ValueError(
+            f"Notification business rules validation failed: "
+            f"{error_msg}"
+        )
+
     try:
         # Get email service
         email_service = get_email_service()
@@ -245,17 +285,20 @@ def send_email_async(
 
 
 @job('job_low', timeout=60)
-def send_invitation_email(user_id: str):
+def send_invitation_email(user_id: str, plaintext_token: str = None):
     """
     Send user invitation email.
 
     Args:
         user_id: User UUID
+        plaintext_token: Plaintext invitation UUID to embed in the URL (11.3).
+            When provided this value is used directly; the field stored in DB
+            is now a SHA-256 hash so it can no longer be used for the link.
     """
     try:
         user = User.objects.get(id=user_id)
 
-        if not user.invitation_token:
+        if not user.invitation_token and not plaintext_token:
             logger.warning(
                 "invitation_email_no_token",
                 user_id=user_id,
@@ -263,8 +306,12 @@ def send_invitation_email(user_id: str):
             )
             return
 
+        # Use the supplied plaintext token when available (11.3); fall back to
+        # the DB value for legacy rows created before the hash migration.
+        token_for_url = plaintext_token or str(user.invitation_token)
+
         # Build invitation URL
-        invitation_url = build_invitation_url(str(user.invitation_token))
+        invitation_url = build_invitation_url(token_for_url)
 
         # Prepare template context
         context = {
@@ -310,17 +357,20 @@ def send_invitation_email(user_id: str):
 
 
 @job('job_low', timeout=60)
-def send_password_reset_email(user_id: str):
+def send_password_reset_email(user_id: str, plaintext_token: str = None):
     """
     Send password reset email.
 
     Args:
         user_id: User UUID
+        plaintext_token: Plaintext reset UUID to embed in the URL (11.3).
+            The DB column now stores a SHA-256 hash; this argument carries
+            the un-hashed value for link construction.
     """
     try:
         user = User.objects.get(id=user_id)
 
-        if not user.password_reset_token:
+        if not user.password_reset_token and not plaintext_token:
             logger.warning(
                 "password_reset_email_no_token",
                 user_id=user_id,
@@ -328,8 +378,10 @@ def send_password_reset_email(user_id: str):
             )
             return
 
+        token_for_url = plaintext_token or str(user.password_reset_token)
+
         # Build password reset URL
-        reset_url = build_password_reset_url(str(user.password_reset_token))
+        reset_url = build_password_reset_url(token_for_url)
 
         # Prepare template context
         context = {
@@ -369,6 +421,71 @@ def send_password_reset_email(user_id: str):
             user_id=user_id,
             error=str(e),
             exc_info=True
+        )
+        raise
+
+
+@job('job_low', timeout=60)
+def send_email_verification_email(user_id: str, plaintext_token: str = None):
+    """
+    Send email verification link (Phase 204).
+
+    Args:
+        user_id: User UUID
+        plaintext_token: Signed token for the verify URL (DB stores SHA-256 hash).
+    """
+    try:
+        user = User.objects.get(id=user_id)
+
+        if not user.email_verification_token and not plaintext_token:
+            logger.warning(
+                "email_verification_no_token",
+                user_id=user_id,
+                message="User has no email verification token",
+            )
+            return
+
+        token_for_url = plaintext_token
+        if not token_for_url:
+            logger.warning(
+                "email_verification_missing_plaintext",
+                user_id=user_id,
+            )
+            return
+
+        verify_url = build_email_verification_url(token_for_url)
+        context = {
+            "user": user,
+            "verify_url": verify_url,
+        }
+
+        result = send_email_async(
+            email_type=EmailType.EMAIL_VERIFICATION,
+            to_email=user.email,
+            subject=f"Verify your email — {getattr(settings, 'APP_NAME', 'Meshant')}",
+            template_name="notifications/emails/email_verification.html",
+            context=context,
+            tenant_id=str(user.tenant.id) if user.tenant else None,
+            user_id=str(user.id),
+        )
+
+        logger.info(
+            "email_verification_sent",
+            user_id=user_id,
+            email=user.email,
+            success=result.get("success", False),
+        )
+        return result
+
+    except User.DoesNotExist:
+        logger.error("email_verification_user_not_found", user_id=user_id)
+        raise
+    except Exception as e:
+        logger.error(
+            "email_verification_error",
+            user_id=user_id,
+            error=str(e),
+            exc_info=True,
         )
         raise
 

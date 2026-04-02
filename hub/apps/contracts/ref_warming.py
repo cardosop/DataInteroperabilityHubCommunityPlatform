@@ -148,7 +148,9 @@ def get_frequently_accessed_refs(
 def warm_ref_cache(
     ref_urls: List[str],
     tenant_id: Optional[str] = None,
-    batch_size: int = 10
+    batch_size: int = 10,
+    *,
+    resolver: Optional[RefResolver] = None,
 ) -> Dict[str, Any]:
     """
     Warm cache for list of external $ref URLs.
@@ -195,11 +197,13 @@ def warm_ref_cache(
         message=f"Starting cache warming for {len(ref_urls)} refs"
     )
 
-    # Create resolver for warming
-    resolver = RefResolver(
-        tenant_id=tenant_id,
-        enable_caching=True
-    )
+    # Resolver: caller may inject (e.g. tests with transport-bound resolve_external);
+    # production/management command use the default RefResolver.
+    if resolver is None:
+        resolver = RefResolver(
+            tenant_id=tenant_id,
+            enable_caching=True,
+        )
 
     # Process refs in batches
     for i in range(0, len(ref_urls), batch_size):

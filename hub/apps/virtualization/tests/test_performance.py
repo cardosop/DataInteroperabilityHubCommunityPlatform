@@ -9,6 +9,8 @@ from django.utils import timezone
 from django.core.cache import cache
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from hub.apps.virtualization.models import (
     VirtualDataset,
     QueryExecution,
@@ -20,6 +22,7 @@ from hub.apps.virtualization.models import (
 from hub.apps.virtualization.services import VirtualizationService
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -30,12 +33,13 @@ class VirtualizationPerformanceTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -140,9 +144,10 @@ class VirtualizationPerformanceTest(TestCase):
         self.assertIsNotNone(execution1)
         self.assertIsNotNone(execution2)
 
-        # If second execution used cache, it should have cache_key
-        if execution2.result_cache_key:
-            self.assertTrue(execution2.get_metric("cached", False) or execution2.metrics.get("cached", False))
+        # Second execution should use cache
+        self.assertIsNotNone(execution2.result_cache_key,
+                             "Second execution should have cache key")
+        self.assertTrue(execution2.get_metric("cached", False))
 
     def test_result_size_handling(self):
         """Test that large result sets are handled efficiently."""

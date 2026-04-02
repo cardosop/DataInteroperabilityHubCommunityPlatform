@@ -7,12 +7,13 @@ attributes (status_code, duration).
 """
 import time
 import logging
+import structlog
 from typing import Optional
 from django.http import HttpRequest, HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 from django.conf import settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # OpenTelemetry availability
 OPENTELEMETRY_AVAILABLE = False

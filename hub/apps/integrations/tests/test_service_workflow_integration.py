@@ -5,6 +5,7 @@ Tests the integration between MarketplaceIntegrationService and MarketplaceSyncW
 including workflow instance creation, status syncing, and progress tracking.
 """
 
+import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
@@ -52,11 +53,12 @@ class MarketplaceServiceWorkflowIntegrationTest(TestCase):
         except (ImportError, AttributeError):
             pass
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="VERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="VERIFIED"
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
@@ -72,11 +74,11 @@ class MarketplaceServiceWorkflowIntegrationTest(TestCase):
         # Register test connector
         from hub.apps.integrations.factory import MarketplaceConnectorFactory
         from hub.apps.orchestration.tests.test_marketplace_sync_workflow import (
-            TestMarketplaceConnector,
+            StubMarketplaceConnector,
         )
 
         MarketplaceConnectorFactory.register_connector(
-            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, TestMarketplaceConnector
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, StubMarketplaceConnector
         )
 
         # Initialize workflow engine and registry
@@ -322,11 +324,12 @@ class MarketplaceSyncE2ETest(TestCase):
         except (ImportError, AttributeError):
             pass
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="VERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="VERIFIED"
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
@@ -342,11 +345,11 @@ class MarketplaceSyncE2ETest(TestCase):
         # Register test connector
         from hub.apps.integrations.factory import MarketplaceConnectorFactory
         from hub.apps.orchestration.tests.test_marketplace_sync_workflow import (
-            TestMarketplaceConnector,
+            StubMarketplaceConnector,
         )
 
         MarketplaceConnectorFactory.register_connector(
-            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, TestMarketplaceConnector
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, StubMarketplaceConnector
         )
 
         # Initialize workflow engine and registry

@@ -27,6 +27,7 @@ from hub.apps.orchestration.saga import (
 from hub.apps.marketplace.models import Order, OrderStatus, Entitlement, EntitlementStatus, Listing, ListingStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
+import uuid
 
 
 class MarketplacePurchaseSagaTest(TestCase):
@@ -35,8 +36,8 @@ class MarketplacePurchaseSagaTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.seller_tenant = Tenant.objects.create(
             name="Seller Tenant",
@@ -44,12 +45,12 @@ class MarketplacePurchaseSagaTest(TestCase):
             kyc_status="VERIFIED"
         )
         self.buyer = User.objects.create_user(
-            email="buyer@example.com",
+            email=f"buyer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
         self.seller = User.objects.create_user(
-            email="seller@example.com",
+            email=f"seller-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.seller_tenant
         )

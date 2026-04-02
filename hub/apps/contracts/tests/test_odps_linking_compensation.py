@@ -29,6 +29,7 @@ from hub.apps.contracts.models import (
 from hub.apps.contracts.odps_linking_compensation import ODPSLinkingCompensation, ODPSLinkingState
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.core.services.base import ValidationError
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

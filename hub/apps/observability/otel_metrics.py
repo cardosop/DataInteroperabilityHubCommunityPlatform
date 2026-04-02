@@ -198,6 +198,26 @@ class _ValueProxy:
         self._count = value
 
 
+def _labeled_metric_cache_key(kwargs: Dict[str, str]) -> frozenset:
+    """Stable cache key for labeled metric instances (same labels -> same _LabeledMetric)."""
+    return frozenset((k, str(v)) for k, v in sorted(kwargs.items()))
+
+
+def _get_or_create_labeled(wrapper: Any, kwargs: Dict[str, Any]) -> Any:
+    """
+    Return a single _LabeledMetric per wrapper+labels so .inc() accumulates on ._value
+    and get_contract_cache_metrics() reads non-zero hit counts.
+    """
+    cache = getattr(wrapper, "_labeled_metrics_cache", None)
+    if cache is None:
+        cache = {}
+        setattr(wrapper, "_labeled_metrics_cache", cache)
+    key = _labeled_metric_cache_key(kwargs)
+    if key not in cache:
+        cache[key] = _LabeledMetric(wrapper, dict(kwargs))
+    return cache[key]
+
+
 class _LabeledMetric:
     """Wrapper for labeled metric operations (compatibility with prometheus-client API)"""
 
@@ -228,8 +248,10 @@ class _LabeledMetric:
         """Observe a value (for histograms)"""
         if hasattr(self.metric, "record"):
             self.metric.record(value, attributes=self.attributes)
+            self._value._count += 1
         elif hasattr(self.metric, "observe"):
             self.metric.observe(value, attributes=self.attributes)
+            self._value._count += 1
 
     def set(self, value: float):
         """Set metric value (for gauges)"""
@@ -283,7 +305,7 @@ class _CounterWrapper:
 
     def labels(self, **kwargs) -> _LabeledMetric:
         """Create a labeled metric (compatibility with prometheus-client API)"""
-        return _LabeledMetric(self, kwargs)
+        return _get_or_create_labeled(self, kwargs)
 
 
 class _HistogramWrapper:
@@ -337,7 +359,7 @@ class _HistogramWrapper:
 
     def labels(self, **kwargs) -> _LabeledMetric:
         """Create a labeled metric (compatibility with prometheus-client API)"""
-        return _LabeledMetric(self, kwargs)
+        return _get_or_create_labeled(self, kwargs)
 
 
 class _UpDownCounterWrapper:
@@ -415,7 +437,7 @@ class _UpDownCounterWrapper:
 
     def labels(self, **kwargs) -> _LabeledMetric:
         """Create a labeled metric (compatibility with prometheus-client API)"""
-        return _LabeledMetric(self, kwargs)
+        return _get_or_create_labeled(self, kwargs)
 
 
 # ============================================================================
@@ -687,7 +709,7 @@ odcs_normalization_total = _CounterWrapper(
 
 odcs_version_distribution_total = _CounterWrapper(
     "odcs_version_distribution_total",
-    "Total number of ODCS documents by version (3.0.2, 3.0.1, 3.0.0, 3.0.0-preview, 2.2.2)",
+    "Total number of ODCS documents by version (3.1.0, 3.0.2, 3.0.1, 3.0.0, 3.0.0-preview, 2.2.2)",
     unit="1",
     expected_labels=("version", "tenant_id"),
 )
@@ -697,6 +719,39 @@ odcs_normalization_regression_total = _CounterWrapper(
     "Total number of ODCS normalization regressions detected",
     unit="1",
     expected_labels=("version", "regression_type", "tenant_id"),
+)
+
+# ODCS v3.1.0 specific metrics (Phase 26)
+odcs_v310_relationships_count = _UpDownCounterWrapper(
+    "odcs_v310_relationships_count",
+    "Number of relationships mapped per v3.1.0 normalization",
+    unit="1",
+    expected_labels=("tenant_id",),
+)
+
+odcs_v310_fallback_total = _CounterWrapper(
+    "odcs_v310_fallback_total",
+    "Number of v3.1.0 contracts that fell back to a non-v3.1.0 normalizer (indicates registration bug)",
+    unit="1",
+    expected_labels=("fallback_normalizer", "tenant_id"),
+)
+
+# Phase 26.17: Backfill progress gauge — set by renormalize_contracts_v310()
+# in hub/apps/contracts/tasks.py.  Value = remaining contracts to re-normalize.
+normalization_backfill_remaining = _UpDownCounterWrapper(
+    "normalization_backfill_remaining",
+    "Number of contracts remaining in the v3.1.0 re-normalization backfill (0 = complete)",
+    unit="1",
+    expected_labels=("tenant_id",),
+)
+
+# Phase 26.17: Unified contract export counter with downgrade tracking.
+# Incremented by ContractExportMixin in views_export.py on every export.
+contract_export_total = _CounterWrapper(
+    "contract_export_total",
+    "Total contract export operations with downgrade tracking",
+    unit="1",
+    expected_labels=("status", "downgrade", "tenant_id"),
 )
 
 # ODCS Generation Metrics (Task 9.5.4.1.2.1)
@@ -890,6 +945,13 @@ job_processing_rate = _CounterWrapper(
     "Total number of jobs processed per second",
     unit="1",
     expected_labels=("job_type", "status", "queue_name"),
+)
+
+job_enqueue_failed_total = _CounterWrapper(
+    "job_enqueue_failed_total",
+    "Total number of job enqueue failures (Redis unavailable, queue full, etc.)",
+    unit="1",
+    expected_labels=("job_type",),
 )
 
 job_queue_length_by_priority = _UpDownCounterWrapper(
@@ -1272,11 +1334,143 @@ marketplace_connection_test_failures_total = _CounterWrapper(
 
 
 # ============================================================================
+# Phase 78 — Business Rule Gap Observability Metrics
+# ============================================================================
+
+business_rule_validation_failures_total = _CounterWrapper(
+    "business_rule_validation_failures_total",
+    "Total number of business rule validation failures",
+    unit="1",
+    expected_labels=("module", "rule_name", "tenant_id"),
+)
+
+workflow_compensation_failures_total = _CounterWrapper(
+    "workflow_compensation_failures_total",
+    "Total number of workflow compensation step failures",
+    unit="1",
+    expected_labels=("workflow_name", "step_name"),
+)
+
+side_effect_failures_total = _CounterWrapper(
+    "side_effect_failures_total",
+    "Total number of side-effect outbox failures (Phase 76)",
+    unit="1",
+    expected_labels=("effect_type",),
+)
+
+poll_timeout_total = _CounterWrapper(
+    "poll_timeout_total",
+    "Total number of compliance/DQ polling timeouts",
+    unit="1",
+    expected_labels=("service",),
+)
+
+
+# ============================================================================
+# Phase 116D: Customer Billing Metrics
+# ============================================================================
+
+billing_reports_generated_total = _CounterWrapper(
+    "billing_reports_generated_total",
+    "Total number of billing reports generated",
+    unit="1",
+    expected_labels=("tenant_id", "customer_id", "currency"),
+)
+
+billing_report_generation_seconds = _HistogramWrapper(
+    "billing_report_generation_seconds",
+    "Billing report generation duration in seconds",
+    unit="s",
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+    expected_labels=("tenant_id",),
+)
+
+billing_report_total_amount = _HistogramWrapper(
+    "billing_report_total_amount",
+    "Billing report total amount (for distribution analysis)",
+    unit="1",
+    buckets=(0, 10, 50, 100, 500, 1000, 5000, 10000, 50000),
+    expected_labels=("tenant_id", "currency"),
+)
+
+billing_report_email_sent_total = _CounterWrapper(
+    "billing_report_email_sent_total",
+    "Total number of billing report emails sent",
+    unit="1",
+    expected_labels=("tenant_id", "customer_id"),
+)
+
+billing_reports_finalized_total = _CounterWrapper(
+    "billing_reports_finalized_total",
+    "Total number of billing reports finalized",
+    unit="1",
+    expected_labels=("tenant_id",),
+)
+
+billing_reports_voided_total = _CounterWrapper(
+    "billing_reports_voided_total",
+    "Total number of billing reports voided",
+    unit="1",
+    expected_labels=("tenant_id",),
+)
+
+
+# ============================================================================
 # Metrics View Function
 # ============================================================================
 
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
+
+
+# ── Transformation Pipeline Metrics (Phase 115E.1) ──────────────────────
+
+transformation_runs_total = _CounterWrapper(
+    "transformation_runs_total",
+    "Total transformation pipeline executions",
+    unit="1",
+    expected_labels=("status", "execution_mode", "tenant_id"),
+)
+
+transformation_duration_seconds = _HistogramWrapper(
+    "transformation_duration_seconds",
+    "Duration of transformation pipeline executions",
+    unit="s",
+    buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0),
+    expected_labels=("pipeline_id", "status", "tenant_id"),
+)
+
+transformation_rows_processed = _CounterWrapper(
+    "transformation_rows_processed",
+    "Total rows processed by transformation pipelines",
+    unit="1",
+    expected_labels=("step_type", "tenant_id"),
+)
+
+transformation_errors_total = _CounterWrapper(
+    "transformation_errors_total",
+    "Total transformation pipeline errors",
+    unit="1",
+    expected_labels=("error_type", "step_type", "tenant_id"),
+)
+
+transformation_memory_bytes = _HistogramWrapper(
+    "transformation_memory_bytes",
+    "Memory usage of transformation pipeline executions",
+    unit="By",
+    buckets=(
+        1048576, 10485760, 52428800, 104857600,
+        268435456, 536870912, 1073741824,
+    ),
+    expected_labels=("pipeline_id", "tenant_id"),
+)
+
+transformation_queue_depth = _UpDownCounterWrapper(
+    "transformation_queue_depth",
+    "Number of transformation pipeline executions in queue",
+    unit="1",
+    expected_labels=("tenant_id",),
+)
 
 
 @csrf_exempt

@@ -1,6 +1,7 @@
 """
 Unit tests for audit event querying and filtering.
 """
+import uuid
 
 from datetime import timedelta
 
@@ -37,13 +38,13 @@ class AuditEventQueryingTest(TestCase):
 
         # Create users
         self.user1 = User.objects.create_user(
-            email="user1@example.com",
+            email=f"user1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE,
         )
         self.user2 = User.objects.create_user(
-            email="user2@example.com",
+            email=f"user2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant2,
             status=UserStatus.ACTIVE,
@@ -51,7 +52,7 @@ class AuditEventQueryingTest(TestCase):
 
         # Create platform admin
         self.platform_admin = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             is_platform_admin=True,
             status=UserStatus.ACTIVE,
@@ -153,6 +154,15 @@ class AuditEventQueryingTest(TestCase):
         event_ids = [event["id"] for event in response.data["results"]]
 
         self.assertNotIn(str(self.event2.id), event_ids)
+
+    def test_filter_by_resource_type_all_results_match(self):
+        """Test filtering by resource_type returns only events of that type."""
+        self.client.force_authenticate(user=self.user1)
+
+        response = self.client.get("/api/v1/audit/audit-events/?resource_type=USER")
+
+        for event in response.data["results"]:
+            self.assertEqual(event["resource_type"], "USER")
 
     def test_filter_by_action_returns_200(self):
         """Test filtering by action returns 200."""
@@ -297,6 +307,19 @@ class AuditEventQueryingTest(TestCase):
         response = self.client.get("/api/v1/audit/audit-events/export/?format=json")
 
         self.assertGreater(len(response.data), 0)
+
+    def test_export_json_events_have_required_fields(self):
+        """Test exported JSON events contain required fields."""
+        self.client.force_authenticate(user=self.user1)
+
+        response = self.client.get("/api/v1/audit/audit-events/export/?format=json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        for event in response.data:
+            self.assertIn("id", event)
+            self.assertIn("action", event)
+            self.assertIn("resource_type", event)
+            self.assertIn("timestamp", event)
 
     def test_export_csv(self):
         """Test exporting audit events as CSV"""

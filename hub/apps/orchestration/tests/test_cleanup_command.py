@@ -18,6 +18,7 @@ from hub.apps.orchestration.models import (
     WorkflowStep,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
+import uuid
 
 User = get_user_model()
 
@@ -28,10 +29,10 @@ class CleanupWorkflowStateCommandTest(TestCase):
     def setUp(self):
         """Set up test data."""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status="ACTIVE"
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status="ACTIVE"
         )
         # Create workflow definition
         self.workflow_def = WorkflowDefinition.objects.create(
@@ -156,8 +157,9 @@ class CleanupWorkflowStateCommandTest(TestCase):
             completed_at=timezone.now() - timedelta(days=100),
         )
 
+        _uid = uuid.uuid4().hex[:8]
         tenant2 = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         tenant2_workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,

@@ -11,7 +11,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TransactionTestCase
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -20,6 +20,7 @@ from hub.apps.compliance.service_client import ComplianceServiceClient
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.tenants.services import get_tenant_compliance_regimes, get_tenant_config
 from hub.apps.tenants.validators import VALID_COMPLIANCE_REGIMES, get_platform_defaults
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -35,7 +36,8 @@ def check_compliance_service_available():
         return False
 
 
-class TenantConfigComplianceIntegrationTest(TransactionTestCase):
+# Using TestCase since _fixture_teardown is pass (no flush needed)
+class TenantConfigComplianceIntegrationTest(TestCase):
     """Test Compliance service integration with tenant configuration"""
 
     # Disable automatic database flush to avoid foreign key constraint issues
@@ -62,7 +64,43 @@ class TenantConfigComplianceIntegrationTest(TransactionTestCase):
             email=f"user-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
+
+        # Assign DATA_PROVIDER role so user passes permission checks
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        UserRole.objects.create(user=self.user, role=provider_role)
+
+        # Create subscription so middleware doesn't block write ops
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        from hub.apps.tenants.models import TenantPlan
+        free_plan = TenantPlan.objects.filter(slug="free").first()
+        if free_plan:
+            Subscription.objects.get_or_create(
+                tenant=self.tenant,
+                defaults={
+                    "plan": free_plan,
+                    "status": SubscriptionStatus.ACTIVE,
+                    "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
+                }
+            )
+
+        # Create a real File so the Compliance endpoint can find it
+        from hub.apps.files.models import File, FileStatus
+        self.test_file = File.objects.create(
+            tenant=self.tenant,
+            name="test-data.csv",
+            content_type="text/csv",
+            size=1024,
+            storage_path=f"tenants/{self.tenant.id}/files/test-data.csv",
+            status=FileStatus.ACTIVE,
+            created_by=self.user,
+        )
+        self.file_id = str(self.test_file.id)
 
         self.platform_defaults = get_platform_defaults()
 
@@ -70,10 +108,11 @@ class TenantConfigComplianceIntegrationTest(TransactionTestCase):
         """Edge case: get_tenant_compliance_regimes with no TenantConfig returns platform default list."""
         regimes = get_tenant_compliance_regimes(str(self.tenant.id))
         self.assertIsInstance(regimes, list)
-        # Platform default typically includes GDPR, LGPD or similar
-        self.assertTrue(
-            len(regimes) >= 0,
-            "Regimes should be a list (possibly empty or platform default)",
+        expected = self.platform_defaults["default_compliance_regimes"]
+        self.assertEqual(
+            set(regimes),
+            set(expected),
+            f"Without TenantConfig, should return platform defaults {expected}, got {regimes}",
         )
 
     def test_compliance_run_with_tenant_specific_regimes(self):
@@ -95,30 +134,41 @@ class TenantConfigComplianceIntegrationTest(TransactionTestCase):
         # Create compliance run without explicit regimes (should use tenant config)
         response = self.client.post(
             "/api/v1/compliance/runs/",
-            {"file_id": "123e4567-e89b-12d3-a456-426614174000", "scan_mode": "internal"},
+            {"file_id": self.file_id, "scan_mode": "internal"},
             format="json",
         )
 
-        # Verify tenant config regimes were used
-        # Response may be 201/202 (success), 400/404 (validation/routing), or 500/503 (service error)
+        # Verify compliance run was created and used tenant config regimes.
+        # Only 201/202 indicates the system actually processed the request.
+        # 400 (bad file_id) or 503 (service down) mean the test can't verify
+        # regime propagation — skip rather than silently pass.
+        if response.status_code in [
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_404_NOT_FOUND,
+        ]:
+            self.skipTest(
+                f"Compliance API returned {response.status_code} (likely invalid file_id) "
+                f"— cannot verify regime propagation"
+            )
+        if response.status_code in [
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        ]:
+            self.skipTest(
+                f"Compliance service error ({response.status_code}) — cannot verify regime propagation"
+            )
+
         self.assertIn(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_202_ACCEPTED,
-                status.HTTP_400_BAD_REQUEST,  # Validation error (e.g., file_id doesn't exist)
-                status.HTTP_404_NOT_FOUND,  # Route not found or resource not found
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            ],
+            [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED],
+            f"Expected 201/202 but got {response.status_code}: "
+            f"{getattr(response, 'data', response.content)}",
         )
 
-        if response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
-            compliance_run = ComplianceRun.objects.latest("created_at")
-            # Regimes are stored in job.details_json
-            job_details = compliance_run.job.details_json
-            applicable_regulations = job_details.get("applicable_regulations", [])
-            self.assertEqual(set(applicable_regulations), {"GDPR", "CCPA"})
+        compliance_run = ComplianceRun.objects.latest("created_at")
+        job_details = compliance_run.job.details_json
+        applicable_regulations = job_details.get("applicable_regulations", [])
+        self.assertEqual(set(applicable_regulations), {"GDPR", "CCPA"})
 
     def test_compliance_run_with_platform_default(self):
         """Test compliance run uses platform default when tenant config not set using real ComplianceServiceClient"""
@@ -134,32 +184,43 @@ class TenantConfigComplianceIntegrationTest(TransactionTestCase):
         # Create compliance run without explicit regimes (should use platform default)
         response = self.client.post(
             "/api/v1/compliance/runs/",
-            {"file_id": "123e4567-e89b-12d3-a456-426614174000", "scan_mode": "internal"},
+            {"file_id": self.file_id, "scan_mode": "internal"},
             format="json",
         )
 
-        # Verify platform default regimes were used
-        # Response may be 201/202 (success), 400/404 (validation/routing), or 500/503 (service error)
+        # Only 201/202 indicates the system actually processed the request.
+        # 400 (bad file_id) or 503 (service down) mean the test can't verify
+        # regime propagation — skip rather than silently pass.
+        if response.status_code in [
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_404_NOT_FOUND,
+        ]:
+            self.skipTest(
+                f"Compliance API returned {response.status_code} (likely invalid file_id) "
+                f"— cannot verify regime propagation"
+            )
+        if response.status_code in [
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        ]:
+            self.skipTest(
+                f"Compliance service error ({response.status_code}) — cannot verify regime propagation"
+            )
+
         self.assertIn(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_202_ACCEPTED,
-                status.HTTP_400_BAD_REQUEST,  # Validation error (e.g., file_id doesn't exist)
-                status.HTTP_404_NOT_FOUND,  # Route not found or resource not found
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            ],
+            [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED],
+            f"Expected 201/202 but got {response.status_code}: "
+            f"{getattr(response, 'data', response.content)}",
         )
 
-        if response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
-            compliance_run = ComplianceRun.objects.latest("created_at")
-            job_details = compliance_run.job.details_json
-            applicable_regulations = job_details.get("applicable_regulations", [])
-            self.assertEqual(
-                set(applicable_regulations),
-                set(self.platform_defaults["default_compliance_regimes"]),
-            )
+        compliance_run = ComplianceRun.objects.latest("created_at")
+        job_details = compliance_run.job.details_json
+        applicable_regulations = job_details.get("applicable_regulations", [])
+        self.assertEqual(
+            set(applicable_regulations),
+            set(self.platform_defaults["default_compliance_regimes"]),
+        )
 
     def test_compliance_run_with_explicit_regimes_overrides_tenant_config(self):
         """Test explicit regimes in request override tenant config using real ComplianceServiceClient"""
@@ -181,32 +242,41 @@ class TenantConfigComplianceIntegrationTest(TransactionTestCase):
         response = self.client.post(
             "/api/v1/compliance/runs/",
             {
-                "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                "file_id": self.file_id,
                 "scan_mode": "internal",
                 "applicable_regulations": ["CCPA"],  # Explicit override
             },
             format="json",
         )
 
-        # Verify explicit regimes were used
-        # Response may be 201/202 (success), 400/404 (validation/routing), or 500/503 (service error)
+        # Only 201/202 indicates the system actually processed the request.
+        if response.status_code in [
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_404_NOT_FOUND,
+        ]:
+            self.skipTest(
+                f"Compliance API returned {response.status_code} (likely invalid file_id) "
+                f"— cannot verify regime override"
+            )
+        if response.status_code in [
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        ]:
+            self.skipTest(
+                f"Compliance service error ({response.status_code}) — cannot verify regime override"
+            )
+
         self.assertIn(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_202_ACCEPTED,
-                status.HTTP_400_BAD_REQUEST,  # Validation error (e.g., file_id doesn't exist)
-                status.HTTP_404_NOT_FOUND,  # Route not found or resource not found
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            ],
+            [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED],
+            f"Expected 201/202 but got {response.status_code}: "
+            f"{getattr(response, 'data', response.content)}",
         )
 
-        if response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
-            compliance_run = ComplianceRun.objects.latest("created_at")
-            job_details = compliance_run.job.details_json
-            applicable_regulations = job_details.get("applicable_regulations", [])
-            self.assertEqual(set(applicable_regulations), {"CCPA"})
+        compliance_run = ComplianceRun.objects.latest("created_at")
+        job_details = compliance_run.job.details_json
+        applicable_regulations = job_details.get("applicable_regulations", [])
+        self.assertEqual(set(applicable_regulations), {"CCPA"})
 
     def test_compliance_run_validates_regimes_are_subset_of_allowed(self):
         """Test compliance run validates explicit regimes are subset of allowed_compliance_regimes"""
@@ -223,7 +293,7 @@ class TenantConfigComplianceIntegrationTest(TransactionTestCase):
         response = self.client.post(
             "/api/v1/compliance/runs/",
             {
-                "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                "file_id": self.file_id,
                 "scan_mode": "internal",
                 "applicable_regulations": ["CCPA"],  # Not in allowed_compliance_regimes
             },
@@ -265,27 +335,35 @@ class TenantConfigComplianceIntegrationTest(TransactionTestCase):
         # Create compliance run
         response = self.client.post(
             "/api/v1/compliance/runs/",
-            {"file_id": "123e4567-e89b-12d3-a456-426614174000", "scan_mode": "internal"},
+            {"file_id": self.file_id, "scan_mode": "internal"},
             format="json",
         )
 
-        # Verify compliance service client will receive regimes
-        # (actual call happens in execute_compliance_run worker task)
-        # Response may be 201/202 (success), 400/404 (validation/routing), or 500/503 (service error)
+        # Only 201/202 indicates the system actually processed the request.
+        if response.status_code in [
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_404_NOT_FOUND,
+        ]:
+            self.skipTest(
+                f"Compliance API returned {response.status_code} (likely invalid file_id) "
+                f"— cannot verify regime propagation"
+            )
+        if response.status_code in [
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        ]:
+            self.skipTest(
+                f"Compliance service error ({response.status_code}) — cannot verify regime propagation"
+            )
+
         self.assertIn(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_202_ACCEPTED,
-                status.HTTP_400_BAD_REQUEST,  # Validation error (e.g., file_id doesn't exist)
-                status.HTTP_404_NOT_FOUND,  # Route not found or resource not found
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            ],
+            [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED],
+            f"Expected 201/202 but got {response.status_code}: "
+            f"{getattr(response, 'data', response.content)}",
         )
 
-        if response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
-            compliance_run = ComplianceRun.objects.latest("created_at")
-            job_details = compliance_run.job.details_json
-            applicable_regulations = job_details.get("applicable_regulations", [])
-            self.assertEqual(set(applicable_regulations), {"GDPR", "LGPD"})
+        compliance_run = ComplianceRun.objects.latest("created_at")
+        job_details = compliance_run.job.details_json
+        applicable_regulations = job_details.get("applicable_regulations", [])
+        self.assertEqual(set(applicable_regulations), {"GDPR", "LGPD"})

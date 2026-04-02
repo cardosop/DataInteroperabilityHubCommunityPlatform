@@ -11,6 +11,7 @@ Tests require environment variables:
 - SNOWFLAKE_DATABASE: Optional database name
 """
 
+import unittest
 import os
 from datetime import datetime
 
@@ -47,7 +48,7 @@ def get_snowflake_credentials() -> dict:
     database = os.getenv("SNOWFLAKE_DATABASE")
 
     if not account or not user or not token:
-        pytest.skip(
+        raise unittest.SkipTest(
             "SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, and SNOWFLAKE_TOKEN environment variables are required"
         )
 
@@ -226,7 +227,7 @@ class TestSnowflakeConnectorAuthentication(TestCase):
     def test_authenticate_success(self):
         """Test successful authentication"""
         if not has_snowflake_connection():
-            pytest.skip("Snowflake connection not available")
+            raise unittest.SkipTest("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -268,7 +269,7 @@ class TestSnowflakeConnectorConnectionTest(TestCase):
     def test_test_connection_success(self):
         """Test successful connection test"""
         if not has_snowflake_connection():
-            pytest.skip("Snowflake connection not available")
+            raise unittest.SkipTest("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -290,7 +291,7 @@ class TestSnowflakeConnectorConnectionTest(TestCase):
     def test_test_connection_before_authenticate(self):
         """Test connection test works before authenticate"""
         if not has_snowflake_connection():
-            pytest.skip("Snowflake connection not available")
+            raise unittest.SkipTest("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -356,7 +357,7 @@ class TestSnowflakeConnectorSQLExecution(TestCase):
     def test_execute_sql_simple_query(self):
         """Test executing a simple SQL query"""
         if not has_snowflake_connection():
-            pytest.skip("Snowflake connection not available")
+            raise unittest.SkipTest("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -381,7 +382,7 @@ class TestSnowflakeConnectorSQLExecution(TestCase):
     def test_execute_sql_with_params(self):
         """Test executing SQL query with parameters"""
         if not has_snowflake_connection():
-            pytest.skip("Snowflake connection not available")
+            raise unittest.SkipTest("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -406,7 +407,7 @@ class TestSnowflakeConnectorSQLExecution(TestCase):
     def test_get_connection_reuse(self):
         """Test that _get_connection reuses existing connection"""
         if not has_snowflake_connection():
-            pytest.skip("Snowflake connection not available")
+            raise unittest.SkipTest("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -430,7 +431,7 @@ class TestSnowflakeConnectorSQLExecution(TestCase):
     def test_get_connection_creates_new_on_close(self):
         """Test that _get_connection creates new connection if old one is closed"""
         if not has_snowflake_connection():
-            pytest.skip("Snowflake connection not available")
+            raise unittest.SkipTest("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -620,7 +621,7 @@ class TestSnowflakeConnectorListings(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         if not has_snowflake_connection():
-            pytest.skip("Snowflake connection not available")
+            raise unittest.SkipTest("Snowflake connection not available")
 
         self.credentials = get_snowflake_credentials()
         self.connector = SnowflakeConnector(
@@ -674,7 +675,7 @@ class TestSnowflakeConnectorListings(TestCase):
         # Get first listing to use as filter
         all_listings = self.connector.list_listings(limit=1)
         if not all_listings:
-            pytest.skip("No listings available for filter test")
+            raise unittest.SkipTest("No listings available for filter test")
 
         test_provider = all_listings[0].category or all_listings[0].metadata.get("provider")
         if test_provider:
@@ -689,7 +690,7 @@ class TestSnowflakeConnectorListings(TestCase):
         # Get first listing
         all_listings = self.connector.list_listings(limit=1)
         if not all_listings:
-            pytest.skip("No listings available for get_listing test")
+            raise unittest.SkipTest("No listings available for get_listing test")
 
         listing_id = all_listings[0].marketplace_id
         listing = self.connector.get_listing(listing_id)
@@ -715,7 +716,7 @@ class TestSnowflakeConnectorResources(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         if not has_snowflake_connection():
-            pytest.skip("Snowflake connection not available")
+            raise unittest.SkipTest("Snowflake connection not available")
 
         self.credentials = get_snowflake_credentials()
         self.connector = SnowflakeConnector(
@@ -739,7 +740,7 @@ class TestSnowflakeConnectorResources(TestCase):
         # Get first listing
         all_listings = self.connector.list_listings(limit=1)
         if not all_listings:
-            pytest.skip("No listings available for resource test")
+            raise unittest.SkipTest("No listings available for resource test")
 
         listing_id = all_listings[0].marketplace_id
         resources = self.connector.list_resources(listing_id)
@@ -963,7 +964,7 @@ class TestSnowflakeConnectorSyncPull(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         if not has_snowflake_connection():
-            pytest.skip("Snowflake connection not available")
+            raise unittest.SkipTest("Snowflake connection not available")
 
         self.credentials = get_snowflake_credentials()
         self.connector = SnowflakeConnector(
@@ -1035,7 +1036,7 @@ class TestSnowflakeConnectorSyncPull(TestCase):
         # Get first listing
         all_listings = self.connector.list_listings(limit=1)
         if not all_listings:
-            pytest.skip("No listings available for sync_pull test")
+            raise unittest.SkipTest("No listings available for sync_pull test")
 
         listing_id = all_listings[0].marketplace_id
         result = self.connector.sync_pull(listing_ids=[listing_id])
@@ -1062,7 +1063,7 @@ class TestSnowflakeConnectorMapping(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         if not has_snowflake_connection():
-            pytest.skip("Snowflake connection not available")
+            raise unittest.SkipTest("Snowflake connection not available")
 
         self.credentials = get_snowflake_credentials()
         self.connector = SnowflakeConnector(
@@ -1086,7 +1087,7 @@ class TestSnowflakeConnectorMapping(TestCase):
         # Get first listing
         all_listings = self.connector.list_listings(limit=1)
         if not all_listings:
-            pytest.skip("No listings available for mapping test")
+            raise unittest.SkipTest("No listings available for mapping test")
 
         listing = all_listings[0]
         mapping = self.connector.map_to_hub_asset(listing)
@@ -1105,7 +1106,7 @@ class TestSnowflakeConnectorMapping(TestCase):
         # Get first listing
         all_listings = self.connector.list_listings(limit=1)
         if not all_listings:
-            pytest.skip("No listings available for mapping test")
+            raise unittest.SkipTest("No listings available for mapping test")
 
         listing = all_listings[0]
         sync_job_id = "test_sync_job_123"
@@ -1151,7 +1152,7 @@ class TestSnowflakeConnectorCircuitBreaker(TestCase):
     def test_circuit_breaker_protects_sql_execution(self):
         """Test that SQL execution is protected by circuit breaker"""
         if not has_snowflake_connection():
-            pytest.skip("Snowflake connection not available")
+            raise unittest.SkipTest("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
         connector = SnowflakeConnector(
@@ -1180,7 +1181,7 @@ class TestSnowflakeConnectorContextManager(TestCase):
     def test_context_manager(self):
         """Test connector as context manager"""
         if not has_snowflake_connection():
-            pytest.skip("Snowflake connection not available")
+            raise unittest.SkipTest("Snowflake connection not available")
 
         credentials = get_snowflake_credentials()
 

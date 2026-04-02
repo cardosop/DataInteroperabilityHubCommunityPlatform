@@ -38,9 +38,10 @@ class WebhookDeliveryRetryValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         ensure_tenant_has_active_subscription(self.tenant)
-        self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
+        self.user = User.objects.create_user(email=f"test-{uid}@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
             name="Test Webhook",
@@ -209,9 +210,10 @@ class WebhookDeliveryTimeoutValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         ensure_tenant_has_active_subscription(self.tenant)
-        self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
+        self.user = User.objects.create_user(email=f"test-{uid}@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
             name="Test Webhook",
@@ -241,7 +243,7 @@ class WebhookDeliveryTimeoutValidationTest(TestCase):
         self.assertEqual(len(result.errors), 0)
         # timeout_seconds is stored as string in details, compare as string
         self.assertEqual(
-            result.details["timeout_seconds"], str(WebhookDeliveryService.REQUEST_TIMEOUT)
+            result.details["timeout_seconds"], str(WebhookDeliveryService._get_request_timeout())
         )
         self.assertEqual(result.details["timeout_valid"], "true")
 
@@ -314,9 +316,10 @@ class WebhookDeliveryStatusValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         ensure_tenant_has_active_subscription(self.tenant)
-        self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
+        self.user = User.objects.create_user(email=f"test-{uid}@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
             name="Test Webhook",
@@ -521,9 +524,10 @@ class WebhookDeliveryDLQValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         ensure_tenant_has_active_subscription(self.tenant)
-        self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
+        self.user = User.objects.create_user(email=f"test-{uid}@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
             name="Test Webhook",
@@ -638,9 +642,10 @@ class WebhookDeliveryComprehensiveValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         ensure_tenant_has_active_subscription(self.tenant)
-        self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
+        self.user = User.objects.create_user(email=f"test-{uid}@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
             name="Test Webhook",

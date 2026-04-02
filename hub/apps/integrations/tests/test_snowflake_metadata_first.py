@@ -27,7 +27,7 @@ from hub.apps.integrations.base import (
 from hub.apps.integrations.connectors.snowflake_connector import SnowflakeConnector
 
 # Use pytest.mark.django_db without transaction to avoid foreign key constraint issues
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class TestSnowflakeConnectorMetadataFirst:

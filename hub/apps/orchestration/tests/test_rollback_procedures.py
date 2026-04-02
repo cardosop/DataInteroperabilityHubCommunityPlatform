@@ -10,6 +10,7 @@ All tests follow TDD principles, use real implementations (no mocks/stubs),
 and fix root causes rather than workarounds.
 """
 import os
+import uuid
 
 from django.test import TestCase
 from django.test.utils import override_settings
@@ -33,13 +34,13 @@ class RollbackProceduresTestBase(TestCase):
         super().setUp()
         reset_feature_flags()
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )

@@ -10,7 +10,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from django.test import TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -30,7 +30,7 @@ from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan, Ten
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.timeout(600),
 ]
 
@@ -52,7 +52,7 @@ def _create_plan_with_export_limits(name=None, slug=None):
     )
 
 
-class ScheduledExportServiceCRUDTest(TransactionTestCase):
+class ScheduledExportServiceCRUDTest(TestCase):
     """Tests for create_scheduled_export, update_scheduled_export, delete_scheduled_export."""
 
     reset_sequences = False
@@ -216,7 +216,7 @@ class ScheduledExportServiceCRUDTest(TransactionTestCase):
             )
 
 
-class ScheduledExportServiceRunLifecycleTest(TransactionTestCase):
+class ScheduledExportServiceRunLifecycleTest(TestCase):
     """Tests for create_export_run and update_export_run."""
 
     reset_sequences = False
@@ -340,7 +340,7 @@ class ScheduledExportServiceRunLifecycleTest(TransactionTestCase):
             )
 
 
-class ScheduledExportServiceProcessExportItemTest(TransactionTestCase):
+class ScheduledExportServiceProcessExportItemTest(TestCase):
     """Tests for process_export_item: success, validation, not found, scope, destination types."""
 
     reset_sequences = False

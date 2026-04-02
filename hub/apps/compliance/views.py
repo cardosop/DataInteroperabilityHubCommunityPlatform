@@ -74,13 +74,13 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
 
         # Platform admins can see all compliance runs
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            queryset = ComplianceRun.objects.all()
+            queryset = ComplianceRun.objects.select_related("tenant", "asset", "dataset", "file", "job").all()
         else:
             # Regular users can only see compliance runs in their tenant
             # Use central helper for tenant resolution (Phase 10.1.2)
             tenant_id = get_request_tenant_id(self.request)
             if tenant_id:
-                queryset = ComplianceRun.objects.filter(tenant_id=tenant_id)
+                queryset = ComplianceRun.objects.select_related("tenant", "asset", "dataset", "file", "job").filter(tenant_id=tenant_id)
             else:
                 return ComplianceRun.objects.none()
 
@@ -140,7 +140,13 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         dataset_id = serializer.validated_data.get("dataset_id")
         file_id = serializer.validated_data.get("file_id")
         scan_mode = serializer.validated_data.get("scan_mode", "internal")
-        applicable_regulations = serializer.validated_data.get("applicable_regulations")
+        applicable_regulations = serializer.validated_data.get(
+            "applicable_regulations"
+        )
+        legal_basis = serializer.validated_data.get("legal_basis")
+        destination_jurisdiction = serializer.validated_data.get(
+            "destination_jurisdiction"
+        )
 
         # Determine applicable regulations (explicit request > tenant default > platform default)
         regimes_source = None
@@ -270,6 +276,8 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
                 file_id=file_id,
                 scan_mode=scan_mode,
                 applicable_regulations=applicable_regulations,
+                legal_basis=legal_basis,
+                destination_jurisdiction=destination_jurisdiction,
                 tenant=tenant,
                 user=request.user,
                 asset=asset,
@@ -335,9 +343,15 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         self.check_auditor_permissions(request, "cancel")
         compliance_run = self.get_object()
 
-        if compliance_run.status not in (ComplianceRunStatus.PENDING, ComplianceRunStatus.RUNNING):
+        cancellable = (
+            ComplianceRunStatus.PENDING,
+            ComplianceRunStatus.QUEUED,   # async job queued at service
+            ComplianceRunStatus.RUNNING,
+        )
+        if compliance_run.status not in cancellable:
             return api_error_response(
-                f"Cannot cancel compliance run (current status: {compliance_run.status})",
+                f"Cannot cancel compliance run "
+                f"(current status: {compliance_run.status})",
                 code="INVALID_STATUS",
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
@@ -440,9 +454,9 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         remediation_suggestions = []
 
         for finding in column_findings:
-            column_name = finding.get("column_name", "Unknown")
-            pii_types = finding.get("pii_types", [])
-            risk_score = finding.get("risk_score", 0.0)
+            column_name = finding.get("column") or finding.get("column_name", "Unknown")
+            pii_types = finding.get("categories") or finding.get("pii_types", [])
+            risk_score = finding.get("match_ratio") or finding.get("risk_score", 0.0)
 
             for pii_type in pii_types:
                 violation = {
@@ -468,7 +482,12 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
                 violation_details.append(violation_detail)
 
                 # Generate remediation suggestions
-                if pii_type in ["EMAIL", "PHONE", "SSN", "CREDIT_CARD"]:
+                if pii_type in [
+                    "PII_DIRECT_EMAIL",
+                    "PII_DIRECT_PHONE",
+                    "PII_DIRECT_SSN",
+                    "PAYMENT_CARD",
+                ]:
                     remediation_suggestions.append(
                         {
                             "column": column_name,
@@ -480,7 +499,10 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
 
         # Calculate compliance score breakdown
         total_columns = len(column_findings) if column_findings else 1
-        columns_with_pii = len([f for f in column_findings if f.get("pii_types")])
+        columns_with_pii = len([
+            f for f in column_findings
+            if f.get("categories") or f.get("pii_types")
+        ])
         columns_without_pii = total_columns - columns_with_pii
 
         compliance_score = 100.0
@@ -512,18 +534,29 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
             "recommendations": [],
         }
 
-        # Add recommendations based on risk level
-        if compliance_run.risk_level == "CRITICAL":
+        # Add recommendations based on risk level and actual findings
+        has_violations = len(violations) > 0
+        if has_violations:
+            if compliance_run.risk_level == "CRITICAL":
+                risk_assessment["recommendations"].append(
+                    "Immediate action required: Data contains "
+                    "high-risk PII"
+                )
+            elif compliance_run.risk_level == "HIGH":
+                risk_assessment["recommendations"].append(
+                    "Review and remediate high-risk PII "
+                    "detections"
+                )
+            elif compliance_run.risk_level == "MEDIUM":
+                risk_assessment["recommendations"].append(
+                    "Consider implementing data masking for "
+                    "detected PII"
+                )
+        elif compliance_run.overall_status == "FAIL":
             risk_assessment["recommendations"].append(
-                "Immediate action required: Data contains high-risk PII"
-            )
-        elif compliance_run.risk_level == "HIGH":
-            risk_assessment["recommendations"].append(
-                "Review and remediate high-risk PII detections"
-            )
-        elif compliance_run.risk_level == "MEDIUM":
-            risk_assessment["recommendations"].append(
-                "Consider implementing data masking for detected PII"
+                "Compliance check failed due to policy "
+                "violations (e.g. missing legal basis). "
+                "Review the issues section for details."
             )
 
         # Build violation timeline (simplified - just use created_at for now)
@@ -578,15 +611,21 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
 
 def execute_compliance_run(compliance_run_id: str) -> None:
     """
-    Execute a compliance run.
+    Execute a compliance run (called by the job worker).
 
-    This function is called by the job worker to process a compliance run.
+    Resolves file content, then delegates to
+    ComplianceService._call_compliance_service which handles both the
+    async (202 / QUEUED) and synchronous (200) response paths.
 
     Args:
-        compliance_run_id: Compliance run ID
+        compliance_run_id: Compliance run UUID string
     """
-    from hub.apps.files.models import File as FileModel
+    import logging
+
+    from hub.apps.compliance.services import ComplianceService
     from hub.apps.files.storage import S3StorageClient
+
+    _logger = logging.getLogger(__name__)
 
     compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
     compliance_run.status = ComplianceRunStatus.RUNNING
@@ -594,134 +633,94 @@ def execute_compliance_run(compliance_run_id: str) -> None:
     compliance_run.save(update_fields=["status", "started_at"])
 
     try:
-        # Get scan mode and regulations from job details
-        scan_mode = compliance_run.job.details_json.get("scan_mode", "internal")
-        applicable_regulations = compliance_run.job.details_json.get("applicable_regulations", [])
+        details = compliance_run.job.details_json
+        scan_mode = details.get("scan_mode", "internal")
+        applicable_regulations = details.get("applicable_regulations", [])
+        legal_basis = details.get("legal_basis")
+        destination_jurisdiction = details.get("destination_jurisdiction")
 
-        # Get file content
+        # Resolve the file to scan
         file_obj = None
         file_format = None
 
         if compliance_run.file:
             file_obj = compliance_run.file
-            file_format = file_obj.name.split(".")[-1].lower() if "." in file_obj.name else "csv"
+            file_format = (
+                file_obj.name.split(".")[-1].lower()
+                if "." in file_obj.name
+                else "csv"
+            )
         elif compliance_run.dataset and compliance_run.dataset.file:
             file_obj = compliance_run.dataset.file
             file_format = (
-                compliance_run.dataset.format.lower() if compliance_run.dataset.format else "csv"
+                compliance_run.dataset.format.lower()
+                if compliance_run.dataset.format
+                else "csv"
             )
         elif compliance_run.asset:
-            # Get latest dataset for asset
-            dataset = compliance_run.asset.datasets.order_by("-version").first()
+            dataset = (
+                compliance_run.asset.datasets.order_by("-version").first()
+            )
             if dataset and dataset.file:
                 file_obj = dataset.file
-                file_format = dataset.format.lower() if dataset.format else "csv"
+                file_format = (
+                    dataset.format.lower() if dataset.format else "csv"
+                )
 
         if not file_obj:
             raise ValueError("No file found for compliance run")
 
-        # Download file from storage (for internal mode)
-        # For external/scan-only mode, file should already be available
         storage_client = S3StorageClient()
-        file_content = storage_client.get_file_content(file_obj.storage_path)
-
-        # Call compliance service (tenant_id for metrics — 5.3.2; correlation_id for tracing — 5.4.1)
-        compliance_client = ComplianceServiceClient()
-        tenant_id = (
-            str(compliance_run.tenant_id) if compliance_run.tenant_id else "unknown"
+        file_content = storage_client.get_file_content(
+            file_obj.storage_path
         )
-        result = compliance_client.scan_file(
+
+        tenant_id = (
+            str(compliance_run.tenant_id)
+            if compliance_run.tenant_id
+            else "unknown"
+        )
+
+        # Dispatch through service layer (handles 202 async + 200 sync)
+        ComplianceService._call_compliance_service(
+            compliance_run=compliance_run,
             file_content=file_content,
             file_format=file_format or "csv",
             scan_mode=scan_mode,
-            applicable_regulations=applicable_regulations if applicable_regulations else None,
+            applicable_regulations=(
+                applicable_regulations or None
+            ),
+            legal_basis=legal_basis,
+            destination_jurisdiction=destination_jurisdiction,
             tenant_id=tenant_id,
             correlation_id=str(compliance_run.id),
         )
 
-        # Update compliance run with results (fail-closed: UNKNOWN or missing allowed_to_store → not allowed)
-        compliance_run.status = ComplianceRunStatus.SUCCEEDED
-        compliance_run.overall_status = result.get("overall_status")
-        compliance_run.risk_level = result.get("risk_level")
-        allowed_to_store = result.get("allowed_to_store")
-        if result.get("overall_status") == "UNKNOWN" or allowed_to_store is None:
-            allowed_to_store = False
-        compliance_run.allowed_to_store = bool(allowed_to_store)
-        compliance_run.detected_categories_json = result.get("detected_categories", [])
-        compliance_run.column_findings_json = result.get("column_findings", [])
-        # Initialize regulation_mapping_json with result data, metering will be added below
-        compliance_run.regulation_mapping_json = result.get("regulation_mapping", {})
-        compliance_run.regulations = result.get("applicable_regulations", [])
-
-        # Calculate execution time for metering
-        execution_time = (timezone.now() - compliance_run.started_at).total_seconds()
-
-        # Store metering information in regulation_mapping_json
-        metadata = result.get("metadata", {})
-        if not compliance_run.regulation_mapping_json:
-            compliance_run.regulation_mapping_json = {}
-        compliance_run.regulation_mapping_json["metering"] = {
-            "operation_type": "COMPLIANCE_RUN",
-            "rows_scanned": metadata.get("total_rows", 0),
-            "columns_scanned": metadata.get("total_columns", 0),
-            "execution_time_seconds": round(execution_time, 2),
-            "scan_mode": scan_mode,
-            "risk_score": result.get("risk_score", 0.0),
-            "risk_level": result.get("risk_level"),
-            "allowed_to_store": compliance_run.allowed_to_store,
-            "regulations_checked": result.get("applicable_regulations", []),
-        }
-
-        compliance_run.completed_at = timezone.now()
-        compliance_run.save(
-            update_fields=[
-                "status",
-                "overall_status",
-                "risk_level",
-                "allowed_to_store",
-                "detected_categories_json",
-                "column_findings_json",
-                "regulation_mapping_json",
-                "regulations",
-                "completed_at",
-            ]
-        )
-
-        # Update asset compliance status if applicable
-        if compliance_run.asset:
-            # Map overall_status to Asset compliance status
-            if compliance_run.overall_status == "PASS":
-                comp_status = AssetComplianceStatus.PASS
-            elif compliance_run.overall_status == "WARN":
-                comp_status = AssetComplianceStatus.WARN
-            elif compliance_run.overall_status == "FAIL":
-                comp_status = AssetComplianceStatus.FAIL
-            else:
-                comp_status = AssetComplianceStatus.UNKNOWN
-
-            compliance_run.asset.compliance_status = comp_status
-            compliance_run.asset.save(update_fields=["compliance_status"])
-
-        # Fail-closed enforcement: if allowed_to_store is False, block storage
-        if not compliance_run.allowed_to_store:
-            # This will be enforced at the ingestion/asset activation level
-            # Log warning for now
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.warning(
-                f"Compliance run {compliance_run_id} determined allowed_to_store=False. "
-                f"Storage should be blocked for asset {compliance_run.asset.id if compliance_run.asset else 'N/A'}"
+        # Fail-closed log when storage is blocked
+        if (
+            compliance_run.allowed_to_store is False
+            and compliance_run.status == ComplianceRunStatus.SUCCEEDED
+        ):
+            asset_id = (
+                str(compliance_run.asset.id)
+                if compliance_run.asset
+                else "N/A"
+            )
+            _logger.warning(
+                "Compliance run %s: allowed_to_store=False. "
+                "Storage should be blocked for asset %s.",
+                compliance_run_id,
+                asset_id,
             )
 
     except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.error(f"Compliance run {compliance_run_id} failed: {e}", exc_info=True)
-
+        _logger.error(
+            "Compliance run %s failed: %s",
+            compliance_run_id,
+            e,
+            exc_info=True,
+        )
         compliance_run.status = ComplianceRunStatus.FAILED
-        # For fail-closed, if service fails, we should block storage
         compliance_run.allowed_to_store = False
         compliance_run.regulation_mapping_json = {
             "error": str(e),
@@ -730,5 +729,10 @@ def execute_compliance_run(compliance_run_id: str) -> None:
         }
         compliance_run.completed_at = timezone.now()
         compliance_run.save(
-            update_fields=["status", "allowed_to_store", "regulation_mapping_json", "completed_at"]
+            update_fields=[
+                "status",
+                "allowed_to_store",
+                "regulation_mapping_json",
+                "completed_at",
+            ]
         )

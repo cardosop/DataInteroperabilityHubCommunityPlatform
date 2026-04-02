@@ -12,6 +12,7 @@ from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.observability.models import PipelineExecution
 from hub.apps.observability.pipeline_monitoring import PipelineMonitor
 from hub.apps.tenants.models import KYCStatus, Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -21,8 +22,9 @@ class PipelineMonitorTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
     def test_record_execution(self):

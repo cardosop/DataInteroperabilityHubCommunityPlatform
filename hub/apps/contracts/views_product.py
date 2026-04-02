@@ -6,7 +6,8 @@ Product creation and workflow actions for contract viewsets.
 SAVING CHECKPOINT: This module contains product-related actions.
 """
 
-from django.db import transaction
+from typing import Any, Dict, Optional
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -25,6 +26,20 @@ from .models import Contract, OriginalSpecType
 from .odps_parser import ODPSParser
 from .odps_version_detection import detect_odps_version
 from .serializers import ProductCreateSerializer
+
+
+def _product_error_response(
+    message: str,
+    code: str,
+    details: Optional[Dict[str, Any]] = None,
+    *,
+    http_status: int = status.HTTP_400_BAD_REQUEST,
+) -> Response:
+    """Structured product-API error: tests and clients read ``error.message`` / ``error.code``."""
+    payload: Dict[str, Any] = {"message": message, "code": code}
+    if details:
+        payload["details"] = details
+    return Response({"error": payload}, status=http_status)
 
 
 class ContractProductMixin:
@@ -82,9 +97,9 @@ class ContractProductMixin:
             request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
         )
         if not tenant:
-            return Response(
-                {"error": "User must belong to a tenant to create products"},
-                status=status.HTTP_400_BAD_REQUEST,
+            return _product_error_response(
+                "User must belong to a tenant to create products",
+                "TENANT_REQUIRED",
             )
 
         # Phase 18.2.4: Validate ODPS via business rules before starting workflow
@@ -96,13 +111,10 @@ class ContractProductMixin:
         try:
             odps_doc = ODPSParser.parse(content=original_raw, format=format_str)
         except Exception as parse_err:
-            return Response(
-                {
-                    "error": f"Failed to parse ODPS document: {parse_err}",
-                    "code": "ODPS_PARSE_FAILED",
-                    "details": {"error": str(parse_err)},
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            return _product_error_response(
+                f"Failed to parse ODPS document: {parse_err}",
+                "ODPS_PARSE_FAILED",
+                {"error": str(parse_err)},
             )
         try:
             odps_version = detect_odps_version(odps_doc) or "4.1"
@@ -111,32 +123,25 @@ class ContractProductMixin:
         odps_rules = ODPSBusinessRules()
         structure_result = odps_rules.validate_odps_structure(odps_doc, strict=False)
         if not structure_result.is_valid:
-            return Response(
+            return _product_error_response(
+                "; ".join(structure_result.errors) or "ODPS structure validation failed",
+                "BUSINESS_RULES_VALIDATION",
                 {
-                    "error": "; ".join(structure_result.errors)
-                    or "ODPS structure validation failed",
-                    "code": "BUSINESS_RULES_VALIDATION",
-                    "details": {
-                        "validation_errors": structure_result.errors,
-                        "warnings": structure_result.warnings,
-                        "version": odps_version,
-                    },
+                    "validation_errors": structure_result.errors,
+                    "warnings": structure_result.warnings,
+                    "version": odps_version,
                 },
-                status=status.HTTP_400_BAD_REQUEST,
             )
         version_result = odps_rules.validate_odps_version(odps_doc, required_version=odps_version)
         if not version_result.is_valid:
-            return Response(
+            return _product_error_response(
+                "; ".join(version_result.errors) or "ODPS version validation failed",
+                "BUSINESS_RULES_VALIDATION",
                 {
-                    "error": "; ".join(version_result.errors) or "ODPS version validation failed",
-                    "code": "BUSINESS_RULES_VALIDATION",
-                    "details": {
-                        "validation_errors": version_result.errors,
-                        "warnings": version_result.warnings,
-                        "version": odps_version,
-                    },
+                    "validation_errors": version_result.errors,
+                    "warnings": version_result.warnings,
+                    "version": odps_version,
                 },
-                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Execute ProductCreationWorkflow
@@ -210,26 +215,21 @@ class ContractProductMixin:
                     status=status.HTTP_202_ACCEPTED,
                 )
         except ValueError as e:
-            return Response(
-                {
-                    "error": "Product creation failed",
-                    "code": "WORKFLOW_EXECUTION_FAILED",
-                    "details": {"error": str(e)},
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            return _product_error_response(
+                str(e) or "Product creation failed",
+                "WORKFLOW_EXECUTION_FAILED",
+                {"error": str(e)},
             )
         except Exception as e:
             import logging
 
             logger = logging.getLogger(__name__)
             logger.exception("Product creation failed: %s", e)
-            return Response(
-                {
-                    "error": f"Product creation failed: {str(e)}",
-                    "code": "INTERNAL_ERROR",
-                    "details": {"error": str(e)},
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            return _product_error_response(
+                f"Product creation failed: {str(e)}",
+                "INTERNAL_ERROR",
+                {"error": str(e)},
+                http_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     @extend_schema(
@@ -642,17 +642,8 @@ class ContractProductMixin:
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Get language code from query params
-            lang = request.query_params.get("lang")
-            if not lang:
-                return Response(
-                    {
-                        "error": "lang query parameter is required",
-                        "error_code": "VALIDATION_ERROR",
-                        "details": {"message": "Language code (ISO 639-1) must be provided"},
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            # Get language code from query params (default: "en")
+            lang = request.query_params.get("lang", "en")
 
             # Get product details from original_raw if available, otherwise from hub_contract_json
             product_details = None

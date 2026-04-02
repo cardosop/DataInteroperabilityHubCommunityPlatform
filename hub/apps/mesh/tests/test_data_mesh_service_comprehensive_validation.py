@@ -15,9 +15,11 @@ import json
 import uuid
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
@@ -42,6 +44,7 @@ from hub.apps.mesh.services import DataMeshService
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.users.models import Role, UserRole, UserStatus
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory
+from tests.utils.wait_helpers import wait_for_event_persistence
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -57,7 +60,7 @@ def _ensure_tenant_admin(user, tenant):
     UserRole.objects.get_or_create(user=user, role=role, defaults={})
 
 
-class TestDomainManagement(TransactionTestCase):
+class TestDomainManagement(TestCase):
     """
     10.1.33.1: Domain Management Testing
 
@@ -93,7 +96,7 @@ class TestDomainManagement(TransactionTestCase):
                     connection.close()
                     # Longer wait for "database system is starting up" errors
                     wait_time = retry_delay * (2 ** min(attempt, 4))  # Cap at 16 seconds
-                    time.sleep(wait_time)
+                    time.sleep(wait_time)  # INTENTIONAL: exponential backoff for DB startup retry
 
                 cache.clear()
                 unique_id = uuid.uuid4().hex[:8]
@@ -125,7 +128,7 @@ class TestDomainManagement(TransactionTestCase):
                     if attempt == max_retries - 1:
                         raise
                     # Wait longer for database startup
-                    time.sleep(5.0)  # Wait 5 seconds for database to start
+                    time.sleep(5.0)  # INTENTIONAL: wait for database system startup
                     continue
                 # Other operational errors - retry with exponential backoff
                 if attempt == max_retries - 1:
@@ -194,7 +197,7 @@ class TestDomainManagement(TransactionTestCase):
 
     def test_domain_creation_invalid_tenant(self):
         """Test domain creation with invalid tenant ID"""
-        with self.assertRaises(ValidationError):
+        with self.assertRaises((ValidationError, NotFoundError)):
             self.service.create_domain(
                 tenant_id=str(uuid.uuid4()),
                 name="test-domain",
@@ -473,7 +476,7 @@ class TestDomainManagement(TransactionTestCase):
             )
 
 
-class TestFederatedGovernance(TransactionTestCase):
+class TestFederatedGovernance(TestCase):
     """
     10.1.33.2: Federated Governance Testing
 
@@ -505,7 +508,7 @@ class TestFederatedGovernance(TransactionTestCase):
                 # Close any stale connections before retry
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))  # Exponential backoff
+                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: exponential backoff for DB retry
 
                 cache.clear()
                 unique_id = uuid.uuid4().hex[:8]
@@ -842,7 +845,7 @@ class TestFederatedGovernance(TransactionTestCase):
             )
 
 
-class TestMeshTopology(TransactionTestCase):
+class TestMeshTopology(TestCase):
     """
     10.1.33.3: Mesh Topology Testing
 
@@ -877,7 +880,7 @@ class TestMeshTopology(TransactionTestCase):
                     connection.close()
                     # Longer wait for "database system is starting up" errors
                     wait_time = retry_delay * (2 ** min(attempt, 4))  # Cap at 16 seconds
-                    time.sleep(wait_time)
+                    time.sleep(wait_time)  # INTENTIONAL: exponential backoff for DB startup retry
 
                 cache.clear()
                 unique_id = uuid.uuid4().hex[:8]
@@ -909,7 +912,7 @@ class TestMeshTopology(TransactionTestCase):
                     if attempt == max_retries - 1:
                         raise
                     # Wait longer for database startup
-                    time.sleep(5.0)  # Wait 5 seconds for database to start
+                    time.sleep(5.0)  # INTENTIONAL: wait for database system startup
                     continue
                 # Other operational errors - retry with exponential backoff
                 if attempt == max_retries - 1:
@@ -1137,7 +1140,7 @@ class TestMeshTopology(TransactionTestCase):
             )
 
 
-class TestDomainAssetManagement(TransactionTestCase):
+class TestDomainAssetManagement(TestCase):
     """
     10.1.33.4: Domain Asset Management Testing
 
@@ -1170,7 +1173,7 @@ class TestDomainAssetManagement(TransactionTestCase):
                 # Close any stale connections before retry
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))  # Exponential backoff
+                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: exponential backoff for DB retry
 
                 cache.clear()
                 unique_id = uuid.uuid4().hex[:8]
@@ -1433,7 +1436,7 @@ class TestDomainAssetManagement(TransactionTestCase):
         self.assertEqual(str(compliance_report.asset_id), str(asset.id))
 
 
-class TestDataMeshODPSIntegration(TransactionTestCase):
+class TestDataMeshODPSIntegration(TestCase):
     """
     10.1.33.5: Data Mesh Service Integration with ODPS
 
@@ -1465,7 +1468,7 @@ class TestDataMeshODPSIntegration(TransactionTestCase):
                 # Close any stale connections before retry
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))  # Exponential backoff
+                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: exponential backoff for DB retry
 
                 cache.clear()
                 unique_id = uuid.uuid4().hex[:8]

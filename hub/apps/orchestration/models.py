@@ -24,6 +24,7 @@ class WorkflowStatus(models.TextChoices):
     PAUSED = "PAUSED", "Paused"
     ROLLING_BACK = "ROLLING_BACK", "Rolling Back"
     ROLLED_BACK = "ROLLED_BACK", "Rolled Back"
+    COMPENSATION_INCOMPLETE = "COMPENSATION_INCOMPLETE", "Compensation Incomplete"
 
 
 class StepStatus(models.TextChoices):
@@ -86,7 +87,12 @@ class WorkflowDefinition(models.Model):
     class Meta:
         db_table = "workflow_definitions"
         ordering = ["name", "-version"]
-        unique_together = [["name", "version"]]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["name", "version"],
+                name="unique_workflow_def_name_version",
+            ),
+        ]
         indexes = [
             models.Index(fields=["name", "is_active"]),
             models.Index(fields=["name", "version"]),
@@ -154,7 +160,7 @@ class WorkflowInstance(models.Model):
         help_text="Tenant this workflow instance belongs to (nullable for system workflows)",
     )
     status = models.CharField(
-        max_length=20,
+        max_length=30,
         choices=WorkflowStatus.choices,
         default=WorkflowStatus.DRAFT,
         db_index=True,
@@ -202,6 +208,18 @@ class WorkflowInstance(models.Model):
     class Meta:
         db_table = "workflow_instances"
         ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(
+                    status__in=[
+                        "DRAFT", "RUNNING", "COMPLETED", "FAILED",
+                        "CANCELLED", "PAUSED", "ROLLING_BACK",
+                        "ROLLED_BACK", "COMPENSATION_INCOMPLETE",
+                    ]
+                ),
+                name="workflow_instance_status_valid",
+            ),
+        ]
         indexes = [
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["tenant", "workflow_name", "status"]),
@@ -220,6 +238,7 @@ class WorkflowInstance(models.Model):
             WorkflowStatus.FAILED,
             WorkflowStatus.CANCELLED,
             WorkflowStatus.ROLLED_BACK,
+            WorkflowStatus.COMPENSATION_INCOMPLETE,
         ]
 
     def is_running(self) -> bool:
@@ -234,10 +253,21 @@ class WorkflowInstance(models.Model):
         )
 
     def mark_started(self):
-        """Mark workflow as started"""
+        """Mark workflow as started and initialize step tracking in state_data."""
         self.status = WorkflowStatus.RUNNING
         self.started_at = timezone.now()
-        self.save(update_fields=["status", "started_at", "updated_at"])
+        if not self.state_data:
+            self.state_data = {}
+        if "current_step_index" not in self.state_data:
+            self.state_data["current_step_index"] = self.current_step_index
+        if "current_step_name" not in self.state_data:
+            steps = self.workflow_definition.dsl_json.get("steps", [])
+            idx = self.current_step_index
+            if steps and idx < len(steps):
+                self.state_data["current_step_name"] = steps[idx].get("name", "unknown")
+            else:
+                self.state_data["current_step_name"] = "unknown"
+        self.save(update_fields=["status", "started_at", "state_data", "updated_at"])
 
     def mark_completed(self, output_data: Optional[Dict[str, Any]] = None):
         """Mark workflow as completed"""
@@ -310,6 +340,9 @@ class WorkflowStep(models.Model):
     compensation_data = models.JSONField(
         null=True, blank=True, default=dict, help_text="Compensation data (for rollback)"
     )
+    compensation_attempt = models.PositiveIntegerField(
+        default=0, help_text="Number of compensation attempts (Phase 68.2.3)"
+    )
     started_at = models.DateTimeField(
         null=True, blank=True, help_text="When step execution started"
     )
@@ -322,7 +355,12 @@ class WorkflowStep(models.Model):
     class Meta:
         db_table = "workflow_steps"
         ordering = ["workflow_instance", "step_index"]
-        unique_together = [["workflow_instance", "step_index"]]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow_instance", "step_index"],
+                name="unique_workflow_step_instance_index",
+            ),
+        ]
         indexes = [
             models.Index(fields=["workflow_instance", "status"]),
             models.Index(fields=["workflow_instance", "step_index"]),

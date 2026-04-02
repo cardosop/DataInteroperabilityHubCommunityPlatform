@@ -7,9 +7,7 @@ Verifies that events are properly published during actual service operations.
 
 import uuid
 
-from django.db import connection, connections
-from django.db.utils import InterfaceError as DjangoInterfaceError, OperationalError
-from django.test import TransactionTestCase, override_settings
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset
@@ -26,51 +24,22 @@ from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 
 
-def _is_connection_closed_error(exc: BaseException) -> bool:
-    """True if the exception indicates the DB connection was closed (any backend or wrapper)."""
-    msg = str(exc).lower()
-    return "connection" in msg and "closed" in msg
-
-
-def _ensure_db_connection():
-    """Ensure default DB connection is open so setUp never see 'connection already closed'."""
-    try:
-        connections.close_all()
-        connection.ensure_connection()
-    except Exception:
-        pass
-
-
-def _ensure_db_connection_for_teardown():
-    """Ensure connection for tearDown/flush without closing it first (avoid breaking active test connection)."""
-    try:
-        connection.ensure_connection()
-    except Exception:
-        try:
-            connections.close_all()
-            connection.ensure_connection()
-        except Exception:
-            pass
-
-
 @override_settings(
     EVENT_BUS_ENABLE_PERSISTENCE=True,
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Use sync persistence for tests
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,  # Disable write-behind for tests
 )
-class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
+class MarketplaceEventPublisherIntegrationTest(TestCase):
     """
     Integration tests for MarketplaceEventPublisher with real services.
 
-    Uses TransactionTestCase so each test gets a real transaction and fresh DB connection.
-    tearDown ensures connection is open before super().tearDown() (flush) to avoid
-    'connection already closed' in batched runs.
+    Uses TestCase (SAVEPOINT-wrapped) so each test auto-rolls back.
     """
 
     def setUp(self):
-        """Set up test fixtures; retry once on connection closed."""
-        _ensure_db_connection()
-        # CRITICAL: Disconnect semantic service signals to prevent timeouts
+        """Set up test fixtures."""
+        super().setUp()
+        # Disconnect semantic service signals to prevent timeouts
         from django.db.models.signals import post_save
 
         try:
@@ -83,33 +52,14 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
         except (ImportError, AttributeError):
             pass
 
-        last_error = None
-        for _ in range(3):
-            try:
-                self._create_fixtures()
-                last_error = None
-                break
-            except (DjangoInterfaceError, OperationalError) as e:
-                last_error = e
-                if _is_connection_closed_error(e):
-                    _ensure_db_connection()
-                    continue
-                raise
-            except Exception as e:
-                # Backend (e.g. psycopg2) InterfaceError may propagate in some paths
-                if _is_connection_closed_error(e):
-                    last_error = e
-                    _ensure_db_connection()
-                    continue
-                raise
-        if last_error is not None:
-            raise last_error
+        self._create_fixtures()
 
     def _create_fixtures(self):
         """Create tenant, user, publisher, service, and config. Uses unique slug per run to avoid collisions."""
         slug_suffix = uuid.uuid4().hex[:8]
+        self._suffix = slug_suffix
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
+            name=f"Test Tenant {slug_suffix}",
             slug=f"test-tenant-{slug_suffix}",
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -132,7 +82,7 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
         }
 
     def tearDown(self):
-        """Re-establish connection, reconnect signals, then run TransactionTestCase teardown (flush)."""
+        """Reconnect signals, then run normal TestCase teardown (SAVEPOINT rollback)."""
         from django.db.models.signals import post_save
 
         try:
@@ -144,25 +94,7 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
             post_save.connect(asset_saved, sender=Asset, weak=False)
         except (ImportError, AttributeError):
             pass
-        last_err = None
-        for _ in range(3):
-            try:
-                _ensure_db_connection_for_teardown()
-                super().tearDown()
-                last_err = None
-                break
-            except (DjangoInterfaceError, OperationalError) as e:
-                last_err = e
-                if _is_connection_closed_error(e):
-                    continue
-                raise
-            except Exception as e:
-                if _is_connection_closed_error(e):
-                    last_err = e
-                    continue
-                raise
-        if last_err is not None:
-            raise last_err
+        super().tearDown()
 
     def test_publish_connection_events_integration(self):
         """Test publishing connection events during actual connection operations."""
@@ -171,7 +103,7 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Integration Test Connection",
+            name=f"Integration Test Connection {self._suffix}",
             config=self.config,
         )
 
@@ -183,7 +115,7 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
 
         # Now test our MarketplaceEventPublisher methods
         # Update connection and publish event
-        changes = {"name": {"old": "Integration Test Connection", "new": "Updated Connection"}}
+        changes = {"name": {"old": f"Integration Test Connection {self._suffix}", "new": "Updated Connection"}}
         event_id = self.publisher.publish_connection_updated(
             connection_id=str(connection.id),
             changes=changes,
@@ -220,7 +152,7 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Sync Test Connection",
+            name=f"Sync Test Connection {self._suffix}",
             config=self.config,
         )
 
@@ -277,13 +209,13 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Mapping Test Connection",
+            name=f"Mapping Test Connection {self._suffix}",
             config=self.config,
         )
 
         # Create asset
         asset = Asset.objects.create(
-            tenant=self.tenant, created_by=self.user, name="Test Asset", source_type="FEDERATED"
+            tenant=self.tenant, created_by=self.user, name=f"Test Asset {self._suffix}", source_type="FEDERATED"
         )
 
         # Create mapping using service
@@ -342,7 +274,7 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Failed Sync Test Connection",
+            name=f"Failed Sync Test Connection {self._suffix}",
             config=self.config,
         )
 
@@ -397,9 +329,13 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
             # Redis unavailable - deduplication will be skipped (fail-open)
             redis_available = False
 
+        # Use a unique connection_id per test run to avoid deduplication
+        # collisions with events cached in Redis from previous runs.
+        unique_conn_id = f"test-connection-{uuid.uuid4().hex[:8]}"
+
         # Publish same event twice
         event_id_1 = self.publisher.publish_connection_created(
-            connection_id="test-connection-123",
+            connection_id=unique_conn_id,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
             tenant_id=str(self.tenant.id),
@@ -407,7 +343,7 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
         )
 
         event_id_2 = self.publisher.publish_connection_created(
-            connection_id="test-connection-123",
+            connection_id=unique_conn_id,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
             tenant_id=str(self.tenant.id),
@@ -463,7 +399,7 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Error Test Connection",
+            name=f"Error Test Connection {self._suffix}",
             config=self.config,
         )
 
@@ -496,7 +432,7 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Nonexistent Mapping Test Connection",
+            name=f"Nonexistent Mapping Test Connection {self._suffix}",
             config=self.config,
         )
 
@@ -522,7 +458,7 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Missing Tenant Test Connection",
+            name=f"Missing Tenant Test Connection {self._suffix}",
             config=self.config,
         )
 
@@ -546,7 +482,7 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Missing User Test Connection",
+            name=f"Missing User Test Connection {self._suffix}",
             config=self.config,
         )
 
@@ -570,7 +506,7 @@ class MarketplaceEventPublisherIntegrationTest(TransactionTestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Large Payload Test Connection",
+            name=f"Large Payload Test Connection {self._suffix}",
             config=self.config,
         )
 

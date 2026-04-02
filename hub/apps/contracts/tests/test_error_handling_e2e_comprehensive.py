@@ -130,13 +130,14 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
 
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data or {})
+        self.assertIsNotNone(response.data, "Response data should not be None")
+        self.assertIn("error", response.data)
 
         # Verify error details
         error_data = response.data.get("error") or response.data
-        if isinstance(error_data, dict):
-            self.assertIn("code", error_data or {})
-            self.assertIn("message", error_data or {})
+        self.assertIsInstance(error_data, dict, "Error data should be a dict")
+        self.assertIn("code", error_data)
+        self.assertIn("message", error_data)
 
     def test_invalid_odps_malformed_yaml(self):
         """Test error handling for malformed YAML ODPS documents"""
@@ -164,7 +165,8 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
 
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data or {})
+        self.assertIsNotNone(response.data, "Response data should not be None")
+        self.assertIn("error", response.data)
 
     def test_invalid_odps_not_a_dict(self):
         """Test error handling when ODPS document is not a dictionary"""
@@ -224,9 +226,8 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
             format="json",
         )
 
-        # May succeed with warnings or fail - depends on implementation
-        # But should handle gracefully
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        # Unsupported schema version should be rejected
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     # ========== MISSING REQUIRED FIELDS TESTS ==========
 
@@ -248,14 +249,15 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
 
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIsNotNone(response.data, "Response data should not be None")
         error_data = response.data.get("error") or response.data
-        if isinstance(error_data, dict):
-            # Should mention missing product field
-            error_message = str(error_data.get("message", "")).lower()
-            self.assertTrue(
-                "product" in error_message or "required" in error_message,
-                f"Error message should mention missing product field: {error_message}",
-            )
+        self.assertIsInstance(error_data, dict, "Error data should be a dict")
+        # Should mention missing product field
+        error_message = str(error_data.get("message", "")).lower()
+        self.assertTrue(
+            "product" in error_message or "required" in error_message,
+            f"Error message should mention missing product field: {error_message}",
+        )
 
     def test_missing_required_field_product_details(self):
         """Test error handling when 'product.details' field is missing"""
@@ -304,14 +306,15 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
 
         # Should return 400 Bad Request (contract is required for Product-First flow)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIsNotNone(response.data, "Response data should not be None")
         error_data = response.data.get("error") or response.data
-        if isinstance(error_data, dict):
-            error_message = str(error_data.get("message", "")).lower()
-            # Should mention missing contract
-            self.assertTrue(
-                "contract" in error_message or "required" in error_message,
-                f"Error message should mention missing contract: {error_message}",
-            )
+        self.assertIsInstance(error_data, dict, "Error data should be a dict")
+        error_message = str(error_data.get("message", "")).lower()
+        # Should mention missing contract
+        self.assertTrue(
+            "contract" in error_message or "required" in error_message,
+            f"Error message should mention missing contract: {error_message}",
+        )
 
     def test_missing_required_field_product_contract_spec(self):
         """Test error handling when 'product.contract.spec' field is missing"""
@@ -369,8 +372,8 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
             format="json",
         )
 
-        # Should return 400 Bad Request or succeed with warnings
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        # Missing product.details.en should be rejected as invalid
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     # ========== $REF RESOLUTION FAILURES TESTS ==========
 
@@ -399,16 +402,17 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
 
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIsNotNone(response.data, "Response data should not be None")
         error_data = response.data.get("error") or response.data
-        if isinstance(error_data, dict):
-            error_message = str(error_data.get("message", "")).lower()
-            # Should mention ref resolution failure
-            self.assertTrue(
-                "ref" in error_message
-                or "reference" in error_message
-                or "resolve" in error_message,
-                f"Error message should mention ref resolution: {error_message}",
-            )
+        self.assertIsInstance(error_data, dict, "Error data should be a dict")
+        error_message = str(error_data.get("message", "")).lower()
+        # Should mention ref resolution failure
+        self.assertTrue(
+            "ref" in error_message
+            or "reference" in error_message
+            or "resolve" in error_message,
+            f"Error message should mention ref resolution: {error_message}",
+        )
 
     def test_ref_resolution_failure_local_ref_not_found(self):
         """Test error handling for local $ref to non-existent file"""
@@ -557,14 +561,15 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
 
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIsNotNone(response.data, "Response data should not be None")
         error_data = response.data.get("error") or response.data
-        if isinstance(error_data, dict):
-            error_message = str(error_data.get("message", "")).lower()
-            # Should mention missing contract
-            self.assertTrue(
-                "contract" in error_message or "extract" in error_message,
-                f"Error message should mention contract extraction: {error_message}",
-            )
+        self.assertIsInstance(error_data, dict, "Error data should be a dict")
+        error_message = str(error_data.get("message", "")).lower()
+        # Should mention missing contract
+        self.assertTrue(
+            "contract" in error_message or "extract" in error_message,
+            f"Error message should mention contract extraction: {error_message}",
+        )
 
     def test_contract_extraction_failure_invalid_contract_spec(self):
         """Test error handling when contract.spec is invalid"""
@@ -963,15 +968,16 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
 
                 # Verify error response structure
                 if response.status_code == status.HTTP_400_BAD_REQUEST:
+                    self.assertIsNotNone(response.data)
                     error_data = response.data.get("error") or response.data
-                    if isinstance(error_data, dict):
-                        # Should have error information
-                        self.assertTrue(
-                            "message" in error_data
-                            or "code" in error_data
-                            or "error" in error_data,
-                            f"Error response should have message/code: {error_data}",
-                        )
+                    self.assertIsInstance(error_data, dict, "Error data should be a dict")
+                    # Should have error information
+                    self.assertTrue(
+                        "message" in error_data
+                        or "code" in error_data
+                        or "error" in error_data,
+                        f"Error response should have message/code: {error_data}",
+                    )
 
     def test_comprehensive_error_recovery_strategies(self):
         """Comprehensive test: Verify error recovery strategies are appropriate"""
@@ -1029,12 +1035,13 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
         # Error should include context
+        self.assertIsNotNone(response.data)
         error_data = response.data.get("error") or response.data
-        if isinstance(error_data, dict):
-            # Should have some context information
-            self.assertTrue(
-                len(error_data) > 0, "Error response should include context information"
-            )
+        self.assertIsInstance(error_data, dict, "Error data should be a dict")
+        # Should have some context information
+        self.assertGreater(
+            len(error_data), 0, "Error response should include context information"
+        )
 
     def test_comprehensive_error_api_consistency(self):
         """Comprehensive test: Verify error handling is consistent across API endpoints"""
@@ -1250,15 +1257,18 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
         tenant2 = Tenant.objects.create(
             name="Error Handling Test Tenant 2",
             slug="error-handling-test-2",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value,
         )
+        ensure_tenant_has_active_subscription(tenant2)
 
         user2 = User.objects.create_user(
-            email="error-handling-test-2@example.com",
+            email=f"error-handling-test-2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE.value,

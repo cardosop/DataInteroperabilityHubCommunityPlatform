@@ -4,6 +4,7 @@ Unit tests for SSO Integration
 Tests for SAML and OIDC authentication.
 """
 
+import uuid
 import pytest
 from django.test import TestCase
 
@@ -19,8 +20,9 @@ class SSOServiceTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Create tenant config with SSO
@@ -37,9 +39,11 @@ class SSOServiceTest(TestCase):
         )
 
     def test_get_saml_provider_returns_provider(self):
-        """Test getting SAML provider returns provider."""
+        """Test getting SAML provider returns SAMLProvider for the tenant."""
         provider = SSOService.get_provider(str(self.tenant.id), "SAML")
         self.assertIsNotNone(provider)
+        self.assertIsInstance(provider, SAMLProvider)
+        self.assertEqual(provider.tenant_id, str(self.tenant.id))
 
     def test_get_saml_provider_returns_saml_provider_instance(self):
         """Test getting SAML provider returns SAMLProvider instance."""
@@ -47,9 +51,11 @@ class SSOServiceTest(TestCase):
         self.assertIsInstance(provider, SAMLProvider)
 
     def test_get_oidc_provider_returns_provider(self):
-        """Test getting OIDC provider returns provider."""
+        """Test getting OIDC provider returns OIDCProvider for the tenant."""
         provider = SSOService.get_provider(str(self.tenant.id), "OIDC")
         self.assertIsNotNone(provider)
+        self.assertIsInstance(provider, OIDCProvider)
+        self.assertEqual(provider.tenant_id, str(self.tenant.id))
 
     def test_get_oidc_provider_returns_oidc_provider_instance(self):
         """Test getting OIDC provider returns OIDCProvider instance."""
@@ -57,7 +63,7 @@ class SSOServiceTest(TestCase):
         self.assertIsInstance(provider, OIDCProvider)
 
     def test_get_sso_login_url_saml_returns_url(self):
-        """Test getting SAML login URL returns URL."""
+        """Test getting SAML login URL returns a valid URL string."""
         login_url = SSOService.get_sso_login_url(
             tenant_id=str(self.tenant.id),
             provider_type="SAML",
@@ -65,9 +71,11 @@ class SSOServiceTest(TestCase):
         )
 
         self.assertIsNotNone(login_url)
+        self.assertIsInstance(login_url, str)
+        self.assertGreater(len(login_url), 0)
 
     def test_get_sso_login_url_oidc_returns_url(self):
-        """Test getting OIDC login URL returns URL."""
+        """Test getting OIDC login URL returns a valid URL string."""
         login_url = SSOService.get_sso_login_url(
             tenant_id=str(self.tenant.id),
             provider_type="OIDC",
@@ -75,6 +83,8 @@ class SSOServiceTest(TestCase):
         )
 
         self.assertIsNotNone(login_url)
+        self.assertIsInstance(login_url, str)
+        self.assertGreater(len(login_url), 0)
 
     def test_get_sso_login_url_oidc_includes_client_id(self):
         """Test getting OIDC login URL includes client_id."""

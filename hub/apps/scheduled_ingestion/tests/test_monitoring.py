@@ -14,6 +14,7 @@ from hub.apps.scheduled_ingestion.models import (
 from hub.apps.scheduled_ingestion.monitoring import IngestionMonitoringDashboard
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -24,15 +25,16 @@ class IngestionMonitoringDashboardTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -109,10 +111,14 @@ class IngestionMonitoringDashboardTest(TestCase):
             days=30
         )
         
-        # 90% success rate should be DEGRADED
+        # 90% success rate (9 ok / 1 fail) should be DEGRADED
         self.assertIn('summary', dashboard)
         self.assertIn('health_status', dashboard['summary'])
-        self.assertIn(dashboard['summary']['health_status'], ['HEALTHY', 'DEGRADED', 'UNHEALTHY'])
+        self.assertEqual(
+            dashboard['summary']['health_status'], 'DEGRADED',
+            f"90% success rate should be DEGRADED, got "
+            f"{dashboard['summary']['health_status']}",
+        )
     
     def test_get_dashboard_trends(self):
         """Test trend data generation"""

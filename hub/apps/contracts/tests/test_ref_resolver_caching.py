@@ -17,9 +17,10 @@ import time
 
 import redis
 from django.conf import settings
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TestCase
 
 from hub.apps.contracts.config.odps_refs_config import ODPSRefsConfig
+from hub.apps.contracts.tests.test_odps_ref_resolution_ci import TestHTTPServer
 from hub.apps.contracts.odps_errors import ODPSRefResolutionError
 from hub.apps.contracts.ref_resolver import (
     DEFAULT_CACHE_MAX_ENTRIES,
@@ -34,7 +35,7 @@ from hub.apps.contracts.ref_resolver import (
 def get_real_redis_client_or_none():
     """Get real Redis client or return None if unavailable."""
     try:
-        redis_url = getattr(settings, "REDIS_URL", "redis://redis:6379/0")
+        redis_url = getattr(settings, "REDIS_URL", None) or "redis://redis-cache-test:6379/0"
         client = redis.from_url(
             redis_url,
             decode_responses=False,  # Keep binary for JSON storage
@@ -144,13 +145,19 @@ class RefResolverCacheKeyTest(TestCase):
             self.resolver.resolve_external = original_resolve
 
 
-@override_settings(REDIS_URL="redis://redis:6379/0")
-class RefResolverCacheStorageTest(TransactionTestCase):
+class RefResolverCacheStorageTest(TestCase):
     """
     Test cache storage and retrieval using real Redis.
 
     Uses real Redis client to verify cache storage and retrieval functionality.
     """
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        """Skip database flush — these tests only use Redis, not DB."""
+        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -338,13 +345,18 @@ class RefResolverCacheStorageTest(TransactionTestCase):
             self.resolver.resolve_external = original_resolve
 
 
-@override_settings(REDIS_URL="redis://redis:6379/0")
-class RefResolverCacheSizeLimitTest(TransactionTestCase):
+class RefResolverCacheSizeLimitTest(TestCase):
     """
     Test cache size limits and LRU eviction using real Redis.
 
     Uses real Redis client to verify cache size limit enforcement and LRU eviction.
     """
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -391,54 +403,32 @@ class RefResolverCacheSizeLimitTest(TransactionTestCase):
 
         Uses resolve_external() public API to fill cache and verify size limits.
         """
-        import httpx
-
-        # Use MockTransport to simulate external ref resolution
-        def handler(request: httpx.Request) -> httpx.Response:
-            # Extract index from URL
-            url_str = str(request.url)
-            if "schema_overflow" in url_str:
-                return httpx.Response(
-                    200, json={"type": "string", "overflow": True}, request=request
-                )
-            # Extract index from URL pattern
-            try:
-                index = int(url_str.split("schema")[1].split(".")[0])
-                return httpx.Response(200, json={"type": "string", "index": index}, request=request)
-            except (ValueError, IndexError):
-                return httpx.Response(200, json={"type": "string"}, request=request)
-
-        transport = httpx.MockTransport(handler)
-
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Fill cache up to limit through public API
+        with TestHTTPServer() as server:
             for i in range(self.resolver.cache_max_entries):
-                url = f"https://example.com/schema{i}.json"
-                self.resolver.resolve_external(url)
+                server.add_route(f"/schema{i}.json", {"type": "string", "index": i})
+            server.add_route("/schema_overflow.json", {"type": "string", "overflow": True})
+            config = ODPSRefsConfig()
+            config._config_data = {
+                "url_allowlist": [server.get_base_url()],
+                "url_denylist": [],
+            }
+            base = server.get_base_url()
+            self.resolver = RefResolver(
+                config=config,
+                tenant_id="ref-cache-size-test",
+                enable_caching=True,
+                cache_ttl=DEFAULT_CACHE_TTL,
+            )
+            self.resolver.cache_max_entries = 10
 
-            # Add one more entry - should trigger eviction
-            url = "https://example.com/schema_overflow.json"
-            self.resolver.resolve_external(url)
+            for i in range(self.resolver.cache_max_entries):
+                self.resolver.resolve_external(f"{base}/schema{i}.json")
 
-            # Verify cache size is within limit (check LRU index)
+            self.resolver.resolve_external(f"{base}/schema_overflow.json")
+
             lru_index_key = f"{REDIS_CACHE_INDEX_PREFIX}lru"
             lru_size = self.redis_client.llen(lru_index_key)
-            # Cache size should be at or below limit
             self.assertLessEqual(lru_size, self.resolver.cache_max_entries)
-        finally:
-            self.resolver.resolve_external = original_resolve
 
     def test_lru_index_update(self):
         """
@@ -446,42 +436,26 @@ class RefResolverCacheSizeLimitTest(TransactionTestCase):
 
         Uses resolve_external() public API to trigger LRU index update.
         """
-        import httpx
-
-        url = "https://example.com/schema.json"
         lru_index_key = f"{REDIS_CACHE_INDEX_PREFIX}lru"
-
-        # Use MockTransport to simulate external ref resolution
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"type": "object"}, request=request)
-
-        transport = httpx.MockTransport(handler)
-
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Access through public API - should update LRU index internally
-            # resolve_external() internally uses _get_cache_key() and updates LRU index
+        with TestHTTPServer() as server:
+            server.add_route("/schema.json", {"type": "object"})
+            config = ODPSRefsConfig()
+            config._config_data = {
+                "url_allowlist": [server.get_base_url()],
+                "url_denylist": [],
+            }
+            url = f"{server.get_base_url()}/schema.json"
+            self.resolver = RefResolver(
+                config=config,
+                tenant_id="ref-cache-lru-test",
+                enable_caching=True,
+                cache_ttl=DEFAULT_CACHE_TTL,
+            )
+            self.resolver.cache_max_entries = 10
             self.resolver.resolve_external(url)
-
-            # Verify cache key was added to LRU index (check Redis directly)
-            # Cache key format is verified indirectly through cache behavior
             lru_keys = self.redis_client.lrange(lru_index_key, 0, -1)
-            # Should have at least one entry in LRU index if caching is working
             if self.resolver._redis_client:
-                self.assertGreaterEqual(len(lru_keys), 0)  # May be 0 if cache wasn't used
-        finally:
-            self.resolver.resolve_external = original_resolve
+                self.assertGreater(len(lru_keys), 0)
 
     def test_lru_index_removal(self):
         """
@@ -489,61 +463,44 @@ class RefResolverCacheSizeLimitTest(TransactionTestCase):
 
         Uses invalidate_cache() public API to trigger LRU index removal.
         """
-        import httpx
-
-        url = "https://example.com/schema.json"
         lru_index_key = f"{REDIS_CACHE_INDEX_PREFIX}lru"
-
-        # Use MockTransport to simulate external ref resolution
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"type": "object"}, request=request)
-
-        transport = httpx.MockTransport(handler)
-
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # First, cache the URL through public API - resolve_external() internally uses _get_cache_key()
-            # and updates LRU index
+        with TestHTTPServer() as server:
+            server.add_route("/schema.json", {"type": "object"})
+            config = ODPSRefsConfig()
+            config._config_data = {
+                "url_allowlist": [server.get_base_url()],
+                "url_denylist": [],
+            }
+            url = f"{server.get_base_url()}/schema.json"
+            self.resolver = RefResolver(
+                config=config,
+                tenant_id="ref-cache-lru-test",
+                enable_caching=True,
+                cache_ttl=DEFAULT_CACHE_TTL,
+            )
+            self.resolver.cache_max_entries = 10
             self.resolver.resolve_external(url)
-
-            # Verify key is in LRU index (cache key format is verified indirectly through cache behavior)
             lru_keys_before = self.redis_client.lrange(lru_index_key, 0, -1)
             if self.resolver._redis_client:
-                # Should have at least one entry if caching is working
                 initial_count = len(lru_keys_before)
-                self.assertGreaterEqual(initial_count, 0)
-
-                # Remove from cache through public API - invalidate_cache() internally uses _get_cache_key()
-                # and removes from LRU index
+                self.assertGreater(initial_count, 0)
                 self.resolver.invalidate_cache(url)
-
-                # Verify cache key was removed from LRU index (check Redis directly)
                 lru_keys_after = self.redis_client.lrange(lru_index_key, 0, -1)
-                if initial_count > 0:
-                    # Should have fewer entries after invalidation
-                    self.assertLessEqual(len(lru_keys_after), initial_count)
-        finally:
-            self.resolver.resolve_external = original_resolve
+                self.assertLessEqual(len(lru_keys_after), initial_count)
 
 
-@override_settings(REDIS_URL="redis://redis:6379/0")
-class RefResolverCacheHitRateTest(TransactionTestCase):
+class RefResolverCacheHitRateTest(TestCase):
     """
     Test cache hit rate tracking using real Redis.
 
     Uses real Redis client to verify cache hit rate tracking functionality.
     """
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -621,7 +578,7 @@ class RefResolverCacheHitRateTest(TransactionTestCase):
             hit_rate = self.resolver.get_cache_hit_rate()
             # hit_rate should be available if Redis is available and cache is working
             if hit_rate is not None:
-                self.assertGreaterEqual(hit_rate, 0.0)
+                self.assertGreater(hit_rate, 0.0)
                 self.assertLessEqual(hit_rate, 1.0)
         finally:
             self.resolver.resolve_external = original_resolve
@@ -675,11 +632,11 @@ class RefResolverCacheHitRateTest(TransactionTestCase):
 
         Uses real Redis client to verify cache hit rate calculation.
         """
-        # Set up stats using real Redis
-        hits_key = f"{REDIS_CACHE_STATS_PREFIX}hits"
-        misses_key = f"{REDIS_CACHE_STATS_PREFIX}misses"
-        self.redis_client.set(hits_key, 80)
-        self.redis_client.set(misses_key, 20)
+        # Stats keys are scoped per tenant (see RefResolver._redis_cache_stats_key).
+        hits_key = self.resolver._redis_cache_stats_key("hits")
+        misses_key = self.resolver._redis_cache_stats_key("misses")
+        self.redis_client.set(hits_key, b"80")
+        self.redis_client.set(misses_key, b"20")
 
         # Calculate hit rate using real Redis
         hit_rate = self.resolver.get_cache_hit_rate()
@@ -692,9 +649,8 @@ class RefResolverCacheHitRateTest(TransactionTestCase):
 
         Uses real Redis client to verify behavior when no stats exist.
         """
-        # Ensure no stats exist
-        hits_key = f"{REDIS_CACHE_STATS_PREFIX}hits"
-        misses_key = f"{REDIS_CACHE_STATS_PREFIX}misses"
+        hits_key = self.resolver._redis_cache_stats_key("hits")
+        misses_key = self.resolver._redis_cache_stats_key("misses")
         self.redis_client.delete(hits_key, misses_key)
 
         # Calculate hit rate (should return None)
@@ -707,24 +663,28 @@ class RefResolverCacheHitRateTest(TransactionTestCase):
 
         Uses real Redis client to verify behavior when total is zero.
         """
-        # Set stats to zero using real Redis
-        hits_key = f"{REDIS_CACHE_STATS_PREFIX}hits"
-        misses_key = f"{REDIS_CACHE_STATS_PREFIX}misses"
-        self.redis_client.set(hits_key, 0)
-        self.redis_client.set(misses_key, 0)
+        hits_key = self.resolver._redis_cache_stats_key("hits")
+        misses_key = self.resolver._redis_cache_stats_key("misses")
+        self.redis_client.set(hits_key, b"0")
+        self.redis_client.set(misses_key, b"0")
 
         # Calculate hit rate (should return None when total is zero)
         hit_rate = self.resolver.get_cache_hit_rate()
         self.assertIsNone(hit_rate)
 
 
-@override_settings(REDIS_URL="redis://redis:6379/0")
-class RefResolverCacheInvalidationTest(TransactionTestCase):
+class RefResolverCacheInvalidationTest(TestCase):
     """
     Test cache invalidation using real Redis.
 
     Uses real Redis client to verify cache invalidation functionality.
     """
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -769,42 +729,24 @@ class RefResolverCacheInvalidationTest(TransactionTestCase):
 
         Uses resolve_external() and invalidate_cache() public API methods.
         """
-        import httpx
-
-        url = "https://example.com/schema.json"
         data = {"type": "string", "format": "email"}
-
-        # Use MockTransport to simulate external ref resolution
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=data, request=request)
-
-        transport = httpx.MockTransport(handler)
-
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Resolve to populate cache
+        with TestHTTPServer() as server:
+            server.add_route("/schema.json", data)
+            config = ODPSRefsConfig()
+            config._config_data = {
+                "url_allowlist": [server.get_base_url()],
+                "url_denylist": [],
+            }
+            url = f"{server.get_base_url()}/schema.json"
+            self.resolver = RefResolver(
+                config=config,
+                tenant_id="ref-cache-inv-test",
+                enable_caching=True,
+            )
             result1 = self.resolver.resolve_external(url)
             self.assertEqual(result1, data)
-
-            # Invalidate cache using public API
             deleted = self.resolver.invalidate_cache(url)
-            self.assertGreaterEqual(deleted, 0)  # May delete 0 or more keys
-
-            # Verify cache was invalidated by resolving again (should fetch fresh)
-            # Note: This tests behavior through public API
-        finally:
-            self.resolver.resolve_external = original_resolve
+            self.assertGreater(deleted, 0)
 
     def test_cache_invalidation_all(self):
         """
@@ -812,48 +754,27 @@ class RefResolverCacheInvalidationTest(TransactionTestCase):
 
         Uses resolve_external() and invalidate_cache() public API methods.
         """
-        import httpx
-
-        # Use MockTransport to simulate multiple external refs
-        def handler(request: httpx.Request) -> httpx.Response:
-            url_str = str(request.url)
-            if "schema0.json" in url_str:
-                return httpx.Response(200, json={"type": "string", "index": 0}, request=request)
-            elif "schema1.json" in url_str:
-                return httpx.Response(200, json={"type": "string", "index": 1}, request=request)
-            elif "schema2.json" in url_str:
-                return httpx.Response(200, json={"type": "string", "index": 2}, request=request)
-            return httpx.Response(404, request=request)
-
-        transport = httpx.MockTransport(handler)
-
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Resolve multiple URLs to populate cache
+        with TestHTTPServer() as server:
             for i in range(3):
-                url = f"https://example.com/schema{i}.json"
+                server.add_route(f"/schema{i}.json", {"type": "string", "index": i})
+            config = ODPSRefsConfig()
+            config._config_data = {
+                "url_allowlist": [server.get_base_url()],
+                "url_denylist": [],
+            }
+            base = server.get_base_url()
+            self.resolver = RefResolver(
+                config=config,
+                tenant_id="ref-cache-inv-test",
+                enable_caching=True,
+            )
+            for i in range(3):
+                url = f"{base}/schema{i}.json"
                 result = self.resolver.resolve_external(url)
                 self.assertEqual(result["index"], i)
 
-            # Invalidate all cache entries using public API
             deleted = self.resolver.invalidate_cache()
-            self.assertGreaterEqual(deleted, 0)  # May delete 0 or more keys
-
-            # Verify cache was invalidated (all entries should be removed)
-            # Note: This tests behavior through public API
-        finally:
-            self.resolver.resolve_external = original_resolve
+            self.assertGreater(deleted, 0)
 
     def test_cache_invalidation_no_redis(self):
         """
@@ -885,14 +806,19 @@ class RefResolverCacheInvalidationTest(TransactionTestCase):
         self.assertEqual(deleted, 0)
 
 
-@override_settings(REDIS_URL="redis://redis:6379/0")
-class RefResolverCacheIntegrationTest(TransactionTestCase):
+class RefResolverCacheIntegrationTest(TestCase):
     """
     Integration tests for cache hit rate using real Redis.
 
     Uses real Redis client to verify end-to-end cache hit rate tracking.
     Note: check_rate_limit mock is kept as it's an external boundary (rate limiting service).
     """
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -981,7 +907,7 @@ class RefResolverCacheIntegrationTest(TransactionTestCase):
             hit_rate = self.resolver.get_cache_hit_rate()
             # Hit rate should be calculated from real Redis stats
             if hit_rate is not None:
-                self.assertGreaterEqual(hit_rate, 0.0)
+                self.assertGreater(hit_rate, 0.0)
                 self.assertLessEqual(hit_rate, 1.0)
         finally:
             self.resolver.resolve_external = original_resolve
@@ -1234,16 +1160,15 @@ class RefResolverCacheIntegrationTest(TransactionTestCase):
     def test_cache_invalidation_with_empty_url(self):
         """Test cache invalidation with empty URL."""
         deleted = self.resolver.invalidate_cache("")
-        # Should handle empty URL gracefully
-        self.assertGreaterEqual(deleted, 0)
+        # Empty URL matches no cached entries
+        self.assertEqual(deleted, 0)
 
     def test_cache_hit_rate_with_no_requests(self):
         """Test cache hit rate calculation with no requests."""
         hit_rate = self.resolver.get_cache_hit_rate()
-        # Should handle no requests gracefully
+        # No requests made, so hit_rate should be None or 0.0
         if hit_rate is not None:
-            self.assertGreaterEqual(hit_rate, 0.0)
-            self.assertLessEqual(hit_rate, 1.0)
+            self.assertEqual(hit_rate, 0.0)
 
     def test_cache_hit_rate_with_redis_unavailable(self):
         """Test cache hit rate calculation when Redis is unavailable."""
@@ -1337,7 +1262,7 @@ class RefResolverCacheIntegrationTest(TransactionTestCase):
             # Wait for TTL to expire (cache_ttl=1; 1.5s buffer per FIX_PLAN_FLAKY_TESTS_5_6_2)
             import time
 
-            time.sleep(1.5)
+            time.sleep(1.5)  # INTENTIONAL: test-specific timing requirement
 
             # Second resolution after TTL expiration - should fetch again (cache expired)
             # resolve_external() internally uses _get_from_cache() which should return None if expired
@@ -1346,7 +1271,7 @@ class RefResolverCacheIntegrationTest(TransactionTestCase):
 
             # If cache expired, should make new HTTP call
             if resolver_short_ttl._redis_client:
-                # Cache may have expired, so new HTTP call should occur
-                self.assertGreaterEqual(call_count[0], initial_call_count)
+                # Cache expired after TTL, so a new HTTP call must occur
+                self.assertGreater(call_count[0], initial_call_count)
         finally:
             resolver_short_ttl.resolve_external = original_resolve

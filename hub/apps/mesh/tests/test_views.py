@@ -38,7 +38,7 @@ class DomainViewSetTestCase(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
 
         # Create roles
@@ -50,7 +50,7 @@ class DomainViewSetTestCase(TestCase):
 
         # Create users
         self.admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Admin User",
@@ -59,7 +59,7 @@ class DomainViewSetTestCase(TestCase):
         UserRole.objects.create(user=self.admin_user, role=self.admin_role)
 
         self.regular_user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Regular User",
@@ -276,7 +276,7 @@ class DomainListingEndpointTest(DomainViewSetTestCase):
         """Test domain listing with owner filter"""
         # Create domain with different owner
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
         )
@@ -299,8 +299,9 @@ class DomainListingEndpointTest(DomainViewSetTestCase):
     def test_list_domains_tenant_isolation(self):
         """Test that users can only see domains in their tenant"""
         # Create another tenant and domain
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_domain = DataMeshDomain.objects.create(
             tenant=other_tenant,
@@ -350,8 +351,9 @@ class DomainRetrieveEndpointTest(DomainViewSetTestCase):
     def test_retrieve_domain_tenant_isolation(self):
         """Test that users can only retrieve domains from their tenant"""
         # Create another tenant and domain
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_domain = DataMeshDomain.objects.create(
             tenant=other_tenant,
@@ -1318,8 +1320,9 @@ class DomainViewSetErrorHandlingTest(DomainViewSetTestCase):
 
         url = reverse("domain-list")
         # Create domain with invalid tenant_id (cross-tenant access)
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         data = {
@@ -1376,11 +1379,12 @@ class DomainViewSetErrorHandlingTest(DomainViewSetTestCase):
     def test_transfer_ownership_validation_error(self):
         """Test error handling for ownership transfer validation errors"""
         # Create user in different tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
         )
 
         self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}")

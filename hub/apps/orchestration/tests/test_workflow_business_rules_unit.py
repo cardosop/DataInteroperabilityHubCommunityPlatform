@@ -9,9 +9,11 @@ Comprehensive TDD unit tests for:
 All tests follow TDD principles, use real implementations (no mocks/stubs),
 and fix root causes rather than workarounds.
 """
-from django.test import TestCase
-from django.contrib.auth import get_user_model
 import time
+import uuid
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
 from typing import Dict, Any
 
 from hub.apps.orchestration.models import (
@@ -39,13 +41,13 @@ class WorkflowBusinessRulesUnitTestBase(TestCase):
         super().setUp()
         self.engine = WorkflowEngine()
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )

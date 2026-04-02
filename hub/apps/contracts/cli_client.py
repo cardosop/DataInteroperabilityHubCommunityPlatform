@@ -227,21 +227,6 @@ class DataContractCLIClient:
         Returns:
             Validation result with status, issues, cli_version
         """
-        # Skip actual validation in test environment to prevent timeouts
-        import sys
-        if 'pytest' in sys.modules or 'unittest' in sys.modules:
-            # Return mock validation result for tests
-            logger.info(
-                "datacontract_validation_skipped_in_test",
-                message="Skipping DataContract validation in test environment"
-            )
-            return {
-                'valid': True,
-                'validation_status': 'VALID',
-                'errors': [],
-                'warnings': [],
-                'cli_version': '1.0.0-test'
-            }
         # Compute contract hash
         contract_hash = self._compute_contract_hash(raw_contract, format)
 
@@ -336,32 +321,6 @@ class DataContractCLIClient:
         target_format: str,
         timeout: Optional[int] = None
     ) -> Dict[str, Any]:
-        """
-        Convert contract format.
-
-        In test environment, returns a mock response to prevent timeouts.
-        """
-        # Skip actual conversion in test environment to prevent timeouts
-        import sys
-        if 'pytest' in sys.modules or 'unittest' in sys.modules:
-            logger.info(
-                "datacontract_conversion_skipped_in_test",
-                message="Skipping DataContract conversion in test environment"
-            )
-            # For tests, return a mock converted contract based on target format
-            if target_format.upper() == 'YAML':
-                # Return mock YAML (doesn't start with { or [)
-                mock_converted = "info:\n  title: Test Contract\n  version: 1.0.0"
-            else:
-                # Return mock JSON (starts with { or [)
-                mock_converted = '{"info": {"title": "Test Contract", "version": "1.0.0"}}'
-            return {
-                'converted_contract': mock_converted,
-                'target_format': target_format,
-                'format': target_format,
-                'cli_version': '1.0.0-test'
-            }
-
         """
         Convert a contract between formats.
 

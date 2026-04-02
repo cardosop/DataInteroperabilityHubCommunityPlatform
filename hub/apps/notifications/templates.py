@@ -4,6 +4,8 @@ Email Template Rendering
 Utilities for rendering email templates with context.
 """
 from typing import Dict, Any, Optional
+from urllib.parse import urlencode
+
 from django.template.loader import render_to_string
 from django.conf import settings
 
@@ -91,6 +93,17 @@ def build_invitation_url(token: str) -> str:
     """
     base_url = get_base_url()
     return f"{base_url}/auth/accept-invitation?token={token}"
+
+
+def build_email_verification_url(token: str) -> str:
+    """
+    Build email verification link for the SPA (Phase 204).
+
+    Uses FRONTEND_URL when set, otherwise EMAIL_BASE_URL.
+    """
+    base = getattr(settings, "FRONTEND_URL", None) or get_base_url()
+    base = str(base).rstrip("/")
+    return f"{base}/verify-email?{urlencode({'token': token})}"
 
 
 def build_password_reset_url(token: str) -> str:

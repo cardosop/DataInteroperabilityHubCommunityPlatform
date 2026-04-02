@@ -22,6 +22,8 @@ import json
 from datetime import timedelta
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -39,6 +41,7 @@ from hub.apps.contracts.services import ContractService, ODPSService
 from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -78,21 +81,21 @@ class ODPSAuditComprehensiveValidationBase(TestCase):
 
         # Create users
         self.user1 = User.objects.create_user(
-            email="odps-audit-user1@example.com",
+            email=f"odps-audit-user1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE,
             display_name="ODPS Audit Test User 1",
         )
         self.user2 = User.objects.create_user(
-            email="odps-audit-user2@example.com",
+            email=f"odps-audit-user2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant1,
             status=UserStatus.ACTIVE,
             display_name="ODPS Audit Test User 2",
         )
         self.user3 = User.objects.create_user(
-            email="odps-audit-user3@example.com",
+            email=f"odps-audit-user3-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant2,
             status=UserStatus.ACTIVE,

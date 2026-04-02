@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetSourceType
 from hub.apps.tenants.models import Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -22,7 +23,8 @@ class FederatedAssetModelTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
     def test_create_hub_native_asset(self):
         """Test creating a Hub-native asset (default)"""
@@ -347,7 +349,7 @@ class FederatedAssetModelTest(TestCase):
         )
 
         # Filter Hub-native assets
-        hub_native_assets = Asset.objects.filter(source_type=AssetSourceType.HUB_NATIVE)
+        hub_native_assets = Asset.objects.filter(tenant=self.tenant, source_type=AssetSourceType.HUB_NATIVE)
         self.assertEqual(hub_native_assets.count(), 2)
 
     def test_filter_by_source_type_returns_federated_assets(self):
@@ -380,7 +382,7 @@ class FederatedAssetModelTest(TestCase):
             source_metadata={"marketplace_type": "AWS_DATA_EXCHANGE"},
         )
 
-        federated_assets = Asset.objects.filter(source_type=AssetSourceType.FEDERATED)
+        federated_assets = Asset.objects.filter(tenant=self.tenant, source_type=AssetSourceType.FEDERATED)
         self.assertEqual(federated_assets.count(), 2)
 
     def test_filter_by_source_type_uses_index(self):
@@ -572,7 +574,8 @@ class FederatedAssetIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
     def test_create_federated_asset_with_marketplace_info(self):
         """Test creating a federated asset with complete marketplace information"""

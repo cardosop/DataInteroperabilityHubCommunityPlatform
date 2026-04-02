@@ -9,7 +9,9 @@ Uses wait_until for delivery state (no fixed time.sleep) per FIX_PLAN_FLAKY_TEST
 import uuid
 
 import pytest
-from django.test import TestCase
+
+pytestmark = pytest.mark.slow
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from tests.utils.polling import wait_until
@@ -32,17 +34,25 @@ from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookSer
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-class MeshWebhookE2ETest(TestCase):
+class MeshWebhookE2ETest(TransactionTestCase):
     """E2E tests for mesh webhook delivery from event bus"""
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        """Skip TRUNCATE CASCADE to avoid timeout."""
+        pass
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_mesh_domain_created_e2e_event_bus_integration(self):

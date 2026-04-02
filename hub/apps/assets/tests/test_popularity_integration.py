@@ -3,6 +3,7 @@ Integration tests for Asset Popularity Metrics
 
 Tests for popularity tracking in the context of asset workflows.
 """
+import uuid
 
 from datetime import timedelta
 
@@ -24,12 +25,13 @@ class AssetPopularityIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -102,18 +104,15 @@ class AssetPopularityIntegrationTest(TestCase):
     # ========== FAILURE SCENARIOS ==========
 
     def test_popularity_integration_failure_nonexistent_asset(self):
-        """Test popularity tracking with non-existent asset (failure scenario)"""
-        import uuid
+        """Test popularity tracking with non-existent asset does not raise.
 
+        The track_view function handles DoesNotExist internally, so calling it
+        with a non-existent asset ID should not propagate an exception.
+        """
         fake_asset_id = str(uuid.uuid4())
 
-        # Should handle non-existent asset gracefully
-        try:
-            AssetPopularityService.track_view(fake_asset_id, str(self.tenant.id))
-            # If succeeds, that's acceptable
-        except Exception:
-            # If fails, that's acceptable for non-existent asset
-            pass
+        # Should not raise -- the service handles missing assets internally
+        AssetPopularityService.track_view(fake_asset_id, str(self.tenant.id))
 
     # ========== EDGE CASES ==========
 
@@ -151,14 +150,10 @@ class AssetPopularityIntegrationTest(TestCase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_popularity_integration_error_handling(self):
-        """Test error handling in popularity tracking integration"""
-        # Use valid asset
-        try:
-            AssetPopularityService.track_view(str(self.asset.id), str(self.tenant.id))
-            # Should succeed
-            self.asset.refresh_from_db()
-            self.assertGreaterEqual(self.asset.view_count, 0)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("track_view should handle errors gracefully")
+    def test_popularity_integration_valid_tracking_succeeds(self):
+        """Valid popularity tracking succeeds without error."""
+        AssetPopularityService.track_view(
+            str(self.asset.id), str(self.tenant.id),
+        )
+        self.asset.refresh_from_db()
+        self.assertGreaterEqual(self.asset.view_count, 1)

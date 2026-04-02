@@ -10,20 +10,17 @@ Client for interacting with the dq-service microservice.
 - This client follows service-to-service communication patterns with circuit breaker protection
 """
 
-import logging
-import time
+import structlog
 from typing import Any, Dict, Optional, Tuple
 
 import httpx
 from django.conf import settings
 from django.core.cache import cache
 
-from hub.apps.core.resilience.circuit_breaker import (
-    CircuitBreaker,
-    get_redis_client,
-)
+from hub.apps.core.resilience.backoff import sleep_with_jitter
+from hub.apps.core.resilience.service_breakers import get_shared_circuit_breaker
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class DQServiceClient:
@@ -40,39 +37,35 @@ class DQServiceClient:
         is_test_env = "pytest" in sys.modules or "unittest" in sys.modules
         is_test_from_host = is_test_env and not is_in_docker
 
-        # Priority: 1. Test environment from host (use localhost), 2. Environment variable, 3. Settings, 4. Default based on context
+        # Priority: 1. Host-only pytest → localhost, 2. Django settings (so
+        # @override_settings works in Docker where Compose sets DQ_SERVICE_URL),
+        # 3. process env, 4. defaults by context.
         if is_test_from_host:
-            # Running tests from host machine - always use localhost
             default_url = "http://localhost:8083"
         else:
-            # Check environment variable (set by Docker Compose)
             env_url = os.getenv("DQ_SERVICE_URL")
-            if env_url:
+            settings_url = getattr(settings, "DQ_SERVICE_URL", None)
+            # Prefer Django settings during pytest/unittest so @override_settings wins over
+            # process env (Docker Compose always sets DQ_SERVICE_URL).
+            if is_test_env and settings_url:
+                default_url = settings_url
+            elif env_url:
                 default_url = env_url
+            elif settings_url:
+                default_url = settings_url
             else:
-                # Check settings
-                default_url = getattr(settings, "DQ_SERVICE_URL", None)
-                if not default_url:
-                    # Determine default based on context
-                    if is_in_docker and is_test_env:
-                        # In Docker test environment, try test service names first, then localhost
-                        # Test services might be on different network, so try localhost with mapped port
-                        import socket
+                if is_in_docker and is_test_env:
+                    import socket
 
-                        try:
-                            socket.gethostbyname("dq-service-test")
-                            default_url = "http://dq-service-test:8083"
-                        except socket.gaierror:
-                            # Test service not on same network, try localhost with test port
-                            default_url = (
-                                "http://localhost:8084"  # Test port from docker-compose.test.yml
-                            )
-                    elif is_in_docker:
-                        # In Docker (non-test), use service name
-                        default_url = "http://dq-service:8083"
-                    else:
-                        # Production/default: use service name
-                        default_url = "http://dq-service:8083"
+                    try:
+                        socket.gethostbyname("dq-service-test")
+                        default_url = "http://dq-service-test:8083"
+                    except socket.gaierror:
+                        default_url = "http://localhost:8084"
+                elif is_in_docker:
+                    default_url = "http://dq-service:8083"
+                else:
+                    default_url = "http://dq-service:8083"
 
         self.base_url = default_url
         self.timeout = getattr(settings, "DQ_SERVICE_TIMEOUT", 1800)  # 30 minutes default
@@ -82,14 +75,7 @@ class DQServiceClient:
         self.max_retries = 2
         self.backoff_factor = 1
 
-        # Initialize circuit breaker
-        self._circuit_breaker = CircuitBreaker(
-            service_name="dq-service",
-            failure_threshold=5,
-            timeout_seconds=60,
-            success_threshold=2,
-            redis_client=get_redis_client(),
-        )
+        self._circuit_breaker = get_shared_circuit_breaker("dq-service")
 
     def _request_with_retry(self, method: str, endpoint: str, **kwargs) -> httpx.Response:
         """Helper to make HTTP requests with retry logic"""
@@ -115,19 +101,23 @@ class DQServiceClient:
             except httpx.HTTPStatusError as e:
                 if e.response.status_code >= 500 and attempt < self.max_retries:
                     logger.warning(
-                        f"DQ service returned {e.response.status_code}. "
-                        f"Retrying in {self.backoff_factor * (2 ** attempt)}s..."
+                        "dq_service_http_retry",
+                        status_code=e.response.status_code,
+                        delay=self.backoff_factor * (2 ** attempt),
+                        attempt=attempt + 1,
                     )
-                    time.sleep(self.backoff_factor * (2**attempt))
+                    sleep_with_jitter(attempt, self.backoff_factor)
                     continue
                 raise
             except httpx.RequestError as e:
                 if attempt < self.max_retries:
                     logger.warning(
-                        f"Network error connecting to DQ service: {e}. "
-                        f"Retrying in {self.backoff_factor * (2 ** attempt)}s..."
+                        "dq_service_network_retry",
+                        error=str(e),
+                        delay=self.backoff_factor * (2 ** attempt),
+                        attempt=attempt + 1,
                     )
-                    time.sleep(self.backoff_factor * (2**attempt))
+                    sleep_with_jitter(attempt, self.backoff_factor)
                     continue
                 raise
         raise Exception("Max retries exceeded for DQ service.")
@@ -139,7 +129,7 @@ class DQServiceClient:
             data = response.json()
             return data.get("status") == "healthy", data.get("service", "dq-service")
         except Exception as e:
-            logger.error(f"DQ service health check failed: {e}")
+            logger.error("dq_service_health_check_failed", error=str(e))
             return False, "unknown"
 
     def run_dq(
@@ -167,10 +157,31 @@ class DQServiceClient:
         if use_cache:
             import hashlib
 
-            cache_key = f"dq:run:{hashlib.sha256(file_content).hexdigest()}:{profile_key}"
+            custom_checks_hash = ""
+            if contract:
+                try:
+                    from hub.apps.dq.contract_integration import (
+                        ContractQualityRulesExtractor,
+                    )
+                    rules = ContractQualityRulesExtractor.get_contract_quality_checks(contract)
+                    if rules:
+                        import json as _json
+                        rules_str = _json.dumps(
+                            [str(r) for r in rules if r is not None],
+                            sort_keys=True,
+                        )
+                        custom_checks_hash = hashlib.sha256(
+                            rules_str.encode()
+                        ).hexdigest()[:16]
+                except Exception:
+                    pass
+            cache_key = (
+                f"dq:run:{hashlib.sha256(file_content).hexdigest()}"
+                f":{profile_key}:{custom_checks_hash}"
+            )
             cached_result = cache.get(cache_key)
             if cached_result:
-                logger.info(f"Using cached DQ result for profile {profile_key}")
+                logger.info("dq_service_cache_hit", profile_key=profile_key)
                 return cached_result
 
         # Define fallback response
@@ -246,7 +257,7 @@ class DQServiceClient:
             # If circuit breaker raised an exception (not caught by fallback),
             # re-raise it to allow callers to handle it
             # This allows tests to verify error handling behavior
-            logger.error(f"Error running DQ check with DQ service: {e}")
+            logger.error("dq_service_run_error", error=str(e))
             # Re-raise the exception to allow callers to handle it
             # The circuit breaker will have already called the fallback if appropriate
             raise

@@ -8,6 +8,8 @@ Target: 100% coverage
 from datetime import timedelta
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.test import RequestFactory, TestCase
 from django.utils import timezone

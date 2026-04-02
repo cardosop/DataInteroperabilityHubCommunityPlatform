@@ -13,6 +13,12 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+from hub.apps.integrations.encryption import (
+    decrypt_json_field,
+    encrypt_json_field,
+    EncryptionError,
+)
+
 
 class DestinationType(models.TextChoices):
     """Destination type enumeration"""
@@ -28,6 +34,15 @@ class ScheduledExportStatus(models.TextChoices):
     ACTIVE = "ACTIVE", "Active"
     PAUSED = "PAUSED", "Paused"
     ERROR = "ERROR", "Error"
+    DELETED = "DELETED", "Deleted"
+
+
+class DeploymentSyncStatus(models.TextChoices):
+    """Phase 25.4.4 — Prefect deployment sync status"""
+
+    SYNCED = "SYNCED", "Synced"
+    PENDING = "PENDING", "Pending"
+    FAILED = "FAILED", "Failed"
 
 
 class ScheduledExportRunStatus(models.TextChoices):
@@ -86,6 +101,29 @@ class ScheduledExport(models.Model):
         blank=True,
         help_text="Status of last run: RUNNING, COMPLETED, FAILED, CANCELLED",
     )
+    # Phase 25.4.1 — Persist Prefect deployment ID
+    prefect_deployment_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Prefect deployment ID returned by integration service",
+    )
+    # Phase 25.4.4 — Deployment sync status
+    deployment_sync_status = models.CharField(
+        max_length=10,
+        choices=DeploymentSyncStatus.choices,
+        default=DeploymentSyncStatus.PENDING,
+        help_text="Prefect deployment sync status: SYNCED, PENDING, FAILED",
+    )
+    consecutive_failure_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of consecutive failed runs (Phase 71 — auto-pause)",
+    )
+    last_error_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of the last failure (Phase 71)",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -139,8 +177,22 @@ class ScheduledExport(models.Model):
             raise ValidationError("destination_config must be a dictionary")
 
     def save(self, *args, **kwargs):
-        """Override save to validate and calculate next_run_at"""
+        """Override save to validate, encrypt destination_config, and calculate next_run_at"""
         self.full_clean()
+
+        # Encrypt destination_config if plaintext dict (not already encrypted)
+        if (
+            isinstance(self.destination_config, dict)
+            and self.destination_config
+            and not self.destination_config.get("_encrypted")
+        ):
+            try:
+                encrypted = encrypt_json_field(self.destination_config)
+                self.destination_config = {"_encrypted": encrypted}
+            except EncryptionError as e:
+                raise ValidationError(
+                    {"destination_config": f"Failed to encrypt: {e}"}
+                ) from e
 
         # Calculate next_run_at if not set or if schedule changed
         if not self.next_run_at or self._state.adding:
@@ -148,13 +200,36 @@ class ScheduledExport(models.Model):
 
         super().save(*args, **kwargs)
 
+    def get_destination_config(self) -> dict:
+        """
+        Get decrypted destination configuration.
+
+        Returns:
+            Decrypted destination config dictionary.
+            Legacy plaintext dicts (pre-migration) returned as-is.
+        """
+        if not self.destination_config:
+            return {}
+        if isinstance(self.destination_config, dict):
+            if "_encrypted" in self.destination_config:
+                return decrypt_json_field(
+                    self.destination_config["_encrypted"]
+                )
+            return self.destination_config
+        return {}
+
     def _calculate_next_run_at(self):
-        """Calculate next run time based on cron schedule"""
-        from datetime import datetime
+        """Calculate next run time based on cron schedule."""
+        from datetime import datetime, timedelta
 
         now = timezone.now()
         cron_expr = self.schedule_config.get("cron")
         timezone_str = self.schedule_config.get("timezone", "UTC")
+
+        if not cron_expr:
+            return (now + timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0,
+            )
 
         try:
             from pytz import timezone as pytz_timezone
@@ -162,12 +237,17 @@ class ScheduledExport(models.Model):
             tz = pytz_timezone(timezone_str)
             cron = croniter(cron_expr, now.astimezone(tz))
             next_run = cron.get_next(datetime)
-            return timezone.make_aware(next_run)
+            # croniter returns aware datetime when seeded with aware;
+            # ensure it's aware (UTC) for storage.
+            if timezone.is_naive(next_run):
+                next_run = timezone.make_aware(next_run, tz)
+            return next_run
         except Exception:
-            # Fallback to tomorrow if cron parsing fails
             from datetime import timedelta
 
-            return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            return (now + timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0,
+            )
 
 
 class ScheduledExportRun(models.Model):

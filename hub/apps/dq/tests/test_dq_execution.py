@@ -123,8 +123,9 @@ class DQExecutionTest(DQTestBase):
         self.assertEqual(dq_run.status, DQRunStatus.SUCCEEDED)
         self.assertEqual(dq_run.overall_status, "PASS")
         self.assertEqual(dq_run.quality_score, 95.5)
-        self.assertIsNotNone(dq_run.completed_at)
         self.assertIsNotNone(dq_run.started_at)
+        self.assertIsNotNone(dq_run.completed_at)
+        self.assertGreaterEqual(dq_run.completed_at, dq_run.started_at)
 
         # Verify metering information
         self.assertIn("metering", dq_run.details_json)

@@ -25,7 +25,8 @@ class MarketplaceSyncJobModelTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
@@ -195,7 +196,7 @@ class MarketplaceSyncJobModelTest(TestCase):
 
         import time
 
-        time.sleep(0.01)
+        time.sleep(0.01)  # INTENTIONAL: test-specific timing requirement
 
         sync_job.mark_completed(items_synced=100, metadata={"duration": 30})
 
@@ -479,7 +480,7 @@ class MarketplaceSyncJobModelTest(TestCase):
 
         import time
 
-        time.sleep(0.01)
+        time.sleep(0.01)  # INTENTIONAL: test-specific timing requirement
 
         sync_job2 = MarketplaceSyncJob.objects.create(
             tenant=self.tenant, connection=self.connection, direction=SyncDirection.PULL.value

@@ -455,6 +455,53 @@ class MarketplaceConnectorFactory:
         return marketplace_type.value in cls._connectors
 
     @classmethod
+    def get_capability_matrix(cls) -> Dict[str, Dict[str, Any]]:
+        """Return the capability matrix for all registered connectors.
+
+        Returns a dict keyed by marketplace type with each entry
+        containing:
+          - ``sync_directions``: list of supported SyncDirection values
+          - ``supports_push``: bool
+          - ``supports_pull``: bool
+          - ``connector_class``: fully-qualified class name
+
+        This is the **single source of truth** for connector
+        capabilities and can be serialised directly to JSON for
+        the frontend capabilities service.
+        """
+        from hub.apps.integrations.base import SyncDirection
+
+        matrix: Dict[str, Dict[str, Any]] = {}
+        for mtype_value, connector_cls in sorted(cls._connectors.items()):
+            # Read the property from a bare instance.  Connectors
+            # return a static list so no credentials are needed.
+            try:
+                inst = connector_cls()
+                dirs = inst.supported_sync_directions
+            except Exception:
+                dirs = []
+            dir_values = [
+                d.value if hasattr(d, "value") else str(d)
+                for d in dirs
+            ]
+            matrix[mtype_value] = {
+                "sync_directions": dir_values,
+                "supports_push": (
+                    SyncDirection.PUSH.value in dir_values
+                    or SyncDirection.BIDIRECTIONAL.value in dir_values
+                ),
+                "supports_pull": (
+                    SyncDirection.PULL.value in dir_values
+                    or SyncDirection.BIDIRECTIONAL.value in dir_values
+                ),
+                "connector_class": (
+                    f"{connector_cls.__module__}."
+                    f"{connector_cls.__qualname__}"
+                ),
+            }
+        return matrix
+
+    @classmethod
     def unregister_connector(cls, marketplace_type: MarketplaceType) -> None:
         """
         Unregister a marketplace connector.

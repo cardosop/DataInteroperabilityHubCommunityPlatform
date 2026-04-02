@@ -358,15 +358,14 @@ class VersioningEventPublisherTest(DatasetsTestBase):
 
         fake_version_id = str(uuid.uuid4())
 
-        # Should handle non-existent version gracefully
+        # Non-existent version must either return None or raise
         try:
             event_id = self.service.publish_version_updated(
                 version_id=fake_version_id, resource_type="DATASET", resource_id=str(uuid.uuid4())
             )
-            # If succeeds, should return event_id or handle gracefully
-            self.assertIsNone(event_id) or self.assertIsNotNone(event_id)
+            # If service returns gracefully, event_id should be None
+            self.assertIsNone(event_id)
         except Exception:
-            # If fails, that's acceptable for non-existent version
             pass
 
     # ========== ERROR HANDLING ==========

@@ -31,6 +31,20 @@ class WebhookSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def validate_url(self, value):
+        """Validate webhook URL is safe (SSRF protection).
+
+        Gated by ``WEBHOOK_SSRF_ENABLED`` Django setting (default True) so
+        that integration tests that deliver to a local HTTP server can disable
+        the guard via ``@override_settings(WEBHOOK_SSRF_ENABLED=False)``.
+        """
+        from django.conf import settings as dj_settings
+        if not getattr(dj_settings, "WEBHOOK_SSRF_ENABLED", True):
+            return value
+        from .ssrf_guard import validate_webhook_url
+        validate_webhook_url(value, raise_as_validation_error=True)
+        return value
+
     def validate_event_types(self, value):
         """Validate event types"""
         if not value:

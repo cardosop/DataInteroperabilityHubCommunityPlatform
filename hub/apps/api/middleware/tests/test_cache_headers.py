@@ -11,9 +11,10 @@ Tests cover:
 - Max-age configuration
 - No-cache for sensitive data
 """
+import uuid
 try:
     import pytest
-    pytestmark = pytest.mark.django_db(transaction=True)
+    pytestmark = pytest.mark.django_db
 except ImportError:
     # pytest not available, tests will run with Django test runner
     pytestmark = None
@@ -48,14 +49,16 @@ class CacheHeadersMiddlewareTest(TestCase):
         self.factory = RequestFactory()
         self.middleware = CacheHeadersMiddleware(lambda request: HttpResponse())
 
+        import uuid
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Cache Test Tenant {uid}",
+            slug=f"cache-test-{uid}",
             status="ACTIVE",
             kyc_status="VERIFIED"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"cache-test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

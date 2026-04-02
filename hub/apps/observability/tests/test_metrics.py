@@ -18,6 +18,7 @@ from hub.apps.observability.otel_metrics import (
     metrics_view,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -29,8 +30,9 @@ class MetricsTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.client = Client()
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
     def test_metrics_endpoint(self):
@@ -64,14 +66,12 @@ class MetricsTest(TestCase):
 
     def test_job_metrics(self):
         """Test job metrics"""
-        # Metrics should exist
         self.assertIsNotNone(jobs_started_total)
-
-        # Increment metric
-        jobs_started_total.labels(job_type="DQ_RUN", tenant_id=str(self.tenant.id)).inc()
-
-        # Verify metric exists (can't easily test value without Prometheus)
-        self.assertTrue(True)  # Placeholder - metric exists
+        labeled = jobs_started_total.labels(job_type="DQ_RUN", tenant_id=str(self.tenant.id))
+        before = labeled._value.get()
+        labeled.inc()
+        after = labeled._value.get()
+        self.assertEqual(after, before + 1, "Counter did not increment")
 
 
 class MetricsFailureTest(TestCase):
@@ -80,8 +80,9 @@ class MetricsFailureTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = Client()
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
     def test_metrics_endpoint_not_available(self):
@@ -93,26 +94,12 @@ class MetricsFailureTest(TestCase):
         self.assertIn(response.status_code, [200, 503])
 
     def test_metrics_with_invalid_labels(self):
-        """Test metrics with invalid label values"""
-        try:
-            # Try with None labels - should handle gracefully
-            http_requests_total.labels(method=None, route="/api/v1/test/", status_class="2xx").inc()
-            # Should not raise exception
-            self.assertTrue(True)
-        except Exception:
-            # Exception acceptable if labels are validated
-            pass
+        """Test metrics with None label values are accepted (converted to string)"""
+        http_requests_total.labels(method=None, route="/api/v1/test/", status_class="2xx").inc()
 
     def test_metrics_with_missing_labels(self):
-        """Test metrics with missing required labels"""
-        try:
-            # Try with incomplete labels
-            http_requests_total.labels(method="GET").inc()
-            # Should handle gracefully
-            self.assertTrue(True)
-        except Exception:
-            # Exception acceptable if labels are required
-            pass
+        """Test metrics with incomplete labels raises or fills defaults"""
+        http_requests_total.labels(method="GET").inc()
 
 
 class MetricsEdgeCasesTest(TestCase):
@@ -121,68 +108,51 @@ class MetricsEdgeCasesTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = Client()
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
     def test_metrics_with_empty_string_labels(self):
         """Test metrics with empty string labels"""
-        try:
-            http_requests_total.labels(method="", route="", status_class="").inc()
-            self.assertTrue(True)
-        except Exception:
-            pass
+        http_requests_total.labels(method="", route="", status_class="").inc()
 
     def test_metrics_with_very_long_labels(self):
         """Test metrics with very long label values"""
-        try:
-            long_route = "/api/v1/" + "a" * 1000 + "/"
-            http_requests_total.labels(method="GET", route=long_route, status_class="2xx").inc()
-            self.assertTrue(True)
-        except Exception:
-            pass
+        long_route = "/api/v1/" + "a" * 1000 + "/"
+        http_requests_total.labels(method="GET", route=long_route, status_class="2xx").inc()
 
     def test_metrics_with_special_characters(self):
         """Test metrics with special characters in labels"""
-        try:
-            http_requests_total.labels(
-                method="GET", route="/api/v1/test!@#$%^&*()/", status_class="2xx"
-            ).inc()
-            self.assertTrue(True)
-        except Exception:
-            pass
+        http_requests_total.labels(
+            method="GET", route="/api/v1/test!@#$%^&*()/", status_class="2xx"
+        ).inc()
 
     def test_metrics_with_unicode(self):
         """Test metrics with unicode characters in labels"""
-        try:
-            http_requests_total.labels(
-                method="GET", route="/api/v1/测试/", status_class="2xx"
-            ).inc()
-            self.assertTrue(True)
-        except Exception:
-            pass
+        http_requests_total.labels(
+            method="GET", route="/api/v1/测试/", status_class="2xx"
+        ).inc()
 
     def test_metrics_multiple_increments(self):
         """Test multiple increments to same metric"""
-        try:
-            labeled_metric = http_requests_total.labels(
-                method="GET", route="/api/v1/test/", status_class="2xx"
-            )
-            for _ in range(100):
-                labeled_metric.inc()
-            self.assertTrue(True)
-        except Exception:
-            pass
+        labeled_metric = http_requests_total.labels(
+            method="GET", route="/api/v1/multi-inc-test/", status_class="2xx"
+        )
+        before = labeled_metric._value.get()
+        for _ in range(100):
+            labeled_metric.inc()
+        after = labeled_metric._value.get()
+        self.assertEqual(after, before + 100)
 
     def test_metrics_concurrent_access(self):
         """Test metrics with concurrent-like access"""
-        try:
-            # Simulate concurrent access
-            for i in range(50):
-                jobs_started_total.labels(job_type="DQ_RUN", tenant_id=str(self.tenant.id)).inc()
-            self.assertTrue(True)
-        except Exception:
-            pass
+        labeled = jobs_started_total.labels(job_type="DQ_RUN", tenant_id=str(self.tenant.id))
+        before = labeled._value.get()
+        for i in range(50):
+            labeled.inc()
+        after = labeled._value.get()
+        self.assertEqual(after, before + 50)
 
     def test_status_class_edge_cases(self):
         """Test status class calculation edge cases"""
@@ -200,21 +170,20 @@ class MetricsErrorHandlingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.client = Client()
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
     def test_metrics_handle_none_gracefully(self):
         """Test metrics handle None meter gracefully"""
-        try:
-            # Metrics should work even if meter is None
-            http_requests_total.labels(
-                method="GET", route="/api/v1/test/", status_class="2xx"
-            ).inc()
-            # Should not raise exception
-            self.assertTrue(True)
-        except Exception as e:
-            self.fail(f"Metrics should handle None meter gracefully: {e}")
+        labeled = http_requests_total.labels(
+            method="GET", route="/api/v1/test/", status_class="2xx"
+        )
+        before = labeled._value.get()
+        labeled.inc()
+        after = labeled._value.get()
+        self.assertEqual(after, before + 1)
 
     def test_metrics_endpoint_error_handling(self):
         """Test metrics endpoint error handling"""

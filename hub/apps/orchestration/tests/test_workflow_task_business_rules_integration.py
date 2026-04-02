@@ -11,6 +11,7 @@ Comprehensive TDD tests for:
 All tests follow TDD principles, use real implementations (no mocks/stubs),
 and fix root causes rather than workarounds.
 """
+import uuid
 
 import pytest
 from django.contrib.auth import get_user_model

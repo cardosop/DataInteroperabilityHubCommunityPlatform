@@ -28,6 +28,13 @@ allowed_base_dirs:
 # Denylist takes precedence over allowlist.
 # If allowlist is empty, all URLs are allowed (unless in denylist).
 # If allowlist is not empty, URL must match at least one pattern.
+# NOTE: This allowlist/denylist applies universally to ALL external URL
+# resolution, including:
+# - ODPS $ref references (product.contract.$ref, definitions.$ref, etc.)
+# - ODCS v3.1.0 relationships[].target_contract URLs (Phase 26)
+# - Bitol ODPS outputPorts[].contractId URL refs
+# All external fetches pass through RefResolver.resolve_external() which
+# checks this list after SSRF guard validation.
 url_allowlist: []  # List of allowed URL patterns for external $ref
 url_denylist: []    # List of denied URL patterns for external $ref
 

@@ -17,7 +17,6 @@ All tests use real implementations (no mocks/stubs) and verify:
 """
 
 import json
-import time
 import uuid
 from datetime import datetime, timedelta
 
@@ -48,6 +47,7 @@ from hub.apps.jobs.utils import (
     get_job_timeout,
     get_queue_for_job_type,
 )
+from tests.utils.wait_helpers import wait_for_event_persistence
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -646,7 +646,7 @@ class ODPSJobQueueEndToEndTest(ODPSJobQueueIntegrationTestBase):
         )
 
         # Wait for jobs to be enqueued
-        time.sleep(0.5)
+        wait_for_event_persistence(timeout=2.0)
 
         # Verify jobs are enqueued even with unicode
         jobs = Job.objects.filter(tenant=self.tenant, resource_id=str(contract.id))
@@ -685,7 +685,7 @@ class ODPSJobQueueEndToEndTest(ODPSJobQueueIntegrationTestBase):
         )
 
         # Wait for jobs to be enqueued
-        time.sleep(0.5)
+        wait_for_event_persistence(timeout=2.0)
 
         # Verify jobs are enqueued even with special characters
         jobs = Job.objects.filter(tenant=self.tenant, resource_id=str(contract.id))
@@ -732,7 +732,7 @@ class ODPSJobQueueEndToEndTest(ODPSJobQueueIntegrationTestBase):
         )
 
         # Wait for jobs to be enqueued
-        time.sleep(0.5)
+        wait_for_event_persistence(timeout=2.0)
 
         # Verify jobs are enqueued even with very large documents
         jobs = Job.objects.filter(tenant=self.tenant, resource_id=str(contract.id))
@@ -774,7 +774,7 @@ class ODPSJobQueueEndToEndTest(ODPSJobQueueIntegrationTestBase):
         )
 
         # Wait for jobs to be enqueued
-        time.sleep(0.5)
+        wait_for_event_persistence(timeout=2.0)
 
         # Verify jobs are enqueued even with None values
         jobs = Job.objects.filter(tenant=self.tenant, resource_id=str(contract.id))
@@ -813,7 +813,7 @@ class ODPSJobQueueEndToEndTest(ODPSJobQueueIntegrationTestBase):
         )
 
         # Wait for jobs to be enqueued
-        time.sleep(0.5)
+        wait_for_event_persistence(timeout=2.0)
 
         # Verify jobs are enqueued even with nested structures
         jobs = Job.objects.filter(tenant=self.tenant, resource_id=str(contract.id))

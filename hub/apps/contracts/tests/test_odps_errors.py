@@ -489,54 +489,72 @@ class ErrorHierarchyInheritanceTest(TestCase):
         """Test ODPSError with empty message."""
         error = ODPSError("")
         self.assertEqual(error.message, "")
-        self.assertIsNotNone(error.to_dict())
+        error_dict = error.to_dict()
+        self.assertIn("error", error_dict)
+        self.assertIn("message", error_dict)
 
     def test_odps_error_with_very_long_message(self):
         """Test ODPSError with very long message."""
         long_message = "A" * 100000
         error = ODPSError(long_message)
         self.assertEqual(error.message, long_message)
-        self.assertIsNotNone(error.to_dict())
+        error_dict = error.to_dict()
+        self.assertIn("error", error_dict)
+        self.assertEqual(error_dict["technical_message"], long_message)
 
     def test_odps_error_with_special_characters_in_message(self):
         """Test ODPSError with special characters in message."""
         special_message = "Error <>&\"'"
         error = ODPSError(special_message)
         self.assertEqual(error.message, special_message)
-        self.assertIsNotNone(error.to_dict())
+        error_dict = error.to_dict()
+        self.assertIn("error", error_dict)
+        self.assertEqual(error_dict["message"], special_message)
 
     def test_odps_error_with_unicode_in_message(self):
         """Test ODPSError with unicode characters in message."""
         unicode_message = "错误消息"
         error = ODPSError(unicode_message)
         self.assertEqual(error.message, unicode_message)
-        self.assertIsNotNone(error.to_dict())
+        error_dict = error.to_dict()
+        self.assertIn("error", error_dict)
+        self.assertEqual(error_dict["message"], unicode_message)
 
     def test_odps_error_with_none_context(self):
         """Test ODPSError with None context."""
         error = ODPSError("Test error", context=None)
-        # Should handle None context gracefully
-        self.assertIsNotNone(error.to_dict())
+        error_dict = error.to_dict()
+        self.assertIn("error", error_dict)
+        self.assertIn("message", error_dict)
 
     def test_odps_error_with_empty_context(self):
         """Test ODPSError with empty context."""
         error = ODPSError("Test error", context={})
         self.assertEqual(error.context, {})
-        self.assertIsNotNone(error.to_dict())
+        error_dict = error.to_dict()
+        self.assertIn("error", error_dict)
+        self.assertIn("message", error_dict)
+        # Empty context should not appear in to_dict output
+        self.assertNotIn("context", error_dict)
 
     def test_odps_error_with_very_large_context(self):
         """Test ODPSError with very large context."""
         large_context = {f"key_{i}": "value" * 1000 for i in range(1000)}
         error = ODPSError("Test error", context=large_context)
         self.assertEqual(len(error.context), 1000)
-        self.assertIsNotNone(error.to_dict())
+        error_dict = error.to_dict()
+        self.assertIn("error", error_dict)
+        self.assertIn("context", error_dict)
+        self.assertEqual(len(error_dict["context"]), 1000)
 
     def test_odps_error_with_nested_context(self):
         """Test ODPSError with nested context."""
         nested_context = {"level1": {"level2": {"level3": {"value": "deep"}}}}
         error = ODPSError("Test error", context=nested_context)
         self.assertEqual(error.context, nested_context)
-        self.assertIsNotNone(error.to_dict())
+        error_dict = error.to_dict()
+        self.assertIn("context", error_dict)
+        self.assertEqual(error_dict["context"]["level1"]["level2"]["level3"]["value"], "deep")
 
     def test_odps_error_to_dict_preserves_all_fields(self):
         """Test that to_dict preserves all error fields."""
@@ -605,68 +623,67 @@ class ErrorHierarchyInheritanceTest(TestCase):
             self.assertEqual(error.recovery_strategy, strategy)
 
     def test_error_with_invalid_recovery_strategy(self):
-        """Test error with invalid recovery strategy."""
-        # Should handle invalid strategy gracefully
-        try:
-            error = ODPSError("Test error", recoverable=True, recovery_strategy="INVALID_STRATEGY")
-            # May accept or reject invalid strategy
-            self.assertIsNotNone(error)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        """Test error with invalid recovery strategy raises on serialization."""
+        # ODPSError constructor accepts arbitrary recovery_strategy values
+        error = ODPSError("Test error", recoverable=True, recovery_strategy="INVALID_STRATEGY")
+        self.assertEqual(error.recovery_strategy, "INVALID_STRATEGY")
+        self.assertTrue(error.recoverable)
+        # But to_dict() calls .value on it, which fails for non-enum strings
+        with self.assertRaises(AttributeError):
+            error.to_dict()
 
     def test_error_serialization_with_circular_reference(self):
-        """Test error serialization handles potential circular references."""
+        """Test error construction accepts circular reference context."""
         context = {"self": None}
         context["self"] = context  # Create circular reference
 
-        # Should handle circular reference gracefully
-        try:
-            error = ODPSError("Test error", context=context)
-            error_dict = error.to_dict()
-            # May serialize or handle circular reference
-            self.assertIsNotNone(error_dict)
-        except Exception:
-            # If it raises exception due to circular reference, that's acceptable
-            pass
+        # Construction should succeed - context is stored as-is
+        error = ODPSError("Test error", context=context)
+        self.assertIs(error.context["self"], context)
+        # to_dict stores context by reference, so it also succeeds
+        error_dict = error.to_dict()
+        self.assertIn("error", error_dict)
+        self.assertIn("message", error_dict)
+        self.assertIn("context", error_dict)
 
     def test_odps_errors_handle_unicode_characters(self):
         """Test that ODPS errors handle unicode characters correctly."""
         error = ODPSError("测试错误消息")
         error_dict = error.to_dict()
-        # Should handle unicode characters
-        self.assertIsNotNone(error_dict)
+        self.assertIn("error", error_dict)
         self.assertIn("message", error_dict)
+        self.assertEqual(error_dict["message"], "测试错误消息")
 
     def test_odps_errors_handle_special_characters(self):
         """Test that ODPS errors handle special characters correctly."""
         error = ODPSError("Test & Co. (Special) <error> & more")
         error_dict = error.to_dict()
-        # Should handle special characters
-        self.assertIsNotNone(error_dict)
+        self.assertIn("error", error_dict)
         self.assertIn("message", error_dict)
+        self.assertEqual(error_dict["message"], "Test & Co. (Special) <error> & more")
 
     def test_odps_errors_handle_very_large_messages(self):
         """Test that ODPS errors handle very large messages correctly."""
         large_message = "A" * 100000  # 100KB string
         error = ODPSError(large_message)
         error_dict = error.to_dict()
-        # Should handle very large messages
-        self.assertIsNotNone(error_dict)
+        self.assertIn("error", error_dict)
         self.assertIn("message", error_dict)
+        self.assertEqual(error_dict["technical_message"], large_message)
 
     def test_odps_errors_handle_none_values(self):
         """Test that ODPS errors handle None values correctly."""
         error = ODPSError(None)  # type: ignore
         error_dict = error.to_dict()
-        # Should handle None values gracefully
-        self.assertIsNotNone(error_dict)
+        self.assertIn("error", error_dict)
+        self.assertIn("message", error_dict)
 
     def test_odps_errors_handle_nested_structures(self):
         """Test that ODPS errors handle nested structures correctly."""
         nested_context = {"level1": {"level2": {"level3": {"value": "deep"}}}}
         error = ODPSError("Test error", context=nested_context)
         error_dict = error.to_dict()
-        # Should handle nested structures
-        self.assertIsNotNone(error_dict)
+        self.assertIn("error", error_dict)
+        self.assertIn("message", error_dict)
         self.assertIn("context", error_dict)
+        self.assertEqual(error_dict["context"], nested_context)

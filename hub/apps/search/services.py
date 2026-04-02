@@ -8,7 +8,9 @@ import time
 from typing import Dict, List, Any, Optional, Tuple
 
 from hub.apps.core.services.base import BaseService
+from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.core.events.service_publishers import SearchEventPublisher
+from hub.apps.search.business_rules import SearchBusinessRules
 from hub.apps.search.search_engine import SearchEngine
 from hub.apps.search.indexing import SearchIndexer
 from hub.apps.search.models import SearchIndex
@@ -94,6 +96,36 @@ class SearchService(BaseService, SearchEventPublisher):
             Tuple of (results list, total count)
         """
         start_time = time.time()
+
+        # Validate query and filters via SearchBusinessRules (Phase 75.2)
+        # Strip None values so the validator only sees filters that
+        # were actually provided by the caller.
+        raw_filters = {
+            "resource_type": resource_type,
+            "classification": classification,
+            "owner_id": owner_id,
+            "tags": tags,
+            "domain": domain,
+            "quality_status": quality_status,
+            "compliance_status": compliance_status,
+        }
+        active_filters = {
+            k: v for k, v in raw_filters.items() if v is not None
+        }
+        rules = SearchBusinessRules(
+            tenant_id=tenant_id,
+            user_id=user_id or self.user_id,
+        )
+        validation_result = rules.validate(
+            query=query,
+            filters=active_filters or None,
+        )
+        if not validation_result.is_valid:
+            raise ServiceValidationError(
+                "; ".join(validation_result.errors),
+                code="SEARCH_VALIDATION_FAILED",
+                details=validation_result.details,
+            )
 
         # Build filters dict for event publishing
         filters = {}

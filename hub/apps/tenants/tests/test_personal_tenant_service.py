@@ -22,6 +22,7 @@ from hub.apps.tenants.models import (
 from hub.apps.core.events.models import Event
 from hub.apps.tenants.services import PersonalTenantService
 from hub.apps.users.models import Role
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -40,12 +41,13 @@ class PersonalTenantServiceTest(TestCase):
     def test_create_personal_tenant_creates_tenant(self):
         """Success: create_personal_tenant_for_user creates a Tenant."""
         service = PersonalTenantService()
+        email = f"alice-{uuid.uuid4().hex[:8]}@example.com"
         tenant = service.create_personal_tenant_for_user(
-            email="alice@example.com",
+            email=email,
             display_name="Alice",
         )
         self.assertIsInstance(tenant, Tenant)
-        self.assertEqual(tenant.name, "Personal - alice@example.com")
+        self.assertEqual(tenant.name, f"Personal - {email}")
         self.assertEqual(tenant.status, TenantStatus.ACTIVE)
         self.assertEqual(tenant.kyc_status, KYCStatus.UNVERIFIED)
         self.assertIsNotNone(tenant.id)
@@ -55,7 +57,7 @@ class PersonalTenantServiceTest(TestCase):
         """Success: tenant is assigned FREE plan."""
         service = PersonalTenantService()
         tenant = service.create_personal_tenant_for_user(
-            email="bob@example.com",
+            email=f"bob-{uuid.uuid4().hex[:8]}@example.com",
             display_name="Bob",
         )
         self.assertIsNotNone(tenant.plan)
@@ -64,22 +66,32 @@ class PersonalTenantServiceTest(TestCase):
 
     def test_creates_tenant_config(self):
         """Success: TenantConfig is created with platform defaults."""
+        from hub.apps.tenants.validators import get_platform_defaults
+        defaults = get_platform_defaults()
+
         service = PersonalTenantService()
         tenant = service.create_personal_tenant_for_user(
-            email="carol@example.com",
+            email=f"carol-{uuid.uuid4().hex[:8]}@example.com",
             display_name="Carol",
         )
         config = TenantConfig.objects.get(tenant=tenant)
         self.assertIsNotNone(config)
-        self.assertIsNotNone(config.default_dq_profile)
-        self.assertIsNotNone(config.allowed_compliance_regimes)
-        self.assertIsNotNone(config.rate_limits)
+        self.assertEqual(
+            config.default_dq_profile,
+            defaults["default_dq_profile"],
+        )
+        self.assertEqual(
+            config.allowed_compliance_regimes,
+            defaults["allowed_compliance_regimes"],
+        )
+        self.assertIsInstance(config.rate_limits, dict)
+        self.assertGreater(len(config.rate_limits), 0)
 
     def test_creates_subscription(self):
         """Success: Subscription is created with ACTIVE status."""
         service = PersonalTenantService()
         tenant = service.create_personal_tenant_for_user(
-            email="dave@example.com",
+            email=f"dave-{uuid.uuid4().hex[:8]}@example.com",
             display_name="Dave",
         )
         subscription = Subscription.objects.get(tenant=tenant)
@@ -91,7 +103,7 @@ class PersonalTenantServiceTest(TestCase):
         """Success: slug follows personal-{uuid8} format (lowercase, 8 hex chars)."""
         service = PersonalTenantService()
         tenant = service.create_personal_tenant_for_user(
-            email="eve@example.com",
+            email=f"eve-{uuid.uuid4().hex[:8]}@example.com",
             display_name="Eve",
         )
         self.assertTrue(tenant.slug.startswith("personal-"))
@@ -107,7 +119,7 @@ class PersonalTenantServiceTest(TestCase):
         """Success: DATA_PROVIDER and DATA_CONSUMER roles exist for the tenant."""
         service = PersonalTenantService()
         tenant = service.create_personal_tenant_for_user(
-            email="frank@example.com",
+            email=f"frank-{uuid.uuid4().hex[:8]}@example.com",
             display_name="Frank",
         )
         data_provider = Role.objects.filter(tenant=tenant, name="DATA_PROVIDER").first()
@@ -116,30 +128,37 @@ class PersonalTenantServiceTest(TestCase):
         self.assertIsNotNone(data_consumer, "DATA_CONSUMER role must exist")
 
     def test_free_plan_missing_raises_clear_error(self):
-        """Failure: when FREE plan does not exist, raises NotFoundError."""
-        try:
-            with transaction.atomic():
-                Subscription.objects.filter(plan__slug="free").delete()
-                TenantPlan.objects.filter(slug="free").delete()
-                service = PersonalTenantService()
-                with self.assertRaises(NotFoundError) as cm:
-                    service.create_personal_tenant_for_user(
-                        email="no-plan@example.com",
-                        display_name="NoPlan",
-                    )
-                msg = str(cm.exception).lower()
-                self.assertIn("free", msg)
-                self.assertIn("plan", msg)
-                raise RuntimeError("rollback")
-        except RuntimeError as e:
-            if str(e) != "rollback":
-                raise
+        """Failure: when no FREE plan exists, service raises NotFoundError."""
+        from unittest.mock import patch
+        from hub.apps.tenants.models import TenantPlan
+
+        # Bypass the conftest auto-seed patch by making the real
+        # TenantPlan.objects.get raise DoesNotExist for slug="free".
+        def fake_get(*args, **kwargs):
+            if kwargs.get("slug") == "free":
+                raise TenantPlan.DoesNotExist("No FREE plan")
+            return TenantPlan.objects.filter(**kwargs).get()
+
+        service = PersonalTenantService()
+        with patch.object(
+            type(TenantPlan.objects), "get", fake_get,
+        ):
+            with self.assertRaises(NotFoundError) as cm:
+                service.create_personal_tenant_for_user(
+                    email=f"no-plan-{uuid.uuid4().hex[:8]}@x.com",
+                    display_name="NoPlan",
+                )
+        self.assertIn(
+            "free",
+            str(cm.exception).lower(),
+            "Error should mention the missing free plan",
+        )
 
     def test_publishes_tenant_created_event(self):
         """Success: create_personal_tenant_for_user publishes tenant.created event."""
         service = PersonalTenantService()
         tenant = service.create_personal_tenant_for_user(
-            email="event-test@example.com",
+            email=f"event-test-{uuid.uuid4().hex[:8]}@example.com",
             display_name="EventTest",
         )
         events = Event.objects.filter(

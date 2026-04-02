@@ -137,7 +137,7 @@ class DomainViewSet(viewsets.ModelViewSet):
 
         # Platform admins can see all domains
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            queryset = DataMeshDomain.objects.all()
+            queryset = DataMeshDomain.objects.select_related("tenant", "owner").all()
         else:
             # Phase 16: use central helper (docs/TENANT_ISOLATION.md)
             tenant_id_str = get_request_tenant_id(self.request)
@@ -149,7 +149,7 @@ class DomainViewSet(viewsets.ModelViewSet):
                 tenant_id = uuid.UUID(tenant_id_str)
             except (ValueError, TypeError):
                 return DataMeshDomain.objects.none()
-            queryset = DataMeshDomain.objects.filter(tenant_id=tenant_id)
+            queryset = DataMeshDomain.objects.select_related("tenant", "owner").filter(tenant_id=tenant_id)
 
         # Apply status filter if provided (only for list action, not for get_object)
         # get_object() should work regardless of status filter

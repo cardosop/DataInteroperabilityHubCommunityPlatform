@@ -18,6 +18,7 @@ from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tena
 
 from .access_analytics import AccessAnalyticsService, AccessLog
 from .access_certification import AccessCertification, AccessCertificationService
+from .serializers import AccessCertificationSerializer
 
 
 class AccessAnalyticsViewSet(viewsets.ViewSet):
@@ -307,6 +308,7 @@ class AccessCertificationViewSet(viewsets.ModelViewSet):
     """
 
     queryset = AccessCertification.objects.all()
+    serializer_class = AccessCertificationSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
 
@@ -316,14 +318,19 @@ class AccessCertificationViewSet(viewsets.ModelViewSet):
 
         # Platform admins can see all certifications
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            return AccessCertification.objects.all()
+            return AccessCertification.objects.select_related("user", "reviewer", "tenant").all()
 
         # Use central helper for tenant resolution (Phase 10.1.6)
         tenant_id = get_request_tenant_id(self.request)
         if not tenant_id:
             return AccessCertification.objects.none()
 
-        return AccessCertification.objects.filter(tenant_id=tenant_id)
+        return AccessCertification.objects.select_related("user", "reviewer", "tenant").filter(tenant_id=tenant_id)
+
+    def perform_create(self, serializer):
+        """Auto-assign tenant from the authenticated user on creation."""
+        _, tenant = get_request_tenant(self.request)
+        serializer.save(tenant=tenant)
 
     @extend_schema(
         summary="Review certification",

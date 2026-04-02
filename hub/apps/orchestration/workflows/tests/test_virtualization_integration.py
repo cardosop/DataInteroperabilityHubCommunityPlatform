@@ -3,6 +3,7 @@ Integration tests for Virtualization Query Execution Workflow
 
 Tests workflow execution with real services and models (no mocks/stubs).
 """
+import uuid
 import pytest
 from django.test import TestCase
 from django.utils import timezone
@@ -31,13 +32,14 @@ class VirtualizationWorkflowIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -273,7 +275,7 @@ class VirtualizationWorkflowIntegrationTest(TestCase):
         view_results = service._execute_query_against_sources(
             query=vd.query,
             query_type=vd.query_type,
-            sources=vd.sources,
+            sources=vd.get_sources(),
             parameters={},
             timeout_seconds=300
         )

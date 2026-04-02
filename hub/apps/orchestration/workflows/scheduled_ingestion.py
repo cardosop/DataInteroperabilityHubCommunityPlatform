@@ -298,7 +298,7 @@ class ScheduledIngestionWorkflow:
             raise ValueError(f"Scheduled ingestion {scheduled_ingestion_id} not found")
 
         # Validate source configuration
-        source_config = scheduled_ingestion.source_config
+        source_config = scheduled_ingestion.get_source_config()
         if not source_config:
             raise ValueError("source_config is required")
 
@@ -1300,7 +1300,7 @@ class ScheduledIngestionWorkflow:
         scheduled_ingestion = ScheduledIngestion.objects.get(id=scheduled_ingestion_id)
 
         # Only send notification if configured
-        source_config = scheduled_ingestion.source_config or {}
+        source_config = scheduled_ingestion.get_source_config() or {}
         if not source_config.get("send_notifications", True):
             return {"notification_sent": False, "reason": "Notifications disabled"}
 

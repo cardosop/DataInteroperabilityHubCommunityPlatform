@@ -24,6 +24,7 @@ from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import Role, UserRole
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -68,9 +69,13 @@ class ContractServiceTest(ContractsTestBase):
         )
 
         self.assertIsNotNone(contract)
+        contract.refresh_from_db()
         self.assertEqual(contract.original_raw, original_raw)
         self.assertEqual(contract.original_format, original_format)
         self.assertEqual(str(contract.tenant_id), str(self.tenant.id))
+        self.assertIsNotNone(contract.hub_contract_json)
+        self.assertIsInstance(contract.hub_contract_json, dict)
+        self.assertIsNotNone(contract.normalization_status)
 
     def test_create_contract_with_asset(self):
         """Test contract creation with asset"""
@@ -323,7 +328,8 @@ class ContractServiceTest(ContractsTestBase):
     def test_create_contract_cross_tenant_asset(self):
         """Test creating contract with asset from different tenant raises ValidationError (business rules)."""
         # Create another tenant and asset
-        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
         other_asset = Asset.objects.create(
             tenant=other_tenant, key="other-asset", name="Other Asset", status=AssetStatus.DRAFT
         )
@@ -367,7 +373,8 @@ class ContractServiceTest(ContractsTestBase):
     def test_update_contract_cross_tenant(self):
         """Test updating contract from different tenant raises NotFoundError"""
         # Create contract in other tenant
-        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
         other_contract = Contract.objects.create(
             tenant=other_tenant,
             original_raw='{"info": {"name": "other-contract"}}',
@@ -386,7 +393,8 @@ class ContractServiceTest(ContractsTestBase):
     def test_delete_contract_cross_tenant(self):
         """Test deleting contract from different tenant raises NotFoundError"""
         # Create contract in other tenant
-        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
         other_contract = Contract.objects.create(
             tenant=other_tenant,
             original_raw='{"info": {"name": "other-contract"}}',
@@ -404,7 +412,8 @@ class ContractServiceTest(ContractsTestBase):
     def test_get_contract_cross_tenant(self):
         """Test getting contract from different tenant raises NotFoundError"""
         # Create contract in other tenant
-        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
         other_contract = Contract.objects.create(
             tenant=other_tenant,
             original_raw='{"info": {"name": "other-contract"}}',
@@ -470,7 +479,8 @@ class ContractServiceTest(ContractsTestBase):
     def test_list_contracts_tenant_isolation(self):
         """Test contract listing respects tenant isolation"""
         # Create contracts in different tenants
-        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
         Contract.objects.create(
             tenant=self.tenant,
             original_raw='{"info": {"name": "tenant1-contract"}}',

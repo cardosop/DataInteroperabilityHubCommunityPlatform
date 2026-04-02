@@ -11,8 +11,10 @@ Comprehensive TDD tests for:
 All tests follow TDD principles, use real implementations (no mocks/stubs),
 and fix root causes rather than workarounds.
 """
-from django.test import TestCase, override_settings
+import uuid
+
 from django.contrib.auth import get_user_model
+from django.test import TestCase, override_settings
 
 from hub.apps.orchestration.models import (
     WorkflowDefinition,
@@ -42,13 +44,13 @@ class FeatureFlagsTestBase(TestCase):
         reset_feature_flags()
         
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
@@ -226,8 +228,8 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
     def test_per_tenant_configuration(self):
         """Test per-tenant enable/disable configuration"""
         tenant2 = Tenant.objects.create(
-            name="Test Tenant 2",
-            slug="test-tenant-2",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED
         )

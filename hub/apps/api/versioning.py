@@ -95,7 +95,13 @@ class DeprecatedEndpoint:
 
         try:
             sunset = timezone.datetime.fromisoformat(self.sunset_date.replace("Z", "+00:00"))
-            return timezone.now() > sunset
+            now = timezone.now()
+            # Ensure both datetimes are timezone-aware for comparison
+            if timezone.is_naive(now):
+                now = timezone.make_aware(now, timezone.utc)
+            if timezone.is_naive(sunset):
+                sunset = timezone.make_aware(sunset, timezone.utc)
+            return now > sunset
         except (ValueError, AttributeError):
             return False
 

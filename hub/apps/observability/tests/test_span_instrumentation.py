@@ -104,7 +104,7 @@ class SpanInstrumentationTest(TestCase):
         try:
             add_span_attributes(attributes)
             # If successful, attributes were added (if span exists)
-            self.assertTrue(True)
+            pass  # No exception raised — operation succeeded
         except Exception as e:
             # Should not raise exception - function handles None gracefully
             if not OPENTELEMETRY_AVAILABLE:
@@ -125,7 +125,7 @@ class SpanInstrumentationTest(TestCase):
                 # Should execute without exception
                 pass
             # If successful, span was created (if OpenTelemetry available)
-            self.assertTrue(True)
+            pass  # No exception raised — operation succeeded
         except Exception as e:
             # Should handle gracefully if OpenTelemetry not available
             if not OPENTELEMETRY_AVAILABLE:

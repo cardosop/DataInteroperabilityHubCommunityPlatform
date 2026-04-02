@@ -23,6 +23,7 @@ class EmailType(models.TextChoices):
     """Email type enumeration"""
     USER_INVITATION = "USER_INVITATION", "User Invitation"
     PASSWORD_RESET = "PASSWORD_RESET", "Password Reset"
+    EMAIL_VERIFICATION = "EMAIL_VERIFICATION", "Email Verification"
     JOB_COMPLETION = "JOB_COMPLETION", "Job Completion"
     JOB_FAILURE = "JOB_FAILURE", "Job Failure"
     API_DEPRECATION = "API_DEPRECATION", "API Deprecation"
@@ -34,6 +35,19 @@ class EmailType(models.TextChoices):
     MARKETPLACE_CONNECTION_TEST_FAILURE = "MARKETPLACE_CONNECTION_TEST_FAILURE", "Marketplace Connection Test Failure"
     API_KEY_CREATED = "API_KEY_CREATED", "API Key Created"
     API_KEY_REVOKED = "API_KEY_REVOKED", "API Key Revoked"
+
+    # Customer billing (Phase 116A.8)
+    CUSTOMER_BILLING_REPORT = "CUSTOMER_BILLING_REPORT", "Customer Billing Report"
+
+    # ML events (Phase 114C.7)
+    ML_TRAINING_COMPLETION = "ML_TRAINING_COMPLETION", "ML Training Completion"
+    ML_TRAINING_FAILURE = "ML_TRAINING_FAILURE", "ML Training Failure"
+    ML_INFERENCE_FAILURE = "ML_INFERENCE_FAILURE", "ML Inference Failure"
+    ML_MODEL_DEPLOYED = "ML_MODEL_DEPLOYED", "ML Model Deployed"
+
+    # Transformation events (Phase 115C.3)
+    TRANSFORMATION_COMPLETION = "TRANSFORMATION_COMPLETION", "Transformation Completion"
+    TRANSFORMATION_FAILURE = "TRANSFORMATION_FAILURE", "Transformation Failure"
 
 
 class EmailDelivery(models.Model):

@@ -23,15 +23,16 @@ class AccessAnalyticsServiceTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -75,7 +76,15 @@ class AccessAnalyticsServiceTest(TestCase):
             tenant_id=str(self.tenant.id)
         )
 
-        self.assertGreater(len(patterns), 0)
+        self.assertGreaterEqual(len(patterns), 1)
+        # Verify our created resource appears in patterns
+        resource_ids = [p.get("resource_id") for p in patterns]
+        self.assertIn(resource_uuid, resource_ids)
+        # Verify pattern structure contains expected fields
+        pattern = [p for p in patterns if p.get("resource_id") == resource_uuid][0]
+        self.assertEqual(pattern["resource_type"], "ASSET")
+        self.assertEqual(pattern["action"], "READ")
+        self.assertGreaterEqual(pattern["access_count"], 10)
     
     def test_get_anomalies(self):
         """Test anomaly detection"""
@@ -135,8 +144,16 @@ class AccessAnalyticsServiceTest(TestCase):
         )
 
         self.assertIn("summary", dashboard)
+        self.assertIsInstance(dashboard["summary"], dict)
+        self.assertIn("total_accesses", dashboard["summary"])
+        self.assertIsInstance(dashboard["summary"]["total_accesses"], int)
+        self.assertGreaterEqual(dashboard["summary"]["total_accesses"], 5)
+        self.assertIn("allowed_accesses", dashboard["summary"])
+        self.assertIsInstance(dashboard["summary"]["allowed_accesses"], int)
         self.assertIn("top_users", dashboard)
+        self.assertIsInstance(dashboard["top_users"], list)
         self.assertIn("top_resources", dashboard)
+        self.assertIsInstance(dashboard["top_resources"], list)
         self.assertIn("anomalies", dashboard)
         self.assertIn("security_events", dashboard)
 

@@ -3,6 +3,7 @@ Unit tests for Asset Popularity Metrics
 
 Tests for view/download tracking and popularity score calculation.
 """
+import uuid
 
 from datetime import timedelta
 
@@ -25,12 +26,13 @@ class AssetPopularityServiceTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -60,7 +62,7 @@ class AssetPopularityServiceTest(TestCase):
         AssetPopularityService.track_view(str(self.asset.id), str(self.tenant.id))
 
         self.asset.refresh_from_db()
-        self.assertIsNotNone(self.asset.popularity_score)
+        self.assertGreater(self.asset.popularity_score, 0.0)
 
     def test_track_download_increments_download_count(self):
         """Test track_download increments download_count."""
@@ -76,7 +78,7 @@ class AssetPopularityServiceTest(TestCase):
         AssetPopularityService.track_download(str(self.asset.id), str(self.tenant.id))
 
         self.asset.refresh_from_db()
-        self.assertIsNotNone(self.asset.popularity_score)
+        self.assertGreater(self.asset.popularity_score, 0.0)
 
     def test_track_usage_frequency(self):
         """Test usage frequency tracking"""
@@ -186,55 +188,15 @@ class AssetPopularityServiceTest(TestCase):
         for asset in assets:
             self.assertIsNotNone(asset.popularity_score)
 
-    # ========== SUCCESS SCENARIOS ==========
-
-    def test_track_view_success_increments_count(self):
-        """Test successful view tracking increments count."""
-        initial_count = self.asset.view_count
-
-        AssetPopularityService.track_view(str(self.asset.id), str(self.tenant.id))
-
-        self.asset.refresh_from_db()
-        self.assertEqual(self.asset.view_count, initial_count + 1)
-
-    def test_track_view_success_updates_score(self):
-        """Test successful view tracking updates popularity score."""
-        AssetPopularityService.track_view(str(self.asset.id), str(self.tenant.id))
-
-        self.asset.refresh_from_db()
-        self.assertIsNotNone(self.asset.popularity_score)
-
-    def test_track_download_success_increments_count(self):
-        """Test successful download tracking increments count."""
-        initial_count = self.asset.download_count
-
-        AssetPopularityService.track_download(str(self.asset.id), str(self.tenant.id))
-
-        self.asset.refresh_from_db()
-        self.assertEqual(self.asset.download_count, initial_count + 1)
-
-    def test_track_download_success_updates_score(self):
-        """Test successful download tracking updates popularity score."""
-        AssetPopularityService.track_download(str(self.asset.id), str(self.tenant.id))
-
-        self.asset.refresh_from_db()
-        self.assertIsNotNone(self.asset.popularity_score)
-
     # ========== FAILURE SCENARIOS ==========
 
     def test_track_view_nonexistent_asset(self):
-        """Test view tracking with non-existent asset (failure scenario)"""
-        import uuid
-
+        """track_view with non-existent asset does not raise (logs warning)."""
         fake_asset_id = str(uuid.uuid4())
-
-        # Should handle non-existent asset gracefully
-        try:
-            AssetPopularityService.track_view(fake_asset_id, str(self.tenant.id))
-            # If succeeds, that's acceptable
-        except Exception:
-            # If fails, that's acceptable for non-existent asset
-            pass
+        # Should not raise — production code catches DoesNotExist
+        AssetPopularityService.track_view(fake_asset_id, str(self.tenant.id))
+        # Verify no orphan records were created
+        self.assertFalse(Asset.objects.filter(id=fake_asset_id).exists())
 
     def test_calculate_popularity_score_zero_counts(self):
         """Test popularity score calculation with zero counts (failure scenario)"""
@@ -264,19 +226,13 @@ class AssetPopularityServiceTest(TestCase):
         self.assertLessEqual(score, 100.0)  # Should cap at 100
 
     def test_calculate_popularity_score_negative_counts(self):
-        """Test popularity score with negative counts (edge case)"""
-        # Should handle negative counts gracefully
+        """Negative counts produce a numeric score (not clamped by service)."""
         self.asset.view_count = -1
         self.asset.download_count = -1
         self.asset.save()
 
-        try:
-            score = AssetPopularityService.calculate_popularity_score(self.asset)
-            # If succeeds, should handle gracefully
-            self.assertIsNotNone(score)
-        except Exception:
-            # If fails, that's acceptable for negative counts
-            pass
+        score = AssetPopularityService.calculate_popularity_score(self.asset)
+        self.assertIsInstance(score, float)
 
     def test_recalculate_all_popularity_scores_empty_tenant(self):
         """Test recalculating scores for tenant with no assets (edge case)"""
@@ -293,36 +249,19 @@ class AssetPopularityServiceTest(TestCase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_track_view_database_error_handling(self):
-        """Test error handling when view tracking fails"""
-        # Use valid asset
-        try:
-            AssetPopularityService.track_view(str(self.asset.id), str(self.tenant.id))
-            # Should succeed
-            self.asset.refresh_from_db()
-            self.assertGreaterEqual(self.asset.view_count, 0)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("track_view should handle database errors gracefully")
+    def test_track_view_succeeds_with_valid_asset(self):
+        """Test that track_view succeeds with a valid asset."""
+        AssetPopularityService.track_view(str(self.asset.id), str(self.tenant.id))
+        self.asset.refresh_from_db()
+        self.assertGreaterEqual(self.asset.view_count, 1)
 
-    def test_calculate_popularity_score_error_handling(self):
-        """Test error handling when score calculation fails"""
-        # Use valid asset
-        try:
-            score = AssetPopularityService.calculate_popularity_score(self.asset)
-            # Should return score
-            self.assertIsNotNone(score)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("calculate_popularity_score should handle errors gracefully")
+    def test_calculate_popularity_score_succeeds_with_valid_asset(self):
+        """Test that calculate_popularity_score succeeds with a valid asset."""
+        score = AssetPopularityService.calculate_popularity_score(self.asset)
+        self.assertIsNotNone(score)
+        self.assertGreaterEqual(score, 0.0)
 
-    def test_recalculate_all_popularity_scores_error_handling(self):
-        """Test error handling when recalculating all scores fails"""
-        # Use valid tenant
-        try:
-            count = AssetPopularityService.recalculate_all_popularity_scores(str(self.tenant.id))
-            # Should return count
-            self.assertGreaterEqual(count, 0)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("recalculate_all_popularity_scores should handle errors gracefully")
+    def test_recalculate_all_popularity_scores_succeeds_with_valid_tenant(self):
+        """Test that recalculate_all_popularity_scores succeeds with a valid tenant."""
+        count = AssetPopularityService.recalculate_all_popularity_scores(str(self.tenant.id))
+        self.assertGreaterEqual(count, 0)

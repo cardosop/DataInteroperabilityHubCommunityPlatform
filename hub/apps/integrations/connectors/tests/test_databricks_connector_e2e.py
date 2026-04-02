@@ -10,8 +10,11 @@ Requirements:
 - Network access to Databricks workspace
 - Databricks workspace with Unity Catalog shares (for full E2E testing)
 """
+import unittest
 import os
 import pytest
+
+pytestmark = pytest.mark.slow
 import time
 from django.test import TestCase
 from django.db import transaction
@@ -33,6 +36,7 @@ from hub.apps.assets.models import (
 from hub.apps.contracts.models import Contract, OriginalSpecType, ContractStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 
 def get_databricks_credentials():
@@ -42,7 +46,7 @@ def get_databricks_credentials():
     cluster_id = os.environ.get('DATABRICKS_CLUSTER_ID')  # Optional
 
     if not host or not token:
-        pytest.skip(
+        raise unittest.SkipTest(
             "DATABRICKS_HOST and DATABRICKS_TOKEN environment variables are required for E2E tests"
         )
 
@@ -77,8 +81,8 @@ class TestDatabricksConnectorE2E(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant Databricks E2E",
-            slug="test-tenant-databricks-e2e",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="VERIFIED"
         )
@@ -225,7 +229,7 @@ class TestDatabricksConnectorE2E(TestCase):
         # Discover listings
         listings = connector.list_listings(limit=1)
         if not listings:
-            pytest.skip("No shares available in Databricks workspace for E2E testing")
+            raise unittest.SkipTest("No shares available in Databricks workspace for E2E testing")
 
         listing = listings[0]
 
@@ -268,7 +272,7 @@ class TestDatabricksConnectorE2E(TestCase):
         # Get a real listing
         listings = connector.list_listings(limit=1)
         if not listings:
-            pytest.skip("No shares available in Databricks workspace for E2E testing")
+            raise unittest.SkipTest("No shares available in Databricks workspace for E2E testing")
 
         listing = listings[0]
 
@@ -311,7 +315,7 @@ class TestDatabricksConnectorE2E(TestCase):
         # Get a real listing with resources
         listings = connector.list_listings(limit=5)
         if not listings:
-            pytest.skip("No shares available in Databricks workspace for E2E testing")
+            raise unittest.SkipTest("No shares available in Databricks workspace for E2E testing")
 
         # Find a listing with resources
         listing_with_resources = None
@@ -322,7 +326,7 @@ class TestDatabricksConnectorE2E(TestCase):
                 break
 
         if not listing_with_resources:
-            pytest.skip("No shares with resources available for schema extraction testing")
+            raise unittest.SkipTest("No shares with resources available for schema extraction testing")
 
         # Get resources
         resources = connector.list_resources(listing_with_resources.listing_id)
@@ -382,7 +386,7 @@ class TestDatabricksConnectorE2E(TestCase):
         # Get a real listing
         listings = connector.list_listings(limit=1)
         if not listings:
-            pytest.skip("No shares available in Databricks workspace for E2E testing")
+            raise unittest.SkipTest("No shares available in Databricks workspace for E2E testing")
 
         listing = listings[0]
 

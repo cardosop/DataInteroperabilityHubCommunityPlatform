@@ -4,6 +4,7 @@ Unit tests for MarketplaceConnection model.
 Comprehensive tests for model creation, validation, encryption, and constraints.
 """
 
+import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -25,7 +26,8 @@ class MarketplaceConnectionModelTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.config = {
             "api_key": "test-api-key-123",
             "endpoint": "https://api.example.com",
@@ -336,7 +338,7 @@ class MarketplaceConnectionModelTest(TestCase):
 
         import time
 
-        time.sleep(0.01)  # Small delay to ensure different timestamps
+        time.sleep(0.01)  # Small delay to ensure different timestamps  # INTENTIONAL: test-specific timing
 
         connection2 = MarketplaceConnection.objects.create(
             tenant=self.tenant,
@@ -430,7 +432,7 @@ class MarketplaceConnectionModelTest(TestCase):
 
         import time
 
-        time.sleep(0.01)
+        time.sleep(0.01)  # INTENTIONAL: test-specific timing requirement
 
         # Update connection
         connection.is_active = False

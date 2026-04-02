@@ -69,23 +69,29 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Set up test class with real credentials"""
+        """Set up test class with real credentials and authenticate once."""
         super().setUpClass()
         cls.credentials_json = get_test_credentials()
         cls.project_id = cls.credentials_json.get("project_id", "projzero-441310")
+        cls._auth_ok = False
+        try:
+            connector = GCPMarketplaceConnector(
+                project_id=cls.project_id, credentials_json=cls.credentials_json
+            )
+            credentials = {"project_id": cls.project_id, "credentials_json": cls.credentials_json}
+            connector.authenticate(credentials)
+            cls._auth_ok = True
+        except Exception:
+            pass
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures — reuse class-level auth result."""
         self.connector = GCPMarketplaceConnector(
             project_id=self.project_id, credentials_json=self.credentials_json
         )
-        # Authenticate the connector before tests
-        credentials = {"project_id": self.project_id, "credentials_json": self.credentials_json}
-        try:
+        if self._auth_ok:
+            credentials = {"project_id": self.project_id, "credentials_json": self.credentials_json}
             self.connector.authenticate(credentials)
-        except Exception:
-            # Authentication may fail if credentials are invalid, but tests will handle it
-            pass
 
     def test_list_listings_basic(self):
         """Test list_listings() returns list of MarketplaceListing objects"""

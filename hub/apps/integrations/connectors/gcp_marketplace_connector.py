@@ -237,6 +237,13 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 f"Permission denied{': ' + context if context else ''}. {error_message}"
             )
         elif error_code == 400:
+            # GCP Analytics Hub returns INVALID_ARGUMENT (400) for nonexistent
+            # listing/exchange paths instead of NOT_FOUND (404). Treat as NotFoundError
+            # when the operation involves fetching a specific resource.
+            if operation in ("get_listing", "list_resources", "get_data_exchange"):
+                return NotFoundError(
+                    f"Resource not found (invalid path){': ' + context if context else ''}. {error_message}"
+                )
             return ValueError(
                 f"Invalid request{': ' + context if context else ''}. {error_message}"
             )

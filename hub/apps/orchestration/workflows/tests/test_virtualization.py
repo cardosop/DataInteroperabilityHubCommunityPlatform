@@ -3,6 +3,7 @@ Unit tests for Virtualization Query Execution Workflow
 
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
+import uuid
 import pytest
 from django.test import TestCase
 from django.utils import timezone
@@ -32,13 +33,14 @@ class VirtualizationWorkflowUnitTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -578,7 +580,7 @@ class VirtualizationWorkflowUnitTest(TestCase):
         self.assertIn("compatibility_result", instance.state_data)
         self.assertEqual(instance.state_data["progress_percentage"], 20)
         # Multi-source: two sources were validated
-        self.assertEqual(len(multi_source_dataset.sources), 2)
+        self.assertEqual(len(multi_source_dataset.get_sources()), 2)
 
     def test_execute_federated_query_multi_source_aggregation_structure(self):
         """Test that federated execution produces aggregation structure (source_count, row_count).
@@ -671,7 +673,7 @@ class VirtualizationWorkflowUnitTest(TestCase):
         view_results = service._execute_query_against_sources(
             query=vd.query,
             query_type=vd.query_type,
-            sources=vd.sources,
+            sources=vd.get_sources(),
             parameters={},
             timeout_seconds=300
         )
@@ -681,7 +683,7 @@ class VirtualizationWorkflowUnitTest(TestCase):
         self.assertIn("row_count", view_result)
         # Workflow path uses same service._execute_query_against_source per source
         workflow_single = service._execute_query_against_source(
-            vd.query, vd.query_type, vd.sources[0], {}, 300, source_index=0
+            vd.query, vd.query_type, vd.get_sources()[0], {}, 300, source_index=0
         )
         self.assertIn("data", workflow_single)
         self.assertIn("row_count", workflow_single)

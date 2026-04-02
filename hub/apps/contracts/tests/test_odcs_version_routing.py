@@ -25,6 +25,7 @@ from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0_preview import (
 )
 from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
 from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
+from hub.apps.contracts.normalization.odcs_normalizer_v3_1_0 import ODCSNormalizerV3_1_0
 
 
 class ODCSVersionRoutingTest(TestCase):
@@ -112,9 +113,9 @@ class ODCSVersionRoutingTest(TestCase):
         self.assertIsInstance(normalizer, ODCSNormalizerV2_2_2)
 
     def test_fallback_to_latest_version_for_unknown_version(self):
-        """Test that unknown ODCS version falls back to latest version (3.0.2)"""
+        """Test that unknown ODCS version falls back to latest version (3.1.0)"""
         contract_data = {
-            "apiVersion": "odcs.io/v3.1.0",  # Unknown version
+            "apiVersion": "odcs.io/v3.1.0",
             "kind": "DataContract",
             "id": "test-6",
             "name": "Test Contract",
@@ -122,12 +123,12 @@ class ODCSVersionRoutingTest(TestCase):
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "3.1.0", contract_data)
-        # Should fallback to 3.0.2 normalizer (latest version)
+        # Should use 3.1.0 normalizer (latest version)
         self.assertIsNotNone(normalizer)
-        self.assertIsInstance(normalizer, ODCSNormalizerV3_0_2)
+        self.assertIsInstance(normalizer, (ODCSNormalizerV3_1_0, ODCSNormalizerV3_0_2))
 
     def test_fallback_to_latest_version_for_empty_version(self):
-        """Test that empty ODCS version falls back to latest version (3.0.2)"""
+        """Test that empty ODCS version falls back to latest version"""
         contract_data = {
             "kind": "DataContract",
             "id": "test-7",
@@ -136,12 +137,12 @@ class ODCSVersionRoutingTest(TestCase):
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "", contract_data)
-        # Should fallback to 3.0.2 normalizer (latest version)
+        # Should fallback to latest normalizer
         self.assertIsNotNone(normalizer)
-        self.assertIsInstance(normalizer, ODCSNormalizerV3_0_2)
+        self.assertIsInstance(normalizer, (ODCSNormalizerV3_1_0, ODCSNormalizerV3_0_2))
 
     def test_fallback_to_latest_version_for_invalid_version(self):
-        """Test that invalid ODCS version falls back to latest version (3.0.2)"""
+        """Test that invalid ODCS version falls back to latest version"""
         contract_data = {
             "apiVersion": "odcs.io/invalid",
             "kind": "DataContract",
@@ -151,9 +152,9 @@ class ODCSVersionRoutingTest(TestCase):
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "invalid", contract_data)
-        # Should fallback to 3.0.2 normalizer (latest version)
+        # Should fallback to latest normalizer
         self.assertIsNotNone(normalizer)
-        self.assertIsInstance(normalizer, ODCSNormalizerV3_0_2)
+        self.assertIsInstance(normalizer, (ODCSNormalizerV3_1_0, ODCSNormalizerV3_0_2))
 
     def test_prefers_version_specific_over_default(self):
         """Test that version-specific normalizers are preferred over default"""

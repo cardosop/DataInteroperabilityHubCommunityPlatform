@@ -7,9 +7,11 @@ Comprehensive tests for ContractsBusinessRules lifecycle validation, following e
 - Comprehensive test coverage
 - Follow DRY, SOLID, and clean code principles
 """
+import uuid
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.business_rules import ContractsBusinessRules
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.core.business_rules.registry import get_registry
@@ -298,8 +300,9 @@ class ContractUpdateValidationTest(ContractsTestBase):
 
     def test_validate_contract_update_tenant_mismatch(self):
         """Test contract update validation with tenant mismatch"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         rules = ContractsBusinessRules(tenant_id=str(other_tenant.id), user_id=str(self.user.id))
 
@@ -412,8 +415,9 @@ class ContractDeletionValidationTest(ContractsTestBase):
 
     def test_validate_contract_deletion_tenant_mismatch(self):
         """Test contract deletion validation with tenant mismatch"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         rules = ContractsBusinessRules(tenant_id=str(other_tenant.id), user_id=str(self.user.id))
 
@@ -570,6 +574,13 @@ class ContractLifecycleIntegrationTest(ContractsTestBase):
         super().setUp()
         self.asset = Asset.objects.create(
             name="Test Asset", key="test-asset", tenant=self.tenant, status=AssetStatus.ACTIVE
+        )
+        self.contract = Contract.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            original_raw='{"id": "lifecycle-test"}',
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODCS,
         )
         self.rules = ContractsBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -753,27 +764,27 @@ class ContractLifecycleIntegrationTest(ContractsTestBase):
         # Should handle unicode
         self.assertIsNotNone(result)
 
-    def test_validate_contract_update_cross_tenant_asset(self):
-        """Test contract update validation with asset from different tenant."""
+    def test_validate_contract_update_cross_tenant(self):
+        """Test contract update validation with cross-tenant rules object rejects."""
+        # Rules created for a different tenant should fail tenant match
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant-update", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-update-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
-        other_asset = Asset.objects.create(
-            name="Other Asset",
-            key="other-asset-update",
-            tenant=other_tenant,
-            status=AssetStatus.ACTIVE,
+        other_rules = ContractsBusinessRules(
+            tenant_id=str(other_tenant.id), user_id=str(self.user.id)
         )
 
-        contract_data = {"asset_id": str(other_asset.id)}
-        result = self.rules.validate_contract_update(self.contract, contract_data)
+        contract_data = {"status": ContractStatus.ACTIVE}
+        result = other_rules.validate_contract_update(self.contract, contract_data)
 
         # Should fail due to tenant mismatch
         self.assertFalse(result.is_valid)
 
     def test_validate_contract_deletion_with_multiple_references(self):
         """Test contract deletion validation with multiple reference types."""
-        # Create ODPS contract referencing this contract
+        # Use self.contract (created in setUp) as the target
+        # Create ODPS contract referencing it
         other_asset = Asset.objects.create(
             name="ODPS Asset", key="odps-asset-ref", tenant=self.tenant, status=AssetStatus.ACTIVE
         )

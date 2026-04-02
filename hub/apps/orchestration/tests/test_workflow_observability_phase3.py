@@ -15,7 +15,7 @@ Uses wait_until for event persistence (no fixed time.sleep) per FIX_PLAN_FLAKY_T
 import structlog
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TestCase, override_settings
 
 from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.events.models import Event
@@ -37,6 +37,7 @@ from hub.apps.orchestration.workflow_engine import WorkflowEngine, WorkflowExecu
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
 from tests.utils.polling import wait_until
+import uuid
 
 User = get_user_model()
 logger = structlog.get_logger(__name__)
@@ -50,13 +51,13 @@ class WorkflowObservabilityPhase3TestBase(TestCase):
         super().setUp()
         self.engine = WorkflowEngine()
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Register test tasks
@@ -241,7 +242,7 @@ class TestMetricsIntegration(WorkflowObservabilityPhase3TestBase):
     EVENT_BUS_ENABLE_PERSISTENCE=True,
     EVENT_BUS_ASYNC_PERSISTENCE=False,
 )
-class TestEventPublishingEnhancement(WorkflowObservabilityPhase3TestBase, TransactionTestCase):
+class TestEventPublishingEnhancement(WorkflowObservabilityPhase3TestBase):
     """Test validation results in workflow events"""
 
     def test_step_started_event_includes_validation_status(self):

@@ -21,8 +21,11 @@ from django.db import transaction
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.users.models import Role, User, UserRole, UserStatus
 
+# Must match frontend e2e/setup/create-test-user.ts (PROFILE_ISOLATION_WORKER_COUNT)
+PROFILE_ISOLATION_WORKER_COUNT = 16
+
 # Must match frontend e2e/setup/create-test-user.ts
-E2E_USERS = [
+_BASE_E2E_USERS = [
     {
         "email": "e2e_test@example.com",
         "password": "TestPass123",
@@ -80,6 +83,19 @@ E2E_USERS = [
         "roles": ["TENANT_ADMIN", "DATA_PROVIDER"],
         "is_platform_admin": False,
     },
+]
+
+# One user per Playwright worker: profile E2E mutates display_name; sharing e2e_test@ across
+# workers races GET /auth/me/ cache vs PATCH and flakes the header assertion.
+E2E_USERS = _BASE_E2E_USERS + [
+    {
+        "email": f"e2e_profile_w{i}@example.com",
+        "password": "TestPass123",
+        "display_name": f"E2E Profile Worker {i}",
+        "roles": ["DATA_PROVIDER"],
+        "is_platform_admin": False,
+    }
+    for i in range(PROFILE_ISOLATION_WORKER_COUNT)
 ]
 
 
@@ -213,7 +229,9 @@ class Command(BaseCommand):
                             self.style.SUCCESS(f"Created role {role_name} for tenant {user_tenant.slug}")
                         )
                     if not dry_run:
-                        _, ur_created = UserRole.objects.get_or_create(user=user, role=role)
+                        _, ur_created = UserRole.objects.get_or_create(
+                            user=user, tenant=role.tenant, role=role
+                        )
                         if ur_created:
                             self.stdout.write(
                                 self.style.SUCCESS(f"Assigned {role_name} to {email}")

@@ -22,6 +22,7 @@ from hub.apps.observability.otel_metrics import (
     jobs_started_total,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -33,31 +34,21 @@ class MetricsCollectionTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.client = Client()
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
-        self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
+        self.user = User.objects.create_user(email=f"test-{uid}@example.com", tenant=self.tenant)
 
     def test_http_metrics_incremented(self):
-        """Test that HTTP request metrics are incremented correctly"""
-        # Get initial metric value
-        initial_count = http_requests_total.labels(
+        """Test that HTTP request counter increments correctly"""
+        labeled = http_requests_total.labels(
             method="GET", route="/health/", status_class="2xx"
-        )._value.get()
-
-        # Make a request
-        response = self.client.get("/health/")
-        self.assertEqual(response.status_code, 200)
-
-        # Verify metric was incremented
-        # Note: We can't easily get the exact value without Prometheus,
-        # but we can verify the metric object exists and can be incremented
-        metric = http_requests_total.labels(method="GET", route="/health/", status_class="2xx")
-        self.assertIsNotNone(metric)
-
-        # Verify metric can be incremented
-        metric.inc()
-        self.assertTrue(True)  # Metric exists and can be incremented
+        )
+        before = labeled._value.get()
+        labeled.inc()
+        after = labeled._value.get()
+        self.assertEqual(after, before + 1, "HTTP counter did not increment")
 
     def test_http_metrics_labels(self):
         """Test that HTTP metrics have correct labels"""
@@ -69,35 +60,34 @@ class MetricsCollectionTest(TestCase):
 
     def test_http_duration_metrics(self):
         """Test that HTTP duration metrics are recorded"""
-        # Verify metric exists
         self.assertIsNotNone(http_request_duration_seconds)
 
-        # Verify metric has expected labels
         labels = http_request_duration_seconds._labelnames
         self.assertIn("method", labels)
         self.assertIn("route", labels)
         self.assertIn("status_class", labels)
 
-        # Verify metric can observe values
-        http_request_duration_seconds.labels(
+        labeled = http_request_duration_seconds.labels(
             method="GET", route="/health/", status_class="2xx"
-        ).observe(0.1)
-        self.assertTrue(True)  # Metric exists and can observe values
+        )
+        before_count = labeled._value.get()
+        labeled.observe(0.1)
+        after_count = labeled._value.get()
+        self.assertGreater(after_count, before_count, "Duration metric was not recorded")
 
     def test_http_error_metrics(self):
         """Test that HTTP error metrics are incremented"""
-        # Verify metric exists
         self.assertIsNotNone(http_errors_total)
 
-        # Verify metric has expected labels
         labels = http_errors_total._labelnames
         self.assertIn("method", labels)
         self.assertIn("route", labels)
         self.assertIn("status_code", labels)
 
-        # Verify metric can be incremented
-        http_errors_total.labels(method="GET", route="/nonexistent/", status_code=404).inc()
-        self.assertTrue(True)  # Metric exists and can be incremented
+        labeled = http_errors_total.labels(method="GET", route="/nonexistent/", status_code=404)
+        before = labeled._value.get()
+        labeled.inc()
+        self.assertEqual(labeled._value.get(), before + 1)
 
     def test_job_metrics_labels(self):
         """Test that job metrics have correct labels"""
@@ -124,79 +114,80 @@ class MetricsCollectionTest(TestCase):
         """Test that job metrics are incremented correctly"""
         tenant_id = str(self.tenant.id)
 
-        # Test jobs_started_total
-        jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant_id).inc()
-        self.assertTrue(True)  # Metric exists and can be incremented
+        labeled = jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant_id)
+        before = labeled._value.get()
+        labeled.inc()
+        self.assertEqual(labeled._value.get(), before + 1)
 
-        # Test jobs_completed_total
-        jobs_completed_total.labels(
-            job_type="DQ_RUN", status="COMPLETED", tenant_id=tenant_id
-        ).inc()
-        self.assertTrue(True)  # Metric exists and can be incremented
+        labeled2 = jobs_completed_total.labels(job_type="DQ_RUN", status="COMPLETED", tenant_id=tenant_id)
+        before2 = labeled2._value.get()
+        labeled2.inc()
+        self.assertEqual(labeled2._value.get(), before2 + 1)
 
-        # Test jobs_failed_total
-        jobs_failed_total.labels(job_type="DQ_RUN", error_code="TIMEOUT", tenant_id=tenant_id).inc()
-        self.assertTrue(True)  # Metric exists and can be incremented
+        labeled3 = jobs_failed_total.labels(job_type="DQ_RUN", error_code="TIMEOUT", tenant_id=tenant_id)
+        before3 = labeled3._value.get()
+        labeled3.inc()
+        self.assertEqual(labeled3._value.get(), before3 + 1)
 
     def test_job_duration_metrics(self):
         """Test that job duration metrics are recorded"""
-        # Verify metric exists
         self.assertIsNotNone(job_duration_seconds)
 
-        # Verify metric has expected labels
         labels = job_duration_seconds._labelnames
         self.assertIn("job_type", labels)
         self.assertIn("status", labels)
 
-        # Verify metric can observe values
-        job_duration_seconds.labels(job_type="DQ_RUN", status="COMPLETED").observe(10.5)
-        self.assertTrue(True)  # Metric exists and can observe values
+        labeled = job_duration_seconds.labels(job_type="DQ_RUN", status="COMPLETED")
+        before = labeled._value.get()
+        labeled.observe(10.5)
+        after = labeled._value.get()
+        self.assertGreater(after, before, "Job duration metric was not recorded")
 
     def test_dq_metrics_labels(self):
         """Test that DQ metrics have correct labels"""
         tenant_id = str(self.tenant.id)
 
-        # Verify metric has expected labels
         labels = dq_runs_total._labelnames
         self.assertIn("status", labels)
         self.assertIn("engine", labels)
         self.assertIn("tenant_id", labels)
 
-        # Verify metric can be incremented
-        dq_runs_total.labels(
+        labeled = dq_runs_total.labels(
             status="success", engine="great_expectations", tenant_id=tenant_id
-        ).inc()
-        self.assertTrue(True)  # Metric exists and can be incremented
+        )
+        before = labeled._value.get()
+        labeled.inc()
+        self.assertEqual(labeled._value.get(), before + 1)
 
     def test_compliance_metrics_labels(self):
         """Test that compliance metrics have correct labels"""
         tenant_id = str(self.tenant.id)
 
-        # Verify metric has expected labels
         labels = compliance_runs_total._labelnames
         self.assertIn("status", labels)
         self.assertIn("risk_level", labels)
         self.assertIn("tenant_id", labels)
 
-        # Verify metric can be incremented
-        compliance_runs_total.labels(status="success", risk_level="low", tenant_id=tenant_id).inc()
-        self.assertTrue(True)  # Metric exists and can be incremented
+        labeled = compliance_runs_total.labels(status="success", risk_level="low", tenant_id=tenant_id)
+        before = labeled._value.get()
+        labeled.inc()
+        self.assertEqual(labeled._value.get(), before + 1)
 
     def test_contract_validation_metrics_labels(self):
         """Test that contract validation metrics have correct labels"""
         tenant_id = str(self.tenant.id)
 
-        # Verify metric has expected labels
         labels = contract_validations_total._labelnames
         self.assertIn("status", labels)
         self.assertIn("spec_type", labels)
         self.assertIn("tenant_id", labels)
 
-        # Verify metric can be incremented
-        contract_validations_total.labels(
+        labeled = contract_validations_total.labels(
             status="valid", spec_type="DATACONTRACT_COM", tenant_id=tenant_id
-        ).inc()
-        self.assertTrue(True)  # Metric exists and can be incremented
+        )
+        before = labeled._value.get()
+        labeled.inc()
+        self.assertEqual(labeled._value.get(), before + 1)
 
     def test_per_tenant_metrics_isolation(self):
         """Test that per-tenant metrics are isolated"""

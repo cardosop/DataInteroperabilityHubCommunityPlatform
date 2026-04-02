@@ -15,7 +15,9 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.audit.utils import log_user_operation
+from hub.apps.auth.utils import sha256_hex
 from hub.apps.tenants.models import Tenant
 
 from .models import Role, User, UserRole, UserStatus
@@ -37,10 +39,12 @@ class UserViewSet(viewsets.ModelViewSet):
     Platform admins can see all users.
     """
 
-    queryset = User.objects.all()
+    queryset = User.objects.prefetch_related("user_roles__role").order_by("created_at")
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
     lookup_field = "id"
+
+    pagination_class = StandardPageNumberPagination
 
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""
@@ -56,10 +60,10 @@ class UserViewSet(viewsets.ModelViewSet):
 
         # Platform admins can see all users
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            queryset = User.objects.all()
+            queryset = User.objects.prefetch_related("user_roles__role").all()
         # Regular users can only see users in their tenant
         elif hasattr(user, "tenant") and user.tenant:
-            queryset = User.objects.filter(tenant=user.tenant)
+            queryset = User.objects.prefetch_related("user_roles__role").filter(tenant=user.tenant)
         else:
             return User.objects.none()
 
@@ -119,12 +123,13 @@ class UserViewSet(viewsets.ModelViewSet):
                 return handle_service_exception(e)
             raise
 
-        # Set invitation token and send email if requested
+        # Set invitation token and send email if requested (11.3: store hash)
         if serializer.validated_data.get("send_invitation", True):
-            user.invitation_token = uuid.uuid4()
+            _plaintext = str(uuid.uuid4())
+            user.invitation_token = sha256_hex(_plaintext)
             user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
             user.save(update_fields=["invitation_token", "invitation_token_expires_at"])
-            self._send_invitation_email(user)
+            self._send_invitation_email(user, plaintext_token=_plaintext)
 
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
@@ -235,7 +240,12 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
-        """Delete user via service layer"""
+        """Delete user via service layer. Requires TENANT_ADMIN or PLATFORM_ADMIN."""
+        # Authorization: only admins can delete users
+        perm = self._check_admin_update_permission(request)
+        if perm is not None:
+            return perm
+
         user = self.get_object()
 
         # Prevent self-deletion
@@ -372,11 +382,12 @@ class UserViewSet(viewsets.ModelViewSet):
             return handle_service_exception(e)
 
         if created_new:
-            # Generate invitation token and send email only for new users
-            user.invitation_token = uuid.uuid4()
+            # Generate invitation token and send email only for new users (11.3: store hash)
+            _plaintext = str(uuid.uuid4())
+            user.invitation_token = sha256_hex(_plaintext)
             user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
             user.save(update_fields=["invitation_token", "invitation_token_expires_at"])
-            self._send_invitation_email(user)
+            self._send_invitation_email(user, plaintext_token=_plaintext)
 
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
@@ -413,7 +424,7 @@ class UserViewSet(viewsets.ModelViewSet):
             )
 
         if action_type == "assign":
-            UserRole.objects.get_or_create(user=user, role=role)
+            UserRole.objects.get_or_create(user=user, tenant=role.tenant, role=role)
         elif action_type == "remove":
             UserRole.objects.filter(user=user, role=role).delete()
 
@@ -463,23 +474,36 @@ class UserViewSet(viewsets.ModelViewSet):
 
         return False
 
-    def _send_invitation_email(self, user):
-        """Send invitation email to user"""
+    def _send_invitation_email(self, user, plaintext_token: str = None):
+        """Send invitation email to user (11.3: plaintext_token for URL building).
+
+        Deferred via transaction.on_commit so the task is only enqueued
+        after the enclosing @transaction.atomic block commits — preventing
+        orphaned emails on rollback.
+        """
         import structlog
 
         from hub.apps.notifications.tasks import send_invitation_email
 
         logger = structlog.get_logger(__name__)
 
-        try:
-            send_invitation_email.delay(str(user.id))
-        except Exception as e:
-            # Handle Redis connection failures gracefully
-            logger.warning(
-                "Failed to enqueue invitation email (Redis may be unavailable). User created but email not queued.",
-                user_id=str(user.id),
-                error=str(e),
-            )
+        _uid = str(user.id)
+        _token = plaintext_token
+
+        def _enqueue():
+            try:
+                send_invitation_email.delay(_uid, plaintext_token=_token)
+            except Exception as e:
+                # Handle Redis connection failures gracefully
+                logger.warning(
+                    "Failed to enqueue invitation email"
+                    " (Redis may be unavailable)."
+                    " User created but email not queued.",
+                    user_id=_uid,
+                    error=str(e),
+                )
+
+        transaction.on_commit(_enqueue)
 
 
 class RoleViewSet(viewsets.ReadOnlyModelViewSet):

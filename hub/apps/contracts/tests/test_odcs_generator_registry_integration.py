@@ -127,7 +127,12 @@ class ODCSGeneratorRegistryIntegrationTest(TestCase):
         versions = get_supported_odcs_versions()
         for version in versions:
             odcs = generate_odcs_from_hubcontract(hub_contract, target_version=version)
-            self.assertEqual(odcs["apiVersion"], f"odcs.io/v{version}")
+            # v3.1.0+ uses short "v{ver}" format; older use "odcs.io/v{ver}"
+            expected_api = (
+                f"v{version}" if version >= "3.1"
+                else f"odcs.io/v{version}"
+            )
+            self.assertEqual(odcs["apiVersion"], expected_api)
             self.assertEqual(odcs["id"], "test-all-versions")
             self.assertEqual(odcs["name"], "All Versions Test")
 

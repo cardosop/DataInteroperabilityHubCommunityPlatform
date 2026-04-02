@@ -69,9 +69,17 @@ class AssetViewSet(viewsets.ModelViewSet):
         """Filter queryset based on user permissions and query parameters"""
         user = self.request.user
 
+        # Eager-load relationships accessed by AssetSerializer to eliminate N+1 queries.
+        # select_related covers FKs (single JOIN); prefetch_related covers reverse FKs
+        # (separate IN query — one query total regardless of result-set size).
+        _base_qs = (
+            Asset.objects.select_related("tenant", "created_by")
+            .prefetch_related("contracts", "datasets")
+        )
+
         # Platform admins can see all assets
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            queryset = Asset.objects.all()
+            queryset = _base_qs
         else:
             # Phase 16: use central helper for tenant scope (docs/TENANT_ISOLATION.md)
             tenant_id_str = get_request_tenant_id(self.request)
@@ -83,7 +91,7 @@ class AssetViewSet(viewsets.ModelViewSet):
                 tenant_id = uuid.UUID(tenant_id_str)
             except (ValueError, TypeError):
                 return Asset.objects.none()
-            queryset = Asset.objects.filter(tenant_id=tenant_id)
+            queryset = _base_qs.filter(tenant_id=tenant_id)
 
         # Apply domain filter if provided
         domain_filter = self.request.query_params.get("domain")
@@ -216,11 +224,15 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         return Response(AssetSerializer(asset).data, status=status.HTTP_201_CREATED)
 
-    @transaction.atomic
     @action(detail=False, methods=["post"], url_path="data-first")
     def data_first(self, request):
         """
         Create asset, dataset, and contract from uploaded file (data-first flow).
+
+        Not wrapped in ``transaction.atomic``: ``AssetCreationWorkflow.execute`` runs for a long
+        time (storage, DQ, compliance HTTP) and manages its own atomic sections. A view-wide
+        transaction would hold DB locks until ``statement_timeout``, breaking parallel tests and
+        analytics/counters on the same connection.
 
         POST /api/v1/assets/data-first/
         Body: {
@@ -559,17 +571,54 @@ class AssetViewSet(viewsets.ModelViewSet):
                 message="Dataset not found", status_code=status.HTTP_404_NOT_FOUND, code="NOT_FOUND"
             )
 
+        # Validate dataset attachment via business rules
+        from hub.apps.assets.business_rules import AssetsBusinessRules
+
+        br = AssetsBusinessRules(
+            tenant_id=str(asset.tenant_id),
+            user_id=str(request.user.id),
+        )
+        br_result = br.validate_dataset_attachment(
+            asset=asset,
+            dataset=dataset,
+            user=request.user,
+        )
+        if not br_result.is_valid:
+            return api_error_response(
+                message="; ".join(br_result.errors),
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="BUSINESS_RULES_VALIDATION",
+            )
+
         # Attach dataset to asset
         dataset.asset = asset
 
-        # Get next version for asset
-        latest_dataset = asset.datasets.order_by("-version").first()
-        if latest_dataset:
+        # Get previous current dataset for versioning
+        latest_dataset = asset.datasets.filter(
+            is_current=True
+        ).order_by("-version").first()
+        if latest_dataset is None:
+            latest_dataset = asset.datasets.order_by("-version").first()
+
+        if latest_dataset and latest_dataset.pk != dataset.pk:
             dataset.version = latest_dataset.version + 1
+            dataset.parent_version = latest_dataset
+            # Mark previous datasets as not current
+            asset.datasets.exclude(pk=dataset.pk).update(
+                is_current=False
+            )
         else:
             dataset.version = 1
 
-        dataset.save(update_fields=["asset", "version"])
+        dataset.is_current = True
+        dataset.save(
+            update_fields=[
+                "asset",
+                "version",
+                "is_current",
+                "parent_version",
+            ]
+        )
 
         # Invalidate asset detail cache so dataset_id is included in next request
         try:
@@ -782,12 +831,14 @@ class AssetViewSet(viewsets.ModelViewSet):
             ValidationStatus,
         )
 
-        if not (
-            getattr(settings, "RATE_LIMIT_E2E_RELAX", False)
-            or getattr(settings, "ENVIRONMENT", "") == "test"
-        ):
+        is_test_env = getattr(settings, "RATE_LIMIT_E2E_RELAX", False) or getattr(settings, "ENVIRONMENT", "") == "test"
+        if not is_test_env:
             raise NotFound("Resource not found")
-        if not request.user.is_authenticated or request.user.email not in E2E_EMAILS:
+        if not request.user.is_authenticated:
+            raise NotFound("Resource not found")
+        # In non-test environments (RATE_LIMIT_E2E_RELAX) restrict to known E2E emails.
+        # When ENVIRONMENT="test" (unit tests), any authenticated user may call this.
+        if not getattr(settings, "ENVIRONMENT", "") == "test" and request.user.email not in E2E_EMAILS:
             raise NotFound("Resource not found")
 
         asset = self.get_object()
@@ -796,6 +847,94 @@ class AssetViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": "Asset has no tenant"},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        def _e2e_unblock_latest_compliance_run(a: Asset) -> None:
+            """
+            Activation (5.4.3) returns 403 when the latest ComplianceRun blocks storage.
+            E2E dataset flows may enqueue async compliance that completes as FAILED or with
+            allowed_to_store=False before this helper runs; contract + dq_status shortcuts
+            alone are then insufficient. Align the latest run with the asset's PASS flags.
+            """
+            from django.utils import timezone
+
+            from hub.apps.compliance.models import ComplianceRunStatus
+
+            latest = a.compliance_runs.order_by("-completed_at", "-created_at").first()
+            if latest is None:
+                return
+            if latest.allowed_to_store is True and latest.status != ComplianceRunStatus.FAILED:
+                return
+            latest.status = ComplianceRunStatus.SUCCEEDED
+            latest.allowed_to_store = True
+            if not latest.overall_status:
+                latest.overall_status = "PASS"
+            if latest.completed_at is None:
+                latest.completed_at = timezone.now()
+            latest.save(
+                update_fields=[
+                    "status",
+                    "allowed_to_store",
+                    "overall_status",
+                    "completed_at",
+                    "updated_at",
+                ]
+            )
+
+        # Idempotent path: ODPS / manual flows may already have an ACTIVE contract that satisfies
+        # activation checks, but dq_status / compliance_status may still be UNKNOWN if a dataset
+        # exists (can_activate requires PASS/WARN). Refresh those flags without creating another row.
+        existing_ready = (
+            asset.contracts.filter(
+                status=ContractStatus.ACTIVE,
+                validation_status__in=[ValidationStatus.VALID, ValidationStatus.WARNING_ONLY],
+                normalization_status__in=[
+                    NormalizationStatus.NORMALIZED_OK,
+                    NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+                ],
+            )
+            .order_by("-version")
+            .first()
+        )
+        if existing_ready:
+            if asset.datasets.exists():
+                need_save = False
+                if asset.dq_status not in (DQStatus.PASS, DQStatus.WARN):
+                    asset.dq_status = DQStatus.PASS
+                    need_save = True
+                if asset.compliance_status not in (ComplianceStatus.PASS, ComplianceStatus.WARN):
+                    asset.compliance_status = ComplianceStatus.PASS
+                    need_save = True
+                if need_save:
+                    asset.save(update_fields=["dq_status", "compliance_status"])
+            try:
+                invalidate_asset_detail_cache(str(asset.id))
+                invalidate_asset_list_cache(str(tenant.id))
+            except Exception as e:
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Failed to invalidate cache after E2E activation prereq (idempotent): {e}",
+                    exc_info=True,
+                )
+            _e2e_unblock_latest_compliance_run(asset)
+            try:
+                invalidate_asset_detail_cache(str(asset.id))
+                invalidate_asset_list_cache(str(tenant.id))
+            except Exception as e:
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Failed to invalidate cache after E2E compliance unblock: {e}",
+                    exc_info=True,
+                )
+            response_data = AssetSerializer(asset).data
+            response_data["contract_version"] = existing_ready.version
+            return Response(
+                response_data,
+                status=status.HTTP_200_OK,
             )
 
         # Create minimal ODCS contract with correct statuses
@@ -854,6 +993,19 @@ class AssetViewSet(viewsets.ModelViewSet):
             logger = logging.getLogger(__name__)
             logger.warning(
                 f"Failed to invalidate cache after contract attachment: {e}", exc_info=True
+            )
+
+        _e2e_unblock_latest_compliance_run(asset)
+        try:
+            invalidate_asset_detail_cache(str(asset.id))
+            invalidate_asset_list_cache(str(tenant.id))
+        except Exception as e:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Failed to invalidate cache after E2E compliance unblock: {e}",
+                exc_info=True,
             )
 
         # Return updated asset with contract_id and contract_version
@@ -1006,11 +1158,15 @@ class AssetViewSet(viewsets.ModelViewSet):
         - Compliance: PASS or WARN (if dataset exists)
         - Contract-only assets (no dataset) are allowed
         """
+        import structlog
+        _act_logger = structlog.get_logger("hub.apps.assets.views.activate")
+
         asset = self.get_object()
 
         # Get version for optimistic locking
         version = request.data.get("version")
         if version is None:
+            _act_logger.warning("activation_rejected_missing_version", asset_id=str(asset.id))
             return Response(
                 {
                     "error": "version field is required for optimistic locking",
@@ -1021,6 +1177,12 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         # Check optimistic locking
         if int(version) != asset.version:
+            _act_logger.warning(
+                "activation_rejected_version_mismatch",
+                asset_id=str(asset.id),
+                provided=version,
+                current=asset.version,
+            )
             return Response(
                 {
                     "error": "Asset has been modified by another user",
@@ -1033,6 +1195,7 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         # Check if already active
         if asset.status == AssetStatus.ACTIVE:
+            _act_logger.warning("activation_rejected_already_active", asset_id=str(asset.id))
             return Response(
                 {"error": "Asset is already ACTIVE", "code": "ASSET_ALREADY_ACTIVE"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -1040,6 +1203,7 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         # Check if retired (cannot reactivate)
         if asset.status == AssetStatus.RETIRED:
+            _act_logger.warning("activation_rejected_retired", asset_id=str(asset.id))
             return Response(
                 {"error": "Retired assets cannot be reactivated", "code": "ASSET_RETIRED"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -1069,6 +1233,11 @@ class AssetViewSet(viewsets.ModelViewSet):
         # Check activation requirements (now uses prefetched data)
         can_activate, blockers = asset.can_activate()
         if not can_activate:
+            _act_logger.warning(
+                "activation_rejected_blockers",
+                asset_id=str(asset.id),
+                blockers=blockers,
+            )
             return Response(
                 {
                     "error": "Cannot activate asset: requirements not met",
@@ -1078,19 +1247,30 @@ class AssetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 5.4.3: Block activation when related compliance run has allowed_to_store=False or UNKNOWN/None
-        from hub.apps.compliance.models import ComplianceRunStatus
-        latest_succeeded = (
-            asset.compliance_runs.filter(status=ComplianceRunStatus.SUCCEEDED)
-            .order_by("-completed_at")
-            .first()
+        from hub.apps.compliance.services import ComplianceService
+        from hub.apps.dq.services import DQService
+
+        DQService.apply_degraded_dq_status_if_circuit_open(asset, request=request)
+        ComplianceService.apply_degraded_compliance_status_if_circuit_open(
+            asset, request=request
         )
-        if latest_succeeded is not None and latest_succeeded.allowed_to_store is not True:
+        asset.refresh_from_db()
+
+        # 5.4.3: Block activation when latest compliance run has
+        # allowed_to_store=False/None or status=FAILED.  Check ALL runs,
+        # not just SUCCEEDED — a FAILED run must also block activation.
+        latest_compliance = (
+            asset.compliance_runs.order_by("-completed_at").first()
+        )
+        if latest_compliance is not None and (
+            latest_compliance.allowed_to_store is not True
+            or latest_compliance.status == "FAILED"
+        ):
             return Response(
                 {
                     "error": "Cannot activate asset: compliance run does not allow storage",
                     "code": "compliance_not_allowed_to_store",
-                    "details": {"compliance_run_id": str(latest_succeeded.id)},
+                    "details": {"compliance_run_id": str(latest_compliance.id)},
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
@@ -1109,9 +1289,25 @@ class AssetViewSet(viewsets.ModelViewSet):
                 {"error": str(e), "code": "VALIDATION_ERROR"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Increment version and save status
-        asset.increment_version()
-        asset.save(update_fields=["status", "updated_at"])
+        # Atomic version increment to prevent race conditions (D91).
+        # Only one concurrent activation succeeds; others get updated=0.
+        from django.db.models import F
+
+        updated = Asset.objects.filter(
+            id=asset.id, version=int(version)
+        ).update(
+            status=AssetStatus.ACTIVE,
+            version=F("version") + 1,
+        )
+        if not updated:
+            return Response(
+                {
+                    "error": "Asset has been modified by another user",
+                    "code": "ASSET_CONCURRENT_MODIFICATION",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        asset.refresh_from_db()
 
         # Invalidate cache AFTER transaction commits to avoid a race condition where
         # another worker reads the DB (still DRAFT inside the open transaction), caches it,
@@ -1185,6 +1381,79 @@ class AssetViewSet(viewsets.ModelViewSet):
                 f"Failed to create audit event for asset activation {asset.id}: {e}", exc_info=True
             )
 
+        return Response(AssetSerializer(asset).data, status=status.HTTP_200_OK)
+
+    @transaction.atomic
+    @action(detail=True, methods=["post"], url_path="retire")
+    def retire(self, request, id=None):
+        """
+        Retire an active asset (soft delete).
+
+        POST /assets/{id}/retire
+
+        Only ACTIVE assets can be retired.  Attempting to retire a DRAFT or
+        already-RETIRED asset returns 400.
+        """
+        asset = self.get_object()
+
+        if asset.status == AssetStatus.RETIRED:
+            return Response(
+                {"error": "Asset is already retired", "code": "ASSET_ALREADY_RETIRED"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if asset.status != AssetStatus.ACTIVE:
+            return Response(
+                {
+                    "error": f"Only ACTIVE assets can be retired (current status: {asset.status})",
+                    "code": "ASSET_INVALID_STATE_FOR_RETIREMENT",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Delegate to the same service logic used by DELETE
+        asset_service = AssetService(
+            tenant_id=str(asset.tenant_id), user_id=str(request.user.id)
+        )
+        try:
+            asset_service.delete_asset(
+                asset_id=str(asset.id),
+                tenant_id=str(asset.tenant_id),
+                user_id=str(request.user.id),
+            )
+        except ServiceValidationError as e:
+            return Response(
+                {"error": e.message, "code": e.code, "details": e.details},
+                status=getattr(e, "http_status", status.HTTP_400_BAD_REQUEST),
+            )
+
+        asset_id_str = str(asset.id)
+        tenant_id_str = str(asset.tenant_id)
+
+        def _invalidate_cache_post_retire():
+            import logging as _logging
+
+            try:
+                invalidate_asset_caches(asset_id_str, tenant_id_str)
+            except Exception as _e:
+                _logging.getLogger(__name__).warning(
+                    f"Failed to invalidate cache after asset retirement {asset_id_str}: {_e}",
+                    exc_info=True,
+                )
+
+        transaction.on_commit(_invalidate_cache_post_retire)
+
+        create_audit_event(
+            resource_type="ASSET",
+            action="ASSET_RETIRED",
+            actor_user=request.user,
+            tenant=asset.tenant,
+            resource_id=asset_id_str,
+            details={"key": asset.key, "name": asset.name},
+            request=request,
+        )
+
+        asset.refresh_from_db()
         return Response(AssetSerializer(asset).data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="recommendations")
@@ -1486,11 +1755,14 @@ class AssetViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-    @transaction.atomic
     @action(detail=True, methods=["post"], url_path="external-resources/download")
     def download_external_resource(self, request, id=None):
         """
         Download an external resource on-demand.
+
+        Not wrapped in ``transaction.atomic``: connector download and S3 upload are slow I/O.
+        A single long transaction caused ``statement_timeout`` and contention under parallel tests.
+        Individual ORM steps use autocommit; ``_create_dataset_impl`` may use nested atomic blocks.
 
         POST /api/v1/assets/{id}/external-resources/{resource_id}/download
 
@@ -1534,7 +1806,20 @@ class AssetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # Check tenant resource download quota
+        # Resolve resource before quota: cheap indexed lookup; avoids quota/TenantConfig
+        # work on definite 404s and reduces lock contention under parallel tests.
+        try:
+            external_resource = asset.external_resource_references.get(resource_id=resource_id)
+        except asset.external_resource_references.model.DoesNotExist:
+            return Response(
+                {
+                    "error": f'External resource "{resource_id}" not found for asset',
+                    "code": "RESOURCE_NOT_FOUND",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Check tenant resource download quota (only when resource exists)
         from hub.apps.rate_limiting.quota import QuotaManager
         from hub.apps.rate_limiting.utils import EndpointCategory, TimeWindow
 
@@ -1551,18 +1836,6 @@ class AssetViewSet(viewsets.ModelViewSet):
                     "quota_info": quota_info,
                 },
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
-
-        # Get external resource
-        try:
-            external_resource = asset.external_resource_references.get(resource_id=resource_id)
-        except asset.external_resource_references.model.DoesNotExist:
-            return Response(
-                {
-                    "error": f'External resource "{resource_id}" not found for asset',
-                    "code": "RESOURCE_NOT_FOUND",
-                },
-                status=status.HTTP_404_NOT_FOUND,
             )
 
         # Check if resource is already downloaded
@@ -1701,7 +1974,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         dataset_service = DatasetService(tenant_id=str(tenant.id), user_id=str(user.id))
 
         try:
-            # Call implementation directly since we're already in @transaction.atomic
+            # Implementation uses its own transaction boundaries as needed.
             dataset = dataset_service._create_dataset_impl(
                 tenant_id=str(tenant.id),
                 user_id=str(user.id),

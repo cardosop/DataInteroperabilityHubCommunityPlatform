@@ -847,6 +847,38 @@ DEFAULT_ALERT_RULES = [
 ]
 
 
+def _scope_audit_query_by_participants(query, tenant_obj: Optional[Any], user_obj: Optional[Any]):
+    """Restrict SecurityAuditLog aggregation to the same tenant/user bucket.
+
+    If we only filter when tenant/user is set, violations with NULL tenant/user
+    count *every* row of that event_type in the database — including unrelated
+    tenants and other tests — which mis-triggers incidents.
+    Match NULL explicitly when the violation is unscoped.
+    """
+    if tenant_obj is not None:
+        query = query.filter(tenant=tenant_obj)
+    else:
+        query = query.filter(tenant__isnull=True)
+    if user_obj is not None:
+        query = query.filter(user=user_obj)
+    else:
+        query = query.filter(user__isnull=True)
+    return query
+
+
+def _scope_incident_query_by_participants(query, tenant_obj: Optional[Any], user_obj: Optional[Any]):
+    """Same participant scoping for SecurityIncident lookups."""
+    if tenant_obj is not None:
+        query = query.filter(tenant=tenant_obj)
+    else:
+        query = query.filter(tenant__isnull=True)
+    if user_obj is not None:
+        query = query.filter(user=user_obj)
+    else:
+        query = query.filter(user__isnull=True)
+    return query
+
+
 # Global security logger instance
 _security_logger: Optional[SecurityLogger] = None
 
@@ -996,10 +1028,7 @@ class SecurityIncidentDetector:
                 event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
                 timestamp__gte=window_start
             )
-            if tenant:
-                query = query.filter(tenant=tenant)
-            if user:
-                query = query.filter(user=user)
+            query = _scope_audit_query_by_participants(query, tenant, user)
             violation_count = query.count()
 
             # Threshold: 10 violations per hour
@@ -1010,10 +1039,9 @@ class SecurityIncidentDetector:
                     status__in=["OPEN", "INVESTIGATING"],
                     first_detected_at__gte=window_start
                 )
-                if tenant:
-                    existing_query = existing_query.filter(tenant=tenant)
-                if user:
-                    existing_query = existing_query.filter(user=user)
+                existing_query = _scope_incident_query_by_participants(
+                    existing_query, tenant, user
+                )
                 existing_incident = existing_query.first()
 
                 if existing_incident:
@@ -1096,10 +1124,7 @@ class SecurityIncidentDetector:
                 event_type=SecurityEventType.PATH_TRAVERSAL.value,
                 timestamp__gte=window_start
             )
-            if tenant:
-                query = query.filter(tenant=tenant)
-            if user:
-                query = query.filter(user=user)
+            query = _scope_audit_query_by_participants(query, tenant, user)
             violation_count = query.count()
 
             # Threshold: 5 path traversal attempts in 5 minutes
@@ -1109,10 +1134,9 @@ class SecurityIncidentDetector:
                     status__in=["OPEN", "INVESTIGATING"],
                     first_detected_at__gte=window_start
                 )
-                if tenant:
-                    existing_query = existing_query.filter(tenant=tenant)
-                if user:
-                    existing_query = existing_query.filter(user=user)
+                existing_query = _scope_incident_query_by_participants(
+                    existing_query, tenant, user
+                )
                 existing_incident = existing_query.first()
 
                 if existing_incident:
@@ -1164,6 +1188,12 @@ class SecurityIncidentDetector:
         if not DJANGO_AVAILABLE:
             return None
 
+        # LOW = format / validation noise; pattern-based incidents target repeat abuse
+        # (MEDIUM+). Skipping avoids false positives when many anonymous LOW rows exist
+        # in shared environments and matches observability intent for this detector.
+        if violation_log.severity == SecuritySeverity.LOW.value:
+            return None
+
         try:
             from hub.apps.contracts.models import SecurityIncident, SecurityAuditLog
             from hub.apps.tenants.models import Tenant
@@ -1186,29 +1216,28 @@ class SecurityIncidentDetector:
                 except Exception:
                     pass
 
-            # Check for multiple URL violations in last 10 minutes
+            # Check for multiple URL violations in last 10 minutes.
+            # Omit LOW from the rolling count: format-validation noise should not
+            # share the same incident threshold as MEDIUM/HIGH URL abuse, and test
+            # DBs accumulate many unscoped LOW rows without tenant context.
             window_start = timezone.now() - timedelta(minutes=10)
             query = SecurityAuditLog.objects.filter(
                 event_type=violation_log.event_type,
-                timestamp__gte=window_start
-            )
-            if tenant:
-                query = query.filter(tenant=tenant)
-            if user:
-                query = query.filter(user=user)
+                timestamp__gte=window_start,
+            ).exclude(severity=SecuritySeverity.LOW.value)
+            query = _scope_audit_query_by_participants(query, tenant, user)
             violation_count = query.count()
 
-            # Threshold: 3 URL violations in 10 minutes
+            # Threshold: 3 non-LOW URL violations in 10 minutes
             if violation_count >= 3:
                 existing_query = SecurityIncident.objects.filter(
                     event_type=violation_log.event_type,
                     status__in=["OPEN", "INVESTIGATING"],
                     first_detected_at__gte=window_start
                 )
-                if tenant:
-                    existing_query = existing_query.filter(tenant=tenant)
-                if user:
-                    existing_query = existing_query.filter(user=user)
+                existing_query = _scope_incident_query_by_participants(
+                    existing_query, tenant, user
+                )
                 existing_incident = existing_query.first()
 
                 if existing_incident:
@@ -1288,10 +1317,7 @@ class SecurityIncidentDetector:
                 severity__in=[SecuritySeverity.HIGH.value, SecuritySeverity.CRITICAL.value],
                 timestamp__gte=window_start
             )
-            if tenant:
-                query = query.filter(tenant=tenant)
-            if user:
-                query = query.filter(user=user)
+            query = _scope_audit_query_by_participants(query, tenant, user)
             violation_count = query.count()
 
             # Threshold: 10 high severity violations per hour
@@ -1301,10 +1327,9 @@ class SecurityIncidentDetector:
                     status__in=["OPEN", "INVESTIGATING"],
                     first_detected_at__gte=window_start
                 )
-                if tenant:
-                    existing_query = existing_query.filter(tenant=tenant)
-                if user:
-                    existing_query = existing_query.filter(user=user)
+                existing_query = _scope_incident_query_by_participants(
+                    existing_query, tenant, user
+                )
                 existing_incident = existing_query.first()
 
                 if existing_incident:

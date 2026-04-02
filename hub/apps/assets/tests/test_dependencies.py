@@ -4,6 +4,7 @@ Unit tests for Asset Dependencies Graph
 Tests for dependency graph generation and visualization.
 """
 
+import uuid
 import pytest
 from django.test import TestCase
 
@@ -21,12 +22,13 @@ class AssetDependencyServiceTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -195,82 +197,60 @@ class AssetDependencyServiceTest(TestCase):
             max_depth=10,
         )
 
-        # Should return graph
+        # Should return graph with at least the root node
         self.assertIsNotNone(graph)
-        self.assertGreaterEqual(len(graph.nodes), 0)
+        self.assertGreater(len(graph.nodes), 0)
 
     # ========== FAILURE SCENARIOS ==========
 
     def test_generate_dependency_graph_nonexistent_asset(self):
-        """Test dependency graph generation with non-existent asset (failure scenario)"""
-        import uuid
-
+        """Test dependency graph generation with non-existent asset returns empty graph"""
         fake_asset_id = str(uuid.uuid4())
 
-        # Should handle non-existent asset gracefully
-        try:
-            graph = AssetDependencyService.generate_dependency_graph(
-                asset_id=fake_asset_id,
-                tenant_id=str(self.tenant.id),
-                direction="both",
-                max_depth=10,
-            )
-            # If succeeds, should return empty graph or handle gracefully
-            self.assertIsNotNone(graph)
-        except Exception:
-            # If fails, that's acceptable for non-existent asset
-            pass
+        graph = AssetDependencyService.generate_dependency_graph(
+            asset_id=fake_asset_id,
+            tenant_id=str(self.tenant.id),
+            direction="both",
+            max_depth=10,
+        )
+        self.assertIsNotNone(graph)
+        self.assertEqual(len(graph.nodes), 0)
 
     def test_generate_dependency_graph_invalid_direction(self):
-        """Test dependency graph generation with invalid direction (failure scenario)"""
-        # Should handle invalid direction gracefully
-        try:
-            graph = AssetDependencyService.generate_dependency_graph(
-                asset_id=str(self.asset1.id),
-                tenant_id=str(self.tenant.id),
-                direction="INVALID",
-                max_depth=10,
-            )
-            # If succeeds, should use default direction
-            self.assertIsNotNone(graph)
-        except (ValueError, AttributeError):
-            # If fails, that's acceptable for invalid direction
-            pass
+        """Test dependency graph with invalid direction returns valid graph
+        (service treats unknown directions as 'both')."""
+        graph = AssetDependencyService.generate_dependency_graph(
+            asset_id=str(self.asset1.id),
+            tenant_id=str(self.tenant.id),
+            direction="INVALID",
+            max_depth=10,
+        )
+        self.assertIsNotNone(graph)
+        self.assertIsInstance(graph.nodes, dict)
 
     # ========== EDGE CASES ==========
 
     def test_generate_dependency_graph_zero_max_depth(self):
-        """Test dependency graph generation with zero max_depth (edge case)"""
-        # Should handle zero depth gracefully
-        try:
-            graph = AssetDependencyService.generate_dependency_graph(
-                asset_id=str(self.asset1.id),
-                tenant_id=str(self.tenant.id),
-                direction="both",
-                max_depth=0,
-            )
-            # Should return graph with only root node
-            self.assertIsNotNone(graph)
-            self.assertGreaterEqual(len(graph.nodes), 0)
-        except Exception:
-            # If fails, that's acceptable for zero depth
-            pass
+        """Test dependency graph generation with zero max_depth returns valid graph"""
+        graph = AssetDependencyService.generate_dependency_graph(
+            asset_id=str(self.asset1.id),
+            tenant_id=str(self.tenant.id),
+            direction="both",
+            max_depth=0,
+        )
+        self.assertIsNotNone(graph)
+        self.assertIsInstance(graph.nodes, dict)
 
     def test_generate_dependency_graph_very_large_max_depth(self):
-        """Test dependency graph generation with very large max_depth (edge case)"""
-        # Should handle large depth gracefully
-        try:
-            graph = AssetDependencyService.generate_dependency_graph(
-                asset_id=str(self.asset1.id),
-                tenant_id=str(self.tenant.id),
-                direction="both",
-                max_depth=999999,
-            )
-            # Should return graph
-            self.assertIsNotNone(graph)
-        except Exception:
-            # If fails, that's acceptable for very large depth
-            pass
+        """Test dependency graph generation with very large max_depth returns valid graph"""
+        graph = AssetDependencyService.generate_dependency_graph(
+            asset_id=str(self.asset1.id),
+            tenant_id=str(self.tenant.id),
+            direction="both",
+            max_depth=999999,
+        )
+        self.assertIsNotNone(graph)
+        self.assertIsInstance(graph.nodes, dict)
 
     def test_dependency_graph_empty_graph_returns_structure(self):
         """Test dependency graph with no nodes returns structure."""
@@ -323,30 +303,18 @@ class AssetDependencyServiceTest(TestCase):
             # If raises exception, that's a problem
             self.fail("generate_dependency_graph should handle database errors gracefully")
 
-    def test_dependency_graph_add_node_error_handling(self):
-        """Test error handling when adding node fails"""
+    def test_dependency_graph_add_node(self):
+        """Test adding a node to the dependency graph"""
         graph = AssetDependencyGraph()
 
-        # Should handle errors gracefully
-        try:
-            graph.add_node("node1", self.asset1)
-            # Should succeed
-            self.assertIn("node1", graph.nodes)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("add_node should handle errors gracefully")
+        graph.add_node("node1", self.asset1)
+        self.assertIn("node1", graph.nodes)
 
-    def test_dependency_graph_add_edge_error_handling(self):
-        """Test error handling when adding edge fails"""
+    def test_dependency_graph_add_edge(self):
+        """Test adding an edge to the dependency graph"""
         graph = AssetDependencyGraph()
         graph.add_node("node1", self.asset1)
         graph.add_node("node2", self.asset2)
 
-        # Should handle errors gracefully
-        try:
-            graph.add_edge("node1", "node2")
-            # Should succeed
-            self.assertGreater(len(graph.edges), 0)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("add_edge should handle errors gracefully")
+        graph.add_edge("node1", "node2")
+        self.assertGreater(len(graph.edges), 0)

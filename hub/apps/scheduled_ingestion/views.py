@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.responses import api_error_response, handle_service_exception
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
+from hub.apps.core.utils.prefect_deployment import delete_prefect_deployment
 from hub.apps.jobs.models import Job, JobType
 from hub.apps.jobs.utils import create_job
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
@@ -78,6 +79,7 @@ def _sync_deployment_via_prefect_integration_service(
     if not base_url:
         return False
     url = f"{base_url}/deployments/sync"
+    headers = {"X-Internal-Api-Key": os.getenv("INTERNAL_API_KEY", "")}
     payload = {
         "scheduled_ingestion_id": str(scheduled_ingestion.id),
         "tenant_id": str(tenant.id),
@@ -87,13 +89,16 @@ def _sync_deployment_via_prefect_integration_service(
     try:
         import requests
 
-        resp = requests.post(url, json=payload, timeout=timeout_seconds)
+        resp = requests.post(url, json=payload, headers=headers, timeout=timeout_seconds)
         if resp.ok:
             data = resp.json()
             deployment_id = data.get("deployment_id") if isinstance(data, dict) else None
-            if deployment_id and hasattr(scheduled_ingestion, "prefect_deployment_id"):
+            update_fields = ["deployment_sync_status"]
+            scheduled_ingestion.deployment_sync_status = "SYNCED"
+            if deployment_id:
                 scheduled_ingestion.prefect_deployment_id = deployment_id
-                scheduled_ingestion.save(update_fields=["prefect_deployment_id"])
+                update_fields.append("prefect_deployment_id")
+            scheduled_ingestion.save(update_fields=update_fields)
             return True
         logger.warning(
             "Prefect integration service sync failed for scheduled ingestion %s: %s %s",
@@ -101,6 +106,8 @@ def _sync_deployment_via_prefect_integration_service(
             resp.status_code,
             resp.text[:200],
         )
+        scheduled_ingestion.deployment_sync_status = "FAILED"
+        scheduled_ingestion.save(update_fields=["deployment_sync_status"])
         return False
     except Exception as e:
         logger.warning(
@@ -109,6 +116,8 @@ def _sync_deployment_via_prefect_integration_service(
             e,
             exc_info=True,
         )
+        scheduled_ingestion.deployment_sync_status = "FAILED"
+        scheduled_ingestion.save(update_fields=["deployment_sync_status"])
         return False
 
 
@@ -126,6 +135,7 @@ def _trigger_deployment_via_prefect_integration_service(
     if not base_url:
         return False, None, "PREFECT_INTEGRATION_SERVICE_URL not configured"
     url = f"{base_url}/deployments/trigger"
+    headers = {"X-Internal-Api-Key": os.getenv("INTERNAL_API_KEY", "")}
     payload = {
         "scheduled_ingestion_id": str(scheduled_ingestion.id),
         "tenant_id": str(tenant.id),
@@ -134,7 +144,7 @@ def _trigger_deployment_via_prefect_integration_service(
     try:
         import requests
 
-        resp = requests.post(url, json=payload, timeout=timeout_seconds)
+        resp = requests.post(url, json=payload, headers=headers, timeout=timeout_seconds)
         if resp.ok:
             data = resp.json()
             flow_run_id = data.get("flow_run_id") if isinstance(data, dict) else None
@@ -175,7 +185,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
     lookup_field = "id"
 
     def get_queryset(self):
-        """Filter queryset by tenant and optional status"""
+        """Filter queryset by tenant and optional status, excluding soft-deleted records."""
         if self.request.user.is_platform_admin:
             queryset = ScheduledIngestion.objects.all()
         else:
@@ -185,6 +195,9 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                 queryset = ScheduledIngestion.objects.filter(tenant_id=tenant_id)
             else:
                 return ScheduledIngestion.objects.none()
+
+        # Phase 25.9.1 — Exclude soft-deleted records from listings
+        queryset = queryset.exclude(status=ScheduledIngestionStatus.DELETED)
 
         # Filter by status if provided
         status_filter = self.request.query_params.get("status")
@@ -201,10 +214,37 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """Create scheduled ingestion via service (validates via ScheduledIngestionBusinessRules)."""
+        # Fail-fast: check plan limit BEFORE expensive serializer validation
+        # (connection testing). Avoids wasted round-trips to S3/external services
+        # when the tenant has already hit their ingestion quota.
+        tenant_id, tenant = get_request_tenant(request)
+        if tenant:
+            from hub.apps.tenants.services import PlanLimitService
+            from hub.apps.core.services.base import ValidationError as SvcValidationError
+            try:
+                plan_svc = PlanLimitService(tenant_id=str(tenant.id))
+                with transaction.atomic():
+                    plan_svc.check_limit(
+                        tenant_id=str(tenant.id),
+                        limit_key="max_scheduled_ingestions",
+                        delta=1,
+                    )
+            except SvcValidationError as plan_err:
+                if plan_err.code == "plan_limit_exceeded":
+                    return Response(
+                        {
+                            "error": plan_err.message,
+                            "code": plan_err.code,
+                            "details": plan_err.details or {},
+                        },
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+            except Exception:
+                pass  # Non-limit errors: let serializer/service handle normally
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        # Use central helper for tenant resolution (Phase 10.1.5)
-        tenant_id, tenant = get_request_tenant(request)
+        # tenant already resolved above
         if not tenant:
             return Response(
                 {"error": "Tenant is required"},
@@ -280,13 +320,16 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                             scheduled_ingestion.prefect_deployment_id = (
                                 deployment.id if hasattr(deployment, "id") else str(deployment)
                             )
-                            scheduled_ingestion.save(update_fields=["prefect_deployment_id"])
+                            scheduled_ingestion.deployment_sync_status = "SYNCED"
+                            scheduled_ingestion.save(update_fields=["prefect_deployment_id", "deployment_sync_status"])
                     except asyncio.TimeoutError:
                         logger.warning(
                             "Prefect deployment sync timed out for scheduled ingestion %s. "
                             "Scheduled ingestion created but Prefect deployment sync will need to be retried.",
                             scheduled_ingestion.id,
                         )
+                        scheduled_ingestion.deployment_sync_status = "FAILED"
+                        scheduled_ingestion.save(update_fields=["deployment_sync_status"])
             except Exception as e:
                 logger.warning(
                     "Prefect sync failed for scheduled ingestion %s: %s. "
@@ -295,6 +338,8 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                     e,
                     exc_info=True,
                 )
+                scheduled_ingestion.deployment_sync_status = "FAILED"
+                scheduled_ingestion.save(update_fields=["deployment_sync_status"])
         create_audit_event(
             resource_type="SCHEDULED_INGESTION",
             action="CREATED",
@@ -307,10 +352,23 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                 "schedule_type": scheduled_ingestion.schedule_type,
             },
         )
-        return Response(
-            ScheduledIngestionSerializer(scheduled_ingestion).data,
-            status=status.HTTP_201_CREATED,
-        )
+        # Phase 25.5.1 — Return 207 Multi-Status when resource is created
+        # but deployment sync failed, so the client knows the schedule won't
+        # fire until a manual retry (/sync/) succeeds.
+        scheduled_ingestion.refresh_from_db()
+        resource_data = ScheduledIngestionSerializer(scheduled_ingestion).data
+        if scheduled_ingestion.deployment_sync_status == "FAILED":
+            return Response(
+                {
+                    "resource": resource_data,
+                    "deployment_sync": {
+                        "status": "failed",
+                        "error": "Prefect deployment sync failed; call POST /{id}/sync/ to retry",
+                    },
+                },
+                status=207,  # Multi-Status
+            )
+        return Response(resource_data, status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):
         """Update scheduled ingestion via service layer and sync with Prefect"""
@@ -390,12 +448,15 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                         updated.prefect_deployment_id = (
                             deployment.id if hasattr(deployment, "id") else str(deployment)
                         )
-                        updated.save()
+                        updated.deployment_sync_status = "SYNCED"
+                        updated.save(update_fields=["prefect_deployment_id", "deployment_sync_status"])
                 except Exception as e:
                     logger.error(
                         f"Failed to sync with Prefect for scheduled ingestion {updated.id}: {str(e)}",
                         exc_info=True,
                     )
+                    updated.deployment_sync_status = "FAILED"
+                    updated.save(update_fields=["deployment_sync_status"])
 
             # Log audit event
             # Use central helper for tenant resolution (Phase 10.1.5)
@@ -414,56 +475,145 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
         # So that UpdateModelMixin returns Response(serializer.data) with updated instance
         serializer.instance = updated
 
-    def perform_destroy(self, instance):
-        """Delete scheduled ingestion via service layer and Prefect deployment"""
-        # Use central helper for tenant resolution (Phase 10.1.5)
-        tenant_id, tenant = get_request_tenant(self.request)
+    def update(self, request, *args, **kwargs):
+        """Override to return 207 when sync fails (Phase 25.5.1)."""
+        response = super().update(request, *args, **kwargs)
+        # After perform_update ran, check if sync failed
+        instance = self.get_object()
+        if instance.deployment_sync_status == "FAILED":
+            resource_data = response.data
+            return Response(
+                {
+                    "resource": resource_data,
+                    "deployment_sync": {
+                        "status": "failed",
+                        "error": "Prefect deployment sync failed; call POST /{id}/sync/ to retry",
+                    },
+                },
+                status=207,
+            )
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Phase 25.9.1 — Ordered delete: remove Prefect deployment *before* DB record.
+
+        1. If the instance has a prefect_deployment_id, call the integration
+           service to delete the deployment first.
+        2. If that call fails, mark the record status=DELETED (soft-delete) so
+           the hourly purge CronJob can retry, and return HTTP 409 Conflict.
+        3. Only hard-delete the DB record after a successful deployment delete.
+        """
+        instance = self.get_object()
+        tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             tenant = instance.tenant
 
-        # Delete Prefect deployment first (before service layer deletes the instance)
+        # --- Step 1: delete Prefect deployment first ---
         if instance.prefect_deployment_id:
-            try:
-                import os
-                import sys
-
-                sys.path.insert(
-                    0,
-                    os.path.join(
-                        os.path.dirname(__file__), "../../../services/prefect-integration"
-                    ),
+            deployment_deleted = delete_prefect_deployment(
+                deployment_id=str(instance.prefect_deployment_id),
+                resource_id=str(instance.id),
+                resource_type="scheduled_ingestion",
+                tenant_id=str(tenant.id),
+            )
+            if not deployment_deleted:
+                # Soft-delete: mark as DELETED so the purge CronJob can retry
+                ScheduledIngestion.objects.filter(pk=instance.pk).update(
+                    status=ScheduledIngestionStatus.DELETED,
                 )
-                from deployment_sync import DeploymentSyncService
-
-                prefect_api_url = os.getenv("PREFECT_API_URL", "http://prefect-server:4200/api")
-                prefect_api_key = os.getenv("PREFECT_API_KEY", "")
-
-                service = DeploymentSyncService(
-                    prefect_api_url=prefect_api_url, prefect_api_key=prefect_api_key
+                create_audit_event(
+                    resource_type="SCHEDULED_INGESTION",
+                    action="DELETE_BLOCKED",
+                    actor_user=request.user,
+                    tenant=tenant,
+                    resource_id=str(instance.id),
+                    details={
+                        "reason": "prefect_deployment_delete_failed",
+                        "prefect_deployment_id": str(instance.prefect_deployment_id),
+                    },
                 )
-
-                deployment_name = f"{tenant.id}-{instance.id}"
-                import asyncio
-
-                asyncio.run(service.delete_deployment(deployment_name))
-            except Exception as e:
-                logger.error(
-                    f"Failed to delete Prefect deployment for scheduled ingestion {instance.id}: {str(e)}",
-                    exc_info=True,
+                return Response(
+                    {"error": "prefect_deployment_delete_failed"},
+                    status=status.HTTP_409_CONFLICT,
                 )
+            # Deployment deleted — clear the reference
+            ScheduledIngestion.objects.filter(pk=instance.pk).update(
+                prefect_deployment_id=None,
+                deployment_sync_status="PENDING",
+            )
 
-        # Use service layer for deletion (Phase 24.7.1)
-        service = IngestionService(tenant_id=str(tenant.id), user_id=str(self.request.user.id))
+        # --- Step 2: hard-delete DB record via service layer ---
+        service = IngestionService(tenant_id=str(tenant.id), user_id=str(request.user.id))
         try:
             service.delete_scheduled_ingestion(
                 scheduled_ingestion_id=str(instance.id),
                 tenant_id=str(tenant.id),
-                user_id=str(self.request.user.id),
+                user_id=str(request.user.id),
             )
         except ServiceValidationError as e:
-            from rest_framework.exceptions import ValidationError
+            return handle_service_exception(e)
 
-            raise ValidationError(str(e))
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        operation_id="scheduled_ingestion_sync",
+        request=None,
+        responses={
+            200: ScheduledIngestionSerializer,
+            503: inline_serializer(
+                name="ScheduledIngestionSyncUnavailable",
+                fields={
+                    "error": serializers.CharField(),
+                    "deployment_sync_status": serializers.CharField(),
+                },
+            ),
+        },
+        tags=["Scheduled Ingestion"],
+    )
+    @action(detail=True, methods=["post"], url_path="sync")
+    def sync(self, request, id=None):
+        """
+        Phase 25.5.2 — Idempotent retry endpoint for Prefect deployment sync.
+
+        Re-calls the integration service /deployments/sync.  Updates
+        deployment_sync_status and prefect_deployment_id.
+        Returns 200 on success, 400 when not configured, 503 on service failure.
+        """
+        import os as _os
+
+        base_url = _os.getenv("PREFECT_INTEGRATION_SERVICE_URL", "")
+        if not base_url:
+            return Response(
+                {
+                    "error": "PREFECT_INTEGRATION_SERVICE_URL not configured",
+                    "deployment_sync_status": "PENDING",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        scheduled_ingestion = self.get_object()
+        tenant_id, tenant = get_request_tenant(request)
+        if not tenant:
+            tenant = scheduled_ingestion.tenant
+
+        sync_ok = _sync_deployment_via_prefect_integration_service(
+            scheduled_ingestion, tenant, timeout_seconds=15
+        )
+
+        scheduled_ingestion.refresh_from_db()
+        if sync_ok:
+            return Response(
+                ScheduledIngestionSerializer(scheduled_ingestion).data,
+                status=status.HTTP_200_OK,
+            )
+        return Response(
+            {
+                "error": "Prefect integration service sync failed",
+                "deployment_sync_status": scheduled_ingestion.deployment_sync_status,
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
 
     @extend_schema(
         operation_id="scheduled_ingestion_trigger",
@@ -567,6 +717,21 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                 )
                 run.job_id = job.id
                 run.save(update_fields=["job_id", "updated_at"])
+
+                # Phase 25.6.3 — Enqueue status sync via RQ
+                try:
+                    from hub.apps.jobs.tasks_prefect_sync import (
+                        enqueue_prefect_status_sync,
+                    )
+                    transaction.on_commit(
+                        lambda frid=flow_run_id, rid=str(run.id): enqueue_prefect_status_sync(
+                            flow_run_id=frid,
+                            resource_id=rid,
+                            resource_type="scheduled_ingestion",
+                        )
+                    )
+                except Exception:
+                    pass  # Don't fail trigger if enqueue fails
 
                 create_audit_event(
                     resource_type="SCHEDULED_INGESTION",
@@ -865,7 +1030,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                 "masked_credentials": masked_credentials_data,
                 "metadata": {
                     k: v
-                    for k, v in (scheduled_ingestion.source_config or {}).items()
+                    for k, v in (scheduled_ingestion.get_source_config() or {}).items()
                     if k not in CredentialManager.SENSITIVE_FIELDS
                 },  # Include other non-sensitive metadata
             }
@@ -922,7 +1087,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
 
         try:
             # Get source config with credentials
-            source_config = scheduled_ingestion.source_config or {}
+            source_config = scheduled_ingestion.get_source_config() or {}
 
             if not source_config:
                 return Response(

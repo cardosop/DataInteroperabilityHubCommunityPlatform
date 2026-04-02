@@ -112,6 +112,31 @@ class ABACEngine:
                         if not field_policies and masking_required:
                             return PolicyEvaluationResult(allowed=False, policy=policy)
 
+                    # Audit field masking if applied
+                    if masking_required and field_policies:
+                        try:
+                            from hub.apps.audit.utils import create_audit_event
+
+                            masked_fields = [fp.field_name for fp in field_policies
+                                             if fp.masking_strategy and fp.masking_strategy != "NONE"]
+                            create_audit_event(
+                                resource_type=resource_type,
+                                action="FIELD_MASKING_APPLIED",
+                                tenant=policy.tenant,
+                                resource_id=resource_id,
+                                details={
+                                    "user_id": user_id,
+                                    "masked_fields": masked_fields,
+                                    "policy_id": str(policy.id),
+                                    "masking_strategies": [
+                                        fp.masking_strategy for fp in field_policies
+                                        if fp.masking_strategy and fp.masking_strategy != "NONE"
+                                    ],
+                                },
+                            )
+                        except Exception:
+                            pass  # Don't fail access eval on audit error
+
                     return PolicyEvaluationResult(
                         allowed=True,
                         policy=policy,
@@ -243,6 +268,25 @@ class ABACEngine:
                 attributes["file_name"] = "new_file"
                 attributes["file_status"] = "PENDING"
                 pass
+        elif resource_type == "ML_MODEL":
+            from hub.apps.ml.models import MLModel
+
+            try:
+                ml_model = MLModel.objects.get(
+                    id=resource_id, tenant_id=tenant_id,
+                )
+                attributes["ml_model_name"] = ml_model.odh_model_name
+                attributes["ml_model_type"] = ml_model.model_type
+                attributes["ml_model_status"] = ml_model.status
+                attributes["ml_model_version"] = (
+                    ml_model.odh_model_version
+                )
+                if ml_model.asset_id:
+                    attributes["ml_model_asset_id"] = str(
+                        ml_model.asset_id,
+                    )
+            except MLModel.DoesNotExist:
+                pass
 
         return attributes
 
@@ -313,6 +357,11 @@ class ABACEngine:
                 # For files, check tenant-wide policies
                 # (no specific file field in AccessPolicy model yet)
                 queryset = queryset.filter(Q(asset__isnull=True) & Q(dataset__isnull=True))
+            elif resource_type == "ML_MODEL":
+                # For ML models, check tenant-wide policies
+                queryset = queryset.filter(
+                    Q(asset__isnull=True) & Q(dataset__isnull=True),
+                )
 
             # Use select_related/prefetch_related to optimize query
             policies = list(queryset.select_related("tenant", "created_by").order_by("priority"))

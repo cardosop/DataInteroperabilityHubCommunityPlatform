@@ -262,19 +262,22 @@ def process_file_for_run(
                 pass
         if not asset and scheduled_ingestion.auto_create_asset:
             asset_key = f"scheduled-ingestion-{scheduled_ingestion.id}"
-            c = 1
-            while Asset.objects.filter(tenant=tenant, key=asset_key).exists():
-                asset_key = f"scheduled-ingestion-{scheduled_ingestion.id}-{c}"
-                c += 1
-            asset = Asset.objects.create(
+            asset, created = Asset.objects.get_or_create(
                 tenant=tenant,
                 key=asset_key,
-                name=scheduled_ingestion.name,
-                description=scheduled_ingestion.description
-                or f"Asset from scheduled ingestion {scheduled_ingestion.name}",
-                status=AssetStatus.DRAFT,
-                created_by=created_by,
+                defaults={
+                    "name": scheduled_ingestion.name,
+                    "description": (
+                        scheduled_ingestion.description
+                        or f"Asset from scheduled ingestion {scheduled_ingestion.name}"
+                    ),
+                    "status": AssetStatus.DRAFT,
+                    "created_by": created_by,
+                },
             )
+            if not created:
+                # Asset already exists from a previous run; reuse it
+                pass
             scheduled_ingestion.asset = asset
             scheduled_ingestion.save(update_fields=["asset"])
 
@@ -339,7 +342,7 @@ def process_file_for_run(
         )
 
         # 7. Compliance (if configured in ingestion source_config; requires created_by for job ownership)
-        source_config = scheduled_ingestion.source_config or {}
+        source_config = scheduled_ingestion.get_source_config()
         if source_config.get("run_compliance") and dataset and created_by:
             try:
                 from hub.apps.compliance.services import ComplianceService

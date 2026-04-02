@@ -198,7 +198,7 @@ class ODPSVersionDetectionTest(TestCase):
         test_cases = [
             ("4.1", "4.1"),
             ("4.0", "4.0"),
-            ("4.2", "4.0"),  # Other 4.x -> 4.0
+            ("4.2", "4.2"),  # 4.2 is a supported exact version
             ("3.9", "3.x"),
             ("3.0", "3.x"),
             ("2.9", "2.x"),

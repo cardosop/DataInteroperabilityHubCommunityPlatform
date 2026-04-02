@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
+from hub.apps.core.utils.prefect_deployment import delete_prefect_deployment
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 
 from .models import (
@@ -55,6 +56,7 @@ def _sync_deployment_via_prefect_integration_service(scheduled_export, tenant, t
     if not base_url:
         return False
     url = f"{base_url}/deployments/sync"
+    headers = {"X-Internal-Api-Key": os.getenv("INTERNAL_API_KEY", "")}
     payload = {
         "scheduled_export_id": str(scheduled_export.id),
         "tenant_id": str(tenant.id),
@@ -63,18 +65,16 @@ def _sync_deployment_via_prefect_integration_service(scheduled_export, tenant, t
     try:
         import requests
 
-        resp = requests.post(url, json=payload, timeout=timeout_seconds)
+        resp = requests.post(url, json=payload, headers=headers, timeout=timeout_seconds)
         if resp.ok:
             data = resp.json()
             deployment_id = data.get("deployment_id") if isinstance(data, dict) else None
+            update_fields = ["deployment_sync_status"]
+            scheduled_export.deployment_sync_status = "SYNCED"
             if deployment_id:
-                # Note: ScheduledExport model doesn't have prefect_deployment_id field yet
-                # We can store it in a future update if needed
-                logger.info(
-                    "Prefect deployment created for scheduled export %s: %s",
-                    scheduled_export.id,
-                    deployment_id,
-                )
+                scheduled_export.prefect_deployment_id = deployment_id
+                update_fields.append("prefect_deployment_id")
+            scheduled_export.save(update_fields=update_fields)
             return True
         logger.warning(
             "Prefect integration service sync failed for scheduled export %s: %s %s",
@@ -82,6 +82,8 @@ def _sync_deployment_via_prefect_integration_service(scheduled_export, tenant, t
             resp.status_code,
             resp.text[:200],
         )
+        scheduled_export.deployment_sync_status = "FAILED"
+        scheduled_export.save(update_fields=["deployment_sync_status"])
         return False
     except Exception as e:
         logger.warning(
@@ -90,6 +92,8 @@ def _sync_deployment_via_prefect_integration_service(scheduled_export, tenant, t
             e,
             exc_info=True,
         )
+        scheduled_export.deployment_sync_status = "FAILED"
+        scheduled_export.save(update_fields=["deployment_sync_status"])
         return False
 
 
@@ -107,6 +111,7 @@ def _trigger_deployment_via_prefect_integration_service(
     if not base_url:
         return False, None, "PREFECT_INTEGRATION_SERVICE_URL not configured"
     url = f"{base_url}/deployments/trigger"
+    headers = {"X-Internal-Api-Key": os.getenv("INTERNAL_API_KEY", "")}
     payload = {
         "scheduled_export_id": str(scheduled_export.id),
         "tenant_id": str(tenant.id),
@@ -115,7 +120,7 @@ def _trigger_deployment_via_prefect_integration_service(
     try:
         import requests
 
-        resp = requests.post(url, json=payload, timeout=timeout_seconds)
+        resp = requests.post(url, json=payload, headers=headers, timeout=timeout_seconds)
         if resp.ok:
             data = resp.json()
             flow_run_id = data.get("flow_run_id") if isinstance(data, dict) else None
@@ -188,7 +193,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
     lookup_field = "id"
 
     def get_queryset(self):
-        """Filter queryset by tenant and optional status"""
+        """Filter queryset by tenant and optional status, excluding soft-deleted records."""
         if self.request.user.is_platform_admin:
             queryset = ScheduledExport.objects.all()
         else:
@@ -198,6 +203,9 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
                 queryset = ScheduledExport.objects.filter(tenant_id=tenant_id)
             else:
                 return ScheduledExport.objects.none()
+
+        # Phase 25.9.1 — Exclude soft-deleted records from listings
+        queryset = queryset.exclude(status=ScheduledExportStatus.DELETED)
 
         # Filter by status if provided
         status_filter = self.request.query_params.get("status")
@@ -215,10 +223,36 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """Create scheduled export via service (validates via ScheduledExportBusinessRules)."""
+        # Fail-fast: check plan limit BEFORE expensive serializer validation.
+        tenant_id, tenant = get_request_tenant(request)
+        if tenant:
+            from hub.apps.tenants.services import PlanLimitService
+            from hub.apps.core.services.base import ValidationError as SvcValidationError
+            from django.db import transaction as db_transaction
+            try:
+                plan_svc = PlanLimitService(tenant_id=str(tenant.id))
+                with db_transaction.atomic():
+                    plan_svc.check_limit(
+                        tenant_id=str(tenant.id),
+                        limit_key="max_scheduled_exports",
+                        delta=1,
+                    )
+            except SvcValidationError as plan_err:
+                if plan_err.code == "plan_limit_exceeded":
+                    return Response(
+                        {
+                            "error": plan_err.message,
+                            "code": plan_err.code,
+                            "details": plan_err.details or {},
+                        },
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+            except Exception:
+                pass  # Non-limit errors: let serializer/service handle
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        # Use central helper for tenant resolution (Phase 21)
-        tenant_id, tenant = get_request_tenant(request)
+        # tenant already resolved above
         if not tenant:
             return Response(
                 {"error": "Tenant is required", "code": "TENANT_REQUIRED", "details": {}},
@@ -256,10 +290,22 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
                 "status": scheduled_export.status,
             },
         )
-        return Response(
-            ScheduledExportSerializer(scheduled_export).data,
-            status=status.HTTP_201_CREATED,
-        )
+        # Phase 25.5.1 — Return 207 Multi-Status when resource is created
+        # but deployment sync failed.
+        scheduled_export.refresh_from_db()
+        resource_data = ScheduledExportSerializer(scheduled_export).data
+        if scheduled_export.deployment_sync_status == "FAILED":
+            return Response(
+                {
+                    "resource": resource_data,
+                    "deployment_sync": {
+                        "status": "failed",
+                        "error": "Prefect deployment sync failed; call POST /{id}/sync/ to retry",
+                    },
+                },
+                status=207,
+            )
+        return Response(resource_data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
     def update(self, request, *args, **kwargs):
@@ -287,6 +333,11 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
         except ServiceValidationError as e:
             return handle_service_exception(e)
 
+        # Phase 25.5.1 — Re-sync Prefect deployment on update
+        _sync_deployment_via_prefect_integration_service(
+            scheduled_export, tenant, timeout_seconds=15
+        )
+
         create_audit_event(
             resource_type="SCHEDULED_EXPORT",
             action="UPDATED",
@@ -299,20 +350,72 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
                 "status": scheduled_export.status,
             },
         )
-        return Response(ScheduledExportSerializer(scheduled_export).data)
+        scheduled_export.refresh_from_db()
+        resource_data = ScheduledExportSerializer(scheduled_export).data
+        if scheduled_export.deployment_sync_status == "FAILED":
+            return Response(
+                {
+                    "resource": resource_data,
+                    "deployment_sync": {
+                        "status": "failed",
+                        "error": "Prefect deployment sync failed; call POST /{id}/sync/ to retry",
+                    },
+                },
+                status=207,
+            )
+        return Response(resource_data)
 
-    @transaction.atomic
     def destroy(self, request, *args, **kwargs):
-        """Delete scheduled export via service."""
-        instance = self.get_object()
+        """
+        Phase 25.9.1 — Ordered delete: remove Prefect deployment *before* DB record.
 
-        # Use central helper for tenant resolution (Phase 21)
+        1. If the instance has a prefect_deployment_id, call the integration
+           service to delete the deployment first.
+        2. If that call fails, mark the record status=DELETED (soft-delete) so
+           the hourly purge CronJob can retry, and return HTTP 409 Conflict.
+        3. Only hard-delete the DB record after a successful deployment delete.
+        """
+        instance = self.get_object()
         tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             tenant = instance.tenant
 
-        service = ScheduledExportService(tenant_id=str(tenant.id), user_id=str(request.user.id))
+        # --- Step 1: delete Prefect deployment first ---
+        if instance.prefect_deployment_id:
+            deployment_deleted = delete_prefect_deployment(
+                deployment_id=str(instance.prefect_deployment_id),
+                resource_id=str(instance.id),
+                resource_type="scheduled_export",
+                tenant_id=str(tenant.id),
+            )
+            if not deployment_deleted:
+                # Soft-delete: mark as DELETED so the purge CronJob can retry
+                ScheduledExport.objects.filter(pk=instance.pk).update(
+                    status=ScheduledExportStatus.DELETED,
+                )
+                create_audit_event(
+                    resource_type="SCHEDULED_EXPORT",
+                    action="DELETE_BLOCKED",
+                    actor_user=request.user,
+                    tenant=tenant,
+                    resource_id=str(instance.id),
+                    details={
+                        "reason": "prefect_deployment_delete_failed",
+                        "prefect_deployment_id": str(instance.prefect_deployment_id),
+                    },
+                )
+                return Response(
+                    {"error": "prefect_deployment_delete_failed"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            # Deployment deleted — clear the reference
+            ScheduledExport.objects.filter(pk=instance.pk).update(
+                prefect_deployment_id=None,
+                deployment_sync_status="PENDING",
+            )
 
+        # --- Step 2: hard-delete DB record via service layer ---
+        service = ScheduledExportService(tenant_id=str(tenant.id), user_id=str(request.user.id))
         try:
             service.delete_scheduled_export(
                 scheduled_export_id=str(instance.id),
@@ -341,6 +444,65 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
 
         serializer = ScheduledExportRunSerializer(runs, many=True)
         return Response(serializer.data)
+
+    @extend_schema(
+        operation_id="scheduled_export_sync",
+        request=None,
+        responses={
+            200: ScheduledExportSerializer,
+            503: inline_serializer(
+                name="ScheduledExportSyncUnavailable",
+                fields={
+                    "error": serializers.CharField(),
+                    "deployment_sync_status": serializers.CharField(),
+                },
+            ),
+        },
+        tags=["Scheduled Exports"],
+    )
+    @action(detail=True, methods=["post"], url_path="sync")
+    def sync(self, request, id=None):
+        """
+        Phase 25.5.3 — Idempotent retry endpoint for Prefect deployment sync.
+
+        Re-calls the integration service /deployments/sync.  Updates
+        deployment_sync_status and prefect_deployment_id.
+        Returns 200 on success, 400 when not configured, 503 on service failure.
+        """
+        import os as _os
+
+        base_url = _os.getenv("PREFECT_INTEGRATION_SERVICE_URL", "")
+        if not base_url:
+            return Response(
+                {
+                    "error": "PREFECT_INTEGRATION_SERVICE_URL not configured",
+                    "deployment_sync_status": "PENDING",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        scheduled_export = self.get_object()
+        tenant_id, tenant = get_request_tenant(request)
+        if not tenant:
+            tenant = scheduled_export.tenant
+
+        sync_ok = _sync_deployment_via_prefect_integration_service(
+            scheduled_export, tenant, timeout_seconds=15
+        )
+
+        scheduled_export.refresh_from_db()
+        if sync_ok:
+            return Response(
+                ScheduledExportSerializer(scheduled_export).data,
+                status=status.HTTP_200_OK,
+            )
+        return Response(
+            {
+                "error": "Prefect integration service sync failed",
+                "deployment_sync_status": scheduled_export.deployment_sync_status,
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
 
     @extend_schema(
         operation_id="scheduled_export_trigger",
@@ -426,26 +588,22 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
                     started_at=timezone.now(),
                 )
 
-                # Trigger status sync in background to update run status if flow crashes quickly
-                # This helps handle cases where Docker times out during container creation
+                # Phase 25.6.1 — Enqueue status sync via RQ instead of
+                # background thread (threads leak ORM contexts, swallow
+                # exceptions, and bypass request tracing).
                 try:
-                    import os
-                    from threading import Thread
-
-                    import requests
-
-                    def trigger_status_sync():
-                        base_url = os.getenv("PREFECT_INTEGRATION_SERVICE_URL", "").rstrip("/")
-                        if base_url:
-                            try:
-                                requests.post(f"{base_url}/status/sync", timeout=5)
-                            except Exception:
-                                pass  # Don't fail trigger if status sync fails
-
-                    # Trigger status sync in background thread (non-blocking)
-                    Thread(target=trigger_status_sync, daemon=True).start()
+                    from hub.apps.jobs.tasks_prefect_sync import (
+                        enqueue_prefect_status_sync,
+                    )
+                    transaction.on_commit(
+                        lambda frid=flow_run_id, rid=str(run.id): enqueue_prefect_status_sync(
+                            flow_run_id=frid,
+                            resource_id=rid,
+                            resource_type="scheduled_export",
+                        )
+                    )
                 except Exception:
-                    pass  # Don't fail trigger if status sync trigger fails
+                    pass  # Don't fail trigger if enqueue fails
 
                 create_audit_event(
                     resource_type="SCHEDULED_EXPORT",

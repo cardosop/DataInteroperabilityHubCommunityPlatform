@@ -8,6 +8,7 @@ Tests to validate Prefect worker infrastructure configuration:
 - Hub API connectivity from Prefect worker context
 """
 
+import unittest
 import os
 import sys
 from unittest.mock import patch
@@ -20,6 +21,7 @@ from hub.apps.scheduled_ingestion.internal_auth import SCOPE_SCHEDULED_INGESTION
 from hub.apps.scheduled_ingestion.models import ScheduledIngestion, ScheduleType, SourceType
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 # Add prefect-integration to path
 _here = os.path.abspath(__file__)
@@ -30,7 +32,7 @@ if _prefect_integration not in sys.path:
     sys.path.insert(0, _prefect_integration)
 
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.integration,
 ]
 
@@ -46,7 +48,7 @@ class TestHubClientInfrastructure(TestCase):
             kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email="infra-test@example.com",
+            email=f"infra-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -72,7 +74,7 @@ class TestHubClientInfrastructure(TestCase):
                     HubClient()
                 self.assertIn("HUB_BASE_URL", str(cm.exception))
             except ImportError:
-                pytest.skip("hub_client not available (prefect-integration not in path)")
+                raise unittest.SkipTest("hub_client not available (prefect-integration not in path)")
 
     def test_hub_client_requires_hub_worker_api_key(self):
         """Test that HubClient raises ValueError if HUB_WORKER_API_KEY is not set."""
@@ -86,7 +88,7 @@ class TestHubClientInfrastructure(TestCase):
                     HubClient()
                 self.assertIn("HUB_WORKER_API_KEY", str(cm.exception))
             except ImportError:
-                pytest.skip("hub_client not available (prefect-integration not in path)")
+                raise unittest.SkipTest("hub_client not available (prefect-integration not in path)")
 
     def test_hub_client_initializes_with_env_vars(self):
         """Test that HubClient initializes successfully with environment variables."""
@@ -105,7 +107,7 @@ class TestHubClientInfrastructure(TestCase):
                 self.assertEqual(client.base_url, "http://api-service:8000")
                 self.assertEqual(client.api_key, self.worker_api_key)
             except ImportError:
-                pytest.skip("hub_client not available (prefect-integration not in path)")
+                raise unittest.SkipTest("hub_client not available (prefect-integration not in path)")
 
     def test_hub_client_initializes_with_explicit_params(self):
         """Test that HubClient initializes with explicit parameters (overrides env vars)."""
@@ -127,7 +129,7 @@ class TestHubClientInfrastructure(TestCase):
                 self.assertEqual(client.base_url, "http://api-service:8000")
                 self.assertEqual(client.api_key, self.worker_api_key)
             except ImportError:
-                pytest.skip("hub_client not available (prefect-integration not in path)")
+                raise unittest.SkipTest("hub_client not available (prefect-integration not in path)")
 
     def test_hub_client_strips_trailing_slash(self):
         """Test that HubClient strips trailing slash from base_url."""
@@ -145,7 +147,7 @@ class TestHubClientInfrastructure(TestCase):
                 client = HubClient()
                 self.assertEqual(client.base_url, "http://api-service:8000")
             except ImportError:
-                pytest.skip("hub_client not available (prefect-integration not in path)")
+                raise unittest.SkipTest("hub_client not available (prefect-integration not in path)")
 
 
 class TestEnvironmentConfiguration(TestCase):
@@ -184,7 +186,7 @@ class TestHubAPIConnectivity(TestCase):
             kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email="connectivity-test@example.com",
+            email=f"connectivity-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -237,7 +239,7 @@ class TestHubAPIConnectivity(TestCase):
                 self.assertEqual(headers["X-Tenant-ID"], str(self.tenant.id))
                 self.assertEqual(headers["Content-Type"], "application/json")
             except ImportError:
-                pytest.skip("hub_client not available (prefect-integration not in path)")
+                raise unittest.SkipTest("hub_client not available (prefect-integration not in path)")
 
     def test_docker_compose_environment_defaults(self):
         """Test that docker-compose defaults match expected values."""

@@ -22,6 +22,7 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.users.models import Role, UserRole
+from rest_framework.test import APIClient
 
 
 class FrontendErrorHandlingTest(ContractsAPITestBase):

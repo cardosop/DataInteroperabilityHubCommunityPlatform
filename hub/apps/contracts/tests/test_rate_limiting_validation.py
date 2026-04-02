@@ -9,6 +9,7 @@ Tests verify:
 5. Rate limit reset behavior
 """
 
+import uuid
 import json
 import time
 from datetime import datetime, timedelta
@@ -33,9 +34,11 @@ from hub.apps.contracts.odps_rate_limiting import (
 )
 from hub.apps.contracts.odps_rate_limiting import check_rate_limit as check_odps_ref_rate_limit
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
-from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
+from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers, RateLimitResult
 from hub.apps.rate_limiting.utils import EndpointCategory, TimeWindow
-from hub.apps.users.models import Role, User, UserRole
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import Role, User, UserRole, UserStatus
+from rest_framework.test import APIClient
 
 
 class RateLimitingValidationTest(ContractsAPITestBase):
@@ -53,12 +56,13 @@ class RateLimitingValidationTest(ContractsAPITestBase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
+        import uuid; uid = uuid.uuid4().hex[:8]
         # Update tenant/user names for clarity
-        self.tenant.name = "Rate Limit Test Tenant"
-        self.tenant.slug = "rate-limit-test"
+        self.tenant.name = f"Rate Limit Test {uid}"
+        self.tenant.slug = f"rate-limit-test-{uid}"
         self.tenant.save()
 
-        self.user.email = "user@ratelimit.test"
+        self.user.email = f"user-{uid}@ratelimit.test"
         self.user.save()
 
         # Create users
@@ -70,7 +74,7 @@ class RateLimitingValidationTest(ContractsAPITestBase):
         )
 
         self.admin_user = User.objects.create_user(
-            email="admin@ratelimit.test",
+            email=f"admin-{uid}@ratelimit.test",
             password="testpass123",
             tenant=self.tenant,
             status=self.user.status,  # Use same status as base user
@@ -124,7 +128,7 @@ class RateLimitingValidationTest(ContractsAPITestBase):
             )
             if allowed:
                 success_count += 1
-            time.sleep(0.1)  # Small delay
+            time.sleep(0.1)  # INTENTIONAL: delay between rate limit requests to test sliding window
 
         # Verify we can make at least some requests
         self.assertGreater(
@@ -157,7 +161,7 @@ class RateLimitingValidationTest(ContractsAPITestBase):
             allowed, count, reset_time = sliding_window_check(key, user_limit, TimeWindow.SUSTAINED)
             if allowed:
                 success_count += 1
-            time.sleep(0.1)  # Small delay
+            time.sleep(0.1)  # INTENTIONAL: delay between rate limit requests to test sliding window
 
         # Verify we can make at least some requests
         self.assertGreater(
@@ -243,7 +247,7 @@ class RateLimitingValidationTest(ContractsAPITestBase):
         for i in range(min(limit, 5)):  # Limit to 5 for test speed
             allowed, count, reset_time = sliding_window_check(key, limit, TimeWindow.SUSTAINED)
             self.assertTrue(allowed, f"Request {i+1} should be allowed within limit")
-            time.sleep(0.1)
+            time.sleep(0.1)  # INTENTIONAL: delay between rate limit requests to test sliding window
 
         # Verify reset time is in the future
         current_time = int(time.time())
@@ -257,20 +261,32 @@ class RateLimitingValidationTest(ContractsAPITestBase):
 
     def test_rate_limit_headers_are_included(self):
         """Test rate limit headers are included in responses"""
-        from hub.apps.rate_limiting.utils import get_rate_limit_headers
+        # Build a RateLimitResult to feed into get_rate_limit_headers
+        result = RateLimitResult(
+            allowed=True,
+            limit=100,
+            remaining=50,
+            reset_time=int(time.time()) + 60,
+            limit_type="tenant",
+            category=EndpointCategory.CONTRACT,
+            window=TimeWindow.SUSTAINED,
+        )
 
-        # Test header generation
-        headers = get_rate_limit_headers(limit=100, remaining=50, reset_time=int(time.time()) + 60)
+        from django.test import RequestFactory
+        factory = RequestFactory()
+        request = factory.get("/api/v1/contracts/")
+
+        headers = get_rate_limit_headers(request, [result])
 
         # Should include rate limit headers
         self.assertIsInstance(headers, dict, "Headers should be a dictionary")
-        # May include X-RateLimit-* headers
-        if "X-RateLimit-Limit" in headers:
-            self.assertIsInstance(
-                headers["X-RateLimit-Limit"],
-                (int, str),
-                "Rate limit header should be int or string",
-            )
+        # Should include X-RateLimit-* headers
+        self.assertIn("X-RateLimit-Limit", headers)
+        self.assertIsInstance(
+            headers["X-RateLimit-Limit"],
+            (int, str),
+            "Rate limit header should be int or string",
+        )
 
     def test_rate_limit_with_different_windows(self):
         """Test rate limiting with different time windows"""
@@ -300,7 +316,7 @@ class RateLimitingValidationTest(ContractsAPITestBase):
         categories = [
             EndpointCategory.CONTRACT,
             EndpointCategory.ASSET,
-            EndpointCategory.DATASET,
+            EndpointCategory.SEARCH,
         ]
 
         for category in categories:
@@ -334,7 +350,7 @@ class RateLimitingValidationTest(ContractsAPITestBase):
         self.assertTrue(allowed1, "First request should be allowed")
         # Second request may be blocked if limit is exceeded
         if not allowed2:
-            self.assertGreater(count2, limit, "Count should exceed limit when blocked")
+            self.assertGreaterEqual(count2, limit, "Count should meet or exceed limit when blocked")
 
     def test_rate_limit_reset_time_calculation(self):
         """Test rate limit reset time calculation"""

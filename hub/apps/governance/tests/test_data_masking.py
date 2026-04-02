@@ -16,6 +16,7 @@ from hub.apps.users.models import User, UserStatus
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -26,15 +27,16 @@ class DataMaskerTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -82,13 +84,18 @@ class DataMaskerTest(TestCase):
         self.assertEqual(masked, "***MASKED***")
     
     def test_hash_strategy(self):
-        """Test HASH masking strategy"""
+        """Test HASH masking is deterministic and unique per input."""
         value = "sensitive_data"
-        masked = DataMasker.mask_value(value, MaskingStrategy.HASH.value)
-        
-        self.assertIsInstance(masked, str)
-        self.assertEqual(len(masked), 64)  # SHA-256 hex digest length
-        
+        masked1 = DataMasker.mask_value(value, MaskingStrategy.HASH.value)
+        masked2 = DataMasker.mask_value(value, MaskingStrategy.HASH.value)
+        masked3 = DataMasker.mask_value("different_data", MaskingStrategy.HASH.value)
+
+        self.assertIsInstance(masked1, str)
+        self.assertEqual(len(masked1), 64)  # SHA-256 hex digest length
+        self.assertNotEqual(masked1, value)  # Actually masked
+        self.assertEqual(masked1, masked2)   # Deterministic
+        self.assertNotEqual(masked1, masked3)  # Unique per input
+
         # Test MD5
         config = {"algorithm": "md5"}
         masked_md5 = DataMasker.mask_value(value, MaskingStrategy.HASH.value, config)

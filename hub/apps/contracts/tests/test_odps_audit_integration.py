@@ -144,7 +144,7 @@ class ODPSCreateAuditTest(ODPSAuditIntegrationTestBase):
         )
 
         # Should have at least one failure audit event
-        self.assertGreaterEqual(audit_events.count(), 0, "May have failure audit event")
+        self.assertGreaterEqual(audit_events.count(), 1, "Should have at least one failure audit event")
 
     def test_create_odps_audit_event_contains_request_id(self):
         """Test that audit event contains request_id if provided."""
@@ -334,8 +334,8 @@ class ODPSLinkAuditTest(ODPSAuditIntegrationTestBase):
             resource_type="ODPS", action="ODPS_LINKED", result="FAILURE", actor_user=self.user
         )
 
-        # May have failure audit event
-        self.assertGreaterEqual(audit_events.count(), 0, "May have failure audit event")
+        # Should have at least one failure audit event
+        self.assertGreaterEqual(audit_events.count(), 1, "Should have at least one failure audit event")
 
 
 class ODPSExportAuditTest(ODPSAuditIntegrationTestBase):
@@ -443,8 +443,8 @@ class ODPSExportAuditTest(ODPSAuditIntegrationTestBase):
             resource_type="ODPS", action="ODPS_EXPORTED", result="FAILURE", actor_user=self.user
         )
 
-        # May have failure audit event
-        self.assertGreaterEqual(audit_events.count(), 0, "May have failure audit event")
+        # Should have at least one failure audit event
+        self.assertGreaterEqual(audit_events.count(), 1, "Should have at least one failure audit event")
 
 
 class ODPSAuditTrailTest(ODPSAuditIntegrationTestBase):

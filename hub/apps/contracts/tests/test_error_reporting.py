@@ -281,7 +281,7 @@ class ErrorReportingTest(TestCase):
             # Should handle gracefully - may skip invalid entries
             self.assertIsInstance(grouped, dict)
             if "schema" in grouped:
-                self.assertGreaterEqual(len(grouped["schema"]), 0)
+                self.assertGreater(len(grouped["schema"]), 0)
         except (TypeError, AttributeError, KeyError):
             # If it raises exception, that's acceptable
             pass

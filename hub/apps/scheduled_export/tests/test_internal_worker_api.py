@@ -8,7 +8,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from django.test import TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -31,7 +31,7 @@ from hub.apps.testing.billing_support import ensure_tenant_has_active_subscripti
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.timeout(600),
 ]
 
@@ -49,7 +49,7 @@ def _create_worker_api_key(tenant, user):
     return plaintext
 
 
-class InternalWorkerAPITest(TransactionTestCase):
+class InternalWorkerAPITest(TestCase):
     """
     All Internal Worker API tests in one TransactionTestCase to reduce DB flushes.
 
@@ -587,7 +587,7 @@ class InternalWorkerAPITest(TransactionTestCase):
         )
 
 
-class InternalWorkerAPIIntegrationTest(TransactionTestCase):
+class InternalWorkerAPIIntegrationTest(TestCase):
     """
     Integration tests for scheduled export workflow.
 

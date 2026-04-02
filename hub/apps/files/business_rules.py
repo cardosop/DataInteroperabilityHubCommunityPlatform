@@ -28,7 +28,11 @@ from hub.apps.core.business_rules.base import (
 from hub.apps.core.business_rules.registry import register_rule
 from hub.apps.files.models import File, FileStatus
 from hub.apps.users.models import User
-from hub.apps.files.validators import validate_file_size as django_validate_file_size, validate_file_type as django_validate_file_type
+from hub.apps.files.validators import (
+    validate_file_size as django_validate_file_size,
+    validate_file_type as django_validate_file_type,
+    validate_file_magic as django_validate_file_magic,
+)
 
 if TYPE_CHECKING:
     from hub.apps.tenants.models import Tenant
@@ -1766,6 +1770,19 @@ class FilesBusinessRules(BusinessRules):
             if details.get('type_valid', True):
                 warnings.append(f"Django validator check: {str(e)}")
             details['django_validator_passed'] = False
+
+        # 14.6: magic-byte MIME validation (only when a file object is available).
+        # The pre-signed S3 upload flow does not pass file bytes through Django,
+        # so file_obj is None in that path.  The guard below makes the check
+        # available for direct-upload code paths that do supply a file object.
+        file_obj_for_magic = details.get('file_obj')
+        if file_obj_for_magic is not None and content_type:
+            try:
+                django_validate_file_magic(file_obj_for_magic, content_type, filename)
+                details['magic_validation_passed'] = True
+            except DjangoValidationError as e:
+                errors.append(str(e))
+                details['magic_validation_passed'] = False
 
         details['type_validation_complete'] = True
 

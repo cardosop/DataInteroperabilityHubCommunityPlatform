@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from hub.apps.tenants.models import Tenant
 
     User = get_user_model()
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from hub.apps.audit.utils import log_user_operation
 from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
@@ -80,15 +80,20 @@ class UserService(BaseService):
         except Tenant.DoesNotExist:
             raise NotFoundError(f"Tenant {tenant_id} not found")
 
+        # Plan limit enforcement
+        from hub.apps.tenants.services import PlanLimitService
+        plan_limit_service = PlanLimitService(tenant_id=tenant_id)
+        plan_limit_service.check_limit(
+            tenant_id=tenant_id,
+            limit_key="max_users",
+            delta=1,
+        )
+
         # Get actor user
         try:
             actor_user = User.objects.get(id=actor_user_id)
         except User.DoesNotExist:
             raise NotFoundError(f"Actor user {actor_user_id} not found")
-
-        # Validate email uniqueness
-        if User.objects.filter(email=email).exists():
-            raise ValidationError("Email address is already registered", code="EMAIL_EXISTS")
 
         # Set status based on invitation, but respect explicit status if provided
         if status is None:
@@ -97,21 +102,30 @@ class UserService(BaseService):
             else:
                 status = UserStatus.ACTIVE
 
-        # Create user
-        user = User.objects.create_user(
-            email=email,
-            password=password,
-            tenant=tenant,
-            display_name=display_name,
-            status=status,
-            **kwargs,
-        )
+        # Create user (nested atomic block acts as savepoint for IntegrityError)
+        try:
+            with transaction.atomic():
+                user = User.objects.create_user(
+                    email=email,
+                    password=password,
+                    tenant=tenant,
+                    display_name=display_name or "",
+                    status=status,
+                    **kwargs,
+                )
+        except IntegrityError:
+            raise ValidationError(
+                "Email address is already registered",
+                code="EMAIL_EXISTS",
+            )
 
-        # Assign roles if provided
+        # Assign roles if provided — bulk_create is O(1) queries vs O(n)
         if role_ids:
             roles = Role.objects.filter(id__in=role_ids, tenant=tenant)
-            for role in roles:
-                UserRole.objects.get_or_create(user=user, role=role)
+            UserRole.objects.bulk_create(
+                [UserRole(user=user, tenant=role.tenant, role=role) for role in roles],
+                ignore_conflicts=True,
+            )
 
         # Create audit event (USER_INVITED when inviting, USER_CREATED otherwise)
         audit_action = "USER_INVITED" if status == UserStatus.INVITED else "USER_CREATED"
@@ -161,12 +175,6 @@ class UserService(BaseService):
         except User.DoesNotExist:
             raise NotFoundError(f"Actor user {actor_user_id} not found")
 
-        # Validate email uniqueness if email is being updated
-        if "email" in update_data:
-            new_email = update_data["email"]
-            if User.objects.filter(email=new_email).exclude(id=user_id).exists():
-                raise ValidationError("Email address is already registered", code="EMAIL_EXISTS")
-
         # Handle role_ids (replace user roles)
         role_ids = update_data.pop("role_ids", None)
         if role_ids is not None:
@@ -175,8 +183,11 @@ class UserService(BaseService):
             tenant = user.tenant
             roles = list(Role.objects.filter(id__in=role_ids, tenant=tenant))
             UserRole.objects.filter(user=user).delete()
-            for role in roles:
-                UserRole.objects.create(user=user, role=role)
+            # bulk_create is O(1) queries vs O(n) get_or_create round-trips (13.9)
+            UserRole.objects.bulk_create(
+                [UserRole(user=user, tenant=role.tenant, role=role) for role in roles],
+                ignore_conflicts=True,
+            )
             user.increment_token_version()
 
         # Update fields
@@ -184,7 +195,14 @@ class UserService(BaseService):
             if hasattr(user, field) and field != "id":
                 setattr(user, field, value)
 
-        user.save()
+        try:
+            with transaction.atomic():
+                user.save()
+        except IntegrityError:
+            raise ValidationError(
+                "Email address is already registered",
+                code="EMAIL_EXISTS",
+            )
 
         # Create audit event (include role_ids if changed)
         audit_details = dict(update_data)
@@ -244,12 +262,26 @@ class UserService(BaseService):
 
         existing_user = User.objects.filter(email__iexact=email).first()
         if existing_user:
+            from hub.apps.users.models import UserTenantMembership
+
+            already_member = (
+                (existing_user.tenant_id is not None and str(existing_user.tenant_id) == str(tenant_id))
+                or UserTenantMembership.objects.filter(user=existing_user, tenant=tenant).exists()
+            )
+            if already_member:
+                raise ValidationError(
+                    f"User with email '{email}' already exists in this tenant.",
+                    code="USER_ALREADY_MEMBER",
+                )
             membership_service.add_membership(existing_user, tenant)
 
             if role_ids:
                 roles = Role.objects.filter(id__in=role_ids, tenant=tenant)
-                for role in roles:
-                    UserRole.objects.get_or_create(user=existing_user, role=role)
+                # bulk_create is O(1) queries vs O(n) get_or_create round-trips (13.9)
+                UserRole.objects.bulk_create(
+                    [UserRole(user=existing_user, tenant=role.tenant, role=role) for role in roles],
+                    ignore_conflicts=True,
+                )
 
             # Audit in inviting tenant's context (action performed there)
             from hub.apps.audit.utils import create_audit_event

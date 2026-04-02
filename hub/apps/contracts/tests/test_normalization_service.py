@@ -4,15 +4,21 @@ Unit tests for NormalizationService.
 Tests cover all service methods with 100% coverage target.
 All tests use real implementations (no mocks/stubs).
 """
+import uuid
 
 import json
 
 import pytest
+from django.contrib.auth import get_user_model
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization_service import NormalizationService
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.core.services.base import ValidationError
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import UserStatus
+
+User = get_user_model()
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -223,7 +229,8 @@ schema:
         format = "JSON"
 
         # Create another tenant
-        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
 
         hub_contract, spec_type, spec_version, status, errors, warnings = (
             self.service.normalize_contract(
@@ -252,8 +259,9 @@ schema:
         format = "JSON"
 
         # Create another user
+        _uid = uuid.uuid4().hex[:8]
         other_user = User.objects.create_user(
-            email="other@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"other-{_uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         hub_contract, spec_type, spec_version, status, errors, warnings = (

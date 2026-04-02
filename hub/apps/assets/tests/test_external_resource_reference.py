@@ -241,28 +241,26 @@ class ExternalResourceReferenceModelTest(TestCase):
                 connection_id=self.connection.id,
             )
 
-    def test_create_external_resource_reference_failure_invalid_connection(self):
-        """Test creating external resource reference with invalid connection (failure scenario)"""
-        import uuid
+    def test_create_external_resource_reference_with_arbitrary_connection_id(self):
+        """Test creating external resource reference with arbitrary connection_id succeeds.
 
+        The connection_id field is a UUIDField with no FK constraint, so the model
+        accepts any UUID value.  Validation of the connection happens at the
+        service/view layer, not the model layer.
+        """
         fake_connection_id = uuid.uuid4()
 
-        # Should handle invalid connection gracefully
-        try:
-            resource = ExternalResourceReference.objects.create(
-                asset=self.asset,
-                resource_id="resource-1",
-                name="Test Resource",
-                url="https://example.com/resource.csv",
-                format="CSV",
-                marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
-                connection_id=fake_connection_id,
-            )
-            # If succeeds, verify it was created
-            self.assertIsNotNone(resource)
-        except Exception:
-            # If fails, that's acceptable for invalid connection
-            pass
+        resource = ExternalResourceReference.objects.create(
+            asset=self.asset,
+            resource_id="resource-1",
+            name="Test Resource",
+            url="https://example.com/resource.csv",
+            format="CSV",
+            marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+            connection_id=fake_connection_id,
+        )
+        self.assertIsNotNone(resource.id)
+        self.assertEqual(resource.connection_id, fake_connection_id)
 
     # ========== EDGE CASES ==========
 

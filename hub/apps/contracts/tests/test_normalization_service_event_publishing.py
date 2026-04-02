@@ -5,18 +5,25 @@ Tests that NormalizationService correctly publishes events when normalizing cont
 All tests use real EventPublisher and EventBus (no mocks/stubs).
 """
 
+from django.contrib.auth import get_user_model
 from django.test import override_settings
 from django.utils import timezone
 
 from hub.apps.contracts.models import Contract, NormalizationStatus, OriginalSpecType
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import UserStatus
+
+User = get_user_model()
 from hub.apps.contracts.normalization_service import NormalizationService
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.core.events.models import Event
+import uuid
 
 
 @override_settings(
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Disable async persistence for tests
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,  # Disable write-behind for tests
+    EVENT_BUS_ENABLE_PERSISTENCE=True,
 )
 class NormalizationServiceEventPublishingIntegrationTest(ContractsTestBase):
     """Integration tests for NormalizationService event publishing."""
@@ -24,6 +31,10 @@ class NormalizationServiceEventPublishingIntegrationTest(ContractsTestBase):
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
+
+        # Reset event bus singleton so override_settings takes effect
+        import hub.apps.core.events.bus as _bus_mod
+        _bus_mod._event_bus = None
 
         # Create a test contract for normalization
         self.contract = Contract.objects.create(
@@ -389,11 +400,12 @@ class NormalizationServiceEventPublishingIntegrationTest(ContractsTestBase):
 
     def test_normalize_contract_allows_override_tenant_and_user_per_call(self):
         """Test that normalize_contract allows overriding tenant_id and user_id per call."""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{_uid}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE,

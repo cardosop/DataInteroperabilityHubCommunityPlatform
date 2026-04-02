@@ -3,6 +3,7 @@ Unit tests for Version Impact Analysis
 
 Tests for analyzing impact of dataset version changes on assets and downstream systems.
 """
+import uuid
 
 import pytest
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -248,13 +249,13 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
 
         analyzer = VersionImpactAnalyzer()
 
-        # Should handle non-existent dataset gracefully
+        # Non-existent dataset must either return None or raise
         try:
             result = analyzer.analyze_impact(fake_dataset_id)
-            # If succeeds, should return result or handle gracefully
-            self.assertIsNone(result) or self.assertIsNotNone(result)
+            # If the service returns gracefully, result must be None
+            self.assertIsNone(result)
         except Exception:
-            # If fails, that's acceptable for non-existent dataset
+            # Raising for non-existent dataset is acceptable
             pass
 
     def test_version_impact_failure_invalid_dataset_id(self):

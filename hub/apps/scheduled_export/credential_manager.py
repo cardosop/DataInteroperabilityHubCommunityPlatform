@@ -50,7 +50,7 @@ class CredentialManager:
         Returns:
             Dictionary with masked credentials (sensitive fields masked)
         """
-        destination_config = scheduled_export.destination_config or {}
+        destination_config = scheduled_export.get_destination_config()
         masked_config = {}
 
         # Define sensitive fields to mask based on destination type

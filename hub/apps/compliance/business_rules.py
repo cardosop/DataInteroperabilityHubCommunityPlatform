@@ -263,6 +263,21 @@ class ComplianceBusinessRules(BusinessRules):
                 details['resource_type'] = 'file'
                 details['resource_id'] = str(compliance_run.file.id)
 
+            # Bound resource must belong to the same tenant as the run
+            if compliance_run.tenant_id:
+                res = (
+                    compliance_run.asset
+                    or compliance_run.dataset
+                    or compliance_run.file
+                )
+                if res and str(res.tenant_id) != str(compliance_run.tenant_id):
+                    errors.append(
+                        "Compliance run resource belongs to a different tenant than the run"
+                    )
+                    details["resource_tenant_match"] = False
+                elif res:
+                    details["resource_tenant_match"] = True
+
         # Validate status
         valid_statuses = [choice[0] for choice in ComplianceRunStatus.choices]
         if compliance_run.status not in valid_statuses:
@@ -1328,10 +1343,14 @@ class ComplianceBusinessRules(BusinessRules):
             details['daily_quota_remaining'] = quota_info.get('remaining', 0)
 
         # Check concurrent compliance runs for tenant
-        concurrent_runs = ComplianceRun.objects.filter(
+        concurrent_qs = ComplianceRun.objects.filter(
             tenant_id=tenant_id,
-            status__in=[ComplianceRunStatus.PENDING, ComplianceRunStatus.RUNNING]
-        ).exclude(id=compliance_run.id if compliance_run.id else None).count()
+            status__in=[ComplianceRunStatus.PENDING, ComplianceRunStatus.RUNNING],
+        )
+        # Unsaved validation targets have no pk; exclude(id=None) skews counts — omit exclude.
+        if getattr(compliance_run, "id", None):
+            concurrent_qs = concurrent_qs.exclude(id=compliance_run.id)
+        concurrent_runs = concurrent_qs.count()
 
         # Get concurrent run limit from tenant config or use default
         max_concurrent_runs = 10  # Default limit

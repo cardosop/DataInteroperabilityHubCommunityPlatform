@@ -796,7 +796,7 @@ class PostMigrationValidationE2EComprehensiveTest(ContractsAPITestBase):
 
         User = get_user_model()
         user2 = User.objects.create_user(
-            email="migration-validator-test-2@example.com",
+            email=f"migration-validator-test-2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE,

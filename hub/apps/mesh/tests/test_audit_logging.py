@@ -9,6 +9,8 @@ Tests verify comprehensive audit logging for domain operations:
 
 All tests use real audit event creation (no mocks) to ensure integration.
 """
+import uuid
+
 from django.test import TestCase
 
 from hub.apps.mesh.services import DataMeshService
@@ -25,8 +27,8 @@ class DataMeshAuditLoggingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.tenant_id = str(self.tenant.id)
 
@@ -39,7 +41,7 @@ class DataMeshAuditLoggingTest(TestCase):
 
         # Create tenant admin user
         self.tenant_admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -51,7 +53,7 @@ class DataMeshAuditLoggingTest(TestCase):
 
         # Create another user for ownership transfer test
         self.other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -395,8 +397,8 @@ class DataMeshAuditLoggingIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.tenant_id = str(self.tenant.id)
 
@@ -409,7 +411,7 @@ class DataMeshAuditLoggingIntegrationTest(TestCase):
 
         # Create tenant admin user
         self.tenant_admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

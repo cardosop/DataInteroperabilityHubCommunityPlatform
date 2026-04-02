@@ -30,16 +30,18 @@ class DQURLPatternTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -189,17 +191,17 @@ class DQURLPatternTest(TestCase):
     def test_runs_list_endpoint_accessible(self):
         """Test that runs list endpoint is accessible."""
         response = self.client.get('/api/v1/dq/runs/')
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_401_UNAUTHORIZED])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_runs_detail_endpoint_accessible(self):
         """Test that runs detail endpoint is accessible."""
         response = self.client.get(f'/api/v1/dq/runs/{self.dq_run.id}/')
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_runs_results_endpoint_accessible(self):
         """Test that runs results endpoint is accessible."""
         response = self.client.get(f'/api/v1/dq/runs/{self.dq_run.id}/results/')
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
 class DQIntegrationTest(TestCase):
@@ -210,9 +212,10 @@ class DQIntegrationTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
@@ -220,7 +223,7 @@ class DQIntegrationTest(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

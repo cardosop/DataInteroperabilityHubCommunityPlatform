@@ -157,7 +157,7 @@ class DQAlertingService:
         """Send email alert"""
         # In production, integrate with email service
         # For now, just log
-        emails = rule.channel_config.get("emails", [])
+        emails = rule.get_channel_config().get("emails", [])
         if emails:
             logger.info(
                 "Email alert would be sent",
@@ -172,7 +172,7 @@ class DQAlertingService:
         """Send Slack alert"""
         # In production, integrate with Slack API
         # For now, just log
-        webhook_url = rule.channel_config.get("webhook_url")
+        webhook_url = rule.get_channel_config().get("webhook_url")
         if webhook_url:
             logger.info(
                 "Slack alert would be sent",
@@ -187,7 +187,7 @@ class DQAlertingService:
         """Send webhook alert"""
         # In production, make HTTP POST to webhook URL
         # For now, just log
-        webhook_url = rule.channel_config.get("url")
+        webhook_url = rule.get_channel_config().get("url")
         if webhook_url:
             logger.info(
                 "Webhook alert would be sent",
@@ -202,7 +202,7 @@ class DQAlertingService:
         """Send PagerDuty alert"""
         # In production, integrate with PagerDuty API
         # For now, just log
-        integration_key = rule.channel_config.get("integration_key")
+        integration_key = rule.get_channel_config().get("integration_key")
         if integration_key:
             logger.info(
                 "PagerDuty alert would be sent",

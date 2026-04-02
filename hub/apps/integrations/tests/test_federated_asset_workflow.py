@@ -50,6 +50,7 @@ from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 
 class FederatedAssetWorkflowTest(TestCase):
@@ -71,12 +72,12 @@ class FederatedAssetWorkflowTest(TestCase):
             pass
 
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )

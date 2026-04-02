@@ -8,6 +8,7 @@ Tests all security features without mocks/stubs:
 - Timeout handling (5s per external fetch)
 - Access control (export/download permissions)
 """
+import uuid
 
 import json
 import os
@@ -18,6 +19,8 @@ from pathlib import Path
 from typing import Any, Dict
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -66,16 +69,17 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
 
         # Create additional user for same tenant
         self.other_user = User.objects.create_user(
-            email="other-user@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"other-user-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Create another tenant for cross-tenant access tests
+        _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
 
         self.other_tenant_user = User.objects.create_user(
-            email="other-tenant-user@example.com",
+            email=f"other-tenant-user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.other_tenant,
             status=UserStatus.ACTIVE,
         )

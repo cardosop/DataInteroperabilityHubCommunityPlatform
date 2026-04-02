@@ -491,6 +491,8 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                     metric_name="freshness_age_seconds",
                     threshold_value=metric.freshness_sla_seconds,
                     current_value=metric.freshness_age_seconds,
+                    dataset_id=str(dataset.id) if dataset else None,
+                    asset_id=str(asset.id) if asset else None,
                     tenant_id=tenant_id
                 )
             except Exception as e:
@@ -511,7 +513,9 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                 )
 
                 # Publish alert if drift detected
-                if drift and drift.has_drift:
+                # SchemaDrift is only created when changes are found,
+                # so its existence alone means drift was detected.
+                if drift:
                     try:
                         self.publish_alert_triggered(
                             alert_name="schema_drift_detected",
@@ -519,7 +523,9 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                             alert_message=f"Schema drift detected for {'dataset' if dataset else 'asset'} {dataset_id or asset_id}",
                             metric_name="schema_drift",
                             threshold_value=0,
-                            current_value=len(drift.drift_details) if drift.drift_details else 1,
+                            current_value=len(drift.new_fields or []) + len(drift.removed_fields or []) + len(drift.type_changes or []) or 1,
+                            dataset_id=str(dataset.id) if dataset else None,
+                            asset_id=str(asset.id) if asset else None,
                             tenant_id=tenant_id
                         )
                     except Exception as e:

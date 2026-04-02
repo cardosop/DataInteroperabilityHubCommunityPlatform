@@ -16,9 +16,11 @@ import json
 import uuid
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -34,12 +36,13 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.users.models import UserStatus
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory
+from tests.utils.wait_helpers import wait_for_event_persistence
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
-class TestDatasetCRUDOperations(TransactionTestCase):
+class TestDatasetCRUDOperations(TestCase):
     """
     10.1.29.1: Dataset CRUD Operations Testing
 
@@ -226,9 +229,7 @@ class TestDatasetCRUDOperations(TransactionTestCase):
         )
 
         # Wait a bit to ensure different timestamps
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
 
         dataset2 = self.service.create_dataset(
             tenant_id=str(self.tenant.id),
@@ -280,7 +281,7 @@ class TestDatasetCRUDOperations(TransactionTestCase):
             Dataset.objects.get(id=dataset_id)
 
 
-class TestDatasetVersioning(TransactionTestCase):
+class TestDatasetVersioning(TestCase):
     """
     10.1.29.2: Dataset Versioning Testing
 
@@ -487,7 +488,7 @@ class TestDatasetVersioning(TransactionTestCase):
             self.assertIsNotNone(semantic_version)
 
 
-class TestSchemaEvolution(TransactionTestCase):
+class TestSchemaEvolution(TestCase):
     """
     10.1.29.3: Schema Evolution Testing
 
@@ -668,7 +669,7 @@ class TestSchemaEvolution(TransactionTestCase):
         self.assertIsNotNone(schema_version.change_log)
 
 
-class TestTimeTravelQueries(TransactionTestCase):
+class TestTimeTravelQueries(TestCase):
     """
     10.1.29.4: Time Travel Query Testing
 
@@ -726,17 +727,13 @@ class TestTimeTravelQueries(TransactionTestCase):
         )
 
         # Wait to ensure different timestamps
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
 
     def test_time_travel_queries(self):
         """Test time travel queries"""
         # Create version 2
         timestamp_before_v2 = timezone.now()
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
 
         dataset_v2 = Dataset.objects.create(
             tenant=self.tenant,
@@ -788,9 +785,7 @@ class TestTimeTravelQueries(TransactionTestCase):
         """Test point-in-time queries"""
         # Create version 2 with delay
         timestamp_v1 = self.dataset_v1.created_at
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
 
         dataset_v2 = Dataset.objects.create(
             tenant=self.tenant,
@@ -820,9 +815,7 @@ class TestTimeTravelQueries(TransactionTestCase):
         # Create multiple versions
         datasets = [self.dataset_v1]
         for i in range(2, 6):
-            import time
-
-            time.sleep(0.05)
+            wait_for_event_persistence()
             dataset = Dataset.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
@@ -864,7 +857,7 @@ class TestTimeTravelQueries(TransactionTestCase):
         self.assertIsNone(invalid_version)
 
 
-class TestDatasetRollback(TransactionTestCase):
+class TestDatasetRollback(TestCase):
     """
     10.1.29.5: Dataset Rollback Testing
 
@@ -1035,7 +1028,7 @@ class TestDatasetRollback(TransactionTestCase):
         self.assertIn("error", result)
 
 
-class TestDatasetsODPSIntegration(TransactionTestCase):
+class TestDatasetsODPSIntegration(TestCase):
     """
     10.1.29.6: Datasets Service Integration with ODPS
 
@@ -1226,9 +1219,7 @@ class TestDatasetsODPSIntegration(TransactionTestCase):
     def test_odps_time_travel_queries(self):
         """Test ODPS time travel queries"""
         # Create version 2
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
 
         dataset_v2 = Dataset.objects.create(
             tenant=self.tenant,

@@ -14,6 +14,7 @@ from hub.apps.governance.access_certification import (
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -24,22 +25,23 @@ class AccessCertificationServiceTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         
         self.reviewer = User.objects.create_user(
-            email="reviewer@example.com",
+            email=f"reviewer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -147,9 +149,16 @@ class AccessCertificationServiceTest(TestCase):
         summary = AccessCertificationService.get_certification_summary(
             tenant_id=str(self.tenant.id)
         )
-        
+
         self.assertIn("total", summary)
         self.assertIn("pending", summary)
+        self.assertIn("approved", summary)
+        self.assertIn("expired", summary)
+        self.assertIn("rejected", summary)
+        self.assertIn("in_progress", summary)
         self.assertEqual(summary["total"], 3)
         self.assertEqual(summary["pending"], 3)
+        self.assertEqual(summary["approved"], 0)
+        self.assertEqual(summary["expired"], 0)
+        self.assertEqual(summary["rejected"], 0)
 

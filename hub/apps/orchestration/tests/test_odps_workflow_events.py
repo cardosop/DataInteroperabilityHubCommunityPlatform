@@ -11,7 +11,7 @@ Comprehensive tests for:
 try:
     import pytest
 
-    pytestmark = pytest.mark.django_db(transaction=True)
+    pytestmark = pytest.mark.django_db
 except ImportError:
     pytest = None
     pytestmark = None
@@ -702,7 +702,7 @@ class ODPSWorkflowProgressTrackingTest(TestCase):
             # Wait a moment for events to be persisted (synchronous persistence should be immediate, but allow for transaction commit)
             import time
 
-            time.sleep(0.1)
+            time.sleep(0.1)  # INTENTIONAL: test-specific timing requirement
 
             # Verify ODPS workflow events are stored in database
             # Check for any ODPS workflow events (started, completed, progress, step.*)

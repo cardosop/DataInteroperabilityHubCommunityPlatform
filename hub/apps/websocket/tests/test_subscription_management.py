@@ -8,7 +8,7 @@ These tests verify:
 - Pattern matching for event types
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 from unittest.mock import AsyncMock, MagicMock
 from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
 
@@ -51,7 +51,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
         consumer.send_json_message = AsyncMock()
         consumer.send = AsyncMock()
         consumer.close = AsyncMock()
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
         consumer._connection_closed = False
         return consumer
 
@@ -348,7 +348,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(dt_timezone.utc).isoformat(),
             "source": {"tenant_id": str(self.tenant.id), "service": "hub"},
             "data": {"contract_id": str(uuid.uuid4())}
         }
@@ -366,7 +366,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "asset.activated",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(dt_timezone.utc).isoformat(),
             "source": {"tenant_id": str(self.tenant.id), "service": "hub"},
             "data": {"asset_id": str(uuid.uuid4())}
         }
@@ -389,7 +389,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(dt_timezone.utc).isoformat(),
             "source": {"tenant_id": str(self.tenant.id), "user_id": str(self.user.id), "service": "hub"},
             "data": {"contract_id": str(uuid.uuid4())}
         }
@@ -407,7 +407,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(dt_timezone.utc).isoformat(),
             "source": {"tenant_id": str(self.tenant2.id), "user_id": str(self.user2.id), "service": "hub"},
             "data": {"contract_id": str(uuid.uuid4())}
         }

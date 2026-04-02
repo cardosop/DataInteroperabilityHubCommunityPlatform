@@ -15,7 +15,7 @@ import os
 import pytest
 from django.db import connection, connections, transaction
 from django.db.utils import InterfaceError as DjangoInterfaceError, OperationalError
-from django.test import TransactionTestCase
+from django.test import TestCase, TransactionTestCase
 
 from hub.apps.assets.models import (
     Asset,
@@ -23,6 +23,7 @@ from hub.apps.assets.models import (
     AssetStatus,
 )
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
+from hub.apps.core.services.base import ValidationError
 from hub.apps.integrations.base import (
     MarketplaceType,
     SyncResult,
@@ -36,9 +37,13 @@ from hub.apps.users.models import User, UserStatus
 
 
 def get_aws_credentials() -> dict:
-    """Get AWS credentials from environment variables."""
-    access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
-    secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    """Get AWS credentials from environment variables.
+
+    Prefers AWS_DATA_EXCHANGE_* vars (dedicated for Data Exchange tests)
+    over generic AWS_ACCESS_KEY_ID (which may point to MinIO).
+    """
+    access_key_id = os.getenv("AWS_DATA_EXCHANGE_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID")
+    secret_access_key = os.getenv("AWS_DATA_EXCHANGE_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")
     session_token = os.getenv("AWS_SESSION_TOKEN")
     role_arn = os.getenv("AWS_ROLE_ARN")
     region = os.getenv("AWS_REGION", "us-east-1")
@@ -74,6 +79,13 @@ class TestAWSDataExchangeConnectorE2E(TransactionTestCase):
     Tests verify complete workflows from connection → discovery → sync → asset creation.
     """
 
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        """Skip TRUNCATE CASCADE to avoid timeout."""
+        pass
+
     @classmethod
     def setUpClass(cls):
         """Set up test class with real AWS credentials."""
@@ -85,6 +97,22 @@ class TestAWSDataExchangeConnectorE2E(TransactionTestCase):
         except Exception as e:
             pytest.skip(f"Cannot get AWS credentials: {e}")
 
+        # Validate credentials against real AWS API before running tests.
+        # The env may set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY for MinIO
+        # (local S3-compatible storage), which are not valid AWS credentials.
+        try:
+            connector = AWSDataExchangeConnector(
+                aws_access_key_id=credentials["aws_access_key_id"],
+                aws_secret_access_key=credentials["aws_secret_access_key"],
+                region_name=credentials["region_name"],
+            )
+            connector.test_connection()
+        except Exception as e:
+            pytest.skip(
+                f"AWS credentials are not valid for AWS Data Exchange "
+                f"(may be MinIO/local S3 credentials): {e}"
+            )
+
     def setUp(self):
         """Set up test fixtures."""
         connection.ensure_connection()
@@ -93,10 +121,15 @@ class TestAWSDataExchangeConnectorE2E(TransactionTestCase):
     def _set_up_fixtures(self):
         """Create tenant, user, and service; reconnect on connection already closed."""
         def create_tenant_and_user():
+            import uuid as _uuid
+            _sfx = _uuid.uuid4().hex[:8]
             connection.ensure_connection()
-            tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant-e2e")
+            tenant = Tenant.objects.create(
+                name=f"Test Tenant {_sfx}",
+                slug=f"test-tenant-e2e-{_sfx}",
+            )
             user = User.objects.create_user(
-                email="test-e2e@example.com",
+                email=f"test-e2e-{_sfx}@example.com",
                 password="testpass123",
                 tenant=tenant,
                 status=UserStatus.ACTIVE,
@@ -415,6 +448,6 @@ class TestAWSDataExchangeConnectorE2E(TransactionTestCase):
             )
             # Should handle gracefully
             self.assertIsNotNone(sync_job)
-        except (ValueError, TypeError):
-            # Expected if empty list is invalid
+        except (ValueError, TypeError, ValidationError):
+            # Expected: empty list may raise ValueError/TypeError/ValidationError
             pass

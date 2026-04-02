@@ -33,11 +33,12 @@ class ComplianceBusinessRulesInitializationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
 
@@ -94,11 +95,12 @@ class ComplianceRunValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = ComplianceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -309,8 +311,9 @@ class ComplianceRunValidationTest(TestCase):
 
     def test_validate_compliance_run_tenant_mismatch(self):
         """Test compliance run validation with tenant mismatch"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         compliance_run = ComplianceRun.objects.create(
             tenant=other_tenant,
@@ -332,11 +335,12 @@ class RiskAssessmentValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = ComplianceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -601,11 +605,12 @@ class RiskCalculationValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = ComplianceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -747,11 +752,12 @@ class RiskMitigationValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = ComplianceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -969,11 +975,12 @@ class ComplianceBusinessRulesIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = ComplianceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -1204,11 +1211,12 @@ class ComplianceRunExecutionValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = ComplianceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -1291,7 +1299,7 @@ class ComplianceRunExecutionValidationTest(TestCase):
         """Test run eligibility validation with inactive user"""
         from hub.apps.users.models import UserStatus
         inactive_user = User.objects.create_user(
-            email="inactive@example.com", password="testpass123", tenant=self.tenant,
+            email=f"inactive-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.DISABLED
         )
 
@@ -1309,12 +1317,13 @@ class ComplianceRunExecutionValidationTest(TestCase):
 
     def test_validate_compliance_run_eligibility_user_tenant_mismatch(self):
         """Test run eligibility validation with user from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         from hub.apps.users.models import UserStatus
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant,
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant,
             status=UserStatus.ACTIVE
         )
 
@@ -1332,8 +1341,9 @@ class ComplianceRunExecutionValidationTest(TestCase):
 
     def test_validate_compliance_run_eligibility_resource_tenant_mismatch(self):
         """Test run eligibility validation with resource from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_asset = Asset.objects.create(
             tenant=other_tenant,
@@ -1541,11 +1551,12 @@ class ScanTypeValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = ComplianceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -1622,11 +1633,12 @@ class ScanConfigurationValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = ComplianceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -1720,11 +1732,12 @@ class ScanResourceValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = ComplianceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -1811,8 +1824,9 @@ class ScanResourceValidationTest(TestCase):
 
     def test_validate_scan_resource_asset_wrong_tenant(self):
         """Test scan resource validation with asset from wrong tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_asset = Asset.objects.create(
             tenant=other_tenant,
@@ -1836,11 +1850,12 @@ class ScanScheduleValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = ComplianceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -1930,11 +1945,12 @@ class ScanConfigurationValidationIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = ComplianceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))

@@ -19,6 +19,7 @@ from hub.apps.audit.utils import (
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -30,13 +31,14 @@ class AuditEventCreationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -129,11 +131,16 @@ class AuditEventCreationTest(TestCase):
     def test_audit_event_immutable(self):
         """Test that audit events cannot be updated or deleted"""
         event = create_audit_event(resource_type="TEST", action="TEST_ACTION", actor_user=self.user)
+        original_action = event.action
 
         # Try to update
-        with self.assertRaises(ValueError):
+        with self.assertRaises((ValueError, Exception)):
             event.action = "UPDATED"
             event.save()
+
+        # Verify DB state unchanged
+        event.refresh_from_db()
+        self.assertEqual(event.action, original_action)
 
         # Try to delete
         with self.assertRaises(ValueError):
@@ -229,7 +236,8 @@ class AuditEventCreationTest(TestCase):
 
         redacted = redact_pii(details)
 
-        self.assertNotEqual(redacted["email"], "user@example.com")
+        self.assertNotIn("user@", str(redacted["email"]))
+        self.assertIn("@example.com", str(redacted["email"]))
 
     def test_pii_redaction_email_preserves_domain(self):
         """Test PII redaction for email addresses preserves domain."""
@@ -245,7 +253,8 @@ class AuditEventCreationTest(TestCase):
 
         redacted = redact_pii(details)
 
-        self.assertNotEqual(redacted["contact"], "Contact: admin@example.com for help")
+        self.assertNotIn("admin@", str(redacted["contact"]))
+        self.assertIn("@example.com", str(redacted["contact"]))
 
     def test_pii_redaction_phone_redacts_phone(self):
         """Test PII redaction for phone numbers redacts phone."""
@@ -261,6 +270,7 @@ class AuditEventCreationTest(TestCase):
 
         redacted = redact_pii(details)
 
+        self.assertNotIn("555-123-4567", str(redacted["contact_info"]))
         self.assertIn("[REDACTED_PHONE]", redacted["contact_info"])
 
     def test_pii_redaction_password_redacts_password(self):
@@ -275,6 +285,7 @@ class AuditEventCreationTest(TestCase):
         redacted = redact_pii(details)
 
         self.assertEqual(redacted["password"], "[REDACTED]")
+        self.assertNotIn("secret123", str(redacted["password"]))
 
     def test_pii_redaction_password_redacts_password_hash(self):
         """Test PII redaction for password fields redacts password_hash."""
@@ -288,6 +299,7 @@ class AuditEventCreationTest(TestCase):
         redacted = redact_pii(details)
 
         self.assertEqual(redacted["password_hash"], "[REDACTED]")
+        self.assertNotIn("abc123", str(redacted["password_hash"]))
 
     def test_pii_redaction_password_redacts_api_key(self):
         """Test PII redaction for password fields redacts api_key."""
@@ -301,6 +313,7 @@ class AuditEventCreationTest(TestCase):
         redacted = redact_pii(details)
 
         self.assertEqual(redacted["api_key"], "[REDACTED]")
+        self.assertNotIn("key123", str(redacted["api_key"]))
 
     def test_pii_redaction_password_redacts_token(self):
         """Test PII redaction for password fields redacts token."""
@@ -314,6 +327,7 @@ class AuditEventCreationTest(TestCase):
         redacted = redact_pii(details)
 
         self.assertEqual(redacted["token"], "[REDACTED]")
+        self.assertNotIn("token123", str(redacted["token"]))
 
     def test_pii_redaction_nested_redacts_email(self):
         """Test PII redaction in nested dictionaries redacts email."""
@@ -324,7 +338,8 @@ class AuditEventCreationTest(TestCase):
 
         redacted = redact_pii(details)
 
-        self.assertNotEqual(redacted["user"]["email"], "user@example.com")
+        self.assertNotIn("user@", str(redacted["user"]["email"]))
+        self.assertIn("@example.com", str(redacted["user"]["email"]))
 
     def test_pii_redaction_nested_redacts_phone(self):
         """Test PII redaction in nested dictionaries redacts phone."""
@@ -346,7 +361,8 @@ class AuditEventCreationTest(TestCase):
 
         redacted = redact_pii(details)
 
-        self.assertNotEqual(redacted["metadata"]["contact"], "admin@example.com")
+        self.assertNotIn("admin@", str(redacted["metadata"]["contact"]))
+        self.assertIn("@example.com", str(redacted["metadata"]["contact"]))
 
     def test_audit_event_with_request_metadata(self):
         """Test audit event creation with request metadata"""

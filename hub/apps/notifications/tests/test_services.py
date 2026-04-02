@@ -61,6 +61,16 @@ class SendGridEmailServiceTest(EmailServiceTest):
         self.assertEqual(result['message_id'], 'test-message-id')
         self.assertEqual(result['status_code'], 202)
         mock_client.send.assert_called_once()
+        # Verify the Mail object was constructed with correct recipient and subject
+        mail_obj = mock_client.send.call_args[0][0]
+        # SendGrid Mail object stores personalizations as SDK objects;
+        # serialize to dict via .get() to inspect the contents.
+        mail_dict = mail_obj.get()
+        personalizations = mail_dict.get('personalizations', [])
+        self.assertGreater(len(personalizations), 0)
+        to_emails = [e['email'] for e in personalizations[0].get('to', [])]
+        self.assertIn(self.to_email, to_emails)
+        self.assertEqual(mail_dict.get('subject'), self.subject)
     
     @patch('hub.apps.notifications.services.sendgrid.SendGridAPIClient')
     def test_send_email_with_attachments(self, mock_client_class):
@@ -94,10 +104,13 @@ class SendGridEmailServiceTest(EmailServiceTest):
             )
         
         self.assertTrue(result['success'])
-        # Verify attachment was added
-        call_args = mock_client.send.call_args[0][0]
-        # Check if attachments were added to the Mail object
-        self.assertTrue(hasattr(call_args, 'attachments') and len(call_args.attachments) > 0)
+        # Verify attachment was added with correct properties
+        mail_obj = mock_client.send.call_args[0][0]
+        self.assertTrue(hasattr(mail_obj, 'attachments'), "Mail object has no attachments")
+        self.assertEqual(len(mail_obj.attachments), 1)
+        attachment = mail_obj.attachments[0]
+        self.assertEqual(attachment.file_name.get(), 'test.pdf')
+        self.assertEqual(attachment.file_type.get(), 'application/pdf')
     
     def test_sendgrid_missing_api_key(self):
         """Test error when SENDGRID_API_KEY is missing"""
@@ -158,6 +171,14 @@ class SESEmailServiceTest(EmailServiceTest):
         self.assertTrue(result['success'])
         self.assertEqual(result['message_id'], 'test-message-id')
         mock_ses.send_email.assert_called_once()
+        # Verify SES was called with correct destination and subject
+        ses_kwargs = mock_ses.send_email.call_args[1]
+        self.assertEqual(
+            ses_kwargs['Destination']['ToAddresses'], [self.to_email]
+        )
+        self.assertEqual(
+            ses_kwargs['Message']['Subject']['Data'], self.subject
+        )
     
     def test_ses_missing_region(self):
         """Test error when AWS_SES_REGION is missing"""
@@ -227,6 +248,12 @@ class SMTPEmailServiceTest(EmailServiceTest):
         
         self.assertTrue(result['success'])
         mock_connection.send_messages.assert_called_once()
+        # Verify the EmailMessage was constructed with correct recipient and subject
+        messages = mock_connection.send_messages.call_args[0][0]
+        self.assertEqual(len(messages), 1)
+        msg = messages[0]
+        self.assertIn(self.to_email, msg.to)
+        self.assertEqual(msg.subject, self.subject)
     
     @patch('hub.apps.notifications.services.get_connection')
     def test_smtp_send_failure(self, mock_get_connection):

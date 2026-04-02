@@ -17,6 +17,10 @@ from rest_framework.response import Response
 
 from django.conf import settings
 
+from hub.apps.users.management.commands.ensure_e2e_user_roles import (
+    PROFILE_ISOLATION_WORKER_COUNT,
+)
+
 
 class OpenAPISchemaView(SpectacularAPIView):
     """
@@ -74,6 +78,10 @@ class OpenAPISchemaView(SpectacularAPIView):
                     "/api/v1/auth/password-reset/": {"post": {"operationId": "auth_password_reset_create"}},
                     "/api/v1/auth/password-reset/confirm/": {
                         "post": {"operationId": "auth_password_reset_confirm_create"}
+                    },
+                    "/api/v1/auth/verify-email/": {"post": {"operationId": "auth_verify_email_create"}},
+                    "/api/v1/auth/resend-verification/": {
+                        "post": {"operationId": "auth_resend_verification_create"}
                     },
                 },
             }
@@ -140,6 +148,10 @@ class OpenAPIYAMLView(SpectacularAPIView):
                     "/api/v1/auth/password-reset/": {"post": {"operationId": "auth_password_reset_create"}},
                     "/api/v1/auth/password-reset/confirm/": {
                         "post": {"operationId": "auth_password_reset_confirm_create"}
+                    },
+                    "/api/v1/auth/verify-email/": {"post": {"operationId": "auth_verify_email_create"}},
+                    "/api/v1/auth/resend-verification/": {
+                        "post": {"operationId": "auth_resend_verification_create"}
                     },
                 },
             }
@@ -282,6 +294,9 @@ def api_not_found(request):
 
 
 # Must match ensure_e2e_user_roles.E2E_USERS and ensure_e2e_subscription.E2E_EMAILS
+_PROFILE_E2E_EMAILS = tuple(
+    f"e2e_profile_w{i}@example.com" for i in range(PROFILE_ISOLATION_WORKER_COUNT)
+)
 E2E_EMAILS = (
     "e2e_test@example.com",
     "e2e_consumer@example.com",
@@ -291,7 +306,7 @@ E2E_EMAILS = (
     "e2e_cpo@example.com",
     "e2e_developer@example.com",
     "e2e_dmo@example.com",
-)
+) + _PROFILE_E2E_EMAILS
 
 
 @extend_schema(exclude=True, tags=["API"])
@@ -319,16 +334,21 @@ def ensure_e2e_invitation_token(request):
     if not tenant:
         return Response({"error": "no tenant"}, status=400)
 
+    from hub.apps.auth.utils import sha256_hex
+
     email = f"e2e-invited-{uuid.uuid4().hex[:8]}@example.com"
-    token = uuid.uuid4()
+    plaintext_token = str(uuid.uuid4())
+    # Store the SHA-256 hash — accept_invitation looks up by hash (11.3)
+    token_hash = sha256_hex(plaintext_token)
     User.objects.create_user(
         email=email,
         tenant=tenant,
         status=UserStatus.INVITED,
-        invitation_token=token,
+        invitation_token=token_hash,
         invitation_token_expires_at=timezone.now() + timedelta(days=7),
     )
-    return Response({"token": str(token)}, status=200)
+    # Return the plaintext token — the frontend sends it, backend hashes it to look up
+    return Response({"token": plaintext_token}, status=200)
 
 
 @extend_schema(exclude=True, tags=["API"])

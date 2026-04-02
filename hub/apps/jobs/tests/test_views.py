@@ -41,13 +41,15 @@ class JobViewSetTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Create another tenant for isolation tests
+        _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Active subscription required so TenantSuspensionMiddleware allows writes (POST/PATCH)
@@ -56,12 +58,12 @@ class JobViewSetTest(TestCase):
 
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
-            email="admin@example.com", password="testpass123", is_platform_admin=True
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", is_platform_admin=True
         )
 
         # Create regular user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -69,7 +71,7 @@ class JobViewSetTest(TestCase):
 
         # Create user in other tenant
         self.other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.other_tenant,
             status=UserStatus.ACTIVE,
@@ -77,7 +79,7 @@ class JobViewSetTest(TestCase):
 
         # Create user without tenant
         self.user_no_tenant = User.objects.create_user(
-            email="notenant@example.com",
+            email=f"notenant-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status=UserStatus.ACTIVE,
@@ -458,7 +460,7 @@ class JobViewSetTest(TestCase):
         # Wait a bit to ensure different timestamps
         import time
 
-        time.sleep(0.1)
+        time.sleep(0.1)  # INTENTIONAL: test-specific timing requirement
         job2 = Job.objects.create(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
@@ -915,7 +917,13 @@ class JobViewSetTest(TestCase):
         self.assertEqual(response.data["count"], 15)
 
     def test_list_jobs_invalid_filter_values(self):
-        """Test filtering with invalid values"""
+        """Test filtering with invalid values.
+
+        Expected behavior: The API accepts unknown filter values silently (returns 200)
+        rather than rejecting them with a 400. This is by design — DRF's filter backends
+        treat unrecognized filter values as a no-match, yielding an empty result set.
+        We verify both the 200 status AND the empty results to confirm this contract.
+        """
         self.client.force_authenticate(user=self.user)
 
         # Create a job
@@ -931,7 +939,8 @@ class JobViewSetTest(TestCase):
         # Filter with invalid status
         response = self.client.get("/api/v1/jobs/?status=INVALID_STATUS")
 
-        # Should return empty results or handle gracefully
+        # API returns 200 (not 400) with empty results for unrecognized filter values
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Filter should not match anything, so results should be empty
+        self.assertIn("results", response.data)
+        self.assertIsInstance(response.data["results"], list)
         self.assertEqual(len(response.data["results"]), 0)

@@ -3,6 +3,7 @@ Integration tests for Asset Recommendations
 
 Tests for recommendations in the context of asset workflows.
 """
+import uuid
 
 from datetime import timedelta
 
@@ -25,12 +26,13 @@ class AssetRecommendationsIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -133,21 +135,13 @@ class AssetRecommendationsIntegrationTest(TestCase):
         self.assertIsInstance(recommendations, list)
 
     def test_recommendations_integration_nonexistent_user(self):
-        """Test recommendations with non-existent user (failure scenario)"""
-        import uuid
-
+        """Test recommendations with non-existent user returns empty recommendations"""
         fake_user_id = str(uuid.uuid4())
 
-        # Should handle non-existent user gracefully
-        try:
-            recommendations = AssetRecommendationService.get_recommendations(
-                tenant_id=str(self.tenant.id), user_id=fake_user_id, limit=10
-            )
-            # If succeeds, should return recommendations (without user behavior)
-            self.assertIsInstance(recommendations, list)
-        except Exception:
-            # If fails, that's acceptable for non-existent user
-            pass
+        recommendations = AssetRecommendationService.get_recommendations(
+            tenant_id=str(self.tenant.id), user_id=fake_user_id, limit=10
+        )
+        self.assertIsInstance(recommendations, list)
 
     # ========== EDGE CASES ==========
 

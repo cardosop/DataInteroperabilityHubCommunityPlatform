@@ -20,12 +20,12 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
-from hub.apps.core.responses import handle_service_exception
+from hub.apps.core.responses import api_error_response, handle_service_exception
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 from hub.apps.tenants.services import get_tenant_file_size_limit
 
-from .models import File, FileStatus
+from .models import File, FileScanStatus, FileStatus
 from .serializers import (
     ChunkUploadInitSerializer,
     ChunkUploadResponseSerializer,
@@ -83,6 +83,42 @@ class FileViewSet(viewsets.ModelViewSet):
         if status_param:
             queryset = queryset.filter(status=status_param)
         return queryset
+
+    def _get_file_via_entitlement(self, request, file_id):
+        """117B.6: Cross-tenant file access via entitlement.
+
+        Returns File if consumer has ACTIVE entitlement for
+        the file's asset; None if file doesn't exist or has
+        no asset link.  Raises PermissionDenied if entitlement
+        is revoked/expired/missing.
+        """
+        try:
+            file_obj = File.objects.get(id=file_id)
+        except File.DoesNotExist:
+            return None
+
+        consumer_tid = get_request_tenant_id(request)
+        if not consumer_tid:
+            return None
+
+        # Same tenant — shouldn't reach here, but safe
+        if str(file_obj.tenant_id) == consumer_tid:
+            return file_obj
+
+        from hub.apps.marketplace.entitlement_check import (
+            get_asset_id_from_file,
+            require_entitlement,
+        )
+        asset_id = get_asset_id_from_file(str(file_obj.id))
+        if not asset_id:
+            return None
+
+        require_entitlement(
+            consumer_tenant_id=consumer_tid,
+            asset_id=asset_id,
+            provider_tenant_id=str(file_obj.tenant_id),
+        )
+        return file_obj
 
     @transaction.atomic
     @action(detail=False, methods=["post"], url_path="init")
@@ -389,18 +425,25 @@ class FileViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
             except Exception as e:
-                # If hash verification fails (e.g., download error), log but allow in test/dev mode
-                logger.warning(
-                    f"Hash verification failed for file {file_obj.id}: {e}. "
-                    f"Allowing completion without hash verification (test/dev mode).",
+                logger.error(
+                    "Hash verification failed for file %s: %s",
+                    file_obj.id,
+                    e,
                     extra={
                         "file_id": str(file_obj.id),
                         "tenant_id": str(file_obj.tenant.id),
                         "error": str(e),
                     },
                 )
-                # In production, this should be an error, but for test/dev we allow it
-                # TODO: Make this strict in production
+                return Response(
+                    {
+                        "error": (
+                            "Hash verification failed: unable "
+                            "to verify file integrity"
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         # Delegate domain update to FileService (business rules: state, write access)
         file_service = FileService(
@@ -447,13 +490,41 @@ class FileViewSet(viewsets.ModelViewSet):
         GET /files/{id}/download
 
         Returns pre-signed download URL.
-        """
-        file_obj = self.get_object()
 
-        if not file_obj.can_download():
+        117B.6: Cross-tenant entitlement check on download.
+        """
+        # 117B.6: Try tenant-scoped first; fall back to
+        # cross-tenant entitlement check.
+        from django.http import Http404
+        from rest_framework.exceptions import NotFound
+
+        try:
+            file_obj = self.get_object()
+        except (Http404, NotFound):
+            file_obj = self._get_file_via_entitlement(
+                request, id,
+            )
+            if file_obj is None:
+                raise NotFound("File not found.")
+
+        if file_obj.status not in (FileStatus.ACTIVE, FileStatus.COMPLETED):
             return Response(
                 {"error": f"File is not available for download (status: {file_obj.status})"},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+        if file_obj.scan_status == FileScanStatus.PENDING_SCAN:
+            return api_error_response(
+                "File is pending malware scan; download is not allowed until the scan completes.",
+                status.HTTP_403_FORBIDDEN,
+                code="FILE_SCAN_PENDING",
+                details={"file_id": str(file_obj.id)},
+            )
+        if file_obj.scan_status == FileScanStatus.INFECTED:
+            return api_error_response(
+                "File failed malware scanning and cannot be downloaded.",
+                status.HTTP_403_FORBIDDEN,
+                code="FILE_INFECTED",
+                details={"file_id": str(file_obj.id)},
             )
 
         # Generate pre-signed download URL

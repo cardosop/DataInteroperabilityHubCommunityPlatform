@@ -101,18 +101,24 @@ class JWTTokenGenerator:
         return token
     
     @staticmethod
-    def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
+    def decode_access_token(token: str, *, verify_version: bool = True) -> Optional[Dict[str, Any]]:
         """
         Decode and validate a JWT access token.
-        
+
+        When *verify_version* is True (default), the token's ``authz_version``
+        claim is checked against the user's current ``token_version`` in the
+        database **atomically** — no caller can obtain a decoded payload without
+        the version check having run.
+
         Args:
             token: JWT token string
-        
+            verify_version: If True, validate token version against DB (default True).
+                Set to False only for lightweight pre-auth extraction (e.g. tenant scoping).
+
         Returns:
             Decoded payload dict if valid, None otherwise
         """
         try:
-            # RS256: verify with the public key; HS256: verify with the shared secret.
             _verify_key = (
                 settings.JWT_PUBLIC_KEY
                 if settings.JWT_ALGORITHM == "RS256"
@@ -124,24 +130,41 @@ class JWTTokenGenerator:
                 algorithms=[settings.JWT_ALGORITHM],
                 audience="idh-api-v1",
             )
-            return payload
         except jwt.ExpiredSignatureError:
             return None
         except jwt.InvalidTokenError:
             return None
-    
+
+        if verify_version:
+            if not JWTTokenGenerator._validate_token_version(payload):
+                return None
+
+        return payload
+
     @staticmethod
-    def validate_token_version(payload: Dict[str, Any], user: User) -> bool:
+    def _validate_token_version(payload: Dict[str, Any]) -> bool:
         """
         Validate that the token version matches the user's current token version.
-        
-        Args:
-            payload: Decoded JWT payload
-            user: User instance
-        
-        Returns:
-            True if token version is valid, False otherwise
+
+        Private — called atomically inside decode_access_token().
         """
+        if payload is None:
+            return False
+        user_id = payload.get('sub')
+        if not user_id:
+            return False
+        try:
+            db_version = User.objects.values_list(
+                'token_version', flat=True
+            ).get(id=user_id)
+        except User.DoesNotExist:
+            return False
+        token_version = payload.get('authz_version', 0)
+        return token_version == db_version
+
+    @staticmethod
+    def validate_token_version(payload: Dict[str, Any], user: 'User') -> bool:
+        """Backward-compatible public wrapper. Prefer decode_access_token(verify_version=True)."""
         if payload is None:
             return False
         token_version = payload.get('authz_version', 0)
@@ -165,23 +188,16 @@ class JWTTokenGenerator:
             return None
         
         try:
-            # CRITICAL: For LiveServerTestCase, ensure we're using a fresh database connection
-            # and explicitly select_for_update to ensure we see committed data
-            # This is important because LiveServerTestCase runs in a separate thread/process
-            from django.db import connection
-            connection.ensure_connection()
-            
-            # Ensure we're using the default database connection
-            # In async tests, we need to make sure we're querying the right database
-            # Refresh the connection to ensure we see the latest data
-            from django.db import connections
-            connection = connections['default']
-            connection.ensure_connection()
-            
-            # Query user with explicit connection
-            user = User.objects.using('default').get(id=user_id)
-            # Refresh from DB to ensure we have the latest data
-            user.refresh_from_db()
+            # Fetch user with all related data in a single query (11.6: eliminate N+1).
+            # select_related("tenant") avoids a second query for tenant access.
+            # prefetch_related("user_roles__role") avoids N queries when building
+            # the roles list in generate_access_token / _build_me_response.
+            user = (
+                User.objects
+                .select_related("tenant")
+                .prefetch_related("user_roles__role")
+                .get(id=user_id)
+            )
             return user
         except User.DoesNotExist:
             return None

@@ -26,24 +26,28 @@ class ImpactNode:
     
     def __init__(
         self,
-        resource_type: str,  # CONTRACT, MODEL, FIELD
-        resource_id: str,
-        contract_id: str,
+        resource_type: str = "CONTRACT",  # CONTRACT, MODEL, FIELD
+        resource_id: str = "",
+        contract_id: str = "",
         model_name: Optional[str] = None,
         field_name: Optional[str] = None,
+        contract_name: Optional[str] = None,
         depth: int = 0,
-        path: Optional[List[str]] = None
+        path: Optional[List[str]] = None,
+        impact_score: float = 0.0,
+        severity: str = "LOW",
     ):
         self.resource_type = resource_type
         self.resource_id = resource_id
         self.contract_id = contract_id
         self.model_name = model_name
         self.field_name = field_name
+        self.contract_name = contract_name
         self.depth = depth
         self.path = path or []
         self.children: List[ImpactNode] = []
-        self.impact_score: float = 0.0
-        self.severity: str = "LOW"
+        self.impact_score: float = impact_score
+        self.severity: str = severity
         self.metadata: Dict[str, Any] = {}
     
     def to_dict(self) -> Dict[str, Any]:
@@ -106,12 +110,31 @@ class ImpactAnalyzer:
         """
         try:
             source_contract = Contract.objects.get(id=contract_id)
-        except Contract.DoesNotExist:
+        except (Contract.DoesNotExist, Exception):
             return {
                 "error": "Contract not found",
                 "contract_id": contract_id
             }
-        
+
+        if tenant_id is not None:
+            cid = getattr(source_contract, "tenant_id", None)
+            try:
+                if cid is None:
+                    return {
+                        "error": "Contract not found",
+                        "contract_id": contract_id,
+                    }
+                if str(cid) != str(tenant_id):
+                    return {
+                        "error": "Contract not found",
+                        "contract_id": contract_id,
+                    }
+            except Exception:
+                return {
+                    "error": "Contract not found",
+                    "contract_id": contract_id,
+                }
+
         # Reset visited sets for new analysis
         self.visited_contracts.clear()
         self.visited_models.clear()
@@ -173,14 +196,14 @@ class ImpactAnalyzer:
         field_depth: int = 0
     ):
         """Traverse reverse lineage to find dependents"""
-        # Check depth limits
-        if contract_depth > self.max_contract_depth:
+        # Check depth limits (>= so that max_depth=0 means no traversal)
+        if contract_depth >= self.max_contract_depth:
             return
-        
-        if model_depth > self.max_model_depth:
+
+        if model_depth >= self.max_model_depth:
             return
-        
-        if field_depth > self.max_field_depth:
+
+        if field_depth >= self.max_field_depth:
             return
         
         # Check for cycles

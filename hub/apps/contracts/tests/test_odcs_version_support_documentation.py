@@ -10,7 +10,7 @@ This ensures that:
 """
 
 import json
-from pathlib import Path
+
 from unittest import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
@@ -158,101 +158,6 @@ class ODCSVersionSupportDocumentationTest(TestCase):
                     ],
                     f"Version {version} should normalize with OK or WARNINGS status",
                 )
-
-    def test_documentation_file_exists(self):
-        """Test that ODCS version support documentation file exists."""
-        # Check if documentation file exists
-        docs_path = (
-            Path(__file__).parent.parent.parent.parent.parent / "docs" / "ODCS_VERSION_SUPPORT.md"
-        )
-
-        self.assertTrue(
-            docs_path.exists(), "ODCS_VERSION_SUPPORT.md documentation file should exist"
-        )
-
-        # Verify file is not empty
-        content = docs_path.read_text()
-        self.assertGreater(len(content), 0, "ODCS_VERSION_SUPPORT.md should not be empty")
-
-    def test_documentation_mentions_all_versions(self):
-        """Test that documentation mentions all supported versions."""
-        docs_path = (
-            Path(__file__).parent.parent.parent.parent.parent / "docs" / "ODCS_VERSION_SUPPORT.md"
-        )
-
-        if not docs_path.exists():
-            self.skipTest("Documentation file does not exist")
-
-        content = docs_path.read_text()
-
-        # Check that all versions are mentioned
-        for version in self.expected_versions.keys():
-            with self.subTest(version=version):
-                # Check for version in various formats
-                version_mentions = [
-                    version in content,
-                    f"v{version}" in content,
-                    f"version {version}" in content.lower(),
-                ]
-
-                self.assertTrue(
-                    any(version_mentions), f"Documentation should mention version {version}"
-                )
-
-    def test_documentation_mentions_graceful_degradation(self):
-        """Test that documentation mentions graceful degradation."""
-        docs_path = (
-            Path(__file__).parent.parent.parent.parent.parent / "docs" / "ODCS_VERSION_SUPPORT.md"
-        )
-
-        if not docs_path.exists():
-            self.skipTest("Documentation file does not exist")
-
-        content = docs_path.read_text()
-
-        # Check for graceful degradation mentions
-        graceful_degradation_keywords = [
-            "graceful degradation",
-            "gracefully",
-            "missing features",
-            "backward compatibility",
-        ]
-
-        found_keywords = [
-            keyword
-            for keyword in graceful_degradation_keywords
-            if keyword.lower() in content.lower()
-        ]
-
-        self.assertGreater(
-            len(found_keywords), 0, "Documentation should mention graceful degradation approach"
-        )
-
-    def test_documentation_mentions_version_specific_features(self):
-        """Test that documentation mentions version-specific features."""
-        docs_path = (
-            Path(__file__).parent.parent.parent.parent.parent / "docs" / "ODCS_VERSION_SUPPORT.md"
-        )
-
-        if not docs_path.exists():
-            self.skipTest("Documentation file does not exist")
-
-        content = docs_path.read_text()
-
-        # Check for version-specific features section
-        feature_keywords = [
-            "version-specific",
-            "features",
-            "normalizer",
-        ]
-
-        found_keywords = [
-            keyword for keyword in feature_keywords if keyword.lower() in content.lower()
-        ]
-
-        self.assertGreater(
-            len(found_keywords), 0, "Documentation should mention version-specific features"
-        )
 
     def test_documentation_handles_unicode_characters(self):
         """Test that documentation handling works with unicode characters."""

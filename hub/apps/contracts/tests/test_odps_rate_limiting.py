@@ -15,7 +15,7 @@ Redis uses real Redis client with graceful handling when unavailable.
 try:
     import pytest
 
-    pytestmark = pytest.mark.django_db(transaction=True)
+    pytestmark = pytest.mark.django_db
 except ImportError:
     # pytest not available, using Django test runner
     pytest = None
@@ -25,7 +25,7 @@ import time
 
 import redis
 from django.conf import settings
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TestCase, override_settings
 
 from hub.apps.contracts.odps_rate_limiting import (
     RATE_LIMIT_GLOBAL,
@@ -214,7 +214,7 @@ class ODPSRefResolutionErrorTest(TestCase):
 def get_real_redis_client_or_none():
     """Get real Redis client if available, None otherwise"""
     try:
-        redis_url = getattr(settings, "REDIS_URL", "redis://redis:6379/0")
+        redis_url = getattr(settings, "REDIS_URL", None) or "redis://redis-cache-test:6379/0"
         client = redis.from_url(redis_url, decode_responses=False, socket_connect_timeout=1)
         client.ping()
         return client
@@ -763,22 +763,26 @@ class ODPSRateLimitingIntegrationTest(TestCase):
             pass
 
     def test_check_rate_limit_with_none_tenant_id(self):
-        """Test rate limit check with None tenant_id: only global limit is checked (no rejection)."""
+        """Test rate limit check with None tenant_id: rejected for security (tenant_id required)."""
         is_allowed, error = check_rate_limit(
             tenant_id=None, user_id=self.user_id, redis_client=self.redis_client  # type: ignore
         )
-        self.assertIsInstance(is_allowed, bool)
-        if error is not None:
-            self.assertNotIn("tenant_id is required", str(error))
+        self.assertFalse(is_allowed, "None tenant_id should be rejected")
+        self.assertIsNotNone(error)
+        self.assertIsInstance(error, ODPSRefResolutionError)
+        self.assertEqual(error.error_code, ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED)
+        self.assertIn("tenant_id is required", str(error))
 
     def test_check_rate_limit_with_empty_tenant_id(self):
-        """Test rate limit check with empty tenant_id: only global limit is checked (no rejection)."""
+        """Test rate limit check with empty tenant_id: rejected for security (tenant_id required)."""
         is_allowed, error = check_rate_limit(
             tenant_id="", user_id=self.user_id, redis_client=self.redis_client
         )
-        self.assertIsInstance(is_allowed, bool)
-        if error is not None:
-            self.assertNotIn("tenant_id is required", str(error))
+        self.assertFalse(is_allowed, "Empty tenant_id should be rejected")
+        self.assertIsNotNone(error)
+        self.assertIsInstance(error, ODPSRefResolutionError)
+        self.assertEqual(error.error_code, ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED)
+        self.assertIn("tenant_id is required", str(error))
 
     def test_check_rate_limit_with_none_redis_client(self):
         """Test rate limit check with None Redis client."""

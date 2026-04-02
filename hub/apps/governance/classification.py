@@ -473,3 +473,76 @@ class DataClassifier:
         classification.save()
         return classification
 
+
+def propagate_classification(
+    source_type: str,
+    source_id: str,
+    target_type: str,
+    target_id: str,
+    tenant_id: str,
+) -> None:
+    """
+    Propagate the highest classification from source to target.
+
+    Finds the highest-priority classification on the source resource and
+    creates (or updates) a classification on the target resource with
+    provenance metadata.
+
+    Args:
+        source_type: Source resource type ("DATASET", "ASSET")
+        source_id: Source resource UUID
+        target_type: Target resource type ("DATASET", "ASSET")
+        target_id: Target resource UUID
+        tenant_id: Tenant UUID
+    """
+    from hub.apps.governance.abac import ABACEngine
+    from hub.apps.governance.models import (
+        ClassificationCategory,
+        ClassificationStatus,
+        DataClassification,
+    )
+
+    # Build source filter
+    source_filter = {"tenant_id": tenant_id}
+    if source_type == "DATASET":
+        source_filter["dataset_id"] = source_id
+    elif source_type == "ASSET":
+        source_filter["asset_id"] = source_id
+    else:
+        return
+
+    source_classifications = DataClassification.objects.filter(**source_filter)
+    if not source_classifications.exists():
+        return
+
+    # Find highest classification
+    highest = max(
+        source_classifications,
+        key=lambda c: ABACEngine._get_classification_priority(c.category),
+    )
+
+    # Build target filter for update_or_create
+    target_filter = {"tenant_id": tenant_id}
+    if target_type == "DATASET":
+        target_filter["dataset_id"] = target_id
+    elif target_type == "ASSET":
+        target_filter["asset_id"] = target_id
+    else:
+        return
+
+    # Propagate: create or update classification on target
+    target_filter["field_name"] = f"__propagated_from_{source_type.lower()}_{source_id}"
+    DataClassification.objects.update_or_create(
+        **target_filter,
+        defaults={
+            "category": highest.category,
+            "confidence_score": highest.confidence_score,
+            "status": ClassificationStatus.AUTO_CLASSIFIED.value
+            if hasattr(ClassificationStatus, "AUTO_CLASSIFIED")
+            else "AUTO_CLASSIFIED",
+            "manual_review_notes": (
+                f"Propagated from {source_type}:{source_id} "
+                f"(original category: {highest.category})"
+            ),
+        },
+    )

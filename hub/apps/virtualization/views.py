@@ -1038,11 +1038,34 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
                 dataset_id, request
             )
-            if permission_error:
+            if other_tenant_dataset and not permission_error:
+                # 117B.7: Also require entitlement
+                from hub.apps.marketplace.entitlement_check import (
+                    require_entitlement,
+                )
+                from hub.apps.tenants.request_tenant import (
+                    get_request_tenant_id,
+                )
+                consumer_tid = get_request_tenant_id(request)
+                if consumer_tid:
+                    asset_id = getattr(
+                        other_tenant_dataset, "asset_id", None,
+                    )
+                    if asset_id:
+                        require_entitlement(
+                            consumer_tenant_id=consumer_tid,
+                            asset_id=str(asset_id),
+                            provider_tenant_id=str(
+                                other_tenant_dataset.tenant_id
+                            ),
+                        )
+                virtual_dataset = other_tenant_dataset
+            elif permission_error:
                 raise PermissionDenied(
                     "Cannot execute query on virtual dataset from different tenant"
                 )
-            raise NotFound("Virtual dataset not found")
+            else:
+                raise NotFound("Virtual dataset not found")
 
         # Ensure user_id is provided
         if not request.user or not request.user.id:

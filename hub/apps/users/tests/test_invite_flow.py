@@ -32,6 +32,7 @@ class InviteFlowServiceTest(TestCase):
             email=f"actor-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            display_name="Actor User",
             status=UserStatus.ACTIVE,
         )
         Role.objects.get_or_create(
@@ -50,18 +51,19 @@ class InviteFlowServiceTest(TestCase):
         from hub.apps.users.models import UserTenantMembership
         from hub.apps.users.services import UserService
 
+        invite_email = f"newuser-{uuid.uuid4().hex[:8]}@example.com"
         service = UserService(tenant_id=str(self.tenant.id), user_id=str(self.actor.id))
         user, created = service.invite_user_to_tenant(
             tenant_id=str(self.tenant.id),
             actor_user_id=str(self.actor.id),
-            email="newuser@example.com",
+            email=invite_email,
             display_name="New User",
             role_ids=[str(self.data_provider_role.id)],
             send_invitation=False,
         )
 
         self.assertTrue(created)
-        self.assertEqual(user.email, "newuser@example.com")
+        self.assertEqual(user.email, invite_email)
         self.assertEqual(user.status, UserStatus.INVITED)
         self.assertEqual(user.tenant_id, self.tenant.id)
 
@@ -77,14 +79,16 @@ class InviteFlowServiceTest(TestCase):
         from hub.apps.users.models import UserTenantMembership
         from hub.apps.users.services import UserService
 
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
+            name=f"Other Tenant {_uid}",
             slug=f"other-invite-{uuid.uuid4().hex[:8]}",
         )
         existing_user = User.objects.create_user(
-            email="existing@example.com",
+            email=f"existing-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
+            display_name="Existing User",
             status=UserStatus.ACTIVE,
         )
 
@@ -92,7 +96,7 @@ class InviteFlowServiceTest(TestCase):
         user, created = service.invite_user_to_tenant(
             tenant_id=str(self.tenant.id),
             actor_user_id=str(self.actor.id),
-            email="existing@example.com",
+            email=existing_user.email,
             display_name="Existing User",
             role_ids=[str(self.data_provider_role.id)],
             send_invitation=False,
@@ -116,7 +120,7 @@ class InviteFlowServiceTest(TestCase):
 
         # User already in self.tenant
         existing_user = User.objects.create_user(
-            email="already-member@example.com",
+            email=f"already-member-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -129,7 +133,7 @@ class InviteFlowServiceTest(TestCase):
         user, created = service.invite_user_to_tenant(
             tenant_id=str(self.tenant.id),
             actor_user_id=str(self.actor.id),
-            email="already-member@example.com",
+            email=existing_user.email,
             send_invitation=False,
         )
 
@@ -153,7 +157,7 @@ class InviteFlowServiceTest(TestCase):
             slug=f"other-audit-{uuid.uuid4().hex[:8]}",
         )
         existing_user = User.objects.create_user(
-            email="audit-test@example.com",
+            email=f"audit-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE,
@@ -163,7 +167,7 @@ class InviteFlowServiceTest(TestCase):
         service.invite_user_to_tenant(
             tenant_id=str(self.tenant.id),
             actor_user_id=str(self.actor.id),
-            email="audit-test@example.com",
+            email=existing_user.email,
             send_invitation=False,
         )
 

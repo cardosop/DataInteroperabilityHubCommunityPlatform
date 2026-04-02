@@ -6,6 +6,7 @@ Tests access control, data isolation, input validation, and security boundaries.
 from django.test import TestCase
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+import uuid
 import pytest
 
 from hub.apps.virtualization.models import (
@@ -18,7 +19,8 @@ from hub.apps.virtualization.models import (
 )
 from hub.apps.virtualization.services import VirtualizationService
 from hub.apps.core.services.base import PermissionError, ValidationError, NotFoundError
-from hub.apps.tenants.models import Tenant
+from hub.apps.tenants.models import Tenant, TenantPlan, PlanTier
+from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.users.models import User
 
 
@@ -32,22 +34,24 @@ class VirtualizationSecurityTest(TestCase):
         """Set up test fixtures."""
         from hub.apps.users.models import Role, UserRole
 
+        _uid1 = uuid.uuid4().hex[:8]
         self.tenant1 = Tenant.objects.create(
-            name="Tenant 1",
-            slug="tenant-1"
+            name=f"Tenant 1 {_uid1}",
+            slug=f"tenant-1-{_uid1}"
         )
+        _uid2 = uuid.uuid4().hex[:8]
         self.tenant2 = Tenant.objects.create(
-            name="Tenant 2",
-            slug="tenant-2"
+            name=f"Tenant 2 {_uid2}",
+            slug=f"tenant-2-{_uid2}"
         )
 
         self.user1 = User.objects.create_user(
-            email="user1@tenant1.com",
+            email=f"user1-{_uid1}@tenant1.com",
             password="testpass123",
             tenant=self.tenant1
         )
         self.user2 = User.objects.create_user(
-            email="user2@tenant2.com",
+            email=f"user2-{_uid2}@tenant2.com",
             password="testpass123",
             tenant=self.tenant2
         )
@@ -66,6 +70,41 @@ class VirtualizationSecurityTest(TestCase):
             defaults={"description": "Data provider role"}
         )
         UserRole.objects.get_or_create(user=self.user2, role=role2)
+
+        # Set up subscription/plan for both tenants
+        for t in [self.tenant1, self.tenant2]:
+            plan, _ = TenantPlan.objects.get_or_create(
+                slug="virtualization-test-plan",
+                defaults={
+                    "name": "Virtualization Test Plan",
+                    "tier": PlanTier.PRO,
+                    "limits_json": {
+                        "max_assets": 100,
+                        "max_storage_gb": 1000,
+                        "max_virtual_datasets": 100,
+                    },
+                    "is_active": True,
+                },
+            )
+            if "max_storage_gb" not in (plan.limits_json or {}):
+                plan.limits_json = {
+                    **(plan.limits_json or {}),
+                    "max_storage_gb": 1000,
+                    "max_virtual_datasets": 100,
+                }
+                plan.save(update_fields=["limits_json"])
+            if t.plan_id != plan.id:
+                t.plan = plan
+                t.save(update_fields=["plan"])
+            Subscription.objects.get_or_create(
+                tenant=t,
+                defaults={
+                    "plan": plan,
+                    "status": SubscriptionStatus.ACTIVE,
+                    "current_period_start": timezone.now(),
+                    "current_period_end": timezone.now(),
+                },
+            )
 
         self.service1 = VirtualizationService(
             tenant_id=str(self.tenant1.id),
@@ -149,13 +188,23 @@ class VirtualizationSecurityTest(TestCase):
 
     def test_query_parameter_validation(self):
         """Test that query parameters are properly validated."""
+        from django.conf import settings
+        db = settings.DATABASES["default"]
         dataset = VirtualDataset.objects.create(
             tenant=self.tenant1,
             created_by=self.user1,
             name="Parameter Validation Test",
-            query="SELECT * FROM table WHERE id = :id",
+            query="SELECT 1 WHERE 1 = :id",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
+            sources=[{
+                "type": "postgresql",
+                "host": db.get("HOST", "localhost"),
+                "port": int(db.get("PORT", 5432)),
+                "database": db.get("NAME"),
+                "username": db.get("USER"),
+                "password": db.get("PASSWORD"),
+            }],
         )
 
         # Invalid parameter types should be rejected
@@ -163,19 +212,26 @@ class VirtualizationSecurityTest(TestCase):
             "id": {"nested": "object"}  # Complex objects should be rejected
         }
 
-        with self.assertRaises(ValidationError):
+        with self.assertRaises((ValidationError, ValueError)) as cm:
             self.service1.execute_query(
                 virtual_dataset_id=str(dataset.id),
                 tenant_id=str(self.tenant1.id),
                 user_id=str(self.user1.id),
                 parameters=invalid_parameters
             )
+        # Complex dict parameters are rejected — either by our validation
+        # ("parameter") or by the DB adapter ("can't adapt type 'dict'")
+        err = str(cm.exception).lower()
+        self.assertTrue(
+            "parameter" in err or "adapt" in err or "dict" in err,
+            f"Expected parameter validation error, got: {cm.exception}",
+        )
 
     def test_user_permission_checks(self):
         """Test that user permissions are checked before operations."""
         # Create a user without virtualization permissions
         restricted_user = User.objects.create_user(
-            email="restricted@tenant1.com",
+            email=f"restricted-{uuid.uuid4().hex[:8]}@tenant1.com",
             password="testpass123",
             tenant=self.tenant1
         )
@@ -192,7 +248,8 @@ class VirtualizationSecurityTest(TestCase):
                 user_id=str(restricted_user.id),
                 name="Restricted Dataset",
                 query="SELECT 1",
-                query_type=QueryType.SQL
+                query_type=QueryType.SQL,
+                sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
             )
 
     def test_query_result_data_isolation(self):

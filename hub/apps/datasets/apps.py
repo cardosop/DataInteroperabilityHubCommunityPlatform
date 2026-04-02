@@ -10,3 +10,6 @@ class DatasetsConfig(AppConfig):
     name = 'hub.apps.datasets'
     verbose_name = 'Datasets'
 
+    def ready(self):
+        import hub.apps.datasets.signals  # noqa: F401
+

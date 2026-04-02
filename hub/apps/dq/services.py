@@ -27,6 +27,82 @@ class DQService(BaseService):
         self.tenant_id = tenant_id
         self.user_id = user_id
 
+    @staticmethod
+    def run_external_dq_check(
+        file_content: bytes,
+        file_format: str,
+        profile_key: str = "intake_basic_gx",
+        use_cache: bool = True,
+        contract: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run DQ against the external dq-service.
+
+        Phase 205: same parameters as ``@circuit_breaker(service_name="dq-service",
+        failure_threshold=5, timeout_seconds=60)`` are applied inside
+        ``DQServiceClient`` via the shared breaker — not repeated here, to avoid
+        nested ``call()`` double-counting failures.
+        """
+        from hub.apps.dq.service_client import DQServiceClient
+
+        return DQServiceClient().run_dq(
+            file_content,
+            file_format,
+            profile_key=profile_key,
+            use_cache=use_cache,
+            contract=contract,
+        )
+
+    @staticmethod
+    def apply_degraded_dq_status_if_circuit_open(
+        asset, request=None, actor_user=None
+    ) -> None:
+        """
+        If dq-service circuit is OPEN and the asset has a dataset, set
+        ``dq_status`` to WARN and log ``DQ_SERVICE_UNAVAILABLE``.
+        """
+        from hub.apps.assets.models import Asset, DQStatus
+        from hub.apps.audit.utils import create_audit_event
+        from hub.apps.core.resilience.circuit_breaker import (
+            CircuitBreakerState,
+        )
+        from hub.apps.core.resilience.service_breakers import (
+            get_shared_circuit_breaker,
+        )
+        from hub.apps.datasets.models import Dataset
+
+        if not Dataset.objects.filter(asset_id=asset.id).exists():
+            return
+
+        br = get_shared_circuit_breaker("dq-service")
+        if br.get_state() != CircuitBreakerState.OPEN:
+            return
+
+        st = br.get_status()
+        Asset.objects.filter(pk=asset.pk).update(dq_status=DQStatus.WARN)
+
+        user = actor_user
+        if user is None and request is not None:
+            u = getattr(request, "user", None)
+            if u is not None and getattr(u, "is_authenticated", False):
+                user = u
+
+        create_audit_event(
+            resource_type="ASSET",
+            action="DQ_SERVICE_UNAVAILABLE",
+            actor_user=user,
+            tenant=asset.tenant,
+            resource_id=str(asset.id),
+            result="WARNING",
+            details={
+                "circuit_state": "OPEN",
+                "asset_id": str(asset.id),
+                "last_failure": st.get("opened_at"),
+                "failure_count": st.get("failure_count"),
+            },
+            request=request,
+        )
+
     @transaction.atomic
     def create_dq_run(
         self,
@@ -70,6 +146,15 @@ class DQService(BaseService):
         from hub.apps.jobs.models import JobType
         from hub.apps.jobs.utils import create_job, get_job_timeout
         from hub.apps.tenants.services import get_tenant_dq_profile
+
+        # Plan limit enforcement (monthly)
+        from hub.apps.tenants.services import PlanLimitService
+        plan_limit_service = PlanLimitService(tenant_id=tenant_id)
+        plan_limit_service.check_limit(
+            tenant_id=tenant_id,
+            limit_key="max_dq_runs_per_month",
+            delta=1,
+        )
 
         tenant = tenant or Tenant.objects.get(id=tenant_id)
         user = user or User.objects.get(id=user_id)

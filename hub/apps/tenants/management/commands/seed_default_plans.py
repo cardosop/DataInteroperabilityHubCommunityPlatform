@@ -11,7 +11,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.db import IntegrityError
 
-from hub.apps.tenants.models import PlanTier, TenantPlan
+from hub.apps.tenants.models import PlanCategory, PlanTier, TenantPlan
 
 logger = structlog.get_logger(__name__)
 
@@ -44,6 +44,8 @@ class Command(BaseCommand):
                     "max_scheduled_exports": 5,
                     "max_export_runs_per_month": 20,
                     "max_storage_gb": 1,
+                    "max_transformation_pipelines": 5,
+                    "max_transformation_runs_per_month": 20,
                 },
             },
             {
@@ -59,6 +61,8 @@ class Command(BaseCommand):
                     "max_scheduled_exports": 50,
                     "max_export_runs_per_month": 500,
                     "max_storage_gb": 100,
+                    "max_transformation_pipelines": 50,
+                    "max_transformation_runs_per_month": 500,
                 },
             },
             {
@@ -74,9 +78,56 @@ class Command(BaseCommand):
                     "max_scheduled_exports": None,  # Unlimited
                     "max_export_runs_per_month": None,  # Unlimited
                     "max_storage_gb": None,  # Unlimited
+                    "max_transformation_pipelines": None,  # Unlimited
+                    "max_transformation_runs_per_month": None,  # Unlimited
                 },
             },
         ]
+
+        # ── ML / AI plans (Phase 114A) ──
+        ml_plans = [
+            {
+                "name": "ML Starter",
+                "slug": "ml-starter",
+                "tier": PlanTier.FREE,
+                "category": PlanCategory.ML_AI,
+                "limits_json": {
+                    "max_ml_models": 3,
+                    "max_ml_training_jobs_per_month": 10,
+                    "max_ml_inference_requests_per_month": 500,
+                    "max_ml_deployed_models": 1,
+                    "max_ml_storage_gb": 5,
+                },
+            },
+            {
+                "name": "ML Professional",
+                "slug": "ml-professional",
+                "tier": PlanTier.PRO,
+                "category": PlanCategory.ML_AI,
+                "limits_json": {
+                    "max_ml_models": 20,
+                    "max_ml_training_jobs_per_month": 100,
+                    "max_ml_inference_requests_per_month": 10000,
+                    "max_ml_deployed_models": 10,
+                    "max_ml_storage_gb": 100,
+                },
+            },
+            {
+                "name": "ML Enterprise",
+                "slug": "ml-enterprise",
+                "tier": PlanTier.ENTERPRISE,
+                "category": PlanCategory.ML_AI,
+                "limits_json": {
+                    "max_ml_models": None,
+                    "max_ml_training_jobs_per_month": None,
+                    "max_ml_inference_requests_per_month": None,
+                    "max_ml_deployed_models": None,
+                    "max_ml_storage_gb": None,
+                },
+            },
+        ]
+
+        default_plans.extend(ml_plans)
 
         created_count = 0
         skipped_count = 0
@@ -91,10 +142,31 @@ class Command(BaseCommand):
             # Check if plan already exists
             existing_plan = TenantPlan.objects.filter(slug=slug).first()
             if existing_plan:
-                skipped_count += 1
-                self.stdout.write(
-                    f'  - Plan "{plan_data["name"]}" ({slug}) - already exists, skipping'
-                )
+                # Ensure is_active=True — onboarding and registration endpoints
+                # query with is_active=True, so an inactive plan causes 404/503.
+                needs_update = False
+                update_fields = []
+                if not existing_plan.is_active:
+                    existing_plan.is_active = True
+                    update_fields.append("is_active")
+                    needs_update = True
+                if existing_plan.tier != plan_data["tier"]:
+                    existing_plan.tier = plan_data["tier"]
+                    update_fields.append("tier")
+                    needs_update = True
+                if needs_update:
+                    existing_plan.save(update_fields=update_fields)
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f'  ✓ Plan "{plan_data["name"]}" ({slug}) - updated ({", ".join(update_fields)})'
+                        )
+                    )
+                    created_count += 1
+                else:
+                    skipped_count += 1
+                    self.stdout.write(
+                        f'  - Plan "{plan_data["name"]}" ({slug}) - already exists, skipping'
+                    )
                 continue
 
             if dry_run:
@@ -105,13 +177,16 @@ class Command(BaseCommand):
 
             try:
                 with transaction.atomic():
-                    plan = TenantPlan.objects.create(
-                        name=plan_data["name"],
-                        slug=slug,
-                        tier=plan_data["tier"],
-                        limits_json=plan_data["limits_json"],
-                        is_active=True,
-                    )
+                    create_kwargs = {
+                        "name": plan_data["name"],
+                        "slug": slug,
+                        "tier": plan_data["tier"],
+                        "limits_json": plan_data["limits_json"],
+                        "is_active": True,
+                    }
+                    if "category" in plan_data:
+                        create_kwargs["category"] = plan_data["category"]
+                    plan = TenantPlan.objects.create(**create_kwargs)
 
                     created_count += 1
                     self.stdout.write(

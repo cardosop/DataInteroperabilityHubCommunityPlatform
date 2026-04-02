@@ -3,6 +3,7 @@ Unit tests for Asset Recommendations
 
 Tests for recommendation algorithms based on usage patterns, lineage, and user behavior.
 """
+import uuid
 
 from datetime import timedelta
 
@@ -25,12 +26,13 @@ class AssetRecommendationServiceTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -107,8 +109,8 @@ class AssetRecommendationServiceTest(TestCase):
             include_user_behavior=False,
         )
 
-        if len(recommendations) > 1:
-            self.assertGreaterEqual(recommendations[0]["score"], recommendations[1]["score"])
+        self.assertGreater(len(recommendations), 1, "Need >1 recommendations to verify sort")
+        self.assertGreaterEqual(recommendations[0]["score"], recommendations[1]["score"])
 
     def test_get_recommendations_usage_patterns_has_required_fields(self):
         """Test usage pattern-based recommendations have required fields."""
@@ -240,38 +242,26 @@ class AssetRecommendationServiceTest(TestCase):
     # ========== FAILURE SCENARIOS ==========
 
     def test_get_recommendations_nonexistent_tenant(self):
-        """Test recommendations with non-existent tenant (failure scenario)"""
-        import uuid
-
+        """Test recommendations with non-existent tenant returns empty list"""
         fake_tenant_id = str(uuid.uuid4())
 
-        # Should handle non-existent tenant gracefully
-        try:
-            recommendations = AssetRecommendationService.get_recommendations(
-                tenant_id=fake_tenant_id, limit=10
-            )
-            # If succeeds, should return empty list
-            self.assertEqual(len(recommendations), 0)
-        except Exception:
-            # If fails, that's acceptable for non-existent tenant
-            pass
+        recommendations = AssetRecommendationService.get_recommendations(
+            tenant_id=fake_tenant_id, limit=10
+        )
+        self.assertEqual(len(recommendations), 0)
 
     def test_get_recommendations_nonexistent_asset(self):
-        """Test recommendations with non-existent asset (failure scenario)"""
-        import uuid
-
+        """Test recommendations with non-existent asset returns empty list"""
         fake_asset_id = str(uuid.uuid4())
 
-        # Should handle non-existent asset gracefully
-        try:
-            recommendations = AssetRecommendationService.get_recommendations(
-                tenant_id=str(self.tenant.id), asset_id=fake_asset_id, limit=10
-            )
-            # If succeeds, should return empty list or handle gracefully
-            self.assertIsInstance(recommendations, list)
-        except Exception:
-            # If fails, that's acceptable for non-existent asset
-            pass
+        recommendations = AssetRecommendationService.get_recommendations(
+            tenant_id=str(self.tenant.id), asset_id=fake_asset_id, limit=10
+        )
+        # Service returns tenant-wide recommendations excluding the given
+        # asset_id.  A fake UUID matches nothing, so all tenant assets
+        # are returned — the result is NOT empty.
+        self.assertIsInstance(recommendations, list)
+        self.assertGreater(len(recommendations), 0)
 
     # ========== EDGE CASES ==========
 
@@ -339,14 +329,9 @@ class AssetRecommendationServiceTest(TestCase):
             self.fail("get_recommendations should handle database errors gracefully")
 
     def test_get_recommendations_invalid_parameters(self):
-        """Test error handling with invalid parameters"""
-        # Should handle invalid parameters gracefully
-        try:
-            recommendations = AssetRecommendationService.get_recommendations(
-                tenant_id="invalid-uuid", limit=-1
-            )
-            # If succeeds, should return empty list or handle gracefully
-            self.assertIsInstance(recommendations, list)
-        except (ValueError, TypeError):
-            # If fails, that's acceptable for invalid parameters
-            pass
+        """Test error handling with invalid parameters raises ValueError or returns empty list"""
+        recommendations = AssetRecommendationService.get_recommendations(
+            tenant_id="invalid-uuid", limit=-1
+        )
+        self.assertIsInstance(recommendations, list)
+        self.assertEqual(len(recommendations), 0)

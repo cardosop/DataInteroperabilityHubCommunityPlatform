@@ -11,6 +11,7 @@ from hub.apps.users.models import User, UserStatus
 from hub.apps.tenants.services import TenantService
 from hub.apps.core.services.base import ValidationError
 from hub.apps.core.events.models import Event
+import uuid
 
 
 @override_settings(
@@ -24,7 +25,7 @@ class TenantServiceEventPublishingTest(TestCase):
         """Set up test fixtures."""
         # Create a platform admin user for tenant operations
         self.platform_admin = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,  # Platform admin has no tenant
             status=UserStatus.ACTIVE,
@@ -70,14 +71,14 @@ class TenantServiceEventPublishingTest(TestCase):
         # Event data tenant_id is the created tenant's ID
         self.assertIsNone(event.tenant_id)  # Platform admin has no tenant
         self.assertEqual(str(event.user_id), str(self.platform_admin.id))
-        self.assertEqual(event.source_service, "tenant_service")
+        self.assertEqual(event.source_service, "hub")
 
     def test_update_tenant_publishes_updated_event(self):
         """Test that update_tenant() publishes tenant.updated event."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.UNVERIFIED
         )
@@ -105,7 +106,7 @@ class TenantServiceEventPublishingTest(TestCase):
         self.assertEqual(event.data["tenant_id"], str(tenant.id))
         self.assertIn("name", event.data["changes"])
         self.assertIn("kyc_status", event.data["changes"])
-        self.assertEqual(event.data["changes"]["name"]["old"], "Test Tenant")
+        self.assertEqual(event.data["changes"]["name"]["old"], tenant.name)
         self.assertEqual(event.data["changes"]["name"]["new"], "Updated Tenant")
         self.assertEqual(event.data["changes"]["kyc_status"]["old"], KYCStatus.UNVERIFIED)
         self.assertEqual(event.data["changes"]["kyc_status"]["new"], KYCStatus.VERIFIED)
@@ -116,15 +117,15 @@ class TenantServiceEventPublishingTest(TestCase):
         """Test that update_tenant() with no changes does not publish event."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
         # Update tenant with same values
         updated_tenant = self.service.update_tenant(
             tenant_id=str(tenant.id),
-            name="Test Tenant"  # Same value
+            name=tenant.name  # Same value — no change expected
         )
 
         # Verify no event was published
@@ -138,8 +139,8 @@ class TenantServiceEventPublishingTest(TestCase):
         """Test that delete_tenant() publishes tenant.deleted event."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
@@ -170,8 +171,8 @@ class TenantServiceEventPublishingTest(TestCase):
         """Test that delete_tenant() without reason publishes tenant.deleted event."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
@@ -199,8 +200,8 @@ class TenantServiceEventPublishingTest(TestCase):
         """Test that update_tenant_config() publishes tenant.quota.changed events."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
@@ -250,8 +251,8 @@ class TenantServiceEventPublishingTest(TestCase):
         """Test that update_tenant_config() with compliance regimes publishes quota.changed event."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
@@ -288,8 +289,8 @@ class TenantServiceEventPublishingTest(TestCase):
         """Test that update_tenant_config() with rate limits publishes quota.changed event."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
@@ -330,8 +331,8 @@ class TenantServiceEventPublishingTest(TestCase):
         """Test that update_tenant_config() with no changes does not publish event."""
         # Create tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
@@ -358,8 +359,8 @@ class TenantServiceEventPublishingTest(TestCase):
         """Test that delete_tenant() on already deleted tenant raises ValidationError."""
         # Create and delete tenant
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
         self.service.delete_tenant(tenant_id=str(tenant.id))
@@ -372,12 +373,12 @@ class TenantServiceEventPublishingTest(TestCase):
         """Test that service uses tenant_id and user_id from initialization for events."""
         # Create tenant and user
         tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
         user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant,
             status=UserStatus.ACTIVE

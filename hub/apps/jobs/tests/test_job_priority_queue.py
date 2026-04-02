@@ -1,7 +1,7 @@
 """
 Unit tests for Job Priority Queue functionality.
 """
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django_rq import get_queue
 import uuid
@@ -26,13 +26,13 @@ class JobPriorityQueueTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -230,13 +230,18 @@ class JobPriorityQueueTest(TestCase):
         high_queue = get_queue('job_critical')
         normal_queue = get_queue('job_default')
         low_queue = get_queue('job_low')
-        # When worker is running, jobs may already be consumed; only assert if still queued
+        # When worker is running, jobs may be consumed; stale jobs from
+        # previous --reuse-db runs may also be in the queue. Check that
+        # our job exists anywhere in the queue (not necessarily first).
         if high_queue.count >= 1:
-            self.assertEqual(high_queue.jobs[0].args[0], str(high_job.id))
+            queued_ids = [j.args[0] for j in high_queue.jobs if j.args]
+            self.assertIn(str(high_job.id), queued_ids)
         if normal_queue.count >= 1:
-            self.assertEqual(normal_queue.jobs[0].args[0], str(normal_job.id))
+            queued_ids = [j.args[0] for j in normal_queue.jobs if j.args]
+            self.assertIn(str(normal_job.id), queued_ids)
         if low_queue.count >= 1:
-            self.assertEqual(low_queue.jobs[0].args[0], str(low_job.id))
+            queued_ids = [j.args[0] for j in low_queue.jobs if j.args]
+            self.assertIn(str(low_job.id), queued_ids)
 
     def test_priority_override_job_type_rules(self):
         """Test that explicit priority overrides job type rules"""

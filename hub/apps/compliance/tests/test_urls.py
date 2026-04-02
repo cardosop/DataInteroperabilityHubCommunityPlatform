@@ -175,7 +175,7 @@ class ComplianceURLPatternResolutionTest(TestCase):
         """Test that all ViewSet actions have corresponding URLs"""
         # List action
         list_url = reverse('compliance-run-list')
-        self.assertIsNotNone(list_url)
+        self.assertEqual(list_url, '/api/v1/compliance/runs/')
 
         # Create action (same URL as list, different method)
         # This is handled by the router automatically
@@ -197,11 +197,11 @@ class ComplianceURLPatternResolutionTest(TestCase):
             status=ComplianceRunStatus.PENDING
         )
         detail_url = reverse('compliance-run-detail', kwargs={'id': str(compliance_run.id)})
-        self.assertIsNotNone(detail_url)
+        self.assertEqual(detail_url, f'/api/v1/compliance/runs/{compliance_run.id}/')
 
         # Results action
         results_url = reverse('compliance-run-results', kwargs={'id': str(compliance_run.id)})
-        self.assertIsNotNone(results_url)
+        self.assertEqual(results_url, f'/api/v1/compliance/runs/{compliance_run.id}/results/')
 
 
 class ComplianceURLIntegrationTest(TestCase):
@@ -235,7 +235,9 @@ class ComplianceURLIntegrationTest(TestCase):
             },
             format='json'
         )
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        if response.status_code == status.HTTP_400_BAD_REQUEST:
+            self.skipTest(f"Compliance service unavailable: {response.data}")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_detail_endpoint_accessible(self):
         """Test that detail endpoint is accessible via /api/v1/compliance/runs/{id}/"""
@@ -298,18 +300,20 @@ class ComplianceURLIntegrationTest(TestCase):
             },
             format='json'
         )
-        self.assertIn(create_response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        if create_response.status_code == status.HTTP_400_BAD_REQUEST:
+            self.skipTest(f"Compliance service unavailable: {create_response.data}")
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
 
-        # If creation succeeded, test detail endpoint
-        if create_response.status_code == status.HTTP_201_CREATED:
-            compliance_run_id = create_response.data['id']
-            detail_response = self.client.get(f'/api/v1/compliance/runs/{compliance_run_id}/')
-            self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        # Creation succeeded, test detail endpoint
+        compliance_run_id = create_response.data['id']
+        detail_response = self.client.get(f'/api/v1/compliance/runs/{compliance_run_id}/')
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
 
-            # Test results endpoint
-            results_response = self.client.get(f'/api/v1/compliance/runs/{compliance_run_id}/results/')
-            # May return 200 or 404 depending on run status
-            self.assertIn(results_response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
+        # Test results endpoint — may return 404 if run has not completed yet
+        results_response = self.client.get(f'/api/v1/compliance/runs/{compliance_run_id}/results/')
+        if results_response.status_code == status.HTTP_404_NOT_FOUND:
+            self.skipTest("Compliance run has not completed yet — results not available")
+        self.assertEqual(results_response.status_code, status.HTTP_200_OK)
 
     def test_router_registration_uses_runs_pattern(self):
         """Test that router registration uses 'runs' pattern, not 'compliance-runs'"""

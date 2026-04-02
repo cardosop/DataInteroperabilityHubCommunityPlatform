@@ -31,23 +31,31 @@ class Phase9DocumentationTest(TestCase):
         self.assertIsNotNone(InternalConfigView)
 
     def test_internal_run_viewset_has_openapi_schema(self):
-        """Test that InternalRunViewSet has OpenAPI schema decorators."""
-        # Check that the class has extend_schema decorator
-        self.assertTrue(hasattr(InternalRunViewSet, "__doc__"))
+        """InternalRunViewSet methods have OpenAPI schema decorators."""
+        # Verify the view methods exist and have schema metadata
+        create = getattr(InternalRunViewSet, "create", None)
+        update = getattr(InternalRunViewSet, "partial_update", None)
+        self.assertIsNotNone(create, "create method missing")
+        self.assertIsNotNone(update, "partial_update method missing")
+        # extend_schema sets kwargs on the method
+        self.assertTrue(
+            hasattr(create, "kwargs")
+            or hasattr(create, "cls")
+            or hasattr(create, "initkwargs"),
+            "create should be a DRF action or have schema metadata",
+        )
 
-        # Check that methods have schema decorators
-        self.assertTrue(hasattr(InternalRunViewSet, "create"))
-        self.assertTrue(hasattr(InternalRunViewSet, "partial_update"))
+    def test_internal_process_file_view_has_post(self):
+        """InternalProcessFileView has a post method."""
+        post = getattr(InternalProcessFileView, "post", None)
+        self.assertIsNotNone(post, "post method missing")
+        self.assertTrue(callable(post))
 
-    def test_internal_process_file_view_has_openapi_schema(self):
-        """Test that InternalProcessFileView has OpenAPI schema decorators."""
-        self.assertTrue(hasattr(InternalProcessFileView, "__doc__"))
-        self.assertTrue(hasattr(InternalProcessFileView, "post"))
-
-    def test_internal_config_view_has_openapi_schema(self):
-        """Test that InternalConfigView has OpenAPI schema decorators."""
-        self.assertTrue(hasattr(InternalConfigView, "__doc__"))
-        self.assertTrue(hasattr(InternalConfigView, "get"))
+    def test_internal_config_view_has_get(self):
+        """InternalConfigView has a get method."""
+        get = getattr(InternalConfigView, "get", None)
+        self.assertIsNotNone(get, "get method missing")
+        self.assertTrue(callable(get))
 
     def test_checkpoints_dont_break_code(self):
         """Test that checkpoint comments don't break code execution."""
@@ -65,27 +73,14 @@ class Phase9DocumentationTest(TestCase):
         self.assertIsNotNone(ScheduledIngestionBusinessRules)
 
     def test_openapi_schema_includes_internal_endpoints(self):
-        """Test that OpenAPI schema generation includes internal endpoints."""
-        # This test verifies that the OpenAPI schema can be generated
-        # and includes internal worker API endpoints
-        try:
-            from django.conf import settings
-            from drf_spectacular.generators import SchemaGenerator
+        """OpenAPI schema generation succeeds and contains paths."""
+        from drf_spectacular.generators import SchemaGenerator
 
-            generator = SchemaGenerator()
-            schema = generator.get_schema(request=None, public=True)
+        generator = SchemaGenerator()
+        schema = generator.get_schema(request=None, public=True)
 
-            # Check that schema is valid
-            self.assertIsNotNone(schema)
-            self.assertIn("paths", schema)
-
-            # Check for internal endpoints (they may be excluded from public schema)
-            paths = schema.get("paths", {})
-
-            # Internal endpoints might be excluded from public schema
-            # but should exist in the full schema
-            # This is a basic validation that schema generation works
-            self.assertIsInstance(paths, dict)
-        except Exception as e:
-            # If schema generation fails, that's a problem
-            self.fail(f"OpenAPI schema generation failed: {e}")
+        self.assertIsNotNone(schema)
+        self.assertIn("paths", schema)
+        paths = schema["paths"]
+        self.assertIsInstance(paths, dict)
+        self.assertGreater(len(paths), 0, "Schema has no paths")

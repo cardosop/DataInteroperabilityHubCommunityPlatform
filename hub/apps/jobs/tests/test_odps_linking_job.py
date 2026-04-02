@@ -44,16 +44,17 @@ class ODPSLinkingJobTest(TestCase):
         cache.clear()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -436,9 +437,10 @@ class ODPSLinkingJobTest(TestCase):
     def test_execute_odps_linking_job_different_tenants(self):
         """Test ODPS linking job fails when contracts belong to different tenants"""
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
@@ -510,7 +512,7 @@ class ODPSLinkingJobIntegrationTest(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="integration@example.com",
+            email=f"integration-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE

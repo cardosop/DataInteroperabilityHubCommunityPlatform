@@ -9,6 +9,7 @@ No mocks or stubs - all tests use actual CKAN API endpoints.
 Uses centralized test utilities for consistent configuration.
 """
 
+import unittest
 import uuid
 from datetime import datetime
 from typing import Any, Dict
@@ -26,8 +27,6 @@ from hub.apps.integrations.base import (
 )
 from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
-    # Backward compatibility (deprecated)
-    ckan_available,
     create_test_connector,
     get_test_api_key,  # Backward compatibility
     get_test_ckan_url,  # Backward compatibility
@@ -68,14 +67,14 @@ class TestCKANConnectorSyncOperations(TestCase):
         super().setUpClass()
 
         # Use centralized test utilities
-        if not ckan_available():
-            pytest.skip("No CKAN instance available for testing")
+        if not marketplace_available():
+            raise unittest.SkipTest("No CKAN instance available for testing")
 
         # Create connector using centralized utility
         cls.connector = create_test_connector(verify_connection=True)
 
         if not cls.connector:
-            pytest.skip("Cannot create or connect to CKAN instance for testing")
+            raise unittest.SkipTest("Cannot create or connect to CKAN instance for testing")
 
         # Cache connector URL and API key for backward compatibility
         cls.ckan_url = cls.connector.base_url

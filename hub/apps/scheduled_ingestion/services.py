@@ -42,12 +42,7 @@ class IngestionService(BaseService, IngestionEventPublisher):
             tenant_id: Optional tenant ID
             user_id: Optional user ID
         """
-        # Set tenant_id before calling super().__init__ so IngestionEventPublisher can access it
-        self.tenant_id = tenant_id
-        self.user_id = user_id
-        # Call IngestionEventPublisher.__init__ which will call super().__init__
-        # BaseService doesn't have __init__, so this will call object.__init__()
-        super().__init__()
+        super().__init__(tenant_id=tenant_id, user_id=user_id)
 
     def execute_ingestion(
         self, scheduled_ingestion_id: str, tenant_id: Optional[str] = None
@@ -162,17 +157,16 @@ class IngestionService(BaseService, IngestionEventPublisher):
                 details=result.details,
             )
 
-        # Check plan limit (Phase 25.1.2)
+        # Check plan limit (Phase 25.1.2, hardened Phase 113.B)
         from hub.apps.tenants.services import PlanLimitService
 
-        current_scheduled_ingestion_count = ScheduledIngestion.objects.filter(tenant=tenant).count()
         plan_limit_service = PlanLimitService(
-            tenant_id=str(tenant.id), user_id=str(created_by.id) if created_by else None
+            tenant_id=str(tenant.id),
+            user_id=str(created_by.id) if created_by else None,
         )
         plan_limit_service.check_limit(
             tenant_id=str(tenant.id),
             limit_key="max_scheduled_ingestions",
-            current_usage=current_scheduled_ingestion_count,
             delta=1,
         )
 

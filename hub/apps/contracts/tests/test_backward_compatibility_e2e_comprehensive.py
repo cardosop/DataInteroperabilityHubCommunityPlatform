@@ -30,6 +30,7 @@ from hub.apps.contracts.odps_version_detection import detect_odps_version
 from hub.apps.contracts.spec_detection import detect_spec_type
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
 # Supported versions
@@ -107,6 +108,12 @@ def create_odps_contract(version: str, product_id: str = None) -> dict:
         contract["product"]["dataQuality"] = {"declarative": []}
         contract["product"]["SLA"] = {"declarative": []}
         contract["product"]["pricingPlans"] = {"declarative": []}
+        contract["product"]["dataSchema"] = {
+            "fields": [
+                {"name": "id", "type": "string", "description": "Unique identifier"},
+                {"name": "name", "type": "string", "description": "Name field"},
+            ]
+        }
     else:
         # ODPS 3.x, 2.x, 1.x structure (older format)
         contract["product"]["dataSchema"] = {
@@ -1322,11 +1329,13 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
             kyc_status=KYCStatus.VERIFIED,
         )
 
+        ensure_tenant_has_active_subscription(tenant2)
+
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
         user2 = User.objects.create_user(
-            email="backward-compat-test-2@example.com",
+            email=f"backward-compat-test-2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE,

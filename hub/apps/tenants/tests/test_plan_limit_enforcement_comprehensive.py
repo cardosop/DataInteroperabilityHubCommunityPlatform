@@ -15,6 +15,16 @@ No mocks/stubs - uses real DB and real services.
 # CRITICAL: Patch sql_flush to use CASCADE for foreign key constraints
 # This is needed when running tests with manage.py test (not pytest)
 # Fixes: psycopg2.errors.FeatureNotSupported: cannot truncate a table referenced in a foreign key constraint
+import json
+import uuid
+
+
+def _get_response_data(response):
+    """Extract data from DRF Response or Django JsonResponse."""
+    if hasattr(response, "data"):
+        return response.data
+    return json.loads(response.content)
+
 try:
     import django.db.backends.postgresql.operations as pg_operations
 
@@ -42,7 +52,7 @@ except Exception:
     pass
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -56,19 +66,32 @@ from hub.apps.tenants.services import PlanLimitService
 User = get_user_model()
 
 
-class PlanLimitEnforcementComprehensiveTest(TransactionTestCase):
+class PlanLimitEnforcementComprehensiveTest(TestCase):
     """
     Comprehensive integration tests for plan limit enforcement.
 
     Tests all resource types with real DB and real services.
     """
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        """Skip TRUNCATE CASCADE — relies on setUp creating a fresh tenant
+        with unique UUID-based names for every test method, so aggregate
+        queries (Asset.objects.filter(tenant=self.tenant).count()) always
+        see only the assets created by the current test.
+
+        WARNING: Do NOT refactor tests to share self.tenant across methods
+        without restoring normal teardown — counts would accumulate.
+        """
+        pass
 
     def setUp(self):
         """Set up test data"""
         # Create limited plan
         self.plan = TenantPlan.objects.create(
-            name="Limited Plan",
-            slug="limited",
+            name=f"Limited Plan {uuid.uuid4().hex[:8]}",
+            slug=f"limited-{uuid.uuid4().hex[:8]}",
             tier=PlanTier.FREE,
             limits_json={
                 "max_assets": 2,
@@ -83,16 +106,21 @@ class PlanLimitEnforcementComprehensiveTest(TransactionTestCase):
 
         # Create tenant with limited plan
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", plan=self.plan
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", status="ACTIVE", plan=self.plan
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User",
+            is_platform_admin=True,
         )
+
+        # Active subscription required for write operations
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create API client and plan limit service
         self.client = APIClient()
@@ -101,12 +129,25 @@ class PlanLimitEnforcementComprehensiveTest(TransactionTestCase):
 
     def test_check_limit_edge_case_delta_zero_at_max(self):
         """Edge case: current_usage at max with delta=0 is allowed (remaining=0)."""
-        result = self.service.check_limit(
-            tenant_id=str(self.tenant.id),
-            limit_key="max_assets",
-            current_usage=2,
-            delta=0,
-        )
+        from django.db import transaction
+
+        # Create assets up to the max (2)
+        for i in range(2):
+            Asset.objects.create(
+                tenant=self.tenant,
+                key=f"edge-asset-{i}",
+                name=f"Edge Asset {i}",
+                description="Edge case test",
+                created_by=self.user,
+            )
+
+        # PlanLimitService.check_limit uses select_for_update which requires a transaction
+        with transaction.atomic():
+            result = self.service.check_limit(
+                tenant_id=str(self.tenant.id),
+                limit_key="max_assets",
+                delta=0,
+            )
         self.assertTrue(result["allowed"])
         self.assertEqual(result["remaining"], 0)
         self.assertEqual(result["current"], 2)
@@ -131,24 +172,14 @@ class PlanLimitEnforcementComprehensiveTest(TransactionTestCase):
             format="json",
         )
 
-        # Debug: print response if not 403
-        if response.status_code != status.HTTP_403_FORBIDDEN:
-            try:
-                response_data = (
-                    response.json()
-                    if hasattr(response, "json")
-                    else response.content.decode("utf-8")
-                )
-                print(f"Unexpected status: {response.status_code}, data: {response_data}")
-            except Exception as e:
-                print(
-                    f"Unexpected status: {response.status_code}, content: {response.content}, error: {e}"
-                )
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(response.data.get("code"), "plan_limit_exceeded")
+        self.assertEqual(
+            response.status_code, status.HTTP_403_FORBIDDEN,
+            f"Expected 403 plan_limit_exceeded but got {response.status_code}: "
+            f"{getattr(response, 'data', response.content)}",
+        )
+        self.assertEqual(_get_response_data(response).get("code"), "plan_limit_exceeded")
         # Details are nested under "details" key
-        details = response.data.get("details", {})
+        details = _get_response_data(response).get("details", {})
         self.assertIn("limit_key", details)
         self.assertEqual(details.get("limit_key"), "max_assets")
 
@@ -181,7 +212,7 @@ class PlanLimitEnforcementComprehensiveTest(TransactionTestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(response.data.get("code"), "plan_limit_exceeded")
+        self.assertEqual(_get_response_data(response).get("code"), "plan_limit_exceeded")
 
     def test_scheduled_ingestion_limit_enforcement(self):
         """Test scheduled ingestion creation limit enforcement"""
@@ -190,29 +221,29 @@ class PlanLimitEnforcementComprehensiveTest(TransactionTestCase):
             tenant=self.tenant,
             name="Ingestion 1",
             source_type="S3",
-            source_config={},
+            source_config={"bucket": "test-bucket", "region": "us-east-1"},
             schedule_type="DAILY",
-            schedule_config={},
-            file_pattern="*.csv",
+            schedule_config={"cron": "0 0 * * *"},
+            file_pattern=".*\\.csv$",
             created_by=self.user,
         )
 
-        # Try to create one more - should fail
+        # Try to create one more - should fail with plan_limit_exceeded
         response = self.client.post(
             "/api/v1/scheduled-ingestions/",
             {
                 "name": "Ingestion 2",
                 "source_type": "S3",
-                "source_config": {},
+                "source_config": {"bucket": "test-bucket", "region": "us-east-1"},
                 "schedule_type": "DAILY",
-                "schedule_config": {},
-                "file_pattern": "*.csv",
+                "schedule_config": {"cron": "0 0 * * *"},
+                "file_pattern": ".*\\.csv$",
             },
             format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(response.data.get("code"), "plan_limit_exceeded")
+        self.assertEqual(_get_response_data(response).get("code"), "plan_limit_exceeded")
 
     def test_scheduled_export_limit_enforcement(self):
         """Test scheduled export creation limit enforcement"""
@@ -221,36 +252,38 @@ class PlanLimitEnforcementComprehensiveTest(TransactionTestCase):
             tenant=self.tenant,
             name="Export 1",
             destination_type="S3",
-            destination_config={},
+            destination_config={"bucket": "test-bucket", "region": "us-east-1"},
             schedule_config={"cron": "0 0 * * *"},
-            source_scope={},
+            source_scope={"asset_ids": ["00000000-0000-0000-0000-000000000001"]},
         )
 
-        # Try to create one more - should fail
+        # Try to create one more - should fail with plan_limit_exceeded
         response = self.client.post(
             "/api/v1/scheduled-exports/",
             {
                 "name": "Export 2",
                 "destination_type": "S3",
-                "destination_config": {},
+                "destination_config": {"bucket": "test-bucket", "region": "us-east-1"},
                 "schedule_config": {"cron": "0 0 * * *"},
-                "source_scope": {},
+                "source_scope": {"asset_ids": ["00000000-0000-0000-0000-000000000002"]},
             },
             format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(response.data.get("code"), "plan_limit_exceeded")
+        self.assertEqual(_get_response_data(response).get("code"), "plan_limit_exceeded")
 
     def test_unlimited_plan_allows_creation(self):
         """Test that unlimited (ENTERPRISE) plan allows unlimited creation"""
-        # Create enterprise plan
-        enterprise_plan = TenantPlan.objects.create(
-            name="Enterprise Plan",
+        # Create enterprise plan (use get_or_create for --reuse-db compatibility)
+        enterprise_plan, _ = TenantPlan.objects.get_or_create(
             slug="enterprise",
-            tier=PlanTier.ENTERPRISE,
-            limits_json={},  # Empty = unlimited
-            is_active=True,
+            defaults={
+                "name": "Enterprise Plan",
+                "tier": PlanTier.ENTERPRISE,
+                "limits_json": {},  # Empty = unlimited
+                "is_active": True,
+            },
         )
 
         self.tenant.plan = enterprise_plan

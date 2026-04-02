@@ -187,7 +187,7 @@ class ContractViewSetBase(viewsets.ModelViewSet):
 
         # Platform admins can see all contracts
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            queryset = Contract.objects.all()
+            queryset = Contract.objects.select_related("tenant", "created_by").all()
         else:
             # Get tenant from request (set by middleware/authentication) or user
             # Priority: request.tenant_id > request.tenant > user.tenant_id >
@@ -254,9 +254,9 @@ class ContractViewSetBase(viewsets.ModelViewSet):
                     except (ValueError, TypeError):
                         queryset = Contract.objects.none()
                     else:
-                        queryset = Contract.objects.filter(tenant_id=tenant_id)
+                        queryset = Contract.objects.select_related("tenant", "created_by").filter(tenant_id=tenant_id)
                 else:
-                    queryset = Contract.objects.filter(tenant_id=tenant_id)
+                    queryset = Contract.objects.select_related("tenant", "created_by").filter(tenant_id=tenant_id)
             else:
                 queryset = Contract.objects.none()
 
@@ -289,6 +289,20 @@ class ContractViewSetBase(viewsets.ModelViewSet):
             # Fallback for Django WSGIRequest (e.g., in tests with
             # APIRequestFactory)
             query_params = request.GET
+
+        # Filter by linked asset (asset detail page, pickers). Must mirror
+        # datasets list behavior: valid UUID filters; invalid UUID → empty.
+        # NOTE: ContractViewSet (views.py) overrides _apply_filtering — keep the
+        # asset_id block identical there or delegate to super().
+        asset_id_param = query_params.get("asset_id")
+        if asset_id_param:
+            import uuid
+
+            try:
+                uuid.UUID(str(asset_id_param))
+            except (ValueError, TypeError):
+                return queryset.none()
+            queryset = queryset.filter(asset_id=asset_id_param)
 
         # Filter by owners (email or name)
         owner_email = query_params.get("owner_email")
@@ -561,10 +575,12 @@ class ContractViewSetBase(viewsets.ModelViewSet):
                 else:
                     queryset = queryset.none()
 
-        # Filter by model_name
+        # Filter by model_name — uses JSONB @> containment because models is an array of objects
         model_name = query_params.get("model_name")
         if model_name:
-            queryset = queryset.filter(hub_contract_json__models__name=model_name)
+            queryset = queryset.filter(
+                hub_contract_json__contains={"models": [{"name": model_name}]}
+            )
 
         # Filter by spec_type (ODPS-specific filtering)
         spec_type = query_params.get("spec_type")
@@ -580,6 +596,22 @@ class ContractViewSetBase(viewsets.ModelViewSet):
             queryset = queryset.filter(
                 original_spec_type=OriginalSpecType.ODPS,
                 original_spec_version=odps_version,
+            )
+
+        # Phase 26.13.2: Filter by spec_version (any spec type)
+        spec_version = query_params.get("spec_version")
+        if spec_version:
+            queryset = queryset.filter(
+                original_spec_version=spec_version,
+            )
+
+        # Phase 26.13.2: Filter by odcs_version
+        odcs_version_filter = query_params.get("odcs_version")
+        if odcs_version_filter:
+            from .models import OriginalSpecType
+            queryset = queryset.filter(
+                original_spec_type=OriginalSpecType.ODCS,
+                original_spec_version=odcs_version_filter,
             )
 
         # Filter by has_odps_link (ODPS-specific filtering)

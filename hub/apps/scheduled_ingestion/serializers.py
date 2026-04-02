@@ -13,6 +13,7 @@ from .models import (
     ScheduledIngestionStatus,
     ScheduledIngestionRunStatus
 )
+from hub.apps.virtualization.source_config_utils import mask_source_config
 
 
 class ScheduledIngestionSerializer(serializers.ModelSerializer):
@@ -49,6 +50,7 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
             'status',
             'next_run_at',
             'prefect_deployment_id',
+            'deployment_sync_status',
             'prefect_work_pool_name',
             'last_processed_file',
             'last_processed_timestamp',
@@ -68,6 +70,7 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
             'created_by_username',
             'next_run_at',
             'prefect_deployment_id',
+            'deployment_sync_status',
             'last_processed_file',
             'last_processed_timestamp',
             'ingestion_state',
@@ -80,6 +83,12 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
             'file_pattern': {'required': True, 'allow_blank': True},
         }
     
+    def to_representation(self, instance):
+        """Decrypt and mask sensitive fields in source_config."""
+        ret = super().to_representation(instance)
+        ret["source_config"] = mask_source_config(instance.get_source_config())
+        return ret
+
     def validate_file_pattern(self, value):
         """Validate file pattern is a valid regex. None/blank allowed (means match-all in processor)."""
         if value is None or value == "":
@@ -93,8 +102,18 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
     
     def validate_schedule_config(self, value):
         """Validate schedule configuration"""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("schedule_config must be a JSON object")
+        # Validate required schedule fields
+        if "cron_expression" not in value and "interval_minutes" not in value:
+            # Allow legacy 'cron' key used by CUSTOM_CRON schedule type
+            schedule_type = self.initial_data.get('schedule_type', ScheduleType.DAILY)
+            if schedule_type == ScheduleType.CUSTOM_CRON and "cron" not in value:
+                raise serializers.ValidationError(
+                    "schedule_config must contain 'cron_expression' or 'interval_minutes'"
+                )
         schedule_type = self.initial_data.get('schedule_type', ScheduleType.DAILY)
-        
+
         if schedule_type == ScheduleType.CUSTOM_CRON:
             cron_expr = value.get('cron')
             if not cron_expr:
@@ -110,8 +129,10 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
     
     def validate_source_config(self, value):
         """Validate source configuration"""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("source_config must be a JSON object")
         source_type = self.initial_data.get('source_type')
-        
+
         if not source_type:
             return value
         
@@ -179,6 +200,7 @@ class ScheduledIngestionRunSerializer(serializers.ModelSerializer):
             'datasets_created',
             'error_message',
             'result_json',
+            'dlq_sync_status',
             'created_at',
             'updated_at',
         ]
@@ -194,6 +216,7 @@ class ScheduledIngestionRunSerializer(serializers.ModelSerializer):
             'datasets_created',
             'error_message',
             'result_json',
+            'dlq_sync_status',
             'created_at',
             'updated_at',
         ]

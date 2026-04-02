@@ -1,6 +1,7 @@
 """
 Comprehensive tests for standardized filtering.
 """
+import uuid
 from unittest.mock import Mock
 
 from django.contrib.auth import get_user_model
@@ -28,12 +29,13 @@ class TestStandardFilterBackend(TestCase):
 
     def test_filter_queryset_no_params(self):
         """Test filtering with no parameters."""
-        User.objects.create_user(email="user1@example.com", password="testpass123")
-        User.objects.create_user(email="user2@example.com", password="testpass123")
+        _uid = uuid.uuid4().hex[:8]
+        User.objects.create_user(email=f"filter-noparam-1-{_uid}@example.com", password="testpass123")
+        User.objects.create_user(email=f"filter-noparam-2-{_uid}@example.com", password="testpass123")
 
         request = self.factory.get("/api/v1/users/")
         drf_request = Request(request)
-        queryset = User.objects.all()
+        queryset = User.objects.filter(email__contains=_uid)
 
         filtered = self.backend.filter_queryset(drf_request, queryset, Mock())
 
@@ -41,24 +43,29 @@ class TestStandardFilterBackend(TestCase):
 
     def test_filter_queryset_with_exact_match(self):
         """Test filtering with exact match."""
-        User.objects.create_user(email="user1@example.com", password="testpass123")
-        User.objects.create_user(email="user2@example.com", password="testpass123")
+        _uid = uuid.uuid4().hex[:8]
+        email1 = f"user1-{_uid}@example.com"
+        email2 = f"user2-{_uid}@example.com"
+        User.objects.create_user(email=email1, password="testpass123")
+        User.objects.create_user(email=email2, password="testpass123")
 
-        request = self.factory.get("/api/v1/users/?email=user1@example.com")
+        request = self.factory.get(f"/api/v1/users/?email={email1}")
         drf_request = Request(request)
         queryset = User.objects.all()
 
         filtered = self.backend.filter_queryset(drf_request, queryset, Mock())
 
         self.assertEqual(filtered.count(), 1)
-        self.assertEqual(filtered.first().email, "user1@example.com")
+        self.assertEqual(filtered.first().email, email1)
 
     def test_filter_queryset_with_allowed_fields(self):
         """Test filtering with allowed fields restriction."""
-        User.objects.create_user(email="user1@example.com", password="testpass123")
-        User.objects.create_user(email="user2@example.com", password="testpass123")
+        _uid = uuid.uuid4().hex[:8]
+        email1 = f"user1-{_uid}@example.com"
+        User.objects.create_user(email=email1, password="testpass123")
+        User.objects.create_user(email=f"user2-{_uid}@example.com", password="testpass123")
 
-        request = self.factory.get("/api/v1/users/?email=user1@example.com&name=test")
+        request = self.factory.get(f"/api/v1/users/?email={email1}&name=test")
         drf_request = Request(request)
         queryset = User.objects.all()
 
@@ -140,36 +147,46 @@ class TestFilterHelpers(TestCase):
 
     def test_apply_filters_exact_match(self):
         """Test applying exact match filter."""
-        User.objects.create_user(email="user1@example.com", password="testpass123")
-        User.objects.create_user(email="user2@example.com", password="testpass123")
+        _uid = uuid.uuid4().hex[:8]
+        email1 = f"user1-{_uid}@example.com"
+        User.objects.create_user(email=email1, password="testpass123")
+        User.objects.create_user(email=f"user2-{_uid}@example.com", password="testpass123")
 
         queryset = User.objects.all()
-        filter_params = {"email": "user1@example.com"}
+        filter_params = {"email": email1}
 
         filtered = apply_filters(queryset, filter_params)
 
         self.assertEqual(filtered.count(), 1)
-        self.assertEqual(filtered.first().email, "user1@example.com")
+        self.assertEqual(filtered.first().email, email1)
 
     def test_apply_filters_in_operator(self):
-        """Test applying 'in' operator filter."""
-        User.objects.create_user(email="user1@example.com", password="testpass123")
-        User.objects.create_user(email="user2@example.com", password="testpass123")
-        User.objects.create_user(email="user3@example.com", password="testpass123")
+        """Test applying 'in' operator filter returns exactly the matching records."""
+        _uid = uuid.uuid4().hex[:8]
+        email1 = f"user1-{_uid}@example.com"
+        email2 = f"user2-{_uid}@example.com"
+        email3 = f"user3-{_uid}@example.com"
+        User.objects.create_user(email=email1, password="testpass123")
+        User.objects.create_user(email=email2, password="testpass123")
+        User.objects.create_user(email=email3, password="testpass123")
 
         queryset = User.objects.all()
-        filter_params = {"email__in": "user1@example.com,user2@example.com"}
+        filter_params = {"email__in": f"{email1},{email2}"}
 
         filtered = apply_filters(queryset, filter_params)
 
         self.assertEqual(filtered.count(), 2)
+        # Verify the CORRECT records were returned, not just the count
+        returned_emails = set(filtered.values_list("email", flat=True))
+        self.assertEqual(returned_emails, {email1, email2})
 
     def test_apply_filters_isnull_operator(self):
         """Test applying 'isnull' operator filter."""
-        user1 = User.objects.create_user(email="user1@example.com", password="testpass123")
-        user2 = User.objects.create_user(email="user2@example.com", password="testpass123")
+        _uid = uuid.uuid4().hex[:8]
+        User.objects.create_user(email=f"filter-isnull-1-{_uid}@example.com", password="testpass123")
+        User.objects.create_user(email=f"filter-isnull-2-{_uid}@example.com", password="testpass123")
 
-        queryset = User.objects.all()
+        queryset = User.objects.filter(email__contains=_uid)
         filter_params = {"email__isnull": "false"}
 
         filtered = apply_filters(queryset, filter_params)
@@ -178,9 +195,10 @@ class TestFilterHelpers(TestCase):
 
     def test_apply_filters_empty_value(self):
         """Test applying filters with empty value (should be skipped)."""
-        User.objects.create_user(email="user1@example.com", password="testpass123")
+        _uid = uuid.uuid4().hex[:8]
+        User.objects.create_user(email=f"filter-emptyval-1-{_uid}@example.com", password="testpass123")
 
-        queryset = User.objects.all()
+        queryset = User.objects.filter(email__contains=_uid)
         filter_params = {"email": ""}
 
         filtered = apply_filters(queryset, filter_params)

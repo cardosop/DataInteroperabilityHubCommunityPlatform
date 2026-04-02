@@ -4,6 +4,7 @@ Unit tests for FileViewSet.
 Comprehensive tests for FileViewSet endpoints without mocks/stubs.
 Uses real S3StorageClient with graceful handling when storage unavailable.
 """
+import uuid
 
 import hashlib
 
@@ -12,7 +13,7 @@ from django.test import TestCase, override_settings
 from rest_framework import status
 
 from hub.apps.core.events.models import Event
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.files.tests.test_base import FilesAPITestBase
 from hub.apps.tenants.models import KYCStatus, Tenant
@@ -41,9 +42,11 @@ class FileViewSetTest(FilesAPITestBase):
             self.storage_available = False
 
     def test_list_files_success_returns_200(self):
-        """Test listing files successfully returns 200 status code."""
+        """Test listing files successfully returns 200 with results list."""
         response = self.client.get("/api/v1/files/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("results", response.data)
+        self.assertIsInstance(response.data["results"], list)
 
     def test_list_files_success_returns_results_list(self):
         """Test listing files returns results list."""
@@ -55,9 +58,10 @@ class FileViewSetTest(FilesAPITestBase):
     def test_list_files_tenant_isolation_excludes_other_tenant_files(self):
         """Test tenant isolation - users only see their tenant's files."""
         # Create another tenant and file
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
         other_file = File.objects.create(
@@ -67,6 +71,7 @@ class FileViewSetTest(FilesAPITestBase):
             size=1024,
             storage_path=f"{other_tenant.id}/other.csv",
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
         )
 
         response = self.client.get("/api/v1/files/")
@@ -78,9 +83,11 @@ class FileViewSetTest(FilesAPITestBase):
         self.assertNotIn(str(other_file.id), file_ids)
 
     def test_retrieve_file_success_returns_200(self):
-        """Test retrieving file successfully returns 200 status code."""
+        """Test retrieving file successfully returns 200 with correct data."""
         response = self.client.get(f"/api/v1/files/{self.file.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], str(self.file.id))
+        self.assertEqual(response.data["name"], self.file.name)
 
     def test_retrieve_file_success_returns_correct_data(self):
         """Test retrieving file returns correct data."""
@@ -100,9 +107,10 @@ class FileViewSetTest(FilesAPITestBase):
 
     def test_retrieve_file_tenant_isolation(self):
         """Test tenant isolation - cannot retrieve other tenant's file."""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
         other_file = File.objects.create(
@@ -112,6 +120,7 @@ class FileViewSetTest(FilesAPITestBase):
             size=1024,
             storage_path=f"{other_tenant.id}/other.csv",
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
         )
 
         response = self.client.get(f"/api/v1/files/{other_file.id}/")
@@ -383,6 +392,7 @@ class FileViewSetTest(FilesAPITestBase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             storage_path=f"{self.tenant.id}/to_delete.csv",
             created_by=self.user,
         )
@@ -403,9 +413,10 @@ class FileViewSetTest(FilesAPITestBase):
 
     def test_delete_file_tenant_isolation(self):
         """Test tenant isolation - cannot delete other tenant's file."""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
         other_file = File.objects.create(
@@ -415,6 +426,7 @@ class FileViewSetTest(FilesAPITestBase):
             size=1024,
             storage_path=f"{other_tenant.id}/other.csv",
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
         )
 
         response = self.client.delete(f"/api/v1/files/{other_file.id}/")
@@ -449,6 +461,7 @@ class FileViewSetTest(FilesAPITestBase):
             content_type="text/csv",
             size=100,
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             storage_path=f"{self.tenant.id}/report-data.csv",
             created_by=self.user,
         )

@@ -27,6 +27,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.files.models import File
 from hub.apps.datasets.models import Dataset
 from hub.apps.assets.models import Asset
+import uuid
 
 User = get_user_model()
 
@@ -45,11 +46,11 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
         """Set up test fixtures"""
         # Use get_or_create to handle test database reuse
         self.tenant, _ = Tenant.objects.get_or_create(
-            name="Test Tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             defaults={"slug": "test-tenant", "status": "ACTIVE", "kyc_status": "UNVERIFIED"}
         )
         self.user, _ = User.objects.get_or_create(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             defaults={
                 "password": "testpass123",
                 "tenant": self.tenant
@@ -185,23 +186,23 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
             input_data={
                 "scheduled_ingestion_id": str(self.scheduled_ingestion.id),
                 "source_type": SourceType.S3,
-                "source_config": self.scheduled_ingestion.source_config
+                "source_config": self.scheduled_ingestion.get_source_config()
             },
             status=WorkflowStatus.RUNNING
         )
-        
+
         step = instance.steps.create(
             step_name="connect_to_source",
             step_index=1,
             status=StepStatus.PENDING
         )
-        
+
         task_func = self.engine.task_registry.get("scheduled_ingestion.connect_to_source")
         result = task_func(instance.input_data, instance, step)
-        
+
         self.assertTrue(result["connected"])
         self.assertEqual(result["connector_type"], SourceType.S3)
-    
+
     @patch('hub.apps.orchestration.workflows.scheduled_ingestion._get_source_connector_factory')
     def test_connect_to_source_task_failure(self, mock_get_factory):
         """Test connect to source task with connection failure"""
@@ -210,13 +211,13 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
         mock_factory = Mock()
         mock_factory.get_connector.return_value = mock_connector
         mock_get_factory.return_value = mock_factory
-        
+
         instance = WorkflowInstance.objects.create(
             workflow_definition=self._get_workflow_definition(),
             tenant=self.tenant,
             input_data={
                 "source_type": SourceType.S3,
-                "source_config": self.scheduled_ingestion.source_config
+                "source_config": self.scheduled_ingestion.get_source_config()
             },
             status=WorkflowStatus.RUNNING
         )
@@ -259,7 +260,7 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
             input_data={
                 "scheduled_ingestion_id": str(ingestion.id),
                 "source_type": "UNSUPPORTED_SOURCE_TYPE",
-                "source_config": ingestion.source_config,
+                "source_config": ingestion.get_source_config(),
             },
             status=WorkflowStatus.RUNNING,
         )
@@ -293,7 +294,7 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
             input_data={
                 "scheduled_ingestion_id": str(self.scheduled_ingestion.id),
                 "source_type": SourceType.S3,
-                "source_config": self.scheduled_ingestion.source_config,
+                "source_config": self.scheduled_ingestion.get_source_config(),
                 "file_pattern": ".*\\.csv"
             },
             status=WorkflowStatus.RUNNING
@@ -331,11 +332,11 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
                 "scheduled_ingestion_id": str(self.scheduled_ingestion.id),
                 "discovered_files": ["file1.csv", "file2.csv"],
                 "source_type": SourceType.S3,
-                "source_config": self.scheduled_ingestion.source_config
+                "source_config": self.scheduled_ingestion.get_source_config()
             },
             status=WorkflowStatus.RUNNING
         )
-        
+
         step = instance.steps.create(
             step_name="filter_files",
             step_index=3,
@@ -554,7 +555,7 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
                 input_data={
                     "scheduled_ingestion_id": str(self.scheduled_ingestion.id),
                     "source_type": SourceType.S3,
-                    "source_config": self.scheduled_ingestion.source_config,
+                    "source_config": self.scheduled_ingestion.get_source_config(),
                     "loop_item": {"file_path": "test.csv", "file_timestamp": None}
                 },
                 status=WorkflowStatus.RUNNING
@@ -739,9 +740,9 @@ class ScheduledIngestionWorkflowIntegrationTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}")
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant
         )

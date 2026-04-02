@@ -9,7 +9,7 @@ from django.test import override_settings
 from django.utils import timezone
 
 from hub.apps.core.events.models import Event
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.tests.test_base import FilesTestBase
 
 
@@ -34,6 +34,7 @@ class FileServiceEventPublishingTest(FilesTestBase):
                 size=1024,
                 storage_path=f"{self.tenant.id}/test_file.csv",
                 status=FileStatus.ACTIVE,
+                scan_status=FileScanStatus.CLEAN,
                 content_sha256="abc123def456",
             )
 
@@ -208,24 +209,29 @@ class FileServiceEventPublishingTest(FilesTestBase):
         self.assertEqual(event.data["reason"], "User requested deletion")
         self.assertIn("deleted_at", event.data)
 
-    def test_get_file_handles_event_publishing_failure_gracefully(self):
-        """Test that get_file() handles event publishing failures gracefully."""
-        # This test verifies that file retrieval succeeds even if event publishing fails
-        # We can't easily simulate event publishing failure without mocking,
-        # but we can verify the error handling code path exists
+    def test_get_file_succeeds_with_event_publisher_initialized(self):
+        """Verify file retrieval works when event publisher is properly initialized.
 
+        Note: Testing actual event-publisher failure requires patching the publisher
+        to raise; without infrastructure failure injection we verify that retrieval
+        itself does not propagate any internal event-bus errors.
+        """
         file_obj = self.service.get_file(file_id=str(self.test_file.id))
 
-        # Verify file was retrieved successfully
         self.assertEqual(file_obj.id, self.test_file.id)
+        self.assertEqual(file_obj.name, self.test_file.name)
 
-    def test_validate_file_active_handles_event_publishing_failure_gracefully(self):
-        """Test that validate_file_active() handles event publishing failures gracefully."""
-        # This test verifies that validation succeeds even if event publishing fails
+    def test_validate_file_active_succeeds_with_event_publisher_initialized(self):
+        """Verify file validation works when event publisher is properly initialized.
+
+        Note: Testing actual event-publisher failure requires patching the publisher
+        to raise; without infrastructure failure injection we verify that validation
+        itself does not propagate any internal event-bus errors.
+        """
         file_obj = self.service.validate_file_active(file_id=str(self.test_file.id))
 
-        # Verify file was validated successfully
         self.assertEqual(file_obj.id, self.test_file.id)
+        self.assertEqual(file_obj.name, self.test_file.name)
         self.assertTrue(file_obj.is_active())
 
     def test_event_source_includes_tenant_and_user(self):
@@ -255,5 +261,5 @@ class FileServiceEventPublishingTest(FilesTestBase):
             event_type="file.updated", data__file_id=str(self.test_file.id)
         )
 
-        self.assertGreaterEqual(downloaded_events.count(), 1)
-        self.assertGreaterEqual(updated_events.count(), 1)
+        self.assertEqual(downloaded_events.count(), 1)
+        self.assertEqual(updated_events.count(), 1)

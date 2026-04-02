@@ -6,6 +6,8 @@ Tests for webhook business rules validation, including:
 - Rule registration in business rules registry
 - WebhookRuleExecutionContext
 """
+import uuid
+
 from django.test import TestCase
 
 from hub.apps.webhooks.business_rules import (
@@ -30,14 +32,15 @@ class WebhooksBusinessRulesInitializationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -116,14 +119,15 @@ class WebhookRuleExecutionContextTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -189,14 +193,15 @@ class WebhookSubscriptionValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -311,8 +316,12 @@ class WebhookSubscriptionValidationTest(TestCase):
         self.assertGreater(len(result.errors), 0)
 
     def test_validate_subscription_event_types_duplicates(self):
-        """Test subscription event type validation with duplicate event types"""
-        webhook = Webhook.objects.create(
+        """Test subscription event type validation with duplicate event types.
+
+        Uses unsaved Webhook instance to bypass model.save() deduplication,
+        so the business rules validator sees the raw duplicates.
+        """
+        webhook = Webhook(
             tenant=self.tenant,
             name="Test Webhook",
             url="https://example.com/webhook",

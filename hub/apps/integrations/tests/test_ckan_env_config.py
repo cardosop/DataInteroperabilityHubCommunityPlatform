@@ -22,8 +22,6 @@ from hub.apps.integrations.config.marketplace_instances import (
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
     get_test_marketplace_config,
     get_test_ckan_url,
-    # Backward compatibility (deprecated)
-    get_test_ckan_config,
 )
 
 
@@ -167,10 +165,10 @@ class TestCKANDadosGovBrIntegration(TestCase):
         # This tests that get_test_ckan_url includes dados.gov.br in fallback
         # We can't directly test the fallback list, but we can test that
         # dados.gov.br can be accessed via get_test_ckan_config
-        config = get_test_ckan_config('dados.gov.br')
+        config = get_test_marketplace_config('dados.gov.br')
         self.assertIsNotNone(
             config,
-            "dados.gov.br should be accessible via get_test_ckan_config"
+            "dados.gov.br should be accessible via get_test_marketplace_config"
         )
         assert config is not None  # Type narrowing for linter
         self.assertEqual(config.base_url, 'https://dados.gov.br')
@@ -186,7 +184,7 @@ class TestCKANTestHelpersIntegration(TestCase):
         try:
             # Set CKAN_TEST_URL to a registered instance
             os.environ['CKAN_TEST_URL'] = 'https://demo.ckan.org'
-            config = get_test_ckan_config()
+            config = get_test_marketplace_config()
 
             # Should use the environment variable
             self.assertIsNotNone(config)
@@ -209,10 +207,12 @@ class TestCKANTestHelpersIntegration(TestCase):
             url = get_test_ckan_url()
             # Should return one of the fallback instances
             self.assertIsNotNone(url, "get_test_ckan_url should return a URL from fallback list")
+            from hub.apps.integrations.config.marketplace_instances import MARKETPLACE_INSTANCES
+            registered_urls = [inst.base_url for inst in MARKETPLACE_INSTANCES.values()]
             self.assertIn(
                 url,
-                ['https://demo.ckan.org', 'https://dados.gov.br', 'https://data.gov'],
-                f"URL {url} should be one of the registered fallback instances"
+                registered_urls,
+                f"URL {url} should be one of the registered instance URLs"
             )
         finally:
             if original_url is not None:
@@ -290,7 +290,7 @@ class TestCKANEnvironmentConfigurationIntegration(TestCase):
             )
 
             # 4. Test helpers can use it
-            test_config = get_test_ckan_config('dados.gov.br')
+            test_config = get_test_marketplace_config('dados.gov.br')
             self.assertIsNotNone(
                 test_config,
                 "Test helpers should be able to access config"

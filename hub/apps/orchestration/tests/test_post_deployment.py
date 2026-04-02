@@ -4,6 +4,7 @@ Tests for post-deployment metrics collector and report (Task 5.3).
 Uses real DB and workflow instances; no mocks.
 """
 
+import uuid
 from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
@@ -57,16 +58,19 @@ class PostDeploymentMetricsCollectorTests(TestCase):
     """Integration tests for PostDeploymentMetricsCollector using real DB."""
 
     def setUp(self):
+        self.uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {self.uid}", slug=f"test-tenant-{self.uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="postdeploy@example.com",
+            email=f"postdeploy-{self.uid}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        # Unique workflow name per test run to avoid stale data with --reuse-db
+        self.wf_name = f"post_deploy_workflow_{self.uid}"
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="post_deploy_workflow",
+            name=self.wf_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0",
@@ -80,13 +84,19 @@ class PostDeploymentMetricsCollectorTests(TestCase):
         self.window_minutes = 60
         self.window_start = self.now - timedelta(minutes=self.window_minutes)
 
+    def _get_our_stats(self, report):
+        """Get workflow stats for our unique workflow name, ignoring stale data."""
+        return [ws for ws in report.workflow_stats if ws.workflow_name == self.wf_name]
+
     def test_collect_empty_window(self):
-        """Collect with no activity in window returns empty workflow stats."""
+        """Collect with no activity in window returns no stats for our workflow."""
         collector = PostDeploymentMetricsCollector(time_window_minutes=self.window_minutes)
         report = collector.collect()
         self.assertIsInstance(report, PostDeploymentReport)
         self.assertEqual(report.window_minutes, self.window_minutes)
-        self.assertEqual(len(report.workflow_stats), 0)
+        # Filter to our unique workflow; stale workflows from --reuse-db may exist
+        our_stats = self._get_our_stats(report)
+        self.assertEqual(len(our_stats), 0)
         self.assertGreater(len(report.recommendations), 0)
 
     def test_collect_tracks_workflow_success_failure_rates(self):
@@ -97,7 +107,7 @@ class PostDeploymentMetricsCollectorTests(TestCase):
         for i in range(3):
             WorkflowInstance.objects.create(
                 workflow_definition=self.workflow_def,
-                workflow_name="post_deploy_workflow",
+                workflow_name=self.wf_name,
                 workflow_version="1.0.0",
                 tenant=self.tenant,
                 status=WorkflowStatus.COMPLETED,
@@ -106,7 +116,7 @@ class PostDeploymentMetricsCollectorTests(TestCase):
             )
         WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="post_deploy_workflow",
+            workflow_name=self.wf_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.FAILED,
@@ -118,9 +128,10 @@ class PostDeploymentMetricsCollectorTests(TestCase):
         collector = PostDeploymentMetricsCollector(time_window_minutes=self.window_minutes)
         report = collector.collect()
 
-        self.assertEqual(len(report.workflow_stats), 1)
-        ws = report.workflow_stats[0]
-        self.assertEqual(ws.workflow_name, "post_deploy_workflow")
+        our_stats = self._get_our_stats(report)
+        self.assertEqual(len(our_stats), 1)
+        ws = our_stats[0]
+        self.assertEqual(ws.workflow_name, self.wf_name)
         self.assertEqual(ws.started_count, 4)
         self.assertEqual(ws.completed_count, 3)
         self.assertEqual(ws.failed_count, 1)
@@ -132,7 +143,7 @@ class PostDeploymentMetricsCollectorTests(TestCase):
         """Collect tracks validation-related failures (5.3.1)."""
         WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="post_deploy_workflow",
+            workflow_name=self.wf_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.FAILED,
@@ -143,7 +154,7 @@ class PostDeploymentMetricsCollectorTests(TestCase):
         )
         WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="post_deploy_workflow",
+            workflow_name=self.wf_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.FAILED,
@@ -155,8 +166,9 @@ class PostDeploymentMetricsCollectorTests(TestCase):
         collector = PostDeploymentMetricsCollector(time_window_minutes=self.window_minutes)
         report = collector.collect()
 
-        self.assertEqual(len(report.workflow_stats), 1)
-        ws = report.workflow_stats[0]
+        our_stats = self._get_our_stats(report)
+        self.assertEqual(len(our_stats), 1)
+        ws = our_stats[0]
         self.assertEqual(ws.started_count, 2)
         self.assertEqual(ws.failed_count, 2)
         self.assertEqual(ws.validation_failure_count, 1)
@@ -167,7 +179,7 @@ class PostDeploymentMetricsCollectorTests(TestCase):
         for i in range(2):
             WorkflowInstance.objects.create(
                 workflow_definition=self.workflow_def,
-                workflow_name="post_deploy_workflow",
+                workflow_name=self.wf_name,
                 workflow_version="1.0.0",
                 tenant=self.tenant,
                 status=WorkflowStatus.FAILED,
@@ -176,7 +188,7 @@ class PostDeploymentMetricsCollectorTests(TestCase):
             )
         WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="post_deploy_workflow",
+            workflow_name=self.wf_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.COMPLETED,
@@ -189,7 +201,7 @@ class PostDeploymentMetricsCollectorTests(TestCase):
 
         self.assertTrue(
             any(
-                "success rate" in rec and "post_deploy_workflow" in rec
+                "success rate" in rec and self.wf_name in rec
                 for rec in report.recommendations
             ),
             report.recommendations,
@@ -200,16 +212,17 @@ class ReportWorkflowPostDeploymentMetricsCommandTests(TestCase):
     """Tests for report_workflow_post_deployment_metrics management command."""
 
     def setUp(self):
+        self.uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Cmd Tenant", slug="cmd-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Cmd Tenant {self.uid}", slug=f"cmd-tenant-{self.uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="cmd@example.com",
+            email=f"cmd-{self.uid}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="cmd_workflow",
+            name=f"cmd_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0",

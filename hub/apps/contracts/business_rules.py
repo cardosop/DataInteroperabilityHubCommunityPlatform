@@ -48,8 +48,16 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-# Supported ODPS versions (from input validator and schema availability)
-SUPPORTED_ODPS_VERSIONS = ["4.2", "4.1", "4.0", "3.x", "2.x", "1.x"]
+# Pre-Bitol ODPS (Niilahti et al.): 1.x–4.x; Bitol/LF ODPS: bitol-0.9.0, bitol-1.0.0
+SUPPORTED_ODPS_VERSIONS = [
+    "bitol-1.0.0", "bitol-0.9.0",
+    "4.2", "4.1", "4.0", "3.x", "2.x", "1.x",
+]
+
+# Supported ODCS versions
+SUPPORTED_ODCS_VERSIONS = [
+    "2.2.2", "3.0.0", "3.0.1", "3.0.2", "3.1.0",
+]
 
 
 @dataclass
@@ -324,9 +332,21 @@ class ODPSBusinessRules(BusinessRules):
                     if "name" not in lang_details:
                         errors.append(f"ODPS 'product.details.{lang_code}.name' is required")
 
-        # Validate product.dataSchema (required)
+        # Validate product.dataSchema (not required when contract carries inline spec or resolvable reference)
+        contract_obj = product.get("contract") if isinstance(product.get("contract"), dict) else None
+        has_embedded_spec = bool(contract_obj and "spec" in contract_obj)
+        has_resolvable_contract = bool(
+            contract_obj
+            and (
+                "$ref" in contract_obj
+                or contract_obj.get("contractURL")
+            )
+        )
         if "dataSchema" not in product:
-            errors.append("ODPS 'product.dataSchema' field is required")
+            if not has_embedded_spec and not has_resolvable_contract:
+                errors.append("ODPS 'product.dataSchema' field is required when no embedded contract")
+            else:
+                warnings.append("ODPS 'product.dataSchema' field is recommended")
         else:
             data_schema = product["dataSchema"]
             if not isinstance(data_schema, dict):
@@ -441,27 +461,42 @@ class ODPSBusinessRules(BusinessRules):
 
         # Check if version is supported
         if detected_version not in SUPPORTED_ODPS_VERSIONS:
-            # Check if it's a normalized version (e.g., "3.x" covers "3.9")
-            major_version = detected_version.split(".")[0] if "." in detected_version else None
             is_supported = False
 
-            if major_version:
-                # Check if any supported version matches the major version
-                for supported in SUPPORTED_ODPS_VERSIONS:
-                    if (
-                        supported.startswith(f"{major_version}.")
-                        or supported == f"{major_version}.x"
-                    ):
-                        is_supported = True
-                        break
-
-                # Also check if detected version is a minor version of a supported major
-                # (e.g., "3.9" should be supported if "3.x" is supported)
-                if not is_supported and major_version.isdigit():
+            # Bitol versions: "bitol-X.Y.Z" — check if a supported
+            # bitol version shares the same major.minor prefix.
+            # e.g. "bitol-1.0.1" matches "bitol-1.0.0".
+            if detected_version.startswith("bitol-"):
+                bitol_ver = detected_version[len("bitol-"):]
+                parts = bitol_ver.split(".")
+                if len(parts) >= 2:
+                    prefix = f"bitol-{parts[0]}.{parts[1]}."
                     for supported in SUPPORTED_ODPS_VERSIONS:
-                        if supported == f"{major_version}.x":
+                        if supported.startswith(prefix):
                             is_supported = True
                             break
+
+            # Pre-Bitol: fuzzy matching (e.g., "3.9" → "3.x")
+            if not is_supported:
+                major_version = (
+                    detected_version.split(".")[0]
+                    if "." in detected_version
+                    else None
+                )
+                if major_version:
+                    for supported in SUPPORTED_ODPS_VERSIONS:
+                        if (
+                            supported.startswith(f"{major_version}.")
+                            or supported == f"{major_version}.x"
+                        ):
+                            is_supported = True
+                            break
+
+                    if not is_supported and major_version.isdigit():
+                        for supported in SUPPORTED_ODPS_VERSIONS:
+                            if supported == f"{major_version}.x":
+                                is_supported = True
+                                break
 
             if not is_supported:
                 errors.append(
@@ -484,7 +519,8 @@ class ODPSBusinessRules(BusinessRules):
         if detected_version in ["1.x", "2.x", "3.x"]:
             warnings.append(
                 f"ODPS version '{detected_version}' is deprecated. "
-                "Consider upgrading to version 4.1 or 4.0"
+                "Consider upgrading to version 4.1 or "
+                "Bitol ODPS v1.0.0"
             )
 
         return ValidationResult(is_valid=True, errors=errors, warnings=warnings)

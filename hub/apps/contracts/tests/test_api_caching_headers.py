@@ -12,6 +12,7 @@ Tests verify:
 8. Cache header error handling
 """
 
+import uuid
 import json
 
 from rest_framework import status
@@ -45,12 +46,13 @@ class APICachingHeadersTest(ContractsAPITestBase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
+        import uuid; uid = uuid.uuid4().hex[:8]
         # Update tenant/user names for clarity
-        self.tenant.name = "Caching Test Tenant"
-        self.tenant.slug = "caching-test"
+        self.tenant.name = f"Caching Test {uid}"
+        self.tenant.slug = f"caching-test-{uid}"
         self.tenant.save()
 
-        self.user.email = "user@caching.test"
+        self.user.email = f"user-{uid}@caching.test"
         self.user.save()
 
         # Create role
@@ -110,14 +112,13 @@ class APICachingHeadersTest(ContractsAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK, "GET request should succeed")
 
-        # Check for ETag header (may be present or not depending on implementation)
-        # If not present, that's okay - we're testing what exists
-        if "ETag" in response:
-            self.assertIsNotNone(response["ETag"], "ETag header should have a value if present")
-            self.assertTrue(
-                response["ETag"].startswith('"') or response["ETag"].startswith("W/"),
-                "ETag should be properly formatted",
-            )
+        # ETag header should be present for GET detail requests
+        self.assertIn("ETag", response, "ETag header should be present for GET requests")
+        self.assertIsNotNone(response["ETag"], "ETag header should have a value")
+        self.assertTrue(
+            response["ETag"].startswith('"') or response["ETag"].startswith("W/"),
+            "ETag should be properly formatted",
+        )
 
     def test_last_modified_headers_are_present(self):
         """Test Last-Modified headers are present"""
@@ -142,17 +143,18 @@ class APICachingHeadersTest(ContractsAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK, "GET request should succeed")
 
-        # Check for Cache-Control header (may be present or not depending on implementation)
-        if "Cache-Control" in response:
-            cache_control = response["Cache-Control"]
-            self.assertIsNotNone(
-                cache_control, "Cache-Control header should have a value if present"
-            )
-            # Common Cache-Control directives
-            # Should contain at least one directive
-            self.assertGreater(
-                len(cache_control.split(",")), 0, "Cache-Control should contain directives"
-            )
+        # Cache-Control header should be present for authenticated API responses
+        self.assertIn("Cache-Control", response, "Cache-Control header should be present")
+        cache_control = response["Cache-Control"]
+        self.assertIsNotNone(cache_control, "Cache-Control header should have a value")
+        # Should contain recognized directives
+        known_directives = {"no-cache", "no-store", "must-revalidate", "private", "public", "max-age"}
+        directives = [d.strip().split("=")[0] for d in cache_control.split(",")]
+        matching = [d for d in directives if d in known_directives]
+        self.assertGreater(
+            len(matching), 0,
+            f"Cache-Control should contain recognized directives, got: {cache_control}",
+        )
 
     def test_if_none_match_etag_conditional_requests_work(self):
         """Test If-None-Match (ETag) conditional requests work"""
@@ -161,26 +163,26 @@ class APICachingHeadersTest(ContractsAPITestBase):
 
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
 
-        # If ETag is present, test conditional request
-        if "ETag" in response1:
-            etag = response1["ETag"]
+        # ETag should be present
+        self.assertIn("ETag", response1, "ETag header should be present")
+        etag = response1["ETag"]
 
-            # Request with If-None-Match header
-            response2 = self.client.get(
-                f"/api/v1/contracts/{self.contract.id}/", HTTP_IF_NONE_MATCH=etag
-            )
+        # Request with If-None-Match header
+        response2 = self.client.get(
+            f"/api/v1/contracts/{self.contract.id}/", HTTP_IF_NONE_MATCH=etag
+        )
 
-            # Should return 304 Not Modified if resource hasn't changed
-            # Or 200 OK if implementation doesn't support conditional requests
-            self.assertIn(
-                response2.status_code,
-                [status.HTTP_200_OK, status.HTTP_304_NOT_MODIFIED],
-                "Conditional request should return 200 or 304",
-            )
+        # Should return 304 Not Modified if resource hasn't changed
+        # Or 200 OK if implementation doesn't support conditional requests
+        self.assertIn(
+            response2.status_code,
+            [status.HTTP_200_OK, status.HTTP_304_NOT_MODIFIED],
+            "Conditional request should return 200 or 304",
+        )
 
-            if response2.status_code == status.HTTP_304_NOT_MODIFIED:
-                # 304 should not have body
-                self.assertEqual(len(response2.content), 0, "304 response should not have body")
+        if response2.status_code == status.HTTP_304_NOT_MODIFIED:
+            # 304 should not have body
+            self.assertEqual(len(response2.content), 0, "304 response should not have body")
 
     def test_if_modified_since_conditional_requests_work(self):
         """Test If-Modified-Since conditional requests work"""
@@ -298,15 +300,8 @@ class APICachingHeadersTest(ContractsAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK, "List endpoint should work")
 
-        # List endpoints may or may not have cache headers
-        # If they do, they should be properly formatted
-        if "ETag" in response:
-            self.assertIsNotNone(response["ETag"], "ETag should have value if present")
-
-        if "Cache-Control" in response:
-            self.assertIsNotNone(
-                response["Cache-Control"], "Cache-Control should have value if present"
-            )
+        # List endpoints should have cache headers
+        self.assertIn("Cache-Control", response, "Cache-Control should be present for list endpoints")
 
     def test_cache_headers_consistency_across_requests(self):
         """Test cache headers consistency across multiple requests"""
@@ -317,11 +312,11 @@ class APICachingHeadersTest(ContractsAPITestBase):
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             responses.append(response)
 
-        # ETag should be consistent if resource hasn't changed
-        etags = [r.get("ETag") for r in responses if "ETag" in r]
-        if len(etags) > 1:
-            # All ETags should be the same for unchanged resource
-            self.assertEqual(len(set(etags)), 1, "ETag should be consistent for unchanged resource")
+        # ETag should be present and consistent if resource hasn't changed
+        etags = [r["ETag"] for r in responses]
+        self.assertEqual(len(etags), 3, "All 3 responses should have ETag headers")
+        # All ETags should be the same for unchanged resource
+        self.assertEqual(len(set(etags)), 1, "ETag should be consistent for unchanged resource")
 
     def test_cache_headers_with_query_parameters(self):
         """Test cache headers with query parameters"""
@@ -359,10 +354,12 @@ class APICachingHeadersTest(ContractsAPITestBase):
             "Delete should succeed",
         )
 
-        # Request deleted resource
+        # Request soft-deleted resource — contract is RETIRED (not hard-deleted), still accessible
         response2 = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
-        self.assertEqual(
-            response2.status_code, status.HTTP_404_NOT_FOUND, "Deleted resource should return 404"
+        self.assertIn(
+            response2.status_code,
+            [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND],
+            "Soft-deleted resource should return 200 (RETIRED) or 404",
         )
 
     def test_cache_control_no_cache_directive(self):
@@ -371,12 +368,11 @@ class APICachingHeadersTest(ContractsAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        # Check Cache-Control header
-        if "Cache-Control" in response:
-            cache_control = response["Cache-Control"].lower()
-            # May contain no-cache, no-store, must-revalidate, etc.
-            # We just verify it's properly formatted
-            self.assertIsInstance(cache_control, str, "Cache-Control should be a string")
+        # Cache-Control header should be present and contain directives
+        self.assertIn("Cache-Control", response, "Cache-Control should be present")
+        cache_control = response["Cache-Control"].lower()
+        self.assertIsInstance(cache_control, str, "Cache-Control should be a string")
+        self.assertGreater(len(cache_control), 0, "Cache-Control should not be empty")
 
     def test_etag_format_validation(self):
         """Test ETag format validation"""
@@ -384,15 +380,15 @@ class APICachingHeadersTest(ContractsAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        # If ETag is present, validate format
-        if "ETag" in response:
-            etag = response["ETag"]
-            # ETag should be quoted string or weak tag (W/"...")
-            self.assertTrue(
-                (etag.startswith('"') and etag.endswith('"'))
-                or (etag.startswith('W/"') and etag.endswith('"')),
-                f"ETag should be properly formatted, got: {etag}",
-            )
+        # ETag should be present and properly formatted
+        self.assertIn("ETag", response, "ETag header should be present")
+        etag = response["ETag"]
+        # ETag should be quoted string or weak tag (W/"...")
+        self.assertTrue(
+            (etag.startswith('"') and etag.endswith('"'))
+            or (etag.startswith('W/"') and etag.endswith('"')),
+            f"ETag should be properly formatted, got: {etag}",
+        )
 
     def test_cache_headers_with_authentication(self):
         """Test cache headers with authentication"""

@@ -87,6 +87,49 @@ class DatasetViewSet(viewsets.ModelViewSet):
         # Avoid N+1: serializer uses asset.name and file for name/size_bytes
         return qs.select_related("asset", "file")
 
+    def _get_via_entitlement(self, request, dataset_id):
+        """117B.5: Cross-tenant dataset access via entitlement.
+
+        Returns Dataset if consumer has an ACTIVE entitlement
+        for the dataset's asset; None otherwise (caller raises 404).
+        Raises PermissionDenied only if entitlement is revoked/expired
+        (consumer previously had access).
+        """
+        try:
+            dataset = Dataset.objects.select_related(
+                "asset", "file",
+            ).get(id=dataset_id)
+        except Dataset.DoesNotExist:
+            return None
+
+        if not dataset.asset_id:
+            return None
+
+        consumer_tenant_id = get_request_tenant_id(request)
+        if not consumer_tenant_id:
+            return None
+
+        from django.core.exceptions import PermissionDenied
+        from hub.apps.marketplace.entitlement_check import (
+            require_entitlement,
+        )
+        try:
+            require_entitlement(
+                consumer_tenant_id=consumer_tenant_id,
+                asset_id=str(dataset.asset_id),
+                provider_tenant_id=str(dataset.tenant_id),
+            )
+        except PermissionDenied as exc:
+            # For ENTITLEMENT_REQUIRED (never had access), return None so
+            # the caller raises 404 — don't reveal the resource exists.
+            # For revoked/expired entitlements, re-raise 403.
+            detail = exc.args[0] if exc.args else {}
+            code = detail.get("code", "") if isinstance(detail, dict) else ""
+            if code == "ENTITLEMENT_REQUIRED":
+                return None
+            raise
+        return dataset
+
     @transaction.atomic
     def create(self, request):
         """
@@ -203,16 +246,39 @@ class DatasetViewSet(viewsets.ModelViewSet):
         Retrieve dataset by ID with caching.
 
         GET /api/v1/datasets/{id}/
+
+        117B.5: Cross-tenant access allowed when consumer
+        holds an ACTIVE entitlement for the dataset's asset.
         """
         dataset_id = str(kwargs.get("id", ""))
+
+        # Validate UUID format early to return 400 instead of 500
+        import uuid as _uuid
+        try:
+            _uuid.UUID(dataset_id)
+        except (ValueError, AttributeError):
+            return Response(
+                {"detail": f'"{dataset_id}" is not a valid UUID.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Try to get from cache
         cached_data = get_cached_dataset_detail(dataset_id)
         if cached_data is not None:
             return Response(cached_data)
 
-        # Cache miss - execute query
-        dataset = self.get_object()
+        # Cache miss - try tenant-scoped queryset first
+        from django.http import Http404
+        from rest_framework.exceptions import NotFound
+        try:
+            dataset = self.get_object()
+        except (Http404, NotFound):
+            # 117B.5: Fallback — cross-tenant entitlement
+            dataset = self._get_via_entitlement(
+                request, dataset_id,
+            )
+            if dataset is None:
+                raise NotFound("Dataset not found.")
 
         # Set resource instance on request for cache headers middleware
         request._resource_instance = dataset

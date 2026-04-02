@@ -36,22 +36,24 @@ class VirtualizationTopologyViewSetTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
 
         # Create another tenant for isolation tests
+        _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED
         )
 
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -60,7 +62,7 @@ class VirtualizationTopologyViewSetTest(TestCase):
 
         # Create regular user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -75,20 +77,18 @@ class VirtualizationTopologyViewSetTest(TestCase):
         )
 
         # Get or create DATA_PROVIDER role
-        self.data_provider_role = Role.objects.filter(name="DATA_PROVIDER").first()
-        if not self.data_provider_role:
-            self.data_provider_role = Role.objects.create(
-                name="DATA_PROVIDER",
-                description="Data Provider Role"
-            )
+        self.data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"}
+        )
 
         # Get or create TENANT_ADMIN role
-        self.tenant_admin_role = Role.objects.filter(name="TENANT_ADMIN").first()
-        if not self.tenant_admin_role:
-            self.tenant_admin_role = Role.objects.create(
-                name="TENANT_ADMIN",
-                description="Tenant Admin Role"
-            )
+        self.tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Admin Role"}
+        )
 
         # Assign roles to user
         UserRole.objects.get_or_create(
@@ -106,8 +106,8 @@ class VirtualizationTopologyViewSetTest(TestCase):
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.ACTIVE,
             sources=[
-                {"id": "source1", "type": "postgresql", "connection": "postgres://localhost/db1"},
-                {"id": "source2", "type": "mysql", "connection": "mysql://localhost/db2"}
+                {"id": "source1", "type": "postgresql", "host": "localhost", "database": "db1"},
+                {"id": "source2", "type": "mysql", "host": "localhost", "database": "db2"}
             ]
         )
 
@@ -120,7 +120,7 @@ class VirtualizationTopologyViewSetTest(TestCase):
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.ACTIVE,
             sources=[
-                {"id": "source1", "type": "postgresql", "connection": "postgres://localhost/db1"},
+                {"id": "source1", "type": "postgresql", "host": "localhost", "database": "db1"},
                 {"id": "source3", "type": "sparql", "endpoint": "http://localhost:8890/sparql"}
             ]
         )
@@ -147,7 +147,7 @@ class VirtualizationTopologyViewSetTest(TestCase):
             query="SELECT * FROM other_table",
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.ACTIVE,
-            sources=[{"id": "source5", "type": "postgresql"}]
+            sources=[{"id": "source5", "type": "postgresql", "host": "localhost", "database": "otherdb"}]
         )
 
         # Create query executions for health metrics

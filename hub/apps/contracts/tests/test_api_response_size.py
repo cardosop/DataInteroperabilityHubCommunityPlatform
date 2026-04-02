@@ -10,6 +10,7 @@ Tests verify:
 6. Response size monitoring
 7. Response size error handling
 """
+import uuid
 
 import json
 
@@ -81,11 +82,11 @@ class APIResponseSizeTest(ContractsAPITestBase):
             format="json",
         )
 
-        # Should handle large data (either accept or reject with appropriate status)
+        # Large payload should either be accepted or rejected with a client error
         self.assertIn(
             response.status_code,
-            [200, 201, 400, 413, 422, 500],
-            "Large response should be handled appropriately",
+            [200, 201, 400, 413, 422],
+            "Large payload should be accepted or rejected with a client error (not 500)",
         )
 
         # If created, verify response size is reasonable
@@ -118,11 +119,11 @@ class APIResponseSizeTest(ContractsAPITestBase):
                 format="json",
             )
 
-            # Should handle large responses appropriately
+            # Large payload should either be accepted or rejected with a client error
             self.assertIn(
                 response.status_code,
-                [200, 201, 400, 413, 422, 500],
-                f"Large response ({size_name}) should be handled appropriately",
+                [200, 201, 400, 413, 422],
+                f"Large payload ({size_name}) should be accepted or rejected with a client error (not 500)",
             )
 
     def test_pagination_for_large_result_sets(self):
@@ -242,11 +243,11 @@ class APIResponseSizeTest(ContractsAPITestBase):
                 format="json",
             )
 
-            # Should handle gracefully (either reject or accept)
+            # Extremely large payload should be rejected with a client error
             self.assertIn(
                 response.status_code,
-                [200, 201, 400, 413, 422, 500],
-                "Extremely large response should be handled gracefully",
+                [400, 413, 422],
+                "Extremely large payload (100MB) should be rejected with a client error",
             )
         except Exception as e:
             # Should not crash with unhandled exception

@@ -9,6 +9,7 @@ ephemeral server deadlock and 600s timeouts), asserts run created and updated.
 Requires PREFECT_API_URL pointing at a running Prefect server (e.g. prefect-server-test).
 """
 
+import unittest
 import os
 import subprocess
 import sys
@@ -29,10 +30,11 @@ from hub.apps.scheduled_ingestion.models import (
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 # Integration test; 600s allows subprocess + LiveServer + teardown (flush can be slow)
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.integration,
     pytest.mark.timeout(600),
 ]
@@ -61,6 +63,28 @@ def _prefect_server_reachable(prefect_api_url: str, timeout_seconds: float = 5.0
         return False
 
 
+class _NoStaticFilesHandler:
+    """
+    Passthrough handler that delegates all requests directly to the WSGI app.
+
+    Django's default LiveServerTestCase uses ``StaticFilesHandler`` which
+    wraps the WSGI app and checks ``_should_handle`` via ``get_path_info``.
+    Under Django 6.0 + wsgiref (Python 3.12), ``get_path_info`` can return
+    ``bytes`` instead of ``str``, causing ``_should_handle`` to raise
+    ``TypeError`` on every request (bytes.startswith(str)).
+
+    This test only needs API endpoints, not static files.  Bypassing the
+    static-files layer avoids the bug and removes the ``STATIC_URL``
+    requirement.
+    """
+
+    def __init__(self, application):
+        self.application = application
+
+    def __call__(self, environ, start_response):
+        return self.application(environ, start_response)
+
+
 class TestPrefectFullFlowIntegration(LiveServerTestCase):
     """
     Run scheduled_ingestion_full_flow against live hub; assert run created and updated.
@@ -70,8 +94,9 @@ class TestPrefectFullFlowIntegration(LiveServerTestCase):
     and to enforce a bounded timeout (180s).
     """
 
+    static_handler = _NoStaticFilesHandler
+
     # Skip DB flush in teardown so test + teardown complete within pytest timeout (600s).
-    # Flush with many tables can exceed 600s; isolation is via transaction rollback.
     @classmethod
     def _fixture_teardown(cls):
         pass
@@ -86,15 +111,16 @@ class TestPrefectFullFlowIntegration(LiveServerTestCase):
         super().tearDown()
 
     def setUp(self):
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Prefect Flow Test Tenant",
-            slug="prefect-flow-test-tenant",
+            name=f"Prefect Flow Test Tenant {uid}",
+            slug=f"prefect-flow-test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="prefect-flow-test@example.com",
+            email=f"prefect-flow-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -127,29 +153,18 @@ class TestPrefectFullFlowIntegration(LiveServerTestCase):
 
     def test_full_flow_creates_run_and_processes_file(self):
         """Run full flow in subprocess; assert hub run created, updated, and process-file called."""
-        # Prefect 2.16 imports griffe.dataclasses; griffe 1.x removed it. Skip with clear message
-        # if this env has wrong griffe so user can rebuild api-service-test (requirements.txt has griffe<1).
-        try:
-            import griffe.dataclasses  # noqa: F401
-        except ModuleNotFoundError:
-            pytest.skip(
-                "griffe.dataclasses not found (Prefect 2.16 requires griffe<1; griffe 1.x removed it). "
-                "Rebuild api-service-test so requirements.txt is applied: "
-                "docker compose -f docker-compose.test.yml build api-service-test"
-            )
-
         prefect_api_url = os.environ.get(
             "PREFECT_API_URL", "http://prefect-server-test:4200/api"
         ).rstrip("/")
         if not _prefect_server_reachable(prefect_api_url):
-            pytest.skip(
+            raise unittest.SkipTest(
                 "Prefect server not reachable at PREFECT_API_URL. "
                 "Start prefect-server-test (and prefect-db-test) for full flow integration."
             )
 
         prefect_integration = _prefect_integration_path()
         if not os.path.isdir(prefect_integration):
-            pytest.skip(
+            raise unittest.SkipTest(
                 "prefect-integration service path not found. "
                 f"Expected directory: {prefect_integration}"
             )
@@ -191,7 +206,7 @@ scheduled_ingestion_full_flow(
                 "Ensure Prefect server is healthy and test-data endpoint is fast."
             )
         except FileNotFoundError:
-            pytest.skip("Python executable not found for subprocess")
+            raise unittest.SkipTest("Python executable not found for subprocess")
 
         if proc.returncode != 0:
             stderr = proc.stderr or ""
@@ -203,7 +218,7 @@ scheduled_ingestion_full_flow(
                     "Hub and prefect-integration use prefect>=2.14.0,<3. stderr: "
                     + (stderr[:500] if stderr else "(none)")
                 )
-                pytest.skip(msg)
+                raise unittest.SkipTest(msg)
             self.fail(
                 f"Flow subprocess exited with code {proc.returncode}. "
                 f"stderr: {stderr or '(none)'}. stdout: {proc.stdout or '(none)'}"

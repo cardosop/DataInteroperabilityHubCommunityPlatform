@@ -11,7 +11,7 @@ Tests that PATCH run to COMPLETED/FAILED triggers:
 import uuid
 
 import pytest
-from django.test import TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -34,7 +34,7 @@ from hub.apps.testing.billing_support import ensure_tenant_has_active_subscripti
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.timeout(600),
 ]
 
@@ -52,7 +52,7 @@ def _create_worker_api_key(tenant, user):
     return plaintext
 
 
-class RunCompletionSideEffectsIntegrationTest(TransactionTestCase):
+class RunCompletionSideEffectsIntegrationTest(TestCase):
     """Integration tests for run completion side effects."""
 
     reset_sequences = False
@@ -60,8 +60,15 @@ class RunCompletionSideEffectsIntegrationTest(TransactionTestCase):
 
     @classmethod
     def _fixture_teardown(cls):
-        """Override to skip database flush for integration tests."""
-        pass
+        """Skip TRUNCATE flush (times out on complex FK graphs).
+
+        Close DB connections to release all locks and poisoned
+        transactions.  Data isolation relies on UUID-based unique
+        names in setUp.
+        """
+        from django.db import connections
+        for db_name in cls._databases_names(include_mirrors=False):
+            connections[db_name].close()
 
     def setUp(self):
         unique_id = uuid.uuid4().hex[:8]

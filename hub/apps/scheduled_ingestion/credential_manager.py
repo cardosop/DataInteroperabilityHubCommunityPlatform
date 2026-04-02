@@ -49,7 +49,7 @@ class CredentialManager:
         Returns:
             Dictionary with masked credentials (sensitive fields masked)
         """
-        source_config = scheduled_ingestion.source_config or {}
+        source_config = scheduled_ingestion.get_source_config()
         masked_config = {}
         
         # Define sensitive fields to mask based on source type
@@ -112,7 +112,7 @@ class CredentialManager:
         import time
         
         start_time = time.time()
-        source_config = scheduled_ingestion.source_config or {}
+        source_config = scheduled_ingestion.get_source_config()
         source_type = scheduled_ingestion.source_type
         
         if not source_config:

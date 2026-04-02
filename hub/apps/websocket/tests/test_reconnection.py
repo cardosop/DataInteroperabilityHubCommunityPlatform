@@ -8,7 +8,7 @@ These tests verify:
 - Background task management
 """
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import AsyncMock, patch, MagicMock
 from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
 from django.conf import settings
@@ -42,7 +42,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
         # Create pong message
         pong_message = WebSocketMessage(
             type=WebSocketMessageType.PONG.value,
-            data={"timestamp": datetime.utcnow().isoformat()}
+            data={"timestamp": datetime.now(dt_timezone.utc).isoformat()}
         )
 
         # Handle pong
@@ -61,7 +61,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
         consumer.ping_interval = 0.1  # Short interval for testing
         consumer._connection_closed = False
         consumer.send_json_message = AsyncMock()
-        consumer.last_activity = datetime.utcnow()  # Set to avoid timeout
+        consumer.last_activity = datetime.now(dt_timezone.utc)  # Set to avoid timeout
 
         # Start ping loop
         ping_task = asyncio.create_task(consumer._ping_loop())
@@ -94,7 +94,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
         consumer.channel_layer = None
         consumer.pong_timeout = 0.1  # Short timeout for testing
         consumer.pending_ping = True
-        consumer.last_pong_received = datetime.utcnow() - timedelta(seconds=0.2)
+        consumer.last_pong_received = datetime.now(dt_timezone.utc) - timedelta(seconds=0.2)
         consumer._connection_closed = False
         consumer.close = AsyncMock()
 
@@ -126,7 +126,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
         consumer.pong_timeout = 0.05  # Short pong timeout
         consumer.connection_timeout = 0.1  # Short connection timeout for testing
         consumer.pending_ping = False  # No pending ping, so pong check is skipped
-        consumer.last_activity = datetime.utcnow() - timedelta(seconds=0.2)
+        consumer.last_activity = datetime.now(dt_timezone.utc) - timedelta(seconds=0.2)
         consumer._connection_closed = False
         consumer.close = AsyncMock()
 
@@ -160,7 +160,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
         # Create a message
         message = WebSocketMessage(
             type=WebSocketMessageType.PING.value,
-            data={"timestamp": datetime.utcnow().isoformat()}
+            data={"timestamp": datetime.now(dt_timezone.utc).isoformat()}
         )
 
         # Simulate receiving message
@@ -182,7 +182,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
         # Create a message
         message = WebSocketMessage(
             type=WebSocketMessageType.PONG.value,
-            data={"timestamp": datetime.utcnow().isoformat()}
+            data={"timestamp": datetime.now(dt_timezone.utc).isoformat()}
         )
 
         # Send message
@@ -201,7 +201,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
         consumer.channel_layer = None
         consumer._connection_closed = False
         consumer.send_json_message = AsyncMock()
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
 
         # Start background tasks
         ping_task = asyncio.create_task(consumer._ping_loop())
@@ -233,7 +233,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
         consumer.ping_interval = 0.1
         consumer._connection_closed = False
         consumer.send_json_message = AsyncMock()
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
 
         # Start ping loop
         ping_task = asyncio.create_task(consumer._ping_loop())
@@ -258,7 +258,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
         consumer.channel_layer = None
         consumer.pong_timeout = 0.1
         consumer._connection_closed = False
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
 
         # Start health check loop
         health_task = asyncio.create_task(consumer._health_check_loop())
@@ -277,26 +277,15 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
 
     async def test_configuration_from_settings(self):
         """Test that configuration is loaded from Django settings."""
-        # Create consumer with patched settings
-        with patch('hub.apps.websocket.consumers.event_consumer.getattr') as mock_getattr:
-            def getattr_side_effect(obj, name, default=None):
-                if name == 'WEBSOCKET_PING_INTERVAL':
-                    return 60
-                elif name == 'WEBSOCKET_PONG_TIMEOUT':
-                    return 20
-                elif name == 'WEBSOCKET_CONNECTION_TIMEOUT':
-                    return 600
-                return default
+        from django.test import override_settings
 
-            mock_getattr.side_effect = getattr_side_effect
-
+        with override_settings(
+            WEBSOCKET_PING_INTERVAL=60,
+            WEBSOCKET_PONG_TIMEOUT=20,
+            WEBSOCKET_CONNECTION_TIMEOUT=600,
+        ):
             consumer = EventConsumer()
             consumer.scope = {"user": self.user, "tenant": self.tenant}
-
-            # Manually set values to test (since getattr is called during __init__)
-            consumer.ping_interval = 60
-            consumer.pong_timeout = 20
-            consumer.connection_timeout = 600
 
             self.assertEqual(consumer.ping_interval, 60)
             self.assertEqual(consumer.pong_timeout, 20)
@@ -321,7 +310,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
         consumer.ping_interval = 0.1
         consumer._connection_closed = False
         consumer.send_json_message = AsyncMock(side_effect=Exception("Send error"))
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
 
         # Start ping loop
         ping_task = asyncio.create_task(consumer._ping_loop())
@@ -343,7 +332,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
         consumer.channel_layer = None
         consumer.pong_timeout = 0.1
         consumer.pending_ping = True
-        consumer.last_pong_received = datetime.utcnow() - timedelta(seconds=0.2)
+        consumer.last_pong_received = datetime.now(dt_timezone.utc) - timedelta(seconds=0.2)
         consumer._connection_closed = False
         consumer.close = AsyncMock(side_effect=Exception("Close error"))
 

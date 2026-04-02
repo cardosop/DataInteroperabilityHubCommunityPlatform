@@ -54,6 +54,9 @@ class SemanticVersion:
     def __ge__(self, other) -> bool:
         return self == other or self > other
 
+    def __hash__(self) -> int:
+        return hash((self.major, self.minor, self.patch))
+
 
 # Current HubContract version (development version)
 CURRENT_HUBCONTRACT_VERSION = SemanticVersion(1, 0, 0)

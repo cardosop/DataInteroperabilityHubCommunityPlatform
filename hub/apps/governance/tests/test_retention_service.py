@@ -4,6 +4,7 @@ Unit tests for Retention Policy Service (Phase 12.1.4)
 Tests for GovernanceService.create_retention_policy and update_retention_policy
 with real DB and real audit events. No mocks.
 """
+import uuid
 
 from datetime import timedelta
 
@@ -29,12 +30,13 @@ class RetentionPolicyServiceTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -384,9 +386,10 @@ class RetentionPolicyServiceTest(TestCase):
 
     def test_create_retention_policy_different_tenants(self):
         """Test creating retention policies for different tenants"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
@@ -436,10 +439,19 @@ class RetentionPolicyServiceTest(TestCase):
             )
 
     def test_create_retention_policy_validation_error_invalid_action(self):
-        """Test that creating policy with invalid action fails"""
-        # This should be validated by business rules or model
-        # Test depends on what actions are valid
-        pass  # Placeholder - depends on RetentionAction choices
+        """Test that creating a retention policy with invalid action raises error."""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        with self.assertRaises((ValidationError, DjangoValidationError, Exception)):
+            self.service.create_retention_policy(
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                name="Invalid Action Policy",
+                policy_type=RetentionPolicyType.TIME_BASED.value,
+                asset_id=str(self.asset.id),
+                retention_period_days=30,
+                action="INVALID_ACTION_XYZ",
+            )
 
     def test_update_retention_policy_validation_error_negative_days(self):
         """Test that updating policy with negative retention_period_days fails"""
@@ -495,12 +507,11 @@ class RetentionPolicyServiceTest(TestCase):
             retention_period_days=30,
         )
 
+        # Force a past timestamp to avoid sleep
+        past_time = timezone.now() - timedelta(seconds=10)
+        RetentionPolicy.objects.filter(pk=policy.pk).update(updated_at=past_time)
+        policy.refresh_from_db()
         original_updated_at = policy.updated_at
-
-        # Wait a bit to ensure timestamp difference
-        import time
-
-        time.sleep(0.1)
 
         updated_policy = self.service.update_retention_policy(
             policy_id=str(policy.id),

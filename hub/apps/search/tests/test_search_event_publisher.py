@@ -12,35 +12,61 @@ from hub.apps.core.events.models import Event
 from hub.apps.core.events.service_publishers import SearchEventPublisher
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 
 @override_settings(
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Disable async persistence for tests
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,  # Disable write-behind for tests
+    EVENT_BUS_FORCE_SYNC_PERSISTENCE=True,  # Force synchronous persistence so Event.objects.get() sees rows
 )
 class SearchEventPublisherTest(TestCase):
     """Unit tests for SearchEventPublisher using real EventPublisher."""
 
     def setUp(self):
-        """Set up test fixtures."""
+        """Set up test fixtures.
+
+        Reset the global event bus singleton so that the overridden
+        EVENT_BUS_FORCE_SYNC_PERSISTENCE setting takes effect for this
+        test class.  Flush Redis deduplication keys so that events with
+        identical payloads from previous runs are not silently skipped.
+        """
+        import hub.apps.core.events.bus as bus_module
+        bus_module._event_bus = None
+
+        # Flush Redis dedup keys so events are persisted fresh each run
+        try:
+            from hub.apps.core.events.deduplication import get_redis_client, DEDUPLICATION_KEY_PREFIX
+            redis_client = get_redis_client()
+            if redis_client:
+                for key in redis_client.scan_iter(f"{DEDUPLICATION_KEY_PREFIX}:*"):
+                    redis_client.delete(key)
+        except Exception:
+            pass
+
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
 
         # Create a test service with SearchEventPublisher
-        class TestSearchService(SearchEventPublisher):
+        class _SearchServiceStub(SearchEventPublisher):
             def __init__(self, tenant_id=None, user_id=None):
                 self.tenant_id = tenant_id
                 self.user_id = user_id
                 super().__init__(tenant_id=tenant_id, user_id=user_id)
 
-        self.service = TestSearchService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.service = _SearchServiceStub(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+
+    def tearDown(self):
+        """Reset global event bus singleton after tests."""
+        import hub.apps.core.events.bus as bus_module
+        bus_module._event_bus = None
 
     def test_publish_search_query_event(self):
         """Test publishing search.query event with real EventPublisher."""
@@ -318,14 +344,14 @@ class SearchEventPublisherTest(TestCase):
 
     def test_service_initialization_without_tenant_and_user(self):
         """Test SearchEventPublisher initialization without tenant_id and user_id."""
-        service = TestSearchService()
+        service = _SearchServiceStub()
         self.assertIsNotNone(service._event_publisher)
         self.assertIsNone(service._event_publisher.default_tenant_id)
         self.assertIsNone(service._event_publisher.default_user_id)
 
     def test_service_initialization_with_tenant_and_user(self):
         """Test SearchEventPublisher initialization with tenant_id and user_id."""
-        service = TestSearchService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        service = _SearchServiceStub(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.assertIsNotNone(service._event_publisher)
         self.assertEqual(service._event_publisher.default_tenant_id, str(self.tenant.id))
         self.assertEqual(service._event_publisher.default_user_id, str(self.user.id))
@@ -348,7 +374,7 @@ class SearchEventPublisherTest(TestCase):
 
 
 # Helper class for testing
-class TestSearchService(SearchEventPublisher):
+class _SearchServiceStub(SearchEventPublisher):
     """Test service class for SearchEventPublisher."""
 
     def __init__(self, tenant_id=None, user_id=None):

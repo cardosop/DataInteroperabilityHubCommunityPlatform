@@ -3,6 +3,7 @@ Unit tests for Data Mesh Topology Endpoints.
 
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
+import uuid
 import pytest
 import json
 from django.test import TestCase
@@ -36,9 +37,10 @@ class TopologyViewSetTestCase(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
 
@@ -51,7 +53,7 @@ class TopologyViewSetTestCase(TestCase):
 
         # Create users
         self.admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Admin User",
@@ -60,7 +62,7 @@ class TopologyViewSetTestCase(TestCase):
         UserRole.objects.create(user=self.admin_user, role=self.admin_role)
 
         self.regular_user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Regular User",
@@ -215,17 +217,17 @@ class TopologyListEndpointTest(TopologyViewSetTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         nodes = response.data['nodes']
-        if len(nodes) > 0:
-            # Health metrics may or may not be present when include_health_metrics=false
-            # The service layer handles this
-            pass
+        self.assertGreater(len(nodes), 0)
+        first_node = nodes[0]
+        self.assertIsNone(first_node.get('health_metrics'))
 
     def test_get_topology_tenant_isolation(self):
         """Test that users can only see topology for their tenant"""
         # Create another tenant and domain
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         other_domain = DataMeshDomain.objects.create(
@@ -297,9 +299,10 @@ class TopologyRetrieveEndpointTest(TopologyViewSetTestCase):
     def test_get_domain_topology_tenant_isolation(self):
         """Test that users can only retrieve topology for domains in their tenant"""
         # Create another tenant and domain
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         other_domain = DataMeshDomain.objects.create(
@@ -340,6 +343,9 @@ class TopologyHealthEndpointTest(TopologyViewSetTestCase):
         self.assertEqual(response.data['active_domains'], 2)
         self.assertIsInstance(response.data['domain_health'], list)
         self.assertEqual(len(response.data['domain_health']), 2)
+        for domain_health_entry in response.data['domain_health']:
+            self.assertIn('domain_id', domain_health_entry)
+            self.assertIn('health_score', domain_health_entry)
 
     def test_get_mesh_health_requires_authentication(self):
         """Test that health endpoint requires authentication"""
@@ -394,9 +400,10 @@ class TopologyRelationshipsEndpointTest(TopologyViewSetTestCase):
     def test_get_relationships_tenant_isolation(self):
         """Test that relationships only include domains from user's tenant"""
         # Create another tenant and domain
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         other_domain = DataMeshDomain.objects.create(

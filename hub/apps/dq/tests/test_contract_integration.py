@@ -16,6 +16,7 @@ from hub.apps.dq.service_client import DQServiceClient
 # Import DQ profile types - handle import path with hyphen
 import sys
 import os
+import uuid
 dq_service_path = os.path.join(os.path.dirname(__file__), '../../../services/dq-service')
 if dq_service_path not in sys.path:
     sys.path.insert(0, dq_service_path)
@@ -59,9 +60,10 @@ class ContractQualityRulesExtractionTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="VERIFIED"
         )
@@ -242,9 +244,10 @@ class DQServiceContractIntegrationTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="VERIFIED"
         )

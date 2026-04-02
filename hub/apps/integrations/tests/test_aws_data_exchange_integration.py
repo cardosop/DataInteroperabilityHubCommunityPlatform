@@ -19,6 +19,7 @@ and get zero skips when optional env is unset: use -m "integration and not requi
 and not requires_aws_session_token and not requires_aws_test_dataset".
 """
 
+import unittest
 import os
 
 import pytest
@@ -42,15 +43,19 @@ FAKE_DATASET_ID_VALID_FORMAT = "0" * 32
 
 
 def get_aws_credentials() -> dict:
-    """Get AWS credentials from environment variables."""
-    access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
-    secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    """Get AWS credentials from environment variables.
+
+    Prefers AWS_DATA_EXCHANGE_* vars (dedicated for Data Exchange tests)
+    over generic AWS_ACCESS_KEY_ID (which may point to MinIO).
+    """
+    access_key_id = os.getenv("AWS_DATA_EXCHANGE_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID")
+    secret_access_key = os.getenv("AWS_DATA_EXCHANGE_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")
     session_token = os.getenv("AWS_SESSION_TOKEN")
     role_arn = os.getenv("AWS_ROLE_ARN")
     region = os.getenv("AWS_REGION", "us-east-1")
 
     if not access_key_id or not secret_access_key:
-        pytest.skip(
+        raise unittest.SkipTest(
             "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables are required for integration tests"
         )
 
@@ -101,7 +106,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
 
             # Verify connection
             if not verify_aws_connection(cls.connector):
-                pytest.skip(
+                raise unittest.SkipTest(
                     "Cannot connect to AWS Data Exchange - check credentials and permissions"
                 )
 
@@ -117,7 +122,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
                     pass
 
         except Exception as e:
-            pytest.skip(f"Cannot set up AWS Data Exchange connector: {e}")
+            raise unittest.SkipTest(f"Cannot set up AWS Data Exchange connector: {e}")
 
     @classmethod
     def tearDownClass(cls):

@@ -27,6 +27,7 @@ from hub.apps.contracts.models import (
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import Role, User, UserRole, UserStatus
+from rest_framework.test import APIClient
 
 
 class APIPaginationConsistencyTest(ContractsAPITestBase):
@@ -129,12 +130,18 @@ class APIPaginationConsistencyTest(ContractsAPITestBase):
             response.status_code, status.HTTP_200_OK, "Contracts list should support pagination"
         )
 
-        # Verify pagination response structure
+        # Verify pagination response structure and value types
         self.assertIn("count", response.data, "Response should include count")
+        self.assertIsInstance(response.data["count"], int, "count should be int")
+        self.assertGreaterEqual(response.data["count"], 0, "count should be >= 0")
         self.assertIn("results", response.data, "Response should include results")
+        self.assertIsInstance(response.data["results"], list, "results should be a list")
         self.assertIn("page", response.data, "Response should include page")
+        self.assertIsInstance(response.data["page"], int, "page should be int")
         self.assertIn("page_size", response.data, "Response should include page_size")
+        self.assertIsInstance(response.data["page_size"], int, "page_size should be int")
         self.assertIn("total_pages", response.data, "Response should include total_pages")
+        self.assertIsInstance(response.data["total_pages"], int, "total_pages should be int")
 
     def test_pagination_parameters_are_consistent(self):
         """Test pagination parameters are consistent across endpoints"""
@@ -661,11 +668,14 @@ class APIPaginationConsistencyTest(ContractsAPITestBase):
     def test_pagination_cross_tenant_isolation(self):
         """Test pagination maintains tenant isolation"""
         # Create another tenant
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
         other_tenant = Tenant.objects.create(
             name="Other Pagination Tenant",
             slug="other-pagination-test",
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(other_tenant)
 
         other_user = User.objects.create_user(
             email="other@pagination.test",

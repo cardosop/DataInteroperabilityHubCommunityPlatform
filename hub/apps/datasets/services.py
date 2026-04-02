@@ -17,6 +17,7 @@ from django.conf import settings
 from django.db import transaction
 
 from hub.apps.audit.utils import create_audit_event
+from hub.apps.core.transaction_safe import run_side_effect
 from hub.apps.core.events.service_publishers import DatasetEventPublisher
 from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
 from hub.apps.datasets.business_rules import DatasetsBusinessRules
@@ -35,20 +36,14 @@ logger = structlog.get_logger(__name__)
 
 def _generate_mock_file_content(file_obj: File, file_format: str) -> bytes:
     """
-    Generate mock file content for schema inference when file is not in S3 (mock mode).
-
-    This is used in test environments where files may be marked as ACTIVE in the database
-    but not actually uploaded to S3 storage.
+    REMOVED (D93): Mock S3 fallback silently corrupted schema inference.
+    Raises ValueError instead of returning fake data.
     """
-    if file_format == "CSV":
-        return b"id,name,value\n1,test1,value1\n2,test2,value2\n"
-    elif file_format == "JSON":
-        return b'[{"id": 1, "name": "test1", "value": "value1"}, {"id": 2, "name": "test2", "value": "value2"}]'
-    elif file_format == "PARQUET":
-        # For Parquet, return minimal valid Parquet data (simplified)
-        return b"PAR1" + b"\x00" * 100  # Minimal Parquet header
-    else:
-        return b"id,name,value\n1,test1,value1\n2,test2,value2\n"
+    raise ValueError(
+        f"File {file_obj.id} not found in S3 storage. "
+        f"Cannot infer schema from missing file. "
+        f"Upload the file before creating a dataset."
+    )
 
 
 class DatasetService(BaseService, DatasetEventPublisher):
@@ -256,15 +251,15 @@ class DatasetService(BaseService, DatasetEventPublisher):
                 details=create_result.details,
             )
 
-        # Check plan limit (Phase 25.1.2)
+        # Check plan limit (Phase 25.1.2, hardened Phase 113.B)
         from hub.apps.tenants.services import PlanLimitService
 
-        current_dataset_count = Dataset.objects.filter(tenant_id=tenant_id).count()
-        plan_limit_service = PlanLimitService(tenant_id=tenant_id, user_id=user_id)
+        plan_limit_service = PlanLimitService(
+            tenant_id=tenant_id, user_id=user_id,
+        )
         plan_limit_service.check_limit(
             tenant_id=tenant_id,
             limit_key="max_datasets",
-            current_usage=current_dataset_count,
             delta=1,
         )
 
@@ -427,6 +422,16 @@ class DatasetService(BaseService, DatasetEventPublisher):
                 if hasattr(dataset, key):
                     setattr(dataset, key, value)
             dataset.save()
+
+            # Phase 70.2: Audit event for dataset update
+            run_side_effect(
+                create_audit_event,
+                resource_type="DATASET",
+                action="DATASET_UPDATED",
+                resource_id=str(dataset.id),
+                details={"changed_fields": list(kwargs.keys())},
+            )
+
             return dataset
 
         return self.execute_with_metrics(
@@ -490,6 +495,14 @@ class DatasetService(BaseService, DatasetEventPublisher):
 
                 dataset.is_current = False
                 dataset.save(update_fields=["is_current"])
+
+            # Phase 70.2: Audit event for dataset deletion
+            run_side_effect(
+                create_audit_event,
+                resource_type="DATASET",
+                action="DATASET_DELETED",
+                resource_id=str(dataset_id),
+            )
 
             dataset.delete()
 
@@ -582,7 +595,18 @@ class DatasetService(BaseService, DatasetEventPublisher):
                 snapshot_metadata=snapshot_metadata,
                 is_current=True,
             )
-            return Dataset.objects.get(id=new_dataset.id, tenant_id=tenant_id)
+            refreshed = Dataset.objects.get(id=new_dataset.id, tenant_id=tenant_id)
+
+            # Phase 70.2: Audit event for dataset version creation
+            run_side_effect(
+                create_audit_event,
+                resource_type="DATASET",
+                action="DATASET_VERSION_CREATED",
+                resource_id=str(refreshed.id),
+                details={"parent_dataset_id": str(parent.id), "version": new_version},
+            )
+
+            return refreshed
 
         return self.execute_with_metrics(
             operation="create_version_from_dataset",

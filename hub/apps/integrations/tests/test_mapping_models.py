@@ -3,10 +3,13 @@ Unit tests for MarketplaceMapping model.
 
 Comprehensive tests for model creation, unique constraints, sync metadata updates, and validation.
 """
+import uuid
 
 from datetime import timedelta
 
 import pytest
+
+from tests.utils.wait_helpers import wait_for_event_persistence
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.test import TestCase
@@ -38,7 +41,8 @@ class MarketplaceMappingModelTest(TestCase):
         except (ImportError, AttributeError):
             pass
 
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
@@ -237,9 +241,7 @@ class MarketplaceMappingModelTest(TestCase):
 
         initial_last_synced = mapping.last_synced_at
 
-        import time
-
-        time.sleep(0.01)
+        wait_for_event_persistence()
 
         mapping.update_sync_metadata(
             metadata={"new_key": "new_value", "existing": "updated"}, last_synced_at=timezone.now()
@@ -398,9 +400,7 @@ class MarketplaceMappingModelTest(TestCase):
             external_listing_id="ext-listing-1",
         )
 
-        import time
-
-        time.sleep(0.01)
+        wait_for_event_persistence()
 
         asset2 = Asset.objects.create(tenant=self.tenant, key="test-asset-2", name="Test Asset 2")
 
@@ -803,9 +803,8 @@ class MarketplaceMappingModelTest(TestCase):
         )
 
         original_updated_at = mapping.updated_at
-        import time
 
-        time.sleep(0.01)
+        wait_for_event_persistence()
 
         mapping.update_sync_metadata(metadata={"updated": True})
         mapping.refresh_from_db()

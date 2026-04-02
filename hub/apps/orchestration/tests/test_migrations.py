@@ -8,7 +8,7 @@ Tests migration scripts to ensure:
 - Data integrity is maintained
 """
 import uuid
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from django.db import connection, transaction
 from django.core.management import call_command
 from django.core.management.color import no_style

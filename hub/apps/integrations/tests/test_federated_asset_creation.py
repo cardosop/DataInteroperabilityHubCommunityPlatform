@@ -12,6 +12,7 @@ Tests cover:
 - Integration with sync workflow
 """
 
+import uuid
 import json
 import os
 import tempfile
@@ -50,6 +51,7 @@ from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.semantic.models import SemanticResource
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -74,9 +76,10 @@ class TestFederatedAssetCreation(TestCase):
         except (ImportError, AttributeError):
             pass
 
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id), request_id="test-request-123"

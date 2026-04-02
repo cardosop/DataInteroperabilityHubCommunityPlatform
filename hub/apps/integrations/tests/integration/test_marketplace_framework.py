@@ -11,14 +11,11 @@ Tests the complete marketplace integration framework with real implementations:
 All tests use real services - no mocks or stubs.
 """
 
-import time
 import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import connection, connections
-from django.db.utils import InterfaceError as DjangoInterfaceError, OperationalError
-from django.test import TransactionTestCase, override_settings
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from django_rq import get_queue
 from rest_framework import status
@@ -53,6 +50,7 @@ from hub.apps.integrations.views import (
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import Role, User, UserStatus
+from tests.utils.wait_helpers import wait_for_event_persistence
 
 User = get_user_model()
 
@@ -73,29 +71,8 @@ pytestmark = [
     EVENT_BUS_ASYNC_PERSISTENCE=False,
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,
 )
-class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
+class MarketplaceFrameworkIntegrationTest(TestCase):
     """Comprehensive framework integration tests"""
-
-    @staticmethod
-    def _ensure_db_connection():
-        """Ensure default DB connection is open. Force fresh connection so ORM uses an open connection after prior tests (e.g. connectors) may have closed it."""
-        try:
-            connection.close()
-        except Exception:
-            pass
-        try:
-            connection.ensure_connection()
-        except Exception:
-            try:
-                connections.close_all()
-                connection.ensure_connection()
-            except Exception:
-                pass
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Skip database flush to avoid 'connection already closed' at teardown; tests use unique data per run."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -112,75 +89,45 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
         except (ImportError, AttributeError):
             pass
 
-        self._ensure_db_connection()
-
         unique_suffix = str(uuid.uuid4())[:8]
 
-        def create_fixtures():
-            try:
-                connection.close()
-            except Exception:
-                pass
-            connection.ensure_connection()
-            tenant = Tenant.objects.create(
-                name=f"Framework Test Tenant {unique_suffix}",
-                slug=f"framework-test-tenant-{unique_suffix}",
-                kyc_status=KYCStatus.VERIFIED,
-            )
-            # Active subscription required so TenantSuspensionMiddleware allows API writes
-            from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        self.tenant = Tenant.objects.create(
+            name=f"Framework Test Tenant {unique_suffix}",
+            slug=f"framework-test-tenant-{unique_suffix}",
+            kyc_status=KYCStatus.VERIFIED,
+        )
+        # Active subscription required so TenantSuspensionMiddleware allows API writes
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
-            ensure_tenant_has_active_subscription(tenant)
-            user = User.objects.create_user(
-                email=f"framework-test-{unique_suffix}@example.com",
-                password="testpass123",
-                tenant=tenant,
-                status=UserStatus.ACTIVE,
-            )
-            data_provider_role, _ = Role.objects.get_or_create(
-                tenant=tenant,
-                name="DATA_PROVIDER",
-                defaults={"description": "Data Provider Role"},
-            )
-            tenant_admin_role, _ = Role.objects.get_or_create(
-                tenant=tenant,
-                name="TENANT_ADMIN",
-                defaults={"description": "Tenant Administrator"},
-            )
-            user.user_roles.create(role=data_provider_role)
-            user.user_roles.create(role=tenant_admin_role)
-            # APIKey requires unique key_hash: generate key and store hash (no plaintext in DB)
-            plaintext_key = APIKey.generate_key()
-            key_hash = APIKey.hash_key(plaintext_key)
-            api_key = APIKey.objects.create(
-                tenant=tenant,
-                user=user,
-                key_hash=key_hash,
-                name=f"Framework Test API Key {unique_suffix}",
-                scopes=["integrations:write", "integrations:read"],
-            )
-            return tenant, user, api_key, plaintext_key
-
-        last_error = None
-        for attempt in range(3):
-            try:
-                self.tenant, self.user, self.api_key, self.plaintext_api_key = (
-                    create_fixtures()
-                )
-                break
-            except (DjangoInterfaceError, OperationalError) as e:
-                last_error = e
-                err_lower = str(e).lower()
-                if "connection" not in err_lower or "closed" not in err_lower:
-                    raise
-                if attempt < 2:
-                    try:
-                        connection.close()
-                    except Exception:
-                        connections.close_all()
-                    connection.ensure_connection()
-                    continue
-                raise
+        ensure_tenant_has_active_subscription(self.tenant)
+        self.user = User.objects.create_user(
+            email=f"framework-test-{unique_suffix}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
+        tenant_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        self.user.user_roles.create(role=data_provider_role)
+        self.user.user_roles.create(role=tenant_admin_role)
+        # APIKey requires unique key_hash: generate key and store hash (no plaintext in DB)
+        self.plaintext_api_key = APIKey.generate_key()
+        key_hash = APIKey.hash_key(self.plaintext_api_key)
+        self.api_key = APIKey.objects.create(
+            tenant=self.tenant,
+            user=self.user,
+            key_hash=key_hash,
+            name=f"Framework Test API Key {unique_suffix}",
+            scopes=["integrations:write", "integrations:read"],
+        )
 
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
@@ -320,8 +267,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
         self.test_connectors[MarketplaceType.AWS_DATA_EXCHANGE] = TestAWSConnector
 
     def tearDown(self):
-        """Re-establish DB connection for Django's teardown flush, then clean up and call super().tearDown()."""
-        self._ensure_db_connection()
+        """Clean up non-DB state (connectors, signals) and call super().tearDown()."""
         for mt in self.test_connectors.keys():
             try:
                 MarketplaceConnectorFactory.unregister_connector(mt)
@@ -560,7 +506,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
 
         self.assertFalse(MarketplaceMapping.objects.filter(id=mapping.id).exists())
 
-        time.sleep(0.1)
+        wait_for_event_persistence()
         audit_event = (
             AuditEvent.objects.filter(
                 resource_type="MARKETPLACE_MAPPING",
@@ -653,7 +599,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
         )
 
         # Wait for event persistence
-        time.sleep(0.2)
+        wait_for_event_persistence()
 
         # Verify integration.connection.created event
         events = Event.objects.filter(event_type="integration.connection.created").order_by(
@@ -702,7 +648,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
         )
 
         # Wait for event persistence
-        time.sleep(0.2)
+        wait_for_event_persistence()
 
         # Verify sync job events
         events = Event.objects.filter(
@@ -768,7 +714,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
         )
 
         # Wait for audit log creation
-        time.sleep(0.1)
+        wait_for_event_persistence()
 
         # Verify audit log
         audit_events = AuditEvent.objects.filter(
@@ -810,7 +756,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # 4. Events: Verify events published
-        time.sleep(0.2)
+        wait_for_event_persistence()
         events = Event.objects.filter(event_type="integration.connection.created")
         self.assertGreaterEqual(events.count(), 1)
 

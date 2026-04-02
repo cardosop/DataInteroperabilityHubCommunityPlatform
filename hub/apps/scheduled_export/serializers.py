@@ -13,6 +13,7 @@ from .models import (
     ScheduledExportRunStatus,
     ScheduledExportStatus,
 )
+from hub.apps.virtualization.source_config_utils import mask_source_config
 
 
 class ScheduledExportSerializer(serializers.ModelSerializer):
@@ -35,6 +36,8 @@ class ScheduledExportSerializer(serializers.ModelSerializer):
             "next_run_at",
             "last_run_at",
             "last_run_status",
+            "prefect_deployment_id",
+            "deployment_sync_status",
             "created_at",
             "updated_at",
         ]
@@ -44,9 +47,19 @@ class ScheduledExportSerializer(serializers.ModelSerializer):
             "next_run_at",
             "last_run_at",
             "last_run_status",
+            "prefect_deployment_id",
+            "deployment_sync_status",
             "created_at",
             "updated_at",
         ]
+
+    def to_representation(self, instance):
+        """Decrypt and mask sensitive fields in destination_config."""
+        ret = super().to_representation(instance)
+        ret["destination_config"] = mask_source_config(
+            instance.get_destination_config()
+        )
+        return ret
 
     def validate_schedule_config(self, value):
         """Validate schedule configuration"""

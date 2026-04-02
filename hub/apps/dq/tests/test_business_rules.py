@@ -529,8 +529,9 @@ class CheckResourceValidationTest(DQTestBase):
 
     def test_validate_check_resource_tenant_mismatch(self):
         """Test resource validation with tenant mismatch"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         # Create file for other dataset
         other_file = File.objects.create(
@@ -790,7 +791,7 @@ class DQRunExecutionValidationTest(DQTestBase):
         from hub.apps.users.models import UserStatus
 
         inactive_user = User.objects.create_user(
-            email="inactive@example.com",
+            email=f"inactive-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.DISABLED,
@@ -815,11 +816,12 @@ class DQRunExecutionValidationTest(DQTestBase):
         """Test run eligibility validation with user from different tenant"""
         from hub.apps.users.models import UserStatus
 
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE,

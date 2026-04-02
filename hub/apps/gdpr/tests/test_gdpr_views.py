@@ -19,7 +19,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -238,7 +238,7 @@ class DataExportJobViewSetTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_export_data_with_existing_pending_job(self):
-        """Test that export_data with existing pending job returns error"""
+        """Test that export_data with existing pending job returns 400 error"""
         # Create pending job
         DataExportJob.objects.create(
             user=self.user, tenant=self.tenant, status=DataExportStatus.PENDING
@@ -248,12 +248,11 @@ class DataExportJobViewSetTest(TestCase):
 
         response = self.client.post("/api/v1/users/me/export-jobs/export-data/")
 
-        # Should return error (400 or 409)
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT])
-        # Verify error response format (from handle_service_exception)
+        # handle_service_exception maps ValidationError → 400
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = self._response_data(response)
         self.assertIn("detail", data)
-        self.assertIn("code", data)
+        self.assertEqual(data["code"], "EXPORT_IN_PROGRESS")
 
     def test_export_data_error_response_format(self):
         """Test that export_data returns standardized error format"""
@@ -266,15 +265,12 @@ class DataExportJobViewSetTest(TestCase):
 
         response = self.client.post("/api/v1/users/me/export-jobs/export-data/")
 
-        # Verify standardized error format (use _response_data for JsonResponse/middleware 403)
+        # Must be an error — if this is 2xx, the duplicate-prevention logic is broken
+        self.assertGreaterEqual(response.status_code, 400)
         data = self._response_data(response)
-        if response.status_code >= 400:
-            self.assertIn("detail", data)
-            self.assertIn("code", data)
-            # Error code should be meaningful
-            self.assertIn(
-                data["code"], ["VALIDATION_ERROR", "CONFLICT_ERROR", "EXPORT_IN_PROGRESS"]
-            )
+        self.assertIn("detail", data)
+        self.assertIn("code", data)
+        self.assertEqual(data["code"], "EXPORT_IN_PROGRESS")
 
     def test_export_data_allows_multiple_completed_jobs(self):
         """Test that export_data allows multiple completed jobs"""
@@ -294,8 +290,11 @@ class DataExportJobViewSetTest(TestCase):
 
     def test_list_export_jobs_pagination(self):
         """Test that list endpoint supports pagination"""
-        # Create multiple jobs
-        for i in range(25):
+        from django.conf import settings
+        page_size = settings.REST_FRAMEWORK.get("PAGE_SIZE", 50)
+        total = page_size + 5  # Exceed page size to trigger pagination
+
+        for i in range(total):
             DataExportJob.objects.create(
                 user=self.user, tenant=self.tenant, status=DataExportStatus.COMPLETED
             )
@@ -305,9 +304,10 @@ class DataExportJobViewSetTest(TestCase):
         response = self.client.get("/api/v1/users/me/export-jobs/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Should return paginated results
-        self.assertIn("results", response.data)
-        self.assertIn("count", response.data)
+        self.assertEqual(response.data["count"], total)
+        # First page should have exactly page_size items
+        self.assertEqual(len(response.data["results"]), page_size)
+        self.assertIsNotNone(response.data.get("next"))
 
 
 def _response_data(response):
@@ -510,7 +510,7 @@ class ErasureRequestViewSetTest(TestCase):
         self.assertEqual(final_count, initial_count + 1)
 
     def test_request_erasure_executes_erasure(self):
-        """Test that request_erasure executes erasure"""
+        """Test that request_erasure executes erasure and anonymizes user"""
         original_email = self.user.email
 
         self.client.force_authenticate(user=self.user)
@@ -519,16 +519,16 @@ class ErasureRequestViewSetTest(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-        # Refresh user from DB
-        self.user.refresh_from_db()
-
-        # User should be anonymized (if erasure executed successfully)
-        # Note: Erasure execution might fail in test environment, so check status
+        # Verify erasure was executed (not just requested)
         request_id = response.data["request_id"]
         request = ErasureRequest.objects.get(id=request_id)
-        if request.status == ErasureRequestStatus.COMPLETED:
-            self.assertNotEqual(self.user.email, original_email)
-            self.assertIn("deleted-", self.user.email)
+        self.assertEqual(request.status, ErasureRequestStatus.COMPLETED,
+                         "Erasure should complete — if this fails, check execute_erasure service")
+
+        # Verify user was actually anonymized
+        self.user.refresh_from_db()
+        self.assertNotEqual(self.user.email, original_email)
+        self.assertIn("deleted-", self.user.email)
 
     def test_request_erasure_requires_authentication(self):
         """Test that request_erasure requires authentication"""
@@ -537,7 +537,7 @@ class ErasureRequestViewSetTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_request_erasure_with_existing_pending_request(self):
-        """Test that request_erasure with existing pending request returns error"""
+        """Test that request_erasure with existing pending request returns 400 error"""
         # Create pending request
         ErasureRequest.objects.create(
             user=self.user, tenant=self.tenant, status=ErasureRequestStatus.PENDING
@@ -547,12 +547,10 @@ class ErasureRequestViewSetTest(TestCase):
 
         response = self.client.post("/api/v1/users/me/erasure-requests/request-erasure/")
 
-        # Should return error (400 or 409)
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT])
-        # Verify error response format (from handle_service_exception)
+        # handle_service_exception maps ValidationError → 400
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = _response_data(response)
-        self.assertIn("detail", data)
-        self.assertIn("code", data)
+        self.assertEqual(data["code"], "ERASURE_IN_PROGRESS")
 
     def test_request_erasure_error_response_format(self):
         """Test that request_erasure returns standardized error format"""
@@ -565,18 +563,15 @@ class ErasureRequestViewSetTest(TestCase):
 
         response = self.client.post("/api/v1/users/me/erasure-requests/request-erasure/")
 
-        # Verify standardized error format (use _response_data for JsonResponse/middleware 403)
+        # Must be an error — if this is 2xx, the duplicate-prevention logic is broken
+        self.assertGreaterEqual(response.status_code, 400)
         data = _response_data(response)
-        if response.status_code >= 400:
-            self.assertIn("detail", data)
-            self.assertIn("code", data)
-            # Error code should be meaningful
-            self.assertIn(
-                data["code"], ["VALIDATION_ERROR", "CONFLICT_ERROR", "ERASURE_IN_PROGRESS"]
-            )
+        self.assertIn("detail", data)
+        self.assertIn("code", data)
+        self.assertEqual(data["code"], "ERASURE_IN_PROGRESS")
 
     def test_request_erasure_allows_multiple_completed_requests(self):
-        """Test that request_erasure allows multiple completed requests"""
+        """Test that request_erasure allows new request after prior one completed"""
         # Create completed request
         ErasureRequest.objects.create(
             user=self.user, tenant=self.tenant, status=ErasureRequestStatus.COMPLETED
@@ -586,15 +581,18 @@ class ErasureRequestViewSetTest(TestCase):
 
         response = self.client.post("/api/v1/users/me/erasure-requests/request-erasure/")
 
-        # Should succeed (though user might already be anonymized)
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        # Service only blocks PENDING/PROCESSING — completed requests don't block new ones
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     # ========== EDGE CASES TESTS ==========
 
     def test_list_erasure_requests_pagination(self):
         """Test that list endpoint supports pagination"""
-        # Create multiple requests
-        for i in range(25):
+        from django.conf import settings
+        page_size = settings.REST_FRAMEWORK.get("PAGE_SIZE", 50)
+        total = page_size + 5  # Exceed page size to trigger pagination
+
+        for i in range(total):
             ErasureRequest.objects.create(
                 user=self.user, tenant=self.tenant, status=ErasureRequestStatus.COMPLETED
             )
@@ -604,23 +602,23 @@ class ErasureRequestViewSetTest(TestCase):
         response = self.client.get("/api/v1/users/me/erasure-requests/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Should return paginated results
-        self.assertIn("results", response.data)
-        self.assertIn("count", response.data)
+        self.assertEqual(response.data["count"], total)
+        # First page should have exactly page_size items
+        self.assertEqual(len(response.data["results"]), page_size)
+        self.assertIsNotNone(response.data.get("next"))
 
-    def test_request_erasure_handles_execution_failure_gracefully(self):
-        """Test that request_erasure handles execution failure gracefully"""
-        # This test verifies that if erasure execution fails,
-        # the request is still created and can be retried
+    def test_request_erasure_creates_request_and_returns_id(self):
+        """Test that request_erasure creates the request and returns its ID"""
         self.client.force_authenticate(user=self.user)
 
         response = self.client.post("/api/v1/users/me/erasure-requests/request-erasure/")
 
-        # Should succeed even if execution fails
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("request_id", response.data)
+        self.assertIn("status", response.data)
+        self.assertIn("requested_at", response.data)
 
-        # Request should exist
+        # Verify the request was persisted
         request_id = response.data["request_id"]
         request = ErasureRequest.objects.get(id=request_id)
-        self.assertIsNotNone(request)
+        self.assertEqual(str(request.user_id), str(self.user.id))

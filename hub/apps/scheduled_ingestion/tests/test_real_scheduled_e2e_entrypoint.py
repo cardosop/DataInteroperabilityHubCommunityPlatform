@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 pytestmark = [
     pytest.mark.real_scheduled_e2e,
     pytest.mark.django_db,

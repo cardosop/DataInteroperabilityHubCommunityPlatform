@@ -19,11 +19,26 @@ from hub.apps.virtualization.models import (
     QueryType,
 )
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.tenants.models import Tenant, KYCStatus, TenantPlan, PlanTier
+from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.users.models import User, UserStatus
 from hub.apps.assets.models import Asset, AssetSourceType, DataStrategy
+from django.conf import settings
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+def _get_test_db_source():
+    """Get source config pointing to the actual test database."""
+    db = settings.DATABASES["default"]
+    return {
+        "type": "postgresql",
+        "host": db.get("HOST", "localhost"),
+        "port": int(db.get("PORT", 5432)),
+        "database": db.get("NAME"),
+        "username": db.get("USER"),
+        "password": db.get("PASSWORD"),
+    }
 
 
 class ServiceWorkflowIntegrationTest(TestCase):
@@ -31,31 +46,73 @@ class ServiceWorkflowIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+
+        # Create DATA_PROVIDER role and assign to user
+        from hub.apps.users.models import Role, UserRole
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"}
+        )
+        UserRole.objects.get_or_create(
+            user=self.user, role=provider_role
+        )
+
+        # Set up subscription/plan
+        from django.utils import timezone
+        plan, _ = TenantPlan.objects.get_or_create(
+            slug="virtualization-test-plan",
+            defaults={
+                "name": "Virtualization Test Plan",
+                "tier": PlanTier.PRO,
+                "limits_json": {
+                    "max_assets": 100,
+                    "max_storage_gb": 1000,
+                    "max_virtual_datasets": 100,
+                },
+                "is_active": True,
+            },
+        )
+        if "max_storage_gb" not in (plan.limits_json or {}):
+            plan.limits_json = {
+                **(plan.limits_json or {}),
+                "max_storage_gb": 1000,
+                "max_virtual_datasets": 100,
+            }
+            plan.save(update_fields=["limits_json"])
+        if self.tenant.plan_id != plan.id:
+            self.tenant.plan = plan
+            self.tenant.save(update_fields=["plan"])
+        Subscription.objects.get_or_create(
+            tenant=self.tenant,
+            defaults={
+                "plan": plan,
+                "status": SubscriptionStatus.ACTIVE,
+                "current_period_start": timezone.now(),
+                "current_period_end": timezone.now(),
+            },
+        )
+
         self.virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
             name="Test Virtual Dataset",
-            query="SELECT id, name FROM users WHERE age > 18",
+            query="SELECT 1 AS id, 'test' AS name",
             query_type=QueryType.SQL,
-            sources=[
-                {
-                    "type": "postgresql",
-                    "host": "localhost",
-                    "database": "testdb"
-                }
-            ],
-            status=VirtualDatasetStatus.ACTIVE
+            sources=[_get_test_db_source()],
+            status=VirtualDatasetStatus.ACTIVE,
         )
         self.service = VirtualizationService(
             tenant_id=str(self.tenant.id),
@@ -64,7 +121,6 @@ class ServiceWorkflowIntegrationTest(TestCase):
 
     def test_execute_query_creates_workflow_instance(self):
         """Test that execute_query creates a workflow instance"""
-        # Execute query (may fail at query execution if database not available)
         try:
             execution = self.service.execute_query(
                 virtual_dataset_id=str(self.virtual_dataset.id),
@@ -74,14 +130,12 @@ class ServiceWorkflowIntegrationTest(TestCase):
                 execution_mode=QueryExecutionMode.ASYNC
             )
 
-            # Verify execution has workflow instance
             self.assertIsNotNone(execution.workflow_instance)
             self.assertEqual(
                 execution.workflow_instance.workflow_name,
                 "virtualization_query_execution"
             )
 
-            # Verify workflow instance exists
             workflow_instance = WorkflowInstance.objects.get(
                 id=execution.workflow_instance.id
             )
@@ -89,7 +143,8 @@ class ServiceWorkflowIntegrationTest(TestCase):
             self.assertEqual(workflow_instance.created_by_id, self.user.id)
 
         except Exception as e:
-            # If execution fails (e.g., database not available), verify workflow instance was still created
+            if "connection" in str(e).lower() or "refused" in str(e).lower():
+                self.skipTest(f"Database source not reachable: {e}")
             workflow_instances = WorkflowInstance.objects.filter(
                 workflow_name="virtualization_query_execution",
                 tenant_id=self.tenant.id
@@ -102,10 +157,11 @@ class ServiceWorkflowIntegrationTest(TestCase):
                     execution = QueryExecution.objects.get(id=execution_id)
                     self.assertIsNotNone(execution.workflow_instance)
                     self.assertEqual(execution.workflow_instance.id, workflow_instance.id)
+            else:
+                self.skipTest(f"Database source not reachable: {e}")
 
     def test_get_workflow_instance(self):
         """Test get_workflow_instance method"""
-        # Execute query (may fail at query execution if database not available)
         try:
             execution = self.service.execute_query(
                 virtual_dataset_id=str(self.virtual_dataset.id),
@@ -115,41 +171,47 @@ class ServiceWorkflowIntegrationTest(TestCase):
                 execution_mode=QueryExecutionMode.ASYNC
             )
 
-            # Get workflow instance
             workflow_instance = self.service.get_workflow_instance(
                 execution_id=str(execution.id),
                 tenant_id=str(self.tenant.id)
             )
 
             self.assertIsNotNone(workflow_instance)
-            self.assertEqual(workflow_instance.id, execution.workflow_instance.id)
+            self.assertEqual(
+                workflow_instance.id, execution.workflow_instance.id
+            )
 
         except Exception as e:
-            # If execution fails, try to get workflow instance from failed execution
+            if "connection" in str(e).lower() or "refused" in str(e).lower():
+                self.skipTest(f"Database source not reachable: {e}")
             workflow_instances = WorkflowInstance.objects.filter(
                 workflow_name="virtualization_query_execution",
                 tenant_id=self.tenant.id
             ).order_by('-created_at')
 
-            if workflow_instances.exists():
-                workflow_instance = workflow_instances.first()
-                execution_id = workflow_instance.state_data.get("execution_id")
-                if execution_id:
-                    execution = QueryExecution.objects.get(id=execution_id)
-                    execution.workflow_instance = workflow_instance
-                    execution.save()
+            if not workflow_instances.exists():
+                self.skipTest(f"Database source not reachable: {e}")
 
-                    # Get workflow instance
-                    retrieved_instance = self.service.get_workflow_instance(
-                        execution_id=str(execution.id),
-                        tenant_id=str(self.tenant.id)
-                    )
-                    self.assertIsNotNone(retrieved_instance)
-                    self.assertEqual(retrieved_instance.id, workflow_instance.id)
+            workflow_instance = workflow_instances.first()
+            execution_id = workflow_instance.state_data.get("execution_id")
+            if not execution_id:
+                self.skipTest(f"Database source not reachable: {e}")
+
+            execution = QueryExecution.objects.get(id=execution_id)
+            execution.workflow_instance = workflow_instance
+            execution.save()
+
+            retrieved_instance = self.service.get_workflow_instance(
+                execution_id=str(execution.id),
+                tenant_id=str(self.tenant.id)
+            )
+            self.assertIsNotNone(retrieved_instance)
+            self.assertEqual(
+                retrieved_instance.id, workflow_instance.id
+            )
 
     def test_get_workflow_state(self):
         """Test get_workflow_state method"""
-        # Execute query (may fail at query execution if database not available)
         try:
             execution = self.service.execute_query(
                 virtual_dataset_id=str(self.virtual_dataset.id),
@@ -159,7 +221,6 @@ class ServiceWorkflowIntegrationTest(TestCase):
                 execution_mode=QueryExecutionMode.ASYNC
             )
 
-            # Get workflow state
             state = self.service.get_workflow_state(
                 execution_id=str(execution.id),
                 tenant_id=str(self.tenant.id)
@@ -169,35 +230,41 @@ class ServiceWorkflowIntegrationTest(TestCase):
             self.assertIn("workflow_name", state)
             self.assertIn("status", state)
             self.assertIn("state_data", state)
-            self.assertEqual(state["workflow_name"], "virtualization_query_execution")
+            self.assertEqual(
+                state["workflow_name"],
+                "virtualization_query_execution"
+            )
 
         except Exception as e:
-            # If execution fails, try to get workflow state from failed execution
+            if "connection" in str(e).lower() or "refused" in str(e).lower():
+                self.skipTest(f"Database source not reachable: {e}")
             workflow_instances = WorkflowInstance.objects.filter(
                 workflow_name="virtualization_query_execution",
                 tenant_id=self.tenant.id
             ).order_by('-created_at')
 
-            if workflow_instances.exists():
-                workflow_instance = workflow_instances.first()
-                execution_id = workflow_instance.state_data.get("execution_id")
-                if execution_id:
-                    execution = QueryExecution.objects.get(id=execution_id)
-                    execution.workflow_instance = workflow_instance
-                    execution.save()
+            if not workflow_instances.exists():
+                self.skipTest(f"Database source not reachable: {e}")
 
-                    # Get workflow state
-                    state = self.service.get_workflow_state(
-                        execution_id=str(execution.id),
-                        tenant_id=str(self.tenant.id)
-                    )
-                    self.assertIn("workflow_instance_id", state)
-                    self.assertIn("workflow_name", state)
-                    self.assertIn("status", state)
+            workflow_instance = workflow_instances.first()
+            execution_id = workflow_instance.state_data.get("execution_id")
+            if not execution_id:
+                self.skipTest(f"Database source not reachable: {e}")
+
+            execution = QueryExecution.objects.get(id=execution_id)
+            execution.workflow_instance = workflow_instance
+            execution.save()
+
+            state = self.service.get_workflow_state(
+                execution_id=str(execution.id),
+                tenant_id=str(self.tenant.id)
+            )
+            self.assertIn("workflow_instance_id", state)
+            self.assertIn("workflow_name", state)
+            self.assertIn("status", state)
 
     def test_get_workflow_progress(self):
         """Test get_workflow_progress method"""
-        # Execute query (may fail at query execution if database not available)
         try:
             execution = self.service.execute_query(
                 virtual_dataset_id=str(self.virtual_dataset.id),
@@ -207,7 +274,6 @@ class ServiceWorkflowIntegrationTest(TestCase):
                 execution_mode=QueryExecutionMode.ASYNC
             )
 
-            # Get workflow progress
             progress = self.service.get_workflow_progress(
                 execution_id=str(execution.id),
                 tenant_id=str(self.tenant.id)
@@ -221,27 +287,31 @@ class ServiceWorkflowIntegrationTest(TestCase):
             self.assertLessEqual(progress["progress_percentage"], 100)
 
         except Exception as e:
-            # If execution fails, try to get workflow progress from failed execution
+            if "connection" in str(e).lower() or "refused" in str(e).lower():
+                self.skipTest(f"Database source not reachable: {e}")
             workflow_instances = WorkflowInstance.objects.filter(
                 workflow_name="virtualization_query_execution",
                 tenant_id=self.tenant.id
             ).order_by('-created_at')
 
-            if workflow_instances.exists():
-                workflow_instance = workflow_instances.first()
-                execution_id = workflow_instance.state_data.get("execution_id")
-                if execution_id:
-                    execution = QueryExecution.objects.get(id=execution_id)
-                    execution.workflow_instance = workflow_instance
-                    execution.save()
+            if not workflow_instances.exists():
+                self.skipTest(f"Database source not reachable: {e}")
 
-                    # Get workflow progress
-                    progress = self.service.get_workflow_progress(
-                        execution_id=str(execution.id),
-                        tenant_id=str(self.tenant.id)
-                    )
-                    self.assertIn("progress_percentage", progress)
-                    self.assertIn("status", progress)
+            workflow_instance = workflow_instances.first()
+            execution_id = workflow_instance.state_data.get("execution_id")
+            if not execution_id:
+                self.skipTest(f"Database source not reachable: {e}")
+
+            execution = QueryExecution.objects.get(id=execution_id)
+            execution.workflow_instance = workflow_instance
+            execution.save()
+
+            progress = self.service.get_workflow_progress(
+                execution_id=str(execution.id),
+                tenant_id=str(self.tenant.id)
+            )
+            self.assertIn("progress_percentage", progress)
+            self.assertIn("status", progress)
 
     def test_execute_query_with_cached_result(self):
         """Test that execute_query returns cached result without workflow"""
@@ -268,11 +338,11 @@ class ServiceWorkflowIntegrationTest(TestCase):
         self.assertEqual(execution.status, QueryExecutionStatus.COMPLETED)
         self.assertIsNone(execution.workflow_instance)
         self.assertEqual(execution.result_cache_key, cache_key)
+        self.assertIsNotNone(execution.metrics, "Cached execution should have metrics")
         self.assertTrue(execution.metrics.get("cached", False))
 
     def test_execute_query_links_workflow_on_failure(self):
         """Test that execute_query links workflow instance even on failure"""
-        # Execute query with invalid dataset (will fail)
         try:
             execution = self.service.execute_query(
                 virtual_dataset_id=str(self.virtual_dataset.id),
@@ -281,26 +351,37 @@ class ServiceWorkflowIntegrationTest(TestCase):
                 parameters={},
                 execution_mode=QueryExecutionMode.ASYNC
             )
-        except Exception:
-            # Query execution failed - verify workflow instance was still created and linked
+        except Exception as e:
+            if "connection" in str(e).lower() or "refused" in str(e).lower():
+                self.skipTest(f"Database source not reachable: {e}")
             workflow_instances = WorkflowInstance.objects.filter(
                 workflow_name="virtualization_query_execution",
                 tenant_id=self.tenant.id
             ).order_by('-created_at')
 
-            if workflow_instances.exists():
-                workflow_instance = workflow_instances.first()
-                execution_id = workflow_instance.state_data.get("execution_id")
-                if execution_id:
-                    execution = QueryExecution.objects.get(id=execution_id)
-                    # Verify workflow instance is linked
-                    if execution.workflow_instance:
-                        self.assertEqual(execution.workflow_instance.id, workflow_instance.id)
-                    else:
-                        # Link it manually to verify the relationship works
-                        execution.workflow_instance = workflow_instance
-                        execution.save()
-                        self.assertEqual(execution.workflow_instance.id, workflow_instance.id)
+            if not workflow_instances.exists():
+                self.skipTest(f"Database source not reachable: {e}")
+
+            workflow_instance = workflow_instances.first()
+            execution_id = workflow_instance.state_data.get(
+                "execution_id"
+            )
+            if not execution_id:
+                self.skipTest(f"Database source not reachable: {e}")
+
+            execution = QueryExecution.objects.get(id=execution_id)
+            if execution.workflow_instance:
+                self.assertEqual(
+                    execution.workflow_instance.id,
+                    workflow_instance.id
+                )
+            else:
+                execution.workflow_instance = workflow_instance
+                execution.save()
+                self.assertEqual(
+                    execution.workflow_instance.id,
+                    workflow_instance.id
+                )
 
     def test_execute_query_multi_source_federated_metadata(self):
         """Test execute_query with multi-source federated dataset (metadata-only sources)."""
@@ -343,7 +424,9 @@ class ServiceWorkflowIntegrationTest(TestCase):
             execution_mode=QueryExecutionMode.ASYNC
         )
         self.assertIsNotNone(execution)
+        self.assertEqual(execution.virtual_dataset_id, multi_vd.id)
         self.assertIsNotNone(execution.workflow_instance)
+        self.assertEqual(str(execution.workflow_instance.tenant_id), str(self.tenant.id))
         self.assertEqual(execution.workflow_instance.workflow_name, "virtualization_query_execution")
         instance = execution.workflow_instance
         instance.refresh_from_db()
@@ -384,7 +467,7 @@ class ServiceWorkflowIntegrationTest(TestCase):
         direct_result = self.service._execute_query_against_sources(
             query=vd.query,
             query_type=vd.query_type,
-            sources=vd.sources,
+            sources=vd.get_sources(),
             parameters={},
             timeout_seconds=300
         )
@@ -449,7 +532,7 @@ class ServiceWorkflowIntegrationTest(TestCase):
 
         # Direct path: same entrypoint the workflow uses internally
         results = self.service._execute_query_against_sources(
-            query, vd.query_type, vd.sources or [], params, timeout
+            query, vd.query_type, vd.get_sources() or [], params, timeout
         )
         aggregated = self.service._aggregate_results(results, vd.query_type)
         all_columns = set()
@@ -542,7 +625,7 @@ class ServiceWorkflowIntegrationTest(TestCase):
 
         # Direct path (same as workflow's _execute_via_service_sources)
         results = self.service._execute_query_against_sources(
-            query, vd.query_type, vd.sources or [], params, timeout
+            query, vd.query_type, vd.get_sources() or [], params, timeout
         )
         aggregated = self.service._aggregate_results(results, vd.query_type)
         all_columns = set()

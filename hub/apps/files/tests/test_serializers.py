@@ -3,6 +3,7 @@ Unit tests for file serializers.
 
 Tests validate serializer behavior without mocks/stubs.
 """
+import uuid
 
 import pytest
 from django.test import TestCase
@@ -173,8 +174,8 @@ class FileCompleteSerializerTest(FilesTestBase):
         self.assertFalse(serializer.is_valid())
         self.assertIn("content_sha256", serializer.errors)
 
-    def test_serializer_invalid_sha256_format(self):
-        """Test serializer validates SHA-256 format."""
+    def test_serializer_accepts_any_sha256_string(self):
+        """Serializer accepts SHA-256 as string; format validation is in views."""
         data = {"content_sha256": "invalid_hash"}
 
         serializer = FileCompleteSerializer(data=data)
@@ -196,6 +197,8 @@ class FileSerializerTest(FilesTestBase):
         self.assertEqual(data["content_type"], self.file.content_type)
         self.assertEqual(data["size"], self.file.size)
         self.assertEqual(data["status"], self.file.status)
+        self.assertEqual(data["scan_status"], self.file.scan_status)
+        self.assertEqual(data["scanned_at"], self.file.scanned_at)
 
     def test_serializer_read_only_fields(self):
         """Test serializer read-only fields cannot be updated."""

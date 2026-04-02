@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 
 from hub.apps.tenants.models import Tenant, KYCStatus
+import uuid
 from hub.apps.mesh.models import (
     DataMeshDomain,
     DomainStatus,
@@ -27,13 +28,14 @@ class DataMeshDomainModelTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -147,9 +149,10 @@ class DataMeshDomainModelTest(TestCase):
             )
 
         # Same name, different tenant should succeed
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         other_domain = DataMeshDomain.objects.create(
@@ -231,13 +234,14 @@ class DataMeshDomainModelTest(TestCase):
 
     def test_domain_clean_validation_owner_different_tenant(self):
         """Test domain clean() validation for owner from different tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant
         )
@@ -416,22 +420,31 @@ class DataMeshDomainModelTest(TestCase):
         )
 
         # Test queries that should use indexes
+        # Scope all queries to this test's tenant for isolation
         # Tenant index
-        tenant_domains = DataMeshDomain.objects.filter(tenant=self.tenant)
+        tenant_domains = DataMeshDomain.objects.filter(
+            tenant=self.tenant,
+        )
         self.assertEqual(tenant_domains.count(), 2)
 
         # Owner index
-        owner_domains = DataMeshDomain.objects.filter(owner=self.user)
+        owner_domains = DataMeshDomain.objects.filter(
+            tenant=self.tenant, owner=self.user,
+        )
         self.assertEqual(owner_domains.count(), 1)
         self.assertEqual(owner_domains.first(), domain1)
 
         # Status index
-        active_domains = DataMeshDomain.objects.filter(status=DomainStatus.ACTIVE)
+        active_domains = DataMeshDomain.objects.filter(
+            tenant=self.tenant, status=DomainStatus.ACTIVE,
+        )
         self.assertEqual(active_domains.count(), 1)
         self.assertEqual(active_domains.first(), domain1)
 
         # Created_at index (ordering)
-        ordered_domains = list(DataMeshDomain.objects.all())
+        ordered_domains = list(
+            DataMeshDomain.objects.filter(tenant=self.tenant)
+        )
         # Should be ordered by -created_at (newest first)
         self.assertEqual(ordered_domains[0], domain2)
         self.assertEqual(ordered_domains[1], domain1)

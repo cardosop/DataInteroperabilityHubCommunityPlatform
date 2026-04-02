@@ -3,14 +3,17 @@ Webhook Models
 
 Models for webhook subscriptions and delivery tracking.
 """
-import uuid
 import hmac
 import hashlib
 import json
-from django.db import models
+import uuid
+
 from django.conf import settings
-from django.utils import timezone
 from django.core.exceptions import ValidationError
+from django.db import models
+from django.utils import timezone
+
+from .encryption import decrypt_secret, encrypt_secret
 
 
 class WebhookStatus(models.TextChoices):
@@ -69,6 +72,57 @@ class WebhookEventType(models.TextChoices):
     VIRTUALIZATION_QUERY_EXECUTION_PROGRESS = "virtualization.query.execution.progress", "Query Execution Progress"
     VIRTUALIZATION_QUERY_EXECUTION_COMPLETED = "virtualization.query.execution.completed", "Query Execution Completed"
     VIRTUALIZATION_QUERY_EXECUTION_FAILED = "virtualization.query.execution.failed", "Query Execution Failed"
+
+    # Billing events (Phase 116A.9)
+    BILLING_REPORT_GENERATED = "billing.report.generated", "Billing Report Generated"
+    BILLING_REPORT_SENT = "billing.report.sent", "Billing Report Sent"
+
+    # ML events (Phase 114C.6)
+    ML_MODEL_REGISTERED = "ml.model.registered", "ML Model Registered"
+    ML_MODEL_DEPLOYED = "ml.model.deployed", "ML Model Deployed"
+    ML_MODEL_ARCHIVED = "ml.model.archived", "ML Model Archived"
+    ML_TRAINING_STARTED = "ml.training.started", "ML Training Started"
+    ML_TRAINING_COMPLETED = "ml.training.completed", "ML Training Completed"
+    ML_TRAINING_FAILED = "ml.training.failed", "ML Training Failed"
+    ML_INFERENCE_EXECUTED = "ml.inference.executed", "ML Inference Executed"
+
+    # Transformation events (Phase 115C.2)
+    TRANSFORMATION_COMPLETED = "transformation.completed", "Transformation Completed"
+    TRANSFORMATION_FAILED = "transformation.failed", "Transformation Failed"
+
+    @classmethod
+    def get_transformation_event_types(cls) -> list[str]:
+        """Get all transformation event type values."""
+        return [
+            str(cls.TRANSFORMATION_COMPLETED),
+            str(cls.TRANSFORMATION_FAILED),
+        ]
+
+    @classmethod
+    def is_transformation_event_type(cls, event_type: str | tuple) -> bool:
+        """Check if an event type is a transformation event."""
+        if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
+            event_type = event_type[0]
+        elif hasattr(event_type, 'value'):
+            event_type = event_type.value
+        return event_type in cls.get_transformation_event_types()
+
+    @classmethod
+    def get_billing_event_types(cls) -> list[str]:
+        """Get all billing event type values."""
+        return [
+            str(cls.BILLING_REPORT_GENERATED),
+            str(cls.BILLING_REPORT_SENT),
+        ]
+
+    @classmethod
+    def is_billing_event_type(cls, event_type: str | tuple) -> bool:
+        """Check if an event type is a billing event."""
+        if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
+            event_type = event_type[0]
+        elif hasattr(event_type, 'value'):
+            event_type = event_type.value
+        return event_type in cls.get_billing_event_types()
 
     @classmethod
     def get_odps_event_types(cls) -> list[str]:
@@ -254,34 +308,39 @@ class Webhook(models.Model):
     def __str__(self):
         return f"{self.name} ({self.url})"
 
+    @property
+    def decrypted_secret(self) -> str:
+        """Return the plaintext secret, decrypting if stored encrypted."""
+        return decrypt_secret(self.secret)
+
     def clean(self):
         """Validate webhook configuration"""
         super().clean()
 
-        # Normalize event types - convert enum tuples to string values
+        # Normalize event types - convert enum tuples to string values and deduplicate
         if self.event_types:
             normalized_event_types = []
+            seen = set()
             valid_event_types = [choice[0] for choice in WebhookEventType.choices]
-        normalized_event_types = []
-        for event_type in self.event_types:
-            # Extract string value from different input types
-            if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
-                # Tuple/list: extract first element
-                event_type_value = event_type[0]
-            elif isinstance(event_type, WebhookEventType):
-                # Enum: get the value attribute or convert to string
-                event_type_value = getattr(event_type, 'value', str(event_type))
-            else:
-                # Already a string or other type
-                event_type_value = str(event_type)
+            for event_type in self.event_types:
+                # Extract string value from different input types
+                if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
+                    event_type_value = event_type[0]
+                elif isinstance(event_type, WebhookEventType):
+                    event_type_value = getattr(event_type, 'value', str(event_type))
+                else:
+                    event_type_value = str(event_type)
 
-            # Validate
-            if event_type_value not in valid_event_types:
-                raise ValidationError(f"Invalid event type: {event_type_value}")
+                # Validate
+                if event_type_value not in valid_event_types:
+                    raise ValidationError(f"Invalid event type: {event_type_value}")
 
-            normalized_event_types.append(event_type_value)
+                # Deduplicate
+                if event_type_value not in seen:
+                    seen.add(event_type_value)
+                    normalized_event_types.append(event_type_value)
 
-        self.event_types = normalized_event_types
+            self.event_types = normalized_event_types
 
         # Validate event types
         if not self.event_types:
@@ -298,7 +357,11 @@ class Webhook(models.Model):
             )
 
     def save(self, *args, **kwargs):
-        """Override save to ensure event_types are normalized and defaults are set"""
+        """Override save to encrypt secret and normalise event_types."""
+        # Encrypt secret at rest before persisting (11.4)
+        if self.secret:
+            self.secret = encrypt_secret(self.secret)
+
         # Set defaults before normalization
         if not self.retry_intervals:
             self.retry_intervals = [1, 5, 30, 300, 1800]  # Default: 1s, 5s, 30s, 5m, 30m
@@ -306,40 +369,35 @@ class Webhook(models.Model):
         if not self.max_retries:
             self.max_retries = 5
 
-        # Normalize event types before saving
+        # Normalize event types before saving (deduplicate + validate)
         if self.event_types:
             normalized_event_types = []
+            seen = set()
             valid_event_types = [choice[0] for choice in WebhookEventType.choices]
             for event_type in self.event_types:
-                # Extract string value from different input types
                 if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
-                    # Tuple/list: extract first element
                     event_type_value = event_type[0]
                 elif isinstance(event_type, WebhookEventType):
-                    # Enum: get the value attribute or convert to string
                     event_type_value = getattr(event_type, 'value', str(event_type))
                 else:
-                    # Already a string or other type
                     event_type_value = str(event_type)
 
-                # Only add if it's a valid event type
-                if event_type_value in valid_event_types:
+                if event_type_value in valid_event_types and event_type_value not in seen:
+                    seen.add(event_type_value)
                     normalized_event_types.append(event_type_value)
 
-            # Only update if normalization changed something
-            if normalized_event_types != self.event_types:
-                self.event_types = normalized_event_types
+            self.event_types = normalized_event_types
 
         # Call full_clean to ensure validation (after setting defaults)
         self.full_clean()
         super().save(*args, **kwargs)
 
     def generate_signature(self, payload: str) -> str:
-        """Generate HMAC signature for webhook payload"""
+        """Generate HMAC-SHA256 signature using the decrypted secret."""
         return hmac.new(
-            self.secret.encode('utf-8'),
+            self.decrypted_secret.encode('utf-8'),
             payload.encode('utf-8'),
-            hashlib.sha256
+            hashlib.sha256,
         ).hexdigest()
 
     def subscribes_to_odps_events(self) -> bool:

@@ -36,13 +36,14 @@ class ComplianceRunSerializerTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -85,10 +86,15 @@ class ComplianceRunSerializerTest(TestCase):
         data = serializer.data
 
         self.assertIn("id", data)
+        self.assertEqual(str(data["id"]), str(self.compliance_run.id))
         self.assertIn("tenant", data)
+        self.assertEqual(str(data["tenant"]), str(self.tenant.id))
         self.assertIn("status", data)
+        self.assertEqual(data["status"], self.compliance_run.status)
         self.assertIn("created_at", data)
+        self.assertIsNotNone(data["created_at"])
         self.assertIn("updated_at", data)
+        self.assertIsNotNone(data["updated_at"])
 
     def test_compliance_run_serializer_read_only_fields(self):
         """Test ComplianceRunSerializer read-only fields cannot be set"""
@@ -237,11 +243,12 @@ class ComplianceRunSerializerTest(TestCase):
         self.assertTrue(data["allowed_to_store"])
 
     def test_compliance_run_serializer_with_json_fields(self):
-        """Test ComplianceRunSerializer with JSON fields"""
+        """Test ComplianceRunSerializer with JSON fields (v1 flat regulation_mapping)"""
         self.compliance_run.detected_categories_json = {"EMAIL": {"count": 5}}
         self.compliance_run.column_findings_json = [
             {"column": "email", "pii_categories": ["EMAIL"]}
         ]
+        # v1 shape — flat dict keyed by regulation; still stored in regulation_mapping_json
         self.compliance_run.regulation_mapping_json = {"GDPR": {"applies": True}}
         self.compliance_run.save()
 
@@ -252,6 +259,148 @@ class ComplianceRunSerializerTest(TestCase):
         self.assertIn("column_findings_json", data)
         self.assertIn("regulation_mapping_json", data)
         self.assertEqual(data["detected_categories_json"], {"EMAIL": {"count": 5}})
+
+    def test_serializer_v2_schema_version_from_regulation_mapping(self):
+        """schema_version is surfaced from regulation_mapping_json.schema_version."""
+        self.compliance_run.regulation_mapping_json = {
+            "GDPR": {"applies": True},
+            "schema_version": "2.0",
+        }
+        self.compliance_run.save()
+
+        serializer = ComplianceRunSerializer(self.compliance_run)
+        data = serializer.data
+
+        self.assertIn("schema_version", data)
+        self.assertEqual(data["schema_version"], "2.0")
+
+    def test_serializer_v2_regulation_summaries_from_regulation_mapping(self):
+        """regulation_summaries list is surfaced from regulation_mapping_json."""
+        summary_list = [
+            {"regulation": "GDPR", "status": "PASS", "violations": 0},
+            {"regulation": "PIPL_CN", "status": "WARN", "violations": 1},
+        ]
+        self.compliance_run.regulation_mapping_json = {
+            "schema_version": "2.0",
+            "regulation_summary": summary_list,
+        }
+        self.compliance_run.save()
+
+        serializer = ComplianceRunSerializer(self.compliance_run)
+        data = serializer.data
+
+        self.assertIn("regulation_summaries", data)
+        self.assertIsInstance(data["regulation_summaries"], list)
+        self.assertEqual(len(data["regulation_summaries"]), 2)
+        reg_names = {r["regulation"] for r in data["regulation_summaries"]}
+        self.assertIn("GDPR", reg_names)
+        self.assertIn("PIPL_CN", reg_names)
+
+    def test_serializer_v2_cross_border_alert_field(self):
+        """cross_border_alert dict is serialized from the model field."""
+        alert = {"applicable": True, "regulations": ["PIPL_CN"], "message": "Cross-border"}
+        self.compliance_run.cross_border_alert = alert
+        self.compliance_run.save()
+
+        serializer = ComplianceRunSerializer(self.compliance_run)
+        data = serializer.data
+
+        self.assertIn("cross_border_alert", data)
+        self.assertEqual(data["cross_border_alert"]["applicable"], True)
+        self.assertIn("PIPL_CN", data["cross_border_alert"]["regulations"])
+
+    def test_serializer_v2_localisation_alert_field(self):
+        """localisation_alert dict is serialized from the model field."""
+        alert = {"applicable": True, "regulations": ["PIPL_CN"], "message": "Localisation required"}
+        self.compliance_run.localisation_alert = alert
+        self.compliance_run.save()
+
+        serializer = ComplianceRunSerializer(self.compliance_run)
+        data = serializer.data
+
+        self.assertIn("localisation_alert", data)
+        self.assertEqual(data["localisation_alert"]["applicable"], True)
+
+    def test_serializer_v2_schema_version_null_when_absent(self):
+        """schema_version is None when regulation_mapping_json lacks schema_version."""
+        self.compliance_run.regulation_mapping_json = {"GDPR": {"applies": True}}
+        self.compliance_run.save()
+
+        serializer = ComplianceRunSerializer(self.compliance_run)
+        data = serializer.data
+
+        # schema_version key must still be present (SerializerMethodField), value None
+        self.assertIn("schema_version", data)
+        self.assertIsNone(data["schema_version"])
+
+    def test_serializer_v2_regulation_summaries_null_when_absent(self):
+        """regulation_summaries is None when regulation_mapping_json has no regulation_summary."""
+        self.compliance_run.regulation_mapping_json = {"GDPR": {"applies": True}}
+        self.compliance_run.save()
+
+        serializer = ComplianceRunSerializer(self.compliance_run)
+        data = serializer.data
+
+        self.assertIn("regulation_summaries", data)
+        self.assertIsNone(data["regulation_summaries"])
+
+    def test_serializer_v2_legal_basis_violations_field(self):
+        """legal_basis_violations JSONField is serialized from the model field."""
+        violations = [
+            {"regulation": "GDPR", "basis": "CONSENT", "violation": "no_consent_obtained"},
+        ]
+        self.compliance_run.legal_basis_violations = violations
+        self.compliance_run.save()
+
+        serializer = ComplianceRunSerializer(self.compliance_run)
+        data = serializer.data
+
+        self.assertIn("legal_basis_violations", data)
+        self.assertIsInstance(data["legal_basis_violations"], list)
+        self.assertEqual(len(data["legal_basis_violations"]), 1)
+        self.assertEqual(data["legal_basis_violations"][0]["regulation"], "GDPR")
+
+    def test_serializer_v2_estimated_population_ratio_from_metadata(self):
+        """estimated_population_ratio is sourced from regulation_mapping_json.metadata."""
+        self.compliance_run.regulation_mapping_json = {
+            "schema_version": "2.0",
+            "metadata": {
+                "estimated_population_ratio": 0.004567,
+                "total_rows_scanned": 1000,
+            },
+        }
+        self.compliance_run.save()
+
+        serializer = ComplianceRunSerializer(self.compliance_run)
+        data = serializer.data
+
+        self.assertIn("estimated_population_ratio", data)
+        self.assertAlmostEqual(data["estimated_population_ratio"], 0.004567, places=6)
+
+    def test_serializer_v2_estimated_population_ratio_null_when_absent(self):
+        """estimated_population_ratio is None when metadata key is missing."""
+        self.compliance_run.regulation_mapping_json = {"GDPR": {"applies": True}}
+        self.compliance_run.save()
+
+        serializer = ComplianceRunSerializer(self.compliance_run)
+        data = serializer.data
+
+        self.assertIn("estimated_population_ratio", data)
+        self.assertIsNone(data["estimated_population_ratio"])
+
+    def test_serializer_v2_fields_present_in_meta(self):
+        """All v2 field names must be in the serializer Meta.fields list."""
+        v2_fields = {
+            "cross_border_alert", "localisation_alert", "legal_basis_violations",
+            "schema_version", "regulation_summaries", "estimated_population_ratio",
+        }
+        serializer_fields = set(ComplianceRunSerializer.Meta.fields)
+        missing = v2_fields - serializer_fields
+        self.assertEqual(
+            missing, set(),
+            f"These v2 fields are missing from ComplianceRunSerializer.Meta.fields: "
+            f"{missing}",
+        )
 
     def test_compliance_run_serializer_with_timestamps(self):
         """Test ComplianceRunSerializer with timestamps"""
@@ -297,13 +446,14 @@ class ComplianceRunCreateSerializerTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -482,3 +632,62 @@ class ComplianceRunCreateSerializerTest(TestCase):
 
         # Serializer accepts multiple IDs (business rules will validate)
         self.assertTrue(serializer.is_valid())
+
+    # ========== v2 WRITE-ONLY FIELDS (19.10.2) ==========
+
+    def test_create_serializer_v2_legal_basis_accepted(self):
+        """legal_basis is accepted and present in validated_data."""
+        serializer = ComplianceRunCreateSerializer(
+            data={
+                "file_id": str(self.file.id),
+                "scan_mode": "external",
+                "legal_basis": "consent",
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data["legal_basis"], "consent")
+
+    def test_create_serializer_v2_destination_jurisdiction_accepted(self):
+        """destination_jurisdiction is accepted and present in validated_data."""
+        serializer = ComplianceRunCreateSerializer(
+            data={
+                "file_id": str(self.file.id),
+                "scan_mode": "external",
+                "destination_jurisdiction": "US",
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data["destination_jurisdiction"], "US")
+
+    def test_create_serializer_v2_cross_border_fields_write_only(self):
+        """legal_basis and destination_jurisdiction are write-only — not in serialized output."""
+        # Write-only fields exist in validated_data but not in .data (serialized output)
+        serializer = ComplianceRunCreateSerializer(
+            data={
+                "file_id": str(self.file.id),
+                "scan_mode": "external",
+                "legal_basis": "consent",
+                "destination_jurisdiction": "US",
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        # Write-only fields must NOT appear in the serialised representation
+        self.assertNotIn("legal_basis", serializer.data)
+        self.assertNotIn("destination_jurisdiction", serializer.data)
+
+    def test_create_serializer_v2_full_cross_border_payload(self):
+        """All v2 cross-border fields can be submitted together in a single request."""
+        serializer = ComplianceRunCreateSerializer(
+            data={
+                "file_id": str(self.file.id),
+                "scan_mode": "external",
+                "applicable_regulations": ["GDPR", "PIPL_CN"],
+                "legal_basis": "consent",
+                "destination_jurisdiction": "US",
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        vd = serializer.validated_data
+        self.assertEqual(vd["applicable_regulations"], ["GDPR", "PIPL_CN"])
+        self.assertEqual(vd["legal_basis"], "consent")
+        self.assertEqual(vd["destination_jurisdiction"], "US")

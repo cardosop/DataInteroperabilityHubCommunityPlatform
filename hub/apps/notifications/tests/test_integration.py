@@ -1,6 +1,7 @@
 """
 Integration tests for email sending.
 """
+import uuid
 from unittest.mock import patch, Mock
 from django.test import TestCase
 from django.contrib.auth import get_user_model

@@ -30,9 +30,16 @@ class MiddlewareRegressionTest(TestCase):
         """Set up test fixtures."""
         self.factory = RequestFactory()
         self.client = Client()
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        import uuid as _uuid
+        suffix = _uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Middleware Tenant {suffix}",
+            slug=f"middleware-{suffix}",
+        )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"middleware-{suffix}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
     def test_request_id_middleware_regression(self):

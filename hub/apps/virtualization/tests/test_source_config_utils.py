@@ -11,7 +11,7 @@ from hub.apps.virtualization.source_config_utils import (
     mask_sources_for_api,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class MaskSourceConfigTest(TestCase):

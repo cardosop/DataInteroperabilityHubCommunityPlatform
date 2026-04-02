@@ -10,6 +10,7 @@ so that rate limiting middleware can access it.
 REST Framework authentication will run later and can override/validate.
 """
 from django.contrib.auth.models import AnonymousUser
+from django.db import OperationalError, DatabaseError
 from django.http import HttpResponse
 from django.contrib.auth import get_user_model
 import structlog
@@ -88,6 +89,12 @@ class TenantScopingMiddleware:
             request.tenant = api_key_obj.tenant
             request.api_key_scopes = api_key_obj.scopes
             request.api_key_obj = api_key_obj
+            # Set worker_authenticated flag if the API key has an internal scope,
+            # so WorkerInternalAPIPermission passes even when DRF auth classes
+            # are skipped (because middleware already set request.user).
+            internal_scopes = {"scheduled_ingestion:internal", "scheduled_export:internal"}
+            if internal_scopes & set(api_key_obj.scopes or []):
+                request.worker_authenticated = True
             if api_key_obj.user_id and api_key_obj.user:
                 user = api_key_obj.user
                 if user.is_active():
@@ -96,11 +103,11 @@ class TenantScopingMiddleware:
         except APIKey.DoesNotExist:
             # Invalid API key - will be caught by REST Framework authentication
             return None
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError) as e:
             # Log but don't fail - let REST Framework authentication handle errors
             logger.debug("failed_to_extract_tenant_from_api_key", error=str(e))
             return None
-    
+
     def _extract_tenant_id_from_jwt(self, request):
         """
         Extract tenant_id from JWT token in Authorization header.
@@ -122,12 +129,12 @@ class TenantScopingMiddleware:
         
         try:
             from hub.apps.auth.jwt_utils import JWTTokenGenerator
-            # Decode token without full validation (just get payload)
-            # Full validation happens in REST Framework authentication
-            payload = JWTTokenGenerator.decode_access_token(token)
+            # Lightweight decode without version check (for tenant extraction only).
+            # Full validation happens in REST Framework authentication.
+            payload = JWTTokenGenerator.decode_access_token(token, verify_version=False)
             if payload and 'tenant_id' in payload:
                 return payload.get('tenant_id')
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError) as e:
             # Log but don't fail - let REST Framework authentication handle errors
             logger.debug("failed_to_extract_tenant_from_jwt", error=str(e))
             return None
@@ -157,7 +164,7 @@ class TenantScopingMiddleware:
                 return HttpResponse(status=403)
             user = getattr(request, "user", None) or getattr(request, "_force_auth_user", None)
             is_anon = user is None or isinstance(user, AnonymousUser)
-            # When user not in request (e.g. JWT before DRF auth), try to get from JWT
+            # When user not in request (e.g. JWT/ApiKey before DRF auth), try to resolve
             if is_anon:
                 auth_header = request.META.get("HTTP_AUTHORIZATION", "")
                 if auth_header.startswith("Bearer "):
@@ -166,24 +173,33 @@ class TenantScopingMiddleware:
                         try:
                             from hub.apps.auth.jwt_utils import JWTTokenGenerator
 
-                            payload = JWTTokenGenerator.decode_access_token(token)
+                            payload = JWTTokenGenerator.decode_access_token(token, verify_version=False)
                             if payload:
                                 user = JWTTokenGenerator.get_user_from_token(payload)
                                 if user and user.is_active():
                                     request.user = user
                                     is_anon = False
-                        except Exception:
+                        except (ValueError, TypeError, KeyError, AttributeError):
                             pass
+                elif auth_header.startswith("ApiKey "):
+                    # Lightweight API key lookup to resolve user before DRF auth
+                    tenant_id_from_key = self._extract_tenant_id_from_api_key(request)
+                    if tenant_id_from_key:
+                        user = getattr(request, "user", None)
+                        if user and not isinstance(user, AnonymousUser):
+                            is_anon = False
             is_authenticated = (
                 not is_anon
                 and (getattr(user, "is_authenticated", False) or (hasattr(user, "id") and user.id is not None))
             )
             if not is_authenticated:
                 return HttpResponse(status=403)
-            from hub.apps.users.services import UserTenantMembershipService
-
-            if not UserTenantMembershipService().validate_membership(user, x_tenant_id):
-                return HttpResponse(status=403)
+            # Allow if user's own tenant matches, or if explicit membership exists
+            user_tenant_id = str(getattr(user, "tenant_id", None) or "")
+            if user_tenant_id != str(x_tenant_id):
+                from hub.apps.users.services import UserTenantMembershipService
+                if not UserTenantMembershipService().validate_membership(user, x_tenant_id):
+                    return HttpResponse(status=403)
             from hub.apps.tenants.models import Tenant
 
             try:
@@ -204,8 +220,12 @@ class TenantScopingMiddleware:
                 # Fetch tenant object fresh from database (important for thread safety)
                 if not hasattr(request, 'tenant') or not request.tenant:
                     request.tenant = Tenant.objects.get(id=request.tenant_id)
-            except Exception:
-                request.tenant = None
+            except Tenant.DoesNotExist:
+                from django.http import JsonResponse
+                return JsonResponse({"error": "TENANT_NOT_FOUND"}, status=403)
+            except (OperationalError, DatabaseError):
+                from django.http import JsonResponse
+                return JsonResponse({"error": "SERVICE_UNAVAILABLE"}, status=503)
             return None
         
         # Try to extract tenant_id from Authorization header (for rate limiting)
@@ -225,8 +245,12 @@ class TenantScopingMiddleware:
             try:
                 from hub.apps.tenants.models import Tenant
                 request.tenant = Tenant.objects.get(id=tenant_id)
-            except Exception:
-                request.tenant = None
+            except Tenant.DoesNotExist:
+                from django.http import JsonResponse
+                return JsonResponse({"error": "TENANT_NOT_FOUND"}, status=403)
+            except (OperationalError, DatabaseError):
+                from django.http import JsonResponse
+                return JsonResponse({"error": "SERVICE_UNAVAILABLE"}, status=503)
             return None
         
         # Fallback: get tenant from request.user (set by Django's AuthenticationMiddleware)
@@ -282,8 +306,8 @@ class TenantScopingMiddleware:
                 except User.DoesNotExist:
                     # User doesn't exist in DB - try fallback
                     pass
-                except Exception:
-                    # Any other error (e.g., transaction isolation in tests) - try fallback
+                except (OperationalError, DatabaseError):
+                    # DB connectivity issue — try fallback from user object
                     pass
                 
                 # Fallback: if DB query didn't set tenant_id, try user object directly

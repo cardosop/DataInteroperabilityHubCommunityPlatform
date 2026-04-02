@@ -10,6 +10,7 @@ Comprehensive integration tests for POST /api/v1/contracts/{id}/generate-odps/ e
 
 Tests use real implementations (no mocks/stubs) and follow TDD principles.
 """
+import uuid
 
 import json
 
@@ -355,15 +356,17 @@ class ODPSGenerationEndpointIntegrationTest(ContractsAPITestBase):
     def test_generate_odps_tenant_isolation(self):
         """Test that users can only generate ODPS for contracts in their tenant"""
         # Create another tenant and user
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
-            slug=f"other-tenant-{id(self)}",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(other_tenant)
+        _uid = uuid.uuid4().hex[:8]
         other_user = UserFactory.create_user(
-            email="other@example.com",
+            email=f"other-{_uid}@example.com",
             tenant=other_tenant,
             status=UserStatus.ACTIVE.value,
         )

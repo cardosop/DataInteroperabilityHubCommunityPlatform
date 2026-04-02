@@ -3,6 +3,7 @@ Integration tests for Version Impact Analysis
 
 Tests for impact analysis in the context of complete workflows.
 """
+import uuid
 
 import pytest
 from rest_framework.test import APIClient
@@ -103,13 +104,11 @@ class VersionImpactIntegrationTest(DatasetsAPITestBase):
 
         analyzer = VersionImpactAnalyzer()
 
-        # Should handle non-existent dataset gracefully
+        # Non-existent dataset must either return None or raise
         try:
             result = analyzer.analyze_impact(fake_dataset_id)
-            # If succeeds, should return result or handle gracefully
-            self.assertIsNone(result) or self.assertIsNotNone(result)
+            self.assertIsNone(result)
         except Exception:
-            # If fails, that's acceptable for non-existent dataset
             pass
 
     # ========== EDGE CASES ==========

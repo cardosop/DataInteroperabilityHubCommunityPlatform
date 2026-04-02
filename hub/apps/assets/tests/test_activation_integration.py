@@ -26,6 +26,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -36,18 +37,24 @@ class AssetActivationIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        # Recover from any aborted transaction left by a previous test
+        from django.db import connection
+        if connection.needs_rollback:
+            connection.rollback()
+
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         # Active subscription required so TenantSuspensionMiddleware allows writes.
         ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user with DATA_PROVIDER role (required for asset create/update)
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -508,22 +515,25 @@ class AssetActivationIntegrationTest(TestCase):
             f"/api/v1/assets/{asset_id}/activate/", {"version": 1}, format="json"  # Old version
         )
 
-        # Should fail with version mismatch
-        self.assertIn(
-            activate_response.status_code, [status.HTTP_409_CONFLICT, status.HTTP_400_BAD_REQUEST]
-        )
+        # Version mismatch should return 409 Conflict
+        self.assertEqual(activate_response.status_code, status.HTTP_409_CONFLICT)
 
     def test_activation_integration_edge_case_partial_requirements(self):
-        """Test activation with partial requirements met (edge case)"""
+        """Test activation with WARNING_ONLY contract validation and no dataset succeeds.
+
+        Business rules allow WARNING_ONLY validation_status and NORMALIZED_OK
+        normalization_status. Since there is no dataset, DQ/compliance checks
+        are skipped. This is a contract-only asset, so activation should succeed.
+        """
         # Create asset
         create_response = self.client.post(
-            "/api/v1/assets/", {"key": "partial-asset", "name": "Partial Asset"}, format="json"
+            "/api/v1/assets/", {"key": f"partial-asset-{uuid.uuid4().hex[:8]}", "name": "Partial Asset"}, format="json"
         )
         asset_id = create_response.data["id"]
         asset = Asset.objects.get(id=asset_id)
 
-        # Create contract with WARNING validation (partial requirement)
-        contract = Contract.objects.create(
+        # Create contract with WARNING_ONLY validation (allowed by business rules)
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -536,20 +546,17 @@ class AssetActivationIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-        # Try to activate
+        # Contract-only asset with WARNING_ONLY validation should activate successfully
         activate_response = self.client.post(
             f"/api/v1/assets/{asset_id}/activate/", {"version": asset.version}, format="json"
         )
 
-        # May succeed or fail depending on business rules
-        self.assertIn(
-            activate_response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
-        )
+        self.assertEqual(activate_response.status_code, status.HTTP_200_OK)
 
     # ========== ERROR HANDLING ==========
 
-    def test_activation_integration_error_handling_database_error(self):
-        """Test error handling when database operations fail"""
+    def test_activation_integration_contract_only_asset_succeeds(self):
+        """Test that a contract-only asset (no dataset) with valid contract activates successfully"""
         # Create asset
         create_response = self.client.post(
             "/api/v1/assets/", {"key": "error-asset", "name": "Error Asset"}, format="json"
@@ -557,8 +564,8 @@ class AssetActivationIntegrationTest(TestCase):
         asset_id = create_response.data["id"]
         asset = Asset.objects.get(id=asset_id)
 
-        # Create contract
-        contract = Contract.objects.create(
+        # Create valid contract
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -571,24 +578,11 @@ class AssetActivationIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-        # Should handle errors gracefully
-        try:
-            activate_response = self.client.post(
-                f"/api/v1/assets/{asset_id}/activate/", {"version": asset.version}, format="json"
-            )
-            # Should return response (may be success or error)
-            self.assertIsNotNone(activate_response)
-            self.assertIn(
-                activate_response.status_code,
-                [
-                    status.HTTP_200_OK,
-                    status.HTTP_400_BAD_REQUEST,
-                    status.HTTP_500_INTERNAL_SERVER_ERROR,
-                ],
-            )
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("Asset activation should handle database errors gracefully")
+        # Contract-only asset with VALID contract should activate successfully
+        activate_response = self.client.post(
+            f"/api/v1/assets/{asset_id}/activate/", {"version": asset.version}, format="json"
+        )
+        self.assertEqual(activate_response.status_code, status.HTTP_200_OK)
 
     def test_activation_integration_error_handling_missing_contract(self):
         """Test error handling when contract is missing"""

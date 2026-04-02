@@ -1,6 +1,7 @@
 """
 Integration tests for ODPS notification emails.
 """
+import uuid
 
 from unittest.mock import Mock, patch
 
@@ -47,13 +48,12 @@ class ODPSNotificationIntegrationTest(TestCase):
         except (ImportError, AttributeError):
             pass
 
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, display_name="Test User"
+            email=f"test-{uid}@example.com", tenant=self.tenant, display_name="Test User"
         )
-        import uuid
-
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             name="Test Asset",

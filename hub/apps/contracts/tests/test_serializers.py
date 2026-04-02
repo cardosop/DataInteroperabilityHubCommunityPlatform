@@ -44,7 +44,9 @@ class ContractSerializerTest(ContractsTestBase):
         self.assertEqual(data["status"], ContractStatus.DRAFT)
         self.assertEqual(data["original_spec_type"], OriginalSpecType.ODCS)
         self.assertIn("original_raw", data)
+        self.assertEqual(data["original_raw"], self.contract.original_raw)
         self.assertIn("hub_contract_json", data)
+        self.assertIsInstance(data["hub_contract_json"], dict)
 
     def test_contract_create_serializer(self):
         """Test ContractCreateSerializer validation"""

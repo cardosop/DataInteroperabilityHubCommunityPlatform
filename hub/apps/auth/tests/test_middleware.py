@@ -33,9 +33,10 @@ class TenantScopingMiddlewareTest(TestCase):
         # MIDDLEWARE TESTING: Mocking get_response is acceptable for middleware testing
         self.get_response = Mock(return_value=HttpResponse())
         self.middleware = TenantScopingMiddleware(self.get_response)
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_middleware_is_callable_returns_response(self):
@@ -60,24 +61,27 @@ class TenantScopingMiddlewareTest(TestCase):
         self.get_response.assert_called_once()
 
     def test_extracts_tenant_from_api_key(self):
-        """Test that middleware extracts tenant_id from API key"""
+        """Test that middleware extracts tenant_id from API key."""
         from hub.apps.auth.models import APIKey
 
-        # Create API key
-        api_key_obj = APIKey.objects.create(
-            tenant=self.tenant, name="Test API Key", key_hash=APIKey.hash_key("test-key-123")
+        # Create API key with known plaintext
+        APIKey.objects.create(
+            tenant=self.tenant,
+            name="Test API Key",
+            key_hash=APIKey.hash_key("test-key-123"),
+            user=self.user,
         )
 
-        request = self.factory.get("/api/v1/assets/", HTTP_AUTHORIZATION="ApiKey test-key-123")
+        request = self.factory.get(
+            "/api/v1/assets/",
+            HTTP_AUTHORIZATION="ApiKey test-key-123",
+        )
 
-        # Call middleware - it should extract tenant from API key
         self.middleware.process_request(request)
 
-        # Verify tenant was extracted (if API key lookup works)
-        # Note: This test depends on the actual API key lookup implementation
-        # If API key is found, tenant_id should be set
-        if hasattr(request, "tenant_id") and request.tenant_id:
-            self.assertEqual(str(request.tenant_id), str(self.tenant.id))
+        # API key lookup must set tenant_id unconditionally
+        self.assertTrue(hasattr(request, "tenant_id"))
+        self.assertEqual(str(request.tenant_id), str(self.tenant.id))
 
     def test_extracts_tenant_from_jwt_sets_tenant_id(self):
         """Test that middleware extracts tenant_id from JWT token."""
@@ -128,16 +132,19 @@ class TenantScopingMiddlewareTest(TestCase):
         self.assertIsNotNone(request.tenant)
 
     def test_handles_missing_tenant_gracefully(self):
-        """Test that middleware handles missing tenant gracefully"""
+        """Test that middleware handles unauthenticated request without crashing."""
         request = self.factory.get("/api/v1/assets/")
-        # No user, no auth header
+        # No user, no auth header — middleware must not raise
 
-        # Should not raise exception
-        self.middleware.process_request(request)
+        result = self.middleware.process_request(request)
 
-        # tenant_id may or may not be set depending on implementation
-        # The important thing is that no exception is raised
-        self.assertTrue(True)  # Test passes if no exception
+        # Middleware should either set tenant_id to None or leave it unset,
+        # but never crash. Verify it didn't return an error response.
+        if result is not None:
+            # If middleware returned a response, it should not be a 500
+            self.assertNotEqual(result.status_code, 500)
+        # Verify the request object is still usable (not corrupted)
+        self.assertTrue(hasattr(request, 'META'))
 
     def test_preserves_existing_tenant_id(self):
         """Test that middleware preserves existing tenant_id."""

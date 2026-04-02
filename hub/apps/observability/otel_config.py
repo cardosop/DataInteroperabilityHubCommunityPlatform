@@ -79,11 +79,23 @@ def get_service_version() -> str:
         settings.OTEL_SERVICE_VERSION (populated from GIT_SHA build arg),
         then settings.APP_VERSION legacy fallback, then '1.0.0'.
     """
-    return os.getenv(
-        'OTEL_SERVICE_VERSION',
-        getattr(settings, 'OTEL_SERVICE_VERSION',
-                getattr(settings, 'APP_VERSION', '1.0.0'))
-    )
+    # "unknown" is the sentinel used by the Dockerfile (ARG GIT_SHA=unknown)
+    # and settings.py (default="unknown") when no real version is available.
+    _SENTINEL = 'unknown'
+
+    # Check env var first (set by Dockerfile ENV OTEL_SERVICE_VERSION=${GIT_SHA})
+    env_version = os.getenv('OTEL_SERVICE_VERSION')
+    if env_version and env_version != _SENTINEL:
+        return env_version
+    # Check settings (populated from the same env var at startup)
+    settings_version = getattr(settings, 'OTEL_SERVICE_VERSION', None)
+    if settings_version and settings_version != _SENTINEL:
+        return settings_version
+    # Legacy fallback
+    app_version = getattr(settings, 'APP_VERSION', None)
+    if app_version:
+        return app_version
+    return '1.0.0'
 
 
 def get_environment() -> str:
@@ -149,11 +161,11 @@ def create_resource() -> Optional["Resource"]:
     """
     Create OpenTelemetry resource with service attributes.
 
-    settings.OTEL_RESOURCE_ATTRIBUTES is the single source of truth —
-    it is populated in settings.py from OTEL_SERVICE_NAME, OTEL_SERVICE_NAMESPACE,
-    OTEL_SERVICE_VERSION, and ENVIRONMENT.  Any key present there takes
-    precedence; missing keys are filled from individual helpers for
-    backward compatibility with deployments that set env vars directly.
+    Standard OTEL keys (service.name, service.version, deployment.environment,
+    service.namespace) are always resolved dynamically via helper functions so
+    they respect environment variables, Django override_settings, and the full
+    fallback chain.  settings.OTEL_RESOURCE_ATTRIBUTES supplies any additional
+    custom keys (e.g. deployment.region added by Vault).
 
     Returns:
         Resource instance or None if OpenTelemetry not available
@@ -161,23 +173,21 @@ def create_resource() -> Optional["Resource"]:
     if not OPENTELEMETRY_AVAILABLE:
         return None
 
-    # Base: OTEL_RESOURCE_ATTRIBUTES from settings (Phase 4.7)
+    # Start with any extra keys from settings (custom labels, etc.)
     resource_attributes: Dict[str, str] = dict(
         getattr(settings, 'OTEL_RESOURCE_ATTRIBUTES', {})
     )
 
-    # Backward-compatibility fill-ins for keys that may not be in the dict
-    # (e.g. older deployments without the new settings block)
-    if "service.name" not in resource_attributes:
-        resource_attributes["service.name"] = get_service_name()
-    if "service.version" not in resource_attributes:
-        resource_attributes["service.version"] = get_service_version()
-    if "deployment.environment" not in resource_attributes:
-        resource_attributes["deployment.environment"] = get_environment()
-    if "service.namespace" not in resource_attributes:
-        resource_attributes["service.namespace"] = getattr(
-            settings, 'OTEL_SERVICE_NAMESPACE', 'hub'
-        )
+    # Always resolve standard keys dynamically — the helpers inspect
+    # env vars and current settings, so they stay correct even when
+    # settings are overridden (e.g. in tests) or the pre-built dict
+    # carries stale/sentinel values from module-load time.
+    resource_attributes["service.name"] = get_service_name()
+    resource_attributes["service.version"] = get_service_version()
+    resource_attributes["deployment.environment"] = get_environment()
+    resource_attributes["service.namespace"] = getattr(
+        settings, 'OTEL_SERVICE_NAMESPACE', 'hub'
+    )
 
     # Optional deployment-specific attributes (set via Django settings or Vault)
     if hasattr(settings, 'DEPLOYMENT_REGION'):

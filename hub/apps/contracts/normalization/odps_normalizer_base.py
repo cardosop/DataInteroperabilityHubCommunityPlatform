@@ -12,33 +12,13 @@ from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.odps_errors import ODPSNormalizationError
 from hub.apps.contracts.odps_version_detection import detect_odps_version
 
-# Import from normalization.py module (avoiding circular import with normalization package)
-# The issue: 'hub.apps.contracts.normalization' resolves to the package, not the .py file
-# Solution: Import the .py file directly using importlib and file path
-import importlib.util
-from pathlib import Path
-
-# Get the path to normalization.py (parent directory)
-_normalization_py_path = Path(__file__).parent.parent / 'normalization.py'
-
-# Load the .py file as a separate module
-_spec = importlib.util.spec_from_file_location('normalization_py_module', _normalization_py_path)
-_normalization_py_module = importlib.util.module_from_spec(_spec)
-
-# Set the module's __package__ to avoid relative import issues
-_normalization_py_module.__package__ = 'hub.apps.contracts'
-
-# Execute the module (this will run its imports)
-_spec.loader.exec_module(_normalization_py_module)
-
-# Extract the classes we need
-NormalizationResult = _normalization_py_module.NormalizationResult
-SpecNormalizer = _normalization_py_module.SpecNormalizer
+from hub.apps.contracts.normalization_engine import NormalizationResult, SpecNormalizer
+from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
 
 logger = structlog.get_logger(__name__)
 
 
-class ODPSNormalizerBase(ABC):
+class ODPSNormalizerBase(ODPSNormalizer, ABC):
     """
     Abstract base class for version-specific ODPS normalizers.
 

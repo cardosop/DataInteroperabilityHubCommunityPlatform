@@ -45,15 +45,24 @@ class StandardOrderingBackend(OrderingFilter):
         ordering_params = parse_ordering_params(request)
 
         if not ordering_params:
-            # Use default ordering
-            ordering = getattr(view, "ordering", self.ordering)
+            # Use default ordering; only accept list/tuple/str to guard against
+            # Mock objects returned by `getattr` when view is a test double.
+            raw_ordering = getattr(view, "ordering", None)
+            if isinstance(raw_ordering, (list, tuple)) and raw_ordering:
+                ordering = raw_ordering
+            elif isinstance(raw_ordering, str) and raw_ordering:
+                ordering = [raw_ordering]
+            else:
+                ordering = self.ordering
             if ordering:
                 queryset = queryset.order_by(*ordering)
             return queryset
 
-        # Get allowed ordering fields from view
-        ordering_fields = getattr(view, "ordering_fields", None)
-        if ordering_fields is None:
+        # Get allowed ordering fields from view; guard against Mock/non-list values
+        raw_ordering_fields = getattr(view, "ordering_fields", None)
+        if isinstance(raw_ordering_fields, (list, set, tuple, frozenset)):
+            ordering_fields: Optional[List[str]] = list(raw_ordering_fields)
+        else:
             ordering_fields = self.ordering_fields
 
         # Validate ordering

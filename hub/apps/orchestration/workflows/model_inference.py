@@ -306,11 +306,15 @@ class ModelInferenceWorkflow:
                 f"Model deployment validation failed: {', '.join(validation_result.errors)}"
             )
 
-        # Try to get deployment info from ODH if available
-        deployment_id = validation_result.details.get("deployment_id")
-        deployment_status = validation_result.details.get("deployment_status")
+        # Get deployment info: first from model field, then validation, then ODH
+        deployment_id = getattr(model, "deployment_id", None)
+        deployment_status = "DEPLOYED" if deployment_id else None
 
-        # If deployment_id is not in validation result, try to get it from ODH
+        if not deployment_id:
+            deployment_id = validation_result.details.get("deployment_id")
+            deployment_status = validation_result.details.get("deployment_status")
+
+        # If deployment_id is still not found, try to get it from ODH
         if not deployment_id and model.odh_model_id:
             try:
                 import sys
@@ -666,9 +670,29 @@ class ModelInferenceWorkflow:
         # Update progress
         ModelInferenceWorkflow._update_progress(instance, 95, "update_usage_tracking")
 
-        # For now, we'll just log the usage tracking update
-        # In a real implementation, this would update usage tracking service
-        # with inference metrics, billing information, etc.
+        # Record usage via BillingService
+        try:
+            from decimal import Decimal
+            from hub.apps.billing.services import BillingService
+            billing = BillingService(tenant_id=str(tenant_id))
+            billing.record_usage(
+                tenant_id=str(tenant_id),
+                metric_key="ml_inference_requests",
+                quantity=Decimal("1"),
+            )
+            response_time_ms = instance.state_data.get("response_time_ms")
+            if response_time_ms:
+                billing.record_usage(
+                    tenant_id=str(tenant_id),
+                    metric_key="ml_inference_compute_ms",
+                    quantity=Decimal(str(response_time_ms)),
+                )
+        except Exception as e:
+            logger.warning(
+                f"Usage tracking recording failed (non-fatal): {e}",
+                workflow_instance_id=str(instance.id),
+                model_id=str(model.id),
+            )
 
         logger.info(
             "Usage tracking updated",

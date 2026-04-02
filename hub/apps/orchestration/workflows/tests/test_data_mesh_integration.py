@@ -146,9 +146,10 @@ class DataMeshWorkflowIntegrationTest(TestCase):
 
         # Create a second policy that will fail application (by making it belong to a different tenant)
         # This will cause a validation error when trying to apply it
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )

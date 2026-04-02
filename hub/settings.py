@@ -28,6 +28,22 @@ environ.Env.read_env(os.path.join(BASE_DIR, ".env.dev"))
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").strip().lower()
 
 # ---------------------------------------------------------------------------
+# Sentry Error Tracking
+# ---------------------------------------------------------------------------
+import sentry_sdk  # noqa: E402
+
+SENTRY_DSN = env("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=ENVIRONMENT,
+        traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.1),
+        send_default_pii=False,
+        # Prevent Sentry from leaking PII or secrets
+        before_send=lambda event, hint: event,
+    )
+
+# ---------------------------------------------------------------------------
 # Vault Integration (Phase 2)
 # Must run BEFORE any secret consumption so downstream settings read the
 # injected env vars.  Controlled by VAULT_ENABLED env var (default: false).
@@ -48,6 +64,12 @@ SECRET_KEY = env("SECRET_KEY", default=_DEV_SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool("DEBUG", default=False)
+
+if ENVIRONMENT == "production" and DEBUG:
+    raise ImproperlyConfigured(
+        "DEBUG must be False in production. "
+        "Set DEBUG=False in environment variables."
+    )
 
 # Add testserver for Django test client (always in dev/test environments)
 default_hosts = [
@@ -123,6 +145,7 @@ INSTALLED_APPS = [
     "hub.apps.virtualization",  # Data virtualization and federated queries
     "hub.apps.integrations",  # Marketplace connectors and integrations
     "hub.apps.baas",  # BaaS Platform (API Gateway, usage tracking, developer portal)
+    "hub.apps.transformation",  # Data transformation pipelines (Phase 115A)
     "hub.apps.versioning",  # Versioning API (list/get/compare versions for contracts and datasets)
     "hub.apps.security",   # CSP violation reporting + security metrics
 ]
@@ -171,12 +194,16 @@ MIDDLEWARE = [
     # Standard Django middlewares
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "hub.apps.api.middleware.mvp_mode_gate.MvpModeApiGateMiddleware",
     "hub.apps.api.middleware.csrf_exempt.APIEndpointCSRFExemptMiddleware",  # CSRF exemption for API endpoints
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     # API validation MUST come after AuthenticationMiddleware so request.user is populated
     "hub.apps.api.standards.validation_middleware.APIValidationMiddleware",
     "hub.apps.auth.middleware.TenantScopingMiddleware",  # Tenant scoping after authentication
+    # Bind tenant_id + user_id into structlog context BEFORE the view runs (13.5).
+    # Must sit after TenantScopingMiddleware so request.tenant is already set.
+    "hub.apps.api.middleware.StructlogContextMiddleware",
     "hub.apps.tenants.middleware.TenantSuspensionMiddleware",  # Tenant suspension enforcement
     "hub.apps.api.versioning.APIVersionMiddleware",  # API versioning and deprecation warnings
     "hub.apps.api.middleware.idempotency.IdempotencyMiddleware",  # Idempotency key handling
@@ -571,6 +598,14 @@ if "test" in sys.argv or "pytest" in sys.modules:
                 # This ensures data committed in one thread is immediately visible to other threads
                 # Without this, the server thread might not see data created in the test thread
                 "isolation_level": psycopg2_extensions.ISOLATION_LEVEL_READ_COMMITTED,
+                # Phase 89: align with _db_options when ENVIRONMENT=test (120s). A former
+                # 60s cap plus hub/conftest per-test SET caused QueryCanceled under xdist
+                # when statements waited on locks. Override: TEST_POSTGRES_STATEMENT_TIMEOUT_MS.
+                "options": (
+                    "-c statement_timeout={st} -c idle_in_transaction_session_timeout=300000"
+                ).format(
+                    st=env.int("TEST_POSTGRES_STATEMENT_TIMEOUT_MS", default=120000),
+                ),
             },
         }
     }
@@ -582,6 +617,14 @@ if "test" in sys.argv or "pytest" in sys.modules:
     # session-scoped autouse fixture so it does not pollute settings.py.
 else:
     # Database connection pooling configuration
+    # IMPORTANT: PgBouncer pool_mode=transaction is INCOMPATIBLE with:
+    #   - SELECT pg_advisory_lock() / pg_advisory_xact_lock()
+    #   - LISTEN/NOTIFY (Django Channels PostgreSQL backend)
+    #   - Named cursors (server-side cursor streaming)
+    # Use Redis-based locking (django-rq / redis.lock) instead of advisory locks.
+    # If you need LISTEN/NOTIFY, configure a separate non-pooled DB connection.
+    # Guard: hub/tests/test_advisory_lock_not_used.py scans for violations.
+    #
     # CONN_MAX_AGE: Maximum age of database connections in seconds
     # - 0: Required when PgBouncer is active (transaction mode is incompatible with persistent connections)
     # - 600: Reuse connections for 10 minutes (direct Postgres without PgBouncer)
@@ -596,6 +639,11 @@ else:
         "keepalives_idle": 30,  # Start sending keepalives after 30 seconds of inactivity
         "keepalives_interval": 10,  # Interval between keepalive packets
         "keepalives_count": 5,  # Number of keepalive packets before considering connection dead
+        "options": "-c statement_timeout={st} -c idle_in_transaction_session_timeout=300000".format(
+            # E2E/test: 4 parallel Playwright workers overload the DB — queries that take <5s
+            # in isolation can hit 60s under contention.  120s prevents cascading 500s.
+            st=120000 if ENVIRONMENT == "test" else 60000,
+        ),
     }
     if ENVIRONMENT == "production":
         # Enforce TLS for all PostgreSQL connections in production.
@@ -633,11 +681,55 @@ if BAAS_DATABASE_URL:
     _baas_db_config.setdefault("OPTIONS", {})
     # PgBouncer transaction mode requires CONN_MAX_AGE=0 (same rule as main DB).
     _baas_db_config["CONN_MAX_AGE"] = 0 if _pgbouncer_enabled else _baas_db_config.get("CONN_MAX_AGE", 60)
+    # Phase 89: statement_timeout + idle_in_transaction — same policy as main DB.
+    _baas_db_config["OPTIONS"]["options"] = _db_options.get("options", "")
     if ENVIRONMENT == "production":
         # Enforce TLS for BaaS database in production — same policy as main DB.
         _baas_db_config["OPTIONS"]["sslmode"] = "require"
     DATABASES["baas"] = _baas_db_config
-    DATABASE_ROUTERS = ["hub.apps.baas.db_router.BaaSDBRouter"]
+elif "test" in sys.argv or "pytest" in sys.modules:
+    # In test mode, provide a 'baas' alias pointing at the default DB so
+    # that Django's test runner registers the alias at startup.  This lets
+    # usage-backend tests call connections["baas"] without monkey-patching
+    # the ConnectionHandler (which causes _remove_databases_failures crashes
+    # in Django 6.0's TestCase/TransactionTestCase teardown).
+    DATABASES["baas"] = dict(DATABASES["default"])
+
+# DATABASE_ROUTERS: BaaS router first (handles BaaSUsageRecord exclusively),
+# then PrimaryReplicaRouter for read-replica routing across read-heavy apps.
+# PrimaryReplicaRouter is a no-op when DATABASE_REPLICA_URL is not configured.
+DATABASE_ROUTERS = [
+    "hub.apps.baas.db_router.BaaSDBRouter",
+    "hub.db_router.PrimaryReplicaRouter",
+]
+
+# ---------------------------------------------------------------------------
+# PostgreSQL Read Replica (17.1)
+# ---------------------------------------------------------------------------
+# DATABASE_REPLICA_URL: connection string for the AWS RDS Multi-AZ read replica
+# endpoint.  Applies the same SSL and CONN_MAX_AGE policy as the primary.
+# When not set the hub falls back gracefully — reads hit the primary and the
+# PrimaryReplicaRouter is effectively a no-op.
+#
+# AWS RDS Multi-AZ replica endpoint example:
+#   DATABASE_REPLICA_URL=postgresql://hub:<password>@<cluster>.cluster-ro-<id>.rds.amazonaws.com:5432/hub
+#
+# The replica is never migrated directly; all schema changes go through the
+# primary ("default") and replicate automatically.
+DATABASE_REPLICA_URL = env("DATABASE_REPLICA_URL", default=None)
+if DATABASE_REPLICA_URL:
+    _replica_db_config = env.db_url_config(DATABASE_REPLICA_URL)
+    _replica_db_config.setdefault("OPTIONS", {})
+    # Replicas are read-only; a short CONN_MAX_AGE is fine (same rule as primary).
+    _replica_db_config["CONN_MAX_AGE"] = (
+        0 if _pgbouncer_enabled else env.int("DB_CONN_MAX_AGE", default=600)
+    )
+    # Phase 89: statement_timeout + idle_in_transaction — same policy as primary DB.
+    _replica_db_config["OPTIONS"]["options"] = _db_options.get("options", "")
+    if ENVIRONMENT == "production":
+        # Enforce TLS for replica in production — same policy as primary DB.
+        _replica_db_config["OPTIONS"]["sslmode"] = "require"
+    DATABASES["replica"] = _replica_db_config
 
 # Marketplace: KYC required for orders/entitlements (feat1 2.4). Optional allowlist of tenant IDs
 # (UUID strings) exempt from KYC for orders/entitlements. Default empty. See RUNBOOKS.md.
@@ -743,6 +835,24 @@ if ENVIRONMENT == "production":
     # Include optional BaaS Redis URL if configured (same auth policy applies).
     if BAAS_REDIS_URL:
         _redis_urls_to_validate["BAAS_REDIS_URL"] = BAAS_REDIS_URL
+    # Validate DATABASE_REPLICA_URL in production: must use credentials (@ present, non-empty password).
+    if DATABASE_REPLICA_URL:
+        if "@" not in DATABASE_REPLICA_URL:
+            raise ImproperlyConfigured(
+                "In production, DATABASE_REPLICA_URL must include authentication credentials "
+                "(format: postgresql://user:password@host:port/db). "
+                "Unauthenticated replica connections are not permitted. "
+                "See .env.production.template."
+            )
+        _replica_creds = DATABASE_REPLICA_URL.rsplit("@", 1)[0]
+        # Split scheme+credentials: "postgresql://user:password" — empty password ends with ':'
+        _replica_pass_part = _replica_creds.rsplit(":", 1)[-1]
+        if not _replica_pass_part:
+            raise ImproperlyConfigured(
+                "In production, DATABASE_REPLICA_URL has an empty password. "
+                "Set a strong password: postgresql://user:password@host:port/db. "
+                "See .env.production.template."
+            )
     for _redis_var, _redis_url in _redis_urls_to_validate.items():
         if not _redis_url:
             continue
@@ -793,6 +903,18 @@ RQ_QUEUES = {
         "DEFAULT_RESULT_TTL": 500,
     },
 }
+
+# RQ: synchronous mode during tests.
+# When running under pytest/unittest, execute enqueued jobs inline (in the
+# same process and DB connection as the test) instead of pushing them to
+# Redis for a separate RQ worker.  This prevents deadlocks caused by the
+# worker process acquiring locks on the same tables the test transaction
+# holds (AccessExclusiveLock from TransactionTestCase TRUNCATE vs
+# RowExclusiveLock from test INSERTs).  Mirrors the pattern used by
+# WEBHOOK_ASYNC_DELIVERY and EVENT_BUS_FORCE_SYNC_PERSISTENCE.
+if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
+    for _q in RQ_QUEUES.values():
+        _q["ASYNC"] = False
 
 # Channel Layers Configuration (for WebSocket support)
 # Parse REDIS_CHANNELS_URL for channel layers
@@ -847,6 +969,17 @@ else:
             },
         },
     }
+
+# Phase 57.3: Guard against PostgreSQL-backed Channels when PgBouncer is active
+# (LISTEN/NOTIFY is incompatible with PgBouncer transaction pooling)
+if env.bool("PGBOUNCER_ENABLED", default=False):
+    _channels_backend = CHANNEL_LAYERS.get("default", {}).get("BACKEND", "")
+    if "postgres" in _channels_backend.lower():
+        raise ImproperlyConfigured(
+            "CHANNEL_LAYERS uses a PostgreSQL backend but PGBOUNCER_ENABLED=True. "
+            "PgBouncer transaction pooling is incompatible with LISTEN/NOTIFY. "
+            "Use channels_redis.core.RedisChannelLayer instead."
+        )
 
 # Django Cache Configuration
 # Use Redis cache backend (separate Redis instance for caching)
@@ -1056,6 +1189,12 @@ JOB_RETRY_BACKOFF_FACTOR = {
 }
 
 # S3/MinIO Configuration
+# MEDIA_URL must always be set (Django 6 + LiveServerTestCase
+# passes them through urlparse which returns bytes path for None).
+# STATIC_URL is set inside the USE_S3 branches below — the S3 branch
+# sets it via django-storages, the else branch sets it to "/static/".
+MEDIA_URL = "/"
+
 USE_S3 = env.bool("USE_S3", default=True)
 if USE_S3:
     # Only detect staging in test mode to avoid affecting production
@@ -1125,6 +1264,7 @@ if USE_S3:
     AWS_S3_OBJECT_PARAMETERS = {
         "CacheControl": "max-age=86400",
     }
+
     # Django 6: Use STORAGES setting instead of deprecated DEFAULT_FILE_STORAGE and STATICFILES_STORAGE
     STORAGES = {
         "default": {
@@ -1150,6 +1290,13 @@ else:
         },
     }
 
+# Phase 203 — ClamAV (file malware scanning; hub.apps.files.scanner / tasks)
+CLAMAV_ENABLED = env.bool("CLAMAV_ENABLED", default=True)
+CLAMAV_HOST = env("CLAMAV_HOST", default="clamav")
+CLAMAV_PORT = env.int("CLAMAV_PORT", default=3310)
+CLAMAV_TIMEOUT_SECONDS = env.float("CLAMAV_TIMEOUT_SECONDS", default=120.0)
+CLAMAV_JOB_TIMEOUT_SECONDS = env.int("CLAMAV_JOB_TIMEOUT_SECONDS", default=300)
+
 # File Upload Configuration
 MAX_BROWSER_UPLOAD_SIZE = env.int("MAX_BROWSER_UPLOAD_SIZE", default=100 * 1024 * 1024)  # 100MB
 MAX_SDK_UPLOAD_SIZE = env.int("MAX_SDK_UPLOAD_SIZE", default=5 * 1024 * 1024 * 1024)  # 5GB
@@ -1157,6 +1304,13 @@ MAX_FILE_SIZE = env.int("MAX_FILE_SIZE", default=10 * 1024 * 1024 * 1024)  # 10G
 ALLOWED_FILE_TYPES = env.list(
     "ALLOWED_FILE_TYPES", default=["csv", "json", "parquet", "txt", "xlsx", "xls"]
 )
+
+# Async polling deadlines (Phase 69 — fail-closed on timeout)
+COMPLIANCE_POLL_MAX_SECONDS = env.int("COMPLIANCE_POLL_MAX_SECONDS", default=300)
+DQ_POLL_MAX_SECONDS = env.int("DQ_POLL_MAX_SECONDS", default=300)
+
+# Auto-pause after consecutive failures (Phase 71)
+MAX_CONSECUTIVE_FAILURES = env.int("MAX_CONSECUTIVE_FAILURES", default=5)
 
 # DataContract CLI Service Configuration
 DATACONTRACT_SERVICE_URL = env(
@@ -1169,6 +1323,40 @@ DATACONTRACT_VALIDATION_SYNC_SIZE_LIMIT = env.int(
 
 # Webhook delivery timeout (seconds). Used by WebhookDeliveryService; tests may override for faster runs.
 WEBHOOK_DELIVERY_TIMEOUT = env.int("WEBHOOK_DELIVERY_TIMEOUT", default=30)
+WEBHOOK_REQUEST_TIMEOUT = env.int("WEBHOOK_REQUEST_TIMEOUT", default=30)
+_raw_intervals = env.str("WEBHOOK_RETRY_INTERVALS", default="1,5,30,300,1800")
+WEBHOOK_RETRY_INTERVALS = [int(x.strip()) for x in _raw_intervals.split(",")]
+
+# Search query limits (Phase 53)
+MAX_SEARCH_QUERY_LENGTH = env.int("MAX_SEARCH_QUERY_LENGTH", default=512)
+MAX_SEARCH_TAGS = env.int("MAX_SEARCH_TAGS", default=50)
+
+# SSRF protection for webhook URLs.
+# Enabled by default in production; disabled in test environments so that
+# integration tests can deliver to local HTTP servers without override_settings.
+# Tests that specifically exercise SSRF protection use @override_settings(WEBHOOK_SSRF_ENABLED=True).
+if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
+    WEBHOOK_SSRF_ENABLED = env.bool("WEBHOOK_SSRF_ENABLED", default=False)
+    INTEGRATION_SSRF_ENABLED = env.bool("INTEGRATION_SSRF_ENABLED", default=False)
+else:
+    WEBHOOK_SSRF_ENABLED = env.bool("WEBHOOK_SSRF_ENABLED", default=True)
+    INTEGRATION_SSRF_ENABLED = env.bool("INTEGRATION_SSRF_ENABLED", default=True)
+
+# BaaS usage recording mode.
+# Synchronous in test mode so background threads don't hold DB locks that
+# deadlock with TransactionTestCase TRUNCATE CASCADE teardown.
+if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
+    BAAS_USAGE_RECORDING_SYNC = True
+else:
+    BAAS_USAGE_RECORDING_SYNC = env.bool("BAAS_USAGE_RECORDING_SYNC", default=False)
+
+# Async webhook delivery via RQ (13.6).
+# Disabled in test mode so existing webhook tests keep running synchronously
+# without needing a live Redis/RQ worker.  Production defaults to True.
+if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
+    WEBHOOK_ASYNC_DELIVERY = env.bool("WEBHOOK_ASYNC_DELIVERY", default=False)
+else:
+    WEBHOOK_ASYNC_DELIVERY = env.bool("WEBHOOK_ASYNC_DELIVERY", default=True)
 
 # Email Service Configuration
 # EMAIL_BACKEND: 'sendgrid', 'ses', or 'smtp'
@@ -1179,6 +1367,9 @@ APP_NAME = env("APP_NAME", default="Meshant")
 
 # Base URL for email links
 EMAIL_BASE_URL = env("EMAIL_BASE_URL", default="http://localhost:8000")
+
+# SPA origin for links that must open in the frontend (e.g. email verification)
+FRONTEND_URL = env("FRONTEND_URL", default=EMAIL_BASE_URL)
 
 # SendGrid Configuration
 SENDGRID_API_KEY = env("SENDGRID_API_KEY", default=None)
@@ -1244,7 +1435,7 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
     "DEFAULT_PAGINATION_CLASS": "hub.apps.api.standards.pagination.StandardPageNumberPagination",
-    "PAGE_SIZE": 20,
+    "PAGE_SIZE": 50,  # Aligned with StandardPageNumberPagination.page_size (13.7)
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
@@ -1289,6 +1480,9 @@ SPECTACULAR_SETTINGS = {
     # Note: Custom Error schema removed - using inline serializers in views instead
     # APPEND_COMPONENTS with dict-based schemas causes 'dict' object has no attribute 'request_only' error
     # Error schemas are now defined inline in views using inline_serializer
+    "POSTPROCESSING_HOOKS": [
+        "hub.apps.api.openapi_mvp.postprocess_drop_mvp_gated_paths",
+    ],
 }
 
 # CORS Configuration
@@ -1366,7 +1560,22 @@ if ENVIRONMENT == "production":
             )
 JWT_ACCESS_TOKEN_EXPIRY = env.int("JWT_ACCESS_TOKEN_EXPIRY", default=3600)  # 1 hour
 JWT_REFRESH_TOKEN_EXPIRY = env.int("JWT_REFRESH_TOKEN_EXPIRY", default=86400)  # 24 hours
+# Phase 90: Maximum refresh token lifetime (absolute cap, even if JWT_REFRESH_TOKEN_EXPIRY is higher)
+REFRESH_TOKEN_MAX_LIFETIME_DAYS = env.int("REFRESH_TOKEN_MAX_LIFETIME_DAYS", default=30)
 JWT_ISSUER = env("JWT_ISSUER", default="hub")
+
+# Phase 90: When True, access tokens are delivered via httpOnly cookie instead
+# of response body. Frontend must rely on cookie-based auth (no localStorage).
+# Default False for backward compatibility with existing SPA clients.
+USE_HTTPONLY_AUTH_COOKIES = env.bool("USE_HTTPONLY_AUTH_COOKIES", default=False)
+
+# ── Refresh-token cookie (11.1) ───────────────────────────────────────────────
+REFRESH_COOKIE_NAME = env("REFRESH_COOKIE_NAME", default="refresh_token")
+
+# ── Login rate-limiting & account lockout (11.5) ─────────────────────────────
+LOGIN_IP_RATE_PER_MINUTE = env.int("LOGIN_IP_RATE_PER_MINUTE", default=10)
+LOGIN_MAX_ATTEMPTS = env.int("LOGIN_MAX_ATTEMPTS", default=10)
+LOGIN_LOCKOUT_WINDOW_MINUTES = env.int("LOGIN_LOCKOUT_WINDOW_MINUTES", default=15)
 
 # Personal tenant on registration (useronboardfix): when True (default), users who register
 # without tenant_id get a personal tenant with DATA_PROVIDER and DATA_CONSUMER roles.
@@ -1384,7 +1593,9 @@ HUB_WORKER_API_KEY = env("HUB_WORKER_API_KEY", default=None)
 
 # Billing (Stripe): optional; when set, subscription/customer creation uses Stripe (test key sk_test_... for tests)
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default=None)
+STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY", default=None)
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default=None)
+STRIPE_MARKETPLACE_WEBHOOK_SECRET = env("STRIPE_MARKETPLACE_WEBHOOK_SECRET", default=None)
 
 # Structured Logging (structlog)
 LOGGING = {
@@ -1529,6 +1740,9 @@ JOB_TIMEOUT_COMPLIANCE_RUN = env.int("JOB_TIMEOUT_COMPLIANCE_RUN", default=1800)
 JOB_TIMEOUT_CONTRACT_VALIDATION = env.int("JOB_TIMEOUT_CONTRACT_VALIDATION", default=60)  # 1 minute
 JOB_TIMEOUT_SEMANTIC_MAPPING = env.int("JOB_TIMEOUT_SEMANTIC_MAPPING", default=300)  # 5 minutes
 
+# Phase 68: Default max retries for WorkflowInstance.max_retries field
+WORKFLOW_MAX_RETRIES = env.int("WORKFLOW_MAX_RETRIES", default=3)
+
 # External Service URLs
 # In test environments, use localhost with correct port
 # For staging: datacontract-service uses port 8092 externally
@@ -1540,6 +1754,11 @@ if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
     EVENT_BUS_FORCE_SYNC_PERSISTENCE = True
 else:
     EVENT_BUS_FORCE_SYNC_PERSISTENCE = env.bool("EVENT_BUS_FORCE_SYNC_PERSISTENCE", default=False)
+
+# Phase 93.6: timeout (seconds) for individual event handlers
+EVENT_HANDLER_TIMEOUT_SECONDS = env.int(
+    "EVENT_HANDLER_TIMEOUT_SECONDS", default=30
+)
 
 if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
     # Use localhost with port from env, or the standard test port as default.
@@ -1604,6 +1823,29 @@ else:
         "SEMANTIC_SERVICE_TIMEOUT", default=15
     )  # 15 seconds for production (fail-fast when service unavailable)
 HUB_DOMAIN = env("HUB_DOMAIN", default="hub.example.com")
+
+# Base IRI for the semantic layer (ontology namespace + resource URIs).
+# Must be a full URL, e.g. "https://meshant.io".
+# In production this should be your public domain; the default is a
+# placeholder — startup raises ImproperlyConfigured when still set to
+# the placeholder in ENVIRONMENT=production.
+SEMANTIC_BASE_IRI = env("SEMANTIC_BASE_IRI", default="https://meshant.io")
+if (
+    env("ENVIRONMENT", default="development") == "production"
+    and SEMANTIC_BASE_IRI == "https://meshant.io"
+):
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(
+        "SEMANTIC_BASE_IRI must be set to your public domain in production. "
+        "Current value is the default placeholder 'https://meshant.io'."
+    )
+
+# Phase 24.6 — OWL/RDFS inference toggle.
+# When True the Fuseki TDB2 dataset is configured with an RDFS reasoner.
+# Inference triples are materialised at query time; expect 2-5x latency.
+SEMANTIC_INFERENCE_ENABLED = env.bool(
+    "SEMANTIC_INFERENCE_ENABLED", default=False
+)
 
 # Internal API key shared between hub (Django) and FastAPI microservices.
 # All hub → microservice calls include this as the X-Internal-Api-Key header.
@@ -1672,6 +1914,23 @@ GRAPHQL_QUERY_COMPLEXITY_LIMIT = env.int("GRAPHQL_QUERY_COMPLEXITY_LIMIT", defau
 PII_REDACTION_ENABLED = env.bool("PII_REDACTION_ENABLED", default=True)
 
 # ============================================================================
+# Contract Standard Versions (Phase 26.10.1)
+# ============================================================================
+
+ODCS_VERSIONS_SUPPORTED = env.list(
+    "ODCS_VERSIONS_SUPPORTED",
+    default=["2.2.2", "3.0.0", "3.0.1", "3.0.2", "3.1.0"],
+)
+
+ODPS_VERSIONS_SUPPORTED = env.list(
+    "ODPS_VERSIONS_SUPPORTED",
+    default=[
+        "1.x", "2.x", "3.x", "4.0", "4.1", "4.2",
+        "bitol-0.9.0", "bitol-1.0.0",
+    ],
+)
+
+# ============================================================================
 # Django 6 Security Enhancements
 # ============================================================================
 
@@ -1711,8 +1970,8 @@ X_FRAME_OPTIONS = env("X_FRAME_OPTIONS", default="DENY")
 
 # CSRF Protection
 CSRF_COOKIE_HTTPONLY = env.bool(
-    "CSRF_COOKIE_HTTPONLY", default=False
-)  # Set to True for better security
+    "CSRF_COOKIE_HTTPONLY", default=True
+)  # Phase 90: default True — CSRF token not readable by JS (XSS mitigation)
 CSRF_COOKIE_SAMESITE = env(
     "CSRF_COOKIE_SAMESITE", default="Lax"
 )  # Options: 'Strict', 'Lax', 'None'
@@ -1725,6 +1984,14 @@ SESSION_COOKIE_AGE = env.int("SESSION_COOKIE_AGE", default=1209600)  # 2 weeks d
 
 # GraphQL Settings
 GRAPHQL_QUERY_COMPLEXITY_LIMIT = env.int("GRAPHQL_QUERY_COMPLEXITY_LIMIT", default=1000)
+
+# Password hashing: use fast MD5 hasher in tests to avoid ~300 ms per
+# create_user() call (PBKDF2 default does 600 k iterations).  This gives
+# a 50-100x speedup on test suites that create thousands of users.
+if is_test_env:
+    PASSWORD_HASHERS = [
+        "django.contrib.auth.hashers.MD5PasswordHasher",
+    ]
 
 # Rate Limiting
 # Advanced rate limiting with sliding window algorithm
@@ -1744,9 +2011,21 @@ RATE_LIMIT_E2E_RELAX = env.bool("RATE_LIMIT_E2E_RELAX", default=False)
 RATE_LIMIT_PER_TENANT = env.int("RATE_LIMIT_PER_TENANT", default=200)
 RATE_LIMIT_PER_USER = env.int("RATE_LIMIT_PER_USER", default=100)
 
-# Feature Flags
-# Transformation feature flag (disabled by default - feature being removed)
-ENABLE_TRANSFORMATION_FEATURE = env.bool("ENABLE_TRANSFORMATION_FEATURE", default=False)
+# Phase 87: Parameterized virtual queries (SQL injection fix)
+# When True (default), all virtual dataset queries use DB-driver native
+# parameterisation.  Set to False only for emergency rollback.
+PARAMETERIZED_VIRTUAL_QUERIES = env.bool(
+    "PARAMETERIZED_VIRTUAL_QUERIES", default=True
+)
+
+# Phase 87: Enforce JWT scope mapping via ROLE_SCOPE_MAP
+# When True, JWT users without explicit API key scopes are checked against
+# ROLE_SCOPE_MAP.  When False (default), current permissive behaviour is
+# preserved for safe rollout.
+ENFORCE_JWT_SCOPES = env.bool("ENFORCE_JWT_SCOPES", default=False)
+
+# Phase 200: MVP deployment — omit non-MVP /api/v1 routes, OpenAPI paths, and gate via middleware.
+MVP_MODE = env.bool("MVP_MODE", default=False)
 
 # Workflow Business Rules Validation Feature Flags (Task 5.1.1)
 # Global enable/disable for business rules validation in workflows
@@ -1836,3 +2115,20 @@ COST_RATES = {
     "asset_per_month": "0",
     "dataset_per_month": "0",
 }
+
+# ===========================================================================
+# Prefect Kubernetes Work Pool Configuration (17.7)
+# ===========================================================================
+# Settings consumed by services/prefect-integration/deployment_sync.py when
+# creating deployments against the Kubernetes work pool.
+# All PREFECT_K8S_* values have safe local-dev defaults; override in
+# .env.production.template / Vault for production K8s deployments.
+PREFECT_API_URL = env("PREFECT_API_URL", default="http://prefect-server:4200/api")
+PREFECT_WORK_POOL_NAME = env("PREFECT_WORK_POOL_NAME", default="local-process-pool")
+PREFECT_K8S_NAMESPACE = env("PREFECT_K8S_NAMESPACE", default="default")
+PREFECT_K8S_IMAGE_PULL_SECRETS = env.list("PREFECT_K8S_IMAGE_PULL_SECRETS", default=[])
+PREFECT_K8S_SERVICE_ACCOUNT_NAME = env("PREFECT_K8S_SERVICE_ACCOUNT_NAME", default="prefect-worker")
+PREFECT_K8S_CPU_REQUEST = env("PREFECT_K8S_CPU_REQUEST", default="100m")
+PREFECT_K8S_CPU_LIMIT = env("PREFECT_K8S_CPU_LIMIT", default="1000m")
+PREFECT_K8S_MEMORY_REQUEST = env("PREFECT_K8S_MEMORY_REQUEST", default="256Mi")
+PREFECT_K8S_MEMORY_LIMIT = env("PREFECT_K8S_MEMORY_LIMIT", default="1Gi")

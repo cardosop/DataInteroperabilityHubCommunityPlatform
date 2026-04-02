@@ -3,15 +3,17 @@ Unit tests for FileService.
 
 Tests use real FileService implementation without mocks/stubs.
 """
+import uuid
 
 import hashlib
 
 import pytest
 from django.core.files.base import ContentFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
+from hub.apps.audit.models import AuditEvent
 from hub.apps.core.services.base import NotFoundError, ValidationError
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.services import FileService
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.files.tests.test_base import FilesTestBase
@@ -54,9 +56,10 @@ class FileServiceTest(FilesTestBase):
         """Test getting file from different tenant raises NotFoundError."""
         from hub.apps.tenants.models import KYCStatus, Tenant
 
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
 
@@ -176,6 +179,7 @@ class FileServiceTest(FilesTestBase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             storage_path=f"{self.tenant.id}/to_delete.csv",
             created_by=self.user,
         )
@@ -232,3 +236,63 @@ class FileServiceTest(FilesTestBase):
 
         self.assertIsNotNone(file_obj)
         self.assertEqual(file_obj.status, FileStatus.ACTIVE)
+
+    @override_settings(
+        CLAMAV_ENABLED=True,
+        CLAMAV_HOST="127.0.0.1",
+        CLAMAV_PORT=65444,
+    )
+    def test_update_file_completed_with_hash_triggers_scan_job(self):
+        """COMPLETED + content_sha256 enqueues scan (same as ACTIVE); RQ runs inline in tests."""
+        pending_file = File.objects.create(
+            tenant=self.tenant,
+            name="done.csv",
+            content_type="text/csv",
+            size=512,
+            status=FileStatus.PENDING,
+            storage_path=f"{self.tenant.id}/done.csv",
+            created_by=self.user,
+        )
+        content_sha256 = hashlib.sha256(b"completed-path").hexdigest()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.service.update_file(
+                file_id=str(pending_file.id),
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                content_sha256=content_sha256,
+                new_status=FileStatus.COMPLETED.value,
+            )
+        pending_file.refresh_from_db()
+        self.assertEqual(pending_file.status, FileStatus.COMPLETED)
+        self.assertEqual(pending_file.scan_status, FileScanStatus.SCAN_UNAVAILABLE)
+
+    @override_settings(CLAMAV_ENABLED=False)
+    def test_update_file_active_when_clamav_disabled_sets_scan_unavailable(self):
+        """CLAMAV_ENABLED=False skips queue and sets SCAN_UNAVAILABLE with audit."""
+        pending_file = File.objects.create(
+            tenant=self.tenant,
+            name="clam-off.csv",
+            content_type="text/csv",
+            size=1024,
+            status=FileStatus.PENDING,
+            storage_path=f"{self.tenant.id}/clam-off.csv",
+            created_by=self.user,
+        )
+        content_sha256 = hashlib.sha256(b"payload").hexdigest()
+        with self.captureOnCommitCallbacks(execute=True):
+            updated = self.service.update_file(
+                file_id=str(pending_file.id),
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                content_sha256=content_sha256,
+                new_status=FileStatus.ACTIVE.value,
+            )
+        updated.refresh_from_db()
+        self.assertEqual(updated.scan_status, FileScanStatus.SCAN_UNAVAILABLE)
+        self.assertIsNotNone(updated.scanned_at)
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="FILE_MALWARE_SCAN_SKIPPED",
+                resource_id=updated.id,
+            ).exists()
+        )

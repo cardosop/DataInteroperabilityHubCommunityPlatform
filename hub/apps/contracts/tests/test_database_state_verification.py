@@ -40,8 +40,7 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.contracts.services import ContractService, ODPSService
 from hub.apps.contracts.tests.test_base import ContractsTransactionTestBase
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+from tests.utils.wait_helpers import wait_for_event_persistence
 
 logger = structlog.get_logger(__name__)
 
@@ -63,14 +62,6 @@ class ContractStateVerificationTest(ContractsTransactionTestBase):
     - Contract fields are correct (original_spec_type, original_format, etc.)
     """
 
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush - we clean up manually."""
-        pass
-
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
@@ -91,7 +82,7 @@ class ContractStateVerificationTest(ContractsTransactionTestBase):
             }
         )
 
-        # Sample ODPS contract
+        # Sample ODPS contract — embedded ODCS spec id must match odcs_raw id
         self.odps_raw = json.dumps(
             {
                 "schema": "https://opendataproducts.org/schema/v4.1",
@@ -114,8 +105,8 @@ class ContractStateVerificationTest(ContractsTransactionTestBase):
                         "spec": {
                             "apiVersion": "odcs.io/v3.0.2",
                             "kind": "DataContract",
-                            "id": "test-odcs-contract",
-                            "name": "Test ODCS Contract",
+                            "id": "test-contract",
+                            "name": "Test Contract",
                             "version": "1.0.0",
                             "schema": {
                                 "fields": [{"name": "id", "type": "string", "nullable": False}]
@@ -125,17 +116,6 @@ class ContractStateVerificationTest(ContractsTransactionTestBase):
                 },
             }
         )
-
-    def tearDown(self):
-        """Clean up after each test."""
-        # Clean up in reverse order of dependencies
-        Contract.objects.all().delete()
-        Asset.objects.all().delete()
-        if hasattr(self, "user"):
-            User.objects.filter(id=self.user_id).delete()
-        if hasattr(self, "tenant"):
-            Tenant.objects.filter(id=self.tenant_id).delete()
-        super().tearDown()
 
     def test_contract_status_after_creation(self):
         """Verify contract status after creation."""
@@ -384,16 +364,15 @@ class ContractStateVerificationTest(ContractsTransactionTestBase):
         # Verify normalization status consistency
         contract.refresh_from_db()
         if contract.hub_contract_json:
-            # If hub_contract_json exists, normalization should have succeeded or had warnings
+            # If hub_contract_json exists, normalization MUST have succeeded (possibly with warnings)
             self.assertIn(
                 contract.normalization_status,
                 [
                     NormalizationStatus.NORMALIZED_OK,
                     NormalizationStatus.NORMALIZED_WITH_WARNINGS,
-                    NormalizationStatus.NORMALIZATION_FAILED,
-                    NormalizationStatus.NOT_NORMALIZED,
                 ],
-                f"Contract with hub_contract_json should have valid normalization_status, got {contract.normalization_status}",
+                f"Contract with hub_contract_json must have a successful normalization status, "
+                f"got {contract.normalization_status}",
             )
 
     def _create_linked_odps_odcs_pair(self):
@@ -551,14 +530,6 @@ class LinkRelationshipVerificationTest(ContractsTransactionTestBase):
     - Link removal works correctly
     """
 
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush - we clean up manually."""
-        pass
-
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
@@ -567,7 +538,7 @@ class LinkRelationshipVerificationTest(ContractsTransactionTestBase):
         self.tenant_id = str(self.tenant.id)
         self.user_id = str(self.user.id)
 
-        # Sample contracts (same as ContractStateVerificationTest)
+        # Sample contracts — embedded ODCS spec id must match odcs_raw id
         self.odcs_raw = json.dumps(
             {
                 "apiVersion": "odcs.io/v3.0.2",
@@ -601,8 +572,8 @@ class LinkRelationshipVerificationTest(ContractsTransactionTestBase):
                         "spec": {
                             "apiVersion": "odcs.io/v3.0.2",
                             "kind": "DataContract",
-                            "id": "test-odcs-contract",
-                            "name": "Test ODCS Contract",
+                            "id": "test-contract",
+                            "name": "Test Contract",
                             "version": "1.0.0",
                             "schema": {
                                 "fields": [{"name": "id", "type": "string", "nullable": False}]
@@ -613,16 +584,6 @@ class LinkRelationshipVerificationTest(ContractsTransactionTestBase):
             }
         )
 
-    def tearDown(self):
-        """Clean up after each test."""
-        Contract.objects.all().delete()
-        Asset.objects.all().delete()
-        if hasattr(self, "user"):
-            User.objects.filter(id=self.user_id).delete()
-        if hasattr(self, "tenant"):
-            Tenant.objects.filter(id=self.tenant_id).delete()
-        super().tearDown()
-
     def _create_linked_odps_odcs_pair(self):
         """Helper to create ODPS and ODCS contracts that can be linked."""
         # Create ODCS contract
@@ -630,20 +591,19 @@ class LinkRelationshipVerificationTest(ContractsTransactionTestBase):
             original_raw=self.odcs_raw, original_format=OriginalFormat.JSON
         )
 
-        # Get the ODCS contract ID and name from the hub_contract_json
+        # Get the ODCS contract ID from the hub_contract_json and ensure
+        # ODPS embedded spec uses the same id for linking validation.
         odcs_contract.refresh_from_db()
-        odcs_contract_id_in_spec = None
-        odcs_contract_name_in_spec = None
-        if odcs_contract.hub_contract_json:
-            odcs_contract_id_in_spec = odcs_contract.hub_contract_json.get("id")
-            odcs_contract_name_in_spec = odcs_contract.hub_contract_json.get("info", {}).get("name")
-
-        # Update ODPS raw to use the same contract ID and name as ODCS
         odps_data = json.loads(self.odps_raw)
-        if odcs_contract_id_in_spec:
-            odps_data["product"]["contract"]["spec"]["id"] = odcs_contract_id_in_spec
-        if odcs_contract_name_in_spec:
-            odps_data["product"]["contract"]["spec"]["name"] = odcs_contract_name_in_spec
+        if odcs_contract.hub_contract_json:
+            hcj_id = odcs_contract.hub_contract_json.get("id")
+            hcj_name = odcs_contract.hub_contract_json.get(
+                "info", {}
+            ).get("name")
+            if hcj_id:
+                odps_data["product"]["contract"]["spec"]["id"] = hcj_id
+            if hcj_name:
+                odps_data["product"]["contract"]["spec"]["name"] = hcj_name
         odps_raw_updated = json.dumps(odps_data)
 
         # Create ODPS contract
@@ -843,14 +803,6 @@ class DataIntegrityTest(ContractsTransactionTestBase):
     - Database constraints are enforced
     """
 
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush - we clean up manually."""
-        pass
-
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
@@ -859,7 +811,7 @@ class DataIntegrityTest(ContractsTransactionTestBase):
         self.tenant_id = str(self.tenant.id)
         self.user_id = str(self.user.id)
 
-        # Sample contracts (same as ContractStateVerificationTest)
+        # Sample contracts — embedded ODCS spec id must match odcs_raw id
         self.odcs_raw = json.dumps(
             {
                 "apiVersion": "odcs.io/v3.0.2",
@@ -893,8 +845,8 @@ class DataIntegrityTest(ContractsTransactionTestBase):
                         "spec": {
                             "apiVersion": "odcs.io/v3.0.2",
                             "kind": "DataContract",
-                            "id": "test-odcs-contract",
-                            "name": "Test ODCS Contract",
+                            "id": "test-contract",
+                            "name": "Test Contract",
                             "version": "1.0.0",
                             "schema": {
                                 "fields": [{"name": "id", "type": "string", "nullable": False}]
@@ -905,16 +857,6 @@ class DataIntegrityTest(ContractsTransactionTestBase):
             }
         )
 
-    def tearDown(self):
-        """Clean up after each test."""
-        Contract.objects.all().delete()
-        Asset.objects.all().delete()
-        if hasattr(self, "user"):
-            User.objects.filter(id=self.user_id).delete()
-        if hasattr(self, "tenant"):
-            Tenant.objects.filter(id=self.tenant_id).delete()
-        super().tearDown()
-
     def _create_linked_odps_odcs_pair(self):
         """Helper to create ODPS and ODCS contracts that can be linked."""
         # Create ODCS contract
@@ -922,20 +864,19 @@ class DataIntegrityTest(ContractsTransactionTestBase):
             original_raw=self.odcs_raw, original_format=OriginalFormat.JSON
         )
 
-        # Get the ODCS contract ID and name from the hub_contract_json
+        # Get the ODCS contract ID from hub_contract_json and ensure
+        # ODPS embedded spec uses the same id for linking validation.
         odcs_contract.refresh_from_db()
-        odcs_contract_id_in_spec = None
-        odcs_contract_name_in_spec = None
-        if odcs_contract.hub_contract_json:
-            odcs_contract_id_in_spec = odcs_contract.hub_contract_json.get("id")
-            odcs_contract_name_in_spec = odcs_contract.hub_contract_json.get("info", {}).get("name")
-
-        # Update ODPS raw to use the same contract ID and name as ODCS
         odps_data = json.loads(self.odps_raw)
-        if odcs_contract_id_in_spec:
-            odps_data["product"]["contract"]["spec"]["id"] = odcs_contract_id_in_spec
-        if odcs_contract_name_in_spec:
-            odps_data["product"]["contract"]["spec"]["name"] = odcs_contract_name_in_spec
+        if odcs_contract.hub_contract_json:
+            hcj_id = odcs_contract.hub_contract_json.get("id")
+            hcj_name = odcs_contract.hub_contract_json.get(
+                "info", {}
+            ).get("name")
+            if hcj_id:
+                odps_data["product"]["contract"]["spec"]["id"] = hcj_id
+            if hcj_name:
+                odps_data["product"]["contract"]["spec"]["name"] = hcj_name
         odps_raw_updated = json.dumps(odps_data)
 
         # Create ODPS contract
@@ -1240,14 +1181,6 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
     - Database deadlock handling
     """
 
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush - we clean up manually."""
-        pass
-
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
@@ -1256,7 +1189,7 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
         self.tenant_id = str(self.tenant.id)
         self.user_id = str(self.user.id)
 
-        # Sample contracts (same as ContractStateVerificationTest)
+        # Sample contracts — embedded ODCS spec id must match odcs_raw id
         self.odcs_raw = json.dumps(
             {
                 "apiVersion": "odcs.io/v3.0.2",
@@ -1290,8 +1223,8 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
                         "spec": {
                             "apiVersion": "odcs.io/v3.0.2",
                             "kind": "DataContract",
-                            "id": "test-odcs-contract",
-                            "name": "Test ODCS Contract",
+                            "id": "test-contract",
+                            "name": "Test Contract",
                             "version": "1.0.0",
                             "schema": {
                                 "fields": [{"name": "id", "type": "string", "nullable": False}]
@@ -1302,16 +1235,6 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
             }
         )
 
-    def tearDown(self):
-        """Clean up after each test."""
-        Contract.objects.all().delete()
-        Asset.objects.all().delete()
-        if hasattr(self, "user"):
-            User.objects.filter(id=self.user_id).delete()
-        if hasattr(self, "tenant"):
-            Tenant.objects.filter(id=self.tenant_id).delete()
-        super().tearDown()
-
     def _create_linked_odps_odcs_pair(self):
         """Helper to create ODPS and ODCS contracts that can be linked."""
         # Create ODCS contract
@@ -1319,20 +1242,19 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
             original_raw=self.odcs_raw, original_format=OriginalFormat.JSON
         )
 
-        # Get the ODCS contract ID and name from the hub_contract_json
+        # Get the ODCS contract ID from hub_contract_json and ensure
+        # ODPS embedded spec uses the same id for linking validation.
         odcs_contract.refresh_from_db()
-        odcs_contract_id_in_spec = None
-        odcs_contract_name_in_spec = None
-        if odcs_contract.hub_contract_json:
-            odcs_contract_id_in_spec = odcs_contract.hub_contract_json.get("id")
-            odcs_contract_name_in_spec = odcs_contract.hub_contract_json.get("info", {}).get("name")
-
-        # Update ODPS raw to use the same contract ID and name as ODCS
         odps_data = json.loads(self.odps_raw)
-        if odcs_contract_id_in_spec:
-            odps_data["product"]["contract"]["spec"]["id"] = odcs_contract_id_in_spec
-        if odcs_contract_name_in_spec:
-            odps_data["product"]["contract"]["spec"]["name"] = odcs_contract_name_in_spec
+        if odcs_contract.hub_contract_json:
+            hcj_id = odcs_contract.hub_contract_json.get("id")
+            hcj_name = odcs_contract.hub_contract_json.get(
+                "info", {}
+            ).get("name")
+            if hcj_id:
+                odps_data["product"]["contract"]["spec"]["id"] = hcj_id
+            if hcj_name:
+                odps_data["product"]["contract"]["spec"]["name"] = hcj_name
         odps_raw_updated = json.dumps(odps_data)
 
         # Create ODPS contract
@@ -1464,9 +1386,7 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
             self.assertTrue(Contract.objects.filter(id=odps_contract.id).exists())
 
         # Small delay to ensure all transactions are fully committed
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
 
         # Concurrently link all ODPS contracts to the same ODCS
         def link_contract(odps_id):
@@ -1480,7 +1400,7 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
                     if Contract.objects.filter(id=odps_id).exists():
                         break
                     if attempt < max_retries - 1:
-                        time.sleep(0.05)  # Small delay for transaction visibility
+                        time.sleep(0.05)  # INTENTIONAL: retry backoff for cross-thread transaction visibility
                     else:
                         return False  # Contract not visible after retries
 
@@ -1491,6 +1411,9 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
             except Exception as e:
                 # In concurrent scenarios, some failures are expected (e.g., duplicate links)
                 return False
+            finally:
+                from django.db import connection as _conn
+                _conn.close()
 
         # Execute concurrently
         with ThreadPoolExecutor(max_workers=3) as executor:
@@ -1625,9 +1548,7 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
         self.assertTrue(Contract.objects.filter(id=odps2.id).exists())
 
         # Small delay to ensure all transactions are fully committed
-        import time
-
-        time.sleep(0.1)
+        wait_for_event_persistence()
 
         # Try to create potential deadlock scenario
         # Thread 1: Link ODPS1 to ODCS1, then ODPS2 to ODCS2
@@ -1647,14 +1568,14 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
                     ):
                         break
                     if attempt < max_retries - 1:
-                        time.sleep(0.05)
+                        time.sleep(0.05)  # INTENTIONAL: retry backoff for cross-thread transaction visibility
                     else:
                         return False  # Contracts not visible after retries
 
                 service.link_odps_to_odcs(
                     odcs_contract_id=str(odcs1.id), odps_contract_id=str(odps1.id)
                 )
-                time.sleep(0.1)  # Small delay to increase chance of deadlock
+                time.sleep(0.1)  # INTENTIONAL: increase chance of deadlock for concurrency test
                 service.link_odps_to_odcs(
                     odcs_contract_id=str(odcs2.id), odps_contract_id=str(odps2.id)
                 )
@@ -1665,6 +1586,9 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
 
                 logging.getLogger(__name__).debug(f"Link sequence 1 failed: {e}")
                 return False
+            finally:
+                from django.db import connection as _conn
+                _conn.close()
 
         def link_sequence_2():
             try:
@@ -1681,14 +1605,14 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
                     ):
                         break
                     if attempt < max_retries - 1:
-                        time.sleep(0.05)
+                        time.sleep(0.05)  # INTENTIONAL: retry backoff for cross-thread transaction visibility
                     else:
                         return False  # Contracts not visible after retries
 
                 service.link_odps_to_odcs(
                     odcs_contract_id=str(odcs2.id), odps_contract_id=str(odps2.id)
                 )
-                time.sleep(0.1)  # Small delay to increase chance of deadlock
+                time.sleep(0.1)  # INTENTIONAL: increase chance of deadlock for concurrency test
                 service.link_odps_to_odcs(
                     odcs_contract_id=str(odcs1.id), odps_contract_id=str(odps1.id)
                 )
@@ -1699,6 +1623,9 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
 
                 logging.getLogger(__name__).debug(f"Link sequence 2 failed: {e}")
                 return False
+            finally:
+                from django.db import connection as _conn
+                _conn.close()
 
         # Execute concurrently
         with ThreadPoolExecutor(max_workers=2) as executor:
@@ -1786,12 +1713,17 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
             original_raw=self.odcs_raw, original_format=OriginalFormat.JSON
         )
 
-        # Normalize contract
+        # Normalize contract using the raw content and format
         from hub.apps.contracts.normalization import normalize_contract
 
-        result = normalize_contract(
-            contract_id=str(contract.id), tenant_id=self.tenant_id, user_id=self.user_id
+        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
+            raw_contract=contract.original_raw,
+            format=contract.original_format,
         )
+
+        # Update contract normalization status in DB to reflect the result
+        contract.normalization_status = norm_status
+        contract.save(update_fields=["normalization_status"])
 
         contract.refresh_from_db()
         # Normalization status should be updated
@@ -1878,35 +1810,32 @@ class TransactionConsistencyTest(ContractsTransactionTestBase):
 
     def test_database_constraints_are_enforced(self):
         """Test database constraints are properly enforced"""
-        # Try to create contract with duplicate unique constraint
         contract1 = self.contract_service.create_contract(
             original_raw=self.odcs_raw, original_format=OriginalFormat.JSON
         )
 
-        # Try to create another contract with same tenant/asset/version
-        # (if unique constraint exists)
-        try:
-            contract2 = self.contract_service.create_contract(
-                original_raw=self.odcs_raw, original_format=OriginalFormat.JSON
-            )
-            # May succeed if no unique constraint, or fail if constraint exists
-            # Both are acceptable
-        except IntegrityError:
-            # Expected if unique constraint exists
-            pass
+        # Creating a second contract with same raw is allowed (auto-increments version)
+        # — verify both exist and are distinct DB rows.
+        contract2 = self.contract_service.create_contract(
+            original_raw=self.odcs_raw, original_format=OriginalFormat.JSON
+        )
+        self.assertNotEqual(contract1.id, contract2.id)
+
+        # Verify NOT-NULL constraint: original_format cannot be NULL at DB level.
+        with self.assertRaises((IntegrityError, ValidationError)):
+            with transaction.atomic():
+                Contract.objects.create(
+                    tenant=self.tenant,
+                    original_format=None,
+                    original_raw="{}",
+                )
 
     def test_contract_state_with_missing_required_fields(self):
         """Test contract state validation with missing required fields"""
-        # Try to create contract with missing required fields
-        try:
-            contract = Contract.objects.create(
-                tenant=self.tenant,
-                original_format=OriginalFormat.JSON,
-                # Missing original_raw, original_spec_type, etc.
-            )
-            # May succeed or fail depending on model validation
-            if contract:
-                self.assertIsNotNone(contract)
-        except (ValidationError, IntegrityError):
-            # Expected - missing required fields should be rejected
-            pass
+        # original_format is required (NOT NULL) — must be rejected
+        with self.assertRaises((ValidationError, IntegrityError)):
+            with transaction.atomic():
+                Contract.objects.create(
+                    tenant=self.tenant,
+                    original_format=None,
+                )

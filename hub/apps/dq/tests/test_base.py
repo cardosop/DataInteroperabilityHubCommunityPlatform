@@ -8,7 +8,7 @@ in setUp methods across test files.
 import uuid
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from rest_framework.test import APIClient
 
 from hub.apps.dq.services import DQService
@@ -29,8 +29,8 @@ class DQTestBase(TestCase):
         super().setUp()
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -38,7 +38,7 @@ class DQTestBase(TestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -72,7 +72,7 @@ class DQTestBase(TestCase):
         )
 
 
-class DQTransactionTestBase(TransactionTestCase):
+class DQTransactionTestBase(TestCase):
     """Base test class for DQ tests requiring TransactionTestCase."""
 
     def setUp(self):
@@ -80,8 +80,8 @@ class DQTransactionTestBase(TransactionTestCase):
         super().setUp()
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -89,7 +89,7 @@ class DQTransactionTestBase(TransactionTestCase):
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

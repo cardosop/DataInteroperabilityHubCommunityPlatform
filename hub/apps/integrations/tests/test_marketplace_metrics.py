@@ -10,6 +10,7 @@ Tests verify:
 
 All tests use real implementations (no mocks/stubs).
 """
+import unittest
 import pytest
 import time
 from django.test import TestCase, Client
@@ -20,6 +21,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
 from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
 from hub.apps.integrations.services import MarketplaceIntegrationService
+import uuid
 from hub.apps.observability.otel_metrics import (
     marketplace_connections_total,
     marketplace_connection_status,
@@ -45,12 +47,13 @@ class MarketplaceMetricsTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.client = Client()
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant
         )
@@ -273,7 +276,7 @@ class MarketplaceMetricsTest(TestCase):
             # At least one marketplace metric should be found
             # (might not be if no operations occurred, which is okay)
             if marketplace_metric_found:
-                self.assertTrue(True)  # Metric format is valid
+                self.assertTrue(marketplace_metric_found, "Marketplace metric found with valid format")
 
     def test_metrics_increment_correctly(self):
         """Test that metrics increment correctly when operations occur"""
@@ -308,7 +311,7 @@ class MarketplaceMetricsTest(TestCase):
             )
         except Exception:
             # Connection creation might fail, skip this test
-            pytest.skip("Connection creation failed, cannot test metric increment")
+            raise unittest.SkipTest("Connection creation failed, cannot test metric increment")
 
         # Get metrics after operation
         response = self.client.get('/metrics/')

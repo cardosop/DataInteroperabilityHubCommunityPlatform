@@ -7,6 +7,8 @@ import uuid
 from django.db import models
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.contrib.postgres.search import SearchVectorField
+from django.contrib.postgres.indexes import GinIndex
 
 from .typed_models import validate_hub_contract_dict
 from .versioning import get_default_version
@@ -25,6 +27,7 @@ class ValidationStatus(models.TextChoices):
     INVALID = "INVALID", "Invalid"
     WARNING_ONLY = "WARNING_ONLY", "Warning Only"
     ERROR = "ERROR", "Error"
+    SKIPPED = "SKIPPED", "Skipped"
 
 
 class NormalizationStatus(models.TextChoices):
@@ -185,6 +188,17 @@ class Contract(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Full-text search vector (Phase 18.2).
+    # Covers original_spec_type (A), hub_contract_version (B).
+    search_vector = SearchVectorField(
+        null=True,
+        blank=True,
+        help_text=(
+            "PostgreSQL tsvector for full-text search "
+            "(auto-maintained via post_save signal)"
+        ),
+    )
+
     class Meta:
         db_table = "contracts"
         ordering = ["-created_at"]
@@ -192,22 +206,61 @@ class Contract(models.Model):
             models.Index(fields=["tenant", "asset"]),
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["tenant", "validation_status"]),
+            GinIndex(
+                fields=["search_vector"],
+                name="contract_search_vector_gin_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "asset", "version"],
                 condition=models.Q(asset__isnull=False),
                 name="unique_contract_version_per_asset"
-            )
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=["DRAFT", "ACTIVE", "RETIRED"]),
+                name="contract_status_valid",
+            ),
         ]
 
     def __str__(self):
         asset_name = self.asset.name if self.asset else "No Asset"
         return f"{asset_name} - {self.original_spec_type} v{self.original_spec_version} ({self.status})"
 
+    # Fields that cannot be changed once contract is ACTIVE
+    _IMMUTABLE_WHEN_ACTIVE = frozenset({
+        "hub_contract_json",
+        "original_raw",
+        "original_spec_type",
+        "original_format",
+        "validation_status",
+        "normalization_status",
+    })
+
     def clean(self):
-        """Validate contract status rules"""
+        """Validate contract status rules and immutability."""
         super().clean()
+
+        # Reject changes to critical fields on ACTIVE contracts
+        if self.pk:
+            try:
+                prev = type(self).objects.only(
+                    "status", *self._IMMUTABLE_WHEN_ACTIVE
+                ).get(pk=self.pk)
+                if prev.status == ContractStatus.ACTIVE:
+                    changed = [
+                        f
+                        for f in self._IMMUTABLE_WHEN_ACTIVE
+                        if getattr(self, f) != getattr(prev, f)
+                    ]
+                    if changed:
+                        raise ValidationError(
+                            f"Cannot modify {', '.join(changed)} "
+                            f"on an ACTIVE contract. Retire and "
+                            f"create a new version instead."
+                        )
+            except type(self).DoesNotExist:
+                pass
 
         if self.hub_contract_json:
             validated_contract, validation_errors = validate_hub_contract_dict(self.hub_contract_json)

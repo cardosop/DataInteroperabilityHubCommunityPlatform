@@ -60,10 +60,10 @@ logger = logging.getLogger(__name__)
 # Convention: mount=secret, path=hub/production/<subsystem>
 # ---------------------------------------------------------------------------
 _KV_PATHS: list[tuple[str, str]] = [
-    ("secret/hub/production/django",  "Django core secrets"),
-    ("secret/hub/production/redis",   "Redis credentials"),
-    ("secret/hub/production/minio",   "MinIO credentials"),
-    ("secret/hub/production/email",   "Email provider credentials"),
+    ("hub/production/django",  "Django core secrets"),
+    ("hub/production/redis",   "Redis credentials"),
+    ("hub/production/minio",   "MinIO credentials"),
+    ("hub/production/email",   "Email provider credentials"),
 ]
 
 # Dynamic database credentials path (database secrets engine)

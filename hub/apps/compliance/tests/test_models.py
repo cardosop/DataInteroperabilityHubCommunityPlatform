@@ -8,6 +8,7 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.assets.models import Asset
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.jobs.models import Job, JobType, JobStatus
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -19,9 +20,10 @@ class ComplianceRunModelTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
         )
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -44,7 +46,8 @@ class ComplianceRunModelTest(TestCase):
             job=self.job,
             status=ComplianceRunStatus.PENDING,
         )
-        
+        compliance_run.refresh_from_db()
+
         self.assertEqual(compliance_run.tenant, self.tenant)
         self.assertEqual(compliance_run.asset, self.asset)
         self.assertEqual(compliance_run.job, self.job)

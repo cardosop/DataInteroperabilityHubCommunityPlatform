@@ -145,6 +145,45 @@ class MarketplacePolicySerializer(serializers.Serializer):
     )
 
 
+class RelationshipSerializer(serializers.Serializer):
+    """Serializer for schema/field relationships (Phase 26.13.1)."""
+
+    id = serializers.CharField(
+        required=False, allow_null=True,
+        help_text="Stable cross-link identifier",
+    )
+    name = serializers.CharField(
+        required=False, allow_null=True,
+        help_text="Relationship name",
+    )
+    type = serializers.CharField(
+        required=False, allow_null=True,
+        help_text="Relationship type (foreignKey, oneToOne, oneToMany)",
+    )
+    source = serializers.ListField(
+        child=serializers.CharField(),
+        required=False, default=list,
+        help_text="Source property names",
+    )
+    target_contract = serializers.CharField(
+        required=False, allow_null=True,
+        help_text="Target contract namespace/name",
+    )
+    target_model = serializers.CharField(
+        required=False, allow_null=True,
+        help_text="Target schema object name",
+    )
+    target_properties = serializers.ListField(
+        child=serializers.CharField(),
+        required=False, default=list,
+        help_text="Target property names",
+    )
+    description = serializers.CharField(
+        required=False, allow_null=True,
+        help_text="Relationship description",
+    )
+
+
 class FieldPropertySerializer(serializers.Serializer):
     """
     Serializer for field properties (GAP-9.2.1).
@@ -232,6 +271,22 @@ class FieldPropertySerializer(serializers.Serializer):
         required=False,
         default=False,
         help_text="Whether this field is indexed"
+    )
+    element_id = serializers.CharField(
+        required=False,
+        allow_null=True,
+        help_text="Stable cross-link identifier (ODCS v3.1.0)"
+    )
+    logicalType = serializers.CharField(
+        required=False,
+        allow_null=True,
+        help_text="Logical type (date, timestamp, time)"
+    )
+    relationships = RelationshipSerializer(
+        many=True,
+        required=False,
+        allow_null=True,
+        help_text="Field-level relationships (ODCS v3.1.0)"
     )
 
 
@@ -337,6 +392,12 @@ class ContractSerializer(serializers.ModelSerializer):
     schema_fields = serializers.SerializerMethodField(
         help_text="Array of schema fields with all properties and constraint flags"
     )
+    schema_relationships = serializers.SerializerMethodField(
+        help_text="Object-level relationships from schema (ODCS v3.1.0)"
+    )
+    has_relationships = serializers.SerializerMethodField(
+        help_text="Whether the contract has schema relationships"
+    )
     contact = serializers.SerializerMethodField(
         help_text="Support/contact channels extracted from contact"
     )
@@ -379,6 +440,11 @@ class ContractSerializer(serializers.ModelSerializer):
     asset = serializers.SerializerMethodField(
         help_text="Asset ID (UUID string) this contract belongs to"
     )
+    asset_id = serializers.UUIDField(
+        read_only=True,
+        allow_null=True,
+        help_text="Same as asset; included for clients that expect asset_id",
+    )
 
     def get_asset(self, obj):
         """Return asset ID as string for API consistency."""
@@ -392,6 +458,7 @@ class ContractSerializer(serializers.ModelSerializer):
             'id',
             'tenant',
             'asset',
+            'asset_id',
             'version',
             'status',
             'original_spec_type',
@@ -419,6 +486,8 @@ class ContractSerializer(serializers.ModelSerializer):
             'lifecycle_policy',
             'marketplace_policy',
             'schema_fields',
+            'schema_relationships',
+            'has_relationships',
             'contact',
             'support',
             'servers',
@@ -436,6 +505,7 @@ class ContractSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id',
             'tenant',
+            'asset_id',
             'version',
             'hub_contract_version',
             'hub_contract_json',
@@ -458,6 +528,8 @@ class ContractSerializer(serializers.ModelSerializer):
             'lifecycle_policy',
             'marketplace_policy',
             'schema_fields',
+            'schema_relationships',
+            'has_relationships',
             'contact',
             'support',
             'servers',
@@ -473,10 +545,25 @@ class ContractSerializer(serializers.ModelSerializer):
             'quality_specification'
         ]
 
+    @staticmethod
+    def _safe_dict(value):
+        """Ensure value is a dict — parse JSON strings, default to empty dict."""
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                import json
+                parsed = json.loads(value)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return {}
+
     def get_owners(self, obj: Contract) -> List[Dict[str, Any]]:
         """Extract owners from hub_contract_json (GAP-9.2.1)"""
-        hub_contract = obj.hub_contract_json or {}
-        info = hub_contract.get('info', {})
+        hub_contract = self._safe_dict(obj.hub_contract_json)
+        info = self._safe_dict(hub_contract.get('info', {}))
         owners = info.get('owners', [])
         if not owners:
             return []
@@ -504,20 +591,20 @@ class ContractSerializer(serializers.ModelSerializer):
 
     def get_tags(self, obj: Contract) -> List[str]:
         """Extract tags from hub_contract_json (GAP-9.2.1)"""
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         info = hub_contract.get('info', {})
         return info.get('tags', [])
 
     def get_quality_rules(self, obj: Contract) -> List[Dict[str, Any]]:
         """Extract quality rules from hub_contract_json (GAP-9.2.1)"""
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         quality = hub_contract.get('quality', {})
         rules = quality.get('rules', [])
         return [QualityRuleSerializer(rule).data for rule in rules] if rules else []
 
     def get_compliance_policy(self, obj: Contract) -> Optional[Dict[str, Any]]:
         """Extract compliance policy from hub_contract_json (GAP-9.2.1)"""
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         compliance = hub_contract.get('privacy_compliance', {})
         if not compliance:
             return None
@@ -535,7 +622,7 @@ class ContractSerializer(serializers.ModelSerializer):
 
     def get_lifecycle_policy(self, obj: Contract) -> Optional[Dict[str, Any]]:
         """Extract lifecycle policy from hub_contract_json (GAP-9.2.1)"""
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         lifecycle = hub_contract.get('lifecycle', {})
         if not lifecycle:
             return None
@@ -543,7 +630,7 @@ class ContractSerializer(serializers.ModelSerializer):
 
     def get_marketplace_policy(self, obj: Contract) -> Optional[Dict[str, Any]]:
         """Extract marketplace policy from hub_contract_json (GAP-9.2.1)"""
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         marketplace = hub_contract.get('marketplace', {})
         if not marketplace:
             return None
@@ -551,8 +638,8 @@ class ContractSerializer(serializers.ModelSerializer):
 
     def get_schema_fields(self, obj: Contract) -> List[Dict[str, Any]]:
         """Extract schema fields with all properties from hub_contract_json (GAP-9.2.1)"""
-        hub_contract = obj.hub_contract_json or {}
-        schema = hub_contract.get('schema', {})
+        hub_contract = self._safe_dict(obj.hub_contract_json)
+        schema = self._safe_dict(hub_contract.get('schema', {}))
         fields = schema.get('fields', [])
         primary_key = schema.get('primary_key', [])
         unique_constraints = schema.get('unique_constraints', [])
@@ -596,72 +683,92 @@ class ContractSerializer(serializers.ModelSerializer):
 
         return serialized_fields
 
+    def get_schema_relationships(
+        self, obj: Contract,
+    ) -> List[Dict[str, Any]]:
+        """Extract schema-level relationships from hub_contract_json."""
+        hub_contract = self._safe_dict(obj.hub_contract_json)
+        schema = self._safe_dict(hub_contract.get("schema", {}))
+        rels = schema.get("relationships", [])
+        if not isinstance(rels, list):
+            return []
+        return [
+            RelationshipSerializer(r).data
+            for r in rels if isinstance(r, dict)
+        ]
+
+    def get_has_relationships(self, obj: Contract) -> bool:
+        """Whether the contract has any schema relationships."""
+        hub = obj.hub_contract_json or {}
+        rels = hub.get("schema", {}).get("relationships", [])
+        return isinstance(rels, list) and len(rels) > 0
+
     def get_contact(self, obj: Contract) -> List[Dict[str, Any]]:
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         contact = hub_contract.get('contact', [])
         return contact if isinstance(contact, list) else []
 
     def get_servers(self, obj: Contract) -> List[Dict[str, Any]]:
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         servers = hub_contract.get('servers', [])
         return servers if isinstance(servers, list) else []
 
     def get_servicelevels(self, obj: Contract) -> List[Dict[str, Any]]:
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         servicelevels = hub_contract.get('servicelevels', [])
         return servicelevels if isinstance(servicelevels, list) else []
 
     def get_terms(self, obj: Contract) -> Optional[Dict[str, Any]]:
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         terms = hub_contract.get('terms')
         return terms if isinstance(terms, dict) else None
 
     def get_roles(self, obj: Contract) -> List[Dict[str, Any]]:
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         roles = hub_contract.get('roles', [])
         return roles if isinstance(roles, list) else []
 
     def get_team(self, obj: Contract) -> List[Dict[str, Any]]:
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         team = hub_contract.get('team', [])
         return team if isinstance(team, list) else []
 
     def get_pricing(self, obj: Contract) -> Optional[Dict[str, Any]]:
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         pricing = hub_contract.get('pricing') or hub_contract.get('price')
         return pricing if isinstance(pricing, dict) else None
 
     def get_lineage(self, obj: Contract) -> Dict[str, Any]:
         """Extract multi-level lineage from hub_contract_json."""
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         lineage = hub_contract.get('lineage', {})
         return lineage if isinstance(lineage, dict) else {}
 
     def get_quality_type(self, obj: Contract) -> Optional[str]:
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         quality = hub_contract.get('quality', {})
         return quality.get('type')
 
     def get_quality_specification(self, obj: Contract) -> Optional[str]:
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         quality = hub_contract.get('quality', {})
         return quality.get('specification')
 
     def get_support(self, obj: Contract) -> List[Dict[str, Any]]:
         """Extract support channels from hub_contract_json."""
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         support = hub_contract.get('support', [])
         return support if isinstance(support, list) else []
 
     def get_definitions(self, obj: Contract) -> List[Dict[str, Any]]:
         """Extract definitions from hub_contract_json."""
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         definitions = hub_contract.get('definitions', [])
         return definitions if isinstance(definitions, list) else []
 
     def get_models(self, obj: Contract) -> List[Dict[str, Any]]:
         """Extract models from hub_contract_json."""
-        hub_contract = obj.hub_contract_json or {}
+        hub_contract = self._safe_dict(obj.hub_contract_json)
         models = hub_contract.get('models', [])
         return models if isinstance(models, list) else []
 

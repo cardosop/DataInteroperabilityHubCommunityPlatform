@@ -3,6 +3,7 @@ Unit tests for workflow orchestration alerting.
 """
 
 import logging
+import uuid
 from datetime import timedelta
 
 from django.test import TestCase
@@ -26,10 +27,10 @@ class WorkflowAlertingTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Create workflow definition

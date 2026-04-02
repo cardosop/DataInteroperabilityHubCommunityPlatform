@@ -20,6 +20,7 @@ from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -50,7 +51,7 @@ class VersioningListVersionsIntegrationTest(TestCase):
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="u1@example.com",
+            email=f"u1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -185,7 +186,7 @@ class VersioningGetVersionIntegrationTest(TestCase):
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="u1@example.com",
+            email=f"u1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -236,7 +237,7 @@ class VersioningCompareIntegrationTest(TestCase):
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="u1@example.com",
+            email=f"u1-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

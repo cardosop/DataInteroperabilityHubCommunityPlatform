@@ -133,18 +133,28 @@ class InMemoryMarketplaceConnector(DataMarketplaceConnector):
         listing: MarketplaceListing,
         sync_job_id: Optional[str] = None,
     ) -> MarketplaceAssetMapping:
+        title = listing.title or "in-memory"
         return MarketplaceAssetMapping(
             asset_data={
-                "name": listing.title or "in-memory",
-                "description": "",
+                "name": title,
+                "description": listing.description or "",
             },
             source_type=AssetSourceType.FEDERATED,
             source_metadata={
                 "marketplace_type": MarketplaceType.IN_MEMORY_FAKE.value,
                 "listing_id": listing.marketplace_id,
             },
-            odps_metadata=None,
-            odcs_metadata=None,
+            odps_metadata={
+                "product": {
+                    "productID": listing.marketplace_id or "in-memory",
+                    "product_name": title,
+                    "details": {"en": {"name": title}},
+                },
+            },
+            odcs_metadata={
+                "kind": "DataContract",
+                "name": title,
+            },
             resources=[],
         )
 

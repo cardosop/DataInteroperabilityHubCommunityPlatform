@@ -682,45 +682,80 @@ def create_job(
         except Exception:
             pass  # Metrics may not be available
     except Exception as e:
-        # Handle Redis connection failures gracefully (e.g., in test environments)
-        logger.warning(
+        # The Job DB record exists in PENDING state but is NOT in the RQ queue.
+        # The recover_stuck_jobs CronJob (Phase 25.8.2) runs every 15 minutes and
+        # will detect this orphaned PENDING job, attempt to re-enqueue it, and mark
+        # it FAILED with error_code=ORPHANED_PENDING if re-enqueue also fails.
+        logger.error(
             "job_enqueue_failed",
             job_id=str(job.id),
             job_type=job_type,
             priority=job_priority,
             error=str(e),
-            message="Failed to enqueue job (Redis may be unavailable). Job record created but not queued.",
+            exc_info=True,
         )
+        try:
+            from hub.apps.observability.otel_metrics import job_enqueue_failed_total
+
+            job_enqueue_failed_total.labels(job_type=job_type).inc()
+        except Exception:
+            pass
 
     return job
 
 
 def get_queue_for_job_type(job_type: str) -> str:
     """
-    Get queue name for a job type.
+    Get RQ queue name for a job type.
 
-    Queue mapping:
-    - DQ_RUN, COMPLIANCE_RUN → job_critical (HIGH priority)
-    - SEMANTIC_MAPPING, CONTRACT_MIGRATION → job_default (NORMAL priority)
-    - CONTRACT_VALIDATION → job_low (LOW priority)
-    - SCHEDULED_INGESTION → job_default (NORMAL priority, can be long-running)
+    Queue / worker-pool mapping (Phase 16.4)
+    ──────────────────────────────────────────────────────────────────────────
+    job_critical  →  worker-heavy (WORKER_TYPE=heavy)
+      DQ_RUN              — pandas DQ scan; up to 1800 s, high memory (DataFrames)
+      COMPLIANCE_RUN      — policy evaluation across many rows; up to 1800 s
+
+    job_default   →  worker-light (WORKER_TYPE=light)
+      SCHEDULED_INGESTION — file discovery + dataset creation; up to 3600 s
+                            (long but I/O-bound; does not need heavy-pod memory)
+      RETENTION_POLICY_ENFORCEMENT — batch soft-deletes; up to 3600 s
+      SEARCH_INDEX_UPDATE — Elasticsearch document push; < 300 s, I/O-bound
+      ODPS_NORMALIZATION  — JSON→ODPS schema transform; up to 600 s
+      ODPS_REF_RESOLUTION — resolve cross-dataset refs; up to 600 s
+      ODPS_EXPORT         — zip + S3 upload; up to 300 s
+      ODPS_SEMANTIC_MAPPING — LLM-assisted mapping; up to 600 s
+      ODPS_LINKING        — link ODPS records; up to 300 s
+      SEMANTIC_MAPPING    — ML-assisted column mapping; up to 60 s
+      CONTRACT_MIGRATION  — schema migration across contract versions; up to 600 s
+      VIRTUAL_QUERY_EXECUTION — data mesh query; up to 3600 s
+      MARKETPLACE_SYNC    — external catalog sync; up to 3600 s
+
+    job_low       →  worker-light (WORKER_TYPE=light)
+      CONTRACT_VALIDATION — JSON schema validation; up to 300 s, CPU-light
+
+    Rationale for the split:
+      Heavy workers run one job at a time and have higher memory limits (2 GiB).
+      Keeping DQ/compliance in job_critical prevents a wave of webhook deliveries
+      from starving long-running DQ scans (and vice versa).  Light workers are
+      scaled independently based on the job_default+job_low combined queue depth.
+    ──────────────────────────────────────────────────────────────────────────
 
     Args:
-        job_type: Job type string
+        job_type: Job type string (from JobType enum or plain string)
 
     Returns:
-        Queue name
+        Queue name: "job_critical", "job_default", or "job_low"
     """
-    # HIGH priority queue (job_critical) for long-running critical jobs
+    # job_critical — heavy worker pool: long-running, memory-intensive jobs
+    # (DQ scans load full DataFrames; compliance runs evaluate many-row policies)
     if job_type in [JobType.DQ_RUN, JobType.COMPLIANCE_RUN]:
         return "job_critical"
 
-    # LOW priority queue (job_low) for quick validation jobs
+    # job_low — light worker pool: fast validation that must not block job_default
     if job_type in [JobType.CONTRACT_VALIDATION]:
         return "job_low"
 
-    # NORMAL priority queue (job_default) for standard jobs
-    # Includes: SEMANTIC_MAPPING, CONTRACT_MIGRATION, SCHEDULED_INGESTION, RETENTION_POLICY_ENFORCEMENT, SEARCH_INDEX_UPDATE, ODPS_NORMALIZATION, ODPS_REF_RESOLUTION, ODPS_EXPORT, ODPS_SEMANTIC_MAPPING, ODPS_LINKING
+    # job_default — light worker pool: I/O-bound operations (webhooks, cache
+    # invalidation, search indexing, ODPS transforms, scheduled ingestion)
     return "job_default"
 
 

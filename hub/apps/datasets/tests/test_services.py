@@ -6,10 +6,9 @@ Tests cover all service methods with 100% coverage target.
 All tests use real implementations (no mocks of hub services).
 S3 operations use real boto3 client with graceful handling when S3 unavailable.
 """
+import uuid
 
 import pytest
-from django.core.exceptions import ValidationError as DjangoValidationError
-
 from hub.apps.assets.models import Asset
 from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.datasets.models import Dataset
@@ -28,33 +27,29 @@ class DatasetServiceTest(DatasetsTestBase):
         super().setUp()
 
     def test_create_dataset_success_creates_dataset(self):
-        """Test successful dataset creation creates dataset"""
-        # Use real S3 client - may fail if S3 unavailable, but tests real behavior
-        try:
-            dataset = self.service.create_dataset(
-                tenant_id=str(self.tenant.id), user_id=str(self.user.id), file_id=str(self.file.id)
-            )
+        """Test successful dataset creation creates a persisted dataset."""
+        dataset = self.service.create_dataset(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            file_id=str(self.file.id),
+        )
 
-            self.assertIsNotNone(dataset)
-            # Schema may or may not be inferred depending on S3 availability
-            # The important thing is that dataset was created
-        except Exception as e:
-            # If S3 is unavailable, test that error is handled gracefully
-            # This is acceptable - we're testing real behavior
-            self.assertIsNotNone(e)
+        self.assertIsNotNone(dataset)
+        self.assertIsNotNone(dataset.id)
+        # Verify persisted to DB
+        self.assertTrue(
+            Dataset.objects.filter(id=dataset.id).exists()
+        )
 
     def test_create_dataset_success_sets_file_id(self):
-        """Test successful dataset creation sets file_id correctly"""
-        # Use real S3 client - may fail if S3 unavailable, but tests real behavior
-        try:
-            dataset = self.service.create_dataset(
-                tenant_id=str(self.tenant.id), user_id=str(self.user.id), file_id=str(self.file.id)
-            )
+        """Test successful dataset creation sets file_id correctly."""
+        dataset = self.service.create_dataset(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            file_id=str(self.file.id),
+        )
 
-            self.assertEqual(dataset.file_id, self.file.id)
-        except Exception:
-            # If S3 is unavailable, skip this assertion
-            pass
+        self.assertEqual(dataset.file_id, self.file.id)
 
     def test_create_dataset_file_not_found(self):
         """Test dataset creation with non-existent file"""
@@ -105,7 +100,8 @@ class DatasetServiceTest(DatasetsTestBase):
     def test_get_dataset_wrong_tenant(self):
         """Test retrieving dataset from wrong tenant (failure scenario)"""
         # Create another tenant and dataset
-        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        _sfx = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(name=f"Other Tenant {_sfx}", slug=f"other-tenant-{_sfx}")
         other_file = File.objects.create(
             tenant=other_tenant,
             name="other.csv",
@@ -194,12 +190,11 @@ class DatasetServiceTest(DatasetsTestBase):
 
     def test_get_dataset_with_invalid_uuid(self):
         """Test retrieving dataset with invalid UUID format (edge case)"""
-        # Django's UUIDField validation raises ValidationError for invalid UUID format
-        # The error is raised during query filter, so it propagates through the service
-        with self.assertRaises(DjangoValidationError) as cm:
+        # execute_with_metrics wraps Django's UUIDField ValidationError as
+        # hub.apps.core.services.base.ValidationError
+        with self.assertRaises(ValidationError) as cm:
             self.service.get_dataset(dataset_id="invalid-uuid", tenant_id=str(self.tenant.id))
 
-        # Django's UUIDField validation error should be raised
         self.assertIn("not a valid UUID", str(cm.exception))
 
     def test_create_dataset_version_starts_at_one(self):

@@ -19,6 +19,8 @@ import uuid
 from io import StringIO
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import connection, transaction
@@ -855,7 +857,7 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         )
 
         user2 = User.objects.create_user(
-            email="migration-isolation-test-2@example.com",
+            email=f"migration-isolation-test-2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE,

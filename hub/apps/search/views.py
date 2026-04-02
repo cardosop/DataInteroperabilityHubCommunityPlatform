@@ -5,8 +5,13 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.request import Request
-from django.db import transaction
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from django.contrib.postgres.search import SearchQuery, SearchRank
+from django.db import models as db_models, transaction
 from django.utils import timezone
+
+from hub.apps.api.standards.pagination import StandardPageNumberPagination
 
 from .models import SearchIndex, SearchAnalytics
 from .search_engine import SearchEngine
@@ -18,7 +23,6 @@ from .serializers import (
     SearchAnalyticsDashboardSerializer
 )
 from .indexing import SearchIndexer
-from rest_framework.permissions import IsAuthenticated
 from hub.apps.auth.permissions import HasRole
 
 # Auditor permission - users with AUDITOR role
@@ -29,11 +33,19 @@ class IsAuditor(HasRole):
 
 class SearchViewSet(viewsets.ViewSet):
     """
-    Search API endpoints.
+    Search API endpoints (DEPRECATED — Phase 54.1).
 
-    Provides full-text search across contracts, assets, and datasets.
+    Use /api/search/ (UnifiedSearchView) instead.
+    This viewset returns Deprecation headers and will be removed after 30 days.
     """
     permission_classes = [IsAuthenticated]
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        """Add deprecation headers to all responses (Phase 54.1)."""
+        response = super().finalize_response(request, response, *args, **kwargs)
+        response["Deprecation"] = "true"
+        response["Link"] = '</api/search/>; rel="successor-version"'
+        return response
 
     @action(detail=False, methods=['get'])
     def search(self, request: Request) -> Response:
@@ -81,15 +93,30 @@ class SearchViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Get query
         query = request.query_params.get('q', '').strip()
+
+        if not query:
+            return Response(
+                {"error": "q parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Phase 53: guard against arbitrarily long queries
+        from django.conf import settings as _settings
+        max_len = getattr(_settings, "MAX_SEARCH_QUERY_LENGTH", 512)
+        if query and len(query) > max_len:
+            return Response(
+                {"error": "QUERY_TOO_LONG", "max_length": max_len},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Get filters
         resource_type = request.query_params.get('type')
         classification = request.query_params.get('classification')
         owner_id = request.query_params.get('owner')
         tags_str = request.query_params.get('tags')
-        tags = tags_str.split(',') if tags_str else None
+        max_tags = getattr(_settings, "MAX_SEARCH_TAGS", 50)
+        tags = tags_str.split(',')[:max_tags] if tags_str else None
         domain = request.query_params.get('domain')
         quality_status = request.query_params.get('quality_status')
         compliance_status = request.query_params.get('compliance_status')
@@ -113,10 +140,12 @@ class SearchViewSet(viewsets.ViewSet):
         sort_by = request.query_params.get('sort_by', 'relevance')
         sort_order = request.query_params.get('sort_order', 'desc')
 
-        # Check cache for search results (cache key based on query and filters)
+        # Check cache for search results (hash-based key to avoid
+        # memcached-unsafe characters like spaces and colons).
+        import hashlib
         from django.core.cache import cache
         cache_key_parts = [
-            f"search:{tenant.id}",
+            str(tenant.id),
             query or "",
             resource_type or "",
             classification or "",
@@ -128,9 +157,11 @@ class SearchViewSet(viewsets.ViewSet):
             str(limit),
             str(offset),
             sort_by,
-            sort_order
+            sort_order,
         ]
-        cache_key = ":".join(cache_key_parts)
+        raw_key = "|".join(cache_key_parts)
+        key_hash = hashlib.md5(raw_key.encode()).hexdigest()
+        cache_key = f"search_{key_hash}"
         cached_results = cache.get(cache_key)
 
         if cached_results is not None:
@@ -429,4 +460,162 @@ class SearchViewSet(viewsets.ViewSet):
             'success': result.get('success', True),
             'resource_types': result.get('resource_types', [])
         })
+
+
+# ---------------------------------------------------------------------------
+# Phase 18.3 — /api/search/ unified full-text search
+# ---------------------------------------------------------------------------
+
+class UnifiedSearchView(APIView):
+    """
+    GET /api/search/?q=<term>&types=assets,contracts
+
+    Queries Asset and Contract models directly via their PostgreSQL
+    search_vector fields (Phase 18.2).  Results are ranked by ts_rank and
+    scoped to the authenticated user's tenant.
+
+    Query parameters
+    ----------------
+    q      : search term (required)
+    types  : comma-separated subset of ``assets``, ``contracts``
+             (default: both)
+    page   : page number (StandardPageNumberPagination, page_size=50)
+
+    Response schema (per item)
+    --------------------------
+    {
+        "type":  "asset" | "contract",
+        "id":    "<uuid>",
+        "name":  "<string>",
+        "rank":  <float>
+    }
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        from hub.apps.assets.models import Asset
+        from hub.apps.contracts.models import Contract
+        from hub.apps.tenants.models import Tenant
+
+        # ── resolve tenant ──────────────────────────────────────────────
+        tenant = getattr(request.user, "tenant", None)
+        if tenant is None:
+            tenant_id = getattr(request.user, "tenant_id", None)
+            if tenant_id:
+                try:
+                    tenant = Tenant.objects.get(id=tenant_id)
+                except Tenant.DoesNotExist:
+                    pass
+        if tenant is None:
+            return Response(
+                {"error": "User must belong to a tenant"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        q = request.query_params.get("q", "").strip()
+
+        if not q:
+            return Response(
+                {"error": "q parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Phase 53: guard against arbitrarily long queries
+        from django.conf import settings as _settings
+        max_len = getattr(_settings, "MAX_SEARCH_QUERY_LENGTH", 512)
+        if q and len(q) > max_len:
+            return Response(
+                {"error": "QUERY_TOO_LONG", "max_length": max_len},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        types_raw = request.query_params.get("types", "assets,contracts")
+        requested_types = {
+            t.strip().lower() for t in types_raw.split(",") if t.strip()
+        }
+
+        search_query = SearchQuery(q, search_type="websearch")
+
+        results = []
+
+        # ── assets ───────────────────────────────────────────────────────
+        if "assets" in requested_types:
+            asset_qs = (
+                Asset.objects.filter(
+                    tenant=tenant,
+                    search_vector__isnull=False,
+                )
+                .filter(search_vector=search_query)
+                .annotate(
+                    rank=SearchRank(
+                        db_models.F("search_vector"), search_query
+                    )
+                )
+                .order_by("-rank")
+                .values("id", "name", "rank")
+            )
+            for row in asset_qs:
+                results.append(
+                    {
+                        "type": "asset",
+                        "id": str(row["id"]),
+                        "name": row["name"],
+                        "rank": float(row["rank"]),
+                    }
+                )
+
+        # ── contracts ────────────────────────────────────────────────────
+        if "contracts" in requested_types:
+            # Contracts don't have a `name` field; use original_spec_type
+            # as the display label.
+            contract_qs = (
+                Contract.objects.filter(
+                    tenant=tenant,
+                    search_vector__isnull=False,
+                )
+                .filter(search_vector=search_query)
+                .annotate(
+                    rank=SearchRank(
+                        db_models.F("search_vector"), search_query
+                    )
+                )
+                .order_by("-rank")
+                .values("id", "original_spec_type", "rank")
+            )
+            for row in contract_qs:
+                results.append(
+                    {
+                        "type": "contract",
+                        "id": str(row["id"]),
+                        "name": row["original_spec_type"],
+                        "rank": float(row["rank"]),
+                    }
+                )
+
+        # ── sort merged results by rank desc ─────────────────────────────
+        results.sort(key=lambda r: r["rank"], reverse=True)
+
+        # ── analytics tracking (Phase 54.2) ──────────────────────────────
+        try:
+            SearchEngine.track_search(
+                tenant_id=str(tenant.id),
+                query=q,
+                query_type="SEARCH",
+                filters={"types": list(requested_types)},
+                result_count=len(results),
+                user_id=str(request.user.id) if request.user.is_authenticated else None,
+                session_id=getattr(getattr(request, "session", None), "session_key", None),
+                ip_address=request.META.get("REMOTE_ADDR"),
+                user_agent=request.META.get("HTTP_USER_AGENT"),
+            )
+        except Exception:
+            pass  # analytics must not break search
+
+        # ── paginate ─────────────────────────────────────────────────────
+        paginator = StandardPageNumberPagination()
+        page = paginator.paginate_queryset(results, request)
+        if page is not None:
+            return paginator.get_paginated_response(page)
+        return Response(results)
 

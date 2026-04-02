@@ -60,6 +60,25 @@ def validate_contract_compliance_payload(hub_contract: Dict[str, Any]) -> None:
                 details={"retention_policy_type": type(section["retention_policy"]).__name__},
             )
 
+# ---------------------------------------------------------------------------
+# Regulation key aliases (19.10.7) — mirrored from
+# services/compliance-service/regulations/__init__.py
+# ---------------------------------------------------------------------------
+
+#: Maps legacy/variant regulation keys to canonical keys.
+#: Keep in sync with REGULATION_KEY_ALIASES in the compliance-service package.
+REGULATION_KEY_ALIASES: dict = {
+    # APAC
+    "PIPL": "PIPL_CN",
+    "PIPL_CHINA": "PIPL_CN",
+    # Americas
+    "CCPA_CPRA": "CCPA",
+    "CCPA/CPRA": "CCPA",
+    # APAC — Australia
+    "PRIVACY_ACT": "PRIVACY_ACT_AU",
+}
+
+# ---------------------------------------------------------------------------
 # Import vocabulary mappings - handle import path with hyphen
 import sys
 import os
@@ -133,15 +152,22 @@ class ContractCompliancePolicyExtractor:
     def get_regulatory_mapping(contract: Contract) -> List[str]:
         """
         Get jurisdictions from contract for regulatory mapping (GAP-8.2.2).
-        
+
+        Normalises legacy key strings via REGULATION_KEY_ALIASES before
+        returning so downstream callers always receive canonical keys
+        (e.g. "PIPL" -> "PIPL_CN", "CCPA_CPRA" -> "CCPA").
+
         Args:
             contract: Contract instance
-            
+
         Returns:
-            List of jurisdiction strings (GDPR, LGPD, CCPA, etc.)
+            List of canonical jurisdiction strings (GDPR, LGPD, CCPA…)
         """
-        policy = ContractCompliancePolicyExtractor.extract_compliance_policy(contract)
-        return policy.get('jurisdictions', [])
+        policy = ContractCompliancePolicyExtractor.extract_compliance_policy(
+            contract
+        )
+        raw: List[str] = policy.get('jurisdictions', [])
+        return [REGULATION_KEY_ALIASES.get(j, j) for j in raw]
     
     @staticmethod
     def get_legal_bases(contract: Contract) -> List[str]:

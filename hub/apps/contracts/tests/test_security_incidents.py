@@ -254,7 +254,7 @@ class SecurityIncidentAPITest(ContractsAPITestBase):
         self.user.display_name = "Test User"
         self.user.save()
         self.admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="adminpass123",
             tenant=None,  # Platform admins may not have tenant
             status=UserStatus.ACTIVE,
@@ -348,7 +348,16 @@ class SecurityIncidentAPITest(ContractsAPITestBase):
 
     def test_resolve_incident_non_admin_forbidden(self):
         """Test that non-admin users cannot resolve incidents"""
-        self.client.force_authenticate(user=self.user)
+        # Create a non-admin user (self.user is platform_admin from setUp)
+        non_admin_user = User.objects.create_user(
+            email=f"nonadmin-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+            display_name="Non Admin",
+            is_platform_admin=False,
+        )
+        self.client.force_authenticate(user=non_admin_user)
         response = self.client.post(
             f"/api/v1/security/incidents/{self.incident1.id}/resolve/",
             {"resolution_notes": "Attempted resolution"},
@@ -359,6 +368,8 @@ class SecurityIncidentAPITest(ContractsAPITestBase):
 
     def test_resolve_incident_unauthenticated(self):
         """Test that unauthenticated users cannot access incidents"""
+        # Clear authentication (setUp authenticates self.user)
+        self.client.force_authenticate(user=None)
         response = self.client.get("/api/v1/security/incidents/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

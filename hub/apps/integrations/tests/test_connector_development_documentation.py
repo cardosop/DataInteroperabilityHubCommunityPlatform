@@ -12,6 +12,7 @@ Tests verify:
 All tests use real implementations (no mocks/stubs).
 """
 
+import unittest
 import ast
 import os
 import re
@@ -102,7 +103,7 @@ class TestConnectorDevelopmentDocumentationStructure(TestCase):
         self.dev_guide_path = find_file_path("docs/connectors/DEVELOPMENT.md")
 
         if not self.dev_guide_path or not self.dev_guide_path.exists():
-            pytest.skip("DEVELOPMENT.md not found")
+            raise unittest.SkipTest("DEVELOPMENT.md not found")
 
         assert self.dev_guide_path is not None  # Type narrowing for type checker
         self.content = self.dev_guide_path.read_text()
@@ -148,7 +149,7 @@ class TestCodeExamplesSyntax(TestCase):
         self.dev_guide_path = find_file_path("docs/connectors/DEVELOPMENT.md")
 
         if not self.dev_guide_path or not self.dev_guide_path.exists():
-            pytest.skip("DEVELOPMENT.md not found")
+            raise unittest.SkipTest("DEVELOPMENT.md not found")
 
         assert self.dev_guide_path is not None  # Type narrowing for type checker
         self.content = self.dev_guide_path.read_text()
@@ -257,7 +258,7 @@ class TestDiagnosticCommandsExecutable(TestCase):
         self.runbooks_path = find_file_path("docs/RUNBOOKS.md")
 
         if not self.runbooks_path or not self.runbooks_path.exists():
-            pytest.skip("RUNBOOKS.md not found")
+            raise unittest.SkipTest("RUNBOOKS.md not found")
 
         assert self.runbooks_path is not None  # Type narrowing for type checker
         self.content = self.runbooks_path.read_text()
@@ -358,7 +359,7 @@ class TestReferencesCorrect(TestCase):
         self.dev_guide_path = find_file_path("docs/connectors/DEVELOPMENT.md")
 
         if not self.dev_guide_path or not self.dev_guide_path.exists():
-            pytest.skip("DEVELOPMENT.md not found")
+            raise unittest.SkipTest("DEVELOPMENT.md not found")
 
         assert self.dev_guide_path is not None  # Type narrowing for type checker
         self.content = self.dev_guide_path.read_text()
@@ -414,7 +415,7 @@ class TestDocumentationCompleteness(TestCase):
         self.dev_guide_path = find_file_path("docs/connectors/DEVELOPMENT.md")
 
         if not self.dev_guide_path or not self.dev_guide_path.exists():
-            pytest.skip("DEVELOPMENT.md not found")
+            raise unittest.SkipTest("DEVELOPMENT.md not found")
 
         assert self.dev_guide_path is not None  # Type narrowing for type checker
         self.content = self.dev_guide_path.read_text()
@@ -486,7 +487,7 @@ class TestRunbooksDiagnosticCommands(TestCase):
         self.runbooks_path = find_file_path("docs/RUNBOOKS.md")
 
         if not self.runbooks_path or not self.runbooks_path.exists():
-            pytest.skip("RUNBOOKS.md not found")
+            raise unittest.SkipTest("RUNBOOKS.md not found")
 
         assert self.runbooks_path is not None  # Type narrowing for type checker
         self.content = self.runbooks_path.read_text()

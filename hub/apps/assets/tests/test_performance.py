@@ -8,6 +8,7 @@ Tests performance requirements for asset endpoints:
 These tests use real services and infrastructure (no mocks).
 """
 
+import uuid
 import statistics
 import time
 
@@ -37,10 +38,11 @@ class AssetPerformanceTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.client = APIClient()
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED")
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
         )
@@ -346,18 +348,22 @@ class AssetPerformanceTest(TestCase):
 
     # ========== FAILURE SCENARIOS ==========
 
-    def test_create_asset_performance_failure_threshold(self):
-        """Test performance failure when threshold exceeded (failure scenario)"""
-        # Create conditions that might cause slow performance
-        # (e.g., many existing assets, complex queries)
-        for i in range(100):
-            Asset.objects.create(
-                tenant=self.tenant,
-                key=f"bulk-asset-{i}",
-                name=f"Bulk Asset {i}",
-                status=AssetStatus.DRAFT,
-                created_by=self.user,
-            )
+    def test_create_asset_performance_metrics_structure(self):
+        """Test that performance metrics dict has expected keys with reasonable values under load"""
+        # Many rows without post_save storm: bulk_create skips signals (Phase 18.2 RQ jobs).
+        Asset.objects.bulk_create(
+            [
+                Asset(
+                    tenant=self.tenant,
+                    key=f"bulk-asset-{i}",
+                    name=f"Bulk Asset {i}",
+                    status=AssetStatus.DRAFT,
+                    created_by=self.user,
+                )
+                for i in range(100)
+            ],
+            batch_size=50,
+        )
 
         results = self.measure_endpoint_performance(
             method="POST",
@@ -369,16 +375,27 @@ class AssetPerformanceTest(TestCase):
                 "domain": "test",
                 "visibility": "INTERNAL",
             },
-            iterations=10,  # Fewer iterations for failure test
+            iterations=10,  # Fewer iterations for structure test
         )
 
         # Cleanup
         Asset.objects.filter(tenant=self.tenant, key__startswith="test-asset-perf-").delete()
         Asset.objects.filter(tenant=self.tenant, key__startswith="bulk-asset-").delete()
 
-        # Test should complete (may exceed threshold but should not crash)
-        self.assertIsNotNone(results["p95"])
-        self.assertGreaterEqual(results["p95"], 0)
+        # Verify metrics dict has all expected keys
+        expected_keys = {"execution_times", "query_counts", "p50", "p95", "p99", "avg_queries", "max_queries"}
+        self.assertEqual(set(results.keys()), expected_keys)
+
+        # Verify metrics have reasonable values
+        self.assertEqual(len(results["execution_times"]), 10)
+        self.assertEqual(len(results["query_counts"]), 10)
+        self.assertGreater(results["p50"], 0)
+        self.assertGreater(results["p95"], 0)
+        self.assertGreater(results["p99"], 0)
+        # Query counts may be 0 when DEBUG=False (connection.queries
+        # is only populated when DEBUG=True in Django)
+        self.assertGreaterEqual(results["avg_queries"], 0)
+        self.assertGreaterEqual(results["max_queries"], 0)
 
     def test_activate_asset_performance_failure_threshold(self):
         """Test activation performance failure when threshold exceeded (failure scenario)"""
@@ -424,33 +441,27 @@ class AssetPerformanceTest(TestCase):
     # ========== ERROR HANDLING ==========
 
     def test_measure_performance_invalid_endpoint(self):
-        """Test error handling when measuring invalid endpoint (error handling)"""
-        # Use invalid endpoint
-        try:
-            results = self.measure_endpoint_performance(
-                method="POST", url="/api/v1/invalid-endpoint/", data={}, iterations=1
-            )
-            # Should handle gracefully (may return error results)
-            self.assertIsNotNone(results)
-        except Exception:
-            # If raises exception, that's acceptable for invalid endpoint
-            pass
+        """Test that measuring an invalid endpoint returns results without crashing"""
+        # measure_endpoint_performance always returns a results dict regardless of
+        # HTTP status codes; it records timing for whatever response comes back.
+        results = self.measure_endpoint_performance(
+            method="POST", url="/api/v1/invalid-endpoint/", data={}, iterations=1
+        )
+        self.assertIsNotNone(results)
+        self.assertEqual(len(results["execution_times"]), 1)
+        self.assertGreater(results["execution_times"][0], 0)
 
-    def test_measure_performance_database_error_handling(self):
-        """Test error handling when database operations fail"""
-        # Use valid endpoint
-        try:
-            results = self.measure_endpoint_performance(
-                method="GET", url="/api/v1/assets/", iterations=1
-            )
-            # Should handle gracefully
-            self.assertIsNotNone(results)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("measure_endpoint_performance should handle database errors gracefully")
+    def test_measure_performance_valid_endpoint_returns_results(self):
+        """Test that measuring a valid endpoint returns a complete results dict"""
+        results = self.measure_endpoint_performance(
+            method="GET", url="/api/v1/assets/", iterations=1
+        )
+        self.assertIsNotNone(results)
+        self.assertEqual(len(results["execution_times"]), 1)
+        self.assertEqual(len(results["query_counts"]), 1)
 
-    def test_concurrent_performance_error_handling(self):
-        """Test error handling in concurrent performance test"""
+    def test_concurrent_performance_collects_errors(self):
+        """Test that concurrent invalid requests collect errors without crashing"""
         import threading
 
         errors = []
@@ -479,5 +490,5 @@ class AssetPerformanceTest(TestCase):
         for thread in threads:
             thread.join()
 
-        # Should handle errors gracefully (not crash)
-        self.assertIsNotNone(errors)
+        # errors is a list (may be empty if threads didn't complete or non-empty with status codes)
+        self.assertIsInstance(errors, list)

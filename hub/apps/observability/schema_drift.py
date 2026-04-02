@@ -48,7 +48,41 @@ class SchemaDriftDetector:
         return hashlib.sha256(schema_str.encode('utf-8')).hexdigest()
     
     @staticmethod
+    def _extract_field_map(
+        schema: Optional[Dict[str, Any]],
+    ) -> Dict[str, Dict[str, Any]]:
+        """Build ``{field_name: field_info}`` from a schema.
+
+        Supports two formats:
+        1. List-of-dicts: ``{"fields": [{"name": "id", "type": "int"}, …]}``
+        2. JSON Schema:   ``{"properties": {"id": {"type": "integer"}, …}}``
+        """
+        if not isinstance(schema, dict):
+            return {}
+
+        # Format 1: explicit fields list
+        fields = schema.get("fields", [])
+        if fields:
+            return {
+                str(f["name"]): f
+                for f in fields
+                if isinstance(f, dict) and f.get("name")
+            }
+
+        # Format 2: JSON Schema properties
+        props = schema.get("properties", {})
+        if isinstance(props, dict) and props:
+            return {
+                name: {**info, "name": name}
+                for name, info in props.items()
+                if isinstance(info, dict)
+            }
+
+        return {}
+
+    @classmethod
     def compare_schemas(
+        cls,
         previous_schema: Optional[Dict[str, Any]],
         current_schema: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
@@ -73,39 +107,36 @@ class SchemaDriftDetector:
         
         if previous_schema is None:
             # New schema
-            current_fields = current_schema.get("fields", []) if isinstance(current_schema, dict) else []
+            current_field_map = cls._extract_field_map(current_schema)
             return {
-                "new_fields": [f.get("name") for f in current_fields if isinstance(f, dict) and f.get("name")],
+                "new_fields": list(current_field_map.keys()),
                 "removed_fields": [],
                 "type_changes": [],
                 "nullable_changes": [],
-                "has_changes": True
+                "has_changes": bool(current_field_map),
             }
-        
+
         if current_schema is None:
             # Schema removed
-            previous_fields = previous_schema.get("fields", []) if isinstance(previous_schema, dict) else []
+            previous_field_map = cls._extract_field_map(previous_schema)
             return {
                 "new_fields": [],
-                "removed_fields": [f.get("name") for f in previous_fields if isinstance(f, dict) and f.get("name")],
+                "removed_fields": list(previous_field_map.keys()),
                 "type_changes": [],
                 "nullable_changes": [],
-                "has_changes": True
+                "has_changes": bool(previous_field_map),
             }
         
-        # Extract fields
-        previous_fields = previous_schema.get("fields", []) if isinstance(previous_schema, dict) else []
-        current_fields = current_schema.get("fields", []) if isinstance(current_schema, dict) else []
-        
-        # Build field maps
-        previous_field_map = {
-            f.get("name"): f for f in previous_fields
-            if isinstance(f, dict) and f.get("name")
-        }
-        current_field_map = {
-            f.get("name"): f for f in current_fields
-            if isinstance(f, dict) and f.get("name")
-        }
+        # Extract fields — supports both list-of-dicts format
+        # ({"fields": [{"name": "id", "type": "int"}, ...]})
+        # and JSON Schema format
+        # ({"properties": {"id": {"type": "integer"}, ...}}).
+        previous_field_map = cls._extract_field_map(
+            previous_schema,
+        )
+        current_field_map = cls._extract_field_map(
+            current_schema,
+        )
         
         # Detect changes
         new_fields = []
@@ -273,6 +304,8 @@ class SchemaDriftDetector:
         
         previous_metric = previous_metric.exclude(
             schema_hash__isnull=True
+        ).exclude(
+            schema_hash=current_hash  # Exclude metrics with current schema
         ).order_by('-recorded_at').first()
         
         if previous_metric is None:

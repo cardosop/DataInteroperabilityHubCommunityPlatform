@@ -318,7 +318,7 @@ def extract_field_level_lineage(odcs_field: Dict[str, Any]) -> Optional[Dict[str
     transform_logic = odcs_field.get("transformLogic")
     transform_description = odcs_field.get("transformDescription")
 
-    if not transform_sources and not transform_logic:
+    if not transform_sources and not transform_logic and not transform_description:
         return None
 
     entry: Dict[str, Any] = {}
@@ -397,7 +397,7 @@ class LineageTraverser:
 
         hub_contract = contract.hub_contract_json
         if not isinstance(hub_contract, dict):
-            return {"error": "Invalid contract data"}
+            return {"contract_id": contract_id, "models": [], "error": "Invalid contract data"}
 
         result: Dict[str, Any] = {
             "contract_id": contract_id,
@@ -585,7 +585,7 @@ class LineageTraverser:
 
         hub_contract = contract.hub_contract_json
         if not isinstance(hub_contract, dict):
-            return {"error": "Invalid contract data"}
+            return {"contract_id": contract_id, "models": [], "error": "Invalid contract data"}
 
         result: Dict[str, Any] = {
             "contract_id": contract_id,

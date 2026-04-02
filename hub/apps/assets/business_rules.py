@@ -1341,10 +1341,11 @@ class AssetsBusinessRules(BusinessRules):
 
         if contract.validation_status not in [
             ValidationStatus.VALID,
-            ValidationStatus.WARNING_ONLY
+            ValidationStatus.WARNING_ONLY,
+            ValidationStatus.SKIPPED,
         ]:
             errors.append(
-                f"Contract validation_status must be VALID or WARNING_ONLY "
+                f"Contract validation_status must be VALID, WARNING_ONLY, or SKIPPED "
                 f"(current: {contract.validation_status})"
             )
             details['status_valid'] = False
@@ -1356,6 +1357,10 @@ class AssetsBusinessRules(BusinessRules):
                 )
                 if contract.validation_warnings:
                     details['validation_warnings'] = contract.validation_warnings
+            elif contract.validation_status == ValidationStatus.SKIPPED:
+                warnings.append(
+                    "Contract validation was skipped - attachment allowed but contract has not been validated"
+                )
 
         return ValidationResult(
             is_valid=len(errors) == 0,
@@ -1612,7 +1617,7 @@ class AssetsBusinessRules(BusinessRules):
         }
 
         # Define status strings for comparison
-        active_status_str = AssetStatus.ACTIVE[0] if isinstance(AssetStatus.ACTIVE, tuple) else str(AssetStatus.ACTIVE)
+        active_status_str = str(AssetStatus.ACTIVE)
 
         # Validate DQ status
         if asset.dq_status not in [status[0] for status in DQStatus.choices]:
@@ -1626,9 +1631,9 @@ class AssetsBusinessRules(BusinessRules):
             details["health_score_checks"]["dq_status"] = asset.dq_status
 
             # Check DQ status appropriateness for asset status
-            active_status_str = AssetStatus.ACTIVE[0] if isinstance(AssetStatus.ACTIVE, tuple) else str(AssetStatus.ACTIVE)
+            active_status_str = str(AssetStatus.ACTIVE)
             if asset.status == active_status_str:
-                if asset.dq_status not in [DQStatus.PASS[0], DQStatus.WARN[0]]:
+                if asset.dq_status not in [str(DQStatus.PASS), str(DQStatus.WARN)]:
                     errors.append(
                         f"Asset with ACTIVE status requires DQ status PASS or WARN, "
                         f"but current status is {asset.dq_status}"
@@ -1652,7 +1657,7 @@ class AssetsBusinessRules(BusinessRules):
 
             # Check compliance status appropriateness for asset status
             if asset.status == active_status_str:
-                if asset.compliance_status not in [ComplianceStatus.PASS[0], ComplianceStatus.WARN[0]]:
+                if asset.compliance_status not in [str(ComplianceStatus.PASS), str(ComplianceStatus.WARN)]:
                     errors.append(
                         f"Asset with ACTIVE status requires compliance status PASS or WARN, "
                         f"but current status is {asset.compliance_status}"
@@ -1837,10 +1842,10 @@ class AssetsBusinessRules(BusinessRules):
         details["threshold_checks"]["current_health_score"] = health_score
 
         # Validate thresholds based on target status
-        active_status_str = AssetStatus.ACTIVE[0] if isinstance(AssetStatus.ACTIVE, tuple) else str(AssetStatus.ACTIVE)
-        public_status_str = AssetStatus.PUBLIC[0] if isinstance(AssetStatus.PUBLIC, tuple) else str(AssetStatus.PUBLIC)
-        draft_status_str = AssetStatus.DRAFT[0] if isinstance(AssetStatus.DRAFT, tuple) else str(AssetStatus.DRAFT)
-        retired_status_str = AssetStatus.RETIRED[0] if isinstance(AssetStatus.RETIRED, tuple) else str(AssetStatus.RETIRED)
+        active_status_str = str(AssetStatus.ACTIVE)
+        public_status_str = str(AssetStatus.PUBLIC)
+        draft_status_str = str(AssetStatus.DRAFT)
+        retired_status_str = str(AssetStatus.RETIRED)
 
         if target == active_status_str:
             if health_score < MIN_HEALTH_SCORE_ACTIVE:
@@ -1999,8 +2004,8 @@ class AssetsBusinessRules(BusinessRules):
 
         # Check if component statuses have changed
         # Note: This is a heuristic check - actual change detection would require tracking previous values
-        unknown_dq_str = DQStatus.UNKNOWN[0] if isinstance(DQStatus.UNKNOWN, tuple) else str(DQStatus.UNKNOWN)
-        unknown_compliance_str = ComplianceStatus.UNKNOWN[0] if isinstance(ComplianceStatus.UNKNOWN, tuple) else str(ComplianceStatus.UNKNOWN)
+        unknown_dq_str = str(DQStatus.UNKNOWN)
+        unknown_compliance_str = str(ComplianceStatus.UNKNOWN)
 
         if asset.dq_status == unknown_dq_str:
             warnings.append(
@@ -2025,7 +2030,7 @@ class AssetsBusinessRules(BusinessRules):
                 details["update_trigger_checks"]["contract_validation_changed"] = True
 
         # Check if asset status requires recalculation
-        active_status_str = AssetStatus.ACTIVE[0] if isinstance(AssetStatus.ACTIVE, tuple) else str(AssetStatus.ACTIVE)
+        active_status_str = str(AssetStatus.ACTIVE)
         if asset.status == active_status_str and asset.health_score is None:
             errors.append(
                 "Asset with ACTIVE status must have a calculated health score"
@@ -2035,7 +2040,7 @@ class AssetsBusinessRules(BusinessRules):
             # Validate health score meets threshold
             threshold_result = self.validate_health_score_thresholds(
                 asset=asset,
-                target_status=AssetStatus.ACTIVE[0],
+                target_status=str(AssetStatus.ACTIVE),
                 raise_on_error=False
             )
             if not threshold_result.is_valid:

@@ -379,9 +379,9 @@ class APIFilteringSortingConsistencyTest(ContractsAPITestBase):
         )
 
     def test_filtering_with_none_value(self):
-        """Test filtering with None value"""
-        # Test filtering (None values may be handled differently)
-        response = self.client.get("/api/v1/contracts/", {"status": None})  # None value
+        """Test filtering with empty/blank value (None cannot be URL-encoded)"""
+        # Test filtering with empty string — semantically equivalent to "no value provided"
+        response = self.client.get("/api/v1/contracts/", {"status": ""})  # empty value
 
         # Should handle None value gracefully
         self.assertIn(

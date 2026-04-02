@@ -27,7 +27,7 @@ from hub.apps.scheduled_ingestion.services import IngestionService
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class IngestionServiceTest(TestCase):

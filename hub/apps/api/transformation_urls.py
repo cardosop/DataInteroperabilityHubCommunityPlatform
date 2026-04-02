@@ -1,17 +1,11 @@
-"""Transformation pipelines placeholder URLs."""
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .transformation_views import (
-    TransformationAuditViewSet,
-    TransformationExecutionViewSet,
-    TransformationPipelineViewSet,
-)
+"""
+Transformation pipelines URLs — delegates to the transformation app.
 
-router = DefaultRouter()
-router.register(r"pipelines", TransformationPipelineViewSet, basename="transformation-pipeline")
-router.register(r"executions", TransformationExecutionViewSet, basename="transformation-execution")
-router.register(r"audit", TransformationAuditViewSet, basename="transformation-audit")
+Phase 115A: Replaced placeholder views with full transformation app.
+"""
+from django.urls import include, path
 
+# Delegate entirely to the transformation app's own URL configuration.
 urlpatterns = [
-    path("", include(router.urls)),
+    path("", include("hub.apps.transformation.urls")),
 ]

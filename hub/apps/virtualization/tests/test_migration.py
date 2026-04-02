@@ -9,6 +9,7 @@ from django.core.management import call_command
 from django.db import connection
 
 from hub.apps.tenants.models import Tenant, KYCStatus
+import uuid
 from hub.apps.virtualization.models import (
     VirtualDataset,
     QueryType,
@@ -26,9 +27,10 @@ class VirtualDatasetMigrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
 
@@ -203,23 +205,37 @@ class VirtualDatasetMigrationTest(TestCase):
             table_exists_before = cursor.fetchone()[0]
             self.assertTrue(table_exists_before, "Table should exist before rollback")
 
-        # Rollback migration (rollback to zero - no migrations)
-        call_command('migrate', 'virtualization', 'zero', verbosity=0, interactive=False)
-
-        # Verify table is removed
+        # Disable statement_timeout for DDL-heavy migration operations.
+        # Migrations run DROP TABLE CASCADE, CREATE TABLE, add indexes/FKs —
+        # these acquire AccessExclusiveLock and may wait on concurrent readers,
+        # easily exceeding the default 60s statement_timeout on busy DBs.
         with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                    AND table_name = 'virtual_datasets'
-                );
-            """)
-            table_exists_after = cursor.fetchone()[0]
-            self.assertFalse(table_exists_after, "Table should not exist after rollback")
+            cursor.execute("SET statement_timeout = '0'")
+        try:
+            # Rollback migration (rollback to zero - no migrations)
+            call_command('migrate', 'virtualization', 'zero', verbosity=0, interactive=False)
 
-        # Re-apply migration for other tests
-        call_command('migrate', 'virtualization', verbosity=0, interactive=False)
+            # Verify table is removed
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_name = 'virtual_datasets'
+                    );
+                """)
+                table_exists_after = cursor.fetchone()[0]
+                self.assertFalse(table_exists_after, "Table should not exist after rollback")
+
+            # Re-apply migration for other tests
+            call_command('migrate', 'virtualization', verbosity=0, interactive=False)
+        finally:
+            # Restore statement_timeout so subsequent tests retain the safety net
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SET statement_timeout = '60s'")
+            except Exception:
+                pass
 
     def test_migration_forward_backward_data_integrity(self):
         """Test that data survives forward and backward migration cycles."""
@@ -260,9 +276,10 @@ class QueryExecutionMigrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.virtual_dataset = VirtualDataset.objects.create(
@@ -418,23 +435,33 @@ class QueryExecutionMigrationTest(TestCase):
             table_exists_before = cursor.fetchone()[0]
             self.assertTrue(table_exists_before, "Table should exist before rollback")
 
-        # Rollback migration (rollback to previous migration)
-        call_command('migrate', 'virtualization', '0002', verbosity=0, interactive=False)
-
-        # Verify table is removed
+        # Disable statement_timeout for DDL-heavy migration operations.
         with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                    AND table_name = 'query_executions'
-                );
-            """)
-            table_exists_after = cursor.fetchone()[0]
-            self.assertFalse(table_exists_after, "Table should not exist after rollback")
+            cursor.execute("SET statement_timeout = '0'")
+        try:
+            # Rollback migration (rollback to previous migration)
+            call_command('migrate', 'virtualization', '0002', verbosity=0, interactive=False)
 
-        # Re-apply migration for other tests
-        call_command('migrate', 'virtualization', verbosity=0, interactive=False)
+            # Verify table is removed
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_name = 'query_executions'
+                    );
+                """)
+                table_exists_after = cursor.fetchone()[0]
+                self.assertFalse(table_exists_after, "Table should not exist after rollback")
+
+            # Re-apply migration for other tests
+            call_command('migrate', 'virtualization', verbosity=0, interactive=False)
+        finally:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SET statement_timeout = '60s'")
+            except Exception:
+                pass
 
     def test_migration_forward_backward_data_integrity(self):
         """Test that data survives forward and backward migration cycles."""

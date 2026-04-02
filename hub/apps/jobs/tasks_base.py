@@ -7,6 +7,7 @@ SAVING CHECKPOINT: This module contains the core job processing infrastructure.
 """
 
 import time
+import traceback as tb_module
 from datetime import timedelta
 
 import structlog
@@ -16,7 +17,7 @@ from django_rq import job
 
 from hub.apps.audit.utils import create_audit_event
 
-from .models import Job, JobPriority, JobStatus, JobType
+from .models import FailedJobDLQ, Job, JobPriority, JobStatus, JobType
 from .utils import (
     WORKER_MAX_CONCURRENCY,
     WORKER_MAX_CONCURRENCY_PER_TENANT,
@@ -36,6 +37,42 @@ from .utils import (
 )
 
 logger = structlog.get_logger(__name__)
+
+
+def _write_to_dlq(job_obj: Job, job_type: str, exception: Exception):
+    """
+    Write a failed job to the dead-letter queue (Phase 91.8).
+
+    Called when a job reaches its final failure — either because max
+    retries are exhausted or the error is non-transient.  Best-effort:
+    failures are logged and never propagate.
+    """
+    try:
+        FailedJobDLQ.objects.create(
+            job_id=job_obj.id,
+            queue=get_queue_for_job_type(job_type),
+            func_name=f"hub.apps.jobs.tasks_base.process_job",
+            args_json={
+                "job_id": str(job_obj.id),
+                "job_type": job_type,
+            },
+            error_message=str(exception),
+            traceback=tb_module.format_exc(),
+            tenant=job_obj.tenant,
+        )
+        logger.info(
+            "job_written_to_dlq",
+            job_id=str(job_obj.id),
+            job_type=job_type,
+            error_type=type(exception).__name__,
+        )
+    except Exception as dlq_err:
+        logger.error(
+            "dlq_write_failed",
+            job_id=str(job_obj.id),
+            error=str(dlq_err),
+            exc_info=True,
+        )
 
 
 @job("default", timeout=600)
@@ -62,28 +99,51 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
     is_elevated = should_elevate_job(job_id, queue_name)
     wait_time = get_job_wait_time(job_id)
 
-    # Slot type determined after job is fetched; also captures tenant_id for
+    # ── Step 1: Atomically claim the job (PENDING → RUNNING). ────────────────
+    # A single UPDATE WHERE status='PENDING' is the definitive TOCTOU fix:
+    # exactly one worker among N concurrent claimers gets claimed_count == 1.
+    # select_for_update() is not needed here because a bare UPDATE with a
+    # WHERE-clause is already atomic at the SQL level on any MVCC database.
+    _now = timezone.now()
+    with transaction.atomic():
+        claimed_count = Job.objects.filter(
+            id=job_id,
+            status=JobStatus.PENDING,
+        ).update(
+            status=JobStatus.RUNNING,
+            started_at=_now,
+        )
+
+    if claimed_count == 0:
+        # Another worker already claimed the job, or it was cancelled/completed.
+        try:
+            _status = Job.objects.values_list("status", flat=True).get(id=job_id)
+            if _status == JobStatus.CANCELLED:
+                logger.info(
+                    "job_cancelled_before_processing",
+                    job_id=job_id,
+                )
+            else:
+                logger.warning(
+                    "job_already_claimed",
+                    job_id=job_id,
+                    current_status=_status,
+                )
+        except Job.DoesNotExist:
+            logger.error("job_not_found", job_id=job_id)
+        return
+
+    # Slot type determined after claim; also captures tenant_id for
     # the finally block so we avoid a redundant DB query there.
     slot_type = None
     _tenant_id: str | None = None
     try:
-        # Eagerly load FK relations used in audit events throughout this function.
+        # ── Step 2: Load full job object with FK relations for audit events. ──
         job_obj = Job.objects.select_related("created_by", "tenant").get(
             id=job_id
         )
         # Capture tenant_id now so the finally block doesn't need to re-query.
         _tenant_id = str(job_obj.tenant.id) if job_obj.tenant else None
-
-        # Check if job was cancelled before processing
-        if job_obj.status == JobStatus.CANCELLED:
-            logger.info(
-                "job_cancelled_before_processing",
-                job_id=job_id,
-                message=(
-                    f"Job {job_id} was cancelled before processing started"
-                ),
-            )
-            return
 
         # Determine slot type based on queue and elevation.
         # try_acquire_*_slot() performs the check-and-increment atomically via
@@ -125,11 +185,6 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
         # Increment tenant job counter
         increment_tenant_job_counter(job_obj.tenant_id)
 
-        # Mark job as running
-        job_obj.status = JobStatus.RUNNING
-        job_obj.started_at = timezone.now()
-        job_obj.save(update_fields=["status", "started_at"])
-
         # Execute job logic
         start_time = time.time()
         try:
@@ -152,6 +207,13 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                     "details_json",
                 ]
             )
+
+            if job_type == JobType.CONTRACT_VALIDATION:
+                from hub.apps.contracts.invalidation_cascade import (
+                    persist_contract_validation_job_result,
+                )
+
+                persist_contract_validation_job_result(job_obj, result)
 
             # Log success
             logger.info(
@@ -216,6 +278,9 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 details={"job_type": job_type, "error": str(e), "error_type": "ValidationError"},
             )
 
+            # Non-transient — write to DLQ immediately
+            _write_to_dlq(job_obj, job_type, e)
+
         except TimeoutError as e:
             # Timeout error - mark as failed
             execution_time = time.time() - start_time
@@ -260,6 +325,9 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 },
             )
 
+            # Non-transient — write to DLQ immediately
+            _write_to_dlq(job_obj, job_type, e)
+
         except ConnectionError as e:
             # Connection error - mark as failed (service unavailable)
             execution_time = time.time() - start_time
@@ -290,8 +358,9 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
             )
 
             # Try to retry job if appropriate (ConnectionError is transient)
+            retried = False
             try:
-                retry_job(job_obj, job_type, e)
+                retried = retry_job(job_obj, job_type, e)
             except Exception as retry_error:
                 logger.error(
                     "job_retry_failed",
@@ -299,6 +368,10 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                     error=str(retry_error),
                     exc_info=True,
                 )
+
+            # If not retried (exhausted), write to DLQ
+            if not retried:
+                _write_to_dlq(job_obj, job_type, e)
 
             # Create audit event
             create_audit_event(
@@ -345,8 +418,9 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
             )
 
             # Try to retry job if appropriate
+            retried = False
             try:
-                retry_job(job_obj, job_type, e)
+                retried = retry_job(job_obj, job_type, e)
             except Exception as retry_error:
                 logger.error(
                     "job_retry_failed",
@@ -354,6 +428,10 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                     error=str(retry_error),
                     exc_info=True,
                 )
+
+            # If not retried (exhausted), write to DLQ
+            if not retried:
+                _write_to_dlq(job_obj, job_type, e)
 
             # Create audit event
             create_audit_event(

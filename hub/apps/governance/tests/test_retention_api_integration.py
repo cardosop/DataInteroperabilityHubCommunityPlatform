@@ -4,6 +4,7 @@ Integration tests for Retention Policy API (Phase 12.1.4)
 Tests for RetentionPolicyViewSet create and update endpoints via API
 with real DB and real audit events. No mocks.
 """
+import uuid
 
 from datetime import datetime, timedelta
 
@@ -31,13 +32,14 @@ class RetentionPolicyAPIIntegrationTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -474,14 +476,13 @@ class RetentionPolicyAPIIntegrationTest(TestCase):
             created_by=self.user,
         )
 
+        # Force a past timestamp to avoid sleep
+        past_time = timezone.now() - timedelta(seconds=10)
+        RetentionPolicy.objects.filter(pk=policy.pk).update(updated_at=past_time)
+        policy.refresh_from_db()
         original_updated_at = policy.updated_at
 
         self.client.force_authenticate(user=self.user)
-
-        # Wait a bit to ensure timestamp difference
-        import time
-
-        time.sleep(0.1)
 
         response = self.client.patch(
             f"/api/v1/governance/retention-policies/{policy.id}/",

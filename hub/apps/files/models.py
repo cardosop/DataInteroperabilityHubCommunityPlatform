@@ -20,6 +20,16 @@ class FileStatus(models.TextChoices):
     DELETED = "DELETED", "Deleted"
 
 
+class FileScanStatus(models.TextChoices):
+    """Malware scan state (separate from upload lifecycle FileStatus)."""
+
+    PENDING_SCAN = "PENDING_SCAN", "Pending scan"
+    CLEAN = "CLEAN", "Clean"
+    INFECTED = "INFECTED", "Infected"
+    SCAN_UNAVAILABLE = "SCAN_UNAVAILABLE", "Scan unavailable"
+    SCAN_ERROR = "SCAN_ERROR", "Scan error"
+
+
 class File(models.Model):
     """
     File model for managing uploaded files.
@@ -62,6 +72,18 @@ class File(models.Model):
         default=FileStatus.PENDING,
         help_text="File status: PENDING, UPLOADING, ACTIVE, FAILED, DELETED"
     )
+    scan_status = models.CharField(
+        max_length=32,
+        choices=FileScanStatus.choices,
+        default=FileScanStatus.PENDING_SCAN,
+        db_index=True,
+        help_text="Malware scan status (ClamAV); independent of upload status",
+    )
+    scanned_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the last malware scan finished (any outcome)",
+    )
     metadata_json = models.JSONField(
         default=dict,
         help_text="Additional metadata (upload method, chunk info, etc.)"
@@ -82,6 +104,7 @@ class File(models.Model):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["tenant", "status"]),
+            models.Index(fields=["tenant", "scan_status"]),
             models.Index(fields=["tenant", "created_at"]),
             models.Index(fields=["content_sha256"]),
             models.Index(fields=["status"]),
@@ -119,6 +142,11 @@ class File(models.Model):
         return self.status == FileStatus.UPLOADING
     
     def can_download(self) -> bool:
-        """Check if file can be downloaded"""
-        return self.status == FileStatus.ACTIVE
+        """Check if file can be downloaded (lifecycle + malware scan)."""
+        if self.status not in (FileStatus.ACTIVE, FileStatus.COMPLETED):
+            return False
+        return self.scan_status not in (
+            FileScanStatus.PENDING_SCAN,
+            FileScanStatus.INFECTED,
+        )
 

@@ -119,13 +119,21 @@ class DQResultStructureTest(DQAPITestBase):
         self.assertIn("status", check1)
         self.assertIn("message", check1)
 
-        # Verify details_json structure
+        # Verify details_json structure and value types
         details = data["details_json"]
         self.assertIn("engine_type", details)
+        self.assertIsInstance(details["engine_type"], str)
+        self.assertEqual(details["engine_type"], "GX")
         self.assertIn("engine_version", details)
+        self.assertIsInstance(details["engine_version"], str)
+        self.assertEqual(details["engine_version"], "0.18.0")
         self.assertIn("profile_key", details)
+        self.assertIsInstance(details["profile_key"], str)
+        self.assertEqual(details["profile_key"], "intake_basic_gx")
         self.assertIn("metadata", details)
+        self.assertIsInstance(details["metadata"], dict)
         self.assertIn("metering", details)
+        self.assertIsInstance(details["metering"], dict)
 
         # Verify metering structure
         metering = details["metering"]

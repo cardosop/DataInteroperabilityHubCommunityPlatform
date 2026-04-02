@@ -334,7 +334,11 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
             # Verify field structure
             for field in result.hub_contract["schema"]["fields"]:
                 self.assertIn("name", field)
-                self.assertIn("data_type", field)  # Fields use data_type, not type
+                # After Pydantic model_dump(by_alias=True), "data_type" is serialized as "type"
+                self.assertTrue(
+                    "type" in field or "data_type" in field,
+                    f"Field {field.get('name')} missing 'type' or 'data_type' key"
+                )
 
     def test_all_versions_normalize_info_section_correctly(self):
         """Test that all versions normalize info section correctly."""

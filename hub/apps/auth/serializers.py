@@ -79,16 +79,16 @@ class LoginSerializer(serializers.Serializer):
 
 
 class TokenResponseSerializer(serializers.Serializer):
-    """Serializer for token response"""
+    """Serializer for token response (11.1: refresh_token omitted — delivered via httpOnly cookie)"""
     access_token = serializers.CharField()
-    refresh_token = serializers.CharField()
+    refresh_token = serializers.CharField(required=False, allow_null=True)
     token_type = serializers.CharField(default='Bearer')
     expires_in = serializers.IntegerField()
 
 
 class RefreshTokenSerializer(serializers.Serializer):
-    """Serializer for token refresh request"""
-    refresh_token = serializers.CharField()
+    """Serializer for token refresh request (11.1: token may arrive via cookie, body optional)"""
+    refresh_token = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class RefreshTokenResponseSerializer(serializers.Serializer):
@@ -113,15 +113,25 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
-    """Serializer for password reset confirmation"""
-    token = serializers.UUIDField()
+    """Serializer for password reset confirmation (11.3: token is plaintext UUID string)"""
+    token = serializers.CharField(max_length=64)
     new_password = serializers.CharField(write_only=True, min_length=8, style={'input_type': 'password'})
 
 
 class InvitationAcceptanceSerializer(serializers.Serializer):
-    """Serializer for invitation acceptance"""
-    token = serializers.UUIDField()
+    """Serializer for invitation acceptance (11.3: token is plaintext UUID string)"""
+    token = serializers.CharField(max_length=64)
     password = serializers.CharField(write_only=True, min_length=8, style={'input_type': 'password'})
+
+
+class EmailVerificationSerializer(serializers.Serializer):
+    """POST /auth/verify-email/ — Phase 204 signed token from email link."""
+    token = serializers.CharField(max_length=512)
+
+
+class ResendEmailVerificationSerializer(serializers.Serializer):
+    """POST /auth/resend-verification/ — rate-limited per email."""
+    email = serializers.EmailField()
 
 
 class APIKeyCreateSerializer(serializers.ModelSerializer):
@@ -213,12 +223,6 @@ class RegisterSerializer(serializers.Serializer):
         allow_null=True,
         help_text="Tenant ID for multi-tenant registration (optional)"
     )
-
-    def validate_email(self, value):
-        """Validate email is unique"""
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Email address is already registered")
-        return value
 
     def validate_password(self, value):
         """Validate password strength"""

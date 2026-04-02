@@ -49,13 +49,15 @@ class ContractViewSetTest(ContractsAPITestBase):
         ensure_tenant_has_active_subscription(self.tenant)
 
         # Create another tenant and user for isolation tests
+        _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         ensure_tenant_has_active_subscription(self.other_tenant)
 
+        _uid = uuid.uuid4().hex[:8]
         self.other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{_uid}@example.com",
             password="testpass123",
             tenant=self.other_tenant,
             status=UserStatus.ACTIVE,
@@ -472,7 +474,7 @@ class ContractViewSetTest(ContractsAPITestBase):
         )
 
         auditor_user = User.objects.create_user(
-            email="auditor@example.com",
+            email=f"auditor-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -493,7 +495,7 @@ class ContractViewSetTest(ContractsAPITestBase):
         )
 
         auditor_user = User.objects.create_user(
-            email="auditor2@example.com",
+            email=f"auditor2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -521,7 +523,7 @@ class ContractViewSetTest(ContractsAPITestBase):
         )
 
         auditor_user = User.objects.create_user(
-            email="auditor3@example.com",
+            email=f"auditor3-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -546,7 +548,7 @@ class ContractViewSetTest(ContractsAPITestBase):
         )
 
         auditor_user = User.objects.create_user(
-            email="auditor4@example.com",
+            email=f"auditor4-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,

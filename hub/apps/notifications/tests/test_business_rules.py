@@ -18,6 +18,7 @@ from hub.apps.core.business_rules.registry import get_registry
 from hub.apps.users.models import User
 from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+import uuid
 
 
 class NotificationsBusinessRulesInitializationTest(TestCase):
@@ -27,11 +28,11 @@ class NotificationsBusinessRulesInitializationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
 
@@ -143,16 +144,16 @@ class NotificationsRuleExecutionContextTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.notification = EmailDelivery.objects.create(
             email_type=EmailType.JOB_COMPLETION,
-            to_email="recipient@example.com",
+            to_email=f"recipient-{uuid.uuid4().hex[:8]}@example.com",
             subject="Test Subject",
             status=EmailDeliveryStatus.PENDING,
             tenant=self.tenant,
@@ -208,11 +209,11 @@ class NotificationsTemplateValidationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = NotificationsBusinessRules(
@@ -338,11 +339,11 @@ class NotificationsTemplateIntegrationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = NotificationsBusinessRules(
@@ -381,11 +382,11 @@ class NotificationDeliveryChannelValidationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = NotificationsBusinessRules(
@@ -396,7 +397,7 @@ class NotificationDeliveryChannelValidationTest(TestCase):
         """Test EMAIL channel validation with valid notification"""
         notification = EmailDelivery.objects.create(
             email_type=EmailType.USER_INVITATION,
-            to_email="recipient@example.com",
+            to_email=f"recipient-{uuid.uuid4().hex[:8]}@example.com",
             subject="Test Email",
             tenant=self.tenant
         )
@@ -462,11 +463,11 @@ class NotificationRecipientValidationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = NotificationsBusinessRules(
@@ -565,11 +566,11 @@ class NotificationRateLimitingValidationTest(TestCase):
         from datetime import timedelta
 
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = NotificationsBusinessRules(
@@ -698,11 +699,11 @@ class NotificationDeliveryStatusValidationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = NotificationsBusinessRules(
@@ -713,7 +714,7 @@ class NotificationDeliveryStatusValidationTest(TestCase):
         """Test valid status transition PENDING → SENT"""
         notification = EmailDelivery.objects.create(
             email_type=EmailType.USER_INVITATION,
-            to_email="user@example.com",
+            to_email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             subject="Test",
             status=EmailDeliveryStatus.PENDING,
             tenant=self.tenant
@@ -730,7 +731,7 @@ class NotificationDeliveryStatusValidationTest(TestCase):
         """Test valid status transition PENDING → FAILED"""
         notification = EmailDelivery.objects.create(
             email_type=EmailType.USER_INVITATION,
-            to_email="user@example.com",
+            to_email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             subject="Test",
             status=EmailDeliveryStatus.PENDING,
             tenant=self.tenant
@@ -748,7 +749,7 @@ class NotificationDeliveryStatusValidationTest(TestCase):
         from django.utils import timezone
         notification = EmailDelivery.objects.create(
             email_type=EmailType.USER_INVITATION,
-            to_email="user@example.com",
+            to_email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             subject="Test",
             status=EmailDeliveryStatus.SENT,
             sent_at=timezone.now(),
@@ -766,7 +767,7 @@ class NotificationDeliveryStatusValidationTest(TestCase):
         """Test invalid status transition"""
         notification = EmailDelivery.objects.create(
             email_type=EmailType.USER_INVITATION,
-            to_email="user@example.com",
+            to_email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             subject="Test",
             status=EmailDeliveryStatus.DELIVERED,  # Final state
             tenant=self.tenant
@@ -783,7 +784,7 @@ class NotificationDeliveryStatusValidationTest(TestCase):
         """Test status SENT without sent_at timestamp (warning)"""
         notification = EmailDelivery.objects.create(
             email_type=EmailType.USER_INVITATION,
-            to_email="user@example.com",
+            to_email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             subject="Test",
             status=EmailDeliveryStatus.SENT,
             sent_at=None,  # Missing timestamp
@@ -801,7 +802,7 @@ class NotificationDeliveryStatusValidationTest(TestCase):
         """Test status FAILED without error_message (warning)"""
         notification = EmailDelivery.objects.create(
             email_type=EmailType.USER_INVITATION,
-            to_email="user@example.com",
+            to_email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             subject="Test",
             status=EmailDeliveryStatus.FAILED,
             error_message=None,  # Missing error message
@@ -821,7 +822,7 @@ class NotificationDeliveryStatusValidationTest(TestCase):
         """Test status FAILED with retry limit exceeded"""
         notification = EmailDelivery.objects.create(
             email_type=EmailType.USER_INVITATION,
-            to_email="user@example.com",
+            to_email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             subject="Test",
             status=EmailDeliveryStatus.FAILED,
             retry_count=5,
@@ -838,7 +839,7 @@ class NotificationDeliveryStatusValidationTest(TestCase):
         """Test status FAILED that can be retried"""
         notification = EmailDelivery.objects.create(
             email_type=EmailType.USER_INVITATION,
-            to_email="user@example.com",
+            to_email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             subject="Test",
             status=EmailDeliveryStatus.FAILED,
             retry_count=1,
@@ -858,11 +859,11 @@ class NotificationDeliveryIntegrationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = NotificationsBusinessRules(
@@ -944,11 +945,11 @@ class NotificationPreferenceStructureValidationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = NotificationsBusinessRules(
@@ -1090,15 +1091,15 @@ class NotificationPreferenceUpdateValidationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=self.tenant,
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = NotificationsBusinessRules(
@@ -1138,7 +1139,7 @@ class NotificationPreferenceUpdateValidationTest(TestCase):
         """Test preference update validation with unsaved user"""
         from hub.apps.users.models import UserStatus
         unsaved_user = User(
-            email="unsaved@example.com",
+            email=f"unsaved-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
@@ -1158,7 +1159,7 @@ class NotificationPreferenceUpdateValidationTest(TestCase):
         """Test preference update validation with inactive user"""
         from hub.apps.users.models import UserStatus
         inactive_user = User.objects.create_user(
-            email="inactive@example.com",
+            email=f"inactive-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.DISABLED
@@ -1191,7 +1192,7 @@ class NotificationPreferenceUpdateValidationTest(TestCase):
         """Test platform admin updating user preferences"""
         from hub.apps.users.models import UserStatus
         admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -1243,11 +1244,11 @@ class NotificationPreferenceEnforcementValidationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = NotificationsBusinessRules(
@@ -1397,11 +1398,11 @@ class NotificationPreferenceIntegrationTest(TestCase):
         """Set up test fixtures"""
         from hub.apps.users.models import UserStatus
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         self.rules = NotificationsBusinessRules(

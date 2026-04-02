@@ -24,7 +24,7 @@ class TestTypedModels:
         assert errors == []
         assert isinstance(model, HubContractModel)
         assert model.info.name == "Typed Contract"
-        assert model.schema.fields[0].name == "id"
+        assert model.schema_.fields[0].name == "id"
 
     def test_validate_hub_contract_missing_fields(self):
         hub_contract = {
@@ -120,7 +120,7 @@ class TestTypedModels:
 
         assert errors == []
         assert model is not None
-        field = model.schema.fields[0]
+        field = model.schema_.fields[0]
         assert field.name == "id"
         assert field.data_type == "string"
         assert field.nullable is False
@@ -140,7 +140,7 @@ class TestTypedModels:
         assert errors == []
         assert model is not None
         # Extra fields should be preserved in the model
-        dumped = model.model_dump(exclude_none=True)
+        dumped = model.model_dump(exclude_none=True, by_alias=True)
         assert (
             "custom_info_field" in dumped.get("info", {})
             or "custom_field" in dumped.get("schema", {}).get("fields", [{}])[0]
@@ -160,7 +160,7 @@ class TestTypedModels:
         assert errors == []
         assert model is not None
 
-        dumped = model.model_dump(exclude_none=True)
+        dumped = model.model_dump(exclude_none=True, by_alias=True)
         assert isinstance(dumped, dict)
         assert dumped["hub_contract_version"] == "1.0.0"
         assert dumped["id"] == "dump-test"
@@ -450,7 +450,7 @@ class TestTypedModels:
         assert errors == []
         assert model is not None
 
-        dumped = model.model_dump(exclude_none=True)
+        dumped = model.model_dump(exclude_none=True, by_alias=True)
         # Should preserve structure
         assert dumped["hub_contract_version"] == "1.0.0"
         assert dumped["id"] == "test"

@@ -3,6 +3,7 @@ Unit tests for Version Comparison
 
 Tests for schema diff visualization, data diff, and side-by-side comparison.
 """
+import uuid
 
 import pytest
 
@@ -420,13 +421,11 @@ class VersionComparisonServiceTest(DatasetsTestBase):
         fake_v1 = Dataset(id=uuid.uuid4(), tenant=self.tenant, asset=self.asset, file=self.file)
         fake_v2 = Dataset(id=uuid.uuid4(), tenant=self.tenant, asset=self.asset, file=self.file)
 
-        # Should handle non-existent versions gracefully
+        # Non-existent (unsaved) versions must either return None or raise
         try:
             comparison = VersionComparisonService.compare_versions(fake_v1, fake_v2)
-            # If succeeds, should return comparison or handle gracefully
-            self.assertIsNone(comparison) or self.assertIsNotNone(comparison)
+            self.assertIsNone(comparison)
         except Exception:
-            # If fails, that's acceptable for non-existent versions
             pass
 
     def test_version_comparison_failure_same_version(self):

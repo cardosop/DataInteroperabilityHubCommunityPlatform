@@ -21,6 +21,7 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.files.tests.test_base import FilesTestBase
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import UserStatus
+import uuid
 
 User = get_user_model()
 
@@ -551,11 +552,12 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
 
     def test_validate_file_read_access_cross_tenant(self):
         """Test read access validation for cross-tenant user"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE,
@@ -579,11 +581,12 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
 
     def test_validate_file_write_access_cross_tenant(self):
         """Test write access validation for cross-tenant user"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE,
@@ -695,11 +698,12 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
 
     def test_validate_tenant_isolation_cross_tenant(self):
         """Test tenant isolation validation for cross tenant"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE,
@@ -733,7 +737,7 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
     def test_validate_tenant_isolation_user_without_tenant(self):
         """Test tenant isolation validation when user has no tenant"""
         user_no_tenant = User.objects.create_user(
-            email="notenant@example.com",
+            email=f"notenant-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status=UserStatus.ACTIVE,

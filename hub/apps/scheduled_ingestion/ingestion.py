@@ -71,7 +71,7 @@ class ScheduledIngestionProcessor:
         self.scheduled_ingestion = scheduled_ingestion
         self.tenant = scheduled_ingestion.tenant
         self.source_type = scheduled_ingestion.source_type
-        self.source_config = scheduled_ingestion.source_config
+        self.source_config = scheduled_ingestion.get_source_config()
         self.file_pattern = scheduled_ingestion.file_pattern
         self.state_manager = IncrementalStateManager(scheduled_ingestion)
         self._connector_factory = connector_factory

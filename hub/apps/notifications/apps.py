@@ -12,9 +12,12 @@ class NotificationsConfig(AppConfig):
     def ready(self):
         """
         Initialize notifications app when Django is ready.
-        
+
         Initialization is deferred during tests for performance.
         """
+        # Register business rules (Phase 75.1)
+        import hub.apps.notifications.business_rules  # noqa: F401
+
         # Always import signals (needed for tests)
         try:
             import hub.apps.notifications.signals  # noqa

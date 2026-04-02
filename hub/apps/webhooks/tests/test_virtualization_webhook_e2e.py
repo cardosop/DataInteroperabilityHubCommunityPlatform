@@ -13,7 +13,9 @@ No mocks: delivery status may be PENDING or FAILED when target URL is unreachabl
 import uuid
 
 import pytest
-from django.test import TestCase
+
+pytestmark = pytest.mark.slow
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.core.events.models import Event
@@ -33,15 +35,23 @@ from hub.apps.webhooks.virtualization_event_subscriber import get_virtualization
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-class VirtualizationWebhookE2ETest(TestCase):
+@override_settings(WEBHOOK_ASYNC_DELIVERY=False)
+class VirtualizationWebhookE2ETest(TransactionTestCase):
     """E2E tests for virtualization webhook delivery from event bus"""
+
+    reset_sequences = False
+    serialized_rollback = False
+
+    def _fixture_teardown(self):
+        pass
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def _trigger_webhook_for_event(self, event):

@@ -25,6 +25,7 @@ from hub.apps.scheduled_ingestion.tests.connector_fakes import (
 from hub.apps.scheduled_ingestion.tests.dq_fakes import InMemoryDQClient
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -34,12 +35,13 @@ class IncrementalIngestionIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -93,12 +95,13 @@ class DQValidationIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -150,12 +153,13 @@ class TemplateIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -198,8 +202,8 @@ class TemplateIntegrationTest(TestCase):
         self.assertEqual(scheduled_ingestion.tenant, self.tenant)
 
         # Verify configuration was resolved
-        self.assertEqual(scheduled_ingestion.source_config["bucket_name"], "my-bucket")
-        self.assertEqual(scheduled_ingestion.source_config["prefix"], "data/")
+        self.assertEqual(scheduled_ingestion.get_source_config()["bucket_name"], "my-bucket")
+        self.assertEqual(scheduled_ingestion.get_source_config()["prefix"], "data/")
 
         # Verify DQ configuration from template
         self.assertTrue(scheduled_ingestion.ingestion_state["enable_dq_validation"])

@@ -5,12 +5,18 @@ E2E tests for virtualization against real federated assets created from
 demo.ckan.org (PULL → federated asset → virtual dataset → execute query).
 No mocks or stubs; uses real CKAN API and real virtualization code paths.
 """
+import unittest
+import uuid
+
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 
-from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.tenants.models import Tenant, KYCStatus, TenantPlan, PlanTier
+from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.virtualization.models import (
     VirtualDataset,
     QueryType,
@@ -94,13 +100,14 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
     """
 
     def setUp(self):
+        _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Federated E2E Test Tenant",
-            slug="federated-e2e-test-tenant",
+            name=f"Federated E2E Test Tenant {_uid}",
+            slug=f"federated-e2e-test-{_uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="federatede2e@example.com",
+            email=f"federatede2e-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
         )
@@ -112,6 +119,42 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
             defaults={"description": "Data Provider"},
         )
         UserRole.objects.get_or_create(user=self.user, role=provider_role)
+
+        # Set up subscription/plan
+        from django.utils import timezone
+        plan, _ = TenantPlan.objects.get_or_create(
+            slug="virtualization-test-plan",
+            defaults={
+                "name": "Virtualization Test Plan",
+                "tier": PlanTier.PRO,
+                "limits_json": {
+                    "max_assets": 100,
+                    "max_storage_gb": 1000,
+                    "max_virtual_datasets": 100,
+                },
+                "is_active": True,
+            },
+        )
+        if "max_storage_gb" not in (plan.limits_json or {}):
+            plan.limits_json = {
+                **(plan.limits_json or {}),
+                "max_storage_gb": 1000,
+                "max_virtual_datasets": 100,
+            }
+            plan.save(update_fields=["limits_json"])
+        if self.tenant.plan_id != plan.id:
+            self.tenant.plan = plan
+            self.tenant.save(update_fields=["plan"])
+        Subscription.objects.get_or_create(
+            tenant=self.tenant,
+            defaults={
+                "plan": plan,
+                "status": SubscriptionStatus.ACTIVE,
+                "current_period_start": timezone.now(),
+                "current_period_end": timezone.now(),
+            },
+        )
+
         self.virt_service = VirtualizationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
@@ -133,7 +176,7 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
         7. Assert execution COMPLETED and result has expected structure
         """
         if not _demo_ckan_reachable():
-            pytest.skip("demo.ckan.org unreachable")
+            raise unittest.SkipTest("demo.ckan.org unreachable")
 
         from hub.apps.integrations.factory import MarketplaceConnectorFactory
         from hub.apps.integrations.base import MarketplaceType
@@ -161,10 +204,10 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
             try:
                 listings = connector.list_listings(limit=5)
                 if not listings:
-                    pytest.skip(f"No listings from demo.ckan.org: {e}")
+                    raise unittest.SkipTest(f"No listings from demo.ckan.org: {e}")
                 listing = connector.get_listing(listings[0].marketplace_id)
             except Exception as e2:
-                pytest.skip(f"Cannot get listing from demo.ckan.org: {e2}")
+                raise unittest.SkipTest(f"Cannot get listing from demo.ckan.org: {e2}")
 
         # 3. Map to hub asset
         mapping = connector.map_to_hub_asset(listing)
@@ -238,7 +281,7 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
         a federated asset from demo.ckan.org (annakarenina), then runs virtualization E2E.
         """
         if not _demo_ckan_reachable():
-            pytest.skip("demo.ckan.org unreachable")
+            raise unittest.SkipTest("demo.ckan.org unreachable")
 
         from hub.apps.integrations.tests.utils.marketplace_fixtures import (
             get_or_create_demo_ckan_federated_asset,
@@ -306,10 +349,23 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
 
         Skip conditions:
         - No CKAN package with downloadable CSV resource found
+        - CKAN service not reachable
         """
+        # Check if CKAN is reachable before attempting the slow search
+        try:
+            import httpx
+            resp = httpx.get(
+                "https://demo.ckan.org/api/3/action/status_show",
+                timeout=5,
+            )
+            if resp.status_code != 200:
+                raise unittest.SkipTest("CKAN service not reachable")
+        except Exception:
+            raise unittest.SkipTest("CKAN service not reachable")
+
         base_url, listing_id, resource_id = _find_ckan_package_with_downloadable_csv()
         if not base_url or not listing_id or not resource_id:
-            pytest.skip(
+            raise unittest.SkipTest(
                 "No CKAN package with downloadable CSV resource found "
                 f"(tried: {', '.join(CKAN_BASE_URLS)})"
             )
@@ -345,6 +401,7 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
             user_id=str(self.user.id),
             data_strategy="DOWNLOAD_SELECTIVE",
             download_resources=[resource_id],
+            skip_semantic_mapping=True,
         )
 
         # Virtual dataset with resource_id to target the CSV.

@@ -21,6 +21,7 @@ from hub.apps.contracts.models import (
     ValidationStatus,
 )
 from hub.apps.tenants.models import Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -31,9 +32,10 @@ class AssetModelTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_create_asset_sets_tenant(self):
@@ -222,19 +224,24 @@ class AssetModelTest(TestCase):
     # ========== FAILURE SCENARIOS ==========
 
     def test_create_asset_duplicate_key(self):
-        """Test creating asset with duplicate key fails (failure scenario)"""
+        """Duplicate key within same tenant raises IntegrityError."""
+        from django.db import IntegrityError, transaction
+
         Asset.objects.create(
-            tenant=self.tenant, key="duplicate-key", name="First Asset", created_by=self.user
+            tenant=self.tenant,
+            key="duplicate-key",
+            name="First Asset",
+            created_by=self.user,
         )
 
-        # Try to create second asset with same key
-        with self.assertRaises(Exception) as cm:
-            Asset.objects.create(
-                tenant=self.tenant, key="duplicate-key", name="Second Asset", created_by=self.user
-            )
-
-        # Should raise IntegrityError or ValidationError
-        self.assertIsNotNone(cm.exception)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Asset.objects.create(
+                    tenant=self.tenant,
+                    key="duplicate-key",
+                    name="Second Asset",
+                    created_by=self.user,
+                )
 
     def test_asset_clean_validation_fails_without_contract(self):
         """Test asset clean() validation fails for ACTIVE without contract (failure scenario)"""
@@ -270,47 +277,39 @@ class AssetModelTest(TestCase):
     # ========== EDGE CASES ==========
 
     def test_create_asset_empty_key(self):
-        """Test creating asset with empty key (edge case)"""
-        # Empty key should either be rejected or accepted with validation
-        try:
-            asset = Asset.objects.create(
-                tenant=self.tenant, key="", name="Test Asset", created_by=self.user
-            )
-            # If succeeds, verify it was created
-            self.assertEqual(asset.key, "")
-        except (ValidationError, ValueError):
-            # If fails, that's acceptable for empty key
-            pass
+        """Empty key is accepted by the model (CharField allows blank)."""
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="",
+            name="Test Asset",
+            created_by=self.user,
+        )
+        self.assertEqual(asset.key, "")
 
     def test_create_asset_very_long_key(self):
-        """Test creating asset with very long key (edge case)"""
-        long_key = "a" * 300  # Very long key
+        """Key exceeding max_length is rejected at DB level."""
+        from django.db import DataError, transaction
 
-        # Should either succeed (if key length is not limited) or fail with validation error
-        from django.db import DataError
-        try:
-            asset = Asset.objects.create(
-                tenant=self.tenant, key=long_key, name="Test Asset", created_by=self.user
-            )
-            # If succeeds, verify it was created
-            self.assertEqual(asset.key, long_key)
-        except (ValidationError, ValueError, DataError):
-            # If fails, verify it's a validation error or database constraint error
-            pass
+        long_key = "a" * 300  # CharField max_length=255
+        with self.assertRaises(DataError):
+            with transaction.atomic():
+                Asset.objects.create(
+                    tenant=self.tenant,
+                    key=long_key,
+                    name="Test Asset",
+                    created_by=self.user,
+                )
 
     def test_create_asset_special_characters_in_key(self):
-        """Test creating asset with special characters in key (edge case)"""
+        """Key with hyphens, underscores, dots is accepted."""
         special_key = "test-asset_123.test"
-
-        # Should either succeed or fail with validation error
-        try:
-            asset = Asset.objects.create(
-                tenant=self.tenant, key=special_key, name="Test Asset", created_by=self.user
-            )
-            self.assertEqual(asset.key, special_key)
-        except (ValidationError, ValueError):
-            # If fails, that's acceptable
-            pass
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key=special_key,
+            name="Test Asset",
+            created_by=self.user,
+        )
+        self.assertEqual(asset.key, special_key)
 
     def test_increment_version_max_value(self):
         """Test incrementing version to very large number (edge case)"""

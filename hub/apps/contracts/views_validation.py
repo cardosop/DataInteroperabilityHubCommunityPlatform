@@ -181,6 +181,14 @@ class ContractValidationMixin:
                     ]
                 )
 
+                from hub.apps.contracts.invalidation_cascade import (
+                    maybe_apply_invalidation_after_validation,
+                )
+
+                maybe_apply_invalidation_after_validation(
+                    contract, actor_user=request.user, request=request
+                )
+
                 # Log audit event
                 create_audit_event(
                     resource_type="CONTRACT",

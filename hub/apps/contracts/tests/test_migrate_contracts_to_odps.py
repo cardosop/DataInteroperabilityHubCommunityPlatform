@@ -728,7 +728,7 @@ class CommandIntegrationTest(MigrateContractsToODPSTestBase):
         )
 
         user2 = User.objects.create_user(
-            email="migration-isolation-test-2@example.com",
+            email=f"migration-isolation-test-2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE,

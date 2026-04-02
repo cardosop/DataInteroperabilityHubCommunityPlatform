@@ -22,7 +22,7 @@ import json
 import uuid
 from datetime import timedelta
 
-from django.test import TransactionTestCase, override_settings
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.contracts.services import ODPSService

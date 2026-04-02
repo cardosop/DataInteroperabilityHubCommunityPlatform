@@ -232,14 +232,11 @@ class TestQuerySourcePath:
             pass
 
     def test_track_field_mapping_with_none_values(self):
-        """Test tracking field mapping with None values."""
+        """None values raise AttributeError (str.replace on NoneType)."""
+        import pytest
         tracker = SourcePathTracker()
-        try:
+        with pytest.raises((TypeError, ValueError, AttributeError)):
             track_field_mapping(tracker, None, None, None, None)
-            # May handle gracefully or raise exception
-        except (TypeError, ValueError):
-            # Exception is acceptable
-            pass
 
     def test_add_source_paths_to_extensions_with_none_tracker(self):
         """Test adding source paths with None tracker."""

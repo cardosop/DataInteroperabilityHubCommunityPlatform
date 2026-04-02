@@ -336,7 +336,7 @@ class VirtualizationWorkflow:
             "Sources validated",
             workflow_instance_id=str(instance.id),
             virtual_dataset_id=str(virtual_dataset.id),
-            source_count=len(virtual_dataset.sources) if virtual_dataset.sources else 0,
+            source_count=len(virtual_dataset.get_sources()) if virtual_dataset.get_sources() else 0,
             compatibility_status=compatibility_result.is_valid
         )
 
@@ -611,7 +611,8 @@ class VirtualizationWorkflow:
             result = client.query_sparql(
                 query=query,
                 output_format="json",
-                timeout=timeout_seconds
+                timeout=timeout_seconds,
+                tenant_id=service.tenant_id,
             )
 
             if "error" in result:
@@ -663,7 +664,7 @@ class VirtualizationWorkflow:
         _aggregate_results so workflow and view share one implementation (feat1 2.1.1/2.1.2).
         """
         try:
-            sources = virtual_dataset.sources or []
+            sources = virtual_dataset.get_sources() or []
             if not sources:
                 raise ValidationError(
                     "No sources configured for query execution",
@@ -729,7 +730,8 @@ class VirtualizationWorkflow:
         Returns:
             Aggregated query result data dictionary
         """
-        if not virtual_dataset.sources:
+        sources = virtual_dataset.get_sources() or []
+        if not sources:
             raise ValidationError(
                 "Federated queries require at least one source",
                 code="MISSING_SOURCES"
@@ -740,7 +742,7 @@ class VirtualizationWorkflow:
         total_rows = 0
 
         # Execute query against each source
-        for source_index, source in enumerate(virtual_dataset.sources):
+        for source_index, source in enumerate(sources):
             source_type = source.get("type", "").lower()
             
             # Determine query type based on source type
@@ -794,7 +796,7 @@ class VirtualizationWorkflow:
             "data": all_results,
             "columns": all_columns,
             "row_count": total_rows,
-            "source_count": len(virtual_dataset.sources),
+            "source_count": len(sources),
             "query_type": "FEDERATED"
         }
 

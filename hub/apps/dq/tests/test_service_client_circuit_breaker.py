@@ -145,8 +145,8 @@ class TestDQServiceClientCircuitBreaker(TestCase):
                         file_format="csv",
                         use_cache=False
                     )
-                except Exception:
-                    pass
+                except (httpx.RequestError, httpx.HTTPStatusError, CircuitBreakerError, ConnectionError):
+                    pass  # Expected: service is unavailable, triggering circuit breaker
 
         # Circuit should be open now
         self.assertEqual(self.service_client._circuit_breaker.get_state(), CircuitBreakerState.OPEN)
@@ -179,8 +179,8 @@ class TestDQServiceClientCircuitBreaker(TestCase):
                         file_format="csv",
                         use_cache=False
                     )
-                except Exception:
-                    pass
+                except (httpx.RequestError, httpx.HTTPStatusError, CircuitBreakerError, ConnectionError):
+                    pass  # Expected: service is unavailable, triggering circuit breaker
 
             # Circuit should still be closed (threshold is 5)
             self.assertEqual(self.service_client._circuit_breaker.get_state(), CircuitBreakerState.CLOSED)
@@ -193,8 +193,8 @@ class TestDQServiceClientCircuitBreaker(TestCase):
                         file_format="csv",
                         use_cache=False
                     )
-                except Exception:
-                    pass
+                except (httpx.RequestError, httpx.HTTPStatusError, CircuitBreakerError, ConnectionError):
+                    pass  # Expected: service is unavailable, triggering circuit breaker
 
             # Circuit should now be open
             self.assertEqual(self.service_client._circuit_breaker.get_state(), CircuitBreakerState.OPEN)
@@ -215,8 +215,8 @@ class TestDQServiceClientCircuitBreaker(TestCase):
                         file_format="csv",
                         use_cache=False
                     )
-                except Exception:
-                    pass
+                except (httpx.RequestError, httpx.HTTPStatusError, CircuitBreakerError, ConnectionError):
+                    pass  # Expected: service is unavailable, triggering circuit breaker
 
         self.assertEqual(self.service_client._circuit_breaker.get_state(), CircuitBreakerState.OPEN)
 
@@ -271,8 +271,8 @@ class TestDQServiceClientCircuitBreaker(TestCase):
                         file_format="csv",
                         use_cache=False
                     )
-                except Exception:
-                    pass
+                except (httpx.RequestError, httpx.HTTPStatusError, CircuitBreakerError, ConnectionError):
+                    pass  # Expected: service is unavailable, triggering circuit breaker
 
         # Get fallback response
         result = self.service_client.run_dq(

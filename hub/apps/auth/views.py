@@ -4,35 +4,42 @@ Authentication Views
 REST API views for authentication (login, logout, password reset, etc.).
 """
 
+import os
 import uuid
 from datetime import timedelta
 
 import structlog
 from django.conf import settings
-from django.contrib.auth import authenticate
+from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import permissions, serializers, status, viewsets
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.audit.utils import log_auth_operation
 from hub.apps.core.events.publisher import publish_event
-from hub.apps.notifications.models import EmailType
-from hub.apps.notifications.tasks import send_email_async
 from hub.apps.users.models import User, UserStatus
 
 from .jwt_utils import JWTTokenGenerator
-from .models import APIKey, RefreshToken
+from .utils import sha256_hex as _sha256_hex
+from .models import APIKey, LoginAttempt, RefreshToken
+from .email_verification import (
+    issue_verification_token_plaintext,
+    mark_user_email_verified,
+    plaintext_valid_for_user,
+)
 from .serializers import (
     APIKeyCreateSerializer,
     APIKeyResponseSerializer,
     APIKeySerializer,
     CurrentUserSerializer,
+    EmailVerificationSerializer,
     InvitationAcceptanceSerializer,
     LoginSerializer,
     MePatchSerializer,
@@ -42,8 +49,146 @@ from .serializers import (
     RefreshTokenSerializer,
     RegisterResponseSerializer,
     RegisterSerializer,
+    ResendEmailVerificationSerializer,
     TokenResponseSerializer,
 )
+
+logger = structlog.get_logger(__name__)
+
+# Dummy password hash computed once at module load so timing is constant (11.5).
+# Used when the supplied email does not match any user in the database.
+_DUMMY_HASH = make_password("dummy-password-for-timing-parity")
+
+
+def _get_client_ip(request) -> str:
+    """Return the best-effort client IP from the request."""
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "0.0.0.0")
+
+
+def _check_ip_rate_limit(ip: str) -> bool:
+    """
+    Enforce IP-level rate limit on login (11.5).
+
+    Returns True if the request is within limits, False if it should be rejected.
+    Uses Django cache with a 60-second sliding window.
+    """
+    max_per_minute = getattr(settings, "LOGIN_IP_RATE_PER_MINUTE", 10)
+    cache_key = f"login_ip_rate:{ip}"
+    count = cache.get(cache_key, 0)
+    if count >= max_per_minute:
+        return False
+    # Increment; set TTL only on first write so the window starts at first request.
+    if count == 0:
+        cache.set(cache_key, 1, 60)
+    else:
+        cache.incr(cache_key)
+    return True
+
+
+def _check_password_reset_rate_limit(email: str) -> bool:
+    """
+    Enforce per-email rate limit on password reset (Phase 87).
+
+    Returns True if within limits, False if rate-limited.
+    Allows 5 requests per hour per email address.
+
+    Uses ``cache.add`` + ``cache.incr`` for atomic increment
+    to prevent race conditions under concurrent requests.
+    """
+    from django.core.cache import cache
+    max_per_hour = 5
+    cache_key = f"password_reset_email:{email}"
+
+    # add() is atomic: only succeeds if the key does NOT exist.
+    # This avoids the GET-then-SET race window.
+    cache.add(cache_key, 0, 3600)
+    try:
+        new_count = cache.incr(cache_key)
+    except ValueError:
+        # Key expired between add() and incr() — treat as first request
+        cache.set(cache_key, 1, 3600)
+        return True
+    return new_count <= max_per_hour
+
+
+def _check_email_verification_resend_rate_limit(email: str) -> bool:
+    """
+    Per-email rate limit for verification resend (Phase 204).
+
+    Allows 3 requests per hour per email address (cache-backed, same pattern as password reset).
+    """
+    max_per_hour = 3
+    cache_key = f"email_verify_resend:{email.lower()}"
+    cache.add(cache_key, 0, 3600)
+    try:
+        new_count = cache.incr(cache_key)
+    except ValueError:
+        cache.set(cache_key, 1, 3600)
+        return True
+    return new_count <= max_per_hour
+
+
+def _check_account_lockout(email: str) -> bool:
+    """
+    Enforce account-level lockout (11.5).
+
+    Returns True if the account is NOT locked (request allowed),
+    False if it IS locked (too many recent failures).
+    """
+    max_attempts = getattr(settings, "LOGIN_MAX_ATTEMPTS", 10)
+    window_minutes = getattr(settings, "LOGIN_LOCKOUT_WINDOW_MINUTES", 15)
+    since = timezone.now() - timedelta(minutes=window_minutes)
+    failures = LoginAttempt.objects.filter(
+        email=email, success=False, created_at__gte=since
+    ).count()
+    return failures < max_attempts
+
+
+def _record_login_attempt(email: str, ip: str, success: bool) -> None:
+    # Truncate email to the field max_length to avoid DataError on oversized inputs
+    LoginAttempt.objects.create(email=email[:254], ip_address=ip, success=success)
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    """Attach the refresh token as a httpOnly, Secure, SameSite=Strict cookie (11.1)."""
+    cookie_name = getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token")
+    max_age = getattr(settings, "JWT_REFRESH_TOKEN_EXPIRY", 86400)
+    # secure=True is enforced in production; in dev it falls back to False so
+    # tests can run without HTTPS.
+    secure = not getattr(settings, "DEBUG", False)
+    response.set_cookie(
+        cookie_name,
+        token,
+        max_age=max_age,
+        httponly=True,
+        secure=secure,
+        samesite="Strict",
+        path="/",
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    """Expire the refresh-token cookie on logout (11.1)."""
+    cookie_name = getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token")
+    response.delete_cookie(cookie_name, path="/")
+
+
+def _get_refresh_token_str(request) -> str:
+    """
+    Extract the raw refresh-token string (11.1).
+
+    Precedence: httpOnly cookie > request body.
+    Returns an empty string when neither source carries a token.
+    """
+    cookie_name = getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token")
+    token = request.COOKIES.get(cookie_name, "")
+    if not token and request.data:
+        token = request.data.get("refresh_token", "") or ""
+    return token.strip()
+
 
 
 @extend_schema(
@@ -51,6 +196,11 @@ from .serializers import (
     responses={
         200: TokenResponseSerializer,
         400: OpenApiResponse(description="Invalid credentials"),
+        403: OpenApiResponse(
+            description="Email not verified after 24h grace (Phase 204): "
+            "error=EMAIL_NOT_VERIFIED, resend_url, code, detail"
+        ),
+        429: OpenApiResponse(description="Too many login attempts"),
     },
     tags=["Authentication"],
 )
@@ -63,38 +213,86 @@ def login(request):
     POST /auth/login
     Body: {"email": "user@example.com", "password": "password"}
 
-    Returns access token and refresh token.
+    Returns access token; refresh token is set as httpOnly cookie (11.1).
+    Enforces IP-level rate limiting (11.5) and account-level lockout (11.5).
+    Timing side-channel is neutralised by always running check_password (11.5).
     """
+    client_ip = _get_client_ip(request)
+
+    # ── IP-level rate limit ──────────────────────────────────────────────────
+    if not _check_ip_rate_limit(client_ip):
+        return Response(
+            {"detail": "Too many login attempts. Please try again later."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
     serializer = LoginSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
     email = serializer.validated_data["email"]
     password = serializer.validated_data["password"]
 
-    # Authenticate user
+    # ── Timing-safe user lookup (11.5) ───────────────────────────────────────
+    # Always run check_password regardless of whether the email exists so that
+    # timing measurements do not reveal whether an account is registered.
     try:
-        user = User.objects.get(email=email)
+        user = (
+            User.objects
+            .select_related("tenant")
+            .prefetch_related("user_roles__role")
+            .get(email=email)
+        )
+        password_ok = user.check_password(password)
     except User.DoesNotExist:
+        from django.contrib.auth.hashers import check_password as _chk
+        _chk(password, _DUMMY_HASH)  # consume similar CPU time
+        _record_login_attempt(email, client_ip, success=False)
         raise ValidationError({"email": "Invalid email or password"})
 
-    # Check password
-    if not user.check_password(password):
+    # ── Account-level lockout (11.5) ─────────────────────────────────────────
+    if not _check_account_lockout(email):
+        _record_login_attempt(email, client_ip, success=False)
+        return Response(
+            {"detail": "Account temporarily locked. Please try again later."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    if not password_ok:
+        _record_login_attempt(email, client_ip, success=False)
         raise ValidationError({"email": "Invalid email or password"})
 
-    # Check if user is active
     if not user.is_active():
+        _record_login_attempt(email, client_ip, success=False)
         raise ValidationError({"email": "User account is not active"})
 
-    # Generate access token
+    # Phase 204: block password login after 24h grace if email not verified
+    if (
+        not user.email_verified
+        and not user.is_platform_admin
+        and timezone.now() > user.created_at + timedelta(hours=24)
+    ):
+        _record_login_attempt(email, client_ip, success=False)
+        return Response(
+            {
+                # Spec (Phase 204): machine code + resend URL at top level
+                "error": "EMAIL_NOT_VERIFIED",
+                "resend_url": "/api/v1/auth/resend-verification/",
+                "detail": "Please verify your email address before signing in.",
+                "code": "EMAIL_NOT_VERIFIED",
+                "details": {"resend_url": "/api/v1/auth/resend-verification/"},
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    _record_login_attempt(email, client_ip, success=True)
+
+    # ── Issue tokens ─────────────────────────────────────────────────────────
     access_token = JWTTokenGenerator.generate_access_token(user)
 
-    # Generate refresh token
     refresh_token_str = RefreshToken.generate_token()
     refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
-
     expires_at = timezone.now() + timedelta(seconds=settings.JWT_REFRESH_TOKEN_EXPIRY)
-
-    refresh_token_obj = RefreshToken.objects.create(
+    RefreshToken.objects.create(
         user=user, token_hash=refresh_token_hash, expires_at=expires_at
     )
 
@@ -102,43 +300,37 @@ def login(request):
     log_auth_operation(action="LOGIN", user=user, details={"method": "password"}, request=request)
 
     # Warm cache for tenant on login (async to avoid blocking login response)
-    if user.tenant_id:
+    # Skip during tests: background threads deadlock with test transaction isolation.
+    if user.tenant_id and not os.environ.get("TESTING"):
         try:
             import threading
 
             from hub.apps.core.caching.warming import warm_tenant_cache
 
-            # Warm cache in background thread to avoid blocking login
             def warm_cache_async():
                 try:
-                    tenant_id = str(user.tenant_id)
-                    warm_tenant_cache(tenant_id)
-                except Exception as e:
-                    # Log error but don't fail login
-                    import logging
+                    warm_tenant_cache(str(user.tenant_id))
+                except Exception as exc:
+                    logger.warning("cache_warm_failed", error=str(exc))
 
-                    logger = logging.getLogger(__name__)
-                    logger.warning(f"Failed to warm cache on login: {e}", exc_info=True)
+            threading.Thread(target=warm_cache_async, daemon=True).start()
+        except Exception as exc:
+            logger.warning("cache_warm_start_failed", error=str(exc))
 
-            # Start background thread for cache warming
-            thread = threading.Thread(target=warm_cache_async, daemon=True)
-            thread.start()
-        except Exception as e:
-            # Log error but don't fail login
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to start cache warming on login: {e}", exc_info=True)
-
-    return Response(
-        {
-            "access_token": access_token,
-            "refresh_token": refresh_token_str,
-            "token_type": "Bearer",
-            "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRY,
-        },
-        status=status.HTTP_200_OK,
-    )
+    # ── Build response ────────────────────────────────────────────────────────
+    # access_token + refresh_token are included in the body so API clients
+    # (CLI, SDKs, SPAs using Authorization header) can consume them.
+    # The refresh_token is ALSO set as an httpOnly cookie (11.1) for
+    # browser-based clients as an additional XSS-resistant transport layer.
+    body = {
+        "token_type": "Bearer",
+        "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRY,
+        "access_token": access_token,
+        "refresh_token": refresh_token_str,
+    }
+    response = Response(body, status=status.HTTP_200_OK)
+    _set_refresh_cookie(response, refresh_token_str)
+    return response
 
 
 @extend_schema(
@@ -146,56 +338,104 @@ def login(request):
     responses={
         200: TokenResponseSerializer,
         400: OpenApiResponse(description="Invalid refresh token"),
+        401: OpenApiResponse(description="Replay detected — all sessions revoked"),
     },
     tags=["Authentication"],
 )
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
+@transaction.atomic
 def refresh_token(request):
     """
-    Token refresh endpoint.
+    Token refresh endpoint (11.1 + 11.2).
 
     POST /auth/refresh
-    Body: {"refresh_token": "token_string"}
+    Cookie: refresh_token=<token>   (preferred — httpOnly)
+    Body:  {"refresh_token": "<token>"}  (fallback for non-browser clients)
 
-    Returns new access token.
+    Issues a new access token and rotates the refresh token (family rotation).
+    If a revoked token is presented (replay / theft), the entire family is
+    revoked and the client must re-authenticate (11.2).
     """
-    serializer = RefreshTokenSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
+    refresh_token_str = _get_refresh_token_str(request)
+    if not refresh_token_str:
+        raise ValidationError({"refresh_token": "Refresh token is required"})
 
-    refresh_token_str = serializer.validated_data["refresh_token"]
     refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
 
-    # Look up refresh token
+    # SELECT FOR UPDATE to prevent concurrent rotation races (11.2)
     try:
-        refresh_token_obj = RefreshToken.objects.get(token_hash=refresh_token_hash)
+        refresh_token_obj = (
+            RefreshToken.objects.select_related("user")
+            .select_for_update()
+            .get(token_hash=refresh_token_hash)
+        )
     except RefreshToken.DoesNotExist:
         raise ValidationError({"refresh_token": "Invalid refresh token"})
 
-    # Check if valid
-    if not refresh_token_obj.is_valid():
-        raise ValidationError({"refresh_token": "Refresh token is expired or revoked"})
+    # ── Replay detection (11.2) ───────────────────────────────────────────────
+    if refresh_token_obj.is_revoked():
+        # A previously-issued token has been presented again — possible theft.
+        # Revoke the entire family to force re-login.
+        refresh_token_obj.revoke_family()
+        logger.warning(
+            "refresh_token_replay_detected",
+            family_id=str(refresh_token_obj.family_id),
+            user_id=str(refresh_token_obj.user_id),
+        )
+        response = Response(
+            {"detail": "Session invalidated. Please log in again."},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+        _clear_refresh_cookie(response)
+        return response
+
+    if refresh_token_obj.is_expired():
+        raise ValidationError({"refresh_token": "Refresh token is expired"})
 
     user = refresh_token_obj.user
-
-    # Check if user is active
     if not user.is_active():
         raise ValidationError({"refresh_token": "User account is not active"})
 
-    # Generate new access token
+    # ── Rotate: revoke old, issue new sibling in same family (11.2) ──────────
+    refresh_token_obj.revoke()
+
+    new_token_str = RefreshToken.generate_token()
+    new_token_hash = RefreshToken.hash_token(new_token_str)
+    expires_at = timezone.now() + timedelta(seconds=settings.JWT_REFRESH_TOKEN_EXPIRY)
+    RefreshToken.objects.create(
+        user=user,
+        token_hash=new_token_hash,
+        expires_at=expires_at,
+        family_id=refresh_token_obj.family_id,
+        sequence_number=refresh_token_obj.sequence_number + 1,
+    )
+
     access_token = JWTTokenGenerator.generate_access_token(user)
 
-    # Log audit event
     log_auth_operation(action="TOKEN_REFRESHED", user=user, details={}, request=request)
 
-    return Response(
-        {
-            "access_token": access_token,
-            "token_type": "Bearer",
-            "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRY,
-        },
-        status=status.HTTP_200_OK,
-    )
+    use_cookie_auth = getattr(settings, "USE_HTTPONLY_AUTH_COOKIES", False)
+    body = {
+        "token_type": "Bearer",
+        "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRY,
+    }
+    if not use_cookie_auth:
+        # Legacy: return access token in response body for SPA clients
+        body["access_token"] = access_token
+    response = Response(body, status=status.HTTP_200_OK)
+    _set_refresh_cookie(response, new_token_str)
+    if use_cookie_auth:
+        response.set_cookie(
+            "access_token",
+            access_token,
+            max_age=settings.JWT_ACCESS_TOKEN_EXPIRY,
+            httponly=True,
+            secure=not getattr(settings, "DEBUG", False),
+            samesite="Strict",
+            path="/",
+        )
+    return response
 
 
 @extend_schema(
@@ -219,8 +459,8 @@ def logout(request):
     When refresh_token is omitted: revokes all refresh tokens for the authenticated user (full session cleanup).
     Invalid/unknown token returns 200 with revoked_count=0 (idempotent).
     """
-    refresh_token_str = request.data.get("refresh_token") if request.data else None
-    refresh_token_str = str(refresh_token_str).strip() if refresh_token_str else None
+    # Read token from cookie first, then body (11.1)
+    refresh_token_str = _get_refresh_token_str(request)
 
     revoked_count = 0
     if refresh_token_str:
@@ -235,13 +475,12 @@ def logout(request):
                 refresh_token_obj.save(update_fields=["revoked_at", "updated_at"])
             revoked_count = 1
     else:
-        # No refresh_token: revoke all refresh tokens for this user (session cleanup)
+        # No token found: revoke all sessions for this user (full session cleanup)
         revoked = RefreshToken.objects.filter(
             user_id=request.user.id, revoked_at__isnull=True
         ).update(revoked_at=timezone.now())
         revoked_count = revoked
 
-    # Log audit event
     log_auth_operation(
         action="LOGOUT",
         user=request.user,
@@ -249,10 +488,12 @@ def logout(request):
         request=request,
     )
 
-    return Response(
+    response = Response(
         {"message": "Logged out successfully", "revoked_sessions": revoked_count},
         status=status.HTTP_200_OK,
     )
+    _clear_refresh_cookie(response)
+    return response
 
 
 @extend_schema(
@@ -276,6 +517,13 @@ def password_reset_request(request):
 
     email = serializer.validated_data["email"]
 
+    # Phase 87: Per-email rate limiting (5 requests/hour)
+    if not _check_password_reset_rate_limit(email):
+        return Response(
+            {"detail": "Too many password reset requests. Try again later."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
     try:
         user = User.objects.get(email=email)
     except User.DoesNotExist:
@@ -285,15 +533,21 @@ def password_reset_request(request):
             status=status.HTTP_200_OK,
         )
 
-    # Generate password reset token
-    user.password_reset_token = uuid.uuid4()
+    # Generate password reset token — store hash, send plaintext in email (11.3)
+    plaintext_token = str(uuid.uuid4())
+    user.password_reset_token = _sha256_hex(plaintext_token)
     user.password_reset_token_expires_at = timezone.now() + timedelta(hours=1)
-    user.save(update_fields=["password_reset_token", "password_reset_token_expires_at"])
+    user.password_reset_token_used_at = None
+    user.save(update_fields=[
+        "password_reset_token",
+        "password_reset_token_expires_at",
+        "password_reset_token_used_at",
+    ])
 
-    # Send password reset email
+    # Send password reset email (pass plaintext token; DB stores hash — 11.3)
     from hub.apps.notifications.tasks import send_password_reset_email
 
-    send_password_reset_email.delay(str(user.id))
+    send_password_reset_email.delay(str(user.id), plaintext_token=plaintext_token)
 
     # Log audit event
     log_auth_operation(action="PASSWORD_RESET_REQUESTED", user=user, details={}, request=request)
@@ -326,10 +580,12 @@ def password_reset_confirm(request):
     token = serializer.validated_data["token"]
     new_password = serializer.validated_data["new_password"]
 
-    # Find user with this token
+    # Clients send the plaintext UUID; we hash it for the DB lookup (11.3)
+    token_hash = _sha256_hex(str(token))
+
     try:
         user = User.objects.get(
-            password_reset_token=token,
+            password_reset_token=token_hash,
             password_reset_token_expires_at__gt=timezone.now(),
             password_reset_token_used_at__isnull=True,
         )
@@ -359,6 +615,106 @@ def password_reset_confirm(request):
 
 
 @extend_schema(
+    request=EmailVerificationSerializer,
+    responses={
+        200: OpenApiResponse(description="Email verified"),
+        400: OpenApiResponse(description="Invalid or expired token"),
+    },
+    tags=["Authentication"],
+)
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+@transaction.atomic
+def verify_email(request):
+    """
+    POST /auth/verify-email/
+    Body: {"token": "<signed token from email>"}
+
+    Validates HMAC and 72-hour window from ``email_verification_sent_at``, then marks verified.
+    """
+    serializer = EmailVerificationSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    token = serializer.validated_data["token"]
+    token_hash = _sha256_hex(token)
+    try:
+        user = User.objects.select_for_update().get(email_verification_token=token_hash)
+    except User.DoesNotExist:
+        raise ValidationError({"token": "Invalid or expired verification token"})
+
+    if not plaintext_valid_for_user(user, token):
+        raise ValidationError({"token": "Invalid or expired verification token"})
+
+    if user.email_verified:
+        return Response({"message": "Email already verified."}, status=status.HTTP_200_OK)
+    mark_user_email_verified(user)
+    log_auth_operation(action="EMAIL_VERIFIED", user=user, details={}, request=request)
+    return Response({"message": "Email verified successfully."}, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    request=ResendEmailVerificationSerializer,
+    responses={
+        200: OpenApiResponse(description="If the account exists, email may be sent"),
+        429: OpenApiResponse(description="Too many resend requests"),
+    },
+    tags=["Authentication"],
+)
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def resend_verification_email(request):
+    """
+    POST /auth/resend-verification/
+    Body: {"email": "user@example.com"}
+
+    Rate-limited to 3/hour per email. Does not reveal whether the address is registered.
+    """
+    serializer = ResendEmailVerificationSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    email = serializer.validated_data["email"]
+
+    if not _check_email_verification_resend_rate_limit(email):
+        return Response(
+            {"detail": "Too many verification emails sent. Try again later."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    generic = Response(
+        {"message": "If the account exists, a verification email has been sent."},
+        status=status.HTTP_200_OK,
+    )
+
+    try:
+        user = User.objects.get(email__iexact=email)
+    except User.DoesNotExist:
+        return generic
+
+    if user.email_verified or user.is_platform_admin:
+        return generic
+
+    try:
+        from django_rq import get_queue
+
+        from hub.apps.notifications.tasks import send_email_verification_email
+
+        verify_plaintext = issue_verification_token_plaintext(user)
+        vq = get_queue("job_low")
+        vq.enqueue(
+            send_email_verification_email,
+            str(user.id),
+            plaintext_token=verify_plaintext,
+        )
+    except Exception as e:
+        structlog.get_logger(__name__).warning(
+            "resend_verification_email_failed", user_id=str(user.id), error=str(e), exc_info=True
+        )
+
+    log_auth_operation(
+        action="EMAIL_VERIFICATION_RESENT", user=user, details={}, request=request
+    )
+    return generic
+
+
+@extend_schema(
     request=InvitationAcceptanceSerializer,
     responses={
         200: TokenResponseSerializer,
@@ -368,27 +724,37 @@ def password_reset_confirm(request):
 )
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
+@transaction.atomic
 def accept_invitation(request):
     """
-    Invitation acceptance endpoint.
+    Invitation acceptance endpoint (11.3 + 11.7).
 
     POST /auth/accept-invitation
-    Body: {"token": "uuid", "password": "password"}
+    Body: {"token": "<plaintext-uuid>", "password": "password"}
 
     Accepts invitation and activates user account.
+    Wrapped in a transaction with SELECT FOR UPDATE to prevent concurrent
+    double-acceptance of the same invitation token (11.7).
+    Token stored as SHA-256 hash; plaintext travels only in the email link (11.3).
+    Refresh token is delivered via httpOnly cookie (11.1).
     """
     serializer = InvitationAcceptanceSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
-    token = serializer.validated_data["token"]
+    plaintext_token = str(serializer.validated_data["token"])
     password = serializer.validated_data["password"]
+    token_hash = _sha256_hex(plaintext_token)
 
-    # Find user with this invitation token
+    # SELECT FOR UPDATE prevents two concurrent requests accepting the same
+    # invitation simultaneously (11.7).
     try:
-        user = User.objects.get(
-            invitation_token=token,
-            invitation_token_expires_at__gt=timezone.now(),
-            invitation_token_used_at__isnull=True,
+        user = (
+            User.objects.select_for_update()
+            .get(
+                invitation_token=token_hash,
+                invitation_token_expires_at__gt=timezone.now(),
+                invitation_token_used_at__isnull=True,
+            )
         )
     except User.DoesNotExist:
         raise ValidationError({"token": "Invalid or expired invitation token"})
@@ -399,6 +765,8 @@ def accept_invitation(request):
     user.invitation_token = None
     user.invitation_token_expires_at = None
     user.invitation_token_used_at = timezone.now()
+    user.email_verified = True
+    user.email_verified_at = timezone.now()
     user.save()
 
     # Generate tokens
@@ -407,22 +775,20 @@ def accept_invitation(request):
     refresh_token_str = RefreshToken.generate_token()
     refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
     expires_at = timezone.now() + timedelta(seconds=settings.JWT_REFRESH_TOKEN_EXPIRY)
-
-    refresh_token_obj = RefreshToken.objects.create(
+    RefreshToken.objects.create(
         user=user, token_hash=refresh_token_hash, expires_at=expires_at
     )
 
-    # Audit logging is handled by the authentication middleware and signal handlers
-
-    return Response(
+    response = Response(
         {
             "access_token": access_token,
-            "refresh_token": refresh_token_str,
             "token_type": "Bearer",
             "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRY,
         },
         status=status.HTTP_200_OK,
     )
+    _set_refresh_cookie(response, refresh_token_str)
+    return response
 
 
 @extend_schema(
@@ -508,28 +874,76 @@ def register(request):
                 )
             return handle_service_exception(e)
 
-    # Create user
-    user = User.objects.create_user(
-        email=email,
-        password=password,
-        tenant=tenant,
-        display_name=name,
-        status=UserStatus.ACTIVE,  # Users register as active (not invited)
-    )
+    # Check for duplicate email BEFORE create_user to surface 409 reliably.
+    # (The conftest idempotent-create patch can swallow IntegrityError in test
+    # environments, so pre-checking is the robust approach.)
+    if User.objects.filter(email__iexact=email).exists():
+        from hub.apps.core.responses import api_error_response
+
+        return api_error_response(
+            message="An account with this email address already exists.",
+            status_code=status.HTTP_409_CONFLICT,
+            code="EMAIL_ALREADY_EXISTS",
+            details={},
+        )
+
+    # Create user — IntegrityError fallback kept as safety net for race conditions.
+    from django.db import IntegrityError
+
+    try:
+        user = User.objects.create_user(
+            email=email,
+            password=password,
+            tenant=tenant,
+            display_name=name,
+            status=UserStatus.ACTIVE,  # Users register as active (not invited)
+        )
+    except IntegrityError:
+        from hub.apps.core.responses import api_error_response
+
+        return api_error_response(
+            message="An account with this email address already exists.",
+            status_code=status.HTTP_409_CONFLICT,
+            code="EMAIL_ALREADY_EXISTS",
+            details={},
+        )
 
     # Assign DATA_PROVIDER and DATA_CONSUMER when personal tenant created (useronboardfix 1.2)
+    # bulk_create reduces N per-role round-trips to a single INSERT (13.9).
     if personal_tenant_created and tenant:
         from hub.apps.users.models import Role, UserRole
 
-        for role_name in ("DATA_PROVIDER", "DATA_CONSUMER"):
-            role = Role.objects.get(tenant=tenant, name=role_name)
-            UserRole.objects.get_or_create(user=user, role=role)
+        _roles = Role.objects.filter(
+            tenant=tenant, name__in=["DATA_PROVIDER", "DATA_CONSUMER"]
+        )
+        UserRole.objects.bulk_create(
+            [UserRole(user=user, tenant=tenant, role=r) for r in _roles],
+            ignore_conflicts=True,
+        )
 
     # Ensure UserTenantMembership exists so X-Tenant-Id validation passes (auth middleware)
     if tenant:
         from hub.apps.users.services import UserTenantMembershipService
 
         UserTenantMembershipService().add_membership(user, tenant)
+
+    # Phase 204: verification email (token persisted + async send)
+    try:
+        from django_rq import get_queue
+
+        from hub.apps.notifications.tasks import send_email_verification_email
+
+        verify_plaintext = issue_verification_token_plaintext(user)
+        vq = get_queue("job_low")
+        vq.enqueue(
+            send_email_verification_email,
+            str(user.id),
+            plaintext_token=verify_plaintext,
+        )
+    except Exception as e:
+        logger.warning(
+            "verification_email_queue_failed", user_id=str(user.id), error=str(e), exc_info=True
+        )
 
     # Publish user.created event
     try:
@@ -625,7 +1039,7 @@ def _build_me_response(user):
     try:
         if user.tenant:
             tenant_id = user.tenant.id
-    except Exception:
+    except (AttributeError, ObjectDoesNotExist):
         tenant_id = None
 
     avatar = getattr(user, "avatar_url", None) or None
@@ -693,7 +1107,7 @@ def me(request):
         user.display_name = serializer.validated_data["display_name"]
         update_fields.append("display_name")
     if "avatar" in serializer.validated_data:
-        user.avatar_url = serializer.validated_data["avatar"] or None
+        user.avatar_url = serializer.validated_data["avatar"] or ""
         update_fields.append("avatar_url")
     if "preferences" in serializer.validated_data:
         user.preferences = serializer.validated_data["preferences"]

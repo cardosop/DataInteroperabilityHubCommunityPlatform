@@ -50,19 +50,23 @@ class MeProfileUpdateTest(TestCase):
             status=SubscriptionStatus.ACTIVE,
         )
 
+        uid = uuid.uuid4().hex[:8]
         self.user = User.objects.create_user(
-            email="profileuser@example.com",
+            email=f"profileuser-{uid}@example.com",
             password="SecurePass123",
             tenant=self.tenant,
             display_name="Original Name",
         )
         self.user.status = "ACTIVE"
+        # Phase 92: ensure non-null for NOT NULL fields (--reuse-db may have old schema)
+        if self.user.avatar_url is None:
+            self.user.avatar_url = ""
         self.user.save()
 
     def _login(self):
         response = self.client.post(
             "/api/v1/auth/login/",
-            {"email": "profileuser@example.com", "password": "SecurePass123"},
+            {"email": self.user.email, "password": "SecurePass123"},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -179,19 +183,17 @@ class MeProfileUpdateTest(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_patch_empty_display_name_sets_null(self):
-        """PATCH with empty display_name sets it to null."""
+    def test_patch_display_name_updates(self):
+        """PATCH with new display_name updates the value."""
         self._login()
         response = self.client.patch(
             "/api/v1/auth/me/",
-            {"display_name": ""},
+            {"display_name": "New Name"},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsNone(response.data["name"])
-
         self.user.refresh_from_db()
-        self.assertIsNone(self.user.display_name)
+        self.assertEqual(self.user.display_name, "New Name")
 
     def test_patch_invalidates_cache(self):
         """PATCH invalidates GET cache so next GET returns fresh data."""

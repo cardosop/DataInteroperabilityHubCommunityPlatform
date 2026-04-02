@@ -11,6 +11,7 @@ from django.core.exceptions import ValidationError
 class ComplianceRunStatus(models.TextChoices):
     """Compliance Run status enumeration"""
     PENDING = "PENDING", "Pending"
+    QUEUED = "QUEUED", "Queued"  # async job accepted by compliance service
     RUNNING = "RUNNING", "Running"
     SUCCEEDED = "SUCCEEDED", "Succeeded"
     FAILED = "FAILED", "Failed"
@@ -49,11 +50,11 @@ class ComplianceRun(models.Model):
     )
     dataset = models.ForeignKey(
         "datasets.Dataset",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="compliance_runs",
         null=True,
         blank=True,
-        help_text="Dataset this compliance run is for (nullable)"
+        help_text="Dataset this compliance run is for (nullable; SET_NULL preserves audit trail)"
     )
     file = models.ForeignKey(
         "files.File",
@@ -78,7 +79,10 @@ class ComplianceRun(models.Model):
         max_length=20,
         choices=ComplianceRunStatus.choices,
         default=ComplianceRunStatus.PENDING,
-        help_text="Compliance run status: PENDING, RUNNING, SUCCEEDED, FAILED"
+        help_text=(
+            "Compliance run status: "
+            "PENDING, QUEUED, RUNNING, SUCCEEDED, FAILED"
+        )
     )
     overall_status = models.CharField(
         max_length=20,
@@ -113,6 +117,30 @@ class ComplianceRun(models.Model):
         blank=True,
         help_text="Regulatory mapping details (GDPR, LGPD, CCPA, HIPAA, SOX)"
     )
+    # v2 result fields (19.10.1)
+    cross_border_alert = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Cross-border data transfer alert from compliance service v2"
+    )
+    localisation_alert = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Data localisation requirement alert from compliance service v2"
+    )
+    legal_basis_violations = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Legal basis violations reported by compliance service v2"
+    )
+    metadata_json = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Async job tracking metadata: "
+            '{"job_id": "...", "poll_url": "..."}'
+        ),
+    )
     started_at = models.DateTimeField(
         null=True,
         blank=True,
@@ -135,6 +163,7 @@ class ComplianceRun(models.Model):
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["tenant", "file"]),
             models.Index(fields=["job"]),
+            models.Index(fields=["status", "created_at"], name="idx_complrun_st_created"),
         ]
     
     def __str__(self):

@@ -26,8 +26,14 @@ from hub.apps.contracts.models import (
     OriginalFormat,
     OriginalSpecType,
 )
+from django.contrib.auth import get_user_model
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
-from hub.apps.users.models import Role, UserRole
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import Role, UserRole, UserStatus
+from rest_framework.test import APIClient
+import uuid
+
+User = get_user_model()
 
 
 class APIKeyRotationTest(ContractsAPITestBase):
@@ -368,8 +374,9 @@ class APIKeyRotationTest(ContractsAPITestBase):
         import secrets
 
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         # Create key for first tenant

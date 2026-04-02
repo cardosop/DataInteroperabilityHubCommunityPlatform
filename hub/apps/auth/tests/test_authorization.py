@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from hub.apps.auth.permissions import HasAnyRole, HasAnyScope, HasRole, HasScope
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import Role, User, UserRole, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -31,8 +32,8 @@ class RequestUserAuth:
         return None
 
 
-class TestView(APIView):
-    """Test view for authorization testing (uses get_permissions for param-based permissions)."""
+class _StubView(APIView):
+    """Stub view for authorization testing (uses get_permissions for param-based permissions)."""
 
     authentication_classes = [RequestUserAuth]
 
@@ -52,8 +53,9 @@ class AuthorizationTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Get or create roles (default roles are created by tenant signal)
@@ -68,7 +70,7 @@ class AuthorizationTest(TestCase):
 
         # Create users
         self.admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -76,7 +78,7 @@ class AuthorizationTest(TestCase):
         UserRole.objects.create(user=self.admin_user, role=self.admin_role)
 
         self.provider_user = User.objects.create_user(
-            email="provider@example.com",
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -84,7 +86,7 @@ class AuthorizationTest(TestCase):
         UserRole.objects.create(user=self.provider_user, role=self.provider_role)
 
         self.regular_user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -249,7 +251,7 @@ class AuthorizationTest(TestCase):
     def test_platform_admin_has_all_permissions(self):
         """Test that platform admins have all permissions"""
         platform_admin = User.objects.create_user(
-            email="platform@example.com",
+            email=f"platform-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             is_platform_admin=True,
             status=UserStatus.ACTIVE,

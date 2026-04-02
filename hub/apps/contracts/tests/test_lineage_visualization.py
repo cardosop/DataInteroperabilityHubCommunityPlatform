@@ -117,7 +117,7 @@ class TestLineageVisualization(ContractsTransactionTestBase):
         self.assertIn("nodes", result)
         self.assertIn("links", result)
         # Should still have at least the contract node
-        self.assertGreaterEqual(len(result["nodes"]), 0)
+        self.assertGreater(len(result["nodes"]), 0)
 
     def test_generate_lineage_json_with_missing_hub_contract_json(self):
         """Test JSON format generation with contract missing hub_contract_json."""

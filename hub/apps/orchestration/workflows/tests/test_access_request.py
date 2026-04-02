@@ -1,6 +1,7 @@
 """
 Unit tests for Access Request Workflow
 """
+import uuid
 from django.test import TestCase
 from django.utils import timezone
 import unittest
@@ -31,16 +32,17 @@ class AccessRequestWorkflowUnitTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant, _ = Tenant.objects.get_or_create(name="Test Tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant, _ = Tenant.objects.get_or_create(name=f"Test Tenant {uid}")
         self.user, _ = User.objects.get_or_create(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             defaults={
                 "password": "testpass123",
                 "tenant": self.tenant
             }
         )
         self.approver, _ = User.objects.get_or_create(
-            email="approver@example.com",
+            email=f"approver-{uuid.uuid4().hex[:8]}@example.com",
             defaults={
                 "password": "testpass123",
                 "tenant": self.tenant

@@ -2,6 +2,7 @@
 Unit tests for API key authentication.
 """
 
+import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -24,13 +25,14 @@ class APIKeyAuthenticationTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -49,25 +51,17 @@ class APIKeyAuthenticationTest(TestCase):
         self.plaintext_key = plaintext_key
 
     def test_api_key_authentication_authorization_header(self):
-        """Test API key authentication via Authorization header"""
+        """Test API key via Authorization: ApiKey header authenticates successfully."""
         self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_key}")
-
-        # Try to access a protected endpoint
-        response = self.client.get("/api/v1/users/")
-
-        # Should succeed (assuming users endpoint exists and is protected)
-        # Note: This test might need adjustment based on actual endpoint requirements
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_401_UNAUTHORIZED])
+        response = self.client.get("/api/v1/auth/me/")
+        # me/ requires authentication — 200 proves the API key was accepted
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_api_key_authentication_x_api_key_header(self):
-        """Test API key authentication via X-API-Key header"""
+        """Test API key via X-API-Key header authenticates successfully."""
         self.client.credentials(HTTP_X_API_KEY=self.plaintext_key)
-
-        # Try to access a protected endpoint
-        response = self.client.get("/api/v1/users/")
-
-        # Should succeed
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_401_UNAUTHORIZED])
+        response = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_api_key_invalid(self):
         """Test API key authentication with invalid key"""

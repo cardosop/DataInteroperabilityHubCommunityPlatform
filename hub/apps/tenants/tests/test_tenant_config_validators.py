@@ -42,15 +42,15 @@ class ValidateDQProfileTest(TestCase):
         self.assertIn("Invalid DQ profile key", error_message)
         self.assertIn("invalid_profile", error_message)
     
-    def test_empty_string(self):
-        """Test empty string (should be invalid or treated as None)"""
-        # Empty string should pass (validator only checks if value is truthy)
-        # If value is empty string, validator doesn't raise (because of `if value` check)
-        try:
-            validate_dq_profile("")
-        except ValidationError:
-            # If it raises, that's also acceptable behavior
-            pass
+    def test_empty_string_passes_validation(self):
+        """Empty string is treated as 'not set' (falsy) and passes validation.
+
+        The validator uses ``if value`` guard — empty string is falsy,
+        so it skips the allowed-list check. This matches the model's
+        ``blank=True`` behavior: empty means 'use platform default'.
+        """
+        # Should NOT raise — empty string is treated as "not set"
+        validate_dq_profile("")  # no exception expected
     
     def test_none_value(self):
         """Test None value (should be valid, uses platform default)"""
@@ -300,7 +300,11 @@ class GetPlatformDefaultsTest(TestCase):
         defaults = get_platform_defaults()
         
         self.assertEqual(defaults["default_dq_profile"], "intake_basic_gx")
-        self.assertEqual(defaults["allowed_compliance_regimes"], ["GDPR", "LGPD", "CCPA", "HIPAA", "SOX"])
+        from hub.apps.tenants.validators import VALID_COMPLIANCE_REGIMES
+        self.assertEqual(
+            defaults["allowed_compliance_regimes"],
+            list(VALID_COMPLIANCE_REGIMES),
+        )
         self.assertEqual(defaults["default_compliance_regimes"], ["GDPR", "LGPD"])
         self.assertEqual(defaults["data_retention_days"], 2555)
         self.assertEqual(defaults["max_file_size_bytes"], 10737418240)

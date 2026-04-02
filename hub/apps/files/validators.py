@@ -3,9 +3,158 @@ File Validation Utilities
 
 Validates file size, type, and other constraints.
 """
+import logging
+import os
+import re
+
 from django.core.exceptions import ValidationError
 from django.conf import settings
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# 14.6  Magic-byte MIME validation
+# ---------------------------------------------------------------------------
+
+# Declared MIME type → detected MIME type pairs that are known-safe mismatches.
+MIME_ALLOWED_MISMATCHES = {
+    # text/csv files often detected as text/plain
+    ("text/csv", "text/plain"): True,
+    ("application/csv", "text/plain"): True,
+    # JSON files sometimes detected as text/plain
+    ("application/json", "text/plain"): True,
+    # Parquet and some binary formats may be reported differently
+    ("application/octet-stream", "application/x-par"): True,
+}
+
+
+def validate_file_magic(file_obj, declared_content_type: str, filename: str) -> None:
+    """
+    Validate a file's actual content against its declared MIME type using magic bytes.
+
+    Reads the first 512 bytes of *file_obj* (then seeks back to 0) and uses
+    ``python-magic`` (libmagic) to detect the real MIME type.  If the detected
+    type disagrees with *declared_content_type* and the mismatch is not listed
+    in :data:`MIME_ALLOWED_MISMATCHES`, a :class:`~django.core.exceptions.ValidationError`
+    is raised.
+
+    If ``python-magic`` / libmagic is not available the function logs a warning
+    and returns without blocking the upload so that environments without the
+    native library do not break.
+
+    Args:
+        file_obj: A file-like object that supports ``read()`` and ``seek()``.
+        declared_content_type: The MIME type declared by the client (e.g. ``"text/plain"``).
+        filename: Original filename (used for error messages only).
+
+    Raises:
+        ValidationError: When the detected MIME type is incompatible with the
+            declared one and the mismatch is not allow-listed.
+    """
+    try:
+        import magic  # python-magic
+    except ImportError:
+        logger.warning(
+            "python-magic is not installed; skipping magic-byte MIME validation "
+            "for file %r. Install python-magic>=0.4.27 and libmagic to enable.",
+            filename,
+        )
+        return
+
+    content = file_obj.read(512)
+    file_obj.seek(0)
+
+    try:
+        detected_mime: str = magic.from_buffer(content, mime=True)
+    except Exception as exc:  # pragma: no cover – libmagic runtime errors
+        logger.warning(
+            "python-magic failed to inspect file %r: %s; skipping magic-byte check.",
+            filename,
+            exc,
+        )
+        return
+
+    # Exact match – all good.
+    if detected_mime == declared_content_type:
+        return
+
+    # Allow-listed known-harmless mismatch.
+    if MIME_ALLOWED_MISMATCHES.get((declared_content_type, detected_mime)):
+        return
+
+    raise ValidationError(
+        f"File content type mismatch: declared {declared_content_type} but detected "
+        f"{detected_mime}. Upload the correct file type."
+    )
+
+
+# ---------------------------------------------------------------------------
+# 14.7  Path traversal prevention
+# ---------------------------------------------------------------------------
+
+# Characters and patterns that are dangerous in filenames.
+_DANGEROUS_FILENAME_RE = re.compile(r'[<>:"|?*\x00-\x1f]|^\.|\.\.|\.$')
+
+
+def validate_filename(name: str) -> str:
+    """
+    Sanitise and validate an uploaded filename.
+
+    Steps performed:
+    1. Strip directory components (handles both POSIX and Windows path separators).
+    2. Reject names that contain dangerous characters or path-traversal sequences.
+    3. Truncate to 255 UTF-8 bytes (the limit on most filesystems).
+
+    Args:
+        name: Raw filename submitted by the client.
+
+    Returns:
+        The sanitised filename (no path components, safely truncated).
+
+    Raises:
+        ValidationError: If the sanitised name is empty or contains dangerous
+            patterns such as directory traversal, control characters, or
+            reserved characters.
+    """
+    # Guard against None or non-string inputs before any string operations.
+    if not name or not isinstance(name, str):
+        raise ValidationError(
+            "Invalid filename: filename must be a non-empty string."
+        )
+
+    # Normalise Windows-style separators before any checks.
+    name = name.replace("\\", "/")
+
+    # Reject any input that contains directory-traversal components BEFORE
+    # stripping the path.  After basename('../../etc/passwd') you get 'passwd'
+    # which looks innocent, but the original intent was traversal — reject it.
+    if ".." in name.split("/"):
+        raise ValidationError(
+            f"Invalid filename: '{name}'. Filenames must not contain directory "
+            "traversal, control characters, or reserved characters."
+        )
+
+    # Strip any remaining directory component (e.g. '/home/user/file.csv' → 'file.csv').
+    name = os.path.basename(name)
+
+    # Reject dangerous filenames (hidden files, reserved chars, control chars, etc.).
+    if not name or _DANGEROUS_FILENAME_RE.search(name):
+        raise ValidationError(
+            f"Invalid filename: '{name}'. Filenames must not contain directory "
+            "traversal, control characters, or reserved characters."
+        )
+
+    # Truncate to 255 UTF-8 bytes (decode with errors='ignore' in case the
+    # truncation split a multi-byte character).
+    name = name.encode("utf-8")[:255].decode("utf-8", errors="ignore")
+
+    if not name:
+        raise ValidationError(
+            "Invalid filename: filename is empty after sanitisation."
+        )
+
+    return name
 
 
 def validate_file_size(size: int, upload_method: str = "browser", tenant_id: Optional[str] = None) -> None:

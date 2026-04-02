@@ -33,6 +33,9 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
         self.tenant_id = tenant_id
         self.user_id = user_id
         super().__init__(tenant_id=tenant_id, user_id=user_id, **kwargs)
+        # Initialize event publisher (BaseService.__init__ does not call
+        # super().__init__(), so the mixin __init__ must be invoked explicitly).
+        NormalizationEventPublisher.__init__(self)
 
     def normalize_contract(
         self,

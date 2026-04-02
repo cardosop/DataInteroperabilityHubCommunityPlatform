@@ -23,7 +23,7 @@ from typing import Any, Dict, List
 try:
     import pytest
 
-    pytestmark = pytest.mark.django_db(transaction=True)
+    pytestmark = pytest.mark.django_db
 except ImportError:
     pytest = None
     pytestmark = None
@@ -32,7 +32,7 @@ from django.test import TestCase
 
 try:
     import jsonschema
-    from jsonschema import Draft202012Validator, RefResolver, SchemaError, ValidationError, validate
+    from jsonschema import Draft202012Validator, SchemaError, ValidationError, validate
 
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
@@ -40,7 +40,6 @@ except ImportError:
     Draft202012Validator = None
     SchemaError = Exception
     ValidationError = Exception
-    RefResolver = None
 
 from hub.apps.contracts.odps_errors import ODPSRefResolutionError, ODPSValidationError
 from hub.apps.contracts.odps_parser import ODPSParser
@@ -761,8 +760,7 @@ class ODPSSchemaCIValidationTest(TestCase):
         """Test clear_schema_cache clears cache without errors."""
         try:
             clear_schema_cache()
-            # Should not raise exception
-            self.assertTrue(True)
+            # Reaching here without exception proves cache was cleared successfully
         except Exception:
             # May raise exception if cache clearing fails
             pass

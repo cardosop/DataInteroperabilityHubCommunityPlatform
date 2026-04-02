@@ -4,6 +4,7 @@ Unit tests for AssetsBusinessRules.
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
 
+import uuid
 from typing import Any
 
 import pytest
@@ -40,49 +41,54 @@ class AssetsBusinessRulesInitializationTest(TestCase):
 
     def test_initialization_with_tenant_id_sets_tenant_id(self):
         """Test initialization with tenant_id sets tenant_id."""
+        _uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         rules = AssetsBusinessRules(tenant_id=str(tenant.id))
         self.assertEqual(rules.tenant_id, str(tenant.id))
 
     def test_initialization_with_tenant_id_sets_user_id_none(self):
         """Test initialization with tenant_id sets user_id to None."""
+        _uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         rules = AssetsBusinessRules(tenant_id=str(tenant.id))
         self.assertIsNone(rules.user_id)
 
     def test_initialization_with_tenant_and_user_sets_tenant_id(self):
         """Test initialization with tenant_id and user_id sets tenant_id."""
+        _uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=tenant
+            email=f"test-{_uid}@example.com", password="testpass123", tenant=tenant
         )
         rules = AssetsBusinessRules(tenant_id=str(tenant.id), user_id=str(user.id))
         self.assertEqual(rules.tenant_id, str(tenant.id))
 
     def test_initialization_with_tenant_and_user_sets_user_id(self):
         """Test initialization with tenant_id and user_id sets user_id."""
+        _uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=tenant
+            email=f"test-{_uid}@example.com", password="testpass123", tenant=tenant
         )
         rules = AssetsBusinessRules(tenant_id=str(tenant.id), user_id=str(user.id))
         self.assertEqual(rules.user_id, str(user.id))
 
     def test_initialization_with_tenant_and_user_returns_rule_name(self):
         """Test initialization with tenant_id and user_id returns rule name."""
+        _uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=tenant
+            email=f"test-{_uid}@example.com", password="testpass123", tenant=tenant
         )
         rules = AssetsBusinessRules(tenant_id=str(tenant.id), user_id=str(user.id))
         self.assertEqual(rules.get_rule_name(), "AssetsBusinessRules")
@@ -128,11 +134,12 @@ class AssetsBusinessRulesValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = AssetsBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -212,8 +219,9 @@ class AssetsBusinessRulesValidationTest(TestCase):
 
     def test_validate_tenant_context_mismatch(self):
         """Test tenant context validation with mismatch"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         asset = AssetFactory.create_asset(tenant=other_tenant, created_by=self.user)
 
@@ -236,11 +244,12 @@ class AssetsBusinessRulesValidationTest(TestCase):
 
     def test_validate_permissions_user_tenant_mismatch(self):
         """Test permissions validation with user tenant mismatch"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{_uid}@example.com", password="testpass123", tenant=other_tenant
         )
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
 
@@ -336,11 +345,12 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{_uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = AssetsBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -908,11 +918,12 @@ class AssetsBusinessRulesLifecycleIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{_uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.asset_service = AssetService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.rules = AssetsBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -987,11 +998,12 @@ class AssetsBusinessRulesContractAttachmentValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = AssetsBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -1085,7 +1097,9 @@ class AssetsBusinessRulesContractAttachmentValidationTest(TestCase):
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        self.assertIn("VALID or WARNING_ONLY", result.errors[0])
+        self.assertIn("VALID", result.errors[0])
+        self.assertIn("WARNING_ONLY", result.errors[0])
+        self.assertIn("SKIPPED", result.errors[0])
         self.assertFalse(result.details["status_valid"])
 
     def test_contract_normalization_status_normalized_ok(self):
@@ -1226,8 +1240,9 @@ class AssetsBusinessRulesContractAttachmentValidationTest(TestCase):
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
 
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         contract = Contract.objects.create(
@@ -1611,11 +1626,12 @@ class AssetsBusinessRulesContractAttachmentIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{_uid}@example.com", password="testpass123", tenant=self.tenant
         )
         from hub.apps.contracts.services import ContractService
 
@@ -1780,11 +1796,12 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{_uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = AssetsBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 

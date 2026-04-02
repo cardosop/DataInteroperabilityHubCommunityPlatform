@@ -28,6 +28,7 @@ from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.marketplace.models import Entitlement, Listing, ListingStatus, PricingModel
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -58,16 +59,17 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
         self.provider_tenant = self.tenant
         self.provider_user = self.user
 
-        # Create consumer tenant
+        # Create consumer tenant (unique names avoid clashes on shared test DB / parallel runs)
+        _consumer_uid = uuid.uuid4().hex[:10]
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
+            name=f"Consumer Tenant {_consumer_uid}",
+            slug=f"consumer-tenant-{_consumer_uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
 
         self.consumer_user = User.objects.create_user(
-            email="consumer@example.com",
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.consumer_tenant,
             status=UserStatus.ACTIVE,

@@ -88,7 +88,6 @@ class TestIdempotencyErrorHandling(TestCase):
             # This is acceptable - empty keys are treated as no idempotency key
             pass
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_expired_idempotency_key_detection(self):
         """Test expired idempotency key detection."""
         redis_client = get_redis_client()
@@ -108,14 +107,13 @@ class TestIdempotencyErrorHandling(TestCase):
         store_idempotency_record(redis_client, redis_key, request_hash, response_data, ttl=1)
 
         # Wait for expiration
-        time.sleep(2)
+        time.sleep(2)  # INTENTIONAL: test-specific timing requirement
 
         # Check if key is expired
         # Note: Redis automatically deletes expired keys, so get_idempotency_record will return None
         record = get_idempotency_record(redis_client, redis_key)
         self.assertIsNone(record, "Expired key should be deleted by Redis")
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_redis_failure_during_retrieval_fails_open(self):
         """Test Redis failure during record retrieval fails open gracefully."""
         def get_response(request):
@@ -150,7 +148,6 @@ class TestIdempotencyErrorHandling(TestCase):
             self.assertIsNotNone(response_from_process_response)
             self.assertEqual(response_from_process_response.status_code, 201)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_idempotency_conflict_returns_409(self):
         """Test idempotency conflict (same key, different body) returns 409."""
         def get_response(request):
@@ -189,7 +186,6 @@ class TestIdempotencyErrorHandling(TestCase):
         self.assertEqual(response_data['error']['http_status'], 409)
         self.assertIn('Idempotency-Key', response)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_invalid_json_in_redis_record_handled_gracefully(self):
         """Test invalid JSON in Redis record is handled gracefully."""
         def get_response(request):
@@ -218,7 +214,6 @@ class TestIdempotencyErrorHandling(TestCase):
         self.assertIsNotNone(response)
         # Should process normally (invalid record is ignored)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_redis_connection_error_during_lock_handled_gracefully(self):
         """Test Redis connection error during lock acquisition is handled gracefully."""
         def get_response(request):
@@ -253,7 +248,6 @@ class TestIdempotencyErrorHandling(TestCase):
             self.assertIsNotNone(response_from_process_response)
             self.assertEqual(response_from_process_response.status_code, 201)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_idempotency_key_header_present_in_success_responses(self):
         """Test Idempotency-Key header is present in success responses."""
         def get_response(request):
@@ -273,7 +267,6 @@ class TestIdempotencyErrorHandling(TestCase):
         self.assertIsNotNone(response)
         self.assertIn('Idempotency-Key', response)
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def test_idempotency_key_header_present_in_cached_responses(self):
         """Test Idempotency-Key header is present in cached responses."""
         def get_response(request):

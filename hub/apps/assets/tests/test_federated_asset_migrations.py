@@ -13,6 +13,7 @@ from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetSourceType
 from hub.apps.tenants.models import Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -22,7 +23,8 @@ class FederatedAssetMigrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
     def test_source_type_field_exists(self):
         """Test that source_type field exists in database"""
@@ -158,9 +160,9 @@ class FederatedAssetMigrationTest(TestCase):
             """
             )
             result = cursor.fetchone()
-            if result:
-                indexdef = result[0]
-                self.assertIn("tenant_id", indexdef.lower())
+        self.assertIsNotNone(result, "Index on (tenant, source_type) must exist")
+        indexdef = result[0]
+        self.assertIn("tenant_id", indexdef.lower())
 
     def test_source_type_index_includes_source_type(self):
         """Test that index on (tenant, source_type) includes source_type."""
@@ -175,9 +177,9 @@ class FederatedAssetMigrationTest(TestCase):
             """
             )
             result = cursor.fetchone()
-            if result:
-                indexdef = result[0]
-                self.assertIn("source_type", indexdef.lower())
+        self.assertIsNotNone(result, "Index on (tenant, source_type) must exist")
+        indexdef = result[0]
+        self.assertIn("source_type", indexdef.lower())
 
     def test_default_source_type_value(self):
         """Test that existing assets get default HUB_NATIVE value"""
@@ -372,15 +374,12 @@ class FederatedAssetMigrationTest(TestCase):
         with self.assertRaises(ValidationError):
             asset.full_clean()
 
-    def test_migration_failure_missing_required_field(self):
-        """Test migration failure when required field missing (failure scenario)"""
-        # source_type is required (not nullable)
-        # Try to create asset without source_type (should use default)
+    def test_source_type_defaults_to_hub_native(self):
+        """Test that source_type defaults to HUB_NATIVE when not specified"""
         asset = Asset.objects.create(
             tenant=self.tenant, key="default-source-type", name="Default Source Type"
         )
 
-        # Should default to HUB_NATIVE
         self.assertEqual(asset.source_type, AssetSourceType.HUB_NATIVE)
 
     # ========== EDGE CASES ==========

@@ -15,7 +15,7 @@ import json
 import threading
 import time
 
-from rest_framework import status
+import pytest
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import (
@@ -25,10 +25,16 @@ from hub.apps.contracts.models import (
     OriginalFormat,
     OriginalSpecType,
 )
+from django.contrib.auth import get_user_model
 from hub.apps.contracts.tests.test_base import ContractsAPITransactionTestBase
-from hub.apps.users.models import Role, UserRole
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import Role, UserRole, UserStatus
+from rest_framework.test import APIClient
+
+User = get_user_model()
 
 
+@pytest.mark.timeout(60)
 class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
     """
     Comprehensive concurrent API request tests (Task 10.1.16.6).
@@ -46,13 +52,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        # Update tenant/user names for clarity
-        self.tenant.name = "Concurrent Test Tenant"
-        self.tenant.slug = "concurrent-test"
-        self.tenant.save()
-
-        self.user.email = "user@concurrent.test"
-        self.user.save()
+        # tenant and user already created with unique UUID-based names by base class
 
         # Create role
         self.admin_role, _ = Role.objects.get_or_create(
@@ -95,7 +95,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
     def test_concurrent_get_requests_same_resource(self):
         """Test concurrent GET requests (same resource)"""
         # Create a contract
-        contract = Contract.objects.create(
+        contract = Contract.objects.bulk_create([Contract(
             tenant=self.tenant,
             asset=self.asset,
             original_raw=json.dumps(self.sample_odps),
@@ -105,7 +105,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
             status=ContractStatus.ACTIVE,
             version=1,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-        )
+        )])[0]
 
         # Create multiple clients for concurrent requests
         clients = [APIClient() for _ in range(5)]
@@ -122,6 +122,9 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
                 results.append(response.status_code)
             except Exception as e:
                 errors.append(str(e))
+            finally:
+                from django.db import connection
+                connection.close()
 
         # Make concurrent GET requests
         threads = []
@@ -196,6 +199,9 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
                     created_ids.append(response.data.get("id"))
             except Exception as e:
                 errors.append(str(e))
+            finally:
+                from django.db import connection
+                connection.close()
 
         # Make concurrent POST requests
         threads = []
@@ -223,7 +229,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
     def test_race_condition_handling(self):
         """Test race condition handling"""
         # Create a contract
-        contract = Contract.objects.create(
+        contract = Contract.objects.bulk_create([Contract(
             tenant=self.tenant,
             asset=self.asset,
             original_raw=json.dumps(self.sample_odps),
@@ -233,7 +239,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
             status=ContractStatus.ACTIVE,
             version=1,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-        )
+        )])[0]
 
         # Create multiple clients
         clients = [APIClient() for _ in range(3)]
@@ -280,6 +286,9 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
                 results.append(response.status_code)
             except Exception as e:
                 errors.append(str(e))
+            finally:
+                from django.db import connection
+                connection.close()
 
         # Make concurrent PATCH requests (race condition scenario)
         threads = []
@@ -296,14 +305,30 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
         self.assertEqual(len(errors), 0, f"Should not have unhandled errors: {errors}")
         self.assertEqual(len(results), 3, "Should have 3 results")
 
-        # At least some requests should succeed
+        # All status codes must be valid HTTP responses (no 500s)
+        for code in results:
+            self.assertIn(
+                code, [200, 201, 409],
+                f"Unexpected status {code}; expected 200/201/409",
+            )
+
+        # At least one request must succeed
         success_count = sum(1 for code in results if code in [200, 201])
         self.assertGreater(success_count, 0, "At least one request should succeed")
+
+        # Verify DB state is consistent after concurrent updates
+        contract.refresh_from_db()
+        self.assertIn(
+            contract.status,
+            [ContractStatus.ACTIVE, ContractStatus.DRAFT],
+            "Contract should be in a valid state after concurrent updates",
+        )
+        self.assertIsNotNone(contract.original_raw)
 
     def test_concurrent_request_performance(self):
         """Test concurrent request performance"""
         # Create contract
-        contract = Contract.objects.create(
+        contract = Contract.objects.bulk_create([Contract(
             tenant=self.tenant,
             asset=self.asset,
             original_raw=json.dumps(self.sample_odps),
@@ -313,7 +338,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
             status=ContractStatus.ACTIVE,
             version=1,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-        )
+        )])[0]
 
         # Create client
         client = APIClient()
@@ -330,10 +355,23 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
         for c in clients:
             c.force_authenticate(user=self.user)
 
+        perf_results = []
+
+        def _get_and_close(cl, url):
+            try:
+                resp = cl.get(url)
+                perf_results.append(resp.status_code)
+            finally:
+                from django.db import connection
+                connection.close()
+
         start_time = time.time()
         threads = []
+        url = f"/api/v1/contracts/{contract.id}/"
         for c in clients:
-            thread = threading.Thread(target=lambda: c.get(f"/api/v1/contracts/{contract.id}/"))
+            thread = threading.Thread(
+                target=_get_and_close, args=(c, url),
+            )
             threads.append(thread)
             thread.start()
 
@@ -341,8 +379,12 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
             thread.join()
         concurrent_time = time.time() - start_time
 
-        # Concurrent should be faster (or at least not significantly slower)
-        # Allow some tolerance for overhead
+        # All concurrent requests must return 200 (not 500)
+        self.assertEqual(len(perf_results), 10, "All 10 threads should complete")
+        for code in perf_results:
+            self.assertEqual(code, 200, f"Concurrent GET returned {code}, expected 200")
+
+        # Concurrent should not be significantly slower than sequential
         self.assertLess(
             concurrent_time,
             sequential_time * 2,
@@ -367,6 +409,9 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
                 results.append(response.status_code)
             except Exception as e:
                 errors.append(str(e))
+            finally:
+                from django.db import connection
+                connection.close()
 
         # Make concurrent requests to non-existent resource
         threads = []
@@ -390,10 +435,11 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
 
     def test_concurrent_delete_requests(self):
         """Test concurrent DELETE requests"""
-        # Create multiple contracts
-        contracts = []
-        for i in range(5):
-            contract = Contract.objects.create(
+        # Use bulk_create to avoid 5× post_save signal overhead (each
+        # triggers synchronous Redis cache-invalidation + RQ enqueue).
+        # This test verifies DELETE concurrency, not creation signals.
+        contracts = Contract.objects.bulk_create([
+            Contract(
                 tenant=self.tenant,
                 asset=self.asset,
                 original_raw=json.dumps(self.sample_odps),
@@ -404,7 +450,8 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
                 version=i + 1,
                 normalization_status=NormalizationStatus.NORMALIZED_OK,
             )
-            contracts.append(contract)
+            for i in range(5)
+        ])
 
         # Create multiple clients
         clients = [APIClient() for _ in range(5)]
@@ -421,6 +468,9 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
                 results.append(response.status_code)
             except Exception as e:
                 errors.append(str(e))
+            finally:
+                from django.db import connection
+                connection.close()
 
         # Make concurrent DELETE requests
         threads = []
@@ -445,7 +495,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
     def test_concurrent_mixed_operations(self):
         """Test concurrent mixed operations (GET, POST, PUT, DELETE)"""
         # Create initial contract
-        contract = Contract.objects.create(
+        contract = Contract.objects.bulk_create([Contract(
             tenant=self.tenant,
             asset=self.asset,
             original_raw=json.dumps(self.sample_odps),
@@ -455,7 +505,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
             status=ContractStatus.ACTIVE,
             version=1,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-        )
+        )])[0]
 
         # Create client
         client = APIClient()
@@ -510,6 +560,9 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
                 results.append(("POST", post_response.status_code))
             except Exception as e:
                 errors.append(str(e))
+            finally:
+                from django.db import connection
+                connection.close()
 
         # Make concurrent mixed operations
         threads = []
@@ -522,15 +575,26 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
         for thread in threads:
             thread.join()
 
-        # Verify operations were handled
+        # 3 threads × 2 ops each (GET + POST) = 6 results expected
         self.assertEqual(len(errors), 0, f"Should not have unhandled errors: {errors}")
-        self.assertGreater(len(results), 0, "Should have some results")
+        self.assertEqual(len(results), 6, "Should have 6 results (3 threads × 2 ops)")
+
+        # Verify each operation type returned valid status codes
+        get_codes = [code for op, code in results if op == "GET"]
+        post_codes = [code for op, code in results if op == "POST"]
+        self.assertEqual(len(get_codes), 3, "Should have 3 GET results")
+        self.assertEqual(len(post_codes), 3, "Should have 3 POST results")
+        for code in get_codes:
+            self.assertEqual(code, 200, f"GET returned {code}, expected 200")
+        for code in post_codes:
+            self.assertIn(code, [200, 201], f"POST returned {code}, expected 200/201")
 
     def test_concurrent_requests_with_different_users(self):
         """Test concurrent requests with different users"""
         # Create another user
+        import uuid as _uuid
         other_user = User.objects.create_user(
-            email="other@concurrent.test",
+            email=f"other-{_uuid.uuid4().hex[:8]}@concurrent.test",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -538,7 +602,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
         UserRole.objects.create(user=other_user, role=self.admin_role)
 
         # Create contract
-        contract = Contract.objects.create(
+        contract = Contract.objects.bulk_create([Contract(
             tenant=self.tenant,
             asset=self.asset,
             original_raw=json.dumps(self.sample_odps),
@@ -548,7 +612,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
             status=ContractStatus.ACTIVE,
             version=1,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-        )
+        )])[0]
 
         # Create clients for different users
         client1 = APIClient()
@@ -567,6 +631,9 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
                 results.append((user_email, response.status_code))
             except Exception as e:
                 errors.append(str(e))
+            finally:
+                from django.db import connection
+                connection.close()
 
         # Make concurrent requests with different users
         thread1 = threading.Thread(target=make_request, args=(client1, self.user.email))
@@ -589,21 +656,27 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
     def test_concurrent_requests_tenant_isolation(self):
         """Test concurrent requests maintain tenant isolation"""
         # Create another tenant
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+        import uuid as _uuid
+        _uid = _uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Concurrent Tenant",
-            slug="other-concurrent-test",
+            name=f"Other Concurrent Tenant {_uid}",
+            slug=f"other-concurrent-{_uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
+        ensure_tenant_has_active_subscription(other_tenant)
 
         other_user = User.objects.create_user(
-            email="other@othertenant.test",
+            email=f"other-{_uid}@othertenant.test",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE,
         )
 
-        # Create contract in first tenant
-        contract = Contract.objects.create(
+        # Use bulk_create to bypass post_save signals (Redis overhead).
+        # This test verifies tenant isolation, not contract creation signals.
+        contract = Contract.objects.bulk_create([Contract(
             tenant=self.tenant,
             asset=self.asset,
             original_raw=json.dumps(self.sample_odps),
@@ -613,7 +686,7 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
             status=ContractStatus.ACTIVE,
             version=1,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-        )
+        )])[0]
 
         # Create clients for different tenants
         client1 = APIClient()
@@ -632,6 +705,9 @@ class ConcurrentAPIRequestTest(ContractsAPITransactionTestBase):
                 results.append((tenant_name, response.status_code))
             except Exception as e:
                 errors.append(str(e))
+            finally:
+                from django.db import connection
+                connection.close()
 
         # Make concurrent requests from different tenants
         thread1 = threading.Thread(target=make_request, args=(client1, self.tenant.name))

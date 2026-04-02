@@ -1,0 +1,16 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Verify your email{% endblock %}
+
+{% block content %}
+<h2>Verify your email</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>Please confirm your email address for your {{ app_name|default:"Meshant" }} account.</p>
+<p style="text-align: center;">
+    <a href="{{ verify_url }}" class="button">Verify email</a>
+</p>
+<p>Or copy and paste this link into your browser:</p>
+<div class="code">{{ verify_url }}</div>
+<p>This link will expire in 72 hours.</p>
+<p>If you did not create an account, you can ignore this email.</p>
+{% endblock %}

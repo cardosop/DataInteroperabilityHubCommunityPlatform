@@ -28,7 +28,7 @@ def _ensure_connection_with_retry(connection, max_attempts=3, delay=5):
         except Exception as e:
             last_error = e
             if attempt < max_attempts:
-                time.sleep(delay)
+                time.sleep(delay)  # INTENTIONAL: test-specific timing requirement
             else:
                 raise last_error
 
@@ -63,10 +63,49 @@ class NoMigrateDatabaseCreation(PostgresDatabaseCreation):
         return test_database_name
 
 
+def _guard_against_production_db():
+    """Raise if the configured database name or host looks like production.
+
+    Checks both NAME and HOST against common production indicators.
+    Set SKIP_PROD_DB_GUARD=1 to bypass (not recommended).
+    """
+    import os
+    if os.environ.get("SKIP_PROD_DB_GUARD", "").strip().lower() in ("1", "true"):
+        return
+
+    from django.conf import settings
+    from django.core.exceptions import ImproperlyConfigured
+
+    db = settings.DATABASES.get("default", {})
+    db_name = (db.get("NAME") or "").lower()
+    db_host = (db.get("HOST") or "").lower()
+
+    # Blocklist tokens for database name
+    _BLOCKED_NAME_TOKENS = ("prod", "production", "live")
+    for token in _BLOCKED_NAME_TOKENS:
+        if token in db_name:
+            raise ImproperlyConfigured(
+                f"Database name '{db.get('NAME')}' contains '{token}' "
+                f"— refusing to run tests against a production database. "
+                f"Use a test-specific database. Set SKIP_PROD_DB_GUARD=1 to bypass."
+            )
+
+    # Blocklist tokens for host (catch RDS/Cloud SQL production endpoints)
+    _BLOCKED_HOST_TOKENS = ("prod", "production", "live")
+    for token in _BLOCKED_HOST_TOKENS:
+        if token in db_host and "test" not in db_host:
+            raise ImproperlyConfigured(
+                f"Database host '{db.get('HOST')}' contains '{token}' "
+                f"— refusing to run tests against a production host. "
+                f"Use a test-specific database. Set SKIP_PROD_DB_GUARD=1 to bypass."
+            )
+
+
 class NoMigrateTestRunner(DiscoverRunner):
     """Test runner that uses NoMigrateDatabaseCreation when SKIP_TEST_MIGRATIONS=1."""
 
     def setup_databases(self, **kwargs):
+        _guard_against_production_db()  # Phase 95 safeguard
         if not _skip_migrations():
             return super().setup_databases(**kwargs)
         # Replace each connection's creation with our no-migrate creation before parent runs

@@ -2,10 +2,13 @@
 Unit tests for authentication flows (login, logout, password reset, invitation).
 """
 
+import hashlib
+import uuid
 from datetime import timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -27,13 +30,14 @@ class AuthenticationFlowsTest(TestCase):
         self.client = APIClient()
 
         # Create tenant
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         # Create user
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -43,37 +47,43 @@ class AuthenticationFlowsTest(TestCase):
         """Test successful login returns 200."""
         response = self.client.post(
             "/api/v1/auth/login/",
-            {"email": "user@example.com", "password": "testpass123"},
+            {"email": self.user.email, "password": "testpass123"},
             format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_login_success_returns_access_token(self):
-        """Test successful login returns access_token."""
+        """Test successful login returns a non-empty access_token string."""
         response = self.client.post(
             "/api/v1/auth/login/",
-            {"email": "user@example.com", "password": "testpass123"},
+            {"email": self.user.email, "password": "testpass123"},
             format="json",
         )
 
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("access_token", response.data)
+        self.assertIsInstance(response.data["access_token"], str)
+        self.assertGreater(len(response.data["access_token"]), 0)
 
     def test_login_success_returns_refresh_token(self):
-        """Test successful login returns refresh_token."""
+        """Test successful login returns refresh_token via httpOnly cookie."""
         response = self.client.post(
             "/api/v1/auth/login/",
-            {"email": "user@example.com", "password": "testpass123"},
+            {"email": self.user.email, "password": "testpass123"},
             format="json",
         )
 
-        self.assertIn("refresh_token", response.data)
+        # Refresh token is in httpOnly cookie (11.1), not in the body
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("refresh_token", response.cookies)
+        self.assertGreater(len(response.cookies["refresh_token"].value), 0)
 
     def test_login_success_returns_bearer_token_type(self):
         """Test successful login returns Bearer token_type."""
         response = self.client.post(
             "/api/v1/auth/login/",
-            {"email": "user@example.com", "password": "testpass123"},
+            {"email": self.user.email, "password": "testpass123"},
             format="json",
         )
 
@@ -83,13 +93,12 @@ class AuthenticationFlowsTest(TestCase):
         """Test successful login creates refresh token."""
         response = self.client.post(
             "/api/v1/auth/login/",
-            {"email": "user@example.com", "password": "testpass123"},
+            {"email": self.user.email, "password": "testpass123"},
             format="json",
         )
 
-        refresh_token_str = response.data["refresh_token"]
-        from hub.apps.auth.models import RefreshToken
-
+        # Refresh token is in httpOnly cookie (11.1)
+        refresh_token_str = response.cookies["refresh_token"].value
         refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
         self.assertTrue(RefreshToken.objects.filter(token_hash=refresh_token_hash).exists())
 
@@ -97,7 +106,7 @@ class AuthenticationFlowsTest(TestCase):
         """Test login with invalid credentials"""
         response = self.client.post(
             "/api/v1/auth/login/",
-            {"email": "user@example.com", "password": "wrongpassword"},
+            {"email": self.user.email, "password": "wrongpassword"},
             format="json",
         )
 
@@ -111,7 +120,7 @@ class AuthenticationFlowsTest(TestCase):
 
         response = self.client.post(
             "/api/v1/auth/login/",
-            {"email": "user@example.com", "password": "testpass123"},
+            {"email": self.user.email, "password": "testpass123"},
             format="json",
         )
 
@@ -119,52 +128,43 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_refresh_token_success_returns_200(self):
         """Test successful token refresh returns 200."""
-        # First login
-        login_response = self.client.post(
+        # First login — sets refresh_token as httpOnly cookie (11.1)
+        self.client.post(
             "/api/v1/auth/login/",
-            {"email": "user@example.com", "password": "testpass123"},
+            {"email": self.user.email, "password": "testpass123"},
             format="json",
         )
-        refresh_token = login_response.data["refresh_token"]
 
-        # Refresh token
-        response = self.client.post(
-            "/api/v1/auth/refresh/", {"refresh_token": refresh_token}, format="json"
-        )
+        # Refresh token — cookie sent automatically by APIClient
+        response = self.client.post("/api/v1/auth/refresh/", {}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_refresh_token_success_returns_access_token(self):
         """Test successful token refresh returns access_token."""
-        # First login
-        login_response = self.client.post(
+        # First login — sets refresh_token as httpOnly cookie (11.1)
+        self.client.post(
             "/api/v1/auth/login/",
-            {"email": "user@example.com", "password": "testpass123"},
+            {"email": self.user.email, "password": "testpass123"},
             format="json",
         )
-        refresh_token = login_response.data["refresh_token"]
 
-        # Refresh token
-        response = self.client.post(
-            "/api/v1/auth/refresh/", {"refresh_token": refresh_token}, format="json"
-        )
+        # Refresh token — cookie sent automatically by APIClient
+        response = self.client.post("/api/v1/auth/refresh/", {}, format="json")
 
         self.assertIn("access_token", response.data)
 
     def test_refresh_token_success_returns_bearer_token_type(self):
         """Test successful token refresh returns Bearer token_type."""
-        # First login
-        login_response = self.client.post(
+        # First login — sets refresh_token as httpOnly cookie (11.1)
+        self.client.post(
             "/api/v1/auth/login/",
-            {"email": "user@example.com", "password": "testpass123"},
+            {"email": self.user.email, "password": "testpass123"},
             format="json",
         )
-        refresh_token = login_response.data["refresh_token"]
 
-        # Refresh token
-        response = self.client.post(
-            "/api/v1/auth/refresh/", {"refresh_token": refresh_token}, format="json"
-        )
+        # Refresh token — cookie sent automatically by APIClient
+        response = self.client.post("/api/v1/auth/refresh/", {}, format="json")
 
         self.assertEqual(response.data["token_type"], "Bearer")
 
@@ -196,22 +196,20 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_logout(self):
         """Test logout"""
-        # First login
+        # First login — refresh token in httpOnly cookie (11.1)
         login_response = self.client.post(
             "/api/v1/auth/login/",
-            {"email": "user@example.com", "password": "testpass123"},
+            {"email": self.user.email, "password": "testpass123"},
             format="json",
         )
-        refresh_token = login_response.data["refresh_token"]
+        refresh_token = login_response.cookies["refresh_token"].value
         access_token = login_response.data["access_token"]
 
         # Authenticate with access token
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
-        # Logout
-        response = self.client.post(
-            "/api/v1/auth/logout/", {"refresh_token": refresh_token}, format="json"
-        )
+        # Logout — cookie sent automatically by APIClient
+        response = self.client.post("/api/v1/auth/logout/", {}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -223,7 +221,7 @@ class AuthenticationFlowsTest(TestCase):
     def test_password_reset_request_returns_200(self):
         """Test password reset request returns 200."""
         response = self.client.post(
-            "/api/v1/auth/password-reset/", {"email": "user@example.com"}, format="json"
+            "/api/v1/auth/password-reset/", {"email": self.user.email}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -231,7 +229,7 @@ class AuthenticationFlowsTest(TestCase):
     def test_password_reset_request_creates_token(self):
         """Test password reset request creates token."""
         self.client.post(
-            "/api/v1/auth/password-reset/", {"email": "user@example.com"}, format="json"
+            "/api/v1/auth/password-reset/", {"email": self.user.email}, format="json"
         )
 
         self.user.refresh_from_db()
@@ -240,26 +238,29 @@ class AuthenticationFlowsTest(TestCase):
     def test_password_reset_request_sets_token_expiry(self):
         """Test password reset request sets token expiry."""
         self.client.post(
-            "/api/v1/auth/password-reset/", {"email": "user@example.com"}, format="json"
+            "/api/v1/auth/password-reset/", {"email": self.user.email}, format="json"
         )
 
         self.user.refresh_from_db()
         self.assertIsNotNone(self.user.password_reset_token_expires_at)
 
+    def _set_password_reset_token(self):
+        """Helper: set a valid password_reset_token directly (avoids email flow).
+        Returns the plaintext token to pass to the confirm endpoint."""
+        plaintext_token = str(uuid.uuid4())
+        self.user.password_reset_token = hashlib.sha256(plaintext_token.encode()).hexdigest()
+        self.user.password_reset_token_expires_at = timezone.now() + timedelta(hours=1)
+        self.user.password_reset_token_used_at = None
+        self.user.save()
+        return plaintext_token
+
     def test_password_reset_confirm_returns_200(self):
         """Test password reset confirmation returns 200."""
-        # Request password reset
-        self.client.post(
-            "/api/v1/auth/password-reset/", {"email": "user@example.com"}, format="json"
-        )
+        plaintext_token = self._set_password_reset_token()
 
-        self.user.refresh_from_db()
-        reset_token = self.user.password_reset_token
-
-        # Confirm password reset
         response = self.client.post(
             "/api/v1/auth/password-reset/confirm/",
-            {"token": str(reset_token), "new_password": "newpass123"},
+            {"token": plaintext_token, "new_password": "newpass123"},
             format="json",
         )
 
@@ -267,18 +268,11 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_password_reset_confirm_changes_password(self):
         """Test password reset confirmation changes password."""
-        # Request password reset
-        self.client.post(
-            "/api/v1/auth/password-reset/", {"email": "user@example.com"}, format="json"
-        )
+        plaintext_token = self._set_password_reset_token()
 
-        self.user.refresh_from_db()
-        reset_token = self.user.password_reset_token
-
-        # Confirm password reset
         self.client.post(
             "/api/v1/auth/password-reset/confirm/",
-            {"token": str(reset_token), "new_password": "newpass123"},
+            {"token": plaintext_token, "new_password": "newpass123"},
             format="json",
         )
 
@@ -287,18 +281,11 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_password_reset_confirm_clears_token(self):
         """Test password reset confirmation clears token."""
-        # Request password reset
-        self.client.post(
-            "/api/v1/auth/password-reset/", {"email": "user@example.com"}, format="json"
-        )
+        plaintext_token = self._set_password_reset_token()
 
-        self.user.refresh_from_db()
-        reset_token = self.user.password_reset_token
-
-        # Confirm password reset
         self.client.post(
             "/api/v1/auth/password-reset/confirm/",
-            {"token": str(reset_token), "new_password": "newpass123"},
+            {"token": plaintext_token, "new_password": "newpass123"},
             format="json",
         )
 
@@ -307,18 +294,11 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_password_reset_confirm_sets_token_used_at(self):
         """Test password reset confirmation sets token_used_at."""
-        # Request password reset
-        self.client.post(
-            "/api/v1/auth/password-reset/", {"email": "user@example.com"}, format="json"
-        )
+        plaintext_token = self._set_password_reset_token()
 
-        self.user.refresh_from_db()
-        reset_token = self.user.password_reset_token
-
-        # Confirm password reset
         self.client.post(
             "/api/v1/auth/password-reset/confirm/",
-            {"token": str(reset_token), "new_password": "newpass123"},
+            {"token": plaintext_token, "new_password": "newpass123"},
             format="json",
         )
 
@@ -327,42 +307,38 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_password_reset_confirm_increments_token_version(self):
         """Test password reset confirmation increments token_version."""
-        # Request password reset
-        self.client.post(
-            "/api/v1/auth/password-reset/", {"email": "user@example.com"}, format="json"
-        )
-
+        plaintext_token = self._set_password_reset_token()
         self.user.refresh_from_db()
-        reset_token = self.user.password_reset_token
         original_version = self.user.token_version
 
-        # Confirm password reset
         self.client.post(
             "/api/v1/auth/password-reset/confirm/",
-            {"token": str(reset_token), "new_password": "newpass123"},
+            {"token": plaintext_token, "new_password": "newpass123"},
             format="json",
         )
 
         self.user.refresh_from_db()
         self.assertGreater(self.user.token_version, original_version)
 
-    def test_accept_invitation_returns_200(self):
-        """Test invitation acceptance returns 200."""
-        import uuid
-
-        # Create invited user
+    def _make_invited_user(self, email=f"invited-{uuid.uuid4().hex[:8]}@example.com"):
+        """Helper: create an invited user with a valid invitation token.
+        Returns (user, plaintext_token) — store plaintext_token in API call."""
         invited_user = User.objects.create_user(
-            email="invited@example.com", tenant=self.tenant, status=UserStatus.INVITED
+            email=email, tenant=self.tenant, status=UserStatus.INVITED
         )
-        # Generate a UUID for invitation token
-        invited_user.invitation_token = uuid.uuid4()
+        raw_token = str(uuid.uuid4())
+        invited_user.invitation_token = hashlib.sha256(raw_token.encode()).hexdigest()
         invited_user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
         invited_user.save()
+        return invited_user, raw_token
 
-        # Accept invitation
+    def test_accept_invitation_returns_200(self):
+        """Test invitation acceptance returns 200."""
+        invited_user, raw_token = self._make_invited_user()
+
         response = self.client.post(
             "/api/v1/auth/accept-invitation/",
-            {"token": str(invited_user.invitation_token), "password": "newpass123"},
+            {"token": raw_token, "password": "newpass123"},
             format="json",
         )
 
@@ -370,65 +346,36 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_accept_invitation_returns_access_token(self):
         """Test invitation acceptance returns access_token."""
-        import uuid
+        invited_user, raw_token = self._make_invited_user()
 
-        # Create invited user
-        invited_user = User.objects.create_user(
-            email="invited@example.com", tenant=self.tenant, status=UserStatus.INVITED
-        )
-        # Generate a UUID for invitation token
-        invited_user.invitation_token = uuid.uuid4()
-        invited_user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
-        invited_user.save()
-
-        # Accept invitation
         response = self.client.post(
             "/api/v1/auth/accept-invitation/",
-            {"token": str(invited_user.invitation_token), "password": "newpass123"},
+            {"token": raw_token, "password": "newpass123"},
             format="json",
         )
 
         self.assertIn("access_token", response.data)
 
     def test_accept_invitation_returns_refresh_token(self):
-        """Test invitation acceptance returns refresh_token."""
-        import uuid
+        """Test invitation acceptance returns refresh_token (httpOnly cookie, 11.1)."""
+        invited_user, raw_token = self._make_invited_user()
 
-        # Create invited user
-        invited_user = User.objects.create_user(
-            email="invited@example.com", tenant=self.tenant, status=UserStatus.INVITED
-        )
-        # Generate a UUID for invitation token
-        invited_user.invitation_token = uuid.uuid4()
-        invited_user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
-        invited_user.save()
-
-        # Accept invitation
         response = self.client.post(
             "/api/v1/auth/accept-invitation/",
-            {"token": str(invited_user.invitation_token), "password": "newpass123"},
+            {"token": raw_token, "password": "newpass123"},
             format="json",
         )
 
-        self.assertIn("refresh_token", response.data)
+        # Refresh token is in httpOnly cookie (11.1), not in the body
+        self.assertIn("refresh_token", response.cookies)
 
     def test_accept_invitation_activates_user(self):
         """Test invitation acceptance activates user."""
-        import uuid
+        invited_user, raw_token = self._make_invited_user()
 
-        # Create invited user
-        invited_user = User.objects.create_user(
-            email="invited@example.com", tenant=self.tenant, status=UserStatus.INVITED
-        )
-        # Generate a UUID for invitation token
-        invited_user.invitation_token = uuid.uuid4()
-        invited_user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
-        invited_user.save()
-
-        # Accept invitation
         self.client.post(
             "/api/v1/auth/accept-invitation/",
-            {"token": str(invited_user.invitation_token), "password": "newpass123"},
+            {"token": raw_token, "password": "newpass123"},
             format="json",
         )
 
@@ -437,21 +384,11 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_accept_invitation_sets_password(self):
         """Test invitation acceptance sets password."""
-        import uuid
+        invited_user, raw_token = self._make_invited_user()
 
-        # Create invited user
-        invited_user = User.objects.create_user(
-            email="invited@example.com", tenant=self.tenant, status=UserStatus.INVITED
-        )
-        # Generate a UUID for invitation token
-        invited_user.invitation_token = uuid.uuid4()
-        invited_user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
-        invited_user.save()
-
-        # Accept invitation
         self.client.post(
             "/api/v1/auth/accept-invitation/",
-            {"token": str(invited_user.invitation_token), "password": "newpass123"},
+            {"token": raw_token, "password": "newpass123"},
             format="json",
         )
 
@@ -460,21 +397,11 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_accept_invitation_clears_token(self):
         """Test invitation acceptance clears token."""
-        import uuid
+        invited_user, raw_token = self._make_invited_user()
 
-        # Create invited user
-        invited_user = User.objects.create_user(
-            email="invited@example.com", tenant=self.tenant, status=UserStatus.INVITED
-        )
-        # Generate a UUID for invitation token
-        invited_user.invitation_token = uuid.uuid4()
-        invited_user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
-        invited_user.save()
-
-        # Accept invitation
         self.client.post(
             "/api/v1/auth/accept-invitation/",
-            {"token": str(invited_user.invitation_token), "password": "newpass123"},
+            {"token": raw_token, "password": "newpass123"},
             format="json",
         )
 
@@ -483,21 +410,11 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_accept_invitation_sets_token_used_at(self):
         """Test invitation acceptance sets token_used_at."""
-        import uuid
+        invited_user, raw_token = self._make_invited_user()
 
-        # Create invited user
-        invited_user = User.objects.create_user(
-            email="invited@example.com", tenant=self.tenant, status=UserStatus.INVITED
-        )
-        # Generate a UUID for invitation token
-        invited_user.invitation_token = uuid.uuid4()
-        invited_user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
-        invited_user.save()
-
-        # Accept invitation
         self.client.post(
             "/api/v1/auth/accept-invitation/",
-            {"token": str(invited_user.invitation_token), "password": "newpass123"},
+            {"token": raw_token, "password": "newpass123"},
             format="json",
         )
 
@@ -517,7 +434,7 @@ class AuthenticationFlowsTest(TestCase):
     def test_login_empty_password(self):
         """Test login with empty password (edge case)"""
         response = self.client.post(
-            "/api/v1/auth/login/", {"email": "user@example.com", "password": ""}, format="json"
+            "/api/v1/auth/login/", {"email": self.user.email, "password": ""}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -553,7 +470,7 @@ class AuthenticationFlowsTest(TestCase):
         # Login first
         login_response = self.client.post(
             "/api/v1/auth/login/",
-            {"email": "user@example.com", "password": "testpass123"},
+            {"email": self.user.email, "password": "testpass123"},
             format="json",
         )
         access_token = login_response.data["access_token"]
@@ -590,22 +507,15 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_password_reset_confirm_expired_token(self):
         """Test password reset confirmation with expired token (error handling)"""
-        # Request password reset
-        self.client.post(
-            "/api/v1/auth/password-reset/", {"email": "user@example.com"}, format="json"
-        )
-
-        self.user.refresh_from_db()
-        reset_token = self.user.password_reset_token
-
-        # Expire the token
+        plaintext_token = str(uuid.uuid4())
+        self.user.password_reset_token = hashlib.sha256(plaintext_token.encode()).hexdigest()
         self.user.password_reset_token_expires_at = timezone.now() - timedelta(hours=1)
+        self.user.password_reset_token_used_at = None
         self.user.save()
 
-        # Try to confirm with expired token
         response = self.client.post(
             "/api/v1/auth/password-reset/confirm/",
-            {"token": str(reset_token), "new_password": "newpass123"},
+            {"token": plaintext_token, "new_password": "newpass123"},
             format="json",
         )
 
@@ -623,20 +533,17 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_accept_invitation_expired_token(self):
         """Test invitation acceptance with expired token (error handling)"""
-        import uuid
-
-        # Create invited user with expired token
         invited_user = User.objects.create_user(
-            email="invited2@example.com", tenant=self.tenant, status=UserStatus.INVITED
+            email=f"invited2-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.INVITED
         )
-        invited_user.invitation_token = uuid.uuid4()
-        invited_user.invitation_token_expires_at = timezone.now() - timedelta(days=1)  # Expired
+        raw_token = str(uuid.uuid4())
+        invited_user.invitation_token = hashlib.sha256(raw_token.encode()).hexdigest()
+        invited_user.invitation_token_expires_at = timezone.now() - timedelta(days=1)
         invited_user.save()
 
-        # Try to accept with expired token
         response = self.client.post(
             "/api/v1/auth/accept-invitation/",
-            {"token": str(invited_user.invitation_token), "password": "newpass123"},
+            {"token": raw_token, "password": "newpass123"},
             format="json",
         )
 

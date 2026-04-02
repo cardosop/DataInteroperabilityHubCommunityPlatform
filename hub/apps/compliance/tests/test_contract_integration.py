@@ -17,6 +17,7 @@ from hub.apps.compliance.contract_integration import (
     ContractComplianceSchemaError,
 )
 from hub.apps.compliance.service_client import ComplianceServiceClient
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -85,9 +86,10 @@ class ContractCompliancePolicyExtractionTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="VERIFIED"
         )
@@ -247,9 +249,10 @@ class ComplianceServiceContractIntegrationTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="VERIFIED"
         )

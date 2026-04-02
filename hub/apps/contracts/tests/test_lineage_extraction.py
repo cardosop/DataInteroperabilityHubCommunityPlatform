@@ -456,7 +456,7 @@ class TestFieldLevelLineageExtraction(TestCase):
         result = extract_model_level_lineage(odcs_schema)
         self.assertIsNotNone(result)
         if result and "models" in result:
-            self.assertGreaterEqual(len(result["models"]), 0)
+            self.assertGreater(len(result["models"]), 0)
 
     # Edge cases and error handling tests for field-level lineage
     def test_extract_field_level_lineage_with_empty_dict(self):
@@ -471,9 +471,8 @@ class TestFieldLevelLineageExtraction(TestCase):
             "transformSourceObjects": [],
         }
         result = extract_field_level_lineage(odcs_field)
-        self.assertIsNotNone(result)
-        self.assertIn("input_fields", result)
-        self.assertEqual(len(result["input_fields"]), 0)
+        # Empty list is falsy — no lineage data to extract
+        self.assertIsNone(result)
 
     def test_extract_field_level_lineage_with_invalid_transform_sources_type(self):
         """Test extraction with invalid transformSourceObjects type."""
@@ -492,8 +491,10 @@ class TestFieldLevelLineageExtraction(TestCase):
             "transformDescription": "Some transformation",
         }
         result = extract_field_level_lineage(odcs_field)
-        # Should return None - requires transformLogic or transformSourceObjects
-        self.assertIsNone(result)
+        # transformDescription alone is valid lineage metadata
+        self.assertIsNotNone(result)
+        self.assertIn("transformations", result)
+        self.assertEqual(result["transformations"][0]["description"], "Some transformation")
 
     def test_extract_field_level_lineage_with_empty_strings(self):
         """Test extraction with empty string values."""

@@ -11,6 +11,7 @@ from hub.apps.contracts.impact_analysis import ImpactAnalyzer, ImpactNode, Impac
 from hub.apps.contracts.models import Contract
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.tenants.models import Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -22,18 +23,18 @@ class ImpactAnalyzerTest(ContractsTestBase):
         """Set up test fixtures"""
         super().setUp()
 
+        import uuid; uid = uuid.uuid4().hex[:8]
         # Update tenant name/email for impact analysis tests
-        self.tenant.name = "Test Tenant"
-        self.tenant.slug = "test-tenant"
+        self.tenant.name = f"Test Tenant {uid}"
+        self.tenant.slug = f"test-tenant-{uid}"
         self.tenant.save()
 
-        self.user.email = "user@example.com"
+        self.user.email = f"user-{uid}@example.com"
         self.user.save()
 
         # Create source contract
         self.source_contract = Contract.objects.create(
             tenant=self.tenant,
-            name="Source Contract",
             original_spec_type="ODCS",
             original_spec_version="3.0.2",
             original_format="JSON",
@@ -48,7 +49,6 @@ class ImpactAnalyzerTest(ContractsTestBase):
         # Create dependent contract
         self.dependent_contract = Contract.objects.create(
             tenant=self.tenant,
-            name="Dependent Contract",
             original_spec_type="ODCS",
             original_spec_version="3.0.2",
             original_format="JSON",
@@ -155,17 +155,17 @@ class ImpactAnalyzerTest(ContractsTestBase):
             contract_id=fake_contract_id, tenant_id=str(self.tenant.id)
         )
 
-        # Should handle gracefully - may return error or empty result
-        self.assertIsNotNone(result)
-        if "error" in result:
-            self.assertIsInstance(result["error"], str)
+        # Non-existent contract should return an error
+        self.assertIn("error", result, "Non-existent contract should produce an error")
+        self.assertIsInstance(result["error"], str)
 
     def test_analyze_impact_cross_tenant_isolation(self):
         """Test that impact analysis respects tenant isolation."""
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant-impact",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-impact-{_uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
@@ -176,18 +176,17 @@ class ImpactAnalyzerTest(ContractsTestBase):
             contract_id=str(self.source_contract.id), tenant_id=str(other_tenant.id)
         )
 
-        # Should not find contract from other tenant
-        if "error" in result:
-            self.assertIsInstance(result["error"], str)
-        else:
-            # If no error, should return empty or filtered result
-            self.assertIsNotNone(result)
+        # Should not find contract from other tenant — must return error
+        self.assertIn(
+            "error", result,
+            "Cross-tenant access should produce an error",
+        )
+        self.assertIsInstance(result["error"], str)
 
     def test_analyze_impact_with_empty_lineage(self):
         """Test impact analysis with contract that has no lineage."""
         contract_no_lineage = Contract.objects.create(
             tenant=self.tenant,
-            name="No Lineage Contract",
             original_spec_type="ODCS",
             original_spec_version="3.0.2",
             original_format="JSON",
@@ -213,7 +212,6 @@ class ImpactAnalyzerTest(ContractsTestBase):
         """Test impact analysis with contract missing hub_contract_json."""
         contract_no_hub = Contract.objects.create(
             tenant=self.tenant,
-            name="No Hub Contract",
             original_spec_type="ODCS",
             original_spec_version="3.0.2",
             original_format="JSON",
@@ -227,20 +225,22 @@ class ImpactAnalyzerTest(ContractsTestBase):
             contract_id=str(contract_no_hub.id), tenant_id=str(self.tenant.id)
         )
 
-        # Should handle gracefully - may return error or empty result
+        # Contract with no hub_contract_json should still be analyzable
         self.assertIsNotNone(result)
-        if "error" not in result:
-            self.assertIn("source", result)
+        self.assertNotIn("error", result)
+        self.assertIn("source", result)
 
     def test_analyze_impact_with_invalid_contract_id_format(self):
         """Test impact analysis with invalid contract_id format."""
         analyzer = ImpactAnalyzer()
         result = analyzer.analyze_impact(contract_id="not-a-uuid", tenant_id=str(self.tenant.id))
 
-        # Should handle gracefully
-        self.assertIsNotNone(result)
-        if "error" in result:
-            self.assertIsInstance(result["error"], str)
+        # Invalid UUID should produce an error
+        self.assertIn(
+            "error", result,
+            "Invalid contract_id format should produce an error",
+        )
+        self.assertIsInstance(result["error"], str)
 
     def test_analyze_impact_with_zero_depth_limit(self):
         """Test impact analysis with zero depth limit."""
@@ -279,15 +279,15 @@ class ImpactAnalyzerTest(ContractsTestBase):
 
     def test_impact_scorer_severity_with_negative_values(self):
         """Test ImpactScorer severity calculation with negative values."""
-        # Should handle negative values gracefully
+        # Negative values should clamp to LOW severity
         result = ImpactScorer.calculate_severity(-10.0)
-        self.assertIn(result, ["LOW", "MEDIUM", "HIGH", "CRITICAL"])
+        self.assertEqual(result, "LOW")
 
     def test_impact_scorer_severity_with_values_over_100(self):
         """Test ImpactScorer severity calculation with values over 100."""
-        # Should handle values over 100 gracefully
+        # Values over 100 should clamp to CRITICAL severity
         result = ImpactScorer.calculate_severity(150.0)
-        self.assertIn(result, ["LOW", "MEDIUM", "HIGH", "CRITICAL"])
+        self.assertEqual(result, "CRITICAL")
 
     def test_impact_scorer_asset_criticality_without_asset(self):
         """Test asset criticality retrieval for contract without asset."""
@@ -318,7 +318,6 @@ class ImpactAnalyzerTest(ContractsTestBase):
         """Test impact analysis with broken lineage references."""
         contract_broken = Contract.objects.create(
             tenant=self.tenant,
-            name="Broken Lineage Contract",
             original_spec_type="ODCS",
             original_spec_version="3.0.2",
             original_format="JSON",
@@ -349,7 +348,6 @@ class ImpactAnalyzerTest(ContractsTestBase):
         for i in range(5):
             Contract.objects.create(
                 tenant=self.tenant,
-                name=f"Dependent Contract {i}",
                 original_spec_type="ODCS",
                 original_spec_version="3.0.2",
                 original_format="JSON",
@@ -384,7 +382,8 @@ class ImpactAnalyzerTest(ContractsTestBase):
         self.assertEqual(node.contract_name, "Test Contract")
         self.assertEqual(node.impact_score, 75.0)
         self.assertEqual(node.depth, 1)
-        self.assertIn(node.severity, ["LOW", "MEDIUM", "HIGH", "CRITICAL"])
+        # Default severity when not explicitly passed
+        self.assertEqual(node.severity, "LOW")
 
     def test_impact_node_with_edge_case_values(self):
         """Test ImpactNode with edge case values."""

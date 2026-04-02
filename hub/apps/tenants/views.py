@@ -15,6 +15,8 @@ from rest_framework.response import Response
 from hub.apps.audit.utils import log_tenant_operation
 from hub.apps.auth.permissions import HasRole
 from hub.apps.billing.services import SubscriptionService
+from hub.apps.core.responses import handle_service_exception
+from hub.apps.core.services.base import ServiceError
 
 from .models import Tenant, TenantConfig, TenantStatus
 from .permissions import IsPlatformAdmin
@@ -87,11 +89,14 @@ class TenantViewSet(viewsets.ModelViewSet):
         service = TenantService(
             tenant_id=None, user_id=str(request.user.id)  # Platform admin operations
         )
-        tenant = service.create_tenant(
-            name=serializer.validated_data["name"],
-            slug=serializer.validated_data["slug"],
-            region=serializer.validated_data.get("region"),
-        )
+        try:
+            tenant = service.create_tenant(
+                name=serializer.validated_data["name"],
+                slug=serializer.validated_data["slug"],
+                region=serializer.validated_data.get("region"),
+            )
+        except ServiceError as e:
+            return handle_service_exception(e)
 
         # Log audit event
         log_tenant_operation(
@@ -182,7 +187,10 @@ class TenantViewSet(viewsets.ModelViewSet):
         Sets status to SUSPENDED and blocks write operations.
         Sends notification to tenant admins.
         """
-        tenant = self.get_object()
+        # Use all_objects to also find soft-deleted tenants so we can
+        # return a meaningful 400 instead of a misleading 404.
+        tenant = get_object_or_404(Tenant.all_objects, pk=id)
+        self.check_object_permissions(request, tenant)
 
         if tenant.status == TenantStatus.DELETED:
             return Response(
@@ -416,22 +424,25 @@ class TenantConfigViewSet(viewsets.ViewSet):
         serializer = TenantConfigUpdateSerializer(config, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
-        # Use TenantService to update config (publishes quota change events automatically)
+        # Use TenantService to update config (publishes quota change events automatically).
+        # For explicit None values (field clearing), update directly on the config model
+        # since the service treats None as "not provided" (sentinel).
         service = TenantService(tenant_id=str(tenant.id), user_id=str(request.user.id))
-        service.update_tenant_config(
-            tenant_id=str(tenant.id),
-            default_dq_profile=serializer.validated_data.get("default_dq_profile"),
-            allowed_compliance_regimes=serializer.validated_data.get("allowed_compliance_regimes"),
-            default_compliance_regimes=serializer.validated_data.get("default_compliance_regimes"),
-            data_retention_days=serializer.validated_data.get("data_retention_days"),
-            rate_limits=serializer.validated_data.get("rate_limits"),
-            max_file_size_bytes=serializer.validated_data.get("max_file_size_bytes"),
-            max_job_concurrency=serializer.validated_data.get("max_job_concurrency"),
-            max_queued_jobs=serializer.validated_data.get("max_queued_jobs"),
-            trust_signals_enabled=serializer.validated_data.get("trust_signals_enabled"),
-            versioning_enabled=serializer.validated_data.get("versioning_enabled"),
-            workflows_enabled=serializer.validated_data.get("workflows_enabled"),
-        )
+        vd = serializer.validated_data
+
+        # Handle explicit None values: set directly on config before service call
+        null_fields = []
+        for field_name in list(vd.keys()):
+            if vd[field_name] is None and field_name in request.data:
+                setattr(config, field_name, None)
+                null_fields.append(field_name)
+        if null_fields:
+            config.save(update_fields=null_fields + ["updated_at"])
+
+        # Pass non-None values through the service for event publishing
+        service_kwargs = {k: v for k, v in vd.items() if v is not None}
+        if service_kwargs:
+            service.update_tenant_config(tenant_id=str(tenant.id), **service_kwargs)
 
         # Log audit event
         log_tenant_operation(
@@ -450,14 +461,15 @@ class TenantConfigViewSet(viewsets.ViewSet):
         detail=False,
         methods=["post"],
         url_path="onboarding",
-        permission_classes=[permissions.AllowAny],
+        permission_classes=[permissions.IsAuthenticated],
     )
     @transaction.atomic
     def onboarding(self, request):
         """
-        Self-service tenant creation with first user.
+        Tenant creation with first user (Platform Admin only).
 
         POST /api/v1/tenants/onboarding/
+        Requires: IsAuthenticated + PLATFORM_ADMIN role.
         Body: {
             "name": "My Company",
             "slug": "my-company",
@@ -476,6 +488,16 @@ class TenantConfigViewSet(viewsets.ViewSet):
         - TenantConfig with platform defaults
         - Stripe customer and subscription (if not FREE plan)
         """
+        # Only Platform Admins can create organizations
+        if not (
+            request.user.is_superuser
+            or (hasattr(request.user, "user_roles") and request.user.user_roles.filter(role__name="PLATFORM_ADMIN").exists())
+        ):
+            return Response(
+                {"error": "Organization creation requires PLATFORM_ADMIN role."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         serializer = TenantOnboardingSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

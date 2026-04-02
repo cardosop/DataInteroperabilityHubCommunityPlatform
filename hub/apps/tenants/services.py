@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
@@ -17,6 +17,7 @@ from hub.apps.core.events.service_publishers import TenantEventPublisher
 from hub.apps.core.services.base import BaseService, NotFoundError, PermissionError, ValidationError
 from hub.apps.tenants.models import (
     KYCStatus,
+    PlanCategory,
     PlanTier,
     Tenant,
     TenantConfig,
@@ -352,6 +353,11 @@ class TenantService(BaseService, TenantEventPublisher):
         """
 
         def _create():
+            if Tenant.objects.filter(slug=slug).exists():
+                raise ValidationError(
+                    f"A tenant with slug '{slug}' already exists.",
+                    code="DUPLICATE_SLUG",
+                )
             tenant = Tenant.objects.create(
                 name=name,
                 slug=slug,
@@ -464,9 +470,14 @@ class TenantService(BaseService, TenantEventPublisher):
         """
 
         def _delete():
-            tenant = self.get_resource_or_raise(Tenant, tenant_id)
+            # Use all_objects to find even soft-deleted tenants (needed for
+            # the "already deleted" check to return the correct error).
+            try:
+                tenant = Tenant.all_objects.get(pk=tenant_id)
+            except Tenant.DoesNotExist:
+                raise NotFoundError(f"Tenant with id {tenant_id} not found")
 
-            if tenant.status == TenantStatus.DELETED:
+            if tenant.status == TenantStatus.DELETED or tenant.deleted_at is not None:
                 raise ValidationError("Tenant is already deleted")
 
             # Soft delete tenant
@@ -615,6 +626,10 @@ class PlanLimitService(BaseService):
     Provides business logic for:
     - Checking if a tenant has exceeded plan limits
     - Enforcing limits with proper error responses
+
+    The check_limit() method acquires a row-level lock on the Tenant row
+    and queries the current count internally, eliminating TOCTOU race
+    conditions where two concurrent requests could both pass the limit check.
     """
 
     service_name = "plan_limit_service"
@@ -631,16 +646,21 @@ class PlanLimitService(BaseService):
         self.user_id = user_id
 
     def check_limit(
-        self, tenant_id: str, limit_key: str, current_usage: int, delta: int = 0
+        self, tenant_id: str, limit_key: str, delta: int = 1
     ) -> Dict[str, Any]:
         """
         Check if tenant has exceeded plan limit for a specific limit key.
 
+        Acquires a SELECT FOR UPDATE lock on the Tenant row to serialize
+        concurrent limit checks. The current usage count is queried internally
+        from the resource counter registry — callers must NOT pass their own count.
+
+        Must be called inside a transaction.atomic() block.
+
         Args:
             tenant_id: Tenant ID
             limit_key: Limit key (e.g., 'max_assets', 'max_api_calls_per_month')
-            current_usage: Current usage count
-            delta: Additional usage to check (default: 0)
+            delta: Number of resources being created (default: 1)
 
         Returns:
             Dictionary with 'allowed' (bool), 'current' (int), 'max' (int or None),
@@ -650,36 +670,72 @@ class PlanLimitService(BaseService):
             ValidationError: If limit exceeded (with code 'plan_limit_exceeded')
             NotFoundError: If tenant or plan not found
         """
+        from hub.apps.billing.limit_registry import get_resource_count
 
         def _check():
-            # Get tenant
-            tenant = self.get_resource_or_raise(Tenant, tenant_id)
-
-            # Get tenant's plan (or default to FREE if no plan assigned)
-            plan = tenant.plan
-            if not plan:
-                # Default to FREE plan if no plan assigned - create if doesn't exist
-                plan, _ = TenantPlan.objects.get_or_create(
-                    slug="free",
-                    is_active=True,
-                    defaults={
-                        "name": "Free Plan",
-                        "tier": PlanTier.FREE,
-                        "limits_json": {
-                            "max_assets": 10,
-                            "max_datasets": 20,
-                            "max_api_calls_per_month": 10000,
-                            "max_scheduled_ingestions": 5,
-                            "max_scheduled_runs_per_month": 50,
-                            "max_scheduled_exports": 5,
-                            "max_export_runs_per_month": 20,
-                            "max_storage_gb": 1,
-                        },
-                    },
+            # Acquire row-level lock on the tenant to serialize concurrent checks.
+            # This prevents two requests from both reading count=9 (limit=10)
+            # and both proceeding to create, resulting in 11 resources.
+            #
+            # Note: select_for_update() cannot be combined with
+            # select_related("plan") because plan is a nullable FK
+            # (LEFT OUTER JOIN) and PostgreSQL forbids FOR UPDATE on
+            # the nullable side of an outer join.
+            tenant = (
+                Tenant.objects.select_for_update()
+                .filter(pk=tenant_id)
+                .first()
+            )
+            if not tenant:
+                raise NotFoundError(
+                    f"Tenant {tenant_id} not found",
+                    code="TENANT_NOT_FOUND",
                 )
 
-            # Get limit from plan
-            max_limit = plan.get_limit(limit_key)
+            # Route ML limit keys to tenant.ml_plan; everything
+            # else goes to the base plan.
+            is_ml_key = limit_key in TenantPlan.ML_LIMIT_KEYS
+
+            if is_ml_key:
+                plan = tenant.ml_plan
+                if not plan:
+                    # No ML plan → max_limit = 0 (no ML access)
+                    plan = None
+            else:
+                plan = tenant.plan
+                if not plan:
+                    plan = TenantPlan.objects.filter(
+                        slug="free", is_active=True,
+                    ).first()
+                    if not plan:
+                        raise NotFoundError(
+                            "No FREE plan found. "
+                            "Run: manage.py seed_default_plans",
+                            code="PLAN_NOT_FOUND",
+                        )
+
+            # Get limit from plan (or 0 when no ML plan)
+            if plan is None:
+                max_limit = 0
+            else:
+                max_limit = plan.get_limit(limit_key)
+
+            # Query current usage from the resource counter registry.
+            # This count is authoritative — it runs inside the lock scope.
+            current_usage = get_resource_count(tenant_id, limit_key)
+
+            # For storage limits, the counter returns bytes and delta is
+            # also in bytes; convert both to GB for comparison against the
+            # limit (which is specified in GB in the plan).
+            if limit_key in ("max_storage_gb", "max_ml_storage_gb") and max_limit is not None:
+                current_usage_for_comparison = current_usage / (1024**3)
+                delta_for_comparison = delta / (1024**3)
+            else:
+                current_usage_for_comparison = current_usage
+                delta_for_comparison = delta
+
+            plan_slug = plan.slug if plan else "none"
+            plan_tier = plan.tier if plan else "NONE"
 
             # If max_limit is None, it means unlimited (typically for ENTERPRISE)
             if max_limit is None:
@@ -689,12 +745,12 @@ class PlanLimitService(BaseService):
                     "max": None,
                     "remaining": None,
                     "limit_key": limit_key,
-                    "plan_slug": plan.slug,
-                    "plan_tier": plan.tier,
+                    "plan_slug": plan_slug,
+                    "plan_tier": plan_tier,
                 }
 
             # Calculate new usage with delta
-            new_usage = current_usage + delta
+            new_usage = current_usage_for_comparison + delta_for_comparison
 
             # Check if limit exceeded
             if new_usage > max_limit:
@@ -707,8 +763,8 @@ class PlanLimitService(BaseService):
                         "max": max_limit,
                         "requested_delta": delta,
                         "new_usage": new_usage,
-                        "plan_slug": plan.slug,
-                        "plan_tier": plan.tier,
+                        "plan_slug": plan_slug,
+                        "plan_tier": plan_tier,
                     },
                     http_status=403,
                 )
@@ -722,11 +778,11 @@ class PlanLimitService(BaseService):
                 "max": max_limit,
                 "remaining": remaining,
                 "limit_key": limit_key,
-                "plan_slug": plan.slug,
-                "plan_tier": plan.tier,
+                "plan_slug": plan_slug,
+                "plan_tier": plan_tier,
             }
 
-        return self.execute_with_metrics(operation="check_limit", tenant_id=tenant_id, func=_check)
+        return self.execute_with_transaction(operation="check_limit", tenant_id=tenant_id, func=_check)
 
 
 class TenantUsageService(BaseService):
@@ -749,8 +805,7 @@ class TenantUsageService(BaseService):
             tenant_id: Optional tenant ID
             user_id: Optional user ID
         """
-        self.tenant_id = tenant_id
-        self.user_id = user_id
+        super().__init__(tenant_id=tenant_id, user_id=user_id)
 
     def calculate_usage_summary(
         self,
@@ -862,8 +917,8 @@ class TenantUsageService(BaseService):
                 ).aggregate(total=Sum("total_cost_usd"))["total"]
                 if ingestion_total is not None and ingestion_total > 0:
                     ingestion_cost = ingestion_total
-            except Exception:
-                # Cost tracking may not be available, skip
+            except (ImportError, LookupError):
+                # Cost tracking module may not be available, skip
                 pass
 
             # Update usage summary
@@ -1032,38 +1087,46 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
             if not first_user_password:
                 raise ValidationError("first_user_password is required")
 
-            # Check if email already exists
-            if User.objects.filter(email=first_user_email).exists():
-                raise ValidationError("Email address is already registered", code="EMAIL_EXISTS")
-
-            # Check if tenant slug already exists
-            if Tenant.objects.filter(slug=slug).exists():
-                raise ValidationError(f"Tenant slug '{slug}' already exists", code="SLUG_EXISTS")
-
             # Get plan
             try:
                 plan = TenantPlan.objects.get(slug=plan_slug, is_active=True)
             except TenantPlan.DoesNotExist:
                 raise NotFoundError(f"Plan with slug '{plan_slug}' not found")
 
-            # Create tenant
-            tenant = Tenant.objects.create(
-                name=name,
-                slug=slug,
-                region=region,
-                status=TenantStatus.ACTIVE,
-                kyc_status=KYCStatus.UNVERIFIED,
-                plan=plan,
-            )
+            # Create tenant (nested atomic block acts as savepoint)
+            try:
+                with transaction.atomic():
+                    tenant = Tenant.objects.create(
+                        name=name,
+                        slug=slug,
+                        region=region,
+                        status=TenantStatus.ACTIVE,
+                        kyc_status=KYCStatus.UNVERIFIED,
+                        plan=plan,
+                    )
+            except IntegrityError:
+                raise ValidationError(
+                    f"Tenant with slug '{slug}' or name '{name}' already exists",
+                    code="SLUG_EXISTS",
+                )
 
-            # Create first user (tenant admin)
-            user = User.objects.create_user(
-                email=first_user_email,
-                password=first_user_password,
-                tenant=tenant,
-                display_name=first_user_display_name or first_user_email.split("@")[0],
-                status=UserStatus.ACTIVE,
-            )
+            # Create first user (nested atomic block acts as savepoint)
+            try:
+                with transaction.atomic():
+                    user = User.objects.create_user(
+                        email=first_user_email,
+                        password=first_user_password,
+                        tenant=tenant,
+                        display_name=first_user_display_name or (
+                            first_user_email.split("@")[0] if "@" in first_user_email else first_user_email
+                        ),
+                        status=UserStatus.ACTIVE,
+                    )
+            except IntegrityError:
+                raise ValidationError(
+                    "Email address is already registered",
+                    code="EMAIL_EXISTS",
+                )
 
             # Assign TENANT_ADMIN role
             try:

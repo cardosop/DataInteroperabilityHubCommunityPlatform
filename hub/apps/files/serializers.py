@@ -3,7 +3,7 @@ File Storage Serializers
 """
 from rest_framework import serializers
 from .models import File, FileStatus
-from .validators import get_chunk_size, calculate_chunk_count
+from .validators import get_chunk_size, calculate_chunk_count, validate_filename
 
 
 class FileInitSerializer(serializers.Serializer):
@@ -25,6 +25,9 @@ class FileInitSerializer(serializers.Serializer):
 
     def validate(self, data):
         """Structural validation only; domain rules run in FileService."""
+        # 14.7: path traversal prevention – sanitise and validate the filename.
+        if "name" in data:
+            data["name"] = validate_filename(data["name"])
         return data
 
 
@@ -64,6 +67,8 @@ class FileSerializer(serializers.ModelSerializer):
             'size',
             'content_sha256',
             'status',
+            'scan_status',
+            'scanned_at',
             'metadata_json',
             'created_by',
             'created_at',
@@ -73,11 +78,19 @@ class FileSerializer(serializers.ModelSerializer):
             'id',
             'content_sha256',
             'status',
+            'scan_status',
+            'scanned_at',
             'metadata_json',
             'created_by',
             'created_at',
             'updated_at'
         ]
+
+    def validate(self, data):
+        # 14.7: path traversal prevention – sanitise and validate the filename.
+        if "name" in data:
+            data["name"] = validate_filename(data["name"])
+        return data
 
 
 class FileDownloadResponseSerializer(serializers.Serializer):

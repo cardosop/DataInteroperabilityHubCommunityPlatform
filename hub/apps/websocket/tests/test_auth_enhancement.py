@@ -3,11 +3,12 @@ Comprehensive tests for enhanced WebSocket authentication middleware.
 
 Tests token extraction from query params and headers, validation, and connection rejection.
 """
+import uuid
 import asyncio
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.db import connections
-from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTransactionTestCase
 
 # Optional channels import
 try:
@@ -37,7 +38,7 @@ User = get_user_model()
 
 
 @pytest.mark.django_db(transaction=True)
-class TestWebSocketAuthEnhancement(AsyncWebSocketTestCase):
+class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
     """Test enhanced WebSocket authentication middleware."""
 
     def setUp(self):
@@ -260,15 +261,15 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTestCase):
         from django.utils import timezone
         from datetime import timedelta
 
-        # Create expired API key
-        expired_key_plaintext = "expired-key-12345"
+        # Create expired API key with unique value to avoid hash collisions
+        expired_key_plaintext = f"expired-key-{uuid.uuid4().hex[:12]}"
         expired_key_hash = APIKey.hash_key(expired_key_plaintext)
-        expired_key = APIKey.objects.create(
+        APIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
             name="Expired Key",
             key_hash=expired_key_hash,
-            expires_at=timezone.now() - timedelta(days=1),  # Expired yesterday
+            expires_at=timezone.now() - timedelta(days=1),
         )
 
         async def run_test():

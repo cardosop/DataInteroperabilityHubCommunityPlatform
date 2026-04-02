@@ -15,6 +15,7 @@ service names (grafana-test, prometheus-test, api-service-test). Hostnames 'graf
 the test container.
 """
 
+import unittest
 import json
 import os
 from pathlib import Path
@@ -91,7 +92,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
                 f"Grafana should be accessible (got {response.status_code})",
             )
         except requests.exceptions.RequestException as e:
-            pytest.skip(f"Grafana not accessible: {e}")
+            raise unittest.SkipTest(f"Grafana not accessible: {e}")
 
     def test_prometheus_is_accessible(self):
         """Test that Prometheus service is accessible"""
@@ -103,7 +104,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
                 f"Prometheus should be accessible (got {response.status_code})",
             )
         except requests.exceptions.RequestException as e:
-            pytest.skip(f"Prometheus not accessible: {e}")
+            raise unittest.SkipTest(f"Prometheus not accessible: {e}")
 
     def test_metrics_endpoint_is_accessible(self):
         """Test that API metrics endpoint is accessible"""
@@ -117,7 +118,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
             # Check that response contains Prometheus format
             self.assertIn("text/plain", response.headers.get("Content-Type", "").lower())
         except requests.exceptions.RequestException as e:
-            pytest.skip(f"Metrics endpoint not accessible: {e}")
+            raise unittest.SkipTest(f"Metrics endpoint not accessible: {e}")
 
     def test_marketplace_metrics_are_exposed(self):
         """Test that marketplace metrics endpoint is accessible and returns Prometheus format
@@ -172,7 +173,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
                 pass
 
         except requests.exceptions.RequestException as e:
-            pytest.skip(f"Metrics endpoint not accessible: {e}")
+            raise unittest.SkipTest(f"Metrics endpoint not accessible: {e}")
 
     def test_prometheus_has_marketplace_alerts(self):
         """Test that Prometheus has loaded marketplace alert rules"""
@@ -201,7 +202,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
                 self.assertTrue(alerts_file.exists(), "Marketplace alerts file should exist")
                 # If alerts file exists but not loaded, it's a configuration issue
                 # but not a test failure - alerts will be loaded on next reload
-                pytest.skip(
+                raise unittest.SkipTest(
                     "Marketplace alerts not yet loaded in Prometheus "
                     "(may need reload or restart)"
                 )
@@ -217,7 +218,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
                 for group in marketplace_groups:
                     self.assertIn("rules", group, "Alert group should have rules")
         except requests.exceptions.RequestException as e:
-            pytest.skip(f"Prometheus not accessible: {e}")
+            raise unittest.SkipTest(f"Prometheus not accessible: {e}")
 
     def test_dashboards_can_be_imported_via_api(self):
         """Test that dashboards can be imported into Grafana via API"""
@@ -229,7 +230,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
                 timeout=5,
             )
             if health_response.status_code not in [200, 401]:
-                pytest.skip("Grafana not accessible")
+                raise unittest.SkipTest("Grafana not accessible")
 
             # Read a dashboard file
             dashboard_file = self.dashboards_dir / "marketplace-connections-overview.json"
@@ -255,7 +256,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
                     field, dashboard_obj, f"Dashboard should have {field} field for import"
                 )
         except requests.exceptions.RequestException as e:
-            pytest.skip(f"Grafana not accessible: {e}")
+            raise unittest.SkipTest(f"Grafana not accessible: {e}")
 
     def test_dashboard_prometheus_queries_are_valid(self):
         """Test that dashboard Prometheus queries are syntactically valid"""
@@ -404,7 +405,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
             content = response.text
             self.assertGreater(len(content), 0, "Metrics endpoint should return content")
         except requests.exceptions.RequestException as e:
-            pytest.skip(f"Metrics endpoint not accessible: {e}")
+            raise unittest.SkipTest(f"Metrics endpoint not accessible: {e}")
 
     def test_prometheus_handles_missing_alerts(self):
         """Test that Prometheus handles missing alerts gracefully"""
@@ -416,7 +417,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
             # Should return valid structure even if no alerts are configured
             self.assertIn("data", data)
         except requests.exceptions.RequestException as e:
-            pytest.skip(f"Prometheus not accessible: {e}")
+            raise unittest.SkipTest(f"Prometheus not accessible: {e}")
 
     def test_grafana_handles_invalid_dashboard_import(self):
         """Test that Grafana handles invalid dashboard import gracefully"""
@@ -428,7 +429,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
                 timeout=5,
             )
             if health_response.status_code not in [200, 401]:
-                pytest.skip("Grafana not accessible")
+                raise unittest.SkipTest("Grafana not accessible")
 
             # Test with invalid dashboard structure (missing required fields)
             invalid_dashboard = {
@@ -443,4 +444,4 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
             self.assertNotIn("panels", invalid_dashboard["dashboard"])
             self.assertNotIn("schemaVersion", invalid_dashboard["dashboard"])
         except requests.exceptions.RequestException as e:
-            pytest.skip(f"Grafana not accessible: {e}")
+            raise unittest.SkipTest(f"Grafana not accessible: {e}")

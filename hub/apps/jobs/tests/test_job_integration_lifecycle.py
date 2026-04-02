@@ -47,15 +47,16 @@ class JobLifecycleIntegrationTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status="ACTIVE"
@@ -216,9 +217,8 @@ class JobLifecycleIntegrationTest(TestCase):
         self.assertIsNotNone(job.result_json)
         self.assertEqual(job.result_json.get('validation_status'), ValidationStatus.VALID)
         
-        # Note: Contract validation_status is not updated by the job processor
-        # It's updated by the view/signal when the validation result is processed
-        # The job processor only returns the validation result
+        # Mocked result omits status=completed, so persist hook does not run.
+        # Real CONTRACT_VALIDATION jobs persist to Contract in tasks_base (Phase 205).
     
     @patch('hub.apps.jobs.tasks_base._execute_job_logic')
     def test_job_failure_lifecycle(self, mock_execute_logic):

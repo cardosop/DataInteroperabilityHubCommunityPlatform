@@ -180,11 +180,15 @@ class FrontendIntegrationPointsTest(ContractsAPITestBase):
 
     def test_api_list_endpoint_returns_paginated_data(self):
         """Test API list endpoint returns paginated data in frontend-consumable format"""
-        # Create multiple contracts
+        # Create multiple contracts — each needs its own asset
+        from hub.apps.assets.models import Asset, AssetStatus
         for i in range(5):
+            list_asset = Asset.objects.create(
+                tenant=self.tenant, key=f"list-asset-{i}", name=f"List {i}", status=AssetStatus.ACTIVE
+            )
             Contract.objects.create(
                 tenant=self.tenant,
-                asset=self.asset,
+                asset=list_asset,
                 original_raw=json.dumps(self.valid_odps),
                 original_format=OriginalFormat.JSON,
                 original_spec_type=OriginalSpecType.ODPS,

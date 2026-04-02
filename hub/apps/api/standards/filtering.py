@@ -45,11 +45,24 @@ class StandardFilterBackend(BaseFilterBackend):
         if not filter_params:
             return queryset
 
-        # Get allowed filter fields from view
-        allowed_fields = getattr(view, "filter_fields", [])
-        if not allowed_fields:
-            # If no filter_fields defined, allow all fields
+        # Get allowed filter fields from view; normalise to List[str] | None
+        raw_fields = getattr(view, "filter_fields", None)
+        if raw_fields and isinstance(raw_fields, (list, set, tuple, frozenset)):
+            allowed_fields: Optional[List[str]] = list(raw_fields)
+        else:
             allowed_fields = None
+
+        # When a whitelist is set, silently drop params whose base field is not
+        # in the list rather than raising a 400 — unknown client-side params
+        # (e.g. from URL bookmarks or older frontends) should not break requests.
+        if allowed_fields is not None:
+            filter_params = {
+                k: v
+                for k, v in filter_params.items()
+                if k.split("__")[0] in allowed_fields
+            }
+            if not filter_params:
+                return queryset
 
         # Apply filters
         queryset = apply_filters(queryset, filter_params, allowed_fields)

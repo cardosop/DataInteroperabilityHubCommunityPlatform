@@ -11,6 +11,7 @@ from django.test import RequestFactory, TestCase
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.tenants.permissions import CanPublishToMarketplace, IsPlatformAdmin
 from hub.apps.users.models import UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -22,17 +23,19 @@ class TenantPermissionsTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.factory = RequestFactory()
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
-        self.other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
+        _uid = uuid.uuid4().hex[:8]
+        self.other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
         self.admin_user = User.objects.create_user(
-            email="admin@example.com",
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="test",
             tenant=None,
             is_platform_admin=True,
             status=UserStatus.ACTIVE,
         )
         self.regular_user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="test",
             tenant=self.tenant,
             is_platform_admin=False,

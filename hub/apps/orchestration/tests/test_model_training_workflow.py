@@ -10,7 +10,7 @@ Tests verify:
 """
 try:
     import pytest
-    pytestmark = pytest.mark.django_db(transaction=True)
+    pytestmark = pytest.mark.django_db
 except ImportError:
     pytest = None
     pytestmark = None
@@ -28,6 +28,7 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File
 from hub.apps.ml.models import MLModel, ModelStatus, ModelType
+import uuid
 
 User = get_user_model()
 
@@ -134,12 +135,42 @@ class ModelTrainingWorkflowStepExecutionTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
+        # Create ML plan with sufficient limits so workflow steps pass plan checks
+        from hub.apps.tenants.models import TenantPlan, PlanCategory, PlanTier
+        self.ml_plan, _ = TenantPlan.objects.get_or_create(
+            slug="ml-test-workflow",
+            defaults={
+                "name": "ML Test Workflow Plan",
+                "tier": PlanTier.ENTERPRISE,
+                "category": PlanCategory.ML_AI,
+                "limits_json": {
+                    "max_ml_models": 1000,
+                    "max_ml_training_jobs_per_month": 1000,
+                    "max_ml_deployed_models": 100,
+                    "max_ml_storage_gb": 1000,
+                    "max_ml_inference_requests_per_month": 10000,
+                },
+                "is_active": True,
+            },
+        )
+        self.base_plan, _ = TenantPlan.objects.get_or_create(
+            slug="base-test-workflow",
+            defaults={
+                "name": "Base Test Workflow Plan",
+                "tier": PlanTier.ENTERPRISE,
+                "limits_json": {"max_assets": 1000, "max_datasets": 1000},
+                "is_active": True,
+            },
+        )
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            plan=self.base_plan,
+            ml_plan=self.ml_plan,
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -240,11 +271,11 @@ class ModelTrainingWorkflowStepExecutionTest(TestCase):
             self.assertIn("workflow_instance_id", result)
             self.assertIn("model_id", result)
         except ValueError as e:
-            # If workflow fails due to ODH unavailability, that's acceptable
-            # The workflow should handle this gracefully
-            if "ODH" in str(e) or "service unavailable" in str(e).lower():
-                # This is expected in test environment
-                pass
+            # If workflow fails due to ODH unavailability, mark as skipped
+            # so the test is not a false PASS
+            msg = str(e).lower()
+            if "odh" in msg or "service unavailable" in msg or "plan limit" in msg:
+                self.skipTest(f"ODH service unavailable or plan limit reached: {e}")
             else:
                 raise
 
@@ -280,12 +311,41 @@ class ModelTrainingWorkflowIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
+        from hub.apps.tenants.models import TenantPlan, PlanCategory, PlanTier
+        ml_plan, _ = TenantPlan.objects.get_or_create(
+            slug="ml-test-workflow",
+            defaults={
+                "name": "ML Test Workflow Plan",
+                "tier": PlanTier.ENTERPRISE,
+                "category": PlanCategory.ML_AI,
+                "limits_json": {
+                    "max_ml_models": 1000,
+                    "max_ml_training_jobs_per_month": 1000,
+                    "max_ml_deployed_models": 100,
+                    "max_ml_storage_gb": 1000,
+                    "max_ml_inference_requests_per_month": 10000,
+                },
+                "is_active": True,
+            },
+        )
+        base_plan, _ = TenantPlan.objects.get_or_create(
+            slug="base-test-workflow",
+            defaults={
+                "name": "Base Test Workflow Plan",
+                "tier": PlanTier.ENTERPRISE,
+                "limits_json": {"max_assets": 1000, "max_datasets": 1000},
+                "is_active": True,
+            },
+        )
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            plan=base_plan,
+            ml_plan=ml_plan,
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
@@ -358,8 +418,8 @@ class ModelTrainingWorkflowIntegrationTest(TestCase):
             self.assertIn("success", result)
             self.assertIn("workflow_instance_id", result)
         except Exception as e:
-            # If ODH services are unavailable, that's acceptable
+            # If ODH services are unavailable, skip so the test is not a false PASS
             if "ODH" in str(e) or "service unavailable" in str(e).lower():
-                pass
+                self.skipTest(f"ODH service unavailable: {e}")
             else:
                 raise

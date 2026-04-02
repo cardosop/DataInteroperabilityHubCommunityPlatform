@@ -117,6 +117,17 @@ MARKETPLACE_INSTANCES: Dict[str, MarketplaceInstanceConfig] = {
         api_key_env_var=None,
         connector_type="ckan",  # Standard CKAN API
         is_production=False,
+        is_test_default=False,
+    ),
+    "ckan-test": MarketplaceInstanceConfig(
+        name="ckan-test",
+        base_url=os.getenv("CKAN_TEST_URL", "http://ckan-test:5000"),
+        country=None,
+        language=None,
+        organization="Local CKAN Test",
+        api_key_env_var="CKAN_TEST_API_KEY",
+        connector_type="ckan",  # Standard CKAN API
+        is_production=False,
         is_test_default=True,
     ),
     "data.gov": MarketplaceInstanceConfig(

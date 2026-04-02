@@ -31,6 +31,8 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 # CRITICAL: Patch sql_flush to use CASCADE for foreign key constraints
 # This is needed when running tests with manage.py test (not pytest)
 # The conftest.py patch only applies when using pytest
@@ -114,6 +116,7 @@ from hub.apps.integrations.utils import (
 from hub.apps.semantic.utils import map_asset_to_semantic
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import UserStatus
+from tests.utils.wait_helpers import wait_for_event_persistence
 
 User = get_user_model()
 
@@ -130,9 +133,8 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
     reset_sequences = False
     serialized_rollback = False
 
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for comprehensive tests."""
+    def _fixture_teardown(self):
+        """Skip TRUNCATE CASCADE to avoid timeout."""
         pass
 
     def setUp(self):
@@ -169,7 +171,7 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
                     connection.ensure_connection()
                     # Longer wait for "database system is starting up" errors
                     wait_time = retry_delay * (2 ** min(attempt, 4))  # Cap at 16 seconds
-                    time.sleep(wait_time)
+                    time.sleep(wait_time)  # INTENTIONAL: exponential backoff for DB startup retry
 
                 # Create test tenants with unique names to avoid conflicts
                 # TransactionTestCase with _fixture_teardown override doesn't clean up between tests
@@ -316,7 +318,7 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
                     if attempt == max_retries - 1:
                         raise
                     # Wait longer for database startup
-                    time.sleep(5.0)  # Wait 5 seconds for database to start
+                    time.sleep(5.0)  # INTENTIONAL: wait for database system startup
                     continue
                 # Other operational errors - retry with exponential backoff
                 if attempt == max_retries - 1:
@@ -329,7 +331,7 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
                     # Unique constraint violation - regenerate unique suffix and retry
                     if attempt < max_retries - 1:
                         connection.ensure_connection()
-                        time.sleep(0.5)  # Brief pause before retry
+                        time.sleep(0.5)  # INTENTIONAL: retry backoff for unique constraint violation
                         continue
                 if attempt == max_retries - 1:
                     # Last attempt failed - re-raise the exception
@@ -2573,7 +2575,7 @@ class MarketplaceIntegrationDatabaseStateTest(
 
         # Update connection
         original_updated_at = connection.updated_at
-        time.sleep(0.1)  # Ensure timestamp difference
+        wait_for_event_persistence()  # Ensure timestamp difference
         self.service1.update_connection(
             connection_id=str(connection.id),
             tenant_id=str(self.tenant1.id),

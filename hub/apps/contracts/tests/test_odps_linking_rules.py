@@ -31,6 +31,7 @@ from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+import uuid
 
 
 class ODPSLinkingRulesTestBase(ContractsTestBase):
@@ -756,9 +757,10 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
     def test_validate_circular_references_cross_tenant(self):
         """Test circular reference validation respects tenant isolation."""
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant-circular",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-circular-{_uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )

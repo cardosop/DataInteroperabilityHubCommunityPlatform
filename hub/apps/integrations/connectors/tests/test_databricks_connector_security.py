@@ -9,6 +9,7 @@ Requirements:
 - DATABRICKS_TOKEN environment variable with Databricks personal access token
 - Network access to Databricks workspace
 """
+import unittest
 import os
 import pytest
 from django.test import TestCase
@@ -25,7 +26,7 @@ def get_databricks_credentials():
     token = os.environ.get('DATABRICKS_TOKEN')
 
     if not host or not token:
-        pytest.skip(
+        raise unittest.SkipTest(
             "DATABRICKS_HOST and DATABRICKS_TOKEN environment variables are required for security tests"
         )
 

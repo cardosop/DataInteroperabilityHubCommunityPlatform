@@ -33,15 +33,16 @@ class JobExecutionIntegrationTest(TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
         
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status="ACTIVE"
@@ -138,20 +139,22 @@ class JobExecutionIntegrationTest(TestCase):
         mock_health_check.assert_called_once()
     
     @patch('hub.apps.files.storage.S3StorageClient')
-    @patch('hub.apps.compliance.service_client.ComplianceServiceClient.scan_file')
+    @patch('hub.apps.compliance.service_client.ComplianceServiceClient.scan_file_async')
     @patch('hub.apps.compliance.service_client.ComplianceServiceClient.health_check')
-    def test_compliance_run_job_execution_real(self, mock_health_check, mock_scan_file, mock_storage_client_class):
+    def test_compliance_run_job_execution_real(self, mock_health_check, mock_scan_file_async, mock_storage_client_class):
         """Test real compliance run job execution - exercises actual _execute_job_logic"""
         # Setup health check mock
         mock_health_check.return_value = (True, "healthy")
-        
+
         # Setup S3 storage mock (compliance view uses get_file_content, not download_file)
         mock_storage_client = MagicMock()
         mock_storage_client.get_file_content.return_value = b'col1,col2\nval1,val2\nval3,val4'
         mock_storage_client_class.return_value = mock_storage_client
-        
-        # Setup compliance service mock
-        mock_scan_file.return_value = {
+
+        # Setup compliance service mock — return synchronous (200) response
+        # _http_status=200 triggers the sync path in _call_compliance_service
+        mock_scan_file_async.return_value = {
+            '_http_status': 200,
             'overall_status': 'PASS',
             'risk_level': RiskLevel.LOW,
             'allowed_to_store': True,
@@ -206,7 +209,7 @@ class JobExecutionIntegrationTest(TestCase):
         
         # Verify external services were called (compliance view uses get_file_content)
         mock_storage_client.get_file_content.assert_called_once_with(self.file.storage_path)
-        mock_scan_file.assert_called_once()
+        mock_scan_file_async.assert_called_once()
         mock_health_check.assert_called_once()
     
     @patch('hub.apps.contracts.cli_client.DataContractCLIClient.validate')
@@ -258,7 +261,8 @@ class JobExecutionIntegrationTest(TestCase):
         
         # Verify external CLI was called
         mock_validate.assert_called_once()
-        # Note: Contract validation_status is updated by views/signals, not job processor
+        contract.refresh_from_db()
+        self.assertEqual(contract.validation_status, ValidationStatus.VALID)
     
     @patch('hub.apps.dq.service_client.DQServiceClient.health_check')
     def test_dq_run_job_execution_service_unavailable(self, mock_health_check):

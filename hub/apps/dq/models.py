@@ -7,6 +7,12 @@ import uuid
 from django.db import models
 from django.core.exceptions import ValidationError
 
+from hub.apps.integrations.encryption import (
+    decrypt_json_field,
+    encrypt_json_field,
+    EncryptionError,
+)
+
 
 class DQRunStatus(models.TextChoices):
     """DQ Run status enumeration"""
@@ -60,11 +66,11 @@ class DQRun(models.Model):
     )
     dataset = models.ForeignKey(
         "datasets.Dataset",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="dq_runs",
         null=True,
         blank=True,
-        help_text="Dataset this DQ run is for (nullable)"
+        help_text="Dataset this DQ run is for (nullable; SET_NULL preserves audit trail)"
     )
     file = models.ForeignKey(
         "files.File",
@@ -469,22 +475,72 @@ class DQAlertingRule(models.Model):
     def clean(self):
         """Validate rule configuration"""
         super().clean()
-        
+
         if not self.alert_channels:
-            raise ValidationError("At least one alert channel must be specified")
-        
-        # Validate channel config
-        if self.channel_config:
+            raise ValidationError(
+                "At least one alert channel must be specified"
+            )
+
+        # Validate channel config (skip if already encrypted)
+        if self.channel_config and not (
+            isinstance(self.channel_config, dict)
+            and "_encrypted" in self.channel_config
+        ):
             for channel in self.alert_channels:
-                if channel == "EMAIL" and "emails" not in self.channel_config:
-                    raise ValidationError("EMAIL channel requires 'emails' in channel_config")
-                elif channel == "WEBHOOK" and "url" not in self.channel_config:
-                    raise ValidationError("WEBHOOK channel requires 'url' in channel_config")
-    
+                if (
+                    channel == "EMAIL"
+                    and "emails" not in self.channel_config
+                ):
+                    raise ValidationError(
+                        "EMAIL channel requires 'emails' "
+                        "in channel_config"
+                    )
+                elif (
+                    channel == "WEBHOOK"
+                    and "url" not in self.channel_config
+                ):
+                    raise ValidationError(
+                        "WEBHOOK channel requires 'url' "
+                        "in channel_config"
+                    )
+
     def save(self, *args, **kwargs):
-        """Override save to validate before saving"""
+        """Override save to validate and encrypt channel_config."""
         self.full_clean()
+
+        # Encrypt channel_config if plaintext dict
+        if (
+            isinstance(self.channel_config, dict)
+            and self.channel_config
+            and not self.channel_config.get("_encrypted")
+        ):
+            try:
+                encrypted = encrypt_json_field(self.channel_config)
+                self.channel_config = {"_encrypted": encrypted}
+            except EncryptionError as e:
+                raise ValidationError(
+                    {"channel_config": f"Failed to encrypt: {e}"}
+                ) from e
+
         super().save(*args, **kwargs)
+
+    def get_channel_config(self) -> dict:
+        """
+        Get decrypted channel configuration.
+
+        Returns:
+            Decrypted channel config dictionary.
+            Legacy plaintext dicts (pre-migration) returned as-is.
+        """
+        if not self.channel_config:
+            return {}
+        if isinstance(self.channel_config, dict):
+            if "_encrypted" in self.channel_config:
+                return decrypt_json_field(
+                    self.channel_config["_encrypted"]
+                )
+            return self.channel_config
+        return {}
     
     def evaluate(self, metric_value: float) -> bool:
         """

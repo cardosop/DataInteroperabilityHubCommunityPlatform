@@ -7,9 +7,7 @@ All tests use real services and models following engineering best practices.
 
 import uuid
 
-from django.db import connection, connections
-from django.db.utils import InterfaceError as DjangoInterfaceError, OperationalError
-from django.test import TransactionTestCase, override_settings
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset
@@ -25,49 +23,19 @@ from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 
 
-def _is_connection_closed_error(exc: BaseException) -> bool:
-    """True if the exception indicates the DB connection was closed (any backend or wrapper)."""
-    msg = str(exc).lower()
-    return "connection" in msg and "closed" in msg
-
-
 @override_settings(
     EVENT_BUS_ENABLE_PERSISTENCE=True,
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Use sync persistence for tests
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,  # Disable write-behind for tests
 )
-class MarketplaceEventPublisherUnitTest(TransactionTestCase):
-    """
-    Unit tests for MarketplaceEventPublisher using real EventPublisher.
-
-    Uses TransactionTestCase; tearDown ensures connection is open before super().tearDown()
-    to avoid 'connection already closed' during flush in batched runs.
-    """
-
-    def _ensure_connection(self):
-        """Force a usable DB connection so setUp never see 'connection already closed'."""
-        try:
-            connections.close_all()
-            connection.ensure_connection()
-        except Exception:
-            pass
-
-    def _ensure_connection_for_teardown(self):
-        """Ensure connection for tearDown/flush without closing first (avoid breaking active connection)."""
-        try:
-            connection.ensure_connection()
-        except Exception:
-            try:
-                connections.close_all()
-                connection.ensure_connection()
-            except Exception:
-                pass
+class MarketplaceEventPublisherUnitTest(TestCase):
+    """Unit tests for MarketplaceEventPublisher using real EventPublisher."""
 
     def setUp(self):
         """Set up test fixtures."""
-        self._ensure_connection()
+        super().setUp()
 
-        # CRITICAL: Disconnect semantic service signals to prevent timeouts
+        # Disconnect semantic service signals to prevent timeouts
         from django.db.models.signals import post_save
 
         try:
@@ -77,35 +45,17 @@ class MarketplaceEventPublisherUnitTest(TransactionTestCase):
 
             post_save.disconnect(contract_saved, sender=Contract)
             post_save.disconnect(asset_saved, sender=Asset)
+            self._signals_disconnected = True
         except (ImportError, AttributeError):
-            pass
+            self._signals_disconnected = False
 
-        last_error = None
-        for _ in range(3):
-            try:
-                self._create_fixtures()
-                last_error = None
-                break
-            except (DjangoInterfaceError, OperationalError) as e:
-                last_error = e
-                if _is_connection_closed_error(e):
-                    self._ensure_connection()
-                    continue
-                raise
-            except Exception as e:
-                if _is_connection_closed_error(e):
-                    last_error = e
-                    self._ensure_connection()
-                    continue
-                raise
-        if last_error is not None:
-            raise last_error
+        self._create_fixtures()
 
     def _create_fixtures(self):
         """Create tenant, user, publisher, connection, asset, sync job, mapping. Unique slug per run."""
         slug_suffix = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
+            name=f"Test Tenant {slug_suffix}",
             slug=f"test-tenant-{slug_suffix}",
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -489,34 +439,17 @@ class MarketplaceEventPublisherUnitTest(TransactionTestCase):
         self.assertIn("deleted_at", event.data)
 
     def tearDown(self):
-        """Reconnect signals, ensure connection, then run TransactionTestCase teardown (flush)."""
-        from django.db.models.signals import post_save
+        """Reconnect signals disconnected in setUp."""
+        if getattr(self, "_signals_disconnected", False):
+            from django.db.models.signals import post_save
 
-        try:
-            from hub.apps.assets.models import Asset
-            from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
-
-            post_save.connect(contract_saved, sender=Contract, weak=False)
-            post_save.connect(asset_saved, sender=Asset, weak=False)
-        except (ImportError, AttributeError):
-            pass
-        last_err = None
-        for _ in range(3):
             try:
-                self._ensure_connection_for_teardown()
-                super().tearDown()
-                last_err = None
-                break
-            except (DjangoInterfaceError, OperationalError) as e:
-                last_err = e
-                if _is_connection_closed_error(e):
-                    continue
-                raise
-            except Exception as e:
-                if _is_connection_closed_error(e):
-                    last_err = e
-                    continue
-                raise
-        if last_err is not None:
-            raise last_err
+                from hub.apps.assets.models import Asset
+                from hub.apps.contracts.models import Contract
+                from hub.apps.semantic.signals import asset_saved, contract_saved
+
+                post_save.connect(contract_saved, sender=Contract, weak=False)
+                post_save.connect(asset_saved, sender=Asset, weak=False)
+            except (ImportError, AttributeError):
+                pass
+        super().tearDown()

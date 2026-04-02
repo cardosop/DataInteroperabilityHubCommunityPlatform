@@ -24,6 +24,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 
 from hub.apps.contracts.models import (
@@ -49,6 +51,7 @@ from hub.apps.contracts.services import ContractService, ODPSService
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -1195,7 +1198,7 @@ class ODPSIntegrationValidationComprehensiveTest(ContractsTestBase):
         )
 
         user2 = User.objects.create_user(
-            email="integration-validation-test-2@example.com",
+            email=f"integration-validation-test-2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE,

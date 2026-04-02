@@ -13,12 +13,12 @@ All tests use real implementations without mocks/stubs where possible.
 import uuid
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import AsyncMock, patch, MagicMock
 from asgiref.sync import sync_to_async
 from django.utils import timezone as django_timezone
 
-from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTransactionTestCase
 from hub.apps.websocket.consumers.event_consumer import EventConsumer
 from hub.apps.websocket.protocol import (
     WebSocketMessage,
@@ -35,7 +35,7 @@ from hub.apps.core.events.deduplication import (
 )
 
 
-class WebSocketProgressEventTest(AsyncWebSocketTestCase):
+class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
     """
     WebSocket Progress Event Testing (Task 10.1.12.1)
 
@@ -63,7 +63,7 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
         consumer.send_json_message = AsyncMock()
         consumer.send = AsyncMock()
         consumer.close = AsyncMock()
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
         consumer._connection_closed = False
         consumer.replay_enabled = True
         consumer.replay_window_seconds = 3600
@@ -122,7 +122,7 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.creation.progress",
                 "event_version": "1.0.0",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
                 "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
                 "data": {
                     "contract_id": contract_id,
@@ -134,8 +134,8 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
             consumer.send_json_message.reset_mock()
 
             # Mock deduplication
-            with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.core.events.deduplication.store_event_id'):
+            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                     await consumer.send_event(event)
 
             # Verify event was sent
@@ -203,7 +203,7 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.normalization.progress",
                 "event_version": "1.0.0",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
                 "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
                 "data": {
                     "contract_id": contract_id,
@@ -213,8 +213,8 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
 
             consumer.send_json_message.reset_mock()
 
-            with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.core.events.deduplication.store_event_id'):
+            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                     await consumer.send_event(event)
 
             # Verify event was sent with accurate data
@@ -269,7 +269,7 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.ref.progress",
                 "event_version": "1.0.0",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
                 "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
                 "data": {
                     "contract_id": contract_id,
@@ -279,8 +279,8 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
 
             consumer.send_json_message.reset_mock()
 
-            with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.core.events.deduplication.store_event_id'):
+            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                     await consumer.send_event(event)
 
             # Verify event was sent with accurate progress
@@ -327,7 +327,7 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.linking.status",
                 "event_version": "1.0.0",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
                 "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
                 "data": {
                     "odps_contract_id": odps_contract_id,
@@ -338,8 +338,8 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
 
             consumer.send_json_message.reset_mock()
 
-            with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.core.events.deduplication.store_event_id'):
+            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                     await consumer.send_event(event)
 
             # Verify event was sent with accurate status
@@ -390,7 +390,7 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.export.progress",
                 "event_version": "1.0.0",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
                 "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
                 "data": {
                     "contract_id": contract_id,
@@ -400,8 +400,8 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
 
             consumer.send_json_message.reset_mock()
 
-            with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.core.events.deduplication.store_event_id'):
+            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                     await consumer.send_event(event)
 
             # Verify event was sent with accurate progress
@@ -433,7 +433,7 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
                     "event_id": str(uuid.uuid4()),
                     "event_type": event_type,
                     "event_version": "1.0.0",
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
                     "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
                     "data": {
                         "contract_id": contract_id,
@@ -443,8 +443,8 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
 
                 consumer.send_json_message.reset_mock()
 
-                with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-                    with patch('hub.apps.core.events.deduplication.store_event_id'):
+                with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+                    with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                         await consumer.send_event(event)
 
                 # Verify progress_percentage is present and accurate
@@ -495,15 +495,15 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": test_case["event_type"],
                 "event_version": "1.0.0",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
                 "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
                 "data": event_data
             }
 
             consumer.send_json_message.reset_mock()
 
-            with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.core.events.deduplication.store_event_id'):
+            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                     await consumer.send_event(event)
 
             # Verify step name is present and accurate
@@ -513,7 +513,7 @@ class WebSocketProgressEventTest(AsyncWebSocketTestCase):
             self.assertEqual(response.data["data"][test_case["step_field"]], test_case["step_value"])
 
 
-class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
+class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
     """
     WebSocket Event Filtering Testing (Task 10.1.12.2)
 
@@ -539,7 +539,7 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
         consumer.send_json_message = AsyncMock()
         consumer.send = AsyncMock()
         consumer.close = AsyncMock()
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
         consumer._connection_closed = False
         consumer.replay_enabled = True
         consumer.replay_window_seconds = 3600
@@ -563,7 +563,7 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant1.id)},
             "data": {"contract_id": contract_id1}
         }
@@ -573,13 +573,13 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant1.id)},
             "data": {"contract_id": contract_id2}
         }
 
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.core.events.deduplication.store_event_id'):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                 # Send matching event
                 await consumer.send_event(event1)
                 self.assertTrue(consumer.send_json_message.called, "Event with matching contract_id should pass")
@@ -604,7 +604,7 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant1.id)},
             "data": {"contract_id": contract_id}
         }
@@ -614,13 +614,13 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant2.id)},
             "data": {"contract_id": contract_id}
         }
 
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.core.events.deduplication.store_event_id'):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                 # Send event from same tenant
                 await consumer.send_event(event1)
                 self.assertTrue(consumer.send_json_message.called, "Event from same tenant should pass")
@@ -645,7 +645,7 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {
                 "tenant_id": str(self.tenant1.id),
                 "user_id": str(self.user1.id)
@@ -658,7 +658,7 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {
                 "tenant_id": str(self.tenant1.id),
                 "user_id": str(self.user2.id)
@@ -666,8 +666,8 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
             "data": {"contract_id": contract_id}
         }
 
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.core.events.deduplication.store_event_id'):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                 # Send event from same user
                 await consumer.send_event(event1)
                 self.assertTrue(consumer.send_json_message.called, "Event from same user should pass")
@@ -697,7 +697,7 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {
                 "tenant_id": str(self.tenant1.id),
                 "user_id": str(self.user1.id)
@@ -710,7 +710,7 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {
                 "tenant_id": str(self.tenant1.id),
                 "user_id": str(self.user2.id)
@@ -718,8 +718,8 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
             "data": {"contract_id": contract_id}
         }
 
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.core.events.deduplication.store_event_id'):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                 # Send event1 to both consumers
                 await consumer1.send_event(event1)
                 await consumer2.send_event(event1)
@@ -757,7 +757,7 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {
                 "tenant_id": str(self.tenant1.id),
                 "user_id": str(self.user1.id)
@@ -770,7 +770,7 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {
                 "tenant_id": str(self.tenant1.id),
                 "user_id": str(self.user1.id)
@@ -778,8 +778,8 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
             "data": {"contract_id": str(uuid.uuid4())}
         }
 
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.core.events.deduplication.store_event_id'):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                 # Send event matching all filters
                 await consumer.send_event(event1)
                 self.assertTrue(consumer.send_json_message.called, "Event matching all filters should pass")
@@ -792,7 +792,7 @@ class WebSocketEventFilteringTest(AsyncWebSocketTestCase):
                 self.assertFalse(consumer.send_json_message.called, "Event not matching all filters should be filtered")
 
 
-class WebSocketReconnectionTest(AsyncWebSocketTestCase):
+class WebSocketReconnectionTest(AsyncWebSocketTransactionTestCase):
     """
     WebSocket Reconnection Testing (Task 10.1.12.3)
 
@@ -820,7 +820,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
         consumer.send_json_message = AsyncMock()
         consumer.send = AsyncMock()
         consumer.close = AsyncMock()
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
         consumer._connection_closed = False
         consumer.replay_enabled = True
         consumer.replay_window_seconds = 3600
@@ -852,7 +852,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
             events.append(event)
 
         # Mock deduplication to allow replay
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
             # Subscribe (simulates reconnection)
             message = WebSocketMessage(
                 type=WebSocketMessageType.SUBSCRIBE.value,
@@ -977,7 +977,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
         )
 
         # Mock deduplication
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
             # Subscribe (reconnection)
             message = WebSocketMessage(
                 type=WebSocketMessageType.SUBSCRIBE.value,
@@ -1018,7 +1018,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
             events.append(event)
 
         # Mock deduplication
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
             # Subscribe (after service restart)
             message = WebSocketMessage(
                 type=WebSocketMessageType.SUBSCRIBE.value,
@@ -1034,7 +1034,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTestCase):
             self.assertTrue(consumer.send_json_message.called)
 
 
-class WebSocketEventDeduplicationTest(AsyncWebSocketTestCase):
+class WebSocketEventDeduplicationTest(AsyncWebSocketTransactionTestCase):
     """
     WebSocket Event Deduplication Testing (Task 10.1.12.4)
 
@@ -1062,7 +1062,7 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTestCase):
         consumer.send_json_message = AsyncMock()
         consumer.send = AsyncMock()
         consumer.close = AsyncMock()
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
         consumer._connection_closed = False
         consumer.replay_enabled = True
         consumer.replay_window_seconds = 3600
@@ -1081,7 +1081,7 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTestCase):
             "event_id": event_id,
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant.id)},
             "data": {"contract_id": contract_id}
         }
@@ -1124,7 +1124,7 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.created",
                 "event_version": "1.0.0",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
                 "source": {"tenant_id": str(self.tenant.id)},
                 "data": {"contract_id": contract_id, "sequence": i}
             }
@@ -1187,7 +1187,7 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.created",
                 "event_version": "1.0.0",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
                 "source": {"tenant_id": str(self.tenant.id)},
                 "data": {"contract_id": contract_id, "sequence": i}
             }
@@ -1242,7 +1242,7 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTestCase):
         self.assertLess(elapsed_time, 5.0, "Deduplication should complete quickly even under load")
 
 
-class WebSocketPerformanceTest(AsyncWebSocketTestCase):
+class WebSocketPerformanceTest(AsyncWebSocketTransactionTestCase):
     """
     WebSocket Performance Testing (Task 10.1.12.5)
 
@@ -1269,7 +1269,7 @@ class WebSocketPerformanceTest(AsyncWebSocketTestCase):
         consumer.send_json_message = AsyncMock()
         consumer.send = AsyncMock()
         consumer.close = AsyncMock()
-        consumer.last_activity = datetime.utcnow()
+        consumer.last_activity = datetime.now(dt_timezone.utc)
         consumer._connection_closed = False
         consumer.replay_enabled = True
         consumer.replay_window_seconds = 3600
@@ -1287,7 +1287,7 @@ class WebSocketPerformanceTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.creation.progress",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant.id)},
             "data": {
                 "contract_id": contract_id,
@@ -1303,8 +1303,8 @@ class WebSocketPerformanceTest(AsyncWebSocketTestCase):
 
             start_time = time.time()
 
-            with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.core.events.deduplication.store_event_id'):
+            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                     await consumer.send_event(event)
 
             end_time = time.time()
@@ -1334,7 +1334,7 @@ class WebSocketPerformanceTest(AsyncWebSocketTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.creation.progress",
                 "event_version": "1.0.0",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
                 "source": {"tenant_id": str(self.tenant.id)},
                 "data": {
                     "contract_id": contract_id,
@@ -1354,8 +1354,8 @@ class WebSocketPerformanceTest(AsyncWebSocketTestCase):
 
         start_time = time.time()
 
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.core.events.deduplication.store_event_id'):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                 # Send all events
                 tasks = [consumer.send_event(event) for event in events]
                 await asyncio.gather(*tasks)
@@ -1390,13 +1390,13 @@ class WebSocketPerformanceTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant.id)},
             "data": {"contract_id": contract_id}
         }
 
-        with patch('hub.apps.core.events.deduplication.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.core.events.deduplication.store_event_id'):
+        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
                 # Send event to all connections
                 tasks = [consumer.send_event(event) for consumer in consumers]
                 await asyncio.gather(*tasks)

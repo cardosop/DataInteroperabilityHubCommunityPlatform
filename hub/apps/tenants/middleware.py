@@ -58,6 +58,8 @@ class TenantSuspensionMiddleware:
         "/api/health/",
         "/api/v1/auth/",
         "/api/v1/platform/",
+        "/api/v1/tenants/onboarding/",  # Platform admin creates tenants+subscriptions; must bypass subscription check
+        "/api/v1/test/",  # E2E test endpoints must bypass subscription check (they create subscriptions)
     ]
 
     def process_request(self, request):
@@ -126,7 +128,7 @@ class TenantSuspensionMiddleware:
                         # Also set request.tenant if not already set
                         if not hasattr(request, "tenant") or not request.tenant:
                             try:
-                                request.tenant = Tenant.objects.get(id=tenant_id)
+                                request.tenant = Tenant.all_objects.get(id=tenant_id)
                             except Tenant.DoesNotExist:
                                 pass
                 except User.DoesNotExist:
@@ -150,7 +152,7 @@ class TenantSuspensionMiddleware:
                         # Try to get tenant object
                         if not hasattr(request, "tenant") or not request.tenant:
                             try:
-                                request.tenant = Tenant.objects.get(id=tenant_id)
+                                request.tenant = Tenant.all_objects.get(id=tenant_id)
                             except Tenant.DoesNotExist:
                                 pass
                     elif hasattr(user, "tenant") and user.tenant:
@@ -165,10 +167,12 @@ class TenantSuspensionMiddleware:
             if tenant:
                 tenant_id = tenant.id
 
-        # Always fetch tenant directly from database to get latest status
+        # Always fetch tenant directly from database to get latest status.
+        # Use all_objects to include soft-deleted tenants so their status
+        # can be checked (DELETED tenants must be blocked, not silently skipped).
         if tenant_id:
             try:
-                tenant = Tenant.objects.get(id=tenant_id)
+                tenant = Tenant.all_objects.get(id=tenant_id)
                 # Update request.tenant with fresh object
                 request.tenant = tenant
             except Tenant.DoesNotExist:

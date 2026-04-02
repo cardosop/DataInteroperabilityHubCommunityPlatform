@@ -2871,6 +2871,8 @@ class ProductCreationWorkflow:
             )
             if workflow_instance.state_data.get("error"):
                 error_message = workflow_instance.state_data.get("error")
+            elif workflow_instance.error_message:
+                error_message = workflow_instance.error_message
             raise ValueError(f"Product creation workflow failed: {error_message}")
 
         # Get created contracts from state_data

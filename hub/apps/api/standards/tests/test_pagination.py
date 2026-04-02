@@ -1,6 +1,7 @@
 """
 Comprehensive tests for standardized pagination.
 """
+import uuid
 import base64
 import json
 from unittest.mock import Mock
@@ -242,11 +243,11 @@ class TestPaginationHelpers(TestCase):
         self.assertIn("Cannot use both", error)
 
     def test_paginate_queryset_cursor_no_cursor(self):
-        """Test cursor pagination without cursor."""
-        # Create test users
+        """Test cursor pagination without cursor returns correct page size and data."""
+        _uid = uuid.uuid4().hex[:8]
         for i in range(10):
             User.objects.create_user(
-                email=f"user{i}@example.com", password="testpass123"
+                email=f"user{i}-{_uid}@example.com", password="testpass123"
             )
 
         queryset = User.objects.all()
@@ -257,14 +258,25 @@ class TestPaginationHelpers(TestCase):
         self.assertEqual(paginated.count(), 5)
         self.assertIsNotNone(next_cursor)
         self.assertIsNone(prev_cursor)
+        # Verify the returned items are actual DB records, not empty stubs
+        page_ids = list(paginated.values_list("id", flat=True))
+        self.assertEqual(len(page_ids), 5)
+        self.assertEqual(len(set(page_ids)), 5, "Page items must be unique")
 
     def test_paginate_queryset_cursor_with_cursor(self):
-        """Test cursor pagination with cursor."""
-        # Create test users
+        """Test cursor pagination across multiple pages with no overlap.
+
+        Creates 15 users so that:
+          page 1 → 5 items, next_cursor1 set
+          page 2 → 5 items, next_cursor2 set  (5 items remain on page 3)
+          page 3 → 5 items, no next_cursor
+        """
+        # Create enough users for at least 3 pages so page 2 still has a next cursor
+        _uid = uuid.uuid4().hex[:8]
         users = []
-        for i in range(10):
+        for i in range(15):
             user = User.objects.create_user(
-                email=f"user{i}@example.com", password="testpass123"
+                email=f"user{i}-{_uid}@example.com", password="testpass123"
             )
             users.append(user)
 
@@ -278,18 +290,19 @@ class TestPaginationHelpers(TestCase):
         )
 
         self.assertEqual(paginated2.count(), 5)
-        self.assertIsNotNone(next_cursor2)
+        self.assertIsNotNone(next_cursor2)  # page 3 exists
         self.assertEqual(prev_cursor2, next_cursor1)
-        # Verify no overlap
+        # Verify no overlap between pages 1 and 2
         ids1 = set(paginated1.values_list("id", flat=True))
         ids2 = set(paginated2.values_list("id", flat=True))
         self.assertEqual(len(ids1.intersection(ids2)), 0)
 
     def test_paginate_queryset_cursor_invalid_cursor(self):
         """Test cursor pagination with invalid cursor."""
-        User.objects.create_user(email="user@example.com", password="testpass123")
+        _uid = uuid.uuid4().hex[:8]
+        User.objects.create_user(email=f"paginate-invalid-cursor-{_uid}@example.com", password="testpass123")
 
-        queryset = User.objects.all()
+        queryset = User.objects.filter(email__contains=_uid)
         paginated, next_cursor, prev_cursor = paginate_queryset_cursor(
             queryset, page_size=5, cursor="invalid_cursor"
         )

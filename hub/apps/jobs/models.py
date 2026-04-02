@@ -26,6 +26,9 @@ class JobType(models.TextChoices):
     ODPS_LINKING = "ODPS_LINKING", "ODPS Linking"
     VIRTUAL_QUERY_EXECUTION = "VIRTUAL_QUERY_EXECUTION", "Virtual Query Execution"
     MARKETPLACE_SYNC = "MARKETPLACE_SYNC", "Marketplace Sync"
+    ML_TRAINING = "ML_TRAINING", "ML Training"
+    ML_INFERENCE = "ML_INFERENCE", "ML Inference"
+    TRANSFORMATION = "TRANSFORMATION", "Transformation Pipeline"
 
 
 class JobStatus(models.TextChoices):
@@ -270,4 +273,83 @@ class Job(models.Model):
         self.status = JobStatus.CANCELLED
         self.completed_at = timezone.now()
         self.save(update_fields=['status', 'completed_at', 'updated_at'])
+
+
+class SideEffectType(models.TextChoices):
+    COST_TRACKING = "COST_TRACKING", "Cost Tracking"
+    DLQ_SYNC = "DLQ_SYNC", "DLQ Sync"
+    NOTIFICATION = "NOTIFICATION", "Notification"
+    AUDIT_EVENT = "AUDIT_EVENT", "Audit Event"
+
+
+class SideEffectStatus(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    COMPLETED = "COMPLETED", "Completed"
+    FAILED = "FAILED", "Failed"
+
+
+class SideEffect(models.Model):
+    """Outbox for side effects that must be applied after a run completes."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    run_content_type = models.ForeignKey(
+        "contenttypes.ContentType",
+        on_delete=models.CASCADE,
+        help_text="ContentType of the related run model",
+    )
+    run_object_id = models.UUIDField(help_text="Primary key of the related run instance")
+    effect_type = models.CharField(
+        max_length=20,
+        choices=SideEffectType.choices,
+        help_text="Side-effect type",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=SideEffectStatus.choices,
+        default=SideEffectStatus.PENDING,
+    )
+    error_message = models.TextField(blank=True, null=True)
+    attempt_count = models.PositiveIntegerField(default=0)
+    context_json = models.JSONField(blank=True, null=True, default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "side_effects"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"SideEffect:{self.effect_type} ({self.status})"
+
+
+class FailedJobDLQ(models.Model):
+    """Dead-letter queue for jobs that failed after exhausting all retries."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    job_id = models.UUIDField(db_index=True, help_text="Original Job UUID that failed")
+    queue = models.CharField(max_length=100, help_text="RQ queue name the job was on")
+    func_name = models.CharField(max_length=255, help_text="Fully-qualified function name")
+    args_json = models.JSONField(default=dict, help_text="Serialised positional and keyword arguments")
+    error_message = models.TextField(help_text="Final error message")
+    traceback = models.TextField(blank=True, null=True, help_text="Full traceback at time of final failure")
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.SET_NULL,
+        related_name="failed_job_dlq_entries",
+        null=True,
+        blank=True,
+        help_text="Tenant the job belonged to",
+    )
+    retry_count = models.PositiveIntegerField(default=0, help_text="Number of times retried")
+    resolved_at = models.DateTimeField(blank=True, null=True, help_text="When resolved")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "failed_job_dlq"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"DLQ:{self.job_id} ({self.func_name})"
 

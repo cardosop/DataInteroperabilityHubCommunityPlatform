@@ -5,7 +5,6 @@ Unit tests for contract CRUD operations.
 import json
 import uuid
 
-import pytest
 from rest_framework import status
 
 from hub.apps.contracts.models import (
@@ -18,7 +17,6 @@ from hub.apps.contracts.models import (
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.tenants.models import Tenant
 
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class ContractCRUDTest(ContractsAPITestBase):
@@ -99,17 +97,27 @@ schema:
         """Test updating a contract"""
         # Arrange
         # (client already authenticated in ContractsAPITestBase.setUp)
+        valid_odcs = json.dumps({
+            "apiVersion": "odcs.io/v3.0.2", "kind": "DataContract",
+            "id": "test", "name": "Test", "version": "1.0.0",
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        })
         contract = Contract.objects.create(
             tenant=self.tenant,
             status=ContractStatus.DRAFT,
             original_spec_type=OriginalSpecType.ODCS,
-            original_spec_version="3.0.0",
+            original_spec_version="3.0.2",
             original_format=OriginalFormat.JSON,
-            original_raw='{"id": "test", "name": "Test"}',
+            original_raw=valid_odcs,
             created_by=self.user,
         )
+        updated_odcs = json.dumps({
+            "apiVersion": "odcs.io/v3.0.2", "kind": "DataContract",
+            "id": "test", "name": "Updated Test", "version": "1.0.0",
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        })
         updated_data = {
-            "original_raw": '{"id": "test", "name": "Updated Test"}',
+            "original_raw": updated_odcs,
             "original_format": OriginalFormat.JSON,
         }
 
@@ -126,7 +134,13 @@ schema:
 
     def test_delete_contract(self):
         """Test deleting a contract (soft delete)"""
+        from hub.apps.users.models import Role, UserRole
         self.client.force_authenticate(user=self.user)
+        admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant, name="TENANT_ADMIN",
+            defaults={"description": "Tenant administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.user, role=admin_role)
 
         contract = Contract.objects.create(
             tenant=self.tenant,
@@ -140,7 +154,10 @@ schema:
 
         response = self.client.delete(f"/api/v1/contracts/{contract.id}/")
 
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(
+            response.status_code, status.HTTP_204_NO_CONTENT,
+            f"Expected 204, got {response.status_code}: {getattr(response, 'data', getattr(response, 'content', ''))}"
+        )
 
         contract.refresh_from_db()
         self.assertEqual(contract.status, ContractStatus.RETIRED)
@@ -150,8 +167,9 @@ schema:
         self.client.force_authenticate(user=self.user)
 
         # Create another tenant and contract
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         other_contract = Contract.objects.create(
             tenant=other_tenant,
@@ -196,7 +214,8 @@ schema:
 
         data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        # Don't authenticate
+        # Clear authentication
+        self.client.force_authenticate(user=None)
         response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -259,8 +278,9 @@ schema:
         self.client.force_authenticate(user=self.user)
 
         # Create contract in different tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         other_contract = Contract.objects.create(
             tenant=other_tenant,
@@ -288,7 +308,8 @@ schema:
             created_by=self.user,
         )
 
-        # Don't authenticate
+        # Clear authentication
+        self.client.force_authenticate(user=None)
         response = self.client.get(f"/api/v1/contracts/{contract.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -312,8 +333,9 @@ schema:
         self.client.force_authenticate(user=self.user)
 
         # Create contract in different tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         other_contract = Contract.objects.create(
             tenant=other_tenant,
@@ -353,7 +375,8 @@ schema:
             "original_format": OriginalFormat.JSON,
         }
 
-        # Don't authenticate
+        # Clear authentication
+        self.client.force_authenticate(user=None)
         response = self.client.patch(
             f"/api/v1/contracts/{contract.id}/", updated_data, format="json"
         )
@@ -422,8 +445,9 @@ schema:
         self.client.force_authenticate(user=self.user)
 
         # Create contract in different tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
         other_contract = Contract.objects.create(
             tenant=other_tenant,
@@ -451,14 +475,16 @@ schema:
             created_by=self.user,
         )
 
-        # Don't authenticate
+        # Clear authentication
+        self.client.force_authenticate(user=None)
         response = self.client.delete(f"/api/v1/contracts/{contract.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_list_contracts_unauthenticated(self):
         """Test listing contracts requires authentication"""
-        # Don't authenticate
+        # Clear authentication
+        self.client.force_authenticate(user=None)
         response = self.client.get("/api/v1/contracts/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -536,7 +562,10 @@ schema:
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
-            "product": {"details": {"en": {"productID": "test", "name": "Test Product"}}},
+            "product": {
+                "details": {"en": {"productID": "test", "name": "Test Product", "description": "A test"}},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
         }
 
         import json

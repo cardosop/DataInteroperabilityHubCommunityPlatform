@@ -4,10 +4,20 @@ User Management Models
 Defines User and Role models with relationships.
 """
 import uuid
-from django.db import models
+import weakref
+
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
-from django.utils import timezone
 from django.core.validators import EmailValidator
+from django.db import models
+from django.db.models.signals import post_delete, post_save
+from django.dispatch import receiver
+from django.utils import timezone
+
+# Registry of live User Python objects keyed by PK, so signal handlers can
+# find and clear the per-instance _role_cache on the exact object held by the
+# caller — without performing an extra DB query.  WeakValueDictionary ensures
+# User objects that have gone out of scope are not kept alive by this registry.
+_live_user_instances: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
 
 
 class UserStatus(models.TextChoices):
@@ -42,7 +52,9 @@ class UserManager(BaseUserManager):
         
         if extra_fields.get("is_platform_admin") is not True:
             raise ValueError("Superuser must have is_platform_admin=True")
-        
+
+        extra_fields.setdefault("email_verified", True)
+
         return self.create_user(email, password, tenant, **extra_fields)
 
 
@@ -68,13 +80,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     display_name = models.CharField(
         max_length=255,
-        null=True,
+        default="",  # Phase 92: empty string instead of NULL
         blank=True,
         help_text="User display name"
     )
     avatar_url = models.URLField(
         max_length=500,
-        null=True,
+        default="",  # Phase 92: empty string instead of NULL
         blank=True,
         help_text="URL to user avatar image (e.g. gravatar, CDN)"
     )
@@ -94,11 +106,13 @@ class User(AbstractBaseUser, PermissionsMixin):
         help_text="Platform-level admin privileges (transcends tenant boundaries)"
     )
     
-    # Invitation tokens
-    invitation_token = models.UUIDField(
+    # Invitation tokens — stored as SHA-256(plaintext_uuid) (11.3)
+    invitation_token = models.CharField(
+        max_length=64,
         null=True,
         blank=True,
-        help_text="UUID token for invitation acceptance"
+        db_index=True,
+        help_text="SHA-256 hex hash of the invitation UUID token"
     )
     invitation_token_expires_at = models.DateTimeField(
         null=True,
@@ -110,12 +124,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
         help_text="When invitation token was used"
     )
-    
-    # Password reset tokens
-    password_reset_token = models.UUIDField(
+
+    # Password reset tokens — stored as SHA-256(plaintext_uuid) (11.3)
+    password_reset_token = models.CharField(
+        max_length=64,
         null=True,
         blank=True,
-        help_text="UUID token for password reset"
+        db_index=True,
+        help_text="SHA-256 hex hash of the password-reset UUID token"
     )
     password_reset_token_expires_at = models.DateTimeField(
         null=True,
@@ -127,7 +143,30 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
         help_text="When password reset token was used"
     )
-    
+
+    # Email verification (Phase 204): HMAC-signed token stored as SHA-256 hex of plaintext
+    email_verified = models.BooleanField(
+        default=False,
+        help_text="Whether the user has confirmed ownership of their email address",
+    )
+    email_verified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When email was verified",
+    )
+    email_verification_token = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Hash of the email verification token (SHA-256 hex = 64 chars; 255 for spec/future formats)",
+    )
+    email_verification_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the current verification token was issued (expiry + resend throttling)",
+    )
+
     # Token version for session invalidation
     token_version = models.IntegerField(
         default=1,
@@ -187,21 +226,35 @@ class User(AbstractBaseUser, PermissionsMixin):
     def has_role(self, *role_names):
         """
         Check if user has any of the specified roles.
-        
+
+        Results are cached per (frozenset of role names) on the User instance
+        in ``_role_cache`` to ensure repeated calls within a single request
+        hit the DB only once.  The cache is invalidated by the
+        ``_invalidate_user_role_cache`` signal handler whenever a UserRole row
+        is saved or deleted for this user.
+
         Args:
             *role_names: One or more role names to check
-            
+
         Returns:
             True if user has any of the specified roles, False otherwise
         """
         if self.is_platform_admin:
             return True
-        
-        if hasattr(self, 'user_roles'):
-            user_role_names = [ur.role.name for ur in self.user_roles.all()]
-            return any(role_name in user_role_names for role_name in role_names)
-        
-        return False
+
+        cache_key = frozenset(role_names)
+        cache = self.__dict__.setdefault("_role_cache", {})
+        if cache_key in cache:
+            return cache[cache_key]
+
+        assigned_names = set(self.user_roles.values_list("role__name", flat=True))
+        result = bool(assigned_names & set(role_names))
+
+        cache[cache_key] = result
+        # Register this live instance so signal handlers can clear its cache
+        # when UserRole rows are added/removed (even via queryset.delete()).
+        _live_user_instances[self.pk] = self
+        return result
 
 
 class Role(models.Model):
@@ -249,8 +302,10 @@ class Role(models.Model):
 class UserRole(models.Model):
     """
     Many-to-many join table between User and Role.
-    
-    Represents role assignments for users.
+
+    Represents role assignments for users.  The (user, tenant, role) unique
+    constraint prevents duplicate role grants at the DB level; application
+    code must use get_or_create to stay idempotent.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
@@ -258,26 +313,35 @@ class UserRole(models.Model):
         on_delete=models.CASCADE,
         related_name="user_roles"
     )
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="user_role_assignments",
+        help_text="Tenant this role assignment belongs to (denormalised from role.tenant)",
+        null=True,  # nullable for the migration; set NOT NULL via 0009 data migration
+    )
     role = models.ForeignKey(
         Role,
         on_delete=models.CASCADE,
         related_name="user_roles"
     )
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         db_table = "user_roles"
         ordering = ["user", "role"]
         indexes = [
             models.Index(fields=["user", "role"]),
+            models.Index(fields=["user", "tenant"]),
         ]
         constraints = [
+            # DB-level last-resort guarantee: one role grant per (user, tenant, role).
             models.UniqueConstraint(
-                fields=["user", "role"],
-                name="unique_user_role"
+                fields=["user", "tenant", "role"],
+                name="unique_user_tenant_role"
             )
         ]
-    
+
     def __str__(self):
         return f"{self.user.email} -> {self.role.name}"
 
@@ -321,3 +385,36 @@ class UserTenantMembership(models.Model):
     def __str__(self):
         return f"{self.user.email} -> {self.tenant.name}"
 
+
+# ---------------------------------------------------------------------------
+# Signal handlers: invalidate the per-instance _role_cache on the affected
+# User object whenever a UserRole row is created, updated, or deleted.
+# This ensures has_role() is not stale within long-lived process memory.
+# ---------------------------------------------------------------------------
+
+def _clear_user_role_cache(user_id) -> None:
+    """
+    Clear _role_cache on the live User instance for *user_id* (if any).
+
+    ``queryset.delete()`` creates fresh UserRole Python objects during its
+    Collector phase, so ``instance.user`` in the signal handler is never the
+    same Python object as the one held by the caller.  The
+    ``_live_user_instances`` WeakValueDictionary maps PK → live instance,
+    allowing the cache to be cleared on the exact object without an extra
+    DB query or keeping the User alive unnecessarily.
+    """
+    user = _live_user_instances.get(user_id)
+    if user is not None:
+        user.__dict__.pop("_role_cache", None)
+
+
+@receiver(post_save, sender=UserRole)
+def _invalidate_user_role_cache_on_save(sender, instance, **kwargs):
+    """Clear role cache on the user when a UserRole row is saved."""
+    _clear_user_role_cache(instance.user_id)
+
+
+@receiver(post_delete, sender=UserRole)
+def _invalidate_user_role_cache_on_delete(sender, instance, **kwargs):
+    """Clear role cache on the user when a UserRole row is deleted."""
+    _clear_user_role_cache(instance.user_id)

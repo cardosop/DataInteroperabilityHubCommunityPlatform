@@ -15,6 +15,7 @@ from rest_framework.test import APIClient
 from hub.apps.contracts.models import Contract
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -26,14 +27,15 @@ class ObservabilityLineageIntegrationTest(TestCase):
         super().setUp()
         self.client = APIClient()
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -90,9 +92,10 @@ class ObservabilityLineageIntegrationTest(TestCase):
 
     def test_get_lineage_tenant_isolation_returns_404_for_other_tenant(self):
         """User from tenant A cannot get lineage for contract in tenant B."""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -128,7 +131,7 @@ class ObservabilityLineageIntegrationTest(TestCase):
     def test_get_lineage_user_without_tenant_returns_400(self):
         """User without tenant gets 400 (same as other observability endpoints)."""
         user_no_tenant = User.objects.create_user(
-            email="notenant@example.com",
+            email=f"notenant-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=None,
             status=UserStatus.ACTIVE,

@@ -483,7 +483,7 @@ class VirtualizationBusinessRules(BusinessRules):
             "source_configuration_checks": {}
         }
 
-        sources = virtual_dataset.sources or []
+        sources = virtual_dataset.get_sources() or []
         query_type = virtual_dataset.query_type
 
         # Sources are optional for SPARQL queries
@@ -1550,7 +1550,7 @@ class VirtualizationBusinessRules(BusinessRules):
             "source_compatibility_checks": {}
         }
 
-        sources = virtual_dataset.sources or []
+        sources = virtual_dataset.get_sources() or []
         query_type = virtual_dataset.query_type
 
         # Sources are optional for SPARQL queries
@@ -1900,7 +1900,7 @@ class VirtualizationBusinessRules(BusinessRules):
             "cross_source_checks": {}
         }
 
-        sources = virtual_dataset.sources or []
+        sources = virtual_dataset.get_sources() or []
 
         # Skip validation if no sources or single source
         if not sources or len(sources) < 2:
@@ -2400,7 +2400,7 @@ class VirtualizationBusinessRules(BusinessRules):
         details["cross_tenant_access_checks"]["user_id_provided"] = True
 
         # Get sources from virtual dataset
-        sources = virtual_dataset.sources or []
+        sources = virtual_dataset.get_sources() or []
         if not sources:
             # No sources - validation passes (sources are optional for some query types)
             details["cross_tenant_access_checks"]["sources_provided"] = False
@@ -2763,7 +2763,7 @@ class VirtualizationBusinessRules(BusinessRules):
             from hub.apps.governance.abac import ABACEngine
 
             # Check if virtual dataset has cross-tenant sources
-            sources = virtual_dataset.sources or []
+            sources = virtual_dataset.get_sources() or []
             cross_tenant_sources = []
 
             for i, source_config in enumerate(sources):
@@ -2896,7 +2896,7 @@ class VirtualizationBusinessRules(BusinessRules):
             "query_language_checks": {}
         }
 
-        sources = virtual_dataset.sources or []
+        sources = virtual_dataset.get_sources() or []
         query_type = virtual_dataset.query_type
 
         # Get compatible source types for query type
@@ -3064,7 +3064,7 @@ class VirtualizationBusinessRules(BusinessRules):
             "connection_checks": {}
         }
 
-        sources = virtual_dataset.sources or []
+        sources = virtual_dataset.get_sources() or []
 
         if not sources:
             details["connection_checks"]["skipped"] = True
@@ -3690,7 +3690,8 @@ class QueryExecutionBusinessRules(BusinessRules):
 
         query = virtual_dataset.query or ""
         query_upper = query.upper()
-        source_count = len(virtual_dataset.sources) if virtual_dataset.sources else 0
+        _sources = virtual_dataset.get_sources()
+        source_count = len(_sources) if _sources else 0
 
         # Check query complexity
         is_complex = any(keyword in query_upper for keyword in self.COMPLEX_KEYWORDS)

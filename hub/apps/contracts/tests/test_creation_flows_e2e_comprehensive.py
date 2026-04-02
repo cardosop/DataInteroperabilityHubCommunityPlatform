@@ -27,7 +27,13 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
 )
 from hub.apps.contracts.services import ContractService
+from django.contrib.auth import get_user_model
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import UserStatus
+
+User = get_user_model()
 from hub.apps.files.models import File, FileStatus
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
@@ -111,6 +117,7 @@ class CreationFlowsE2EComprehensiveTest(ContractsAPITestBase):
                     }
                 },
                 "contract": {"spec": self.odcs_contract_data},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 "dataQuality": {"declarative": []},
                 "SLA": {"declarative": []},
                 "pricingPlans": {"declarative": []},
@@ -430,6 +437,7 @@ class CreationFlowsE2EComprehensiveTest(ContractsAPITestBase):
         contract = ContractCreationWorkflow.execute(
             original_raw=json.dumps(self.odcs_contract_data),
             original_format="JSON",
+            original_spec_type="ODCS",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             engine=self.engine,
@@ -1431,9 +1439,10 @@ class CreationFlowsE2EComprehensiveTest(ContractsAPITestBase):
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value,
         )
+        ensure_tenant_has_active_subscription(tenant2)
 
         user2 = User.objects.create_user(
-            email="creation-flows-test-2@example.com",
+            email=f"creation-flows-test-2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE.value,

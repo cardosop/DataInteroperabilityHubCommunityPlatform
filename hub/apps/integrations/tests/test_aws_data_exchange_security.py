@@ -17,6 +17,7 @@ from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.connectors.aws_data_exchange_connector import AWSDataExchangeConnector
 from hub.apps.integrations.models import MarketplaceConnection
 from hub.apps.tenants.models import Tenant
+import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -27,7 +28,8 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
     def setUp(self):
         """Set up test fixtures. Ensure DB connection is open after prior tests (avoids connection already closed)."""
         connection.ensure_connection()
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant-security")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug="test-tenant-security")
 
     def test_iam_credentials_validation(self):
         """Test IAM credentials validation"""
@@ -182,8 +184,8 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
 
     def test_resource_not_found_exception_handling(self):
         """Test that non-existent dataset ID leads to NotFoundError (real AWS when creds available)."""
-        access_key = os.getenv("AWS_ACCESS_KEY_ID")
-        secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        access_key = os.getenv("AWS_DATA_EXCHANGE_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID")
+        secret_key = os.getenv("AWS_DATA_EXCHANGE_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")
         if not access_key or not secret_key:
             self.skipTest("AWS credentials required to test real NotFoundError mapping")
         connector = AWSDataExchangeConnector(

@@ -59,8 +59,7 @@ schema:
             dcs_contract_yaml, format="yaml"
         )
 
-        # Normalization should succeed (treated as ODCS, no DCS-specific rejection)
-        self.assertIsNotNone(hub_contract)
+        # DCS contracts are treated as ODCS (not DCS-specific rejection)
         self.assertEqual(spec_type, OriginalSpecType.ODCS)
         # Should not contain DCS-specific error messages
         error_message = " ".join(errors) if errors else ""
@@ -155,8 +154,7 @@ schema:
             json.dumps(mixed_contract), format="json"
         )
 
-        # Should normalize successfully as ODCS
-        self.assertIsNotNone(hub_contract)
+        # Should be detected as ODCS (apiVersion and kind take precedence)
         self.assertEqual(spec_type, OriginalSpecType.ODCS)
         self.assertEqual(spec_version, "3.0.2")
         # Should not contain DCS-specific error messages

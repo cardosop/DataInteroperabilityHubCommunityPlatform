@@ -41,6 +41,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 class TestMarketplaceConnector(DataMarketplaceConnector):
     """Test connector implementation for testing"""
 
+    __test__ = False  # Not a test class — prevent pytest collection warning
+
     def __init__(self, config=None, tenant_id=None, user_id=None):
         self.config = config or {}
         self.tenant_id = tenant_id

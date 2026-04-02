@@ -9,11 +9,12 @@ Tests cover:
 - Filter hash generation
 - Error handling
 """
+import uuid
 
 try:
     import pytest
 
-    pytestmark = pytest.mark.django_db(transaction=True)
+    pytestmark = pytest.mark.django_db
 except ImportError:
     # pytest not available, tests will run with Django test runner
     pytestmark = None
@@ -51,7 +52,8 @@ class DatasetCachingTest(DatasetsTestBase):
         # Clear cache before each test
         cache.clear()
 
-        self.tenant2 = Tenant.objects.create(name="Test Tenant 2", slug="test-tenant-2")
+        uid2 = uuid.uuid4().hex[:8]
+        self.tenant2 = Tenant.objects.create(name=f"Test Tenant {uid2}", slug=f"test-tenant-{uid2}")
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",

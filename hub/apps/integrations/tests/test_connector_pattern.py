@@ -17,6 +17,8 @@ Tests verify:
 No mocks/stubs - uses real connector implementations.
 """
 
+import uuid
+import unittest
 import os
 from unittest.mock import Mock, patch
 
@@ -54,7 +56,7 @@ def _get_dados_gov_br_jwt_token():
     """Return JWT token for DadosGovBr connector; skip test if not set."""
     token = os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")
     if not token:
-        pytest.skip(
+        raise unittest.SkipTest(
             "DADOS_GOV_BR_API_KEY or CKAN_DADOS_GOV_BR_API_KEY required for DadosGovBr "
             "connector pattern tests"
         )
@@ -62,7 +64,7 @@ def _get_dados_gov_br_jwt_token():
 
 
 # Use pytest.mark.django_db without transaction to avoid foreign key constraint issues
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class TestConnectorPatternBase(TestCase):
@@ -70,11 +72,16 @@ class TestConnectorPatternBase(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        # Reset circuit breakers so prior test failures don't leave them OPEN
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name("ckan-connector")
+
         # Create test tenant
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
         # Create test user (User model uses email as username)
-        self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
+        self.user = User.objects.create_user(email=f"test-{uid}@example.com", tenant=self.tenant)
 
     def get_initial_counts(self):
         """Get initial counts of database records"""

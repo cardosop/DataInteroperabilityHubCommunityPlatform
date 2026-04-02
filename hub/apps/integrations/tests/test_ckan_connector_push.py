@@ -9,6 +9,7 @@ This test file validates that push operations correctly raise NotImplementedErro
 CKAN instances are public data portals that should be harvested FROM, not pushed TO.
 """
 
+import unittest
 import pytest
 from django.test import TestCase
 
@@ -19,8 +20,6 @@ from hub.apps.integrations.base import (
 )
 from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
-    # Backward compatibility (deprecated)
-    ckan_available,
     create_test_connector,
     marketplace_available,
 )
@@ -41,14 +40,14 @@ class TestCKANConnectorPushOperations(TestCase):
         super().setUpClass()
 
         # Use centralized test utilities
-        if not ckan_available():
-            pytest.skip("No CKAN instance available for testing")
+        if not marketplace_available():
+            raise unittest.SkipTest("No CKAN instance available for testing")
 
         # Create connector using centralized utility
         cls.connector = create_test_connector(verify_connection=True)
 
         if not cls.connector:
-            pytest.skip("Cannot create or connect to CKAN instance for testing")
+            raise unittest.SkipTest("Cannot create or connect to CKAN instance for testing")
 
     def setUp(self):
         """Set up test fixtures."""

@@ -28,6 +28,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import transaction
@@ -1040,9 +1042,10 @@ class UC_ODPS_004_ODPSDownloadTest(ODPSUseCasesTestBase):
     def test_alternate_flow_permission_errors(self):
         """Test alternate flow: Permission errors"""
         # Create another tenant
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -2493,15 +2496,16 @@ class UC_ODPS_012_ODPSUnlinkingTest(ODPSUseCasesTestBase):
     def test_use_cases_maintain_cross_tenant_isolation(self):
         """Test that use cases maintain cross-tenant isolation."""
         # Create second tenant
+        _uid2 = uuid.uuid4().hex[:8]
         tenant2 = Tenant.objects.create(
-            name="Use Cases Test Tenant 2",
-            slug="use-cases-test-2",
+            name=f"Use Cases Test Tenant {_uid2}",
+            slug=f"use-cases-test-{_uid2}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
 
         user2 = User.objects.create_user(
-            email="use-cases-test-2@example.com",
+            email=f"use-cases-test-2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
             status=UserStatus.ACTIVE,

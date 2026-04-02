@@ -419,13 +419,12 @@ class ODCSGeneratorBaseLoggingTest(TestCase):
             "schema": {"fields": []},
         }
 
-        # Should handle unicode characters
+        # Should handle unicode characters without crashing
         try:
             self.generator.validate_hub_contract_structure(hub_contract)
-            # If validation succeeds, unicode is handled correctly
-            self.assertTrue(True)
+            # Validation succeeded -- unicode is handled correctly
         except Exception as e:
-            # If validation fails, it should fail gracefully
+            # If validation fails, it should fail gracefully with the right error type
             self.assertIsInstance(e, ODCSGenerationError)
 
     def test_validate_hub_contract_structure_handles_special_characters(self):
@@ -436,13 +435,12 @@ class ODCSGeneratorBaseLoggingTest(TestCase):
             "schema": {"fields": []},
         }
 
-        # Should handle special characters
+        # Should handle special characters without crashing
         try:
             self.generator.validate_hub_contract_structure(hub_contract)
-            # If validation succeeds, special characters are handled correctly
-            self.assertTrue(True)
+            # Validation succeeded -- special characters are handled correctly
         except Exception as e:
-            # If validation fails, it should fail gracefully
+            # If validation fails, it should fail gracefully with the right error type
             self.assertIsInstance(e, ODCSGenerationError)
 
     def test_generate_odcs_from_hubcontract_handles_unicode_characters(self):

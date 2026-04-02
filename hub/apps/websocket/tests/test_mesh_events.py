@@ -14,6 +14,7 @@ from hub.apps.users.models import User
 from hub.apps.core.events.models import Event
 from hub.apps.core.events.bus import EventBus
 from hub.apps.websocket.consumers.event_consumer import EventConsumer
+import uuid
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -24,13 +25,14 @@ class MeshEventWebSocketTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant
         )

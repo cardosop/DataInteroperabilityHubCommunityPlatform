@@ -19,9 +19,10 @@ class SearchServiceTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.service = SearchService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 

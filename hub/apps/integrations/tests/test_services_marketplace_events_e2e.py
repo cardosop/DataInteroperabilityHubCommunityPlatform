@@ -5,7 +5,10 @@ Tests end-to-end workflows to verify marketplace events are published correctly
 throughout the entire lifecycle of marketplace operations.
 """
 
+import uuid
 import pytest
+
+pytestmark = pytest.mark.slow
 from django.db import models
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -59,9 +62,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
         except (ImportError, AttributeError):
             pass
 
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id), request_id="test-request-123"

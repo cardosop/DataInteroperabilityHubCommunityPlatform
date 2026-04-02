@@ -11,6 +11,7 @@ Tests verify:
 7. Input size limits
 8. Input sanitization error handling
 """
+import uuid
 
 import json
 
@@ -25,7 +26,12 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
 )
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
-from hub.apps.users.models import Role, UserRole
+from django.contrib.auth import get_user_model
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import Role, UserRole, UserStatus
+from rest_framework.test import APIClient
+
+User = get_user_model()
 
 
 class APIInputSanitizationTest(ContractsAPITestBase):
@@ -97,10 +103,11 @@ class APIInputSanitizationTest(ContractsAPITestBase):
             # Should not execute SQL - either reject or sanitize
             # If it's a 400/422, that's good (validation error)
             # If it's 201, the payload should be stored as-is (not executed)
+            # A 500 means the payload crashed the server — that is NOT safe handling
             self.assertIn(
                 response.status_code,
-                [200, 201, 400, 422, 500],
-                f"SQL injection payload '{payload}' should be handled safely",
+                [200, 201, 400, 422],
+                f"SQL injection payload '{payload}' should be handled safely (got {response.status_code})",
             )
 
             # If created, verify payload is stored as string, not executed
@@ -143,10 +150,11 @@ class APIInputSanitizationTest(ContractsAPITestBase):
             )
 
             # Should not execute XSS - either reject or sanitize
+            # A 500 means the payload crashed the server — that is NOT safe handling
             self.assertIn(
                 response.status_code,
-                [200, 201, 400, 422, 500],
-                f"XSS payload '{payload}' should be handled safely",
+                [200, 201, 400, 422],
+                f"XSS payload '{payload}' should be handled safely (got {response.status_code})",
             )
 
             # If created, verify payload is stored as string, not executed
@@ -191,10 +199,11 @@ class APIInputSanitizationTest(ContractsAPITestBase):
             )
 
             # Should reject or sanitize command injection
+            # A 500 means the payload crashed the server — that is NOT safe handling
             self.assertIn(
                 response.status_code,
-                [200, 201, 400, 422, 500],
-                f"Command injection payload '{payload}' should be handled safely",
+                [200, 201, 400, 422],
+                f"Command injection payload '{payload}' should be handled safely (got {response.status_code})",
             )
 
     def test_path_traversal_prevention(self):
@@ -225,10 +234,11 @@ class APIInputSanitizationTest(ContractsAPITestBase):
 
             # Should reject path traversal attempts
             # Either 400/422 (validation error) or 201 with sanitized path
+            # A 500 means the payload crashed the server — that is NOT safe handling
             self.assertIn(
                 response.status_code,
-                [200, 201, 400, 422, 500],
-                f"Path traversal payload '{payload}' should be handled safely",
+                [200, 201, 400, 422],
+                f"Path traversal payload '{payload}' should be handled safely (got {response.status_code})",
             )
 
     def test_input_validation_all_endpoints(self):
@@ -299,10 +309,11 @@ class APIInputSanitizationTest(ContractsAPITestBase):
             )
 
             # Should handle special characters safely
+            # A 500 means the input crashed the server — that is NOT safe handling
             self.assertIn(
                 response.status_code,
-                [200, 201, 400, 422, 500],
-                f"Special character '{repr(special)}' should be handled safely",
+                [200, 201, 400, 422],
+                f"Special character '{repr(special)}' should be handled safely (got {response.status_code})",
             )
 
     def test_input_size_limits(self):
@@ -322,10 +333,11 @@ class APIInputSanitizationTest(ContractsAPITestBase):
         )
 
         # Should reject or handle large inputs appropriately
+        # A 500 means the input crashed the server — that is NOT safe handling
         self.assertIn(
             response.status_code,
-            [200, 201, 400, 413, 422, 500],
-            "Large input should be handled (rejected or accepted with limits)",
+            [200, 201, 400, 413, 422],
+            f"Large input should be handled (rejected or accepted with limits) (got {response.status_code})",
         )
 
     def test_input_sanitization_error_handling(self):
@@ -354,10 +366,11 @@ class APIInputSanitizationTest(ContractsAPITestBase):
                 )
 
                 # Should handle gracefully without crashing
+                # A 500 means the input crashed the server — that is NOT graceful handling
                 self.assertIn(
                     response.status_code,
-                    [200, 201, 400, 422, 500],
-                    f"Malformed input '{malformed}' should be handled gracefully",
+                    [200, 201, 400, 422],
+                    f"Malformed input '{malformed}' should be handled gracefully (got {response.status_code})",
                 )
             except Exception as e:
                 # Should not crash with unhandled exception
@@ -446,10 +459,11 @@ class APIInputSanitizationTest(ContractsAPITestBase):
             )
 
             # Should handle unicode safely
+            # A 500 means the input crashed the server — that is NOT safe handling
             self.assertIn(
                 response.status_code,
-                [200, 201, 400, 422, 500],
-                f"Unicode input '{unicode_input}' should be handled safely",
+                [200, 201, 400, 422],
+                f"Unicode input '{unicode_input}' should be handled safely (got {response.status_code})",
             )
 
     def test_null_byte_injection_prevention(self):
@@ -473,10 +487,11 @@ class APIInputSanitizationTest(ContractsAPITestBase):
             )
 
             # Should handle null bytes safely
+            # A 500 means the payload crashed the server — that is NOT safe handling
             self.assertIn(
                 response.status_code,
-                [200, 201, 400, 422, 500],
-                f"Null byte payload '{repr(payload)}' should be handled safely",
+                [200, 201, 400, 422],
+                f"Null byte payload '{repr(payload)}' should be handled safely (got {response.status_code})",
             )
 
     def test_input_size_limits_with_different_content_types(self):
@@ -496,10 +511,11 @@ class APIInputSanitizationTest(ContractsAPITestBase):
         )
 
         # Should handle large JSON appropriately
+        # A 500 means the input crashed the server — that is NOT appropriate handling
         self.assertIn(
             response.status_code,
-            [200, 201, 400, 413, 422, 500],
-            "Large JSON should be handled appropriately",
+            [200, 201, 400, 413, 422],
+            f"Large JSON should be handled appropriately (got {response.status_code})",
         )
 
     def test_cross_tenant_input_isolation(self):
@@ -531,9 +547,31 @@ class APIInputSanitizationTest(ContractsAPITestBase):
             format="json",
         )
 
-        # Should be rejected due to tenant isolation (403 or 404)
+        # The asset belongs to self.tenant, not other_tenant.
+        # Tenant isolation MUST reject the request (400/403/404/422).
+        # If 200/201 is returned, the contract must belong to other_tenant
+        # (not leak into self.tenant), so verify isolation explicitly.
         self.assertIn(
             response.status_code,
             [200, 201, 400, 403, 404, 422],
-            "Cross-tenant input should be isolated",
+            f"Cross-tenant input should be isolated (got {response.status_code})",
         )
+        if response.status_code in [200, 201]:
+            # If the server accepted it, the contract MUST belong to other_tenant
+            # (the authenticated user's tenant), NOT to self.tenant
+            contract_id = response.data.get("id")
+            self.assertIsNotNone(contract_id, "Response should include contract id")
+            contract = Contract.objects.get(id=contract_id)
+            self.assertEqual(
+                contract.tenant_id,
+                other_tenant.id,
+                "Contract created via cross-tenant request must belong to the "
+                "authenticated user's tenant, not the asset owner's tenant",
+            )
+            # The contract should NOT reference self.asset (wrong tenant)
+            if contract.asset_id is not None:
+                self.assertNotEqual(
+                    contract.asset_id,
+                    self.asset.id,
+                    "Contract should not be linked to an asset from a different tenant",
+                )

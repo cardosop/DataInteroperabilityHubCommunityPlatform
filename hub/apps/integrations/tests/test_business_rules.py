@@ -4,6 +4,8 @@ Unit tests for MarketplaceIntegrationBusinessRules.
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -44,8 +46,9 @@ class MarketplaceIntegrationBusinessRulesInitializationTest(TestCase):
 
     def test_initialization_with_tenant_id(self):
         """Test initialization with tenant_id"""
+        uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         rules = MarketplaceIntegrationBusinessRules(tenant_id=str(tenant.id))
         self.assertEqual(rules.tenant_id, str(tenant.id))
@@ -53,11 +56,12 @@ class MarketplaceIntegrationBusinessRulesInitializationTest(TestCase):
 
     def test_initialization_with_tenant_and_user(self):
         """Test initialization with tenant_id and user_id"""
+        uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=tenant
         )
         rules = MarketplaceIntegrationBusinessRules(tenant_id=str(tenant.id), user_id=str(user.id))
         self.assertEqual(rules.tenant_id, str(tenant.id))
@@ -109,8 +113,9 @@ class MarketplaceIntegrationRuleExecutionContextTest(TestCase):
         except (ImportError, AttributeError):
             pass
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
@@ -162,11 +167,12 @@ class MarketplaceIntegrationBusinessRulesValidationTest(TestCase):
             post_save.disconnect(asset_saved, sender=Asset)
         except (ImportError, AttributeError):
             pass
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = MarketplaceIntegrationBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -252,8 +258,9 @@ class MarketplaceIntegrationBusinessRulesValidationTest(TestCase):
 
     def test_validate_connection_tenant_mismatch(self):
         """Test connection validation with tenant mismatch"""
+        _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         rules = MarketplaceIntegrationBusinessRules(tenant_id=str(other_tenant.id))
 
@@ -456,11 +463,12 @@ class SyncValidationRulesTest(TestCase):
             post_save.disconnect(asset_saved, sender=Asset)
         except (ImportError, AttributeError):
             pass
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = MarketplaceIntegrationBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -790,11 +798,12 @@ class FederatedAssetValidationRulesTest(TestCase):
             post_save.disconnect(asset_saved, sender=Asset)
         except (ImportError, AttributeError):
             pass
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = MarketplaceIntegrationBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)

@@ -2,10 +2,10 @@
 Comprehensive Tests for CKAN Test Helper Utilities
 
 Tests the centralized test utilities including:
-- get_test_ckan_config()
+- get_test_marketplace_config()
 - create_test_connector()
-- verify_ckan_connection()
-- ckan_available()
+- verify_marketplace_connection()
+- marketplace_available()
 - Backward compatibility functions
 
 All tests use real configuration - no mocks or stubs.
@@ -19,33 +19,29 @@ from django.test import TestCase
 
 from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
-    ckan_available,
     create_test_connector,
     get_test_api_key,
-    # Backward compatibility (deprecated)
-    get_test_ckan_config,
     get_test_ckan_url,
     get_test_marketplace_config,
     marketplace_available,
-    verify_ckan_connection,
     verify_marketplace_connection,
 )
 
 
 class TestGetTestCKANConfig(TestCase):
-    """Test get_test_ckan_config() function"""
+    """Test get_test_marketplace_config() function"""
 
     def test_get_default_test_config(self):
         """Test getting default test configuration"""
-        config = get_test_ckan_config()
+        config = get_test_marketplace_config()
 
         self.assertIsNotNone(config)
-        self.assertEqual(config.name, "demo.ckan.org")
+        self.assertEqual(config.name, "ckan-test")
         self.assertTrue(config.is_test_default)
 
     def test_get_specific_instance_config(self):
         """Test getting configuration for specific instance"""
-        config = get_test_ckan_config("dados.gov.br")
+        config = get_test_marketplace_config("dados.gov.br")
 
         self.assertIsNotNone(config)
         self.assertEqual(config.name, "dados.gov.br")
@@ -53,14 +49,14 @@ class TestGetTestCKANConfig(TestCase):
 
     def test_get_nonexistent_instance(self):
         """Test getting configuration for nonexistent instance"""
-        config = get_test_ckan_config("nonexistent.ckan.org")
+        config = get_test_marketplace_config("nonexistent.ckan.org")
 
         self.assertIsNone(config)
 
     def test_get_config_with_env_var(self):
         """Test that CKAN_TEST_URL environment variable is respected"""
         with patch.dict(os.environ, {"CKAN_TEST_URL": "https://dados.gov.br"}):
-            config = get_test_ckan_config()
+            config = get_test_marketplace_config()
 
             # Should prefer the env var instance
             self.assertIsNotNone(config)
@@ -68,12 +64,12 @@ class TestGetTestCKANConfig(TestCase):
 
     def test_prefer_production_flag(self):
         """Test prefer_production flag"""
-        config = get_test_ckan_config(prefer_production=True)
+        config = get_test_marketplace_config(prefer_production=True)
 
         # Should return production instance if available
         self.assertIsNotNone(config)
         # Could be production or default test instance depending on env vars
-        self.assertIn(config.name, ["dados.gov.br", "demo.ckan.org"])
+        self.assertIn(config.name, ["dados.gov.br", "demo.ckan.org", "ckan-test"])
 
 
 class TestCreateTestConnector(TestCase):
@@ -85,7 +81,10 @@ class TestCreateTestConnector(TestCase):
 
         self.assertIsNotNone(connector)
         self.assertIsInstance(connector, CKANConnector)
-        self.assertEqual(connector.base_url, "https://demo.ckan.org")
+        # Default test instance is ckan-test (local Docker container)
+        from hub.apps.integrations.config.marketplace_instances import get_default_test_instance
+        expected_url = get_default_test_instance().base_url
+        self.assertEqual(connector.base_url, expected_url)
 
     def test_create_connector_with_specific_instance(self):
         """Test creating connector for specific instance"""
@@ -162,7 +161,7 @@ class TestCreateTestConnector(TestCase):
 
 
 class TestVerifyCKANConnection(TestCase):
-    """Test verify_ckan_connection() function"""
+    """Test verify_marketplace_connection() function"""
 
     def test_verify_connection_with_valid_connector(self):
         """Test verifying connection with valid connector"""
@@ -170,22 +169,22 @@ class TestVerifyCKANConnection(TestCase):
 
         # May succeed or fail depending on network, but should not raise exception
         try:
-            result = verify_ckan_connection(connector)
+            result = verify_marketplace_connection(connector)
             self.assertIsInstance(result, bool)
         except Exception:
             # If network is unavailable, that's acceptable for unit tests
             pass
 
     def test_verify_connection_with_none(self):
-        """Test verifying connection with None connector"""
-        result = verify_ckan_connection(None)
-        self.assertFalse(result)
+        """Test verifying connection with None connector raises ValueError"""
+        with self.assertRaises(ValueError):
+            verify_marketplace_connection(None)
 
     def test_verify_connection_with_invalid_url(self):
         """Test verifying connection with invalid URL"""
         connector = CKANConnector(base_url="https://invalid-ckan-instance-xyz-12345.com")
 
-        result = verify_ckan_connection(connector)
+        result = verify_marketplace_connection(connector)
         self.assertFalse(result)
 
     @pytest.mark.integration
@@ -194,28 +193,28 @@ class TestVerifyCKANConnection(TestCase):
         connector = create_test_connector(verify_connection=False)
 
         if connector:
-            result = verify_ckan_connection(connector)
+            result = verify_marketplace_connection(connector)
             # Should return True if connection successful
             self.assertIsInstance(result, bool)
 
 
 class TestCKANAvailable(TestCase):
-    """Test ckan_available() function"""
+    """Test marketplace_available() function"""
 
     def test_ckan_available_default(self):
         """Test checking availability of default test instance"""
         # May return True or False depending on network
-        result = ckan_available()
+        result = marketplace_available()
         self.assertIsInstance(result, bool)
 
     def test_ckan_available_specific_instance(self):
         """Test checking availability of specific instance"""
-        result = ckan_available("demo.ckan.org")
+        result = marketplace_available("demo.ckan.org")
         self.assertIsInstance(result, bool)
 
     def test_ckan_available_nonexistent_instance(self):
         """Test checking availability of nonexistent instance"""
-        result = ckan_available("nonexistent.ckan.org")
+        result = marketplace_available("nonexistent.ckan.org")
         self.assertFalse(result)
 
 
@@ -265,7 +264,7 @@ class TestCKANTestHelpersIntegration(TestCase):
     def test_full_workflow(self):
         """Test full workflow: config -> connector -> verification"""
         # Get config
-        config = get_test_ckan_config()
+        config = get_test_marketplace_config()
         self.assertIsNotNone(config)
 
         # Create connector
@@ -274,7 +273,7 @@ class TestCKANTestHelpersIntegration(TestCase):
 
         # Verify connection
         if connector:
-            result = verify_ckan_connection(connector)
+            result = verify_marketplace_connection(connector)
             self.assertIsInstance(result, bool)
 
     @pytest.mark.integration
@@ -292,7 +291,7 @@ class TestCKANTestHelpersIntegration(TestCase):
     def test_config_system_integration(self):
         """Test that utilities integrate with config system"""
         # Should use config system
-        config = get_test_ckan_config("dados.gov.br")
+        config = get_test_marketplace_config("dados.gov.br")
         self.assertIsNotNone(config)
 
         # Should create connector using config

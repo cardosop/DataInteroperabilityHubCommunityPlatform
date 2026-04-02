@@ -26,6 +26,7 @@ from hub.apps.jobs.utils import (
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.tenants.services import get_tenant_job_limits
 from hub.apps.tenants.validators import get_platform_defaults
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -48,7 +49,32 @@ class TenantConfigJobIntegrationTest(TestCase):
             email=f"user-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
+
+        # Assign DATA_PROVIDER role so user passes permission checks
+        provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider"},
+        )
+        UserRole.objects.create(
+            user=self.user, role=provider_role, tenant=self.tenant
+        )
+
+        # Create subscription so middleware doesn't block write ops
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        from hub.apps.tenants.models import TenantPlan
+        free_plan = TenantPlan.objects.filter(slug="free").first()
+        if free_plan:
+            Subscription.objects.get_or_create(
+                tenant=self.tenant,
+                defaults={
+                    "plan": free_plan,
+                    "status": SubscriptionStatus.ACTIVE,
+                    "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
+                }
+            )
 
         self.platform_defaults = get_platform_defaults()
 

@@ -70,14 +70,15 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
     def setUp(self):
         """Set up test data"""
         # Create tenant
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant", status="ACTIVE")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE")
 
         # Ensure tenant has active subscription so POST request-erasure is not 403
         ensure_tenant_has_active_subscription(self.tenant)
 
         # Create user
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User",
@@ -256,14 +257,16 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
             service.execute_erasure(request_id=fake_request_id)
 
     def test_erasure_anonymizes_audit_events(self):
-        """Test that erasure anonymizes audit events"""
-        # Create audit event with user email in details
+        """Test that erasure anonymizes PII in audit event details_json"""
+        # Create audit event with PII in details — use a unique action
+        # so we can find this specific event after erasure creates its own events
+        test_resource_id = uuid.uuid4()
         create_audit_event(
             resource_type="ASSET",
             action="ASSET_CREATED",
             actor_user=self.user,
             tenant=self.tenant,
-            resource_id=str(uuid.uuid4()),
+            resource_id=str(test_resource_id),
             details={"user_email": self.user.email, "actor_email": self.user.email},
         )
 
@@ -271,18 +274,20 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
         request = service.create_request(user_id=str(self.user.id))
         service.execute_erasure(request_id=str(request.id))
 
-        # Check audit event details are anonymized
-        audit_event = AuditEvent.objects.filter(actor_user=self.user).first()
-        if audit_event and audit_event.details_json:
-            if isinstance(audit_event.details_json, dict):
-                if "user_email" in audit_event.details_json:
-                    self.assertEqual(
-                        audit_event.details_json["user_email"], "deleted@deleted.local"
-                    )
-                if "actor_email" in audit_event.details_json:
-                    self.assertEqual(
-                        audit_event.details_json["actor_email"], "deleted@deleted.local"
-                    )
+        # Find the specific event we created (not the erasure service's own events)
+        audit_event = AuditEvent.objects.filter(
+            actor_user=self.user, resource_id=test_resource_id
+        ).first()
+        self.assertIsNotNone(audit_event, "Test audit event should still exist after erasure")
+        self.assertIsInstance(audit_event.details_json, dict)
+        # redact_pii preserves keys but redacts email values; erasure then
+        # overwrites the redacted values with "deleted@deleted.local"
+        self.assertEqual(
+            audit_event.details_json["user_email"], "deleted@deleted.local"
+        )
+        self.assertEqual(
+            audit_event.details_json["actor_email"], "deleted@deleted.local"
+        )
 
     def test_erasure_records_retention_exceptions(self):
         """Test that erasure records retention exceptions"""
@@ -310,9 +315,10 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
 
     def test_erasure_different_users_independent(self):
         """Test that erasure for different users is independent"""
-        # Create another user
+        # Create another user with unique email for --reuse-db compatibility
+        user2_email = f"test2-{uuid.uuid4().hex[:8]}@example.com"
         user2 = User.objects.create_user(
-            email="test2@example.com",
+            email=user2_email,
             password="testpass123",
             tenant=self.tenant,
             display_name="Test User 2",
@@ -330,7 +336,7 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
 
         # Second user should still be intact
         user2.refresh_from_db()
-        self.assertEqual(user2.email, "test2@example.com")
+        self.assertEqual(user2.email, user2_email)
         self.assertEqual(user2.display_name, "Test User 2")
 
     # ========== ERROR HANDLING TESTS ==========
@@ -383,26 +389,21 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
 
         response = self.client.post("/api/v1/users/me/erasure-requests/request-erasure/")
 
-        # Should return error
-        self.assertIn(
-            response.status_code,
-            [status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT],
-        )
+        # handle_service_exception maps ValidationError → 400
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_erasure_api_handles_execution_failure_gracefully(self):
-        """Test that API handles execution failure gracefully"""
-        # This test verifies that if erasure execution fails,
-        # the request is still created and can be retried
+    def test_erasure_api_creates_request_and_returns_id(self):
+        """Test that API creates request, returns its ID and persists it"""
         response = self.client.post("/api/v1/users/me/erasure-requests/request-erasure/")
 
-        # Should succeed even if execution fails
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("request_id", response.data)
+        self.assertIn("status", response.data)
 
-        # Request should exist
+        # Verify the request was persisted with correct user
         request_id = response.data["request_id"]
         request = ErasureRequest.objects.get(id=request_id)
-        self.assertIsNotNone(request)
+        self.assertEqual(str(request.user_id), str(self.user.id))
 
     # ========== TDD COMPLIANCE TESTS ==========
 

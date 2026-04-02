@@ -18,26 +18,34 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 class APIEndpointsRegressionTest(TestCase):
     """Comprehensive regression tests for API endpoints."""
-    
+
     def setUp(self):
         """Set up test fixtures."""
+        import uuid as _uuid
+        suffix = _uuid.uuid4().hex[:8]
         self.client = Client()
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name=f"API Endpoints Tenant {suffix}",
+            slug=f"api-endpoints-{suffix}",
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
+            email=f"api-endpoints-{suffix}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
     
     def test_health_endpoint_regression(self):
-        """Verify health endpoint works correctly after Django 6 upgrade."""
+        """Health endpoint must return 200 after Django 6 upgrade.
+
+        A 404 is a regression — the health route must always be reachable
+        so load-balancers and monitoring agents can check liveness.
+        """
         response = self.client.get("/health/")
-        
-        # Health endpoint should always work
-        self.assertIn(response.status_code, [200, 404])  # May vary based on URL config
+        self.assertEqual(
+            response.status_code,
+            200,
+            f"/health/ must return 200, got {response.status_code}",
+        )
     
     def test_api_authentication_regression(self):
         """Verify API authentication works correctly after Django 6 upgrade."""

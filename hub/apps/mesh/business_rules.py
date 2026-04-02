@@ -1338,7 +1338,7 @@ class DataMeshBusinessRules(BusinessRules):
 
         # Validate asset is in a valid state for transfer
         from hub.apps.assets.models import AssetStatus
-        valid_transfer_statuses = [AssetStatus.ACTIVE[0], AssetStatus.DRAFT[0], AssetStatus.PUBLIC[0]]
+        valid_transfer_statuses = [AssetStatus.ACTIVE, AssetStatus.DRAFT, AssetStatus.PUBLIC]
         if asset.status not in valid_transfer_statuses:
             errors.append(
                 f"Asset '{asset.name}' must be in ACTIVE, DRAFT, or PUBLIC status for transfer. "

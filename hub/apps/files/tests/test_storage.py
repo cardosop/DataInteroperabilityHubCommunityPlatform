@@ -29,11 +29,12 @@ class S3StorageClientTest(FilesTestBase):
             self.storage_available = False
 
     def test_storage_client_initialization(self):
-        """Test S3StorageClient can be initialized."""
+        """Test S3StorageClient initializes with correct settings."""
+        from django.conf import settings
+
         storage_client = S3StorageClient()
-        self.assertIsNotNone(storage_client)
-        self.assertIsNotNone(storage_client.bucket_name)
         self.assertIsNotNone(storage_client.client)
+        self.assertEqual(storage_client.bucket_name, settings.AWS_STORAGE_BUCKET_NAME)
 
     def test_ensure_bucket_exists_success(self):
         """Test bucket creation when available."""
@@ -43,7 +44,8 @@ class S3StorageClientTest(FilesTestBase):
         storage_client = S3StorageClient()
         # Should not raise
         storage_client._ensure_bucket_exists()
-        self.assertTrue(True)
+        # Bucket exists after ensure call
+        self.assertIsNotNone(storage_client.bucket_name)
 
     def test_save_file_success(self):
         """Test saving file to storage when available."""
@@ -235,8 +237,12 @@ class S3StorageClientTest(FilesTestBase):
         except Exception:
             pass
 
-    def test_complete_multipart_upload_success(self):
-        """Test completing multipart upload."""
+    def test_initiate_and_abort_multipart_upload(self):
+        """Test that a multipart upload can be initiated and then aborted.
+
+        A full complete-multipart test requires uploading real parts; this test
+        verifies the initiate/abort lifecycle instead.
+        """
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
 
@@ -246,16 +252,13 @@ class S3StorageClientTest(FilesTestBase):
             key=storage_path,
             content_type="text/csv",
         )
+        self.assertIsNotNone(upload_id)
 
-        # Upload a part (simplified - in real scenario would upload actual data)
-        # For testing, we'll abort instead since we don't have actual part data
+        # Abort the multipart upload — catch only S3-related errors
         try:
             self.storage_client.abort_multipart_upload(key=storage_path, upload_id=upload_id)
-        except Exception:
-            pass
-
-        # Test that we can initiate and abort successfully
-        self.assertTrue(True)
+        except self.storage_client.client.exceptions.NoSuchUpload:
+            pass  # Already completed or aborted
 
     def test_storage_unavailable_graceful_handling(self):
         """Test graceful handling when storage is unavailable."""
@@ -265,4 +268,4 @@ class S3StorageClientTest(FilesTestBase):
             self.skipTest("S3/MinIO storage not available - test skipped gracefully")
 
         # If we get here, storage is available
-        self.assertTrue(True)
+        self.assertTrue(self.storage_available)

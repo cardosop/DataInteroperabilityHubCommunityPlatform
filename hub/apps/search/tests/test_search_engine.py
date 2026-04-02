@@ -4,6 +4,7 @@ Unit tests for Search Engine
 Tests for full-text search, ranking, suggestions, and analytics.
 """
 
+import uuid
 import pytest
 from django.test import TestCase
 from django.utils import timezone
@@ -39,12 +40,13 @@ class SearchEngineTest(TestCase):
         except (ImportError, AttributeError):
             pass
 
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
         )
 
         self.user = User.objects.create_user(
-            email="user@example.com",
+            email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -80,8 +82,19 @@ class SearchEngineTest(TestCase):
             created_by=self.user,
         )
 
+        # Second asset to ensure pagination tests have 2+ results
+        self.asset2 = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset-2",
+            name="Test Report Asset",
+            description="Another test asset for pagination",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user,
+        )
+
         # Index resources
         SearchIndexer.index_asset(self.asset)
+        SearchIndexer.index_asset(self.asset2)
         SearchIndexer.index_dataset(self.dataset)
 
     def test_search_basic(self):
@@ -103,14 +116,10 @@ class SearchEngineTest(TestCase):
 
     def test_search_pagination(self):
         """Test search pagination"""
-        # First, ensure we have at least 2 results
         all_results, total = SearchEngine.search(
             tenant_id=str(self.tenant.id), query="test", limit=100, offset=0
         )
-
-        # Skip pagination test if we don't have enough results
-        if total < 2:
-            self.skipTest(f"Need at least 2 results for pagination test, got {total}")
+        self.assertGreaterEqual(total, 2, "setUp must create 2+ searchable resources")
 
         results_page1, total = SearchEngine.search(
             tenant_id=str(self.tenant.id), query="test", limit=1, offset=0
@@ -121,11 +130,16 @@ class SearchEngineTest(TestCase):
         )
 
         self.assertEqual(len(results_page1), 1)
-        # Page 2 might be empty if total is exactly 1, or might have 1 result if total >= 2
+        # Page 2 should have results if total >= 2
         if total >= 2:
-            self.assertGreaterEqual(len(results_page2), 0)  # Allow 0 if offset exceeds results
-            if len(results_page2) > 0:
-                self.assertNotEqual(results_page1[0]["id"], results_page2[0]["id"])
+            self.assertGreater(
+                len(results_page2), 0,
+                "Page 2 should have results when total >= 2",
+            )
+            self.assertNotEqual(
+                results_page1[0]["id"], results_page2[0]["id"],
+                "Pages should return different results",
+            )
 
     def test_search_sorting(self):
         """Test search sorting"""
@@ -134,7 +148,14 @@ class SearchEngineTest(TestCase):
         )
 
         self.assertGreater(len(results), 0)
-        # Results should be sorted by indexed_at descending
+        # Verify descending order by indexed_at
+        if len(results) >= 2:
+            for i in range(len(results) - 1):
+                self.assertGreaterEqual(
+                    results[i].get("indexed_at", ""),
+                    results[i + 1].get("indexed_at", ""),
+                    "Results should be sorted by indexed_at desc",
+                )
 
     def test_get_suggestions(self):
         """Test search suggestions"""

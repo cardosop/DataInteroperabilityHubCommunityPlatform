@@ -4,6 +4,7 @@ Unit tests for DatasetsBusinessRules access validation.
 Comprehensive tests for dataset access validation integrating with GovernanceService
 and ABACEngine, without mocks/stubs.
 """
+import uuid
 
 from datetime import timedelta
 
@@ -73,11 +74,13 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
 
     def test_validate_dataset_read_access_cross_tenant(self):
         """Test read access validation for cross-tenant user"""
+        _sfx = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_sfx}", slug=f"other-tenant-{_sfx}", kyc_status=KYCStatus.VERIFIED
         )
+        _uid = uuid.uuid4().hex[:8]
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{_uid}@example.com", password="testpass123", tenant=other_tenant
         )
         dataset = DatasetFactory.create_dataset(
             tenant=self.tenant, file=self.file, format="CSV", version=1
@@ -105,11 +108,13 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
 
     def test_validate_dataset_write_access_cross_tenant(self):
         """Test write access validation for cross-tenant user"""
+        _sfx = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_sfx}", slug=f"other-tenant-{_sfx}", kyc_status=KYCStatus.VERIFIED
         )
+        _uid = uuid.uuid4().hex[:8]
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{_uid}@example.com", password="testpass123", tenant=other_tenant
         )
         dataset = DatasetFactory.create_dataset(
             tenant=self.tenant, file=self.file, format="CSV", version=1
@@ -289,11 +294,13 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
 
     def test_validate_tenant_isolation_cross_tenant(self):
         """Test tenant isolation validation for cross tenant"""
+        _sfx = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_sfx}", slug=f"other-tenant-{_sfx}", kyc_status=KYCStatus.VERIFIED
         )
+        _uid = uuid.uuid4().hex[:8]
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{_uid}@example.com", password="testpass123", tenant=other_tenant
         )
         dataset = DatasetFactory.create_dataset(
             tenant=self.tenant, file=self.file, format="CSV", version=1
@@ -457,11 +464,12 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.rules = DatasetsBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -614,11 +622,13 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
 
     def test_validate_dataset_read_access_edge_case_different_tenant(self):
         """Test read access validation with different tenant (edge case)"""
+        _sfx = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_sfx}", slug=f"other-tenant-{_sfx}", kyc_status=KYCStatus.VERIFIED
         )
+        _uid = uuid.uuid4().hex[:8]
         other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{_uid}@example.com", password="testpass123", tenant=other_tenant
         )
 
         dataset = DatasetFactory.create_dataset(

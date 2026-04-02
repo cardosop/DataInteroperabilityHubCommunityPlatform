@@ -10,6 +10,7 @@ import pytest
 from django.test import TestCase
 
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+import uuid
 from hub.apps.tenants.serializers import (
     RateLimitsSerializer,
     TenantCreateSerializer,
@@ -26,14 +27,15 @@ class TenantSerializerTest(TestCase):
     """Test TenantSerializer."""
 
     def setUp(self):
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
     def test_serialize_tenant_success(self):
         """Success: serializes tenant instance with status and kyc_status."""
         serializer = TenantSerializer(self.tenant)
         data = serializer.data
-        self.assertEqual(data["name"], "Test Tenant")
-        self.assertEqual(data["slug"], "test-tenant")
+        self.assertEqual(data["name"], self.tenant.name)
+        self.assertEqual(data["slug"], self.tenant.slug)
         self.assertEqual(data["status"], TenantStatus.ACTIVE)
         self.assertEqual(data["kyc_status"], KYCStatus.UNVERIFIED)
 
@@ -45,7 +47,20 @@ class TenantSerializerTest(TestCase):
             partial=True,
         )
         self.assertTrue(serializer.is_valid(), serializer.errors)
-        self.assertEqual(serializer.validated_data["kyc_status"], KYCStatus.VERIFIED)
+        self.assertEqual(
+            serializer.validated_data["kyc_status"],
+            KYCStatus.VERIFIED,
+        )
+
+    def test_validate_kyc_status_rejects_invalid(self):
+        """Failure: kyc_status rejects invalid values."""
+        serializer = TenantSerializer(
+            self.tenant,
+            data={"kyc_status": "BOGUS"},
+            partial=True,
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("kyc_status", serializer.errors)
 
 
 class TenantCreateSerializerTest(TestCase):
@@ -53,22 +68,26 @@ class TenantCreateSerializerTest(TestCase):
 
     def test_valid_data_success(self):
         """Success: valid name, slug, optional region creates tenant."""
-        data = {"name": "New Tenant", "slug": "new-tenant", "region": "us-east-1"}
+        import uuid as _uuid
+        _uid = _uuid.uuid4().hex[:8]
+        data = {"name": f"New Tenant {_uid}", "slug": f"new-tenant-{_uid}", "region": "us-east-1"}
         serializer = TenantCreateSerializer(data=data)
         self.assertTrue(serializer.is_valid(), serializer.errors)
         tenant = serializer.save()
-        self.assertEqual(tenant.name, "New Tenant")
-        self.assertEqual(tenant.slug, "new-tenant")
+        self.assertEqual(tenant.name, f"New Tenant {_uid}")
+        self.assertEqual(tenant.slug, f"new-tenant-{_uid}")
         self.assertEqual(tenant.status, TenantStatus.ACTIVE)
         self.assertEqual(tenant.kyc_status, KYCStatus.UNVERIFIED)
 
     def test_slug_normalized_to_lowercase(self):
         """Success: slug is normalized to lowercase."""
-        data = {"name": "New Tenant", "slug": "New-Tenant"}
+        import uuid as _uuid
+        _uid = _uuid.uuid4().hex[:8]
+        data = {"name": f"New Tenant {_uid}", "slug": f"New-Tenant-{_uid}"}
         serializer = TenantCreateSerializer(data=data)
         self.assertTrue(serializer.is_valid(), serializer.errors)
         tenant = serializer.save()
-        self.assertEqual(tenant.slug, "new-tenant")
+        self.assertEqual(tenant.slug, f"new-tenant-{_uid}")
 
     def test_failure_invalid_slug_rejected(self):
         """Failure: slug with invalid characters fails validation."""
@@ -88,7 +107,8 @@ class TenantUpdateSerializerTest(TestCase):
     """Test TenantUpdateSerializer."""
 
     def setUp(self):
-        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
     def test_valid_partial_update_success(self):
         """Success: partial update of name and kyc_status."""
