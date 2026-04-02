@@ -18,6 +18,7 @@ import '../journeys/cpo/JOURNEY-CPO-010.spec';
 
 import { test, expect } from '@playwright/test';
 import { loginAsPersona, getComplianceOfficerUser, getTestUser } from '../fixtures/auth';
+import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
 
 test.describe('Persona RBAC: Compliance Officer', () => {
   test.setTimeout(120000);
@@ -25,30 +26,35 @@ test.describe('Persona RBAC: Compliance Officer', () => {
   test('CPO can access /compliance', async ({ page }) => {
     await loginAsPersona(page, getComplianceOfficerUser);
     await page.goto('/compliance');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    test.skip(page.url().includes('/login'), 'Auth redirect');
+    await waitForAppMainReady(page);
     expect(page.url()).toContain('/compliance');
+    await expect(page.locator('.app-main')).toBeVisible();
     await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
   });
 
   test('CPO can access /governance', async ({ page }) => {
     await loginAsPersona(page, getComplianceOfficerUser);
     await page.goto('/governance');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    test.skip(page.url().includes('/login'), 'Auth redirect');
+    await waitForAppMainReady(page);
     const url = page.url();
-    expect(url.includes('/governance') || url.includes('/403')).toBe(true);
+    if (url.includes('/403')) test.skip(true, 'CPO does not have governance access');
+    expect(url).toContain('/governance');
+    await expect(page.locator('.app-main')).toBeVisible();
+    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
   });
 
   test('non-CPO user cannot access /audit', async ({ page }) => {
     await loginAsPersona(page, getTestUser); // DATA_PROVIDER, not CPO/auditor
     await page.goto('/audit');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForURL(/\/(403|login)/, { timeout: 20000 }).catch(() => null);
+    await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/audit' });
     const url = page.url();
-    expect(url.includes('/403') || url.includes('/login')).toBe(true);
-    expect(url.includes('/audit') && !url.includes('/403')).toBe(false);
+    const path = new URL(url).pathname;
+    expect(
+      path.includes('/403') ||
+        path.includes('/login') ||
+        path.startsWith('/coming-soon') ||
+        path.startsWith('/unavailable')
+    ).toBe(true);
   });
 });

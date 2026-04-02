@@ -174,11 +174,48 @@ test.describe('Auth storage setup', () => {
       }
     }
 
-    // 11.1: access_token lives in JS memory; 'user' is the reliable localStorage signal.
-    const hasToken = await page.evaluate(
+    // Verify user profile is in localStorage (baseline session indicator)
+    const hasUser = await page.evaluate(
       () => !!localStorage.getItem('user')
     );
-    expect(hasToken).toBe(true);
+    expect(hasUser).toBe(true);
+
+    // Phase 11.1 fix: access_token lives in JS module memory after UI login,
+    // so page.context().storageState() never captures it. When the test project
+    // loads this storageState, the app finds user + refresh_token but no
+    // access_token, attempts a token refresh that may fail (token already
+    // rotated, rate-limited, or replay-detected), and redirects to /login.
+    //
+    // Fix: do a supplementary API login to get explicit tokens and inject
+    // access_token into localStorage. initializeAuth() reads it from
+    // localStorage if present (authService.ts line 263), so subsequent page
+    // loads in the test project will have a valid access_token immediately
+    // without needing a refresh cycle.
+    const hasAccessToken = await page.evaluate(
+      () => !!localStorage.getItem('access_token')
+    );
+    if (!hasAccessToken) {
+      try {
+        const apiAuth = await loginViaApi(user.email, user.password);
+        await page.evaluate(
+          ({ access_token, refresh_token }) => {
+            localStorage.setItem('access_token', access_token);
+            // Also update refresh_token to match the latest rotation
+            if (refresh_token) {
+              localStorage.setItem('refresh_token', refresh_token);
+            }
+          },
+          apiAuth
+        );
+      } catch (apiErr) {
+        // API login failed — storageState will rely on refresh_token only.
+        // This is the pre-fix behavior; tests may skip on auth redirect.
+        console.warn(
+          'Auth storage: could not inject access_token via API login:',
+          apiErr instanceof Error ? apiErr.message : String(apiErr)
+        );
+      }
+    }
 
     fs.mkdirSync(AUTH_DIR, { recursive: true });
     await page.context().storageState({ path: STORAGE_STATE_PATH });

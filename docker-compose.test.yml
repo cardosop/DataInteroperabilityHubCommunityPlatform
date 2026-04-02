@@ -406,7 +406,7 @@ services:
     container_name: hub-test-fuseki
     user: root
     environment:
-      FUSEKI_DATASET: ${FUSEKI_DATASET:-hub_test}
+      FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
       ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:-admin}
       ENVIRONMENT: test
       DEBUG: "True"
@@ -672,7 +672,7 @@ services:
       - ./services/semantic-service/pytest.ini:/app/pytest.ini:ro
     environment:
       FUSEKI_URL: http://fuseki-test:3030
-      FUSEKI_DATASET: ${FUSEKI_DATASET:-hub_test}
+      FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
       FUSEKI_ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:-admin}
       HUB_DOMAIN: ${HUB_DOMAIN:-test.hub.example.com}
       ENVIRONMENT: test

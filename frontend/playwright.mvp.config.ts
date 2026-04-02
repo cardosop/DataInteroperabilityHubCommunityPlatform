@@ -1,17 +1,23 @@
 /**
- * MVP E2E subset — persona + feature specs for release/mvp-v1.
- * Same webServer / globalSetup / timeouts as playwright.config.ts; only `projects` differ.
+ * MVP E2E — release/mvp-v1.
+ *
+ * Uses root-level `testMatch` (Playwright merges into projects that do not override it).
+ * Per-project `testMatch` was ignored for the chromium project in Playwright 1.58 in this repo.
  */
 import { defineConfig, devices } from '@playwright/test';
 import { resolvePlaywrightFrontend } from './src/lib/playwright-frontend-resolve';
+
+// Set VITE_E2E_TEST in the test runner process (not just the Vite webServer).
+// Test specs like data-quality.spec.ts check process.env.VITE_E2E_TEST to decide
+// whether to skip service-dependent tests. Without this, the env var only reaches
+// the Vite dev server child process (via webServer.env below) but not the Playwright
+// Node.js process that evaluates test.skip() conditions.
+process.env.VITE_E2E_TEST = 'true';
 
 const isVisibleRun = process.env.E2E_VISIBLE === '1';
 const { baseURL: resolvedFrontendBaseURL, webPort, webServerCheckUrl } =
   resolvePlaywrightFrontend();
 
-/**
- * Explicit allowlist relative to testDir (e2e/). Playwright prepends a recursive glob prefix per pattern.
- */
 const mvpTestMatch: string[] = [
   'personas/data-product-owner.spec.ts',
   'personas/data-engineer.spec.ts',
@@ -31,6 +37,9 @@ const mvpTestMatch: string[] = [
 
 export default defineConfig({
   testDir: './e2e',
+  testMatch: mvpTestMatch,
+  // Persona entry specs import full journey suites; keep only persona + feature tests for MVP.
+  grepInvert: /JOURNEY-/,
   fullyParallel: !isVisibleRun,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -55,7 +64,11 @@ export default defineConfig({
     },
     {
       name: 'chromium-mvp',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'e2e/.auth/user.json',
+      },
+      dependencies: ['setup-auth'],
     },
     ...(isVisibleRun
       ? [
@@ -71,7 +84,6 @@ export default defineConfig({
               storageState: 'e2e/.auth/user.json',
             },
             dependencies: ['setup-auth'],
-            testMatch: mvpTestMatch,
           },
         ]
       : []),

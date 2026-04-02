@@ -39,8 +39,14 @@ test.describe('Feature: Compliance', () => {
   test.describe('Failure', () => {
     test('compliance run detail with non-existent id shows error or redirect', async ({ page }) => {
       await page.goto('/compliance/runs/00000000-0000-0000-0000-000000000000');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      try {
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          acceptRedirectToLogin: true,
+        });
+      } catch {
+        // May resolve to error/login — acceptable
+      }
       const url = page.url();
       const onLogin = url.includes('/login');
       // `onCompliance` was trivially true (we navigated to /compliance/runs/...) — removed.

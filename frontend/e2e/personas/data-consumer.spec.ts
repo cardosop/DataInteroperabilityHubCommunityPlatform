@@ -22,6 +22,7 @@ import '../journeys/dc/JOURNEY-DC-014.spec';
 import '../journeys/dc/JOURNEY-DC-015.spec';
 
 import { test, expect } from '@playwright/test';
+import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
 import { loginAsPersona, getConsumerTestUser } from '../fixtures/auth';
 
 test.describe('Persona RBAC: Data Consumer', () => {
@@ -30,10 +31,9 @@ test.describe('Persona RBAC: Data Consumer', () => {
   test('DC can access /marketplace', async ({ page }) => {
     await loginAsPersona(page, getConsumerTestUser);
     await page.goto('/marketplace');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    test.skip(page.url().includes('/login'), 'Auth redirect');
+    await waitForAppMainReady(page);
     expect(page.url()).toContain('/marketplace');
+    await expect(page.locator('.app-main')).toBeVisible();
     await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
   });
 
@@ -41,8 +41,13 @@ test.describe('Persona RBAC: Data Consumer', () => {
     await loginAsPersona(page, getConsumerTestUser);
     await page.goto('/admin');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForURL(/\/(403|login|admin|marketplace)/, { timeout: 20000 }).catch(() => null);
-    const url = page.url();
-    expect(url.includes('/403') || url.includes('/login') || !url.includes('/admin')).toBe(true);
+    await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/admin' });
+    const path = new URL(page.url()).pathname;
+    expect(
+      path.includes('/403') ||
+        path.includes('/login') ||
+        path.startsWith('/coming-soon') ||
+        path.startsWith('/unavailable')
+    ).toBe(true);
   });
 });

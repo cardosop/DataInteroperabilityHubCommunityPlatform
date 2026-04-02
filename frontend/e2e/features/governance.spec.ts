@@ -13,29 +13,49 @@ test.describe('Feature: Governance', () => {
   test.describe('Success', () => {
     test('governance route loads or redirects to login/403', async ({ page }) => {
       await page.goto('/governance');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      try {
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          acceptRedirectToLogin: true,
+          contentSelector: '.governance-page, .empty-state, h1',
+        });
+      } catch {
+        // waitForAppMainReady may throw on 403/unavailable — that's acceptable
+      }
       const url = page.url();
-      const onGov = url.includes('/governance');
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
-      expect(onGov || onLogin || on403).toBe(true) /* acceptable states */;
+      if (onLogin || on403) {
+        expect(onLogin || on403).toBe(true);
+        return;
+      }
+      // If we stayed on /governance, assert actual content rendered
+      expect(url).toContain('/governance');
+      const hasContent =
+        (await page.locator('.governance-page, .empty-state, h1').count()) > 0;
+      expect(hasContent, 'Expected governance content to render on /governance').toBe(true);
     });
   });
 
   test.describe('Failure', () => {
     test('governance retention with missing role shows 403 or redirect', async ({ page }) => {
       await page.goto('/governance/retention');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      try {
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          acceptRedirectToLogin: true,
+        });
+      } catch {
+        // May resolve to 403/unavailable — acceptable
+      }
       const url = page.url();
       const on403 = url.includes('/403');
       const onLogin = url.includes('/login');
-      const onRetention = url.includes('/governance/retention');
       const hasForbidden =
         (await page.locator('[data-testid="forbidden-page"]').count()) > 0 ||
         (await page.locator('text=/forbidden|access denied/i').count()) > 0;
-      expect(on403 || onLogin || onRetention || hasForbidden).toBe(true) /* acceptable states */;
+      // Only accept 403, login redirect, or forbidden content — NOT staying on /governance/retention without error
+      expect(on403 || onLogin || hasForbidden).toBe(true) /* acceptable states */;
     });
   });
 
@@ -43,18 +63,17 @@ test.describe('Feature: Governance', () => {
     test('governance retention list page loads when authorized', async ({ page }) => {
       await page.goto('/governance/retention');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      try {
+        await waitForAppMainReady(page, { timeout: 30000 });
+      } catch {
+        // May have redirected or content already present
+      }
       const url = page.url();
       if (url.includes('/403') || url.includes('/login')) {
         expect(url).toMatch(/\/403|\/login/);
         return;
       }
       if (url.includes('/governance/retention')) {
-        try {
-          await waitForAppMainReady(page, { timeout: 30000 });
-        } catch {
-          // May have content already
-        }
         // .error-display alone is NOT a success state — the page must render meaningful content
         const hasMeaningfulContent =
           (await page.locator('.governance-retention-policy-list-page').count()) > 0 ||

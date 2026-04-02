@@ -36,6 +36,10 @@ test.describe('Feature: Auth', () => {
       await page.goto('/login', { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('input[type="email"], .login-page', { timeout: 15000 });
       expect(page.url()).toMatch(/\/login|\/register/);
+      // Assert login form elements are visible
+      await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('input[type="password"]')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('button[type="submit"]')).toBeVisible({ timeout: 5000 });
     });
 
     test('public page accessible without auth', async ({ page }) => {
@@ -45,15 +49,14 @@ test.describe('Feature: Auth', () => {
       await page.goto('/public', { waitUntil: 'domcontentloaded' });
       // Wait for the page to settle — /public should render content, not redirect
       await page
-        .locator('h1, .public-page, [data-testid="public-page"], main')
+        .locator('h1, .public-page, [data-testid="public-page"]')
         .first()
-        .waitFor({ state: 'visible', timeout: 15000 })
-        .catch(() => null);
+        .waitFor({ state: 'visible', timeout: 15000 });
       // Must stay on /public — redirect to /login is a failure for this scenario
       await expect(page).toHaveURL(/\/public/);
       // Must render visible content (not a blank page or error state)
       const hasContent =
-        (await page.locator('h1, .public-page, main').count()) > 0;
+        (await page.locator('h1, .public-page').count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
@@ -65,6 +68,16 @@ test.describe('Feature: Auth', () => {
       await page.click('button[type="submit"]').catch(() => null);
       await page.waitForTimeout(2000);
       expect(page.url()).toContain('/login');
+      // Assert validation feedback is visible after submitting empty form
+      const hasValidationError =
+        (await page.locator('[role="alert"], .field-error, .error-message').count()) > 0 ||
+        (await page.locator('text=/required|enter.*email|enter.*password|invalid/i').count()) > 0;
+      const hasHtml5Validation =
+        !(await page.locator('input[type="email"]').evaluate((el: HTMLInputElement) => el.validity.valid));
+      expect(
+        hasValidationError || hasHtml5Validation,
+        'Expected validation feedback (role=alert, .field-error, or HTML5 :invalid) after empty submit'
+      ).toBe(true);
     });
 
     test('invalid path redirects or shows 404', async ({ page }) => {
@@ -213,13 +226,13 @@ test.describe('Feature: Auth', () => {
         test.skip(true, 'Registration service returned 503 — unavailable, cannot test duplicate email');
         return;
       }
+      // After a 400/409, the form must display an error message — staying on /register alone is not enough
       const hasError =
         (await page.locator('.error-message, .field-error, [role="alert"]').count()) > 0 ||
         (await page
           .locator('text=/already exists|duplicate|taken|registered|email.*use|unavailable/i')
           .count()) > 0;
-      const stayedOnRegister = page.url().includes('/register');
-      expect(hasError || stayedOnRegister).toBe(true) /* acceptable states */;
+      expect(hasError, 'Expected duplicate-email error message to be displayed').toBe(true);
     });
   });
 
@@ -235,7 +248,7 @@ test.describe('Feature: Auth', () => {
       const onRegister = url.includes('/register');
       const onLogin = url.includes('/login');
       const onUnavailable = url.includes('/unavailable');
-      const onRoot = url.endsWith('/') || url.match(/\/$/) !== null;
+      const onRoot = new URL(url).pathname === '/';
       expect(onRegister || onLogin || onUnavailable || onRoot).toBe(true) /* acceptable states */;
     });
   });

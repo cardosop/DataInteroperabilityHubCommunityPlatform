@@ -55,6 +55,31 @@ export async function hasLoginPrompt(page: Page): Promise<boolean> {
 }
 
 /**
+ * After `goto` to a role-gated path, wait for SPA to finish (403, login, MVP
+ * coming-soon/unavailable, or navigated off the forbidden prefix).
+ * Do not use `waitForURL(/...admin.../)` — it resolves immediately while still on /admin.
+ */
+export async function waitForRoleGuardResolved(
+  page: Page,
+  options: { forbiddenPathPrefix: string; timeout?: number }
+): Promise<void> {
+  const { forbiddenPathPrefix, timeout = 25000 } = options;
+  await page.waitForFunction(
+    (prefix: string) => {
+      const path = window.location.pathname;
+      if (path.includes('/403')) return true;
+      if (path.includes('/login')) return true;
+      if (path.startsWith('/coming-soon')) return true;
+      if (path.startsWith('/unavailable')) return true;
+      if (!path.startsWith(prefix)) return true;
+      return false;
+    },
+    forbiddenPathPrefix,
+    { timeout }
+  );
+}
+
+/**
  * Wait for API response with retry logic
  */
 export async function waitForApiResponse(

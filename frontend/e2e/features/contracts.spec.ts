@@ -36,28 +36,38 @@ test.describe('Feature: Contracts', () => {
     test('contract edit with non-existent id shows error', async ({ page }) => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
       await page.goto(`/contracts/${nonExistentId}/edit`);
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      try {
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          acceptRedirectToLogin: true,
+        });
+      } catch {
+        // May resolve to error/login — acceptable
+      }
       const onLogin = page.url().includes('/login');
       const hasError = (await page.locator('.error-display').count()) > 0;
-      const noEditor = (await page.locator('.contract-editor-page').count()) === 0;
-      expect(onLogin || hasError || noEditor).toBe(true) /* acceptable states */;
+      expect(onLogin || hasError).toBe(true) /* acceptable states */;
     });
   });
 
   test.describe('Edge', () => {
     test('contract link-odps with non-existent id shows error or redirect', async ({ page }) => {
       await page.goto('/contracts/00000000-0000-0000-0000-000000000000/link-odps');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      try {
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          acceptRedirectToLogin: true,
+        });
+      } catch {
+        // May resolve to error/login/403 — acceptable
+      }
       const url = page.url();
-      const onLinkOdps = url.includes('/link-odps');
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('text=/not found|failed|403|forbidden/i').count()) > 0;
-      expect(onLinkOdps || hasError || onLogin || on403).toBe(true) /* acceptable states */;
+      expect(hasError || onLogin || on403).toBe(true) /* acceptable states */;
     });
   });
 });

@@ -914,4 +914,35 @@ export async function loginUser(
       'Login failed: Redirected to login after app shell appeared; token may be invalid.'
     );
   }
+
+  // Phase 11.1 fix: after successful UI login, access_token lives in JS module
+  // memory only. When the test later calls page.goto() (which triggers a full page
+  // reload in Playwright), JS memory is wiped and initializeAuth() finds no
+  // access_token. It attempts to refresh using the stored refresh_token, but that
+  // token may have been rotated during login (replay detection) causing a 401 that
+  // clears auth state and redirects to /login.
+  //
+  // Fix: do a supplementary API login and inject access_token into localStorage.
+  // initializeAuth() reads access_token from localStorage if present (line 263 of
+  // authService.ts), making subsequent page.goto() navigations auth-stable.
+  const hasAccessToken = await page.evaluate(
+    () => !!localStorage.getItem('access_token')
+  );
+  if (!hasAccessToken) {
+    try {
+      const apiAuth = await loginViaApi(user.email, user.password);
+      await page.evaluate(
+        ({ access_token, refresh_token }) => {
+          localStorage.setItem('access_token', access_token);
+          if (refresh_token) {
+            localStorage.setItem('refresh_token', refresh_token);
+          }
+        },
+        apiAuth
+      );
+    } catch {
+      // API login failed — auth may break on next page.goto() but don't block
+      // the current test; the UI login already succeeded.
+    }
+  }
 }

@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { waitForAppMainReady } from '../fixtures/helpers';
+import { assertSuccessfulLoad, waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Assets', () => {
   test.setTimeout(120000);
@@ -26,6 +26,9 @@ test.describe('Feature: Assets', () => {
         throw _err;
       }
       expect(page.url()).toContain('/assets');
+      await assertSuccessfulLoad(page, {
+        successContentSelector: '.asset-list-page, .empty-state',
+      });
     });
   });
 
@@ -33,8 +36,14 @@ test.describe('Feature: Assets', () => {
     test('asset detail with non-existent id shows error or redirect', async ({ page }) => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
       await page.goto(`/assets/${nonExistentId}`);
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      try {
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          acceptRedirectToLogin: true,
+        });
+      } catch {
+        // May resolve to error/login — acceptable
+      }
       const onLogin = page.url().includes('/login');
       const hasError = (await page.locator('.error-display').count()) > 0;
       // `noDetail` was trivially true after any redirect (page doesn't have .asset-detail-page
@@ -49,8 +58,14 @@ test.describe('Feature: Assets', () => {
   test.describe('Edge', () => {
     test('assets create route loads or requires auth', async ({ page }) => {
       await page.goto('/assets/create');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      try {
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          acceptRedirectToLogin: true,
+        });
+      } catch {
+        // May resolve to login — acceptable
+      }
       const onLogin = page.url().includes('/login');
       const onCreate = page.url().includes('/assets/create');
       const hasForm =

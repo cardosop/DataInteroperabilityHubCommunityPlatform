@@ -35,6 +35,7 @@ import '../journeys/marketplace/JOURNEY-MP-007.spec';
 
 import { test, expect } from '@playwright/test';
 import { loginAsPersona, getTestUser } from '../fixtures/auth';
+import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
 
 test.describe('Persona RBAC: Data Product Owner', () => {
   test.setTimeout(120000);
@@ -42,29 +43,32 @@ test.describe('Persona RBAC: Data Product Owner', () => {
   test('DPO can access /assets', async ({ page }) => {
     await loginAsPersona(page, getTestUser); // getTestUser is DATA_PROVIDER (DPO)
     await page.goto('/assets');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    test.skip(page.url().includes('/login'), 'Auth redirect');
+    await waitForAppMainReady(page);
     expect(page.url()).toContain('/assets');
+    await expect(page.locator('.app-main')).toBeVisible();
     await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
   });
 
   test('DPO can access /contracts', async ({ page }) => {
     await loginAsPersona(page, getTestUser);
     await page.goto('/contracts');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    test.skip(page.url().includes('/login'), 'Auth redirect');
+    await waitForAppMainReady(page);
     expect(page.url()).toContain('/contracts');
+    await expect(page.locator('.app-main')).toBeVisible();
+    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
   });
 
   test('DPO cannot access /admin (admin-only route)', async ({ page }) => {
     await loginAsPersona(page, getTestUser);
     await page.goto('/admin');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForURL(/\/(403|login|admin|assets)/, { timeout: 20000 }).catch(() => null);
-    const url = page.url();
-    // DPO should NOT land on /admin without 403 — either redirected or forbidden
-    expect(url.includes('/403') || url.includes('/login') || !url.includes('/admin')).toBe(true);
+    await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/admin' });
+    const path = new URL(page.url()).pathname;
+    expect(
+      path.includes('/403') ||
+        path.includes('/login') ||
+        path.startsWith('/coming-soon') ||
+        path.startsWith('/unavailable')
+    ).toBe(true);
   });
 });

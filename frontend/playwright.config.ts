@@ -1,6 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
 import { resolvePlaywrightFrontend } from './src/lib/playwright-frontend-resolve';
 
+// Set VITE_E2E_TEST in the test runner process (not just the Vite webServer).
+// Test specs like data-quality.spec.ts check process.env.VITE_E2E_TEST to decide
+// whether to skip service-dependent tests. Without this, the env var only reaches
+// the Vite dev server child process (via webServer.env below) but not the Playwright
+// Node.js process that evaluates test.skip() conditions.
+process.env.VITE_E2E_TEST = 'true';
+
 const isVisibleRun = process.env.E2E_VISIBLE === '1';
 const { baseURL: resolvedFrontendBaseURL, webPort, webServerCheckUrl } =
   resolvePlaywrightFrontend();

@@ -36,8 +36,14 @@ test.describe('Feature: Files', () => {
     test('unauthenticated access to /files redirects to login', async ({ page }) => {
       await clearAuthStorage(page);
       await page.goto('/files');
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5000);
+      try {
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          acceptRedirectToLogin: true,
+        });
+      } catch {
+        // Expected to redirect to login
+      }
       await assertFailureRedirect(page);
     });
   });
@@ -50,7 +56,10 @@ test.describe('Feature: Files', () => {
       try {
         await waitForAppMainReady(page, { timeout: 60000 });
       } catch (_err) {
-        if (page.url().includes('/login')) return;
+        if (page.url().includes('/login')) {
+          test.skip(true, 'Redirected to login — session expired');
+          return;
+        }
         throw _err;
       }
       await assertEdgeBehavior(page, {
