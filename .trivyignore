@@ -1,0 +1,33 @@
+# =============================================================================
+# .trivyignore — Trivy vulnerability exceptions
+#
+# These CVEs have no fix available from Debian at time of writing.
+# Status: affected / fix_deferred — no patched package exists.
+# Review monthly and remove entries once Debian releases fixes.
+#
+# Added: 2026-04-03 (Phase 211 pipeline unblock)
+# Review by: 2026-05-03
+# =============================================================================
+
+# GnuPG: Stack-based buffer overflow in tpm2daemon
+# Status: affected (no Debian fix)
+# Impact: Low — tpm2daemon not used in container workloads
+CVE-2026-24882
+
+# glibc: Denial of Service via iconv() function
+# Status: fix_deferred (Debian tracking, no release yet)
+CVE-2026-4046
+
+# ncurses: Buffer overflow vulnerability
+# Status: affected (no Debian fix)
+# Impact: Low — ncurses not exposed to untrusted input in our containers
+CVE-2025-69720
+
+# nghttp2: Denial of Service via malformed HTTP/2
+# Status: affected (no Debian fix)
+CVE-2026-27135
+
+# systemd: Arbitrary code execution or DoS
+# Status: affected (no Debian fix)
+# Impact: Low — systemd runs as init in host, not in container workloads
+CVE-2026-29111

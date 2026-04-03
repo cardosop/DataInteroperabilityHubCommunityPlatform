@@ -26,8 +26,9 @@ strawberry-graphql[django]==0.287.2
 graphene-django==3.2.3
 
 # Authentication & Security
-PyJWT==2.10.1
-cryptography==46.0.3
+PyJWT==2.12.0  # CVE-2026-32597: accepts unknown crit header extensions
+cryptography==46.0.5  # CVE-2026-26007: subgroup attack due to missing validation
+pyOpenSSL==26.0.0  # CVE-2026-27459: DTLS cookie callback buffer overflow
 django-environ==0.12.0
 django-csp==4.0
 python-magic==0.4.27  # Magic-byte MIME validation (14.6); requires libmagic system lib
