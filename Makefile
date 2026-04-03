@@ -1,4 +1,4 @@
-.PHONY: help setup install test test-ci test-ci-backend test-ci-frontend test-ci-lint lint format clean docker-up docker-down docker-logs migrate createsuperuser runserver dev-env
+.PHONY: help setup install test test-ci test-ci-backend test-ci-frontend test-ci-lint lint format clean docker-up docker-down docker-logs migrate createsuperuser runserver dev-env test-helm test-helm-lint test-helm-unit test-infra-secrets test-staging-post-deploy test-verify-k8s-rollouts test-infra-staging-pipeline
 
 help: ## Show this help message
 	@echo "Interoperable Data Hub MVP - Makefile Commands"
@@ -87,6 +87,33 @@ test-ci-backend: ## Run backend tests in Docker (same as CI test-backend job)
 
 test-ci-frontend: ## Run frontend unit tests (same as CI test-frontend-unit job)
 	cd frontend && npm ci && npx vitest --run
+
+# ── Helm & Infrastructure validation ────────────────────────────────
+# Fast local checks (<10s total). No Docker required.
+# Prerequisites: helm, helm-unittest plugin, jq
+
+test-helm-lint: ## Helm chart lint + template rendering (mirrors CI helm-lint job)
+	@command -v helm >/dev/null 2>&1 || { echo "Error: helm not found. Install from https://helm.sh/docs/intro/install/"; exit 1; }
+	helm lint helm/
+	helm template hub helm/ --values helm/values.yaml > /dev/null
+	helm template hub helm/ --values helm/values.yaml --values helm/values.staging.yaml > /dev/null
+
+test-helm-unit: ## Run Helm unit tests (54 tests, ~1s)
+	@helm unittest --help >/dev/null 2>&1 || { echo "Error: helm-unittest plugin not found. Install: helm plugin install https://github.com/helm-unittest/helm-unittest.git --verify=false"; exit 1; }
+	helm unittest helm/
+
+test-helm: test-helm-lint test-helm-unit ## Run all Helm tests (lint + template + unit, ~2s)
+
+test-infra-secrets: ## Run secrets manager population tests (76 assertions, ~2s)
+	bash infrastructure/scripts/tests/test_populate_secrets_manager.sh
+
+test-staging-post-deploy: ## Staging post-deploy script dry-run tests (210.23–210.26)
+	bash infrastructure/scripts/tests/test_staging_post_deploy.sh
+
+test-verify-k8s-rollouts: ## K8s rollout verification script dry-run tests (210.22)
+	bash infrastructure/scripts/tests/test_verify_k8s_rollouts.sh
+
+test-infra-staging-pipeline: test-staging-post-deploy test-verify-k8s-rollouts ## Post-deploy + rollout verify script tests
 
 test-api-client-usage: ## Run API client usage search tests (validates JSON report structure)
 	@echo "Running API client usage search tests..."
