@@ -9,9 +9,7 @@ ARG BUILD_DATE=unknown
 WORKDIR /app
 
 # Install system dependencies (unixodbc + PostgreSQL ODBC driver for virtualization ODBC sources,
-# libfreetype6 for reportlab PDF invoice generation,
-# gpg + lsb-release for HashiCorp APT repo,
-# vault CLI for vault_loader integration tests)
+# libfreetype6 for reportlab PDF invoice generation)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     postgresql-client \
@@ -20,12 +18,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unixodbc-dev \
     odbc-postgresql \
     libfreetype6 \
-    gpg \
-    lsb-release \
-    && curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
-       > /etc/apt/sources.list.d/hashicorp.list \
-    && apt-get update && VAULT_SKIP_SETCAP=1 apt-get install -y --no-install-recommends vault \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
