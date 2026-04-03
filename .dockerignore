@@ -53,9 +53,13 @@ openspec/
 # InputDocs
 InputDocs/
 
-# Node
-node_modules/
+# Node — ** prefix matches at any depth (frontend/node_modules/, sdk/js/node_modules/, etc.)
+**/node_modules/
 npm-debug.log*
+
+# Frontend source — backend services don't need it; the frontend Dockerfile
+# uses context: frontend/ so this exclusion doesn't affect it.
+frontend/
 
 # Docker
 docker-compose.override.yml

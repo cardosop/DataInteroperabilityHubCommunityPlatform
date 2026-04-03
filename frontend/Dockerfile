@@ -87,8 +87,8 @@ RUN npm run build
 
 # Production stage
 FROM nginx:alpine
-# Install wget for Docker healthcheck (busybox wget can have flaky exit codes)
-RUN apk add --no-cache wget
+# Upgrade OS packages with known CVEs, then install wget for healthcheck
+RUN apk upgrade --no-cache && apk add --no-cache wget
 
 # Copy built files
 COPY --from=builder /app/dist /usr/share/nginx/html
