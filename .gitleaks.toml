@@ -1,0 +1,49 @@
+# Gitleaks configuration — Phase 64 (GP-06: Repository-Level Secret Scanning)
+#
+# Uses gitleaks' built-in ~150 detection rules (AWS keys, GCP keys, GitHub
+# tokens, private keys, etc.) plus the path and regex allowlists below.
+#
+# Run locally: gitleaks detect --source . --config .gitleaks.toml -v
+# CI: gitleaks/gitleaks-action@v2 in .github/workflows/ci.yml
+
+title = "Meshant Gitleaks Config"
+
+# ---------------------------------------------------------------------------
+# Global allowlist — paths and regex patterns excluded from all rules
+# ---------------------------------------------------------------------------
+
+[allowlist]
+  description = "Global path allowlist for test fixtures, templates, and E2E helpers"
+
+  paths = [
+    # Environment templates contain placeholder values, not real secrets
+    '''^\.env\..*\.template$''',
+    # Test fixtures use dummy data
+    '''tests/fixtures/''',
+    # Django app test files use factory-generated or hardcoded test secrets
+    '''hub/apps/.*/tests/''',
+    # Hub-level test files (test_auth_security.py etc.) use test credentials
+    '''hub/tests/''',
+    # Microservice test files
+    '''services/.*/tests/''',
+    # Frontend E2E tests inject test tokens via Playwright
+    '''frontend/e2e/''',
+    # Frontend test files
+    '''frontend/src/.*\.test\.''',
+    # Migration files may contain hashed values that look like secrets
+    '''hub/apps/.*/migrations/''',
+    # Lock files contain hashes that trigger false positives
+    '''package-lock\.json$''',
+    '''frontend/package-lock\.json$''',
+    # Terraform state/lock files
+    '''\.terraform/''',
+    '''\.terraform\.lock\.hcl$''',
+  ]
+
+  # Regex patterns that look like secrets but are known safe
+  regexes = [
+    # Dummy/placeholder values used in docs and templates
+    '''(?i)(example|placeholder|changeme|CHANGE_ME|your[-_]?key|dummy|test[-_]?secret)''',
+    # Django ENCRYPTION_KEY default in settings (overridden in production)
+    '''REPLACE-ME-IN-PRODUCTION''',
+  ]
