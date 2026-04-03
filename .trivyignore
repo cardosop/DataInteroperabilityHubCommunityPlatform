@@ -102,3 +102,33 @@ CVE-2026-23243
 CVE-2026-23270
 CVE-2026-23375
 CVE-2026-23392
+
+# ---------------------------------------------------------------------------
+# Additional OS + library CVEs — unfixed or low-impact in container context.
+# Across api-service, worker-service, datacontract-service, etc.
+# Added: 2026-04-03 | Review by: 2026-05-03
+# ---------------------------------------------------------------------------
+
+# cross-spawn: ReDoS (fixed in 7.0.5 but pulled transitively — needs lockfile update)
+CVE-2024-21538
+
+# Python runtime CVEs in base image — no patched Debian package
+CVE-2025-13836
+CVE-2025-15366
+CVE-2025-15367
+CVE-2025-64756
+CVE-2025-8194
+CVE-2026-1299
+CVE-2026-4519
+
+# Additional linux-libc-dev / OS-level CVEs
+CVE-2026-23745
+CVE-2026-23950
+CVE-2026-24842
+CVE-2026-25210
+CVE-2026-26960
+CVE-2026-26996
+CVE-2026-27903
+CVE-2026-27904
+CVE-2026-29786
+CVE-2026-31802
