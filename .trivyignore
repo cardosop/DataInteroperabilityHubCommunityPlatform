@@ -109,9 +109,6 @@ CVE-2026-23392
 # Added: 2026-04-03 | Review by: 2026-05-03
 # ---------------------------------------------------------------------------
 
-# cross-spawn: ReDoS (fixed in 7.0.5 but pulled transitively — needs lockfile update)
-CVE-2024-21538
-
 # Python runtime CVEs in base image — no patched Debian package
 CVE-2025-13836
 CVE-2025-15366
