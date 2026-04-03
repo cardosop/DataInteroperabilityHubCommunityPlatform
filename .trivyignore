@@ -58,3 +58,47 @@ CVE-2026-33186
 # Source: Go runtime v1.25.7 embedded in base image binaries
 # Fix requires Go 1.25.8 — not controllable from Python image
 CVE-2026-25679
+
+# ---------------------------------------------------------------------------
+# linux-libc-dev kernel CVEs — unfixed in Debian python:3.12-slim base image.
+# All status: affected. No patched package available.
+# Impact: Low — kernel CVEs in container userspace headers; containers use
+# host kernel, not the package's kernel code. No runtime exposure.
+# Added: 2026-04-03 | Review by: 2026-05-03
+# ---------------------------------------------------------------------------
+CVE-2013-7445
+CVE-2019-19449
+CVE-2019-19814
+CVE-2021-3847
+CVE-2021-3864
+CVE-2024-21803
+CVE-2024-58015
+CVE-2024-58093
+CVE-2025-22104
+CVE-2025-38137
+CVE-2025-38187
+CVE-2025-38204
+CVE-2025-38206
+CVE-2025-38421
+CVE-2025-38584
+CVE-2025-38627
+CVE-2025-38636
+CVE-2025-39859
+CVE-2025-39862
+CVE-2025-39958
+CVE-2025-40064
+CVE-2025-40135
+CVE-2025-40158
+CVE-2025-40168
+CVE-2025-71152
+CVE-2025-71221
+CVE-2026-23102
+CVE-2026-23171
+CVE-2026-23208
+CVE-2026-23226
+CVE-2026-23227
+CVE-2026-23231
+CVE-2026-23243
+CVE-2026-23270
+CVE-2026-23375
+CVE-2026-23392
