@@ -407,13 +407,13 @@ Examples:
         if args.version:
             print(f"✅ All ODCS {args.version} contracts are valid!")
         else:
-        print("✅ All ODCS contracts are valid!")
+            print("✅ All ODCS contracts are valid!")
         sys.exit(0)
     else:
         if args.version:
             print(f"❌ Some ODCS {args.version} contracts are invalid!")
-    else:
-        print("❌ Some ODCS contracts are invalid!")
+        else:
+            print("❌ Some ODCS contracts are invalid!")
         sys.exit(1)
 
 

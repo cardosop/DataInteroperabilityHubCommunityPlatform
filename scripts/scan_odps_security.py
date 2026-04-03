@@ -20,6 +20,7 @@ Exit codes:
 """
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -36,6 +37,10 @@ except ImportError:
 # Add project root to path for imports
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
+import django
+django.setup()
 
 from hub.apps.contracts.odps_parser import ODPSParser
 from hub.apps.contracts.odps_version_detection import detect_odps_version
