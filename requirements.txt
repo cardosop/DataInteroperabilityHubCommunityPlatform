@@ -32,10 +32,9 @@ django-environ==0.12.0
 django-csp==4.0
 python-magic==0.4.27  # Magic-byte MIME validation (14.6); requires libmagic system lib
 
-# Secrets Management — HashiCorp Vault (Phase 2)
-# hvac is the official Python client for Vault's HTTP API.
-# Used by hub/vault_loader.py for AppRole + Kubernetes auth.
-hvac>=2.3.0,<3.0
+# Secrets Management — AWS Secrets Manager + KMS (Phase 211)
+# boto3 (below) provides the AWS SDK for Secrets Manager and KMS.
+# hvac removed in Phase 211 (Vault → AWS Secrets Manager migration).
 
 # Object Storage (S3-compatible) and SES email
 boto3==1.42.7

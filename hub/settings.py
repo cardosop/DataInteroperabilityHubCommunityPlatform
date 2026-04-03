@@ -44,15 +44,15 @@ if SENTRY_DSN:
     )
 
 # ---------------------------------------------------------------------------
-# Vault Integration (Phase 2)
+# Secrets Integration (Phase 211: AWS Secrets Manager)
 # Must run BEFORE any secret consumption so downstream settings read the
-# injected env vars.  Controlled by VAULT_ENABLED env var (default: false).
+# injected env vars.  Controlled by AWS_SECRETS_ENABLED env var (default: false).
 # ---------------------------------------------------------------------------
-_VAULT_ENABLED = os.environ.get("VAULT_ENABLED", "false").strip().lower() == "true"
-if _VAULT_ENABLED:
-    from hub.vault_loader import load_from_vault  # noqa: E402
+_AWS_SECRETS_ENABLED = os.environ.get("AWS_SECRETS_ENABLED", "false").strip().lower() == "true"
+if _AWS_SECRETS_ENABLED:
+    from hub.aws_secrets_loader import load_from_aws  # noqa: E402
 
-    load_from_vault()
+    load_from_aws()
 
 # Dev-only default secrets; production MUST set SECRET_KEY and JWT_SECRET_KEY via env (see validation below).
 _DEV_SECRET_KEY = "dev-secret-key-not-for-production"
@@ -1648,7 +1648,7 @@ configure_structlog()
 #                                               --pull-->  Prometheus  (metrics)
 #   Docker logs  --Promtail-->  Loki  (logs)
 #
-# In production set VAULT_ENABLED=true; Vault injects OTEL_* env vars.
+# In production set AWS_SECRETS_ENABLED=true; AWS SM injects OTEL_* env vars.
 # In development the defaults below target a local OTel Collector (4317).
 # =============================================================================
 

@@ -302,13 +302,12 @@ class EncryptionConcurrencyTest(TestCase):
         self.assertEqual(dec_a, data_a)
         self.assertEqual(dec_b, data_b)
 
-    def test_vault_client_singleton_reset_is_safe(self):
-        """Vault client singleton reset after failure doesn't break Fernet path."""
-        import hub.apps.integrations.encryption as enc_mod
+    def test_kms_client_singleton_reset_is_safe(self):
+        """KMS client singleton reset after failure doesn't break Fernet path."""
+        from hub.apps.integrations.encryption import reset_kms_client
 
-        # Reset vault client to None (simulates post-failure state)
-        original = enc_mod._vault_client
-        enc_mod._vault_client = None
+        # Reset KMS client to None (simulates post-failure state)
+        reset_kms_client()
         try:
             # Fernet path should still work fine
             data = {"test": "after-reset"}
@@ -316,4 +315,4 @@ class EncryptionConcurrencyTest(TestCase):
             decrypted = decrypt_json_field(encrypted)
             self.assertEqual(decrypted, data)
         finally:
-            enc_mod._vault_client = original
+            reset_kms_client()

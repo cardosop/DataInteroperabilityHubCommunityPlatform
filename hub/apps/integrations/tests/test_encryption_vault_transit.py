@@ -1,206 +1,231 @@
 """
-Phase 121G-A — Vault Transit Encryption Tests
+Phase 211 — AWS KMS Encryption Tests (replaces Phase 121G-A Vault Transit tests)
 
-Tests the Vault Transit integration in encryption.py:
-1. Transit encrypt when available
-2. Transit decrypt vault ciphertext
-3. Fernet fallback when Vault unavailable
-4. Fernet fallback on Vault error + WARNING logged
-5. Prefix detection routes correctly
+Tests the AWS KMS integration in encryption.py:
+1. KMS available when AWS_KMS_KEY_ID set
+2. KMS encrypt + decrypt round-trip via moto
+3. Fernet fallback when KMS unavailable
+4. Fernet fallback on KMS error
+5. Prefix detection routes correctly (aws-kms:, vault:, fernet)
 6. Backward-compatible Fernet decrypt
-7. Client caching
-8. Client reset on failure
+7. Legacy vault:v1:* raises explicit migration error
+8. KMS client singleton reset on failure
 
 All tests use real Fernet encryption (no mocks for Fernet).
-Vault Transit calls use unittest.mock since no live Vault in CI.
+KMS calls use moto for realistic AWS simulation.
 """
 
-import base64
-import json
 import os
-from unittest.mock import MagicMock, patch
 
-import pytest
+import boto3
 from django.test import TestCase, override_settings
+from moto import mock_aws
 
 from hub.apps.integrations.encryption import (
     EncryptionError,
+    _AWS_KMS_PREFIX,
+    _VAULT_TRANSIT_PREFIX,
+    _is_kms_available,
     decrypt_json_field,
     encrypt_json_field,
-    _is_vault_transit_available,
-    _VAULT_TRANSIT_PREFIX,
+    reset_kms_client,
 )
 
 
-class VaultTransitAvailabilityTest(TestCase):
-    """Test _is_vault_transit_available() environment detection."""
+class KmsAvailabilityTest(TestCase):
+    """Test _is_kms_available() environment detection."""
 
-    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
-    def test_unavailable_when_vault_addr_not_set(self):
-        with patch.dict(os.environ, {}, clear=True):
-            self.assertFalse(_is_vault_transit_available())
+    def setUp(self):
+        self._orig = os.environ.pop("AWS_KMS_KEY_ID", None)
 
-    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
-    def test_unavailable_when_vault_addr_empty(self):
-        with patch.dict(os.environ, {"VAULT_ADDR": ""}):
-            self.assertFalse(_is_vault_transit_available())
+    def tearDown(self):
+        if self._orig is not None:
+            os.environ["AWS_KMS_KEY_ID"] = self._orig
+        else:
+            os.environ.pop("AWS_KMS_KEY_ID", None)
 
-    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
-    def test_available_with_token(self):
-        with patch.dict(os.environ, {
-            "VAULT_ADDR": "http://vault:8200",
-            "VAULT_TOKEN": "s.abcdef123",
-        }):
-            self.assertTrue(_is_vault_transit_available())
+    def test_unavailable_when_key_id_not_set(self):
+        self.assertFalse(_is_kms_available())
 
-    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
-    def test_available_with_approle(self):
-        with patch.dict(os.environ, {
-            "VAULT_ADDR": "http://vault:8200",
-            "VAULT_ROLE_ID": "role-id",
-            "VAULT_SECRET_ID": "secret-id",
-        }):
-            self.assertTrue(_is_vault_transit_available())
+    def test_unavailable_when_key_id_empty(self):
+        os.environ["AWS_KMS_KEY_ID"] = ""
+        self.assertFalse(_is_kms_available())
+
+    def test_available_with_key_id(self):
+        os.environ["AWS_KMS_KEY_ID"] = "arn:aws:kms:us-east-1:123:key/abc"
+        self.assertTrue(_is_kms_available())
 
 
 class FernetFallbackTest(TestCase):
-    """Test Fernet encryption works when Vault is unavailable."""
+    """Test Fernet encryption works when KMS is unavailable."""
+
+    def setUp(self):
+        self._orig = os.environ.pop("AWS_KMS_KEY_ID", None)
+        reset_kms_client()
+
+    def tearDown(self):
+        if self._orig is not None:
+            os.environ["AWS_KMS_KEY_ID"] = self._orig
+        else:
+            os.environ.pop("AWS_KMS_KEY_ID", None)
+        reset_kms_client()
 
     @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
-    def test_encrypt_uses_fernet_when_vault_unavailable(self):
-        """Without VAULT_ADDR, encrypt should use Fernet."""
-        with patch.dict(os.environ, {}, clear=True):
-            data = {"api_key": "secret123", "endpoint": "https://api.example.com"}
-            encrypted = encrypt_json_field(data)
-            # Fernet ciphertext is base64, NOT prefixed with vault:
-            self.assertFalse(encrypted.startswith(_VAULT_TRANSIT_PREFIX))
-            # Round-trip works
-            decrypted = decrypt_json_field(encrypted)
-            self.assertEqual(decrypted, data)
+    def test_encrypt_uses_fernet_when_kms_unavailable(self):
+        """Without AWS_KMS_KEY_ID, encrypt should use Fernet."""
+        data = {"api_key": "secret123", "endpoint": "https://api.example.com"}
+        encrypted = encrypt_json_field(data)
+        self.assertFalse(encrypted.startswith(_AWS_KMS_PREFIX))
+        self.assertFalse(encrypted.startswith(_VAULT_TRANSIT_PREFIX))
+        decrypted = decrypt_json_field(encrypted)
+        self.assertEqual(decrypted, data)
 
     @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
     def test_decrypt_fernet_backward_compatible(self):
         """Existing Fernet-encrypted data should still decrypt."""
         data = {"old_key": "old_value"}
-        with patch.dict(os.environ, {}, clear=True):
-            encrypted = encrypt_json_field(data)
-            # Verify it's Fernet (no vault prefix)
-            self.assertFalse(encrypted.startswith(_VAULT_TRANSIT_PREFIX))
-            # Decrypt should work
-            result = decrypt_json_field(encrypted)
-            self.assertEqual(result, data)
-
-
-class VaultTransitEncryptTest(TestCase):
-    """Test Vault Transit encrypt path."""
-
-    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
-    def test_encrypt_uses_transit_when_available(self):
-        """When Vault is available, encrypt should use Transit."""
-        mock_client = MagicMock()
-        mock_client.is_authenticated.return_value = True
-        mock_client.secrets.transit.encrypt_data.return_value = {
-            "data": {"ciphertext": "vault:v1:abc123encrypted"}
-        }
-
-        with patch.dict(os.environ, {
-            "VAULT_ADDR": "http://vault:8200",
-            "VAULT_TOKEN": "s.test",
-        }):
-            with patch(
-                "hub.apps.integrations.encryption._get_vault_transit_client",
-                return_value=mock_client,
-            ):
-                data = {"api_key": "secret"}
-                encrypted = encrypt_json_field(data)
-
-        self.assertTrue(encrypted.startswith("vault:v1:"))
-        mock_client.secrets.transit.encrypt_data.assert_called_once()
-
-    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
-    def test_encrypt_falls_back_on_vault_error(self):
-        """When Vault Transit fails, fall back to Fernet."""
-        mock_client = MagicMock()
-        mock_client.is_authenticated.return_value = True
-        mock_client.secrets.transit.encrypt_data.side_effect = Exception("Vault down")
-
-        with patch.dict(os.environ, {
-            "VAULT_ADDR": "http://vault:8200",
-            "VAULT_TOKEN": "s.test",
-        }):
-            with patch(
-                "hub.apps.integrations.encryption._get_vault_transit_client",
-                return_value=mock_client,
-            ):
-                data = {"fallback_key": "fallback_value"}
-                encrypted = encrypt_json_field(data)
-
-        # Should fall back to Fernet (no vault: prefix)
-        self.assertFalse(encrypted.startswith(_VAULT_TRANSIT_PREFIX))
-        # Should still be decryptable
-        decrypted = decrypt_json_field(encrypted)
-        self.assertEqual(decrypted, data)
-
-
-class VaultTransitDecryptTest(TestCase):
-    """Test Vault Transit decrypt path."""
-
-    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
-    def test_decrypt_routes_vault_prefix_to_transit(self):
-        """Ciphertext starting with vault: should use Transit."""
-        plaintext_data = {"key": "value"}
-        plaintext_b64 = base64.b64encode(
-            json.dumps(plaintext_data, sort_keys=True).encode()
-        ).decode()
-
-        mock_client = MagicMock()
-        mock_client.is_authenticated.return_value = True
-        mock_client.secrets.transit.decrypt_data.return_value = {
-            "data": {"plaintext": plaintext_b64}
-        }
-
-        with patch(
-            "hub.apps.integrations.encryption._get_vault_transit_client",
-            return_value=mock_client,
-        ):
-            result = decrypt_json_field("vault:v1:someciphertext")
-
-        self.assertEqual(result, plaintext_data)
-        mock_client.secrets.transit.decrypt_data.assert_called_once()
-
-    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
-    def test_decrypt_non_vault_uses_fernet(self):
-        """Non-vault ciphertext should use Fernet path."""
-        data = {"fernet_key": "fernet_value"}
-        with patch.dict(os.environ, {}, clear=True):
-            encrypted = encrypt_json_field(data)
-        # Decrypt without Vault
+        encrypted = encrypt_json_field(data)
+        self.assertFalse(encrypted.startswith(_AWS_KMS_PREFIX))
         result = decrypt_json_field(encrypted)
         self.assertEqual(result, data)
 
 
-class VaultClientCachingTest(TestCase):
-    """Test Vault Transit client singleton behavior."""
+@mock_aws
+class KmsEncryptTest(TestCase):
+    """Test AWS KMS encrypt path using moto."""
+
+    def setUp(self):
+        reset_kms_client()
+        self._orig_key = os.environ.pop("AWS_KMS_KEY_ID", None)
+        self._orig_region = os.environ.get("AWS_REGION")
+        os.environ["AWS_REGION"] = "us-east-1"
+        client = boto3.client("kms", region_name="us-east-1")
+        key = client.create_key(Description="test-encryption-key")
+        self._key_id = key["KeyMetadata"]["KeyId"]
+        os.environ["AWS_KMS_KEY_ID"] = self._key_id
+
+    def tearDown(self):
+        if self._orig_key is not None:
+            os.environ["AWS_KMS_KEY_ID"] = self._orig_key
+        else:
+            os.environ.pop("AWS_KMS_KEY_ID", None)
+        if self._orig_region is not None:
+            os.environ["AWS_REGION"] = self._orig_region
+        else:
+            os.environ.pop("AWS_REGION", None)
+        reset_kms_client()
+
+    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
+    def test_encrypt_uses_kms_when_available(self):
+        """When AWS_KMS_KEY_ID is set, encrypt should use KMS."""
+        data = {"api_key": "secret"}
+        encrypted = encrypt_json_field(data)
+        self.assertTrue(encrypted.startswith(_AWS_KMS_PREFIX))
+        decrypted = decrypt_json_field(encrypted)
+        self.assertEqual(decrypted, data)
+
+    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
+    def test_encrypt_falls_back_on_kms_error(self):
+        """When KMS key doesn't exist, fall back to Fernet."""
+        reset_kms_client()
+        os.environ["AWS_KMS_KEY_ID"] = "nonexistent-key-id"
+        data = {"fallback_key": "fallback_value"}
+        encrypted = encrypt_json_field(data)
+        self.assertFalse(encrypted.startswith(_AWS_KMS_PREFIX))
+        decrypted = decrypt_json_field(encrypted)
+        self.assertEqual(decrypted, data)
+
+
+@mock_aws
+class KmsDecryptTest(TestCase):
+    """Test AWS KMS decrypt path."""
+
+    def setUp(self):
+        reset_kms_client()
+        self._orig_key = os.environ.pop("AWS_KMS_KEY_ID", None)
+        self._orig_region = os.environ.get("AWS_REGION")
+        os.environ["AWS_REGION"] = "us-east-1"
+        client = boto3.client("kms", region_name="us-east-1")
+        key = client.create_key(Description="test-decrypt-key")
+        self._key_id = key["KeyMetadata"]["KeyId"]
+        os.environ["AWS_KMS_KEY_ID"] = self._key_id
+
+    def tearDown(self):
+        if self._orig_key is not None:
+            os.environ["AWS_KMS_KEY_ID"] = self._orig_key
+        else:
+            os.environ.pop("AWS_KMS_KEY_ID", None)
+        if self._orig_region is not None:
+            os.environ["AWS_REGION"] = self._orig_region
+        else:
+            os.environ.pop("AWS_REGION", None)
+        reset_kms_client()
+
+    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
+    def test_decrypt_routes_kms_prefix_to_kms(self):
+        """Ciphertext starting with aws-kms: should use KMS."""
+        data = {"key": "value"}
+        encrypted = encrypt_json_field(data)
+        self.assertTrue(encrypted.startswith(_AWS_KMS_PREFIX))
+        result = decrypt_json_field(encrypted)
+        self.assertEqual(result, data)
+
+    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
+    def test_decrypt_non_kms_uses_fernet(self):
+        """Non-KMS ciphertext should use Fernet path."""
+        os.environ.pop("AWS_KMS_KEY_ID", None)
+        reset_kms_client()
+        data = {"fernet_key": "fernet_value"}
+        encrypted = encrypt_json_field(data)
+        result = decrypt_json_field(encrypted)
+        self.assertEqual(result, data)
+
+
+class LegacyVaultTransitTest(TestCase):
+    """Test that legacy vault:v1:* ciphertexts raise a clear error."""
+
+    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
+    def test_vault_transit_ciphertext_raises_error(self):
+        """vault:v1:* ciphertext raises EncryptionError with migration message."""
+        with self.assertRaises(EncryptionError) as ctx:
+            decrypt_json_field("vault:v1:somelegacyciphertext")
+        self.assertIn("Legacy Vault Transit", str(ctx.exception))
+        self.assertIn("re-encryption migration", str(ctx.exception))
+
+
+class KmsClientResetTest(TestCase):
+    """Test KMS client singleton behavior."""
+
+    def setUp(self):
+        self._orig_key = os.environ.pop("AWS_KMS_KEY_ID", None)
+        self._orig_region = os.environ.get("AWS_REGION")
+        reset_kms_client()
+
+    def tearDown(self):
+        if self._orig_key is not None:
+            os.environ["AWS_KMS_KEY_ID"] = self._orig_key
+        else:
+            os.environ.pop("AWS_KMS_KEY_ID", None)
+        if self._orig_region is not None:
+            os.environ["AWS_REGION"] = self._orig_region
+        else:
+            os.environ.pop("AWS_REGION", None)
+        reset_kms_client()
 
     @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
     def test_client_reset_on_failure(self):
-        """After encrypt failure, _vault_client should be reset."""
+        """After KMS failure, client is reset AND Fernet fallback succeeds."""
         import hub.apps.integrations.encryption as enc_mod
 
-        mock_client = MagicMock()
-        mock_client.is_authenticated.return_value = True
-        mock_client.secrets.transit.encrypt_data.side_effect = Exception("fail")
+        os.environ["AWS_KMS_KEY_ID"] = "bad-key"
+        os.environ["AWS_REGION"] = "us-east-1"
+        data = {"test": "data"}
+        encrypted = encrypt_json_field(data)
 
-        with patch.dict(os.environ, {
-            "VAULT_ADDR": "http://vault:8200",
-            "VAULT_TOKEN": "s.test",
-        }):
-            with patch(
-                "hub.apps.integrations.encryption._get_vault_transit_client",
-                return_value=mock_client,
-            ):
-                # This should fall back to Fernet and reset client
-                encrypt_json_field({"test": "data"})
-
-        # After failure, module-level client should be None
-        self.assertIsNone(enc_mod._vault_client)
+        # 1. Client singleton was reset after KMS failure
+        self.assertIsNone(enc_mod._kms_client)
+        # 2. Encrypt succeeded via Fernet fallback (not KMS prefix)
+        self.assertFalse(encrypted.startswith(_AWS_KMS_PREFIX))
+        # 3. The ciphertext actually decrypts back to the original data
+        decrypted = decrypt_json_field(encrypted)
+        self.assertEqual(decrypted, data)

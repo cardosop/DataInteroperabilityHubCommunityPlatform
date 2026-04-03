@@ -1,12 +1,14 @@
 """
 Encryption utilities for credential JSONFields.
 
-Primary: Vault Transit (AES256-GCM96, auto-rotate 720h)
+Primary: AWS KMS envelope encryption (Phase 211: Vault → AWS migration)
 Fallback: Fernet symmetric encryption via ENCRYPTION_KEY
+Legacy:   Vault Transit ciphertexts (``vault:v1:...``) raise EncryptionError (requires re-encryption migration)
 
 Ciphertext format detection:
-- ``vault:v1:...`` → Vault Transit
-- base64 string   → Fernet
+- ``aws-kms:...``  → AWS KMS (new, Phase 211+)
+- ``vault:v1:...`` → Legacy Vault Transit (decrypt via Fernet fallback)
+- base64 string    → Fernet
 - plaintext dict   → legacy (pre-encryption migration)
 """
 import base64
@@ -14,7 +16,7 @@ import binascii
 import hashlib
 import json
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import structlog
 from django.conf import settings
@@ -25,13 +27,13 @@ from cryptography.hazmat.backends import default_backend
 
 logger = structlog.get_logger(__name__)
 
-# ── Vault Transit constants ──────────────────────────────
+# ── AWS KMS constants ─────────────────────────────────────
 
-_VAULT_TRANSIT_KEY = "hub-encryption-key"
+_AWS_KMS_PREFIX = "aws-kms:"
 _VAULT_TRANSIT_PREFIX = "vault:"
 
-# Lazy singleton — reset to None on auth failure
-_vault_client = None
+# Lazy singleton KMS client
+_kms_client = None
 
 
 class EncryptionError(Exception):
@@ -39,76 +41,51 @@ class EncryptionError(Exception):
     pass
 
 
-# ── Vault Transit helpers ────────────────────────────────
+# ── AWS KMS helpers ───────────────────────────────────────
 
 
-def _is_vault_transit_available() -> bool:
-    """Check if Vault Transit can be used."""
-    vault_addr = os.environ.get("VAULT_ADDR", "").strip()
-    if not vault_addr:
-        return False
-    has_token = bool(os.environ.get("VAULT_TOKEN", "").strip())
-    has_approle = (
-        bool(os.environ.get("VAULT_ROLE_ID", "").strip())
-        and bool(os.environ.get("VAULT_SECRET_ID", "").strip())
+def _is_kms_available() -> bool:
+    """Check if AWS KMS can be used for field-level encryption."""
+    return bool(os.environ.get("AWS_KMS_KEY_ID", "").strip())
+
+
+def _get_kms_client():
+    """Get boto3 KMS client (lazy singleton)."""
+    global _kms_client
+    if _kms_client is not None:
+        return _kms_client
+
+    import boto3
+
+    region = os.environ.get("AWS_REGION", "us-east-1").strip()
+    _kms_client = boto3.client("kms", region_name=region)
+    return _kms_client
+
+
+def _kms_encrypt(data_bytes: bytes) -> str:
+    """Encrypt via AWS KMS. Returns aws-kms:<base64-ciphertext> string."""
+    client = _get_kms_client()
+    key_id = os.environ.get("AWS_KMS_KEY_ID", "").strip()
+    response = client.encrypt(
+        KeyId=key_id,
+        Plaintext=data_bytes,
     )
-    return has_token or has_approle
+    ciphertext_blob = response["CiphertextBlob"]
+    return _AWS_KMS_PREFIX + base64.b64encode(ciphertext_blob).decode("utf-8")
 
 
-def _get_vault_transit_client():
-    """Get authenticated hvac Client (lazy singleton)."""
-    global _vault_client
-    if _vault_client is not None:
-        try:
-            if _vault_client.is_authenticated():
-                return _vault_client
-        except Exception:
-            _vault_client = None
-
-    import hvac
-
-    vault_addr = os.environ.get("VAULT_ADDR", "").strip()
-    client = hvac.Client(url=vault_addr)
-
-    token = os.environ.get("VAULT_TOKEN", "").strip()
-    if token:
-        client.token = token
-    else:
-        role_id = os.environ.get("VAULT_ROLE_ID", "").strip()
-        secret_id = os.environ.get("VAULT_SECRET_ID", "").strip()
-        if role_id and secret_id:
-            resp = client.auth.approle.login(
-                role_id=role_id, secret_id=secret_id,
-            )
-            client.token = resp["auth"]["client_token"]
-        else:
-            raise EncryptionError(
-                "No Vault auth credentials available"
-            )
-
-    _vault_client = client
-    return client
+def _kms_decrypt(ciphertext: str) -> bytes:
+    """Decrypt an AWS KMS ciphertext (strip prefix, decode, call KMS)."""
+    client = _get_kms_client()
+    ciphertext_blob = base64.b64decode(ciphertext[len(_AWS_KMS_PREFIX):])
+    response = client.decrypt(CiphertextBlob=ciphertext_blob)
+    return response["Plaintext"]
 
 
-def _vault_transit_encrypt(data_bytes: bytes) -> str:
-    """Encrypt via Vault Transit. Returns vault:v1:... string."""
-    client = _get_vault_transit_client()
-    plaintext_b64 = base64.b64encode(data_bytes).decode("utf-8")
-    response = client.secrets.transit.encrypt_data(
-        name=_VAULT_TRANSIT_KEY,
-        plaintext=plaintext_b64,
-    )
-    return response["data"]["ciphertext"]
-
-
-def _vault_transit_decrypt(ciphertext: str) -> bytes:
-    """Decrypt a Vault Transit ciphertext back to bytes."""
-    client = _get_vault_transit_client()
-    response = client.secrets.transit.decrypt_data(
-        name=_VAULT_TRANSIT_KEY,
-        ciphertext=ciphertext,
-    )
-    return base64.b64decode(response["data"]["plaintext"])
+def reset_kms_client() -> None:
+    """Reset the KMS client singleton (for testing)."""
+    global _kms_client
+    _kms_client = None
 
 
 def _get_encryption_key() -> bytes:
@@ -200,26 +177,28 @@ def encrypt_json_field(data: Dict[str, Any]) -> str:
         encrypted = encrypt_json_field(config)
     """
     if not isinstance(data, dict):
-        raise EncryptionError(f"Data must be a dictionary, got {type(data).__name__}")
+        raise EncryptionError(
+            "Data must be a dictionary, "
+            f"got {type(data).__name__}"
+        )
 
     try:
         json_str = json.dumps(data, sort_keys=True)
         json_bytes = json_str.encode('utf-8')
 
-        # Try Vault Transit first
-        if _is_vault_transit_available():
+        # Try AWS KMS first
+        if _is_kms_available():
             try:
-                ciphertext = _vault_transit_encrypt(json_bytes)
-                logger.debug("vault_transit_encrypt_success")
-                return ciphertext  # "vault:v1:..."
+                ciphertext = _kms_encrypt(json_bytes)
+                logger.debug("kms_encrypt_success")
+                return ciphertext  # "aws-kms:..."
             except Exception as e:
                 logger.warning(
-                    "vault_transit_encrypt_fallback",
+                    "kms_encrypt_fallback",
                     error=str(e),
                     error_type=type(e).__name__,
                 )
-                global _vault_client
-                _vault_client = None
+                reset_kms_client()
 
         # Fernet fallback
         fernet = _get_fernet()
@@ -263,14 +242,15 @@ def decrypt_json_field(encrypted_str: str) -> Dict[str, Any]:
         return {}
 
     if not isinstance(encrypted_str, str):
-        raise EncryptionError(f"Encrypted data must be a string, got {type(encrypted_str).__name__}")
+        raise EncryptionError(
+            "Encrypted data must be a string, "
+            f"got {type(encrypted_str).__name__}"
+        )
 
     try:
-        # Vault Transit ciphertext detection
-        if encrypted_str.startswith(_VAULT_TRANSIT_PREFIX):
-            decrypted_bytes = _vault_transit_decrypt(
-                encrypted_str,
-            )
+        # AWS KMS ciphertext detection
+        if encrypted_str.startswith(_AWS_KMS_PREFIX):
+            decrypted_bytes = _kms_decrypt(encrypted_str)
             json_str = decrypted_bytes.decode('utf-8')
             data = json.loads(json_str)
             if not isinstance(data, dict):
@@ -279,6 +259,18 @@ def decrypt_json_field(encrypted_str: str) -> Dict[str, Any]:
                     f"got {type(data).__name__}",
                 )
             return data
+
+        # Legacy Vault Transit ciphertext — use Fernet fallback.
+        # Vault Transit is no longer available (Phase 211), but
+        # existing vault:v1:* rows can't be decrypted without Vault.
+        # These rows must be re-encrypted via a data migration.
+        if encrypted_str.startswith(_VAULT_TRANSIT_PREFIX):
+            raise EncryptionError(
+                "Legacy Vault Transit ciphertext detected "
+                f"({encrypted_str[:20]}...). Vault is no longer "
+                "available. Run the re-encryption migration to "
+                "convert vault:v1:* rows to Fernet or KMS."
+            )
 
         # Fernet path (existing + backward compat)
         encrypted_bytes = base64.urlsafe_b64decode(
