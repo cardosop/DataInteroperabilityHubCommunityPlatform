@@ -35,8 +35,10 @@ htmlcov/
 # Environment
 .env*
 
-# Secrets
+# Secrets and local dev certs
 *.pem
+*.key
+infrastructure/postgres/certs/
 
 # Git
 .git/
