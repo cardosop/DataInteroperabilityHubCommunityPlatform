@@ -23,7 +23,7 @@ This document covers production security requirements: secrets, CORS, and relate
 
 - **Production and staging MUST set** `SECRET_KEY` and `JWT_SECRET_KEY` via environment (or a secret manager). They MUST NOT use the development default values.
 - **Never commit** production or staging secrets to the repository.
-- Use a secret manager (e.g. HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager) or CI/CD–injected environment variables for production/staging.
+- Use AWS Secrets Manager or CI/CD-injected environment variables for production/staging. <!-- Phase 211: replaced HashiCorp Vault with AWS Secrets Manager -->
 
 ### Enforcement
 
@@ -43,22 +43,21 @@ This document covers production security requirements: secrets, CORS, and relate
 - `hub/settings.py`: `ENVIRONMENT`, `SECRET_KEY`, `JWT_SECRET_KEY`, and production validation block.
 - `docs/DEVELOPMENT_GUIDE.md`: Production deployment and secrets overview.
 
-### HashiCorp Vault Integration (Phase 2)
+### AWS Secrets Manager Integration (Phase 211: replaced HashiCorp Vault)
 
-- **Authentication**: AppRole auth (CI/Docker) and Kubernetes auth (in-cluster). Vault agent sidecar renders secrets as env files.
-- **KV v2 secrets**: All production secrets stored at `secret/hub/production/{django,postgres,redis,minio,email}`.
-- **Transit encryption**: AES256-GCM96 key (`hub-encryption-key`) with auto-rotation every 720h for field-level encryption. Wired into the application via `hub/apps/integrations/encryption.py` — `encrypt_json_field()` tries Vault Transit first; if unavailable or on error, falls back to Fernet (see below). Ciphertext prefix `vault:v1:...` routes decryption to Transit; base64 strings route to Fernet.
-- **Dynamic database credentials**: PostgreSQL `hub-api` role with 1h TTL via Vault Database engine. Credentials rotate automatically.
-- **Vault loader**: `hub/vault_loader.py` injects secrets into `os.environ` at Django startup (before any secret consumption). Retry 3x exponential on transient errors.
+- **Authentication**: IRSA (in-cluster pods) and GitHub OIDC→AWS STS (CI/CD).
+- **Secret storage**: All production secrets stored in AWS Secrets Manager under `hub/production/{django,postgres,redis,minio,email}`.
+- **Field-level encryption**: AWS KMS key for encrypt/decrypt operations. Wired into the application via `hub/apps/integrations/encryption.py` — `encrypt_json_field()` tries AWS KMS first; if unavailable or on error, falls back to Fernet (see below). Ciphertext prefix `awskms:...` routes decryption to KMS; base64 strings route to Fernet.
+- **Secrets loader**: `hub/aws_secrets_loader.py` injects secrets into `os.environ` at Django startup (before any secret consumption). Uses `boto3`. Retry 3x exponential on transient errors.
 
 ### Credentials Encrypted at Rest (Phase 121G)
 
-All credential-bearing JSONFields are encrypted before storage using Vault Transit (primary) or Fernet symmetric encryption (fallback via `ENCRYPTION_KEY`). The model `save()` method encrypts on write; a `get_*()` accessor decrypts on read. Serializers call the accessor and mask sensitive fields (password, api_key, token, connection_string, etc.) before returning to the API.
+All credential-bearing JSONFields are encrypted before storage using AWS KMS (primary) or Fernet symmetric encryption (fallback via `ENCRYPTION_KEY`). The model `save()` method encrypts on write; a `get_*()` accessor decrypts on read. Serializers call the accessor and mask sensitive fields (password, api_key, token, connection_string, etc.) before returning to the API.
 
 | # | App | Model | Field | Encryption Format | Migration |
 |---|-----|-------|-------|-------------------|-----------|
-| 1 | webhooks | `Webhook` | `secret` | `vault:v1:...` or `v1:<fernet>` | Phase 11.4 (existing) |
-| 2 | integrations | `MarketplaceConnection` | `credentials` | `vault:v1:...` or base64 Fernet | Phase 11.4 (existing) |
+| 1 | webhooks | `Webhook` | `secret` | `awskms:...` or `v1:<fernet>` | Phase 11.4 (existing) |
+| 2 | integrations | `MarketplaceConnection` | `credentials` | `awskms:...` or base64 Fernet | Phase 11.4 (existing) |
 | 3 | scheduled_ingestion | `ScheduledIngestion` | `source_config` | `{"_encrypted": "..."}` | `0009_encrypt_source_config` |
 | 4 | scheduled_export | `ScheduledExport` | `destination_config` | `{"_encrypted": "..."}` | `0005_encrypt_destination_config` |
 | 5 | tenants | `TenantConfig` | `sso_config` | `{"_encrypted": "..."}` | `0021_encrypt_sso_config` |
@@ -69,7 +68,7 @@ All credential-bearing JSONFields are encrypted before storage using Vault Trans
 
 **Key rotation**: See `docs/DEPLOYMENT_AND_OPERATIONS.md` § "Rotating ENCRYPTION_KEY".
 
-**Backup/restore**: The `ENCRYPTION_KEY` (or Vault Transit key) used at encryption time **must** be available at restore time. If a database backup is restored and the encryption key has been rotated or lost, all encrypted fields become unrecoverable. Always back up `ENCRYPTION_KEY` alongside database backups (see `docs/DEPLOYMENT_AND_OPERATIONS.md` § "Database Backup / Restore").
+**Backup/restore**: The `ENCRYPTION_KEY` (or AWS KMS key) used at encryption time **must** be available at restore time. If a database backup is restored and the encryption key has been rotated or lost, all encrypted fields become unrecoverable. Always back up `ENCRYPTION_KEY` alongside database backups (see `docs/DEPLOYMENT_AND_OPERATIONS.md` § "Database Backup / Restore").
 
 ### Content Security Policy & Source Maps
 
@@ -98,7 +97,7 @@ All credential-bearing JSONFields are encrypted before storage using Vault Trans
 
 - PostgreSQL: `sslmode=require` enforced in production (`PGBOUNCER_ENABLED` sets `CONN_MAX_AGE=0`).
 - Redis: All 5 core Redis URLs must contain auth credentials (`@` + non-empty password) in production.
-- Vault: TLS with minimum TLS 1.2 on listener. Raft backend uses TLS for peer communication.
+- AWS Secrets Manager: All API calls use TLS 1.2+ via boto3 SDK.
 
 ### Production Environment Guards
 

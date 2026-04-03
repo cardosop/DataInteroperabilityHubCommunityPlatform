@@ -42,20 +42,20 @@ redis-cli -h redis-queue -p 6379 ping
 kubectl exec -it <pod> -- python -c "from django.core.cache import cache; cache.set('test', 1); print(cache.get('test'))"
 ```
 
-## Vault
+## AWS Secrets Manager
 
-HashiCorp Vault is used for secrets management via ExternalSecret Operator.
+<!-- Phase 211: replaced HashiCorp Vault with AWS Secrets Manager -->
+AWS Secrets Manager is used for secrets management via ExternalSecret Operator.
 
 ### Setup
-- Deploy Vault (or connect to existing instance)
-- Create AppRole or Kubernetes auth backend
-- Store secrets at configured path (default: `secret/data/meshant/<env>`)
+- Ensure AWS Secrets Manager is available in the target region
+- Configure IRSA (IAM Roles for Service Accounts) for in-cluster access, or GitHub OIDC→AWS STS for CI/CD
+- Store secrets at configured path (default: `hub/<env>/django`)
 - Required secrets: `SECRET_KEY`, `JWT_SECRET_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`
 
 ### Verification
 ```bash
-vault status
-vault kv get secret/data/meshant/staging
+aws secretsmanager get-secret-value --secret-id hub/staging/django --region <region>
 kubectl get externalsecret -n meshant
 ```
 

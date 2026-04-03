@@ -286,19 +286,20 @@ The development compose includes these infrastructure services:
 - **Access**: Applications connect to PgBouncer (port 6432) instead of PostgreSQL directly
 - **Why needed**: Prevents connection exhaustion from Django + RQ workers
 
-#### Vault (`vault`)
-- **Purpose**: Secrets management, encryption-as-a-service
-- **Dev mode**: Runs in dev mode (auto-unsealed, root token = `root`)
-- **Port**: 8200
-- **UI**: http://localhost:8200 (token: `root`)
-- **Secrets path**: `secret/data/meshant/` (KV v2)
+#### AWS Secrets Manager (via LocalStack in dev)
+
+<!-- Phase 211: replaced HashiCorp Vault with AWS Secrets Manager -->
+- **Purpose**: Secrets management, field-level encryption (AWS KMS)
+- **Dev mode**: LocalStack provides a local AWS Secrets Manager emulator
+- **Env vars**: `AWS_SECRETS_ENABLED=true`, `AWS_REGION=us-east-1`, `AWS_ENDPOINT_URL=http://localhost:4566`
+- **Secrets path**: `hub/dev/` prefix
 
 ```bash
-# Verify Vault is running
-curl http://localhost:8200/v1/sys/health
+# Verify secrets are accessible (LocalStack)
+aws --endpoint-url=http://localhost:4566 secretsmanager list-secrets --region us-east-1
 
 # Read a secret (dev mode)
-curl -H "X-Vault-Token: root" http://localhost:8200/v1/secret/data/meshant/db
+aws --endpoint-url=http://localhost:4566 secretsmanager get-secret-value --secret-id hub/dev/django --region us-east-1
 ```
 
 #### OpenTelemetry Collector (`otel-collector`)
@@ -314,29 +315,24 @@ curl -H "X-Vault-Token: root" http://localhost:8200/v1/secret/data/meshant/db
 - **Loki**: Log aggregation (S3 storage in production)
 - **Prometheus**: Metrics collection and alerting
 
-### Vault Setup Instructions
+### AWS Secrets Manager Setup Instructions
 
-For local development, Vault runs in dev mode automatically. For staging/production:
+<!-- Phase 211: replaced HashiCorp Vault with AWS Secrets Manager -->
+For local development, LocalStack emulates AWS Secrets Manager. For staging/production:
 
 ```bash
-# Initialize Vault (first time only)
-docker exec vault vault operator init -key-shares=1 -key-threshold=1
-
-# Unseal (after restart)
-docker exec vault vault operator unseal <unseal-key>
-
-# Enable KV v2 secrets engine
-docker exec vault vault secrets enable -path=secret kv-v2
+# Create a secret (first time only)
+aws secretsmanager create-secret --name hub/<env>/django \
+  --secret-string '{"SECRET_KEY":"<key>","JWT_SECRET_KEY":"<jwt-key>"}' \
+  --region <region>
 
 # Store database credentials
-docker exec vault vault kv put secret/meshant/db \
-  host=postgres port=5432 name=hub user=hub password=<password>
+aws secretsmanager create-secret --name hub/<env>/postgres \
+  --secret-string '{"host":"postgres","port":"5432","name":"hub","user":"hub","password":"<password>"}' \
+  --region <region>
 
-# Enable AppRole auth (for services)
-docker exec vault vault auth enable approle
-docker exec vault vault write auth/approle/role/api-service \
-  token_ttl=1h token_max_ttl=4h \
-  secret_id_ttl=24h
+# Configure IRSA for in-cluster access (see AWS docs for IAM role setup)
+# Configure GitHub OIDC→AWS STS for CI/CD access
 ```
 
 ### Helm Deployment (Kubernetes)

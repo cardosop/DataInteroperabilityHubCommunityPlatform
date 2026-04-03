@@ -154,7 +154,7 @@ kubectl create secret generic prefect-server-secrets \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-**Production Recommendation**: Use External Secrets Operator or HashiCorp Vault.
+**Production Recommendation**: Use External Secrets Operator with AWS Secrets Manager.
 
 #### 2.1 Marketplace Connector Secrets
 
@@ -232,7 +232,7 @@ kubectl create secret generic worker-service-secrets \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-**Production Recommendation**: Use External Secrets Operator or HashiCorp Vault to manage secrets. See [Marketplace Secrets Documentation](../k8s/MARKETPLACE_SECRETS.md) for details.
+**Production Recommendation**: Use External Secrets Operator with AWS Secrets Manager to manage secrets. See [Marketplace Secrets Documentation](../k8s/MARKETPLACE_SECRETS.md) for details.
 
 ### 3. Deploy to Staging
 
@@ -595,10 +595,10 @@ data:
 - `api-service-secrets` / `worker-service-secrets`
 - Contains: All API keys, tokens, and credentials
 - **MUST NOT** be committed to Git
-- Use External Secrets Operator or HashiCorp Vault in production
+- Use External Secrets Operator with AWS Secrets Manager in production
 
 **Production Best Practices:**
-1. **Use External Secrets Manager**: AWS Secrets Manager, HashiCorp Vault, Azure Key Vault, GCP Secret Manager
+1. **Use External Secrets Manager**: AWS Secrets Manager (Phase 211: replaced HashiCorp Vault with AWS Secrets Manager)
 2. **Enable Encryption at Rest**: Kubernetes Secrets are base64 encoded by default (not encrypted)
 3. **Rotate Credentials Regularly**: Rotate API keys and tokens every 90 days
 4. **Use Least Privilege**: API keys should have minimal required permissions
@@ -737,9 +737,8 @@ kubectl get ingress --all-namespaces
 ### Secrets Management
 
 **DO NOT** commit secrets to Git. Use:
-- External Secrets Operator
-- HashiCorp Vault
-- Cloud provider secrets manager (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault)
+- External Secrets Operator with AWS Secrets Manager
+<!-- Phase 211: replaced HashiCorp Vault with AWS Secrets Manager -->
 
 ### Network Policies
 
@@ -1136,7 +1135,7 @@ SMTP_USERNAME=<smtp-username>
 SMTP_PASSWORD=<smtp-password>
 
 # Marketplace Connectors (see Marketplace Configuration section below)
-# IMPORTANT: Use secrets manager for production (AWS Secrets Manager, HashiCorp Vault, etc.)
+# IMPORTANT: Use AWS Secrets Manager for production
 DADOS_GOV_BR_API_KEY=<jwt-token-from-secrets-manager>
 CKAN_TEST_URL=https://dados.gov.br
 CKAN_TEST_API_KEY=<api-key-from-secrets-manager>
@@ -1248,7 +1247,7 @@ MOCK_SERVER_URL=http://mock-server:8080
 ```bash
 # Production configuration (use secrets manager)
 # IMPORTANT: Never hardcode secrets in production
-# Use AWS Secrets Manager, HashiCorp Vault, or similar
+# Use AWS Secrets Manager
 DADOS_GOV_BR_API_KEY=<from-secrets-manager>
 CKAN_TEST_URL=https://dados.gov.br
 CKAN_TEST_API_KEY=<from-secrets-manager>
@@ -1262,7 +1261,7 @@ SNOWFLAKE_DATABASE=<from-secrets-manager>
 
 **Security Best Practices:**
 - **Never commit secrets to Git**: Use `.gitignore` to exclude `.env*` files
-- **Use secrets managers in production**: AWS Secrets Manager, HashiCorp Vault, Azure Key Vault, GCP Secret Manager
+- **Use secrets managers in production**: AWS Secrets Manager
 - **Rotate credentials regularly**: Rotate API keys and tokens every 90 days
 - **Use least privilege**: API keys should have minimal required permissions
 - **Monitor access**: Enable audit logging for API key usage
@@ -4136,7 +4135,7 @@ virtualization sources, transformation pipeline definitions, and node configs
    ```
 
 5. **Deploy new key** to environment:
-   - Vault: `vault kv put secret/hub/production/django ENCRYPTION_KEY=$NEW_KEY`
+   - AWS Secrets Manager: `aws secretsmanager update-secret --secret-id hub/production/django --secret-string '{"ENCRYPTION_KEY":"'$NEW_KEY'"}'`
    - Or update `.env.production` and redeploy
 
 6. **Verify** webhooks and encrypted fields work correctly:
@@ -4146,7 +4145,7 @@ virtualization sources, transformation pipeline definitions, and node configs
    curl https://$DOMAIN/api/v1/scheduled-ingestion/ -H "Authorization: Bearer $TOKEN" | jq '.[0].source_config'
    ```
 
-7. **Revoke old key** from Vault (after confirming all services work).
+7. **Remove old key** from AWS Secrets Manager (after confirming all services work).
 
 ---
 
@@ -4205,10 +4204,10 @@ Key metrics: `cl_active` (client connections in use), `sv_active` (server connec
 > **ENCRYPTION_KEY must be preserved alongside backups.** The database contains
 > Fernet-encrypted credential fields (9 fields across 7 apps). If `ENCRYPTION_KEY`
 > is lost or rotated without re-encrypting, all encrypted fields become
-> **unrecoverable** after a restore. Store `ENCRYPTION_KEY` in your secret manager
-> (Vault, AWS Secrets Manager) and include it in your backup verification checklist.
-> If using Vault Transit, ensure the Transit key `hub-encryption-key` is also
-> backed up (Vault snapshots include it).
+> **unrecoverable** after a restore. Store `ENCRYPTION_KEY` in AWS Secrets Manager
+> and include it in your backup verification checklist.
+> If using AWS KMS for field-level encryption, ensure the KMS key is not scheduled
+> for deletion. <!-- Phase 211: replaced Vault Transit with AWS KMS -->
 
 ### Manual Backup
 
@@ -4301,14 +4300,15 @@ Query errors in the last hour:
 {job="hub-api"} |= "ERROR" | last 1h
 ```
 
-### Vault Health
+### AWS Secrets Manager Health
 
+<!-- Phase 211: replaced HashiCorp Vault with AWS Secrets Manager -->
 ```bash
-vault status
+aws secretsmanager list-secrets --region <region> --max-results 1
 ```
 
-Expected: `Sealed: false`, `Initialized: true`.
-Alert: `VaultUnavailable` fires after 2 minutes of downtime (Phase 52.3).
+Expected: returns a JSON list without errors.
+Alert: `SecretsManagerUnavailable` fires if ExternalSecret sync fails for 5 minutes.
 
 ### Redis Health
 
@@ -6266,7 +6266,7 @@ Migrated scheduled ingestion execution from django-rq to Prefect worker (Option 
 - Kubernetes cluster (1.28+) with `kubectl` access
 - Helm 3.15+
 - External Secrets Operator installed (`external-secrets.io/v1beta1`)
-- HashiCorp Vault with KV v2 engine
+- AWS Secrets Manager (Phase 211: replaced HashiCorp Vault)
 
 ---
 
@@ -6300,7 +6300,7 @@ Helm override: `redis.cache.host`, `redis.queue.host`, `redis.events.host`, `red
 |------|-------|-------------|
 | S3-compatible endpoint | Platform | `aws s3 ls --endpoint-url <url>` |
 | Bucket `hub-files` created | Platform | `aws s3 ls s3://hub-files --endpoint-url <url>` |
-| Access key + secret key in Vault | Platform | `vault kv get secret/hub/<env>/s3` |
+| Access key + secret key in AWS Secrets Manager | Platform | `aws secretsmanager get-secret-value --secret-id hub/<env>/s3` |
 
 Helm override: `s3.endpoint`, `s3.bucket`
 
@@ -6312,35 +6312,37 @@ Helm override: `s3.endpoint`, `s3.bucket`
 | PostgreSQL for Prefect metadata | DBA | `pg_isready -h prefect-db -p 5432` |
 | Work pool `kubernetes-pool` created | Platform | `prefect work-pool ls` |
 | Prefect Integration Service deployed | Platform | `curl http://prefect-integration-service:8084/health` |
-| `PREFECT_INTEGRATION_SERVICE_URL` in Vault | Platform | `vault kv get secret/hub/<env>/prefect` |
+| `PREFECT_INTEGRATION_SERVICE_URL` in AWS Secrets Manager | Platform | `aws secretsmanager get-secret-value --secret-id hub/<env>/prefect` |
 
 Helm override: `prefect.worker.enabled: true`, `prefectIntegration.enabled: true`
 
 > **Note**: Prefect Server is NOT part of the Meshant Helm chart.
 > Deploy separately: `helm install prefect-server prefecthq/prefect-server`
 
-## 5. Vault + External Secrets
+## 5. AWS Secrets Manager + External Secrets
+
+<!-- Phase 211: replaced HashiCorp Vault with AWS Secrets Manager -->
 
 | Item | Owner | Verification |
 |------|-------|-------------|
-| Vault KV v2 engine at `secret/` | Security | `vault secrets list` |
-| AppRole auth configured | Security | `vault auth list \| grep approle` |
-| Kubernetes auth method | Security | `vault auth list \| grep kubernetes` |
-| KV path `secret/hub/<env>/` populated | Security | `vault kv list secret/hub/<env>` |
+| AWS Secrets Manager accessible in target region | Security | `aws secretsmanager list-secrets --region <region> --max-results 1` |
+| IRSA configured for in-cluster access | Security | `kubectl describe sa hub-api -n <ns> \| grep eks.amazonaws.com/role-arn` |
+| GitHub OIDC→AWS STS configured for CI/CD | Security | Verify in AWS IAM Identity Providers |
+| Secret paths `hub/<env>/` populated | Security | `aws secretsmanager list-secrets --filter Key=name,Values=hub/<env>` |
 | ExternalSecrets operator running | Platform | `kubectl get pods -n external-secrets` |
 | SecretStore created in namespace | Platform | `kubectl get secretstore -n <ns>` |
 | ExternalSecret sync healthy | Platform | `kubectl get externalsecret -n <ns>` |
 
-Required Vault paths:
+Required AWS Secrets Manager paths:
 ```
-secret/hub/<env>/django/       → SECRET_KEY, JWT_SECRET_KEY, ENCRYPTION_KEY
-secret/hub/<env>/postgres/     → POSTGRES_PASSWORD
-secret/hub/<env>/pgbouncer/    → PGBOUNCER_ADMIN_PASSWORD, userlist.txt
-secret/hub/<env>/redis/        → REDIS_*_PASSWORD, REDIS_*_URL (×4)
-secret/hub/<env>/s3/           → AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-secret/hub/<env>/fuseki/       → FUSEKI_ADMIN_PASSWORD
-secret/hub/<env>/workers/      → HUB_WORKER_API_KEY
-secret/hub/<env>/stripe/       → STRIPE_SECRET_KEY (optional)
+hub/<env>/django       → SECRET_KEY, JWT_SECRET_KEY, ENCRYPTION_KEY
+hub/<env>/postgres     → POSTGRES_PASSWORD
+hub/<env>/pgbouncer    → PGBOUNCER_ADMIN_PASSWORD, userlist.txt
+hub/<env>/redis        → REDIS_*_PASSWORD, REDIS_*_URL (×4)
+hub/<env>/s3           → AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+hub/<env>/fuseki       → FUSEKI_ADMIN_PASSWORD
+hub/<env>/workers      → HUB_WORKER_API_KEY
+hub/<env>/stripe       → STRIPE_SECRET_KEY (optional)
 ```
 
 ## 6. Semantic Service + Fuseki
@@ -6355,9 +6357,10 @@ secret/hub/<env>/stripe/       → STRIPE_SECRET_KEY (optional)
 
 | Secret | Purpose | Verification |
 |--------|---------|-------------|
-| `VAULT_ADDR` | Vault endpoint URL | Set in repo Settings → Secrets |
-| `VAULT_ROLE_ID` | AppRole role ID | Set in repo Settings → Secrets |
-| `VAULT_SECRET_ID` | AppRole secret ID | Set in repo Settings → Secrets |
+| `AWS_REGION` | AWS region for Secrets Manager | Set in repo Settings → Secrets |
+| `AWS_SECRETS_PREFIX` | Secret name prefix (e.g. `hub`) | Set in repo Settings → Secrets |
+| `AWS_KMS_KEY_ID` | KMS key for field-level encryption | Set in repo Settings → Secrets |
+<!-- Phase 211: replaced VAULT_ADDR/VAULT_ROLE_ID/VAULT_SECRET_ID with AWS equivalents; CI/CD authenticates via GitHub OIDC→AWS STS -->
 | `SMOKE_ADMIN_EMAIL` | Post-deploy smoke test user | Set in repo Settings → Secrets |
 | `SMOKE_ADMIN_PASSWORD` | Post-deploy smoke test password | Set in repo Settings → Secrets |
 
@@ -6439,9 +6442,10 @@ kubectl get externalsecret -n <ns> -o jsonpath='{range .items[*]}{.metadata.name
 **Recovery**: Restart Prefect server; `prefect work-pool ls` to verify work pool
 **Runbook**: `docs/ops/prefect-runbook.md`
 
-### Vault Down (after initial sync)
+### AWS Secrets Manager Unavailable (after initial sync)
 
+<!-- Phase 211: replaced HashiCorp Vault with AWS Secrets Manager -->
 **Severity**: Low (short-term) — secrets already synced to K8s Secrets
 **Symptoms**: ExternalSecret refresh fails; `kubectl get externalsecret` shows `SecretSyncedError`
 **Impact**: Existing pods unaffected (secrets in K8s); new pods can start with cached secrets
-**Recovery**: Restore Vault; ExternalSecrets operator auto-retries
+**Recovery**: Check AWS service health dashboard; verify IRSA role trust policy; ExternalSecrets operator auto-retries

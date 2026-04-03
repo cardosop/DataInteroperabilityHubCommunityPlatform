@@ -270,13 +270,14 @@ The Data Interoperability Hub is a microservices-based platform for managing dat
 - **Config**: `pool_mode=transaction`, `max_client_conn=200`, `default_pool_size=20`
 - **Why**: Prevents connection exhaustion from Django's per-request model + RQ workers
 
-#### Vault (`vault`)
-- **Purpose**: Secrets management, encryption, dynamic credentials
-- **Storage**: Raft integrated storage (HA-ready)
-- **Auto-unseal**: AWS KMS (production) / dev mode (staging)
-- **Auth methods**: AppRole (services), Kubernetes (pods)
-- **Secret engines**: KV v2 (static secrets), Transit (encryption-as-a-service), Database (dynamic PostgreSQL credentials)
-- **Integration**: Vault Agent sidecar injects secrets into pod filesystems; ExternalSecrets Operator syncs to Kubernetes Secrets
+#### AWS Secrets Manager
+
+<!-- Phase 211: replaced HashiCorp Vault with AWS Secrets Manager -->
+- **Purpose**: Secrets management, field-level encryption
+- **Auth methods**: IRSA (in-cluster pods), GitHub OIDC→AWS STS (CI/CD)
+- **Secret storage**: All production secrets stored as JSON blobs under `hub/<env>/` prefix
+- **Field-level encryption**: AWS KMS key for encrypt/decrypt operations (replaces Vault Transit)
+- **Integration**: ExternalSecrets Operator syncs AWS Secrets Manager entries to Kubernetes Secrets
 
 #### OpenTelemetry Collector (`otel-collector`)
 - **Purpose**: Telemetry pipeline (traces, metrics, logs)
@@ -304,7 +305,7 @@ The Data Interoperability Hub is a microservices-based platform for managing dat
 - **PDB**: api (minAvailable: 2), worker (minAvailable: 1)
 - **NetworkPolicies**: default-deny ingress/egress per namespace, explicit allow rules (15+)
 - **ServiceAccount**: workload identity for cloud provider integration
-- **ExternalSecrets**: Vault → Kubernetes Secret sync
+- **ExternalSecrets**: AWS Secrets Manager → Kubernetes Secret sync
 - **Cosign**: Image signature verification via admission webhook
 - **Pod Security Standards**: restricted profile enforced
 

@@ -5095,7 +5095,7 @@ Before first staging deploy, verify:
 - [ ] DNS records created for staging hostnames
 - [ ] TLS certificate provisioned (cert-manager or manual)
 - [ ] Placeholder hostnames in `helm/values.staging.yaml` replaced with real domains
-- [ ] Vault KV paths populated (`secret/hub/staging/`)
+- [ ] AWS Secrets Manager paths populated (`hub/staging/`) <!-- Phase 211: replaced Vault -->
 - [ ] ExternalSecret sync healthy (`kubectl get externalsecret -n hub-staging`)
 - [ ] S3 bucket created and accessible
 - [ ] Prefect Server deployed (if scheduled ingestion required)
