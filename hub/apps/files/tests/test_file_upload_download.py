@@ -134,7 +134,12 @@ class FileUploadDownloadTest(FilesAPITestBase):
         self.assertFalse(response.data["requires_multipart"])
 
     def test_init_file_upload_invalid_type(self):
-        """Test file upload with invalid file type"""
+        """Test file upload with invalid file type is rejected.
+
+        The .exe extension is not in ALLOWED_FILE_TYPES, so
+        FilesBusinessRules.validate_file_for_create rejects it and
+        the view returns 400.
+        """
         data = {
             "name": "test.exe",
             "content_type": "application/x-msdownload",
@@ -144,10 +149,12 @@ class FileUploadDownloadTest(FilesAPITestBase):
 
         response = self.client.post("/api/v1/files/init/", data, format="json")
 
-        # May succeed or fail depending on business rules
-        self.assertIn(
-            response.status_code,
-            [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST],
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # Verify the error message mentions the disallowed file type
+        response_text = str(response.data).lower()
+        self.assertTrue(
+            "exe" in response_text or "not allowed" in response_text or "type" in response_text,
+            f"Expected error about disallowed file type, got: {response.data}",
         )
 
     def test_complete_file_upload(self):
@@ -155,23 +162,25 @@ class FileUploadDownloadTest(FilesAPITestBase):
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
 
-        # Create file record
+        test_content = b"test content"
+        fid = uuid.uuid4()
         file_obj = File.objects.create(
+            id=fid,
             tenant=self.tenant,
             name="test.csv",
             content_type="text/csv",
-            size=1024,
-            storage_path=f"{self.tenant.id}/test.csv",
+            size=len(test_content),
+            storage_path=f"{self.tenant.id}/{fid}/test.csv",
             status=FileStatus.PENDING,
             created_by=self.user,
         )
 
-        # Upload file content to storage
-        test_content = b"test content"
+        # Upload file content to storage (key must match storage_path)
         self.storage_client.save_file(
             tenant_id=str(self.tenant.id),
             file_id=str(file_obj.id),
             file_content=ContentFile(test_content),
+            file_name=file_obj.name,
         )
 
         # Calculate SHA-256 hash

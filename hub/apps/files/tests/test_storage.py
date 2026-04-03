@@ -44,8 +44,10 @@ class S3StorageClientTest(FilesTestBase):
         storage_client = S3StorageClient()
         # Should not raise
         storage_client._ensure_bucket_exists()
-        # Bucket exists after ensure call
-        self.assertIsNotNone(storage_client.bucket_name)
+
+        # Verify the bucket actually exists by calling head_bucket
+        response = storage_client.client.head_bucket(Bucket=storage_client.bucket_name)
+        self.assertEqual(response["ResponseMetadata"]["HTTPStatusCode"], 200)
 
     def test_save_file_success(self):
         """Test saving file to storage when available."""
@@ -261,11 +263,60 @@ class S3StorageClientTest(FilesTestBase):
             pass  # Already completed or aborted
 
     def test_storage_unavailable_graceful_handling(self):
-        """Test graceful handling when storage is unavailable."""
-        # This test verifies that tests skip gracefully when storage unavailable
-        # The setUp method already handles this with skipTest
-        if not self.storage_available:
-            self.skipTest("S3/MinIO storage not available - test skipped gracefully")
+        """Test graceful handling when storage is unavailable.
 
-        # If we get here, storage is available
-        self.assertTrue(self.storage_available)
+        Creates an S3StorageClient pointed at an unreachable endpoint and
+        verifies that operations raise exceptions instead of crashing
+        silently or hanging.
+        """
+        from django.test import override_settings
+        from botocore.config import Config
+
+        # Build a client aimed at an unreachable address.
+        # Use RFC 5737 TEST-NET-1 (192.0.2.0/24) — guaranteed non-routable,
+        # unlike 127.0.0.1:1 which gets an instant connection-refused that
+        # some botocore versions handle differently from a true timeout.
+        bad_client = S3StorageClient.__new__(S3StorageClient)
+        bad_client.bucket_name = "nonexistent-bucket"
+        bad_client.endpoint_url = "http://192.0.2.1:9999"
+        bad_client.use_ssl = False
+        bad_client._bucket_checked = False
+        bad_client._original_endpoint = "http://192.0.2.1:9999"
+        s3_config = Config(
+            signature_version="s3v4",
+            retries={"max_attempts": 1, "mode": "standard"},
+            connect_timeout=1,
+            read_timeout=1,
+        )
+        import boto3 as _boto3
+        bad_client.client = _boto3.client(
+            "s3",
+            endpoint_url="http://192.0.2.1:9999",
+            aws_access_key_id="fake",
+            aws_secret_access_key="fake",
+            use_ssl=False,
+            verify=False,
+            config=s3_config,
+        )
+
+        # _ensure_bucket_exists is designed to be lenient (swallows
+        # connection errors to allow fallback), so we test the actual
+        # storage operations that must propagate errors.
+
+        # file_exists should raise, not silently return False
+        with self.assertRaises(Exception):
+            bad_client.file_exists("any/key")
+
+        # save_file should raise
+        from django.core.files.base import ContentFile
+
+        with self.assertRaises(Exception):
+            bad_client.save_file(
+                tenant_id="t",
+                file_id="f",
+                file_content=ContentFile(b"data"),
+            )
+
+        # get_file_content should raise
+        with self.assertRaises(Exception):
+            bad_client.get_file_content("any/key")

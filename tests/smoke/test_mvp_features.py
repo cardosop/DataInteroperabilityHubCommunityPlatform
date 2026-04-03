@@ -37,6 +37,9 @@ GATED_MVP_OFF_PATHS: tuple[str, ...] = (
     "/api/v1/ml/models/",
     "/api/v1/ai/natural-language-search/",
     "/api/v1/transformation/pipelines/",
+    "/api/v1/social/communities/",
+    "/api/v1/scheduled-ingestions/",
+    "/api/v1/scheduled-exports/",
 )
 
 
@@ -55,11 +58,12 @@ class TestMvpFeatureSmoke:
         for name, path in MVP_FEATURE_PATHS.items():
             url = f"{base_url}{path}"
             response = api_session.get(url, timeout=timeout)
-            assert response.status_code != 404, (
-                f"{name} smoke path {path} returned 404 — "
+            assert response.status_code not in (404, 500, 502, 503), (
+                f"{name} smoke path {path} returned {response.status_code} — "
                 f"body snippet: {response.text[:200]!r}"
             )
 
+    @pytest.mark.smoke_mvp_mode
     @pytest.mark.skipif(
         not _truthy_env("SMOKE_EXPECT_MVP_MODE"),
         reason="Set SMOKE_EXPECT_MVP_MODE=1 when the target API runs with MVP_MODE=true",

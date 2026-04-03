@@ -39,7 +39,6 @@ class FileServiceTest(FilesTestBase):
         """Test getting file by ID."""
         file_obj = self.service.get_file(file_id=str(self.file.id), tenant_id=str(self.tenant.id))
 
-        self.assertIsNotNone(file_obj)
         self.assertEqual(file_obj.id, self.file.id)
         self.assertEqual(file_obj.tenant, self.tenant)
 
@@ -72,7 +71,6 @@ class FileServiceTest(FilesTestBase):
             file_id=str(self.file.id), tenant_id=str(self.tenant.id)
         )
 
-        self.assertIsNotNone(file_obj)
         self.assertEqual(file_obj.status, FileStatus.ACTIVE)
 
     def test_validate_file_active_not_active(self):
@@ -104,7 +102,6 @@ class FileServiceTest(FilesTestBase):
             created_by_id=str(self.user.id),
         )
 
-        self.assertIsNotNone(file_obj)
         self.assertEqual(file_obj.name, "new_file.csv")
         self.assertEqual(file_obj.size, 2048)
         self.assertEqual(file_obj.status, FileStatus.PENDING)
@@ -243,17 +240,24 @@ class FileServiceTest(FilesTestBase):
         CLAMAV_PORT=65444,
     )
     def test_update_file_completed_with_hash_triggers_scan_job(self):
-        """COMPLETED + content_sha256 enqueues scan (same as ACTIVE); RQ runs inline in tests."""
+        """COMPLETED + content_sha256 enqueues scan; job reads S3 then ClamAV (bad port → UNAVAILABLE)."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+        fid = uuid.uuid4()
+        body = b"completed-path"
+        storage_path = f"{self.tenant.id}/{fid}/done.csv"
         pending_file = File.objects.create(
+            id=fid,
             tenant=self.tenant,
             name="done.csv",
             content_type="text/csv",
-            size=512,
+            size=len(body),
             status=FileStatus.PENDING,
-            storage_path=f"{self.tenant.id}/done.csv",
+            storage_path=storage_path,
             created_by=self.user,
         )
-        content_sha256 = hashlib.sha256(b"completed-path").hexdigest()
+        S3StorageClient().upload_file(storage_path, body, "text/csv")
+        content_sha256 = hashlib.sha256(body).hexdigest()
         with self.captureOnCommitCallbacks(execute=True):
             self.service.update_file(
                 file_id=str(pending_file.id),

@@ -33,6 +33,7 @@ class ClamAVScannerUnitTest(TestCase):
         self.assertEqual(scanner.classify_bytes(b"hello"), FileScanStatus.SCAN_UNAVAILABLE)
 
 
+@pytest.mark.requires_clamav_live
 @unittest.skipUnless(
     os.environ.get("RUN_CLAMAV_LIVE_TESTS") == "1"
     and bool(os.environ.get("CLAMAV_LIVE_TEST_HOST", "").strip()),

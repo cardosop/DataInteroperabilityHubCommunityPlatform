@@ -6,7 +6,7 @@ Uses real service clients (no mocks) - skips tests if services are unavailable.
 """
 import pytest
 import uuid
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.core.cache import cache
 from django.utils import timezone
 
@@ -29,15 +29,8 @@ from tests.factories import TenantFactory, JobFactory
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
-
-def check_service_health(service_url, timeout=2):
-    """Check if a service is available"""
-    try:
-        import requests
-        response = requests.get(f"{service_url}/health", timeout=timeout)
-        return response.status_code == 200
-    except Exception:
-        return False
+# Refused port for "DQ down" without touching the real dq-service container.
+_UNREACHABLE_DQ_URL = "http://127.0.0.1:19999"
 
 
 class JobProcessorsTest(TestCase):
@@ -112,39 +105,33 @@ class JobProcessorsTest(TestCase):
         
         self.assertIn("not found", str(cm.exception).lower())
     
-    @pytest.mark.skipif(
-        not check_service_health('http://localhost:8083', timeout=2),
-        reason="DQ service not available"
-    )
-    def test_execute_dq_run_job_service_unavailable(self):
-        """Test DQ_RUN job processor when service is unavailable"""
-        # This test would require service to be down, which is hard to test
-        # Instead, we test the error handling path
-        dq_run_id = uuid.uuid4()
-        dq_run = DQRun.objects.create(
-            id=dq_run_id,
-            tenant=self.tenant,
-            file=self.file,
-            profile_key='intake_basic_gx',
-            engine=DQEngine.GREAT_EXPECTATIONS,
-            status=DQRunStatus.PENDING
-        )
-        
+    def test_execute_dq_run_job_raises_connection_error_when_dq_service_unreachable(self):
+        """DQ_RUN raises ConnectionError when DQ microservice fails health check (real client, dead URL)."""
         job = JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
             resource_type="DQ_RUN",
-            resource_id=dq_run_id,
+            resource_id=uuid.uuid4(),
             created_by=self.user,
-            details_json={'dq_run_id': str(dq_run_id)}
+            details_json={},
         )
-        
-        # If service is actually unavailable, this should raise ConnectionError
-        # But we can't reliably test this without controlling the service
-        # So we test the validation path instead
-        pass
-    
+        dq_run = DQRun.objects.create(
+            tenant=self.tenant,
+            file=self.file,
+            job=job,
+            profile_key='intake_basic_gx',
+            engine=DQEngine.GREAT_EXPECTATIONS,
+            status=DQRunStatus.PENDING,
+        )
+        job.resource_id = dq_run.id
+        job.details_json = {'dq_run_id': str(dq_run.id)}
+        job.save(update_fields=['resource_id', 'details_json'])
+        with override_settings(DQ_SERVICE_URL=_UNREACHABLE_DQ_URL):
+            with self.assertRaises(ConnectionError) as cm:
+                _execute_dq_run_job(job)
+        self.assertIn('unavailable', str(cm.exception).lower())
+
     # COMPLIANCE_RUN Processor Tests
     def test_execute_compliance_run_job_missing_compliance_run_id(self):
         """Test COMPLIANCE_RUN job processor with missing compliance_run_id"""

@@ -513,16 +513,29 @@ def _ensure_baas_tables(django_db_setup, django_db_blocker):
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip tests marked real_scheduled_e2e unless REAL_SCHEDULED_E2E=1 (env-gated real E2E)."""
+    """Deselect tests marked real_scheduled_e2e unless REAL_SCHEDULED_E2E=1 (env-gated real E2E)."""
     if not items:
         return
-    guard = os.environ.get("REAL_SCHEDULED_E2E", "").strip() == "1"
-    skip_real = pytest.mark.skip(
-        reason="Real scheduled ingestion/export E2E: set REAL_SCHEDULED_E2E=1 to run (see docs/runbooks/REAL_SCHEDULED_INGESTION_EXPORT_E2E.md)"
-    )
-    for item in items:
-        if not guard and item.get_closest_marker("real_scheduled_e2e"):
-            item.add_marker(skip_real)
+
+    # Env-gated marker → env-var pairs: deselect (not skip) when env guard is unset.
+    # Each entry: (marker_name, env_var, truthy_value)
+    _env_gated = [
+        ("real_scheduled_e2e", "REAL_SCHEDULED_E2E", "1"),
+        ("requires_clamav_live", "RUN_CLAMAV_LIVE_TESTS", "1"),
+        ("smoke_mvp_mode", "SMOKE_EXPECT_MVP_MODE", None),  # any truthy value
+    ]
+    for marker, env_var, expected in _env_gated:
+        env_val = os.environ.get(env_var, "").strip()
+        guard_met = (
+            env_val == expected if expected
+            else env_val.lower() in ("1", "true", "yes", "on")
+        )
+        if not guard_met:
+            to_deselect = [i for i in items if i.get_closest_marker(marker)]
+            if to_deselect:
+                remaining = [i for i in items if i not in to_deselect]
+                config.hook.pytest_deselected(items=to_deselect)
+                items[:] = remaining
 
     # When BATCH_TEST=1, deselect scheduled_ingestion_integration (requires real S3/Prefect).
     # Ensures batch 16 (Jobs) has 0 skips; run with REAL_SCHEDULED_E2E=1 for full integration.

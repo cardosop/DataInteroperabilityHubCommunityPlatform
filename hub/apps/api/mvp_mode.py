@@ -21,6 +21,8 @@ MVP_GATED_RELATIVE_PREFIXES: Final[tuple[str, ...]] = (
     "ai/",
     "transformation/",
     "social/",
+    "scheduled-ingestions/",
+    "scheduled-exports/",
 )
 
 API_V1_PREFIX: Final[str] = "/api/v1/"

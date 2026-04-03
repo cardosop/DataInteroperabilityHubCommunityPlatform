@@ -63,12 +63,18 @@ class ComplianceCircuitBreakerActivationTests(TestCase):
 
     def _open_compliance_circuit(self) -> None:
         client = ComplianceServiceClient()
-        for _ in range(5):
-            client.scan_file(b"c\n1\n", "csv", tenant_id=str(self.tenant.id))
-        self.assertEqual(
-            get_shared_circuit_breaker("compliance-service").get_state(),
-            CircuitBreakerState.OPEN,
-        )
+        breaker = get_shared_circuit_breaker("compliance-service")
+        threshold = breaker.failure_threshold
+        for i in range(threshold):
+            result = client.scan_file(
+                b"c\n1\n", "csv", tenant_id=str(self.tenant.id),
+            )
+            # Verify each call actually failed (returned fallback/error)
+            self.assertEqual(
+                result.get("overall_status"), "UNKNOWN",
+                f"Call {i + 1}/{threshold} should have failed against unreachable host",
+            )
+        self.assertEqual(breaker.get_state(), CircuitBreakerState.OPEN)
 
     def test_activation_proceeds_with_warn_when_compliance_circuit_open(self):
         self._open_compliance_circuit()

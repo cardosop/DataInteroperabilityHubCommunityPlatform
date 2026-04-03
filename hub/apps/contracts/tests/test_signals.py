@@ -37,7 +37,6 @@ class ContractCacheInvalidationSignalTest(TestCase):
 
     def test_signal_connected_to_post_save(self):
         """Both signal handlers are importable and connected."""
-        import weakref
         from hub.apps.contracts.signals import (
             invalidate_datacontract_cache,
             rebuild_contract_search_vector,
@@ -47,24 +46,35 @@ class ContractCacheInvalidationSignalTest(TestCase):
         assert callable(invalidate_datacontract_cache)
         assert callable(rebuild_contract_search_vector)
 
-        # Collect all receiver functions from post_save
+        # Collect all receiver functions from post_save (Django 6+: ref at index 1)
         receivers = set()
         for receiver_tuple in post_save.receivers:
-            ref = receiver_tuple[-1]
-            if isinstance(ref, weakref.ReferenceType):
-                obj = ref()
+            if len(receiver_tuple) < 2:
+                continue
+            ref = receiver_tuple[1]
+            if hasattr(ref, "__call__"):
+                try:
+                    obj = ref()
+                except TypeError:
+                    obj = None
                 if obj is not None:
                     receivers.add(obj)
             elif callable(ref):
                 receivers.add(ref)
 
-        # If receivers were found, verify our handlers are among them.
-        # In some test environments signals may not be connected yet
-        # (e.g., app ready() not fully executed); in that case, just
-        # verify the handlers exist and are callable (tested above).
-        if receivers:
-            assert invalidate_datacontract_cache in receivers
-            assert rebuild_contract_search_vector in receivers
+        # Verify our handlers are among the connected receivers.
+        # If the set is empty, signal dispatch hasn't completed — fail
+        # explicitly rather than silently passing with zero verification.
+        assert receivers, (
+            "post_save has no resolved receivers — "
+            "app ready() may not have run; cannot verify signal connections"
+        )
+        assert invalidate_datacontract_cache in receivers, (
+            "invalidate_datacontract_cache not connected to post_save"
+        )
+        assert rebuild_contract_search_vector in receivers, (
+            "rebuild_contract_search_vector not connected to post_save"
+        )
 
     def test_save_publishes_redis_invalidation(self):
         """Contract save publishes spec hash to Redis channel."""

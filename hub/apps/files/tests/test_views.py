@@ -9,15 +9,13 @@ import uuid
 import hashlib
 
 import pytest
-from django.test import TestCase, override_settings
+from django.test import override_settings
 from rest_framework import status
 
-from hub.apps.core.events.models import Event
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.files.tests.test_base import FilesAPITestBase
 from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.users.models import UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -43,13 +41,6 @@ class FileViewSetTest(FilesAPITestBase):
 
     def test_list_files_success_returns_200(self):
         """Test listing files successfully returns 200 with results list."""
-        response = self.client.get("/api/v1/files/")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("results", response.data)
-        self.assertIsInstance(response.data["results"], list)
-
-    def test_list_files_success_returns_results_list(self):
-        """Test listing files returns results list."""
         response = self.client.get("/api/v1/files/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("results", response.data)
@@ -84,13 +75,6 @@ class FileViewSetTest(FilesAPITestBase):
 
     def test_retrieve_file_success_returns_200(self):
         """Test retrieving file successfully returns 200 with correct data."""
-        response = self.client.get(f"/api/v1/files/{self.file.id}/")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["id"], str(self.file.id))
-        self.assertEqual(response.data["name"], self.file.name)
-
-    def test_retrieve_file_success_returns_correct_data(self):
-        """Test retrieving file returns correct data."""
         response = self.client.get(f"/api/v1/files/{self.file.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], str(self.file.id))
@@ -172,6 +156,9 @@ class FileViewSetTest(FilesAPITestBase):
 
         response = self.client.post("/api/v1/files/init/", data, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # Verify error references missing required fields
+        self.assertIn("content_type", response.data)
+        self.assertIn("size", response.data)
 
     def test_init_upload_invalid_upload_method(self):
         """Test initializing upload with invalid upload_method returns 400."""
@@ -184,6 +171,8 @@ class FileViewSetTest(FilesAPITestBase):
 
         response = self.client.post("/api/v1/files/init/", data, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # Verify error references the invalid field
+        self.assertIn("upload_method", response.data)
 
     def test_init_upload_unauthenticated(self):
         """Test initializing upload without authentication returns 401."""
@@ -202,19 +191,21 @@ class FileViewSetTest(FilesAPITestBase):
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
 
-        # Create pending file
+        # Align storage_path with FileService / save_file(..., file_name=...)
+        fid = uuid.uuid4()
+        test_content = b"test,data\n1,2"
         pending_file = File.objects.create(
+            id=fid,
             tenant=self.tenant,
             name="pending.csv",
             content_type="text/csv",
-            size=1024,
+            size=len(test_content),
             status=FileStatus.PENDING,
-            storage_path=f"{self.tenant.id}/pending.csv",
+            storage_path=f"{self.tenant.id}/{fid}/pending.csv",
             created_by=self.user,
         )
 
         # Upload test content to storage
-        test_content = b"test,data\n1,2"
         storage_client = S3StorageClient()
         from django.core.files.base import ContentFile
 
@@ -222,6 +213,7 @@ class FileViewSetTest(FilesAPITestBase):
             tenant_id=str(self.tenant.id),
             file_id=str(pending_file.id),
             file_content=ContentFile(test_content),
+            file_name=pending_file.name,
         )
 
         content_sha256 = hashlib.sha256(test_content).hexdigest()
@@ -255,6 +247,12 @@ class FileViewSetTest(FilesAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # Verify error references the hash issue
+        error_text = str(response.data).lower()
+        self.assertTrue(
+            "sha" in error_text or "hash" in error_text or "hex" in error_text,
+            f"Expected error about invalid hash, got: {response.data}",
+        )
 
     def test_complete_upload_file_not_found(self):
         """Test completing upload for non-existent file returns 404."""
@@ -468,14 +466,53 @@ class FileViewSetTest(FilesAPITestBase):
         response = self.client.get("/api/v1/files/?search=report")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         names = [f["name"] for f in response.data["results"]]
-        self.assertTrue(any("report" in n for n in names))
+        self.assertIn("report-data.csv", names)
 
     def test_list_files_ordering(self):
-        """Test ordering files (29.69.2)."""
+        """Test ordering files returns results in correct order (29.69.2)."""
+        # Create files with known names (self.file already exists from setUp)
+        File.objects.create(
+            tenant=self.tenant,
+            name="alpha.csv",
+            content_type="text/csv",
+            size=100,
+            status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
+            storage_path=f"{self.tenant.id}/alpha.csv",
+            created_by=self.user,
+        )
+        File.objects.create(
+            tenant=self.tenant,
+            name="zulu.csv",
+            content_type="text/csv",
+            size=200,
+            status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
+            storage_path=f"{self.tenant.id}/zulu.csv",
+            created_by=self.user,
+        )
+        File.objects.create(
+            tenant=self.tenant,
+            name="mike.csv",
+            content_type="text/csv",
+            size=300,
+            status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
+            storage_path=f"{self.tenant.id}/mike.csv",
+            created_by=self.user,
+        )
+
+        # Test ascending name ordering
         response = self.client.get("/api/v1/files/?ordering=name")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        response_desc = self.client.get("/api/v1/files/?ordering=-created_at")
+        names = [f["name"] for f in response.data["results"]]
+        self.assertEqual(names, sorted(names))
+
+        # Test descending name ordering
+        response_desc = self.client.get("/api/v1/files/?ordering=-name")
         self.assertEqual(response_desc.status_code, status.HTTP_200_OK)
+        names_desc = [f["name"] for f in response_desc.data["results"]]
+        self.assertEqual(names_desc, sorted(names_desc, reverse=True))
 
     def test_list_files_filter_by_status(self):
         """Test filtering files by status."""

@@ -62,15 +62,16 @@ class DQCircuitBreakerActivationTests(TestCase):
         reset_circuit_breaker_by_name("dq-service")
 
     def _open_dq_circuit(self) -> None:
-        for _ in range(4):
+        breaker = get_shared_circuit_breaker("dq-service")
+        threshold = breaker.failure_threshold
+        # Sub-threshold calls: each should fail and increment the failure count
+        for _ in range(threshold - 1):
             with self.assertRaises(Exception):
                 DQService.run_external_dq_check(b"col\n1\n", "csv", use_cache=False)
+        # Threshold-reaching call: triggers OPEN and returns fallback
         out = DQService.run_external_dq_check(b"col\n1\n", "csv", use_cache=False)
         self.assertEqual(out.get("overall_status"), "UNKNOWN")
-        self.assertEqual(
-            get_shared_circuit_breaker("dq-service").get_state(),
-            CircuitBreakerState.OPEN,
-        )
+        self.assertEqual(breaker.get_state(), CircuitBreakerState.OPEN)
 
     def test_activation_proceeds_with_warn_when_dq_circuit_open(self):
         self._open_dq_circuit()

@@ -516,6 +516,9 @@ class S3StorageClient:
 
         Returns:
             True if file exists, False otherwise
+
+        Raises:
+            Exception: If storage is unreachable or a non-404 error occurs.
         """
         try:
             self.client.head_object(
@@ -523,6 +526,10 @@ class S3StorageClient:
                 Key=key
             )
             return True
+        except EndpointConnectionError as e:
+            raise Exception(
+                f"Storage unavailable: {str(e)}"
+            ) from e
         except ClientError as e:
             if e.response['Error']['Code'] == '404':
                 return False
@@ -610,7 +617,8 @@ class S3StorageClient:
         self,
         tenant_id: str,
         file_id: str,
-        file_content
+        file_content,
+        file_name: str | None = None,
     ) -> str:
         """
         Save file to S3 storage.
@@ -619,6 +627,10 @@ class S3StorageClient:
             tenant_id: Tenant ID
             file_id: File ID
             file_content: File content (file-like object or ContentFile)
+            file_name: Optional logical file name. When set, the key matches
+                ``File.storage_path`` from ``FileService.create_file``:
+                ``{tenant_id}/{file_id}/{file_name}``. When omitted, legacy key
+                ``{tenant_id}/{file_id}`` is used (older tests / tooling).
 
         Returns:
             S3 object key (storage path)
@@ -628,7 +640,11 @@ class S3StorageClient:
             self._ensure_bucket_exists()
             self._bucket_checked = True
 
-        key = f"{tenant_id}/{file_id}"
+        key = (
+            f"{tenant_id}/{file_id}/{file_name}"
+            if file_name
+            else f"{tenant_id}/{file_id}"
+        )
 
         try:
             # Get content type from file_content if available
@@ -659,8 +675,12 @@ class S3StorageClient:
         except (ClientError, Exception) as e:
             # If connection error, try alternative endpoint (handled in _ensure_bucket_exists)
             error_str = str(e).lower()
-            if ('name resolution' in error_str or 'could not connect' in error_str or
-                'gaierror' in error_str) and not self._bucket_checked:
+            conn_issue = (
+                "name resolution" in error_str
+                or "could not connect" in error_str
+                or "gaierror" in error_str
+            )
+            if conn_issue and not self._bucket_checked:
                 # Retry with bucket check (which will try alternative endpoints)
                 self._bucket_checked = False
                 self._ensure_bucket_exists()

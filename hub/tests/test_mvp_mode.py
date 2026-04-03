@@ -35,6 +35,8 @@ class TestMvpModeMiddlewareAndOpenAPI:
             "/api/v1/ai/natural-language-search/",
             "/api/v1/transformation/pipelines/",
             "/api/v1/social/communities/",
+            "/api/v1/scheduled-ingestions/",
+            "/api/v1/scheduled-exports/",
         ):
             r = api_client.get(path)
             assert r.status_code == status.HTTP_404_NOT_FOUND, path
@@ -45,15 +47,15 @@ class TestMvpModeMiddlewareAndOpenAPI:
             "/api/v1/contracts/",
             "/api/v1/assets/",
             "/api/v1/marketplace/",
-            "/api/v1/scheduled-ingestions/",
-            "/api/v1/scheduled-exports/",
             "/api/v1/webhooks/",
         ):
             r = api_client.get(path)
-            assert r.status_code != status.HTTP_404_NOT_FOUND, (
-                path,
-                r.status_code,
-            )
+            assert r.status_code not in (
+                status.HTTP_404_NOT_FOUND,
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status.HTTP_502_BAD_GATEWAY,
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+            ), f"{path} returned {r.status_code} (expected routable non-error)"
 
     @override_settings(MVP_MODE=True)
     def test_openapi_json_omits_gated_prefixes(
@@ -67,11 +69,16 @@ class TestMvpModeMiddlewareAndOpenAPI:
         assert "mesh" not in keys.lower()
         assert "/api/v1/ai/" not in keys
         assert "social" not in keys.lower()
+        assert "scheduled-ingestion" not in keys.lower()
+        assert "scheduled-export" not in keys.lower()
 
     @override_settings(MVP_MODE=False)
     def test_mesh_reachable_when_mvp_off(self, api_client: Client) -> None:
         r = api_client.get("/api/v1/mesh/domains/")
-        assert r.status_code != status.HTTP_404_NOT_FOUND
+        assert r.status_code not in (
+            status.HTTP_404_NOT_FOUND,
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+        ), f"mesh/domains returned {r.status_code} with MVP_MODE=False"
 
 
 class TestMvpModeHelpers:

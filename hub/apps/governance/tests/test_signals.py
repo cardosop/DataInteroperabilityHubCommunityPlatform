@@ -51,18 +51,33 @@ class GovernanceSignalTest(TestCase):
     def test_signal_connected_to_post_save_and_post_delete(self):
         """All 3 signal handlers are connected."""
         from hub.apps.governance.signals import (
-            invalidate_policy_cache_on_save,
             invalidate_policy_cache_on_delete,
             invalidate_field_policy_cache,
+            invalidate_policy_cache_on_save,
         )
-        save_receivers = [
-            r[1]() for r in post_save.receivers
-            if r[1]() is not None
-        ]
-        delete_receivers = [
-            r[1]() for r in post_delete.receivers
-            if r[1]() is not None
-        ]
+
+        def _receiver_functions(signal):
+            # Django 6+: each entry is
+            # (lookup_key, receiver_ref, sender_ref, is_async); receiver at [1].
+            out = set()
+            for receiver_tuple in signal.receivers:
+                if len(receiver_tuple) < 2:
+                    continue
+                ref = receiver_tuple[1]
+                # weakref.ref or weakref.WeakMethod (not ReferenceType subclass)
+                if hasattr(ref, "__call__"):
+                    try:
+                        obj = ref()
+                    except TypeError:
+                        obj = None
+                    if obj is not None:
+                        out.add(obj)
+                elif callable(ref):
+                    out.add(ref)
+            return out
+
+        save_receivers = _receiver_functions(post_save)
+        delete_receivers = _receiver_functions(post_delete)
         assert invalidate_policy_cache_on_save in save_receivers
         assert invalidate_policy_cache_on_delete in delete_receivers
         assert invalidate_field_policy_cache in save_receivers

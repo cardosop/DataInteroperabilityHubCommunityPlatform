@@ -25,6 +25,8 @@ from hub.apps.files.tests.test_base import FilesAPITestBase
     EVENT_BUS_ASYNC_PERSISTENCE=False,
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,
     RATE_LIMIT_ENABLED=False,
+    # Event lifecycle here is not testing async malware scan; avoid PENDING_SCAN on download.
+    CLAMAV_ENABLED=False,
 )
 class FileViewsEventPublishingE2ETest(FilesAPITestBase):
     """E2E tests for file event publishing through REST API."""
@@ -46,10 +48,11 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
             self.skipTest("S3/MinIO storage not available")
 
         # Step 1: Initialize file upload (should publish file.created)
+        test_content = b"test content"
         init_data = {
             "name": "test_file.csv",
             "content_type": "text/csv",
-            "size": 1024,
+            "size": len(test_content),
             "upload_method": "browser",
         }
 
@@ -70,17 +73,17 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
         self.assertEqual(created_event.data["file_id"], file_id)
         self.assertEqual(created_event.data["name"], "test_file.csv")
         self.assertEqual(created_event.data["content_type"], "text/csv")
-        self.assertEqual(created_event.data["size"], 1024)
+        self.assertEqual(created_event.data["size"], len(test_content))
         self.assertEqual(str(created_event.tenant_id), str(self.tenant.id))
         self.assertEqual(str(created_event.user_id), str(self.user.id))
 
         # Step 2: Upload file content to storage
         file_obj = File.objects.get(id=file_id)
-        test_content = b"test content"
         self.storage_client.save_file(
             tenant_id=str(self.tenant.id),
             file_id=str(file_obj.id),
             file_content=ContentFile(test_content),
+            file_name=file_obj.name,
         )
 
         # Step 3: Complete file upload (should publish file.uploaded and file.updated)
@@ -106,7 +109,7 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
         )
         self.assertIsNotNone(uploaded_event)
         self.assertEqual(uploaded_event.data["file_id"], file_id)
-        self.assertEqual(uploaded_event.data["file_size"], 1024)
+        self.assertEqual(uploaded_event.data["file_size"], len(test_content))
         self.assertEqual(uploaded_event.data["content_type"], "text/csv")
         self.assertEqual(uploaded_event.data["content_sha256"], sha256_hash)
 
@@ -138,7 +141,7 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
         )
         self.assertIsNotNone(downloaded_event)
         self.assertEqual(downloaded_event.data["file_id"], file_id)
-        self.assertEqual(downloaded_event.data["download_size"], 1024)
+        self.assertEqual(downloaded_event.data["download_size"], len(test_content))
         self.assertIsNotNone(downloaded_event.data.get("download_duration_ms"))
 
         # Step 5: Delete file (should publish file.deleted)
@@ -191,11 +194,12 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
 
-        # Initialize upload
+        test_content = b"test"
+        # Declared size must match stored object bytes or complete returns 400.
         init_data = {
             "name": "complete_test.csv",
             "content_type": "text/csv",
-            "size": 1024,
+            "size": len(test_content),
             "upload_method": "browser",
         }
         response = self.client.post("/api/v1/files/init/", init_data, format="json")
@@ -203,11 +207,11 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
 
         # Upload file content to storage
         file_obj = File.objects.get(id=file_id)
-        test_content = b"test"
         self.storage_client.save_file(
             tenant_id=str(self.tenant.id),
             file_id=str(file_obj.id),
             file_content=ContentFile(test_content),
+            file_name=file_obj.name,
         )
 
         # Complete upload
@@ -227,7 +231,7 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
 
         event = Event.objects.filter(event_type="file.uploaded").order_by("-timestamp").first()
         self.assertEqual(event.data["file_id"], file_id)
-        self.assertEqual(event.data["file_size"], 1024)
+        self.assertEqual(event.data["file_size"], len(test_content))
         self.assertEqual(event.data["content_sha256"], sha256_hash)
 
     def test_e2e_file_download_publishes_downloaded_event(self):
@@ -298,15 +302,21 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
         self.assertEqual(file_obj.status, FileStatus.DELETED)
 
     def test_e2e_multipart_upload_events(self):
-        """Test that multipart upload publishes correct events."""
+        """Test that multipart upload publishes correct events.
+
+        Performs a real multipart upload with a single 5 MiB part so
+        that the complete endpoint succeeds and we can assert events
+        unconditionally.
+        """
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
 
-        # Initialize multipart upload (large file > 100MB)
+        # Use a size > 100 MB to trigger multipart path in init_upload view
+        declared_size = 150 * 1024 * 1024  # 150 MB
         init_data = {
             "name": "large_file.csv",
             "content_type": "text/csv",
-            "size": 150 * 1024 * 1024,  # 150 MB
+            "size": declared_size,
             "upload_method": "sdk",
         }
 
@@ -321,72 +331,100 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
         created_count_after = Event.objects.filter(event_type="file.created").count()
         self.assertEqual(created_count_after, created_count_before + 1)
 
-        # Upload file content (simplified - in real scenario would upload parts)
+        # Upload a real part (5 MiB minimum for S3 multipart)
         file_obj = File.objects.get(id=file_id)
-        test_content = b"large content" * 1000
-        self.storage_client.save_file(
-            tenant_id=str(self.tenant.id),
-            file_id=str(file_obj.id),
-            file_content=ContentFile(test_content),
-        )
+        part_data = b"x" * (5 * 1024 * 1024)
+        upload_id = file_obj.metadata_json["multipart_upload_id"]
 
-        # Complete multipart upload
-        sha256_hash = hashlib.sha256(test_content).hexdigest()
-        # For multipart, we'd need actual parts, but for testing we'll use empty parts
-        # In real scenario, parts would come from actual multipart upload
-        complete_data = {"content_sha256": sha256_hash}
+        s3 = self.storage_client.client
+        part_resp = s3.upload_part(
+            Bucket=self.storage_client.bucket_name,
+            Key=file_obj.storage_path,
+            UploadId=upload_id,
+            PartNumber=1,
+            Body=part_data,
+        )
+        real_etag = part_resp["ETag"]
+
+        # Fix declared size to match actual upload so complete succeeds
+        file_obj.size = len(part_data)
+        file_obj.save(update_fields=["size"])
+
+        sha256_hash = hashlib.sha256(part_data).hexdigest()
+        complete_data = {
+            "content_sha256": sha256_hash,
+            "parts": [{"ETag": real_etag, "PartNumber": 1}],
+        }
 
         uploaded_count_before = Event.objects.filter(event_type="file.uploaded").count()
         response = self.client.post(
             f"/api/v1/files/{file_id}/complete/", complete_data, format="json"
         )
 
-        # May fail if parts are required, but event should still be published
-        # if completion succeeds
-        if response.status_code == status.HTTP_200_OK:
-            uploaded_count_after = Event.objects.filter(event_type="file.uploaded").count()
-            self.assertGreaterEqual(uploaded_count_after, uploaded_count_before)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            f"Expected 200 but got {response.status_code}: {getattr(response, 'data', '')}",
+        )
+
+        uploaded_count_after = Event.objects.filter(event_type="file.uploaded").count()
+        self.assertEqual(uploaded_count_after, uploaded_count_before + 1)
 
     def test_e2e_events_include_correct_tenant_and_user(self):
         """Test that all events include correct tenant_id and user_id."""
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
 
-        # Initialize upload
+        test_content = b"test"
         init_data = {
             "name": "tenant_test.csv",
             "content_type": "text/csv",
-            "size": 1024,
+            "size": len(test_content),
             "upload_method": "browser",
         }
-        response = self.client.post("/api/v1/files/init/", init_data, format="json")
-        file_id = response.data["file_id"]
+        init_response = self.client.post("/api/v1/files/init/", init_data, format="json")
+        self.assertEqual(init_response.status_code, status.HTTP_201_CREATED)
+        file_id = init_response.data["file_id"]
 
         # Upload content
         file_obj = File.objects.get(id=file_id)
-        test_content = b"test"
         self.storage_client.save_file(
             tenant_id=str(self.tenant.id),
             file_id=str(file_obj.id),
             file_content=ContentFile(test_content),
+            file_name=file_obj.name,
         )
 
         # Complete upload
         sha256_hash = hashlib.sha256(test_content).hexdigest()
         complete_data = {"content_sha256": sha256_hash}
-        self.client.post(f"/api/v1/files/{file_id}/complete/", complete_data, format="json")
+        complete_response = self.client.post(
+            f"/api/v1/files/{file_id}/complete/", complete_data, format="json"
+        )
+        self.assertEqual(complete_response.status_code, status.HTTP_200_OK)
 
         # Download
-        self.client.get(f"/api/v1/files/{file_id}/download/")
+        download_response = self.client.get(f"/api/v1/files/{file_id}/download/")
+        self.assertEqual(download_response.status_code, status.HTTP_200_OK)
 
         # Delete
-        self.client.delete(f"/api/v1/files/{file_id}/")
+        delete_response = self.client.delete(f"/api/v1/files/{file_id}/")
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+
+        # Assert intermediate response status codes
+        # (init and complete are already checked above implicitly via file lifecycle)
 
         # Verify all events have correct tenant and user
         events = Event.objects.filter(data__file_id=file_id).order_by("timestamp")
 
-        # Verify we have at least created and deleted events
-        self.assertGreaterEqual(events.count(), 2)
+        # Full lifecycle: file.created, file.uploaded, file.updated, file.downloaded, file.deleted
+        # At minimum 4 events (downloaded may also produce an event via get_file)
+        self.assertGreaterEqual(
+            events.count(),
+            4,
+            f"Expected at least 4 events for full lifecycle, got {events.count()}: "
+            f"{[e.event_type for e in events]}",
+        )
 
         for event in events:
             self.assertEqual(str(event.tenant_id), str(self.tenant.id))
