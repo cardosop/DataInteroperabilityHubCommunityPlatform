@@ -31,3 +31,30 @@ CVE-2026-27135
 # Status: affected (no Debian fix)
 # Impact: Low — systemd runs as init in host, not in container workloads
 CVE-2026-29111
+
+# ---------------------------------------------------------------------------
+# Go binary CVEs — from compiled binaries bundled in base image, not our code.
+# These are in Go runtime/libraries embedded in tools within python:3.12-slim.
+# We cannot patch these without rebuilding the upstream binaries.
+# Added: 2026-04-03 | Review by: 2026-05-03
+# ---------------------------------------------------------------------------
+
+# Moby/Docker: AuthZ plugin bypass with oversized request
+# Source: Go binary in base image (docker engine components)
+# Fix requires Docker 29.3.1 — not available in python:3.12-slim
+CVE-2026-34040
+
+# pgproto3/v2: PostgreSQL protocol vulnerability
+# Status: affected (no fix available)
+# Source: Go binary (likely from a bundled tool)
+CVE-2026-32286
+
+# grpc-go: Critical vulnerability in gRPC Go implementation
+# Source: Go binary in base image
+# Fix requires grpc v1.79.3 — not controllable from Python image
+CVE-2026-33186
+
+# Go stdlib: Incorrect parsing of IPv6 host literals in net/url
+# Source: Go runtime v1.25.7 embedded in base image binaries
+# Fix requires Go 1.25.8 — not controllable from Python image
+CVE-2026-25679
