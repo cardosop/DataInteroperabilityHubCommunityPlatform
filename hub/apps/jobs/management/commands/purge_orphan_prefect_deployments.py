@@ -37,6 +37,16 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        from django.conf import settings
+
+        if getattr(settings, "MVP_MODE", False):
+            self.stdout.write(
+                self.style.WARNING(
+                    "MVP_MODE enabled — skipping Prefect purge."
+                )
+            )
+            return
+
         dry_run = options["dry_run"]
 
         ingestion_purged = self._purge_ingestions(dry_run)

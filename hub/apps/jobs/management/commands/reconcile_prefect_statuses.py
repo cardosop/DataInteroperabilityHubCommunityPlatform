@@ -21,6 +21,14 @@ class Command(BaseCommand):
     )
 
     def handle(self, *args, **options):
+        from django.conf import settings
+
+        if getattr(settings, "MVP_MODE", False):
+            self.stdout.write(
+                self.style.WARNING("MVP_MODE enabled — skipping Prefect reconciliation.")
+            )
+            return
+
         from hub.apps.jobs.tasks_prefect_sync import (
             reconcile_prefect_run_statuses,
         )
