@@ -24,10 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt requirements-dev.txt ./
 
 # Install Python dependencies (production + development for testing)
-# Long timeout for large wheels on slow links (same policy as Prefect worker images)
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --timeout=1200 --retries=20 -r requirements.txt && \
-    pip install --timeout=1200 --retries=20 -r requirements-dev.txt
+# --no-cache-dir ensures pip always resolves the latest matching version
+# instead of reusing stale wheels from BuildKit's cache mount.
+RUN pip install --no-cache-dir --timeout=1200 --retries=20 -r requirements.txt && \
+    pip install --no-cache-dir --timeout=1200 --retries=20 -r requirements-dev.txt
 
 # Copy application code
 COPY . .
