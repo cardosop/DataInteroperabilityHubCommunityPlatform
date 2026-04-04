@@ -70,6 +70,7 @@ venv/
 .venv/
 venv-*/
 **/venv/
+**/.venv/
 test_reports_comprehensive/
 test_reports_integration/
 htmlcov/
