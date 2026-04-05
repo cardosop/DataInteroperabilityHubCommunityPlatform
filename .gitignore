@@ -76,7 +76,9 @@ docs/_build/
 *.bak
 *.swp
 
-core
+# Unix core dumps (pattern must not match hub/apps/core/)
+core.*
+/core
 
 # Terraform
 .terraform/

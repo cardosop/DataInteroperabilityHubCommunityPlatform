@@ -106,6 +106,8 @@ COPY nginx.conf /etc/nginx/templates/default.conf.template
 # through this nginx instance.  Override at docker run / docker-compose level:
 #   API_HOST=https://api.example.com
 ENV API_HOST=""
+# Upstream for nginx proxy_pass — overridden in Kubernetes to match Helm service name
+ENV API_UPSTREAM="api-service:8000"
 
 # Expose port
 EXPOSE 80
