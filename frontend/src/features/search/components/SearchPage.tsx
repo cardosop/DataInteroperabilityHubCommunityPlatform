@@ -3,8 +3,8 @@
  * Input, filters, results list with links to /assets/:id, /contracts/:id, /datasets/:id
  */
 
-import { useCallback, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
@@ -28,8 +28,12 @@ function resultHref(item: { type: string; id: string }): string {
 }
 
 export function SearchPage() {
-  const [query, setQuery] = useState('');
+  const [searchParams] = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get('q') || '');
   const [typeFilter, setTypeFilter] = useState<'' | SearchResultType>('');
+  const [domainFilter, setDomainFilter] = useState('');
+  const [dqStatusFilter, setDqStatusFilter] = useState('');
+  const [complianceFilter, setComplianceFilter] = useState('');
   const [data, setData] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -40,9 +44,11 @@ export function SearchPage() {
     setSubmitted(true);
     setLoading(true);
     try {
-      const filters = typeFilter
-        ? { type: typeFilter as SearchResultType, limit: 50 }
-        : { limit: 50 };
+      const filters: Record<string, string | number> = { limit: 50 };
+      if (typeFilter) filters.type = typeFilter;
+      if (domainFilter) filters.domain = domainFilter;
+      if (dqStatusFilter) filters.quality_status = dqStatusFilter;
+      if (complianceFilter) filters.compliance_status = complianceFilter;
       const response = await searchService.search(query.trim(), filters);
       setData(response);
     } catch (err) {
@@ -51,7 +57,19 @@ export function SearchPage() {
     } finally {
       setLoading(false);
     }
-  }, [query, typeFilter]);
+  }, [query, typeFilter, domainFilter, dqStatusFilter, complianceFilter]);
+
+  // Auto-search when arriving with ?q= from header search
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q && !submitted) {
+      setQuery(q);
+      // Defer to next tick so query state is set
+      setTimeout(() => runSearch(), 0);
+    }
+    // Only on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,6 +115,47 @@ export function SearchPage() {
                 {opt.label}
               </option>
             ))}
+          </select>
+        </div>
+        <div className="search-filter-group">
+          <label htmlFor="search-domain-filter">Domain</label>
+          <input
+            id="search-domain-filter"
+            type="text"
+            value={domainFilter}
+            onChange={(e) => setDomainFilter(e.target.value)}
+            placeholder="e.g. marketing"
+            aria-label="Filter by domain"
+          />
+        </div>
+        <div className="search-filter-group">
+          <label htmlFor="search-dq-filter">DQ Status</label>
+          <select
+            id="search-dq-filter"
+            value={dqStatusFilter}
+            onChange={(e) => setDqStatusFilter(e.target.value)}
+            aria-label="Filter by DQ status"
+          >
+            <option value="">All</option>
+            <option value="PASSED">Passed</option>
+            <option value="FAILED">Failed</option>
+            <option value="WARNING">Warning</option>
+            <option value="PENDING">Pending</option>
+          </select>
+        </div>
+        <div className="search-filter-group">
+          <label htmlFor="search-compliance-filter">Compliance</label>
+          <select
+            id="search-compliance-filter"
+            value={complianceFilter}
+            onChange={(e) => setComplianceFilter(e.target.value)}
+            aria-label="Filter by compliance status"
+          >
+            <option value="">All</option>
+            <option value="COMPLIANT">Compliant</option>
+            <option value="NON_COMPLIANT">Non-Compliant</option>
+            <option value="WARNING">Warning</option>
+            <option value="PENDING">Pending</option>
           </select>
         </div>
       </form>

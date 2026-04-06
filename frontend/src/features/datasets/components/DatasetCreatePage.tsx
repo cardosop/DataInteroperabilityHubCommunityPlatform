@@ -86,11 +86,7 @@ export function DatasetCreatePage() {
           name,
         });
         toast.success('Asset and dataset created successfully.');
-        if (result.dataset_id) {
-          navigate(`/datasets/${result.dataset_id}`);
-        } else {
-          navigate(`/assets/${result.asset_id}`);
-        }
+        navigate(`/assets/${result.asset_id}`);
       } catch (error) {
         toast.error(normalizeError(error).error.message || 'Failed to create asset and dataset');
       }

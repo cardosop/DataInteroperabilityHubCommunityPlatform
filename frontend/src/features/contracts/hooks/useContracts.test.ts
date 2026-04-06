@@ -50,4 +50,50 @@ describe('useContracts', () => {
     expect(typeof hookModule.useDeleteContract).toBe('function');
   });
 
+  // Merged ODPS hooks (211.A5.3)
+  it('exports useContractWorkflowStatus', () => {
+    expect(hookModule.useContractWorkflowStatus).toBeDefined();
+    expect(typeof hookModule.useContractWorkflowStatus).toBe('function');
+  });
+
+  it('exports useODPSWorkflowStatus as deprecated alias', () => {
+    expect(hookModule.useODPSWorkflowStatus).toBeDefined();
+    expect(hookModule.useODPSWorkflowStatus).toBe(hookModule.useContractWorkflowStatus);
+  });
+
+  it('exports useCreateODPSProduct', () => {
+    expect(hookModule.useCreateODPSProduct).toBeDefined();
+    expect(typeof hookModule.useCreateODPSProduct).toBe('function');
+  });
+
+  it('exports useLinkODPS', () => {
+    expect(hookModule.useLinkODPS).toBeDefined();
+    expect(typeof hookModule.useLinkODPS).toBe('function');
+  });
+
+  it('exports useUnlinkODPS', () => {
+    expect(hookModule.useUnlinkODPS).toBeDefined();
+    expect(typeof hookModule.useUnlinkODPS).toBe('function');
+  });
+
+  it('exports useContractLinks', () => {
+    expect(hookModule.useContractLinks).toBeDefined();
+    expect(typeof hookModule.useContractLinks).toBe('function');
+  });
+
+  it('exports useODPSLinks as deprecated alias', () => {
+    expect(hookModule.useODPSLinks).toBeDefined();
+    expect(hookModule.useODPSLinks).toBe(hookModule.useContractLinks);
+  });
+
+  it('exports useExportODPS', () => {
+    expect(hookModule.useExportODPS).toBeDefined();
+    expect(typeof hookModule.useExportODPS).toBe('function');
+  });
+
+  it('exports useDownloadODPS', () => {
+    expect(hookModule.useDownloadODPS).toBeDefined();
+    expect(typeof hookModule.useDownloadODPS).toBe('function');
+  });
+
 });

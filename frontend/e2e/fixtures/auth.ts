@@ -696,8 +696,12 @@ export async function loginUser(
     .locator('button[type="submit"]')
     .or(page.locator('button.login-button'));
   await submitButton.waitFor({ state: 'visible', timeout: 5000 });
+  // Use function (not string) to avoid CSP unsafe-eval violation on staging
   await page.waitForFunction(
-    '(() => { const btn = document.querySelector(\'button[type="submit"]\'); return btn && !btn.disabled; })()',
+    () => {
+      const btn = document.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+      return btn && !btn.disabled;
+    },
     { timeout: 10000 }
   );
 

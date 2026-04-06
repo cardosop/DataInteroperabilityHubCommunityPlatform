@@ -3,6 +3,7 @@
  * Real dashboard with recent assets, datasets, jobs, and quick actions
  */
 
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAssetRecommendations, useAssets } from '../../features/assets/hooks/useAssets';
 import { useAuthStore } from '../../features/auth/store/authStore';
@@ -13,6 +14,37 @@ import { ErrorDisplay } from '../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../shared/components/LoadingSpinner';
 import { useHealth } from '../../shared/hooks/useHealth';
 import './HomePage.css';
+
+const GETTING_STARTED_KEY = 'meshant_getting_started_dismissed';
+
+function GettingStartedCard() {
+  const [dismissed, setDismissed] = useState(
+    () => localStorage.getItem(GETTING_STARTED_KEY) === 'true',
+  );
+
+  if (dismissed) return null;
+
+  const handleDismiss = () => {
+    localStorage.setItem(GETTING_STARTED_KEY, 'true');
+    setDismissed(true);
+  };
+
+  return (
+    <div className="getting-started-card" data-testid="getting-started-card">
+      <div className="getting-started-header">
+        <h2>Getting Started</h2>
+        <button type="button" className="getting-started-dismiss" onClick={handleDismiss} aria-label="Dismiss getting started">
+          &times;
+        </button>
+      </div>
+      <ol className="getting-started-steps">
+        <li><Link to="/assets/create">Create your first asset</Link></li>
+        <li>Upload data or attach a contract</li>
+        <li>Run quality checks and activate</li>
+      </ol>
+    </div>
+  );
+}
 
 export function HomePage() {
   const { user } = useAuthStore();
@@ -26,6 +58,13 @@ export function HomePage() {
     { enabled: !!user?.tenant_id }
   );
   const health = useHealth();
+
+  // Governance stats — lightweight queries (page_size=1 to get count only)
+  const totalAssets = useAssets({ page_size: 1 }, { enabled: !!user });
+  const compliantAssets = useAssets({ page_size: 1, compliance_status: 'COMPLIANT' }, { enabled: !!user });
+  const dqPassedAssets = useAssets({ page_size: 1, dq_status: 'PASSED' }, { enabled: !!user });
+  const draftAssets = useAssets({ page_size: 1, status: 'DRAFT' }, { enabled: !!user });
+  const activeAssets = useAssets({ page_size: 1, status: 'ACTIVE' }, { enabled: !!user });
 
   const formatDate = (dateString: string) => {
     try {
@@ -88,6 +127,9 @@ export function HomePage() {
         </div>
       </div>
 
+      {/* Getting Started — dismissible first-login guide */}
+      <GettingStartedCard />
+
       {/* Quick Actions */}
       <div className="quick-actions" data-testid="home-quick-actions">
         <h2>Quick Actions</h2>
@@ -108,6 +150,37 @@ export function HomePage() {
             <span className="quick-action-icon">⚙️</span>
             <span className="quick-action-label">View Jobs</span>
           </Link>
+        </div>
+      </div>
+
+      {/* Governance Overview */}
+      <div className="governance-overview" data-testid="governance-overview">
+        <h2>Governance Overview</h2>
+        <div className="governance-stats-grid">
+          <div className="governance-stat">
+            <span className="governance-stat__value">
+              {totalAssets.data?.count
+                ? `${Math.round(((compliantAssets.data?.count ?? 0) / totalAssets.data.count) * 100)}%`
+                : '—'}
+            </span>
+            <span className="governance-stat__label">Compliance Posture</span>
+          </div>
+          <div className="governance-stat">
+            <span className="governance-stat__value">
+              {totalAssets.data?.count
+                ? `${Math.round(((dqPassedAssets.data?.count ?? 0) / totalAssets.data.count) * 100)}%`
+                : '—'}
+            </span>
+            <span className="governance-stat__label">DQ Health</span>
+          </div>
+          <div className="governance-stat">
+            <span className="governance-stat__value">{draftAssets.data?.count ?? '—'}</span>
+            <span className="governance-stat__label">Draft Assets</span>
+          </div>
+          <div className="governance-stat">
+            <span className="governance-stat__value">{activeAssets.data?.count ?? '—'}</span>
+            <span className="governance-stat__label">Active Assets</span>
+          </div>
         </div>
       </div>
 

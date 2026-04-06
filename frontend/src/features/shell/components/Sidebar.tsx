@@ -36,7 +36,6 @@ const navItems: NavItem[] = [
     icon: '🔌',
     requiredCapability: 'integrations.marketplace',
   },
-  { path: '/odps', label: 'ODPS', icon: '🔗' },
   { path: '/dq', label: 'Data Quality', icon: '✅' },
   { path: '/compliance', label: 'Compliance', icon: '🛡️' },
   { path: '/mesh', label: 'Data Mesh', icon: '🌐', requiredCapability: 'mesh.domains' },
@@ -115,23 +114,64 @@ export function Sidebar() {
     isCapabilityAvailable,
   });
 
+  // Group nav items into sections
+  const corePaths = new Set(['/', '/assets', '/datasets', '/contracts']);
+  const qualityPaths = new Set(['/dq', '/compliance']);
+  const discoverPaths = new Set(['/search', '/marketplace']);
+  const adminPaths = new Set(['/jobs', '/webhooks', '/observability', '/governance', '/audit', '/admin', '/files', '/semantic', '/scheduled-ingestions']);
+
+  const coreItems = filteredNavItems.filter((i) => corePaths.has(i.path));
+  const qualityItems = filteredNavItems.filter((i) => qualityPaths.has(i.path));
+  const discoverItems = filteredNavItems.filter((i) => discoverPaths.has(i.path));
+  const adminItems = filteredNavItems.filter((i) => adminPaths.has(i.path));
+  const otherItems = filteredNavItems.filter(
+    (i) => !corePaths.has(i.path) && !qualityPaths.has(i.path) && !discoverPaths.has(i.path) && !adminPaths.has(i.path),
+  );
+
+  const renderItems = (items: NavItem[]) =>
+    items.map((item) => (
+      <li key={item.path}>
+        <NavLink
+          to={item.path}
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+          end={item.path === '/'}
+        >
+          {item.icon && <span className="nav-icon">{item.icon}</span>}
+          <span className="nav-label">{item.label}</span>
+        </NavLink>
+      </li>
+    ));
+
   return (
     <aside className="app-sidebar" role="navigation" aria-label="Main navigation">
       <nav className="sidebar-nav">
-        <ul className="nav-list">
-          {filteredNavItems.map((item) => (
-            <li key={item.path}>
-              <NavLink
-                to={item.path}
-                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                end={item.path === '/'}
-              >
-                {item.icon && <span className="nav-icon">{item.icon}</span>}
-                <span className="nav-label">{item.label}</span>
-              </NavLink>
-            </li>
-          ))}
-        </ul>
+        {coreItems.length > 0 && (
+          <ul className="nav-list">{renderItems(coreItems)}</ul>
+        )}
+        {qualityItems.length > 0 && (
+          <details className="nav-group" open>
+            <summary className="nav-group__label">Quality & Compliance</summary>
+            <ul className="nav-list">{renderItems(qualityItems)}</ul>
+          </details>
+        )}
+        {discoverItems.length > 0 && (
+          <details className="nav-group" open>
+            <summary className="nav-group__label">Discover</summary>
+            <ul className="nav-list">{renderItems(discoverItems)}</ul>
+          </details>
+        )}
+        {otherItems.length > 0 && (
+          <details className="nav-group" open>
+            <summary className="nav-group__label">More</summary>
+            <ul className="nav-list">{renderItems(otherItems)}</ul>
+          </details>
+        )}
+        {adminItems.length > 0 && (
+          <details className="nav-group">
+            <summary className="nav-group__label">Admin</summary>
+            <ul className="nav-list">{renderItems(adminItems)}</ul>
+          </details>
+        )}
       </nav>
     </aside>
   );

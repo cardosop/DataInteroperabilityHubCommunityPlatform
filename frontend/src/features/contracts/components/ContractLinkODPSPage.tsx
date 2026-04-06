@@ -1,15 +1,13 @@
 /**
- * ODPS Link Page
- * Link ODPS ↔ ODCS contracts.
- * Uses ContractPicker with specType=ODPS for "Link Existing ODPS" mode (task 29.69.6.3).
+ * ContractLinkODPSPage — Link ODPS ↔ ODCS contracts.
+ * Moved from features/odps/components/ODPSLinkPage.tsx (Phase 211.A7).
  */
 
 import { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useContract } from '../../contracts/hooks/useContracts';
+import { useContract, useLinkODPS, useUnlinkODPS, useContractLinks } from '../hooks/useContracts';
 import { ContractPicker } from '../../../shared/components/pickers';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
-import { useLinkODPS, useUnlinkODPS, useODPSLinks } from '../hooks/useODPS';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { useToast } from '../../../shared/components/Toast';
@@ -17,14 +15,14 @@ import { normalizeError } from '../../../shared/utils/errorUtils';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ContractFormat } from '../../../shared/types/contracts';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
-import './ODPSLinkPage.css';
 import { Button } from '../../../shared/components/Button';
+import './ContractLinkODPSPage.css';
 
-export function ODPSLinkPage() {
+export function ContractLinkODPSPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: contract, isLoading: contractLoading } = useContract(id || null);
-  const { data: links, isLoading: linksLoading, refetch: refetchLinks } = useODPSLinks(id || null);
+  const { data: links, isLoading: linksLoading, refetch: refetchLinks } = useContractLinks(id || null);
   const linkMutation = useLinkODPS();
   const unlinkMutation = useUnlinkODPS();
 
@@ -134,7 +132,7 @@ export function ODPSLinkPage() {
         <div className="error-message">
           <h2>No Linked ODCS Contract</h2>
           <p>This ODPS contract is not linked to an ODCS contract. To link contracts, navigate to the ODCS contract page and use the "Link ODPS" button.</p>
-          <Button onClick={() => navigate(`/odps/${id}`)} variant="primary">
+          <Button onClick={() => navigate(`/contracts/${id}`)} variant="primary">
             Back to ODPS Contract
           </Button>
         </div>
@@ -149,7 +147,7 @@ export function ODPSLinkPage() {
         <div className="error-message">
           <h2>Invalid Contract Type</h2>
           <p>This contract is not an ODCS contract. Only ODCS contracts can be linked to ODPS contracts.</p>
-          <Button onClick={() => navigate(isODPS ? `/odps/${id}` : `/contracts/${id}`)} variant="primary">
+          <Button onClick={() => navigate(`/contracts/${id}`)} variant="primary">
             Back to Contract
           </Button>
         </div>
@@ -164,13 +162,13 @@ export function ODPSLinkPage() {
       <Breadcrumbs
         items={[
           { label: 'Home', href: '/' },
-          { label: isODPS ? 'ODPS' : 'Contracts', href: isODPS ? '/odps' : '/contracts' },
-          { label: contract.name || 'Contract', href: id ? (isODPS ? `/odps/${id}` : `/contracts/${id}`) : undefined },
+          { label: 'Contracts', href: '/contracts' },
+          { label: contract.name || 'Contract', href: id ? `/contracts/${id}` : undefined },
           { label: 'Link ODPS' },
         ]}
       />
       <div className="odps-link-header">
-        <Button onClick={() => navigate(isODPS ? `/odps/${id}` : `/contracts/${id}`)} variant="ghost">
+        <Button onClick={() => navigate(`/contracts/${id}`)} variant="ghost">
           ← Back to Contract
         </Button>
         <h1>Link ODPS to ODCS Contract</h1>
@@ -202,7 +200,7 @@ export function ODPSLinkPage() {
               <div className="linked-contract-id">
                 <UuidWithCopy value={links!.odps_link!.id} label="ODPS Contract ID" />
                 <button
-                  onClick={() => navigate(`/odps/${links!.odps_link!.id}`)}
+                  onClick={() => navigate(`/contracts/${links!.odps_link!.id}`)}
                   className="btn-link"
                   type="button"
                 >

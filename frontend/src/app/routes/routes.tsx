@@ -5,7 +5,13 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import { lazy, Suspense, type ReactNode } from 'react';
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet, useParams } from 'react-router-dom';
+
+/** Redirect /odps/:id → /contracts/:id (backward compat) */
+function OdpsIdRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/contracts/${id}`} replace />;
+}
 // Critical routes - eagerly loaded (login, public pages)
 import { AcceptInvitationPage } from '../../features/auth/components/AcceptInvitationPage';
 import { LoginPage } from '../../features/auth/components/LoginPage';
@@ -133,6 +139,11 @@ const ContractEditorPage = lazy(() =>
     default: m.ContractEditorPage,
   }))
 );
+const ContractCreatePage = lazy(() =>
+  import('../../features/contracts/components/ContractCreatePage').then((m) => ({
+    default: m.ContractCreatePage,
+  }))
+);
 const ContractListPage = lazy(() =>
   import('../../features/contracts/components/ContractListPage').then((m) => ({
     default: m.ContractListPage,
@@ -252,21 +263,9 @@ const ObservabilityPage = lazy(() =>
     default: m.ObservabilityPage,
   }))
 );
-const ODPSDetailPage = lazy(() =>
-  import('../../features/odps/components/ODPSDetailPage').then((m) => ({
-    default: m.ODPSDetailPage,
-  }))
-);
-const ODPSLinkPage = lazy(() =>
-  import('../../features/odps/components/ODPSLinkPage').then((m) => ({ default: m.ODPSLinkPage }))
-);
-const ODPSListPage = lazy(() =>
-  import('../../features/odps/components/ODPSListPage').then((m) => ({ default: m.ODPSListPage }))
-);
-const ODPSUploadPage = lazy(() =>
-  import('../../features/odps/components/ODPSUploadPage').then((m) => ({
-    default: m.ODPSUploadPage,
-  }))
+const ContractLinkODPSPage = lazy(() =>
+  import('../../features/contracts/components/ContractLinkODPSPage').then((m) => ({ default: m.ContractLinkODPSPage }))
+
 );
 const ScheduledIngestionCreatePage = lazy(() =>
   import('../../features/scheduledIngestion/components/ScheduledIngestionCreatePage').then((m) => ({
@@ -666,6 +665,14 @@ export const router = createBrowserRouter([
             ),
           },
           {
+            path: 'create',
+            element: (
+              <EB fallbackMsg="Loading contract creator...">
+                <ContractCreatePage />
+              </EB>
+            ),
+          },
+          {
             path: ':id',
             element: (
               <EB fallbackMsg="Loading contract...">
@@ -685,7 +692,7 @@ export const router = createBrowserRouter([
             path: ':id/link-odps',
             element: (
               <EB fallbackMsg="Loading...">
-                <ODPSLinkPage />
+                <ContractLinkODPSPage />
               </EB>
             ),
           },
@@ -850,19 +857,20 @@ export const router = createBrowserRouter([
         ],
       },
       {
+        // Backward-compat redirects: /odps/* → /contracts/* (Phase 211.A6)
         path: 'odps',
         children: [
           {
             index: true,
-            element: <EB fallbackMsg="Loading ODPS..."><ODPSListPage /></EB>,
+            element: <Navigate to="/contracts?spec_type=ODPS" replace />,
           },
           {
             path: 'upload',
-            element: <EB fallbackMsg="Loading..."><ODPSUploadPage /></EB>,
+            element: <Navigate to="/contracts/create" replace />,
           },
           {
             path: ':id',
-            element: <EB fallbackMsg="Loading ODPS..."><ODPSDetailPage /></EB>,
+            element: <OdpsIdRedirect />,
           },
         ],
       },

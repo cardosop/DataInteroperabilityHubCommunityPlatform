@@ -299,6 +299,38 @@ class DatasetViewSet(viewsets.ModelViewSet):
 
         return response
 
+    @action(detail=True, methods=["get"], url_path="sample")
+    def sample(self, request, id=None):
+        """
+        Return pre-computed sample data rows from the dataset.
+
+        GET /api/v1/datasets/{id}/sample/?limit=50
+
+        Sample data is extracted during dataset creation and cached on the
+        model (sample_data_json). No S3 access needed at read time.
+        """
+        dataset = self.get_object()
+        sample_data = dataset.sample_data_json or []
+
+        # Optional limit parameter (default: return all stored rows, max 100)
+        try:
+            limit = int(request.query_params.get("limit", len(sample_data)))
+        except (ValueError, TypeError):
+            limit = len(sample_data)
+        limit = min(limit, 100)  # Hard cap at 100 rows
+
+        sliced = sample_data[:limit]
+
+        return Response(
+            {
+                "dataset_id": str(dataset.id),
+                "format": dataset.format,
+                "row_count": dataset.row_count,
+                "sample_size": len(sliced),
+                "sample_data": sliced,
+            }
+        )
+
     @action(detail=True, methods=["get", "post"], url_path="versions")
     def versions(self, request, id=None):
         """

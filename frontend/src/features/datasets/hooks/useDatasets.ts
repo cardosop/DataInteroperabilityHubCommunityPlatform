@@ -86,3 +86,15 @@ export function useDeleteDataset() {
     },
   });
 }
+
+/**
+ * Fetch sample data rows from a dataset.
+ * GET /api/v1/datasets/{id}/sample/?limit=50
+ */
+export function useDatasetSample(datasetId: string | null, limit = 50) {
+  return useQuery({
+    queryKey: ['datasets', 'sample', datasetId, limit],
+    queryFn: () => datasetService.getSample(datasetId!, limit),
+    enabled: !!datasetId,
+  });
+}

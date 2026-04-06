@@ -21,6 +21,8 @@ export function AssetListPage() {
   const [domainFilter, setDomainFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<AssetStatus | ''>('');
   const [visibilityFilter, setVisibilityFilter] = useState<AssetVisibility | ''>('');
+  const [dqStatusFilter, setDqStatusFilter] = useState('');
+  const [complianceStatusFilter, setComplianceStatusFilter] = useState('');
 
   const filters = {
     page,
@@ -29,6 +31,8 @@ export function AssetListPage() {
     domain: domainFilter || undefined,
     status: statusFilter || undefined,
     visibility: visibilityFilter || undefined,
+    dq_status: dqStatusFilter || undefined,
+    compliance_status: complianceStatusFilter || undefined,
     ordering: '-created_at',
   };
 
@@ -154,6 +158,30 @@ export function AssetListPage() {
           <option value="INTERNAL">Internal</option>
           <option value="EXTERNAL">External</option>
           <option value="PUBLIC">Public</option>
+        </select>
+        <select
+          value={dqStatusFilter}
+          onChange={(e) => { setDqStatusFilter(e.target.value); setPage(1); }}
+          className="filter-select"
+          aria-label="Filter by DQ status"
+        >
+          <option value="">All DQ</option>
+          <option value="PASSED">Passed</option>
+          <option value="FAILED">Failed</option>
+          <option value="WARNING">Warning</option>
+          <option value="PENDING">Pending</option>
+        </select>
+        <select
+          value={complianceStatusFilter}
+          onChange={(e) => { setComplianceStatusFilter(e.target.value); setPage(1); }}
+          className="filter-select"
+          aria-label="Filter by compliance status"
+        >
+          <option value="">All Compliance</option>
+          <option value="COMPLIANT">Compliant</option>
+          <option value="NON_COMPLIANT">Non-Compliant</option>
+          <option value="WARNING">Warning</option>
+          <option value="PENDING">Pending</option>
         </select>
       </div>
 

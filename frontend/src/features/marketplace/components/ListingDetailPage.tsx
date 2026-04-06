@@ -137,6 +137,19 @@ export function ListingDetailPage() {
               <p>{new Date(listing.published_at).toLocaleDateString()}</p>
             </div>
           )}
+
+          {listing.asset && (
+            <div className="listing-section">
+              <h2>Data Preview</h2>
+              <p>View the source asset for schema details and sample data.</p>
+              <Button
+                variant="secondary"
+                onClick={() => navigate(`/assets/${listing.asset}`)}
+              >
+                View Source Asset
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="listing-detail-sidebar">

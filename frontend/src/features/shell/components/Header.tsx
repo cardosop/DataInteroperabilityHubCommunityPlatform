@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../auth/store/authStore';
 import { getMyTenants, switchTenant } from '../../auth/services/tenantSwitchService';
 import type { TenantSummary } from '../../auth/types/tenantSwitch';
@@ -17,17 +17,16 @@ function getErrorMessage(err: unknown, fallback: string): string {
 }
 
 export function Header() {
+  const navigate = useNavigate();
   const { user, active_tenant_id, setActiveTenant, refreshUser, logout } = useAuthStore();
   const [showTenantSwitcher, setShowTenantSwitcher] = useState(false);
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
   const [tenantLoading, setTenantLoading] = useState(false);
   const [tenantSwitching, setTenantSwitching] = useState(false);
   const [tenantError, setTenantError] = useState<string | null>(null);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const tenantSwitcherRef = useRef<HTMLDivElement>(null);
-  const notificationsRef = useRef<HTMLDivElement>(null);
 
   const effectiveTenantId = active_tenant_id || user?.tenant_id;
   const currentTenant = tenants.find((t) => t.id === effectiveTenantId);
@@ -61,13 +60,9 @@ export function Header() {
       if (tenantSwitcherRef.current && !tenantSwitcherRef.current.contains(e.target as Node)) {
         setShowTenantSwitcher(false);
       }
-      if (notificationsRef.current && !notificationsRef.current.contains(e.target as Node)) {
-        setShowNotifications(false);
-      }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setShowNotifications(false);
         setShowUserMenu(false);
         setShowTenantSwitcher(false);
       }
@@ -114,12 +109,24 @@ export function Header() {
         </div>
 
         <div className="header-center">
-          <input
-            type="search"
-            placeholder="Search assets, contracts, datasets..."
-            className="global-search"
-            aria-label="Global search"
-          />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const input = e.currentTarget.querySelector('input');
+              const q = input?.value.trim();
+              if (q) {
+                navigate(`/search?q=${encodeURIComponent(q)}`);
+                if (input) input.value = '';
+              }
+            }}
+          >
+            <input
+              type="search"
+              placeholder="Search assets, contracts, datasets..."
+              className="global-search"
+              aria-label="Global search"
+            />
+          </form>
         </div>
 
         <div className="header-right">
@@ -175,35 +182,8 @@ export function Header() {
               <span className="tenant-static" title={displayName}>{displayName}</span>
               )}
 
-              {/* Notifications — minimal placeholder until backend support */}
-              <div className="notifications-wrapper" ref={notificationsRef}>
-                <button
-                  type="button"
-                  className="notifications-button"
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  aria-label="Notifications"
-                  aria-expanded={showNotifications}
-                  aria-haspopup="true"
-                >
-                  🔔
-                  <span className="notification-badge" aria-hidden="true">0</span>
-                </button>
-                {showNotifications && (
-                  <div
-                    className="notifications-dropdown"
-                    role="region"
-                    aria-label="Notifications"
-                    data-testid="notifications-dropdown"
-                  >
-                    <div className="notifications-empty">
-                      <p className="notifications-empty-title">No notifications yet</p>
-                      <p className="notifications-empty-message">
-                        Notifications will appear here when you have updates (e.g. access requests, DQ results).
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* Notifications removed — no backend notification system yet.
+                  Re-add when notification API is implemented (Phase 212+). */}
 
               {/* User Menu */}
               <div className="user-menu" ref={userMenuRef}>

@@ -37,6 +37,18 @@ const API_BASE_URL =
   (process.env.VITE_PROXY_TARGET ? `${process.env.VITE_PROXY_TARGET.replace(/\/$/, '')}/api/v1` : null) ||
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
+// Remote API detection: when targeting a deployed environment (staging/production),
+// docker exec and self-registration are unavailable. Users must be pre-seeded via
+// kubectl exec or E2E_ADMIN_EMAIL/E2E_ADMIN_PASSWORD must point to an existing user.
+const _isRemoteApi = (() => {
+  try {
+    const h = new URL(API_BASE_URL).hostname;
+    return h !== 'localhost' && h !== '127.0.0.1';
+  } catch {
+    return false;
+  }
+})();
+
 export interface TestUser {
   email: string;
   password: string;
@@ -162,8 +174,10 @@ let _cachedDefaultUser: TestUser | null = null;
 export async function ensureTestUser(): Promise<TestUser> {
   if (_cachedDefaultUser) return _cachedDefaultUser;
 
-  const email = 'e2e_test@example.com';
-  const password = 'TestPass123'; // Must contain uppercase, lowercase, and number
+  // Credentials from env vars (staging/CI) with fallback to local defaults.
+  // E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD are set by deploy.yml e2e-staging job.
+  const email = process.env.E2E_ADMIN_EMAIL || 'e2e_test@example.com';
+  const password = process.env.E2E_ADMIN_PASSWORD || 'TestPass123'; // Must contain uppercase, lowercase, and number
   const name = 'E2E Test User';
 
   const runWithBase = async (baseUrl: string): Promise<TestUser> => {
@@ -182,6 +196,17 @@ export async function ensureTestUser(): Promise<TestUser> {
       }
       return null;
     }, 'Test user login');
+
+    if (!loginResult && _isRemoteApi) {
+      // Remote API: docker exec and self-registration are unavailable.
+      // The test user must be pre-seeded on the deployed environment.
+      throw new Error(
+        `Test user '${email}' login failed on remote API (${baseUrl}).\n` +
+          'On deployed environments, test users must be pre-seeded. Run:\n' +
+          '  kubectl exec -n hub-staging deploy/hub-staging-api -- python hub/manage.py ensure_e2e_user_roles\n' +
+          'Or set E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD to an existing user.'
+      );
+    }
 
     if (!loginResult) {
       await runEnsureE2EUserRoles();
@@ -652,8 +677,37 @@ async function tryLogin(user: TestUser): Promise<boolean> {
 
 const E2E_CONTAINERS = ['hub-test-api', 'hub-api', 'hub-dev-api'] as const;
 
-/** Run ensure_e2e_user_roles via docker exec; used when persona user login fails. */
+/**
+ * Register a persona user via API on remote environments where docker exec is unavailable.
+ * Returns true if the user was created or already exists, false on failure.
+ */
+async function registerPersonaViaApi(user: TestUser, baseUrl: string = API_BASE_URL): Promise<boolean> {
+  try {
+    const registerResponse = await fetch(`${baseUrl}/auth/register/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: user.email, password: user.password, name: user.name }),
+    });
+    if (registerResponse.ok) {
+      console.log(`✅ Persona user ${user.email} registered via API`);
+      return true;
+    }
+    const errorData = await registerResponse.json().catch(() => ({}));
+    if ((registerResponse.status === 400 || registerResponse.status === 409) && isAlreadyRegisteredError(errorData)) {
+      return true; // Already exists
+    }
+    console.warn(`⚠️ Persona registration for ${user.email} failed: ${registerResponse.status}`);
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/** Run ensure_e2e_user_roles via docker exec; used when persona user login fails.
+ *  Skips entirely for remote APIs — docker exec is unavailable against deployed environments. */
 async function runEnsureE2EUserRoles(): Promise<boolean> {
+  if (_isRemoteApi) return false;
+
   const { execSync } = await import('child_process');
   const port = new URL(API_BASE_URL).port || '8000';
   const preferred = port === '8001' ? 'hub-test-api' : 'hub-api';
@@ -686,7 +740,11 @@ export async function ensureTenantAdminUser(): Promise<TestUser> {
     try {
       let ok = await tryLogin(user);
       if (!ok) {
-        await runEnsureE2EUserRoles();
+        if (_isRemoteApi) {
+          await registerPersonaViaApi(user);
+        } else {
+          await runEnsureE2EUserRoles();
+        }
         await new Promise((r) => setTimeout(r, 3000));
         ok = await tryLogin(user);
       }
@@ -696,7 +754,7 @@ export async function ensureTenantAdminUser(): Promise<TestUser> {
       }
     } catch (err) {
       if (isConnectionError(err) && attempt < maxAttempts - 1) {
-        await runEnsureE2EUserRoles();
+        if (!_isRemoteApi) await runEnsureE2EUserRoles();
         await new Promise((r) => setTimeout(r, 4000 * (attempt + 1)));
         continue;
       }
@@ -704,7 +762,9 @@ export async function ensureTenantAdminUser(): Promise<TestUser> {
     }
   }
   throw new Error(
-    `Tenant admin user not found. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
+    _isRemoteApi
+      ? `Tenant admin user '${user.email}' not found on remote. Seed with: kubectl exec -n hub-staging deploy/hub-staging-api -- python hub/manage.py ensure_e2e_user_roles`
+      : `Tenant admin user not found. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
   );
 }
 
@@ -716,12 +776,19 @@ export async function ensurePlatformAdminUser(): Promise<TestUser> {
   const user = E2E_PERSONA_USERS.platform_admin;
   let ok = await tryLogin(user);
   if (!ok) {
-    await runEnsureE2EUserRoles();
+    if (_isRemoteApi) {
+      await registerPersonaViaApi(user);
+    } else {
+      await runEnsureE2EUserRoles();
+    }
+    await new Promise((r) => setTimeout(r, 2000));
     ok = await tryLogin(user);
   }
   if (ok) return user;
   throw new Error(
-    `Platform admin user not found. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
+    _isRemoteApi
+      ? `Platform admin user '${user.email}' not found on remote. Seed with: kubectl exec -n hub-staging deploy/hub-staging-api -- python hub/manage.py ensure_e2e_user_roles`
+      : `Platform admin user not found. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
   );
 }
 
@@ -733,7 +800,12 @@ export async function ensureAuditorUser(): Promise<TestUser> {
   const user = E2E_PERSONA_USERS.auditor;
   let ok = await tryLogin(user);
   if (!ok) {
-    await runEnsureE2EUserRoles();
+    if (_isRemoteApi) {
+      await registerPersonaViaApi(user);
+    } else {
+      await runEnsureE2EUserRoles();
+    }
+    await new Promise((r) => setTimeout(r, 2000));
     ok = await tryLogin(user);
   }
   if (ok) {
@@ -741,7 +813,9 @@ export async function ensureAuditorUser(): Promise<TestUser> {
     return user;
   }
   throw new Error(
-    `Auditor user not found. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
+    _isRemoteApi
+      ? `Auditor user '${user.email}' not found on remote. Seed with: kubectl exec -n hub-staging deploy/hub-staging-api -- python hub/manage.py ensure_e2e_user_roles`
+      : `Auditor user not found. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
   );
 }
 
@@ -753,12 +827,19 @@ export async function ensureComplianceOfficerUser(): Promise<TestUser> {
   const user = E2E_PERSONA_USERS.compliance_officer;
   let ok = await tryLogin(user);
   if (!ok) {
-    const ensured = await runEnsureE2EUserRoles();
+    let ensured: boolean;
+    if (_isRemoteApi) {
+      ensured = await registerPersonaViaApi(user);
+    } else {
+      ensured = await runEnsureE2EUserRoles();
+    }
+    await new Promise((r) => setTimeout(r, 2000));
     ok = await tryLogin(user);
     if (!ok && !ensured) {
       throw new Error(
-        `Compliance officer user not found and ensure_e2e_user_roles failed (docker may be unavailable). ` +
-          `Run manually: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
+        _isRemoteApi
+          ? `Compliance officer '${user.email}' not found on remote. Seed with: kubectl exec -n hub-staging deploy/hub-staging-api -- python hub/manage.py ensure_e2e_user_roles`
+          : `Compliance officer user not found and ensure_e2e_user_roles failed (docker may be unavailable). Run manually: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
       );
     }
   }
@@ -767,7 +848,9 @@ export async function ensureComplianceOfficerUser(): Promise<TestUser> {
     return user;
   }
   throw new Error(
-    `Compliance officer user not found. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
+    _isRemoteApi
+      ? `Compliance officer '${user.email}' not found on remote. Seed with: kubectl exec -n hub-staging deploy/hub-staging-api -- python hub/manage.py ensure_e2e_user_roles`
+      : `Compliance officer user not found. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
   );
 }
 
@@ -779,7 +862,12 @@ export async function ensureExternalDeveloperUser(): Promise<TestUser> {
   const user = E2E_PERSONA_USERS.external_developer;
   let ok = await tryLogin(user);
   if (!ok) {
-    await runEnsureE2EUserRoles();
+    if (_isRemoteApi) {
+      await registerPersonaViaApi(user);
+    } else {
+      await runEnsureE2EUserRoles();
+    }
+    await new Promise((r) => setTimeout(r, 2000));
     ok = await tryLogin(user);
   }
   if (ok) {
@@ -787,7 +875,9 @@ export async function ensureExternalDeveloperUser(): Promise<TestUser> {
     return user;
   }
   throw new Error(
-    `External developer user not found. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
+    _isRemoteApi
+      ? `External developer '${user.email}' not found on remote. Seed with: kubectl exec -n hub-staging deploy/hub-staging-api -- python hub/manage.py ensure_e2e_user_roles`
+      : `External developer user not found. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
   );
 }
 
@@ -799,7 +889,12 @@ export async function ensureDataMeshDomainOwnerUser(): Promise<TestUser> {
   const user = E2E_PERSONA_USERS.data_mesh_domain_owner;
   let ok = await tryLogin(user);
   if (!ok) {
-    await runEnsureE2EUserRoles();
+    if (_isRemoteApi) {
+      await registerPersonaViaApi(user);
+    } else {
+      await runEnsureE2EUserRoles();
+    }
+    await new Promise((r) => setTimeout(r, 2000));
     ok = await tryLogin(user);
   }
   if (ok) {
@@ -807,6 +902,8 @@ export async function ensureDataMeshDomainOwnerUser(): Promise<TestUser> {
     return user;
   }
   throw new Error(
-    `Data mesh domain owner user not found. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
+    _isRemoteApi
+      ? `Data mesh domain owner '${user.email}' not found on remote. Seed with: kubectl exec -n hub-staging deploy/hub-staging-api -- python hub/manage.py ensure_e2e_user_roles`
+      : `Data mesh domain owner user not found. Run: docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles`
   );
 }

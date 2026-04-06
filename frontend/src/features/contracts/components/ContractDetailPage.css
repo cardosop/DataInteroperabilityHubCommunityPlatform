@@ -207,3 +207,22 @@
   align-items: center;
   gap: var(--spacing-md);
 }
+
+/* Link to Asset section */
+.contract-link-asset {
+  margin-top: var(--spacing-lg, 1.5rem);
+  padding: var(--spacing-md, 1rem);
+  border: 1px dashed var(--color-border, #d1d5db);
+  border-radius: var(--border-radius-md, 0.5rem);
+}
+
+.contract-link-asset h2 {
+  margin: 0 0 var(--spacing-sm, 0.5rem) 0;
+  font-size: var(--font-size-md, 1rem);
+}
+
+.link-asset-form {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm, 0.5rem);
+}

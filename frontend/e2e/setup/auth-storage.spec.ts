@@ -96,15 +96,20 @@ test.describe('Auth storage setup', () => {
 
     await waitUntilFrontendAcceptsHttp(request, base, 60_000);
 
-    // Reset auth rate limits so login and fetchUser succeed (avoids 429 after prior runs)
-    try {
-      const { execSync } = await import('child_process');
-      execSync('docker exec hub-test-api python hub/manage.py reset_e2e_auth_rate_limits', {
-        stdio: 'pipe',
-        encoding: 'utf8',
-      });
-    } catch {
-      // Ignore if docker/command unavailable
+    // Reset auth rate limits so login and fetchUser succeed (avoids 429 after prior runs).
+    // Skip for remote targets — rate limit reset is handled by staging-post-deploy or kubectl exec in CI.
+    const baseHost = base ? new URL(base).hostname : 'localhost';
+    const isRemoteTarget = baseHost !== 'localhost' && baseHost !== '127.0.0.1';
+    if (!isRemoteTarget) {
+      try {
+        const { execSync } = await import('child_process');
+        execSync('docker exec hub-test-api python hub/manage.py reset_e2e_auth_rate_limits', {
+          stdio: 'pipe',
+          encoding: 'utf8',
+        });
+      } catch {
+        // Ignore if docker/command unavailable
+      }
     }
 
     // 1. Try UI login first (exercises proxy; API inject can fail if proxy misconfigured)

@@ -49,3 +49,35 @@
 .nav-label {
   font-size: var(--font-size-base);
 }
+
+/* Collapsible sidebar groups */
+.nav-group {
+  border-top: 1px solid var(--color-neutral-200, #e5e7eb);
+  margin-top: var(--spacing-xs, 0.25rem);
+}
+
+.nav-group__label {
+  display: block;
+  padding: var(--spacing-xs, 0.25rem) var(--spacing-md, 1rem);
+  font-size: var(--font-size-xs, 0.75rem);
+  font-weight: var(--font-weight-semibold, 600);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-neutral-500, #6b7280);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.nav-group__label::-webkit-details-marker {
+  display: none;
+}
+
+.nav-group__label::before {
+  content: '▸ ';
+  font-size: 0.625rem;
+}
+
+.nav-group[open] > .nav-group__label::before {
+  content: '▾ ';
+}

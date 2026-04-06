@@ -110,4 +110,23 @@ export const datasetService = {
     );
     return response.data;
   },
+
+  /**
+   * Get sample data rows from a dataset
+   * GET /api/v1/datasets/{id}/sample/?limit=50
+   */
+  async getSample(id: string, limit = 50): Promise<DatasetSampleResponse> {
+    const response = await apiClient.getClient().get<DatasetSampleResponse>(
+      `${DATASETS_BASE_PATH}/${id}/sample/?limit=${limit}`
+    );
+    return response.data;
+  },
 };
+
+export interface DatasetSampleResponse {
+  dataset_id: string;
+  format: string;
+  row_count: number;
+  sample_size: number;
+  sample_data: Record<string, unknown>[];
+}

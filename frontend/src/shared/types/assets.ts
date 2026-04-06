@@ -78,6 +78,8 @@ export interface AssetListFilters {
   domain?: string;
   status?: AssetStatus;
   visibility?: AssetVisibility;
+  dq_status?: string;
+  compliance_status?: string;
 }
 
 export interface AttachContractRequest {

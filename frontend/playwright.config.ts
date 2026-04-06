@@ -9,6 +9,21 @@ import { resolvePlaywrightFrontend } from './src/lib/playwright-frontend-resolve
 process.env.VITE_E2E_TEST = 'true';
 
 const isVisibleRun = process.env.E2E_VISIBLE === '1';
+
+// When PLAYWRIGHT_BASE_URL points to a non-localhost URL (e.g. meshant-internal.example.com),
+// the frontend is already deployed — skip the local Vite webServer and run against
+// the remote target directly. Local development workflow is unchanged.
+const isExternalTarget = (() => {
+  const url = process.env.PLAYWRIGHT_BASE_URL?.trim();
+  if (!url) return false;
+  try {
+    const h = new URL(url).hostname;
+    return h !== 'localhost' && h !== '127.0.0.1';
+  } catch {
+    return false;
+  }
+})();
+
 const { baseURL: resolvedFrontendBaseURL, webPort, webServerCheckUrl } =
   resolvePlaywrightFrontend();
 
@@ -40,7 +55,8 @@ export default defineConfig({
   timeout: 60000,
   // 2 workers locally: 4 workers saturate the backend login/capabilities endpoints causing
   // PostgreSQL statement timeouts and rate-limit cascades.  Batch scripts may override.
-  workers: process.env.CI ? 1 : isVisibleRun ? 1 : 2,
+  // 1 worker for external targets: network latency + shared staging DB; avoid rate-limit cascades.
+  workers: isExternalTarget ? 1 : process.env.CI ? 1 : isVisibleRun ? 1 : 2,
   reporter: isVisibleRun
     ? [['list'], ['html'], ['json', { outputFile: 'test-results/results.json' }]]
     : [['html'], ['json', { outputFile: 'test-results/results.json' }]],
@@ -99,25 +115,31 @@ export default defineConfig({
       : []),
   ],
 
-  webServer: {
-    command: (() => {
-      const portArg = ` -- --port ${webPort} --strictPort`;
-      // Source .env.e2e (written by global-setup) so Vite proxy targets correct API port (8000 vs 8001)
-      return `bash -c 'set -a; [ -f .env.e2e ] && . .env.e2e; set +a; exec npm run dev${portArg}'`;
-    })(),
-    url: webServerCheckUrl.replace(/\/$/, '') || webServerCheckUrl,
-    reuseExistingServer: process.env.E2E_FORCE_NEW_SERVER !== '1',
-    timeout: 120 * 1000,
-    env: {
-      ...process.env,
-      VITE_API_BASE_URL: process.env.VITE_API_BASE_URL ?? '/api/v1',
-      VITE_PROXY_TARGET: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8000',
-      E2E_API_BASE_URL:
-        process.env.E2E_API_BASE_URL ??
-        (process.env.VITE_API_BASE_URL?.startsWith('http') ? process.env.VITE_API_BASE_URL : undefined) ??
-        'http://localhost:8000/api/v1',
-      VITE_WS_ENABLED: 'false',
-      VITE_E2E_TEST: 'true',
-    },
-  },
+  // Skip Vite webServer when targeting an external deployment (staging/production).
+  // The frontend is already deployed; starting Vite would conflict with the remote URL.
+  ...(isExternalTarget
+    ? {}
+    : {
+        webServer: {
+          command: (() => {
+            const portArg = ` -- --port ${webPort} --strictPort`;
+            // Source .env.e2e (written by global-setup) so Vite proxy targets correct API port (8000 vs 8001)
+            return `bash -c 'set -a; [ -f .env.e2e ] && . .env.e2e; set +a; exec npm run dev${portArg}'`;
+          })(),
+          url: webServerCheckUrl.replace(/\/$/, '') || webServerCheckUrl,
+          reuseExistingServer: process.env.E2E_FORCE_NEW_SERVER !== '1',
+          timeout: 120 * 1000,
+          env: {
+            ...process.env,
+            VITE_API_BASE_URL: process.env.VITE_API_BASE_URL ?? '/api/v1',
+            VITE_PROXY_TARGET: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8000',
+            E2E_API_BASE_URL:
+              process.env.E2E_API_BASE_URL ??
+              (process.env.VITE_API_BASE_URL?.startsWith('http') ? process.env.VITE_API_BASE_URL : undefined) ??
+              'http://localhost:8000/api/v1',
+            VITE_WS_ENABLED: 'false',
+            VITE_E2E_TEST: 'true',
+          },
+        },
+      }),
 });

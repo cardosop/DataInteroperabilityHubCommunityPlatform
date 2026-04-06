@@ -1,0 +1,93 @@
+/* ContractCreatePage — unified contract creation */
+
+.contract-create-page {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: var(--spacing-lg, 1.5rem);
+}
+
+.contract-create-page__header {
+  margin-bottom: var(--spacing-lg, 1.5rem);
+}
+
+.contract-create-page__title {
+  font-size: var(--font-size-xl, 1.25rem);
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--color-text, #111827);
+  margin: var(--spacing-sm, 0.5rem) 0;
+}
+
+.contract-create-page__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md, 1rem);
+}
+
+.contract-create-page__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs, 0.25rem);
+}
+
+.contract-create-page__label {
+  font-size: var(--font-size-sm, 0.875rem);
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--color-text, #111827);
+}
+
+.contract-create-page__input {
+  padding: var(--spacing-sm, 0.5rem);
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: var(--radius-md, 0.5rem);
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--color-text, #111827);
+  background-color: var(--color-surface, #fff);
+}
+
+.contract-create-page__input:focus {
+  outline: 2px solid var(--color-primary, #3b82f6);
+  outline-offset: -1px;
+  border-color: var(--color-primary, #3b82f6);
+}
+
+.contract-create-page__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md, 1rem);
+  margin-top: var(--spacing-sm, 0.5rem);
+}
+
+.contract-create-page__asset-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs, 0.25rem);
+  padding: var(--spacing-xs, 0.25rem) var(--spacing-sm, 0.5rem);
+  background-color: var(--color-info-light, #dbeafe);
+  color: var(--color-info-dark, #1e40af);
+  border-radius: var(--radius-md, 0.5rem);
+  font-size: var(--font-size-sm, 0.875rem);
+}
+
+.contract-create-page__progress {
+  margin-top: var(--spacing-sm, 0.5rem);
+}
+
+.contract-create-page__progress-bar {
+  height: 0.5rem;
+  background-color: var(--color-border, #e5e7eb);
+  border-radius: var(--radius-full, 9999px);
+  overflow: hidden;
+}
+
+.contract-create-page__progress-fill {
+  height: 100%;
+  background-color: var(--color-primary, #3b82f6);
+  border-radius: var(--radius-full, 9999px);
+  transition: width 0.3s ease;
+}
+
+.contract-create-page__progress-text {
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--color-text-secondary, #6b7280);
+  margin-top: var(--spacing-xs, 0.25rem);
+}

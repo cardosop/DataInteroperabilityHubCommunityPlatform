@@ -5,7 +5,8 @@
 
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
-import { useContract, useValidateContract, useLintContract, useConvertContract, useExportContract, useDownloadContract } from '../hooks/useContracts';
+import { useContract, useUpdateContract, useValidateContract, useLintContract, useConvertContract, useExportContract, useDownloadContract, useContractLinks } from '../hooks/useContracts';
+import { AssetPicker } from '../../../shared/components/pickers';
 import { ContractLineageVisualization } from '../../lineage/components/ContractLineageVisualization';
 import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
@@ -33,9 +34,23 @@ export function ContractDetailPage() {
   const convertMutation = useConvertContract();
   const exportMutation = useExportContract();
   const downloadMutation = useDownloadContract();
+  const isODPSOrODCS = contract?.original_spec_type === 'ODPS' || contract?.original_spec_type === 'ODCS';
+  const { data: links } = useContractLinks(isODPSOrODCS ? (id || null) : null);
   const [validationResult, setValidationResult] = useState<ContractValidationResult | null>(null);
   const [lintResult, setLintResult] = useState<ContractLintResult | null>(null);
   const [convertResult, setConvertResult] = useState<ContractConvertResult | null>(null);
+  const [linkAssetId, setLinkAssetId] = useState<string | null>(null);
+  const updateContract = useUpdateContract();
+
+  const handleLinkAsset = async () => {
+    if (!id || !linkAssetId) return;
+    try {
+      await updateContract.mutateAsync({ id, data: { asset_id: linkAssetId } as never });
+      setLinkAssetId(null);
+    } catch {
+      // Mutation shows toast automatically
+    }
+  };
 
   const handleValidate = async () => {
     if (!id) return;
@@ -120,6 +135,11 @@ export function ContractDetailPage() {
               Link ODPS
             </Button>
           )}
+          {contract.original_spec_type === 'ODPS' && (
+            <Button onClick={() => navigate(`/contracts/${id}/link-odps`)} variant="secondary">
+              Link ODCS
+            </Button>
+          )}
           <Button onClick={() => navigate(`/contracts/${id}/edit`)} variant="secondary">Edit</Button>
         </div>
       </div>
@@ -167,6 +187,14 @@ export function ContractDetailPage() {
           {contract.description && <p className="contract-description">{contract.description}</p>}
 
           <div className="contract-detail-metadata">
+            {contract.original_spec_type && (
+              <div className="metadata-item">
+                <label>Spec Type</label>
+                <span className={`spec-type-badge spec-type-badge--${contract.original_spec_type.toLowerCase()}`}>
+                  {contract.original_spec_type}
+                </span>
+              </div>
+            )}
             <div className="metadata-item">
               <label>Format</label>
               <span>{contract.original_format ?? '—'}</span>
@@ -302,6 +330,61 @@ export function ContractDetailPage() {
                   View Asset
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Link to Asset section (when no asset linked) */}
+          {!linkedAssetId && (
+            <div className="contract-link-asset" data-testid="contract-link-asset">
+              <h2>Link to Asset</h2>
+              <div className="link-asset-form">
+                <AssetPicker
+                  value={linkAssetId}
+                  onChange={setLinkAssetId}
+                  placeholder="Search and select an asset..."
+                  data-testid="contract-asset-picker"
+                />
+                <Button
+                  variant="primary"
+                  onClick={handleLinkAsset}
+                  disabled={!linkAssetId || updateContract.isPending}
+                >
+                  {updateContract.isPending ? 'Linking...' : 'Link Asset'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Linked Contracts section (ODPS ↔ ODCS) */}
+          {links && (links.odps_link || links.odcs_link) && (
+            <div className="contract-linked-contracts" data-testid="contract-linked-contracts">
+              <h2>Linked Contracts</h2>
+              {links.odcs_link && (
+                <div className="linked-contract-row">
+                  <span className="spec-type-badge spec-type-badge--odcs">ODCS</span>
+                  <strong>{links.odcs_link.name || 'Unnamed'}</strong>
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => navigate(`/contracts/${links.odcs_link!.id}`)}
+                  >
+                    View
+                  </button>
+                </div>
+              )}
+              {links.odps_link && (
+                <div className="linked-contract-row">
+                  <span className="spec-type-badge spec-type-badge--odps">ODPS</span>
+                  <strong>{links.odps_link.name || 'Unnamed'}</strong>
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => navigate(`/contracts/${links.odps_link!.id}`)}
+                  >
+                    View
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

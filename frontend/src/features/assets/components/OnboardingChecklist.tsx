@@ -14,6 +14,10 @@ export interface OnboardingChecklistProps {
   datasets: Dataset[];
   dqStatus: string;
   complianceStatus: string;
+  assetId?: string;
+  datasetId?: string;
+  onRunDQ?: () => void;
+  onRunCompliance?: () => void;
 }
 
 interface ChecklistStep {
@@ -30,7 +34,9 @@ function getSteps(
   datasets: Dataset[],
   dqStatus: string,
   complianceStatus: string,
-  navigate: (path: string) => void
+  navigate: (path: string) => void,
+  onRunDQ?: () => void,
+  onRunCompliance?: () => void,
 ): ChecklistStep[] {
   const hasContract = contracts.length > 0;
   const hasActiveContract = contracts.some(
@@ -124,6 +130,8 @@ function getSteps(
           ? 'Run a DQ check on your dataset.'
           : 'Upload a dataset first (or skip for contract-only assets).',
       completed: dqPassed || (!hasDataset && hasContract),
+      actionLabel: hasDataset && !dqPassed ? 'Run DQ Check' : undefined,
+      onAction: hasDataset && !dqPassed ? onRunDQ : undefined,
     },
     {
       key: 'run-compliance',
@@ -134,6 +142,8 @@ function getSteps(
           ? 'Run a compliance scan on your dataset.'
           : 'Upload a dataset first (or skip for contract-only assets).',
       completed: compliancePassed || (!hasDataset && hasContract),
+      actionLabel: hasDataset && !compliancePassed ? 'Run Compliance Scan' : undefined,
+      onAction: hasDataset && !compliancePassed ? onRunCompliance : undefined,
     },
   ];
 }
@@ -143,9 +153,11 @@ export function OnboardingChecklist({
   datasets,
   dqStatus,
   complianceStatus,
+  onRunDQ,
+  onRunCompliance,
 }: OnboardingChecklistProps) {
   const navigate = useNavigate();
-  const steps = getSteps(contracts, datasets, dqStatus, complianceStatus, navigate);
+  const steps = getSteps(contracts, datasets, dqStatus, complianceStatus, navigate, onRunDQ, onRunCompliance);
   const completedCount = steps.filter((s) => s.completed).length;
   const progressPercent = Math.round((completedCount / steps.length) * 100);
 

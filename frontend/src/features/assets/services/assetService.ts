@@ -33,6 +33,8 @@ export const assetService = {
     if (filters.domain) params.append('domain', filters.domain);
     if (filters.status) params.append('status', filters.status);
     if (filters.visibility) params.append('visibility', filters.visibility);
+    if (filters.dq_status) params.append('dq_status', filters.dq_status);
+    if (filters.compliance_status) params.append('compliance_status', filters.compliance_status);
 
     const response = await apiClient
       .getClient()
