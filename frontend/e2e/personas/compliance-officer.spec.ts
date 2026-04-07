@@ -25,7 +25,11 @@ test.describe('Persona RBAC: Compliance Officer', () => {
 
   test('CPO can access /compliance', async ({ page }) => {
     await loginAsPersona(page, getComplianceOfficerUser);
-    await page.goto('/compliance');
+    // waitUntil: 'domcontentloaded' instead of the default 'load'. 'load' blocks
+    // until every subresource (including lazy-loaded route chunks fetched mid-render
+    // by React.lazy) has finished, which exceeds the 30s navigationTimeout on a
+    // cold staging worker. waitForAppMainReady performs the real readiness check.
+    await page.goto('/compliance', { waitUntil: 'domcontentloaded' });
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/compliance');
     await expect(page.locator('.app-main')).toBeVisible();
