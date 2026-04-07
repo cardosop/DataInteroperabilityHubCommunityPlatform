@@ -148,3 +148,9 @@ CVE-2026-31394
 CVE-2026-31401
 CVE-2026-31402
 CVE-2026-31403
+
+# Added: 2026-04-07 (worker-service trivy gate failure on staging push)
+# Both unfixed in Debian 13.4 linux-libc-dev 6.12.74-2; container userspace
+# headers only — runtime uses host kernel. Review by 2026-05-07.
+CVE-2026-23401
+CVE-2026-31408
