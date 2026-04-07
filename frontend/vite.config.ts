@@ -109,6 +109,12 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    // Vite's default assetsDir is "assets", which collides with the SPA route
+    // /assets and the directory dist/assets/. nginx serving dist/ will then
+    // 301 /assets → /assets/ (directory) → 403 (autoindex off, no index.html),
+    // breaking SPA navigation to /assets. Renaming to "static" eliminates the
+    // collision; SPA routes own /assets, hashed bundles live under /static.
+    assetsDir: 'static',
     // Source maps expose original source to the browser — never ship them in production.
     // Set GENERATE_SOURCEMAPS=true only for staging/debug builds or when uploading to
     // a source map service (e.g. Sentry) that strips them before CDN delivery.

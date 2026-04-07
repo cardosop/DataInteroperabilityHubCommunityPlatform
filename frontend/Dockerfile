@@ -82,6 +82,20 @@ RUN set -eux; \
 # Copy source files
 COPY . .
 
+# Vite only auto-loads VITE_* variables from .env files; ENV vars set on the
+# Docker layer are NOT picked up by `import.meta.env.*` in source. Materialize
+# build-arg-supplied VITE_* values into a .env.production.local file so Vite
+# inlines them into the bundle. (.dockerignore excludes .env*, so this file
+# only exists inside the builder layer.) Without this, VITE_MVP_MODE=true was
+# silently dropped and MvpGatedRoute never activated on staging deploys.
+RUN { \
+      [ -n "$VITE_MVP_MODE" ] && echo "VITE_MVP_MODE=$VITE_MVP_MODE"; \
+      [ -n "$VITE_SENTRY_DSN" ] && echo "VITE_SENTRY_DSN=$VITE_SENTRY_DSN"; \
+      [ -n "$VITE_ENVIRONMENT" ] && echo "VITE_ENVIRONMENT=$VITE_ENVIRONMENT"; \
+      [ -n "$VITE_STRIPE_PUBLISHABLE_KEY" ] && echo "VITE_STRIPE_PUBLISHABLE_KEY=$VITE_STRIPE_PUBLISHABLE_KEY"; \
+      true; \
+    } > .env.production.local && cat .env.production.local
+
 # Build application (Vite bakes VITE_APP_NAME into bundle)
 RUN npm run build
 

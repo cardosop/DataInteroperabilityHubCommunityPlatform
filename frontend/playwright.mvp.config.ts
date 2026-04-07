@@ -48,6 +48,13 @@ const mvpTestMatch: string[] = [
   'features/marketplace.spec.ts',
   'features/governance.spec.ts',
   'features/files.spec.ts',
+  // Phase 213.A — curated module smoke promotion (vetted: ≥2 tests, content assertions, real backend)
+  'features/audit.spec.ts',
+  'features/datasets.spec.ts',
+  'features/webhooks.spec.ts',
+  'features/jobs.spec.ts',
+  'features/search.spec.ts',
+  'features/semantic.spec.ts',
 ];
 
 export default defineConfig({

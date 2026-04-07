@@ -275,6 +275,41 @@ export function generateUniqueEmail(prefix = 'e2e'): string {
 }
 
 /**
+ * Detect whether the test is targeting a remote API (deployed staging/production)
+ * vs a local docker-compose backend.
+ *
+ * Used to skip tests that require backend role assignment via Django management
+ * commands (e.g. ensure_e2e_user_roles), which is unavailable on remote APIs.
+ * The persona RBAC tests need users with TENANT_ADMIN/PLATFORM_ADMIN/AUDITOR
+ * roles assigned, which the API registration endpoint cannot do.
+ */
+export function isRemoteApiTarget(): boolean {
+  const apiBase =
+    process.env.E2E_API_BASE_URL ||
+    process.env.PLAYWRIGHT_BASE_URL ||
+    '';
+  if (!apiBase) return false;
+  try {
+    const h = new URL(apiBase).hostname;
+    return h !== 'localhost' && h !== '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Skip the current test/describe block when targeting a remote API.
+ * Use for tests that depend on backend state mutations only possible via
+ * docker exec / kubectl exec (e.g. role assignment, DB seeding).
+ */
+export function skipIfRemoteApi(test: { skip(condition: boolean, reason: string): void }, reason: string): void {
+  test.skip(
+    isRemoteApiTarget(),
+    `Skipped on remote API: ${reason}. Run locally with docker-compose for full coverage.`
+  );
+}
+
+/**
  * Wait for app main content (no loading spinner). Use after goto for any protected route.
  * Also treats .loading-spinner-container as loading so list pages that use LoadingSpinner are covered.
  * Fails with a clear message if redirected to login (auth may have failed or expired).
@@ -1130,14 +1165,29 @@ async function runNavToRoute(
   if (label) {
     const link = page.locator('.app-sidebar .nav-link').filter({ hasText: label }).first();
     if ((await link.count()) > 0) {
-      const timeout = options.timeout ?? 30000;
-      const apiWait = startRouteDataApiWait(page, route, timeout);
-      await link.click();
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(1000);
-      if (apiWait) await apiWait;
-      await waitForAppMainReady(page, waitOptions);
-      return;
+      // Sidebar groups (e.g. Admin) render as <details> closed by default.
+      // The nav-link is in the DOM but not visible until <details> is open,
+      // so a click on the hidden link spins until test timeout. Open the
+      // enclosing <details> first if needed.
+      if (!(await link.isVisible().catch(() => false))) {
+        const parentDetails = link.locator('xpath=ancestor::details[1]');
+        if ((await parentDetails.count()) > 0) {
+          await parentDetails.evaluate((el: Element) => {
+            (el as HTMLDetailsElement).open = true;
+          }).catch(() => {});
+        }
+      }
+      if (await link.isVisible().catch(() => false)) {
+        const timeout = options.timeout ?? 30000;
+        const apiWait = startRouteDataApiWait(page, route, timeout);
+        await link.click();
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(1000);
+        if (apiWait) await apiWait;
+        await waitForAppMainReady(page, waitOptions);
+        return;
+      }
+      // Link still hidden (filtered out by RBAC despite presence) — fall through to direct goto.
     }
   }
 
