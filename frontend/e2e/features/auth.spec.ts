@@ -14,7 +14,12 @@ test.describe('Feature: Auth', () => {
     test('unauthenticated user at / sees landing page', async ({ page }) => {
       await clearAuthStorage(page);
       await page.goto('/', { waitUntil: 'domcontentloaded' });
-      await page.waitForSelector('[data-testid="landing-page"]', { timeout: 15_000 });
+      // RootRoute renders <LandingPage /> only after useAuthStore resolves
+      // isLoading=false. On a cold staging worker the auth init does a real
+      // GET /auth/me/ which can take 8-25s before it 401's and the store
+      // settles. 30s gives that path comfortable headroom without masking a
+      // genuine bug — the test surrounding setTimeout is 120s.
+      await page.waitForSelector('[data-testid="landing-page"]', { timeout: 30_000 });
       await expect(page.locator('[data-testid="landing-login-link"]')).toBeVisible();
       expect(new URL(page.url()).pathname).toBe('/');
     });

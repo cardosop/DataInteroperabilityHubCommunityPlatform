@@ -17,22 +17,37 @@ import { expect, test } from '@playwright/test';
 const CSP_ENFORCE_HEADER = 'content-security-policy';
 const CSP_REPORT_ONLY_HEADER = 'content-security-policy-report-only';
 
-// Expected CSP directives — matches nginx.conf and nginx.test.conf
-// style-src includes fonts.googleapis.com for Google Fonts loaded in index.html.
-// font-src includes fonts.gstatic.com for actual font file downloads.
-// connect-src includes localhost:9010 for MinIO presigned uploads in test env.
-const EXPECTED_DIRECTIVES = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "connect-src 'self'",
-  'report-uri /api/csp-report/',
+// Expected CSP directives — matches nginx.conf and nginx.test.conf, with the
+// security baseline encoded as regex so environment-specific extensions are
+// allowed without breaking the assertion.
+//
+// Why regex (not exact-match strings):
+//   nginx.conf line 79 emits `connect-src 'self' ${API_HOST}` where `${API_HOST}`
+//   is substituted by envsubst at container startup. On staging, ${API_HOST}
+//   resolves to e.g. `https://api.stagingmeshant-internal.example.com`, so an exact-match
+//   `connect-src 'self'` assertion would fail. The regex below requires the
+//   directive PREFIX (`'self'`) but allows any whitespace-separated suffix.
+//
+// Each entry MUST satisfy:
+//   - The required source list keywords (e.g. `'self'` for default-src)
+//   - May be followed by ANY whitespace-separated additional sources
+//   - Must terminate with `;` or end-of-string (so we don't accidentally
+//     match a directive that starts with the same name but has wrong scope).
+const EXPECTED_DIRECTIVE_PATTERNS: { name: string; pattern: RegExp }[] = [
+  // Trailing `\s*` before the `;|$` accommodates the case where envsubst
+  // expands an empty `${API_HOST}` into `connect-src 'self' ;` with a space
+  // before the semicolon (nginx.conf:79). The regex must accept that exact
+  // shape rather than fail on the legitimate same-origin-only configuration.
+  { name: "default-src 'self'", pattern: /default-src\s+'self'(?:\s+[^;]+)?\s*(?:;|$)/ },
+  { name: "script-src 'self'", pattern: /script-src\s+'self'(?:\s+[^;]+)?\s*(?:;|$)/ },
+  { name: "style-src 'self' 'unsafe-inline'", pattern: /style-src\s+'self'\s+'unsafe-inline'(?:\s+[^;]+)?\s*(?:;|$)/ },
+  { name: "img-src 'self' data: blob:", pattern: /img-src\s+'self'\s+data:\s+blob:(?:\s+[^;]+)?\s*(?:;|$)/ },
+  { name: "connect-src 'self'", pattern: /connect-src\s+'self'(?:\s+[^;]+)?\s*(?:;|$)/ },
+  { name: 'report-uri /api/csp-report/', pattern: /report-uri\s+\/api\/csp-report\/\s*(?:;|$)/ },
 ];
-// Note: style-src also allows https://fonts.googleapis.com, font-src allows
-// https://fonts.gstatic.com, and connect-src allows http://localhost:9010 in
-// test/dev. These are not asserted here because they are environment-specific
-// additions; the core directives above are the security baseline.
+
+// Sources that MUST NEVER appear in script-src (security regression guards)
+const FORBIDDEN_SCRIPT_SRC = ["'unsafe-eval'", "'unsafe-inline'"] as const;
 
 test.describe('Security: CSP enforce mode (Phase 14 / task 7.7)', () => {
   // CSP headers are served by Nginx, not Vite dev server.
@@ -65,18 +80,35 @@ test.describe('Security: CSP enforce mode (Phase 14 / task 7.7)', () => {
     ).toBeFalsy();
   });
 
-  test('CSP enforce header contains all required directives', async ({ request }) => {
+  test('CSP enforce header contains all required directives (env-agnostic)', async ({ request }) => {
     const response = await request.get('/');
     expect(response.ok()).toBeTruthy();
 
     const csp = response.headers()[CSP_ENFORCE_HEADER];
     expect(csp, 'Content-Security-Policy header must be present').toBeTruthy();
 
-    for (const directive of EXPECTED_DIRECTIVES) {
+    // Use regex assertions so environment-specific source additions
+    // (e.g. `${API_HOST}` in connect-src on staging, fonts.googleapis.com
+    // in style-src in test) don't break the security baseline check.
+    for (const { name, pattern } of EXPECTED_DIRECTIVE_PATTERNS) {
       expect(
-        csp,
-        `CSP must contain directive: ${directive}`,
-      ).toContain(directive);
+        csp!,
+        `CSP must contain directive matching: ${name} (regex: ${pattern})`,
+      ).toMatch(pattern);
+    }
+
+    // Negative assertions: script-src must NEVER allow unsafe-eval or unsafe-inline.
+    // These are XSS escape hatches and were the cause of the staging regression
+    // we hit during Phase 213.A (Playwright's `page.waitForFunction` with a
+    // string argument triggers eval()).
+    const scriptSrcMatch = csp!.match(/script-src\s+([^;]+)/);
+    expect(scriptSrcMatch, 'script-src directive must be present').toBeTruthy();
+    const scriptSrcValue = scriptSrcMatch![1];
+    for (const forbidden of FORBIDDEN_SCRIPT_SRC) {
+      expect(
+        scriptSrcValue,
+        `script-src must NOT contain ${forbidden} (XSS escape hatch)`,
+      ).not.toContain(forbidden);
     }
   });
 

@@ -199,27 +199,53 @@ test.describe('Auth storage setup', () => {
     const hasAccessToken = await page.evaluate(
       () => !!localStorage.getItem('access_token')
     );
-    if (!hasAccessToken) {
-      try {
-        const apiAuth = await loginViaApi(user.email, user.password);
-        await page.evaluate(
-          ({ access_token, refresh_token }) => {
-            localStorage.setItem('access_token', access_token);
-            // Also update refresh_token to match the latest rotation
-            if (refresh_token) {
-              localStorage.setItem('refresh_token', refresh_token);
-            }
-          },
-          apiAuth
-        );
-      } catch (apiErr) {
-        // API login failed — storageState will rely on refresh_token only.
-        // This is the pre-fix behavior; tests may skip on auth redirect.
-        console.warn(
-          'Auth storage: could not inject access_token via API login:',
-          apiErr instanceof Error ? apiErr.message : String(apiErr)
-        );
-      }
+    // Always re-mint credentials via API login so the storageState carries a
+    // FRESH access_token + a refresh_token whose family has not been rotated
+    // by any other actor. The previous behavior (only injecting when
+    // access_token was missing in localStorage) left a stale cookie around
+    // from the UI login that was *already* rotated by the API-login call,
+    // causing every subsequent test to hit "refresh token replay detected"
+    // → 401 → no recovery → ErrorDisplay on every list page.
+    try {
+      const apiAuth = await loginViaApi(user.email, user.password);
+      await page.evaluate(
+        ({ access_token, refresh_token }) => {
+          localStorage.setItem('access_token', access_token);
+          if (refresh_token) {
+            localStorage.setItem('refresh_token', refresh_token);
+          }
+        },
+        apiAuth
+      );
+
+      // CRITICAL: also set the http-only refresh_token cookie to the SAME
+      // value the API login just minted. The backend's _get_refresh_token_str
+      // (hub/apps/auth/views.py:179) takes the cookie BEFORE the request body,
+      // so a stale cookie from the prior UI login would shadow the fresh
+      // body token. Aligning the cookie with the API-issued token closes
+      // that gap and is the missing piece for cross-test session stability.
+      const baseUrl = new URL(base);
+      await page.context().addCookies([
+        {
+          name: 'refresh_token',
+          value: apiAuth.refresh_token,
+          domain: baseUrl.hostname,
+          path: '/',
+          httpOnly: true,
+          secure: baseUrl.protocol === 'https:',
+          sameSite: 'Strict',
+          // 7 days — matches JWT_REFRESH_TOKEN_EXPIRY default; storageState is
+          // re-minted on every Playwright invocation by this same setup spec.
+          expires: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
+        },
+      ]);
+    } catch (apiErr) {
+      // API login failed — storageState will rely on UI-login cookie only.
+      // Tests will exercise the recovery path; this is not a hard failure.
+      console.warn(
+        'Auth storage: could not re-mint access_token via API login:',
+        apiErr instanceof Error ? apiErr.message : String(apiErr)
+      );
     }
 
     fs.mkdirSync(AUTH_DIR, { recursive: true });

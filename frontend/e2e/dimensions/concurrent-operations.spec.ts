@@ -21,8 +21,16 @@ test.describe('Dimension: Concurrent operations', () => {
       timeout: 60000,
       contentSelector: '.asset-list-page, .empty-state, .error-display',
     });
+    // Second goto reloads the SPA from scratch — auth must re-init and the
+    // asset list must re-render. The previous fixed waitForTimeout(2000) was
+    // racy on cold staging workers (auth refresh + lazy chunk + list query
+    // can each take 5-10s on the slow path). Wait for one of the terminal
+    // states to actually appear, with a deterministic timeout.
     await page.goto('/assets', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await page
+      .locator('.asset-list-page, .empty-state, .error-display')
+      .first()
+      .waitFor({ state: 'visible', timeout: 30000 });
     expect(page.url()).toContain('/assets');
     const hasContent =
       (await page.locator('.asset-list-page').count()) > 0 ||
