@@ -8,7 +8,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { loginUser, getTestUser } from '../fixtures/auth';
+import { loginUser, getTestUser, getTenantAdminUser } from '../fixtures/auth';
 import { waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Data Quality', () => {
@@ -80,7 +80,11 @@ test.describe('Feature: Data Quality', () => {
     );
 
     test('DQ run detail page renders after run completes', async ({ page, request }) => {
-      const user = await getTestUser();
+      // Use tenant admin: the bare DPO test user has no entitlement on a freshly
+      // seeded tenant, so POST /api/v1/assets/ returns 403 and the test silently
+      // skipped. Tenant admin is the entitled role for asset creation; the DQ
+      // smoke is testing the DQ pipeline, not asset-creation entitlement.
+      const user = await getTenantAdminUser();
       await loginUser(page, user);
 
       // -- Step 1: Resolve auth token from localStorage for direct API calls --

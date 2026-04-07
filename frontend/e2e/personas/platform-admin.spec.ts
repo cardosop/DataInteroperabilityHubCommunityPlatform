@@ -24,6 +24,12 @@ import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpe
 test.describe('Persona RBAC: Platform Admin', () => {
   test.setTimeout(120000);
 
+  // Note: PLATFORM_ADMIN role assignment is performed by the Django management
+  // command `ensure_e2e_user_roles`, which the deploy pipeline runs (and which
+  // can be re-run via `kubectl exec ...`). getPlatformAdminUser() throws with
+  // a clear remediation message if the user is missing — no need for a blanket
+  // skipIfRemoteApi here.
+
   test('PA can access /admin', async ({ page }) => {
     await loginAsPersona(page, getPlatformAdminUser);
     await page.goto('/admin');

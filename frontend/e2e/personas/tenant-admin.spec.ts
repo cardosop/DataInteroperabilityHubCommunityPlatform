@@ -23,6 +23,12 @@ import { loginAsPersona, getTenantAdminUser } from '../fixtures/auth';
 test.describe('Persona RBAC: Tenant Admin', () => {
   test.setTimeout(120000);
 
+  // Note: TENANT_ADMIN role assignment is performed by the Django management
+  // command `ensure_e2e_user_roles`, which the deploy pipeline runs (and which
+  // can be re-run via `kubectl exec ...`). getTenantAdminUser() throws with a
+  // clear remediation message if the user is missing — no need for a blanket
+  // skipIfRemoteApi here.
+
   test('TA can access /admin', async ({ page }) => {
     await loginAsPersona(page, getTenantAdminUser);
     await page.goto('/admin');
