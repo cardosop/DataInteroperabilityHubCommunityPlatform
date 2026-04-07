@@ -326,7 +326,14 @@ def ensure_e2e_invitation_token(request):
 
     from hub.apps.users.models import User, UserStatus
 
-    if not (getattr(settings, "ENVIRONMENT", "") == "test" or settings.DEBUG):
+    # Allow on test/debug AND staging — staging is gated by the E2E_EMAILS
+    # allow-list (the real security boundary). Production is the only env where
+    # this endpoint must remain a 404. Without staging, E2E tests against
+    # https://stagingmeshant-internal.example.com cannot prime tenant subscriptions and any
+    # write call (asset/dataset/contract POST) gets a 403 from billing middleware.
+    if not (
+        getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG
+    ):
         raise NotFound("Resource not found")
     if request.user.email not in E2E_EMAILS:
         raise NotFound("Resource not found")
@@ -363,7 +370,14 @@ def ensure_e2e_subscription(request):
     """
     from django.conf import settings
 
-    if not (getattr(settings, "ENVIRONMENT", "") == "test" or settings.DEBUG):
+    # Allow on test/debug AND staging — staging is gated by the E2E_EMAILS
+    # allow-list (the real security boundary). Production is the only env where
+    # this endpoint must remain a 404. Without staging, E2E tests against
+    # https://stagingmeshant-internal.example.com cannot prime tenant subscriptions and any
+    # write call (asset/dataset/contract POST) gets a 403 from billing middleware.
+    if not (
+        getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG
+    ):
         raise NotFound("Resource not found")
     if request.user.email not in E2E_EMAILS:
         raise NotFound("Resource not found")
@@ -392,7 +406,14 @@ def ensure_e2e_tenant_switch_setup(request):
     from hub.apps.users.models import UserTenantMembership
     from hub.apps.users.services import UserTenantMembershipService
 
-    if not (getattr(settings, "ENVIRONMENT", "") == "test" or settings.DEBUG):
+    # Allow on test/debug AND staging — staging is gated by the E2E_EMAILS
+    # allow-list (the real security boundary). Production is the only env where
+    # this endpoint must remain a 404. Without staging, E2E tests against
+    # https://stagingmeshant-internal.example.com cannot prime tenant subscriptions and any
+    # write call (asset/dataset/contract POST) gets a 403 from billing middleware.
+    if not (
+        getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG
+    ):
         raise NotFound("Resource not found")
     if request.user.email not in E2E_EMAILS:
         raise NotFound("Resource not found")
