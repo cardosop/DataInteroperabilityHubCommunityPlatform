@@ -215,15 +215,20 @@ test.describe('Edge Cases (real tests)', () => {
     const submitBtn = page.locator('button:has-text("Create Asset"), button[type="submit"]').first();
     await submitBtn.waitFor({ state: 'visible', timeout: 60000 }).catch(() => null);
     test.skip((await submitBtn.count()) === 0, 'Asset create form did not load — backend may be slow');
-    await submitBtn.click();
-    await page.waitForTimeout(1500);
-    // Should remain on the create page (validation prevented navigation)
+    // The Create Asset submit button is disabled until required fields are valid
+    // (good UX — preventive validation). Asserting that the button stays disabled
+    // when required fields are empty is the correct behavioral check; clicking a
+    // disabled button is impossible by definition. This used to flake by waiting
+    // 120s for an enabled state that never comes.
+    const isDisabled = await submitBtn.isDisabled();
+    expect(isDisabled, 'Submit must be disabled while required fields are empty').toBe(true);
+    // Also verify HTML5 validity on the required name input as a second signal.
+    const nameValid = await page
+      .locator('input[id="name"]')
+      .evaluate((el: HTMLInputElement) => el.validity.valid)
+      .catch(() => true);
+    expect(nameValid, 'Name input must be marked invalid by HTML5 validation when empty').toBe(false);
+    // URL must not have changed.
     expect(page.url()).toContain('/assets/create');
-    // Assert that validation feedback was actually triggered — not just that the URL is unchanged.
-    // Previously `hasValidationFeedback` was computed but never asserted. Fixed to require it.
-    const hasValidationFeedback =
-      (await page.locator('.error-message, .field-error, [aria-invalid="true"]').count()) > 0 ||
-      !(await page.locator('input[id="name"]').evaluate((el: HTMLInputElement) => el.validity.valid).catch(() => true));
-    expect(hasValidationFeedback).toBe(true) /* one of the acceptable page states must be true */;
   });
 });

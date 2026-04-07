@@ -55,6 +55,17 @@ const mvpTestMatch: string[] = [
   'features/jobs.spec.ts',
   'features/search.spec.ts',
   'features/semantic.spec.ts',
+  // Phase 213.A.5 — resilience, security & cross-cutting promotion
+  // Audited 2026-04-07: zero docker-exec/MailHog deps, only invalid-login form fills
+  // (no entity creation), all use getTestUser/getConsumerTestUser (auto-registered).
+  'dimensions/network-failures.spec.ts',
+  'dimensions/rate-limit.spec.ts',
+  'dimensions/timeout-handling.spec.ts',
+  'dimensions/concurrent-operations.spec.ts',
+  'cross-cutting/404-403-session.spec.ts',
+  'cross-cutting/edge-cases-tests.spec.ts',
+  'cross-cutting/failure-scenarios-tests.spec.ts',
+  'security/csp-enforce.spec.ts',
 ];
 
 export default defineConfig({
@@ -64,7 +75,11 @@ export default defineConfig({
   grepInvert: /JOURNEY-/,
   fullyParallel: !isVisibleRun,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // External targets (staging) get 1 retry to absorb the rare worker-process
+  // recycle that surfaces as "Test not found in worker process" (Playwright
+  // diagnostic when a worker crashes mid-suite — usually memory pressure on
+  // long suites). Local dev runs keep 0 retries to surface flakiness.
+  retries: process.env.CI ? 2 : isExternalTarget ? 1 : 0,
   timeout: 60000,
   workers: isExternalTarget ? 1 : process.env.CI ? 1 : isVisibleRun ? 1 : 2,
   reporter: isVisibleRun

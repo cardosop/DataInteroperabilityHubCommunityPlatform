@@ -193,7 +193,13 @@ class TenantScopingMiddleware:
                 and (getattr(user, "is_authenticated", False) or (hasattr(user, "id") and user.id is not None))
             )
             if not is_authenticated:
-                return HttpResponse(status=403)
+                # Return 401 (not 403) when X-Tenant-Id is present but the bearer
+                # token is missing/expired/invalid. Semantics: 401 = "your
+                # credentials are invalid, refresh them"; 403 = "your credentials
+                # are valid but you lack permission". Returning 403 here breaks
+                # the frontend's automatic refresh-on-401 → retry path, which
+                # would otherwise transparently re-auth on token expiry.
+                return HttpResponse(status=401)
             # Allow if user's own tenant matches, or if explicit membership exists
             user_tenant_id = str(getattr(user, "tenant_id", None) or "")
             if user_tenant_id != str(x_tenant_id):
