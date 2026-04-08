@@ -22,6 +22,18 @@ import { clearAuthStorage } from '../fixtures/auth';
 test.describe('Dimension: Rate limit (429)', () => {
   test.setTimeout(60000);
 
+  // Staging deliberately sets RATE_LIMIT_E2E_RELAX=true (helm/values.staging.yaml)
+  // to disable the auth burst limiter for the rest of the E2E suite — without
+  // it, parallel/sequential tests would constantly trip 429s on shared
+  // fixtures. This single test is the lone exception that NEEDS the limiter
+  // active, so it can only meaningfully run against environments where the
+  // limiter isn't relaxed (local docker-compose with standard rate config).
+  // Skip on staging rather than have a permanent red test.
+  test.skip(
+    !!process.env.PLAYWRIGHT_BASE_URL?.includes('staging.hub'),
+    'RATE_LIMIT_E2E_RELAX=true on staging — limiter intentionally disabled'
+  );
+
   test('login burst limit (3/10s) triggers 429 by the 4th attempt', async ({ page }) => {
     await clearAuthStorage(page);
 

@@ -16,16 +16,21 @@ test.describe('Dimension: Network failures', () => {
 
   test('when API request is aborted, user remains on login (no crash)', async ({ page }) => {
     await clearAuthStorage(page);
+    // Navigate to /login BEFORE installing the abort route. Otherwise the
+    // route handler would also intercept the SPA's startup /auth/me/ call,
+    // causing the page navigation itself to hang past the test timeout.
+    // The contract under test is "the LOGIN POST aborts cleanly" — narrow
+    // the abort filter to that single endpoint + method.
+    await page.goto('/login', { waitUntil: 'domcontentloaded' });
     let aborted = false;
-    await page.route('**/api/v1/**', (route) => {
-      if (route.request().url().includes('/auth/') && !aborted) {
+    await page.route('**/api/v1/auth/login/', (route) => {
+      if (route.request().method() === 'POST' && !aborted) {
         aborted = true;
         void route.abort('failed').catch(() => {});
         return;
       }
       void route.continue();
     });
-    await page.goto('/login', { waitUntil: 'domcontentloaded' });
     await page.fill('input#email', 'test@example.com');
     await page.fill('input#password', 'password');
     await page.locator('button[type="submit"]').click();
