@@ -63,7 +63,9 @@
   font-weight: var(--font-weight-semibold, 600);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--color-neutral-500, #6b7280);
+  /* WCAG 2 AA: text on near-white sidebar background needs ≥4.5:1 contrast.
+     --color-neutral-500 (#9E9E9E) = 2.56:1 — fails AA. Using --700 (#616161) = 5.88:1. */
+  color: var(--color-neutral-700, #616161);
   cursor: pointer;
   user-select: none;
   list-style: none;

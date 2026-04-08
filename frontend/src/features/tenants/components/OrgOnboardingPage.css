@@ -16,7 +16,9 @@
 }
 
 .optional {
-  color: var(--color-neutral-500);
+  /* WCAG 2 AA: --color-neutral-500 (#9E9E9E) on white = 2.56:1 — fails AA.
+     Using --700 (#616161) = 5.88:1. Same fix as Sidebar.css .nav-group__label. */
+  color: var(--color-neutral-700);
   font-weight: normal;
 }
 
