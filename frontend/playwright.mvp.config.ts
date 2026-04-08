@@ -40,6 +40,17 @@ const mvpTestMatch: string[] = [
   'personas/tenant-admin.spec.ts',
   'personas/platform-admin.spec.ts',
   'personas/compliance-officer.spec.ts',
+  // Phase 213.B — visitor persona aggregator imports JOURNEY-AUTH-002/004 (zero-mutation).
+  // Other auth journeys (001/003) are imported transitively but filtered out by `grep` allowlist.
+  'personas/visitor.spec.ts',
+  // Phase 213.D — auditor persona (read-only RBAC). Imports JOURNEY-AUD-001..006 transitively
+  // but those are filtered out by the `grep` allowlist (no AUD entries) so only the persona
+  // RBAC tests in this file actually run.
+  'personas/auditor.spec.ts',
+  // Phase 213.D — a11y critical pages (WCAG 2 AA). No JOURNEY tags → all admitted by grep.
+  'a11y/basic-a11y.spec.ts',
+  'a11y/authenticated-pages-a11y.spec.ts',
+  'a11y/form-a11y.spec.ts',
   'features/auth.spec.ts',
   'features/contracts.spec.ts',
   'features/assets.spec.ts',
@@ -71,8 +82,12 @@ const mvpTestMatch: string[] = [
 export default defineConfig({
   testDir: './e2e',
   testMatch: mvpTestMatch,
-  // Persona entry specs import full journey suites; keep only persona + feature tests for MVP.
-  grepInvert: /JOURNEY-/,
+  // Persona entry specs import full journey suites. Use an allowlist (NOT grepInvert):
+  // match titles with no JOURNEY- tag (persona/feature/dimension/cross-cutting/security)
+  // OR titles tagged with one of the promoted journeys.
+  // Phase 213.B (zero-mutation): AUTH-002, AUTH-004, TA-001, DE-001.
+  // Phase 213.C (mutating + cleanup fixture): AUTH-001, DPO-001, DPO-002, DC-001, CPO-001.
+  grep: /^(?!.*JOURNEY-)|JOURNEY-(AUTH-001|AUTH-002|AUTH-004|TA-001|DE-001|DPO-001|DPO-002|DC-001|CPO-001)/,
   fullyParallel: !isVisibleRun,
   forbidOnly: !!process.env.CI,
   // External targets (staging) get 1 retry to absorb the rare worker-process

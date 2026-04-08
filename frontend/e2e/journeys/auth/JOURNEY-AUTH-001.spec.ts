@@ -10,7 +10,7 @@
  * No mocks/stubs; real backend only.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../../fixtures/test-data-cleanup';
 import { clearAuthStorage, loginUser } from '../../fixtures/auth';
 import {
   registerViaApi,
@@ -68,7 +68,25 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
       }
     });
 
-    test('visitor registers and can create asset', async ({ page }) => {
+    test('visitor registers and can create asset', async ({ page, cleanup: _cleanup }) => {
+      // Phase 213.C — visitor users created in this file are NOT tracked by the cleanup
+      // fixture, for a hard backend reason discovered during the 213.C audit:
+      //
+      //   1. DELETE /users/{id}/ requires TENANT_ADMIN or PLATFORM_ADMIN AND explicitly
+      //      blocks self-deletion (hub/apps/users/views.py:242-256 — `if user.id ==
+      //      request.user.id: return 400`).
+      //   2. The visitor's personal tenant has exactly one user (the visitor themselves);
+      //      no other admin exists who could delegate the deletion.
+      //   3. Therefore the per-test cleanup fixture has NO authenticated principal that
+      //      can delete the visitor user.
+      //
+      // The visitor's asset lives inside their personal tenant and is invisible to the
+      // shared E2E tenant catalog used by every other test, so it cannot pollute MVP
+      // assertions. Both the visitor user and their personal-tenant asset are swept by
+      // the platform-admin vacuum command parked under Phase 213.E — that's the only
+      // mechanism with the right authority. The fixture is still imported so future
+      // changes that touch this test don't have to re-plumb the import.
+      void _cleanup;
       test.setTimeout(120000);
       try {
         await runJOURNEY_AUTH_001_Success(page);

@@ -10,16 +10,32 @@
  * No mocks/stubs; real backend only.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../../fixtures/test-data-cleanup';
 import { createAssetViaApi, getAssetKeyViaApi } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import {
   assertNonExistentIdShowsError,
   ensureAssetActivationPrerequisites,
+  isRemoteApiTarget,
   loginAndNavigateToRoute,
   navigateToRouteFromApp,
   waitForAppMainReady,
 } from '../../fixtures/helpers';
+
+// Phase 213.C.6 — configurable poll budgets for DQ + compliance pipelines.
+// Local default: 90s (matches prior hard-coded value).
+// Staging default: 180s (compliance/DQ engines cold-start more often under shared load).
+// Per-env override: E2E_DQ_POLL_TIMEOUT_MS, E2E_COMPLIANCE_POLL_TIMEOUT_MS.
+const DQ_POLL_TIMEOUT_MS = (() => {
+  const override = parseInt(process.env.E2E_DQ_POLL_TIMEOUT_MS ?? '', 10);
+  if (Number.isFinite(override) && override > 0) return override;
+  return isRemoteApiTarget() ? 180_000 : 90_000;
+})();
+const COMPLIANCE_POLL_TIMEOUT_MS = (() => {
+  const override = parseInt(process.env.E2E_COMPLIANCE_POLL_TIMEOUT_MS ?? '', 10);
+  if (Number.isFinite(override) && override > 0) return override;
+  return isRemoteApiTarget() ? 180_000 : 90_000;
+})();
 
 test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
   // Per-test timeouts: the complete journey needs 15 min; Failure/Edge tests need less.
@@ -34,6 +50,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
 
     test('complete journey: create asset → upload file → create dataset → contracts page → activate asset', async ({
       page,
+      cleanup,
     }) => {
       // Worst-case budget is sequential, not parallel: dataset "Create" enable wait (≤120s) +
       // DQ run terminal poll (≤90s) + compliance terminal poll (≤90s) + ODPS upload + navigations.
@@ -54,7 +71,10 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
 
       await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
       await page.waitForSelector('input[id="key"]', { timeout: 10000 });
-      const assetKey = `test-asset-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      // Phase 213.E — prefix MUST start with `e2e-` so the orphan reaper script can sweep
+      // the row if per-test cleanup fails (worker crash, expired token, etc.). The reaper
+      // matches `Asset.key__istartswith='e2e-'` AND `created_at < cutoff`.
+      const assetKey = `e2e-test-asset-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       await page.fill('input[id="key"]', assetKey);
       await page.fill('input[id="name"]', 'Test Asset');
       await page.fill('textarea[id="description"]', 'Test asset description');
@@ -81,6 +101,8 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
             'Backend requires valid UUID for dataset asset_id.'
         );
       }
+      // Phase 213.C — track the UI-created asset for per-test teardown.
+      cleanup.track({ type: 'asset', id: assetId, owner: testUser });
 
       await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 35000 });
       const assetHeading = page.locator('.asset-detail-page h1, .asset-detail-content h1').first();
@@ -266,7 +288,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
         expect(dqResult.httpStatus).toBeGreaterThanOrEqual(200);
         expect(dqResult.httpStatus).toBeLessThan(300);
         // Poll until terminal. D88: if run doesn't finish, that is a real failure — not acceptable.
-        const dqFinal = await _waitDQ(testUser, dqRunId, 90_000);
+        const dqFinal = await _waitDQ(testUser, dqRunId, DQ_POLL_TIMEOUT_MS);
         // Accept any terminal execution status: the journey proves the DQ pipeline works end-to-end.
         // FAILED means the DQ engine ran successfully but found quality issues in the test CSV —
         // that is expected with minimal test data, not an infrastructure or UI failure.
@@ -307,7 +329,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
         expect(compResult.httpStatus).toBeGreaterThanOrEqual(200);
         expect(compResult.httpStatus).toBeLessThan(300);
         // Poll until terminal. D88: if run doesn't finish, that is a real failure.
-        const compFinal = await _waitComp(testUser, compRunId, 90_000);
+        const compFinal = await _waitComp(testUser, compRunId, COMPLIANCE_POLL_TIMEOUT_MS);
         // Accept any terminal execution status: proves the compliance pipeline works end-to-end.
         // FAILED means the engine ran but found compliance issues in test data — expected.
         const terminalCompStatuses = ['SUCCEEDED', 'COMPLETED', 'PASSED', 'FAILED'];
@@ -563,13 +585,13 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       await expect(page).toHaveURL(/\/assets\/create/);
     });
 
-    test('asset create with duplicate key shows API validation error', async ({ page }) => {
+    test('asset create with duplicate key shows API validation error', async ({ page, cleanup }) => {
       // Create an asset via API first to get a known unique key, then try to create
       // another asset with the same key — the API must return 400 and the UI must surface it.
       // Key is fetched in Node.js context (not page.evaluate) to avoid CORS: frontend port
       // (5184) ≠ backend port (8001) so browser-context fetch to backend is blocked.
       const testUser = await getTestUser();
-      const existingAssetId = await createAssetViaApi(testUser);
+      const existingAssetId = await createAssetViaApi(testUser, { cleanup });
 
       // Fetch the key in Node.js context — no CORS restriction
       const existingKey = await getAssetKeyViaApi(testUser, existingAssetId);

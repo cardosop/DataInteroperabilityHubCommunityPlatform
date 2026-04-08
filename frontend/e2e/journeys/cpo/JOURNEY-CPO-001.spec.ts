@@ -12,16 +12,26 @@
  * Real backend only; no mocks. Uses api-compliance.ts and api-assets.ts helpers.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../../fixtures/test-data-cleanup';
 import { getComplianceOfficerUser, getTestUser, loginAsPersona } from '../../fixtures/auth';
 import {
   assertNonExistentIdShowsError,
+  isRemoteApiTarget,
   triggerComplianceScanViaUI,
   waitForAppMainReady,
   waitForLoadingComplete,
 } from '../../fixtures/helpers';
 import { createAssetViaApi, createDatasetViaApi } from '../../fixtures/api-assets';
 import { waitForComplianceRunViaApi } from '../../fixtures/api-compliance';
+
+// Phase 213.C.9 — configurable compliance-run poll budget. Local default 90s; staging
+// gets 180s because the compliance engine cold-starts more often under shared load.
+// Override via E2E_COMPLIANCE_POLL_TIMEOUT_MS for ad-hoc tuning.
+const COMPLIANCE_POLL_TIMEOUT_MS = (() => {
+  const override = parseInt(process.env.E2E_COMPLIANCE_POLL_TIMEOUT_MS ?? '', 10);
+  if (Number.isFinite(override) && override > 0) return override;
+  return isRemoteApiTarget() ? 180_000 : 90_000;
+})();
 
 // Intentional nil UUID — only for 404/error-boundary tests.
 const NIL_UUID = '00000000-0000-0000-0000-000000000000';
@@ -62,16 +72,16 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       expect(hasContent).toBe(true);
     });
 
-    test('CPO triggers compliance scan from UI and run appears in list', async ({ page }) => {
+    test('CPO triggers compliance scan from UI and run appears in list', async ({ page, cleanup }) => {
       // Pre-conditions: create an ACTIVE asset so the compliance scan has valid data to check
       const cpoUser = await getComplianceOfficerUser();
       // CPO may not have DATA_PROVIDER role; use the standard test user for asset creation
       const dpoUser = await getTestUser();
       // forceNew: true creates a brand-new asset (not a reused one) so it appears first
       // in the AssetPicker's -created_at ordering and has a fresh dataset+file attached.
-      const assetId = await createAssetViaApi(dpoUser, { forceNew: true });
+      const assetId = await createAssetViaApi(dpoUser, { forceNew: true, cleanup });
       // Link the dataset+file to the asset so the compliance engine can find the file
-      const datasetId = await createDatasetViaApi(dpoUser, { assetId }).catch(() => undefined);
+      const datasetId = await createDatasetViaApi(dpoUser, { assetId, cleanup }).catch(() => undefined);
 
       await loginAsPersona(page, getComplianceOfficerUser);
 
@@ -130,7 +140,7 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       }
 
       // Poll for terminal state — asset has a linked dataset+file so SUCCEEDED is expected
-      const finalResult = await waitForComplianceRunViaApi(cpoUser, runId!, 90_000).catch(
+      const finalResult = await waitForComplianceRunViaApi(cpoUser, runId!, COMPLIANCE_POLL_TIMEOUT_MS).catch(
         () => null
       );
       if (!finalResult) {

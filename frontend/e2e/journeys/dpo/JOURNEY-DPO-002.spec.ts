@@ -9,7 +9,7 @@
  * Creates an asset via API when needed so Success and "publish without title" tests don't skip (no mocks).
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../../fixtures/test-data-cleanup';
 import { createAssetViaApi } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import {
@@ -24,6 +24,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
   test.describe('Success', () => {
     test('publish listing: select asset, fill title and description, submit and reach listing or marketplace', async ({
       page,
+      cleanup,
     }) => {
       const testUser = await getTestUser();
       // forceNew: true — always create a fresh ACTIVE asset for each test run.
@@ -31,7 +32,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       // Reusing the first ACTIVE asset fails once that asset accumulates a listing
       // across runs: selectOption finds the <select> but the specific value is absent,
       // causing an 8-minute timeout instead of a clear error.
-      const assetId = await createAssetViaApi(testUser, { forceNew: true, ensureActivated: true });
+      const assetId = await createAssetViaApi(testUser, { forceNew: true, ensureActivated: true, cleanup });
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
         contentSelector: '.listing-publish-page, h1',
@@ -64,6 +65,12 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       );
       await submitBtn.first().click();
       const resp = await createListingResponse;
+      // Track the UI-created listing for per-test teardown (Phase 213.C, Option A).
+      // Reading the response body is safe — the page already received it.
+      if (resp.ok()) {
+        const created = (await resp.json().catch(() => null)) as { id?: string } | null;
+        if (created?.id) cleanup.track({ type: 'listing', id: created.id, owner: testUser });
+      }
       if (resp.status() >= 400) {
         const body = await resp.text().catch(() => '');
         throw new Error(
@@ -140,11 +147,11 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       await expect(assetError.first()).toBeVisible({ timeout: 5000 });
     });
 
-    test('publish without title shows validation error', async ({ page }) => {
+    test('publish without title shows validation error', async ({ page, cleanup }) => {
       const testUser = await getTestUser();
       // forceNew: true — same reason as Success test: the shared ACTIVE asset may already
       // have a listing and be absent from the dropdown, causing an 8-minute timeout.
-      const assetId = await createAssetViaApi(testUser, { forceNew: true, ensureActivated: true });
+      const assetId = await createAssetViaApi(testUser, { forceNew: true, ensureActivated: true, cleanup });
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
         contentSelector: '.listing-publish-page',

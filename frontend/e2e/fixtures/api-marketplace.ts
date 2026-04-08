@@ -4,6 +4,7 @@
  */
 
 import type { TestUser } from '../setup/create-test-user';
+import type { CleanupRegistry } from './test-data-cleanup';
 
 const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
 const API_BASE_URL =
@@ -100,6 +101,8 @@ export async function createListingViaApi(
     currency?: string;
     /** Sets API field enable_stripe_gateway (x_odps.payment_gateways.stripe). */
     enableStripeGateway?: boolean;
+    /** Phase 213.C — auto-track listing for per-test teardown. */
+    cleanup?: CleanupRegistry;
   }
 ): Promise<string> {
   const token = await loginViaApiMarketplace(providerUser);
@@ -134,6 +137,7 @@ export async function createListingViaApi(
   }
   const data = (await resp.json()) as { id?: string };
   if (!data.id) throw new Error('createListingViaApi: response missing id');
+  options?.cleanup?.track({ type: 'listing', id: data.id, owner: providerUser });
   return data.id;
 }
 
@@ -177,7 +181,8 @@ export async function publishListingViaApi(
  */
 export async function placeOrderViaApi(
   consumerUser: TestUser,
-  listingId: string
+  listingId: string,
+  options?: { cleanup?: CleanupRegistry }
 ): Promise<string> {
   const token = await loginViaApiMarketplace(consumerUser);
   const resp = await fetch(`${API_BASE_URL}/marketplace/orders/`, {
@@ -195,6 +200,7 @@ export async function placeOrderViaApi(
   const data = (await resp.json()) as { id?: string; order?: { id?: string } };
   const orderId = data.id || data.order?.id;
   if (!orderId) throw new Error('placeOrderViaApi: response missing order id');
+  options?.cleanup?.track({ type: 'order', id: orderId, owner: consumerUser });
   return orderId;
 }
 

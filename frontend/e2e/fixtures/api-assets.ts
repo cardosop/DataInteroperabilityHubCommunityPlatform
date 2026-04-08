@@ -5,6 +5,7 @@
  */
 
 import type { TestUser } from '../setup/create-test-user';
+import type { CleanupRegistry } from './test-data-cleanup';
 
 // Node fetch needs absolute URL; VITE_API_BASE_URL is relative (/api/v1)
 // Prefer 8001 when E2E_WEB_PORT set (test stack uses 8001)
@@ -162,12 +163,17 @@ export async function getContractLinkedAssetIdViaApi(
  */
 export async function createAssetViaApi(
   user: TestUser,
-  options?: { ensureActivated?: boolean; forceNew?: boolean }
+  options?: { ensureActivated?: boolean; forceNew?: boolean; cleanup?: CleanupRegistry }
 ): Promise<string> {
   let lastErr: unknown;
   for (let r = 0; r < RETRIES; r++) {
     try {
-      return await createAssetViaApiOnce(user, options);
+      const id = await createAssetViaApiOnce(user, options);
+      // Phase 213.C — auto-track for per-test teardown when a cleanup registry is supplied.
+      // Helpers used by reuse-paths (existing asset returned by list query) are tracked too:
+      // teardown is idempotent (404 = already gone) and the soft-delete tombstone is harmless.
+      options?.cleanup?.track({ type: 'asset', id, owner: user });
+      return id;
     } catch (err) {
       lastErr = err;
       if (r < RETRIES - 1 && isTransientConnectionError(err)) {
@@ -606,7 +612,7 @@ export async function getODCSContractIdViaApi(user: TestUser): Promise<string | 
  *   Use in tests that require specific state (e.g. no asset_id) to avoid returning a reused
  *   dataset that may already have different state from a prior test run.
  */
-export async function createDatasetViaApi(user: TestUser, options?: { assetId?: string; forceNew?: boolean }): Promise<string> {
+export async function createDatasetViaApi(user: TestUser, options?: { assetId?: string; forceNew?: boolean; cleanup?: CleanupRegistry }): Promise<string> {
   const token = await loginViaApi(user);
 
   // When forceNew is set, skip the reuse logic entirely — always create a fresh dataset.
@@ -626,7 +632,10 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
         const listData = (await listResponse.json()) as { results?: Array<{ id?: string; file?: string; asset?: string }> };
         // Only reuse a dataset that is actually linked to this specific asset
         const linked = (listData.results ?? []).find((d) => d.file && d.asset === options.assetId);
-        if (linked?.id) return linked.id;
+        if (linked?.id) {
+          options?.cleanup?.track({ type: 'dataset', id: linked.id, owner: user });
+          return linked.id;
+        }
       }
     } else {
       const listResponse = await fetch(`${API_BASE_URL}/datasets/?page_size=10`, {
@@ -639,7 +648,10 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
       if (listResponse.ok) {
         const listData = (await listResponse.json()) as { results?: Array<{ id?: string }> };
         const datasets = listData.results ?? [];
-        if (datasets[0]?.id) return datasets[0].id;
+        if (datasets[0]?.id) {
+          options?.cleanup?.track({ type: 'dataset', id: datasets[0].id, owner: user });
+          return datasets[0].id;
+        }
       }
     }
   }
@@ -758,6 +770,8 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
 
   const datasetData = (await datasetResponse.json()) as { id?: string };
   if (!datasetData.id) throw new Error('Create dataset response missing id');
+  // Phase 213.C — auto-track for per-test teardown. Datasets hard-delete (audit confirmed).
+  options?.cleanup?.track({ type: 'dataset', id: datasetData.id, owner: user });
   return datasetData.id;
 }
 

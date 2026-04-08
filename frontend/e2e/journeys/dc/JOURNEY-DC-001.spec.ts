@@ -9,7 +9,7 @@
  * Uses getConsumerTestUser(). Real backend only; no mocks.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../../fixtures/test-data-cleanup';
 import { getConsumerTestUser, getTestUser } from '../../fixtures/auth';
 import { assertFailureRedirect, assertSuccessLoad } from '../../fixtures/journey-helpers';
 import { loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
@@ -72,14 +72,14 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
   });
 
   test.describe('Success: purchase flow', () => {
-    test('consumer navigates to published listing and sees purchase CTA; order appears in list after purchase API call', async ({ page }) => {
+    test('consumer navigates to published listing and sees purchase CTA; order appears in list after purchase API call', async ({ page, cleanup }) => {
       test.setTimeout(120000);
       const provider = await getTestUser();
       const consumer = await getConsumerTestUser();
 
       // Set up: create asset → listing → publish (all via API, no UI)
-      const assetId = await createAssetViaApi(provider, { ensureActivated: true });
-      const listingId = await createListingViaApi(provider, assetId);
+      const assetId = await createAssetViaApi(provider, { ensureActivated: true, cleanup });
+      const listingId = await createListingViaApi(provider, assetId, { cleanup });
       await publishListingViaApi(provider, listingId);
 
       await loginAndNavigateToRoute(page, consumer, `/marketplace/listings/${listingId}`, {
@@ -113,7 +113,7 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
       expect(hasDetail).toBe(true) /* acceptable states */;
 
       // Place order via API (avoids clicking real purchase flow that may require billing setup)
-      await placeOrderViaApi(consumer, listingId);
+      await placeOrderViaApi(consumer, listingId, { cleanup });
 
       await loginAndNavigateToRoute(page, consumer, '/marketplace/orders', { timeout: 60000 });
       // Phase 2: wait for terminal state
