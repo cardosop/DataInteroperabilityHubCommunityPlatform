@@ -28,36 +28,41 @@ test.describe('Failure Scenarios (real tests)', () => {
     expect(onLogin || on403).toBe(true) /* acceptable states */;
   });
 
-  test('invalid JSON in ODPS upload shows validation error', async ({ page }) => {
+  test('invalid JSON in contract upload shows validation error', async ({ page }) => {
+    // The /odps/upload route was retired in Phase 211.A6 — it now redirects to
+    // /contracts/create. The contract create page uses ContractFileReader,
+    // which has a single <textarea aria-label="Contract content (YAML or JSON)">
+    // and a "Create Contract" submit button (not "Create ODPS Product").
+    // For invalid content the button is still enabled (the form allows submit
+    // and surfaces the backend validation error), so the test contract is
+    // exactly: submit invalid JSON → expect either an .error-display or to
+    // remain on the create page (no silent navigation to a success state).
     const user = await getTestUser();
-    await loginAndNavigateToRoute(page, user, '/odps/upload', {
+    await loginAndNavigateToRoute(page, user, '/contracts/create', {
       timeout: 60000,
-      contentSelector: 'textarea#odps-content, textarea, .odps-upload-page',
+      contentSelector: '.contract-create-page, textarea',
     });
     test.skip(page.url().includes('/login'), 'Auth redirect — rate-limit or session issue');
-    const textarea = page.locator('textarea#odps-content, textarea').first();
+
+    const textarea = page.getByLabel('Contract content (YAML or JSON)');
     await expect(textarea).toBeVisible({ timeout: 10000 });
     await textarea.fill('{ invalid json }');
     await page.waitForTimeout(500);
-    // Assert the submit button exists before the scenario runs — skip explicitly if absent
-    const submitBtn = page.locator('button:has-text("Create ODPS Product")').first();
-    if ((await submitBtn.count()) === 0) {
-      test.skip(true, 'ODPS submit button not found on upload page; skipping invalid-JSON scenario');
-      return;
-    }
+
+    const submitBtn = page.locator('button:has-text("Create Contract")').first();
+    await expect(submitBtn).toBeVisible({ timeout: 5000 });
     await submitBtn.click();
-    // Wait for the error state to render after submission (API validates JSON server-side)
+
+    // Wait for the error state to render (backend validation responds 4xx).
     await page
-      .locator('.error-display, text=/invalid|schema|required|parse|json/i')
+      .locator('.error-display')
       .first()
-      .waitFor({ state: 'visible', timeout: 10000 })
+      .waitFor({ state: 'visible', timeout: 15000 })
       .catch(() => null);
-    const hasError =
-      (await page.locator('.error-display').count()) > 0 ||
-      (await page.getByText(/invalid|schema|required|parse|json/i).count()) > 0;
-    const stillOnUpload = page.url().includes('/odps/upload');
-    // Must show an error OR remain on upload (no silent navigation to success)
-    expect(hasError || stillOnUpload).toBe(true) /* acceptable states */;
+    const hasError = (await page.locator('.error-display').count()) > 0;
+    const stillOnCreate = page.url().includes('/contracts/create');
+    // Must show an error OR remain on the create page (no silent success nav).
+    expect(hasError || stillOnCreate).toBe(true);
   });
 
   test('non-existent resource shows 404 or error', async ({ page }) => {

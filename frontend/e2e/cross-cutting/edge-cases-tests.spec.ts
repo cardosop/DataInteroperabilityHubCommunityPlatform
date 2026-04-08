@@ -171,10 +171,10 @@ test.describe('Edge Cases (real tests)', () => {
     test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
     test.skip(!page.url().includes('/assets/create'), 'Redirected away from /assets/create — role may not have create permission');
 
-    // Wait for the form input directly — it's what we need. The asset-create-page div
-    // and form always render together, so waiting for the input is more precise than
-    // waiting for the container + checking inputs separately.
-    const nameInput = page.locator('input[id="name"], input[name="name"]').first();
+    // The form input id was 'asset-name' (htmlFor="asset-name" on the label)
+    // — not 'name'. The previous selector never matched and the test silently
+    // skipped after 60s. Use the canonical id used in AssetCreatePage.tsx.
+    const nameInput = page.locator('input#asset-name, input[name="name"]').first();
     await nameInput.waitFor({ state: 'visible', timeout: 60000 }).catch(() => null);
     test.skip((await nameInput.count()) === 0, 'Asset create form did not load — backend may be slow');
     await nameInput.fill('A'.repeat(500));
@@ -193,7 +193,9 @@ test.describe('Edge Cases (real tests)', () => {
     test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
     test.skip(!page.url().includes('/assets/create'), 'Redirected away from /assets/create');
 
-    const keyInput = page.locator('input[id="key"], input[name="key"]').first();
+    // Same id correction as the max-length test above: input id is 'asset-key',
+    // not 'key' (see frontend/src/features/assets/components/AssetCreatePage.tsx:221).
+    const keyInput = page.locator('input#asset-key, input[name="key"]').first();
     await keyInput.waitFor({ state: 'visible', timeout: 60000 }).catch(() => null);
     test.skip((await keyInput.count()) === 0, 'Asset create form did not load — backend may be slow');
     await keyInput.fill('!@#$%^&*() invalid key');
