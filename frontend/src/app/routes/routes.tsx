@@ -24,6 +24,7 @@ import { RegisterPage } from '../../features/auth/components/RegisterPage';
 import { RegistrationRoute } from '../../features/auth/components/RegistrationRoute';
 import { RootRoute } from './RootRoute';
 import { CapabilityRoute } from '../../shared/components/CapabilityRoute';
+import { MvpGatedRoute } from '../../shared/components/MvpGatedRoute';
 import { ErrorBoundary } from '../../shared/components/ErrorBoundary';
 import { LoadingSpinner } from '../../shared/components/LoadingSpinner';
 import { ProtectedRoute } from '../../shared/components/ProtectedRoute';
@@ -1185,9 +1186,11 @@ export const router = createBrowserRouter([
         path: 'scheduled-ingestions',
         element: (
           <ErrorBoundary>
-            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-              <ScheduledIngestionListPage />
-            </ProtectedRoute>
+            <MvpGatedRoute>
+              <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <ScheduledIngestionListPage />
+              </ProtectedRoute>
+            </MvpGatedRoute>
           </ErrorBoundary>
         ),
       },
@@ -1195,9 +1198,11 @@ export const router = createBrowserRouter([
         path: 'scheduled-ingestions/create',
         element: (
           <ErrorBoundary>
-            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-              <ScheduledIngestionCreatePage />
-            </ProtectedRoute>
+            <MvpGatedRoute>
+              <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <ScheduledIngestionCreatePage />
+              </ProtectedRoute>
+            </MvpGatedRoute>
           </ErrorBoundary>
         ),
       },
@@ -1205,9 +1210,11 @@ export const router = createBrowserRouter([
         path: 'scheduled-ingestions/:id',
         element: (
           <ErrorBoundary>
-            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-              <ScheduledIngestionDetailPage />
-            </ProtectedRoute>
+            <MvpGatedRoute>
+              <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <ScheduledIngestionDetailPage />
+              </ProtectedRoute>
+            </MvpGatedRoute>
           </ErrorBoundary>
         ),
       },
@@ -1215,9 +1222,11 @@ export const router = createBrowserRouter([
         path: 'scheduled-ingestions/:id/edit',
         element: (
           <ErrorBoundary>
-            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-              <ScheduledIngestionEditPage />
-            </ProtectedRoute>
+            <MvpGatedRoute>
+              <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <ScheduledIngestionEditPage />
+              </ProtectedRoute>
+            </MvpGatedRoute>
           </ErrorBoundary>
         ),
       },
@@ -1225,9 +1234,11 @@ export const router = createBrowserRouter([
         path: 'scheduled-exports',
         element: (
           <ErrorBoundary>
-            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-              <ScheduledExportListPage />
-            </ProtectedRoute>
+            <MvpGatedRoute>
+              <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <ScheduledExportListPage />
+              </ProtectedRoute>
+            </MvpGatedRoute>
           </ErrorBoundary>
         ),
       },
@@ -1235,9 +1246,11 @@ export const router = createBrowserRouter([
         path: 'scheduled-exports/create',
         element: (
           <ErrorBoundary>
-            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-              <ScheduledExportCreatePage />
-            </ProtectedRoute>
+            <MvpGatedRoute>
+              <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <ScheduledExportCreatePage />
+              </ProtectedRoute>
+            </MvpGatedRoute>
           </ErrorBoundary>
         ),
       },
@@ -1245,9 +1258,11 @@ export const router = createBrowserRouter([
         path: 'scheduled-exports/:id',
         element: (
           <ErrorBoundary>
-            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-              <ScheduledExportDetailPage />
-            </ProtectedRoute>
+            <MvpGatedRoute>
+              <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <ScheduledExportDetailPage />
+              </ProtectedRoute>
+            </MvpGatedRoute>
           </ErrorBoundary>
         ),
       },
@@ -1255,9 +1270,11 @@ export const router = createBrowserRouter([
         path: 'scheduled-exports/:id/edit',
         element: (
           <ErrorBoundary>
-            <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
-              <ScheduledExportEditPage />
-            </ProtectedRoute>
+            <MvpGatedRoute>
+              <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <ScheduledExportEditPage />
+              </ProtectedRoute>
+            </MvpGatedRoute>
           </ErrorBoundary>
         ),
       },
