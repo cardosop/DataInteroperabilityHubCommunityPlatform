@@ -70,15 +70,15 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       await createButton.first().click();
 
       await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
-      await page.waitForSelector('input[id="key"]', { timeout: 10000 });
+      await page.waitForSelector('input[id="asset-key"]', { timeout: 10000 });
       // Phase 213.E — prefix MUST start with `e2e-` so the orphan reaper script can sweep
       // the row if per-test cleanup fails (worker crash, expired token, etc.). The reaper
       // matches `Asset.key__istartswith='e2e-'` AND `created_at < cutoff`.
       const assetKey = `e2e-test-asset-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      await page.fill('input[id="key"]', assetKey);
-      await page.fill('input[id="name"]', 'Test Asset');
-      await page.fill('textarea[id="description"]', 'Test asset description');
-      await page.selectOption('select[id="visibility"]', 'INTERNAL');
+      await page.fill('input[id="asset-key"]', assetKey);
+      await page.fill('input[id="asset-name"]', 'Test Asset');
+      await page.fill('textarea[id="asset-description"]', 'Test asset description');
+      await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
 
       const submitButton = page.locator('button:has-text("Create Asset")');
       await submitButton.waitFor({ timeout: 10000 });
@@ -528,61 +528,81 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       }
     });
 
-    test('asset create with empty key shows validation error', async ({ page }) => {
+    test('asset create with empty key blocks submit (button disabled)', async ({ page }) => {
+      // The actual contract of AssetCreatePage (frontend/src/features/assets/components/AssetCreatePage.tsx):
+      // the Submit button is rendered with `disabled={!name.trim() || !key.trim() || submitting}`.
+      // There is NO HTML5 `required` validity error and NO inline `.error-message` for missing
+      // fields — the app uses a disabled-button gate plus a `toast.error('Name and Key are required')`
+      // safety net inside `handleSubmit` (which is unreachable through the disabled button).
+      // Asserting on `validity.valueMissing` or `.error-message` was wrong.
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets/create', {
         timeout: 60000,
-        contentSelector: 'input[id="key"]',
+        contentSelector: 'input[id="asset-key"]',
       });
-      await page.waitForSelector('input[id="key"]', { timeout: 10000 });
-      await page.fill('input[id="name"]', 'Test Asset Name');
-      await page.locator('button:has-text("Create Asset")').click();
-      await page.waitForTimeout(500);
-      // Browser required or app validation prevents submit; we stay on create page (no navigation)
-      await expect(page).toHaveURL(/\/assets\/create/, { timeout: 5000 });
-      const keyError = page.locator('.error-message').filter({ hasText: /key|required/i });
-      const hasKeyError = (await keyError.count()) > 0;
-      const keyInput = page.locator('input[id="key"]');
-      const keyInvalid = await keyInput.evaluate(
-        (el) => (el as HTMLInputElement).validity?.valueMissing === true
-      );
-      expect(hasKeyError || keyInvalid).toBe(true) /* acceptable states */;
-    });
-
-    test('asset create with empty name shows validation error', async ({ page }) => {
-      const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/assets/create', {
-        timeout: 60000,
-        contentSelector: 'input[id="key"]',
-      });
-      await page.waitForSelector('input[id="key"]', { timeout: 10000 });
-      await page.fill('input[id="key"]', `test-key-${Date.now()}`);
-      await page.locator('button:has-text("Create Asset")').click();
-      await page.waitForTimeout(500);
-      await expect(page).toHaveURL(/\/assets\/create/, { timeout: 5000 });
-      const nameError = page.locator('.error-message').filter({ hasText: /name|required/i });
-      const nameInput = page.locator('input[id="name"]');
-      const nameInvalid = await nameInput.evaluate(
-        (el) => (el as HTMLInputElement).validity?.valueMissing === true
-      );
-      const hasNameError = (await nameError.count()) > 0;
-      expect(hasNameError || nameInvalid).toBe(true) /* acceptable states */;
-    });
-
-    test('asset create with invalid key format shows validation error', async ({ page }) => {
-      const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/assets/create', {
-        timeout: 60000,
-        contentSelector: 'input[id="key"]',
-      });
-      await page.waitForSelector('input[id="key"]', { timeout: 10000 });
-      await page.fill('input[id="key"]', 'Invalid_Key_With_Underscore');
-      await page.fill('input[id="name"]', 'Test Asset');
-      await page.locator('button:has-text("Create Asset")').click();
-      await page.waitForTimeout(500);
-      const keyError = page.locator('.error-message').filter({ hasText: /lowercase|hyphen|key/i });
-      await expect(keyError.first()).toBeVisible({ timeout: 5000 });
+      await page.waitForSelector('input[id="asset-key"]', { timeout: 10000 });
+      // Clear the auto-filled key (handleNameChange auto-slugifies name → key) by typing
+      // name first, then explicitly clearing key. keyEdited becomes true, so further name
+      // edits won't re-fill it.
+      await page.fill('input[id="asset-name"]', 'Test Asset Name');
+      await page.fill('input[id="asset-key"]', '');
+      // Submit button must be disabled when key is empty (required field).
+      const submitButton = page.locator('button:has-text("Create Asset")');
+      await expect(submitButton).toBeDisabled({ timeout: 5000 });
+      // We must remain on the create page (no navigation possible).
       await expect(page).toHaveURL(/\/assets\/create/);
+    });
+
+    test('asset create with empty name blocks submit (button disabled)', async ({ page }) => {
+      // Same contract: button is disabled when name is empty.
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/assets/create', {
+        timeout: 60000,
+        contentSelector: 'input[id="asset-key"]',
+      });
+      await page.waitForSelector('input[id="asset-key"]', { timeout: 10000 });
+      // Fill key first, then explicitly clear name (the form does NOT auto-fill name from key —
+      // the auto-fill direction is only name → key via slugify).
+      await page.fill('input[id="asset-key"]', `test-key-${Date.now()}`);
+      await page.fill('input[id="asset-name"]', '');
+      const submitButton = page.locator('button:has-text("Create Asset")');
+      await expect(submitButton).toBeDisabled({ timeout: 5000 });
+      await expect(page).toHaveURL(/\/assets\/create/);
+    });
+
+    test('asset create with invalid key format is rejected by API', async ({ page }) => {
+      // The frontend has NO client-side regex check on key format (only required-not-empty).
+      // The lowercase/hyphen rule is enforced server-side in the assets API. The test must
+      // intercept the POST and assert the API returns a 4xx with a key-format error.
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/assets/create', {
+        timeout: 60000,
+        contentSelector: 'input[id="asset-key"]',
+      });
+      await page.waitForSelector('input[id="asset-key"]', { timeout: 10000 });
+      await page.fill('input[id="asset-name"]', 'Test Asset');
+      // Fill key AFTER name to override the auto-slugified value (handleKeyChange marks
+      // keyEdited=true so further name edits won't re-fill).
+      await page.fill('input[id="asset-key"]', 'Invalid_Key_With_Underscore');
+
+      const submitButton = page.locator('button:has-text("Create Asset")');
+      await expect(submitButton).toBeEnabled({ timeout: 5000 });
+
+      // Intercept the POST so we can assert the server's key-format rejection.
+      const responsePromise = page.waitForResponse(
+        (r) => /\/assets\/?(\?|$)/.test(r.url()) && r.request().method() === 'POST',
+        { timeout: 15000 }
+      );
+      await submitButton.click();
+      const resp = await responsePromise;
+      expect(resp.status()).toBeGreaterThanOrEqual(400);
+      expect(resp.status()).toBeLessThan(500);
+      // The error body must mention the key field (validates the API enforced the right rule,
+      // not just that any 4xx happened).
+      const body = await resp.text().catch(() => '');
+      expect(body.toLowerCase()).toMatch(/key|lowercase|hyphen|format|invalid/);
+      // We must remain on the create page after the rejection.
+      await expect(page).toHaveURL(/\/assets\/create/, { timeout: 5000 });
     });
 
     test('asset create with duplicate key shows API validation error', async ({ page, cleanup }) => {
@@ -603,11 +623,11 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
 
       await loginAndNavigateToRoute(page, testUser, '/assets/create', {
         timeout: 60000,
-        contentSelector: 'input[id="key"]',
+        contentSelector: 'input[id="asset-key"]',
       });
-      await page.waitForSelector('input[id="key"]', { timeout: 10000 });
-      await page.fill('input[id="key"]', existingKey);
-      await page.fill('input[id="name"]', 'Duplicate Key Asset');
+      await page.waitForSelector('input[id="asset-key"]', { timeout: 10000 });
+      await page.fill('input[id="asset-key"]', existingKey);
+      await page.fill('input[id="asset-name"]', 'Duplicate Key Asset');
 
       // Intercept the POST to verify the API returns 400
       const responsePromise = page.waitForResponse(

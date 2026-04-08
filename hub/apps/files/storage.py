@@ -38,6 +38,7 @@ class S3StorageClient:
                 # Try to verify the endpoint hostname is resolvable
                 import socket
                 from urllib.parse import urlparse
+                hostname_resolved = True
                 try:
                     parsed = urlparse(self.endpoint_url)
                     host = parsed.hostname
@@ -45,7 +46,19 @@ class S3StorageClient:
                         # Try to resolve hostname
                         socket.gethostbyname(host)
                 except (socket.gaierror, Exception):
-                    # Hostname doesn't resolve, try alternatives
+                    hostname_resolved = False
+
+                if not hostname_resolved:
+                    # Hostname doesn't resolve, try alternatives.
+                    # NOTE: previously the `is_in_docker` / `is_test_env` definitions lived
+                    # inside the except block but the `if is_in_docker:` branch lived OUTSIDE
+                    # it at the same indent as try/except. When DNS resolved successfully the
+                    # code still hit the `if is_in_docker:` line and raised UnboundLocalError,
+                    # which surfaced in production as:
+                    #   "cannot access local variable 'is_in_docker' where it is not associated with a value"
+                    # in the file-upload code path on staging. Fixed by gating the entire
+                    # alternative-endpoint resolution on `not hostname_resolved` so the
+                    # variables are only read when they are actually defined.
                     is_in_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER') == 'true'
                     is_test_env = (
                         'pytest' in sys.modules or
@@ -55,26 +68,21 @@ class S3StorageClient:
                         os.getenv('ENVIRONMENT') == 'test'
                     )
 
-                if is_in_docker:
-                    # In Docker, use service name first (works within Docker network)
-                    # Try service name first, then fallback to localhost
-                    try:
-                        import socket
-                        socket.gethostbyname('minio')
-                        # Service name resolves, use it
-                        if is_test_env:
-                            self.endpoint_url = 'http://minio:9000'  # Use service name in Docker
-                        else:
-                            self.endpoint_url = 'http://minio:9000'  # Use service name in Docker
-                    except (socket.gaierror, Exception):
-                        # Service name doesn't resolve, use localhost
-                        if is_test_env:
-                            self.endpoint_url = 'http://localhost:9010'  # Test port
-                        else:
-                            self.endpoint_url = 'http://localhost:9000'  # Dev port
-                else:
-                    # Outside Docker, use localhost
-                    self.endpoint_url = 'http://localhost:9000'
+                    if is_in_docker:
+                        # In Docker, use service name first (works within Docker network)
+                        try:
+                            socket.gethostbyname('minio')
+                            # Service name resolves, use it
+                            self.endpoint_url = 'http://minio:9000'
+                        except (socket.gaierror, Exception):
+                            # Service name doesn't resolve, use localhost
+                            if is_test_env:
+                                self.endpoint_url = 'http://localhost:9010'  # Test port
+                            else:
+                                self.endpoint_url = 'http://localhost:9000'  # Dev port
+                    else:
+                        # Outside Docker, use localhost
+                        self.endpoint_url = 'http://localhost:9000'
             else:
                 # No endpoint set, use defaults
                 is_in_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER') == 'true'

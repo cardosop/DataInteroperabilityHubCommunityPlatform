@@ -917,35 +917,25 @@ if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
         _q["ASYNC"] = False
 
 # Channel Layers Configuration (for WebSocket support)
-# Parse REDIS_CHANNELS_URL for channel layers
-_redis_channels_host = "localhost"
-_redis_channels_port = 6382
-if REDIS_CHANNELS_URL:
-    try:
-        # Parse redis://host:port/db format
-        parts = REDIS_CHANNELS_URL.replace("redis://", "").split("/")
-        host_port = parts[0].split(":")
-        _redis_channels_host = host_port[0]
-        if len(host_port) > 1:
-            _redis_channels_port = int(host_port[1])
-    except (ValueError, AttributeError, IndexError) as e:
-        # Invalid URL format - fallback to defaults
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.debug(
-            "Invalid REDIS_CHANNELS_URL format, using defaults",
-            extra={"error_type": type(e).__name__},
-        )
-    except Exception as e:
-        # Unexpected error - log but use defaults
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.warning(
-            "Unexpected error parsing REDIS_CHANNELS_URL",
-            extra={"error_type": type(e).__name__},
-        )
+#
+# Phase 214.3 root-cause fix: the previous parser used `.replace("redis://", "")`
+# + `.split("/")` and only extracted host/port. It was broken in 4 ways for our
+# Phase 214.3 collapsed-Redis layout:
+#   1. Did not handle `rediss://` (TLS) URLs — `replace("redis://", ...)` is a
+#      no-op against `rediss://...`, so `_redis_channels_host` ended up as the
+#      literal string "rediss" (not a real hostname).
+#   2. Dropped the AUTH token (`:TOKEN@host`) — channels_redis got no password.
+#   3. Dropped the `/N` DB-index segment — channels would have landed on DB 0
+#      (= cache space) instead of DB 3, causing cross-talk between roles.
+#   4. Did not enable TLS on the resulting connection — plain TCP against the
+#      AUTH-token-protected TLS listener would have failed handshake.
+#
+# Fix: pass the full URL string to channels_redis via `hosts: [URL]`. Per
+# channels_redis docs, `RedisChannelLayer` accepts URLs in `hosts` and parses
+# scheme/auth/host/port/db correctly via redis-py's connection pool — handling
+# TLS, AUTH, and DB index in one go. No application-level URL parsing needed.
+#
+# Test environments still need the in-memory backend so tests don't require Redis.
 
 # Channel Layers Configuration
 # Use in-memory channel layer for tests, Redis for production
@@ -957,16 +947,26 @@ if is_test_env:
             "BACKEND": "channels.layers.InMemoryChannelLayer",
         },
     }
-else:
-    # Use Redis channel layer for production (separate Redis instance for channels)
+elif REDIS_CHANNELS_URL:
+    # Production / staging: pass the full URL so TLS, AUTH token, and DB index
+    # are all honored. channels_redis ≥ 4.x supports this URL form natively.
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
-                "hosts": [(_redis_channels_host, _redis_channels_port)],
+                "hosts": [REDIS_CHANNELS_URL],
                 "capacity": 1000,  # Maximum number of messages to buffer
                 "expiry": 10,  # Message expiry in seconds
             },
+        },
+    }
+else:
+    # No REDIS_CHANNELS_URL configured (rare — local dev without Redis exported).
+    # Fall back to in-memory so the app still boots; websocket fanout across
+    # processes won't work but single-process dev does.
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
         },
     }
 

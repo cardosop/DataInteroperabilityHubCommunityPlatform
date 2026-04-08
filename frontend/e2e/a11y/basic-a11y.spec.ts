@@ -9,6 +9,7 @@
 import { AxeBuilder } from '@axe-core/playwright';
 import { expect } from '@playwright/test';
 import { test } from '@playwright/test';
+import { clearAuthStorage } from '../fixtures/auth';
 
 // Helper — run axe with WCAG 2 AA tags and assert no violations.
 async function assertNoA11yViolations(page: import('@playwright/test').Page): Promise<void> {
@@ -20,6 +21,16 @@ async function assertNoA11yViolations(page: import('@playwright/test').Page): Pr
 
 test.describe('Accessibility (axe) — public / unauthenticated pages', () => {
   test.setTimeout(60000);
+
+  // Critical: chromium-mvp project uses storageState: 'e2e/.auth/user.json',
+  // so every test starts authenticated. RegisterPage and PasswordResetPage have
+  // useEffect hooks that navigate('/') when isAuthenticated is true, which would
+  // cause axe to scan the authenticated dashboard instead of the public page.
+  // Clear auth storage before every test in this describe so axe sees the real
+  // unauthenticated UI.
+  test.beforeEach(async ({ page }) => {
+    await clearAuthStorage(page);
+  });
 
   // Use 'domcontentloaded' (not default 'load') for all goto calls — the 'load' event
   // waits for ALL sub-resources and never fires when the backend is slow under parallel

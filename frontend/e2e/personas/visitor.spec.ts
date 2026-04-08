@@ -18,20 +18,25 @@ test.describe('Persona RBAC: Visitor (Unauthenticated)', () => {
   test.setTimeout(60000);
 
   test('unauthenticated user is redirected to login from /assets', async ({ page }) => {
+    // RootRoute (frontend/src/app/routes/RootRoute.tsx) renders <Navigate to="/login">
+    // when isAuthenticated is false for any non-root path, including /assets.
     await clearAuthStorage(page);
     await page.goto('/assets');
-    await page.waitForURL(/\/(login|assets)/, { timeout: 15000 });
-    const url = page.url();
-    const onLogin = url.includes('/login');
-    const hasLoginPrompt = url.includes('/assets') && (await page.locator('input#email, [href*="/login"], text=Sign in').count()) > 0;
-    expect(onLogin || hasLoginPrompt).toBe(true);
+    // Wait specifically for /login — do NOT include the source path in the regex
+    // (waitForURL would match the initial URL and return without waiting for the redirect).
+    await page.waitForURL(/\/login(\?|$|\/)/, { timeout: 15000 });
+    expect(page.url()).toMatch(/\/login(\?|$|\/)/);
   });
 
   test('unauthenticated user is redirected to login from /admin', async ({ page }) => {
+    // /admin is wrapped in <ProtectedRoute requiredRole={['TENANT_ADMIN','PLATFORM_ADMIN']}>.
+    // For unauthenticated users, ProtectedRoute also redirects to /login (the role check
+    // only fires for authenticated users; unauthenticated users hit the !isAuthenticated branch).
     await clearAuthStorage(page);
     await page.goto('/admin');
-    await page.waitForURL(/\/(login|admin|403)/, { timeout: 15000 });
-    const url = page.url();
-    expect(url.includes('/login') || url.includes('/403')).toBe(true);
+    // Wait for /login (or /403 if the app's behavior changes to render forbidden in-place).
+    // Critically, exclude /admin from the regex so waitForURL actually waits.
+    await page.waitForURL(/\/(login|403)(\?|$|\/)/, { timeout: 15000 });
+    expect(page.url()).toMatch(/\/(login|403)(\?|$|\/)/);
   });
 });

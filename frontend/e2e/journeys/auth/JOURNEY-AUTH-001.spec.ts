@@ -130,12 +130,12 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
       await createButton.first().click();
       await expect(page).toHaveURL(/\/assets\/create/, { timeout: 15_000 });
       await waitForLoadingComplete(page);
-      await page.waitForSelector('input[id="key"]', { timeout: 15_000 });
+      await page.waitForSelector('input[id="asset-key"]', { timeout: 15_000 });
       const assetKey = `e2e-personal-${Date.now()}`;
-      await page.fill('input[id="key"]', assetKey);
-      await page.fill('input[id="name"]', 'E2E Personal Asset');
-      await page.fill('textarea[id="description"]', 'Asset created by visitor in personal tenant');
-      await page.selectOption('select[id="visibility"]', 'INTERNAL');
+      await page.fill('input[id="asset-key"]', assetKey);
+      await page.fill('input[id="asset-name"]', 'E2E Personal Asset');
+      await page.fill('textarea[id="asset-description"]', 'Asset created by visitor in personal tenant');
+      await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
       const submitButton = page.locator('button:has-text("Create Asset")');
       await submitButton.waitFor({ state: 'visible', timeout: 10_000 });
       await submitButton.click();
