@@ -190,6 +190,51 @@ class AssetSerializerTest(TestCase):
         self.assertIsNotNone(data["id"])
         self.assertEqual(data["key"], "none-values-asset")
 
+    def test_asset_create_serializer_rejects_invalid_key_format(self):
+        """AssetCreateSerializer enforces the lowercase-hyphen key format.
+
+        Locks in the contract for the JOURNEY-DPO-001 e2e test that posts
+        `Invalid_Key_With_Underscore` and expects a 4xx with a message
+        mentioning the key field. Without this validator the API was
+        accepting any 255-char string and returning 201, which silently
+        violated the documented key rule and broke downstream URL routing.
+        """
+        invalid_keys = [
+            "Invalid_Key_With_Underscore",   # underscore + uppercase
+            "UPPER",                          # uppercase
+            "with space",                     # space
+            "trailing-",                      # trailing hyphen
+            "-leading",                       # leading hyphen
+            "double--hyphen",                 # consecutive hyphens
+            "punc!",                          # punctuation
+            "",                               # empty (covered by required, but redundant guard)
+        ]
+        for key in invalid_keys:
+            serializer = AssetCreateSerializer(data={"key": key, "name": "X"})
+            self.assertFalse(
+                serializer.is_valid(),
+                f"Serializer should reject invalid key {key!r}",
+            )
+            self.assertIn("key", serializer.errors)
+
+    def test_asset_create_serializer_accepts_valid_key_format(self):
+        """AssetCreateSerializer accepts canonical slug-format keys."""
+        valid_keys = [
+            "test-asset",
+            "a",
+            "1",
+            "asset-1",
+            "my-asset-with-many-segments",
+            "1-2-3",
+            "abc123",
+        ]
+        for key in valid_keys:
+            serializer = AssetCreateSerializer(data={"key": key, "name": "X"})
+            self.assertTrue(
+                serializer.is_valid(),
+                f"Serializer should accept valid key {key!r}: {serializer.errors}",
+            )
+
     def test_asset_create_serializer_very_long_key(self):
         """AssetCreateSerializer rejects key exceeding max_length."""
         long_key = "a" * 300  # max_length=255

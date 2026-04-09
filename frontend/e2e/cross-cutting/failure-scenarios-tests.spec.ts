@@ -135,7 +135,20 @@ test.describe('Failure Scenarios (real tests)', () => {
       { timeout: 150_000 }
     );
 
-    await page.goto('/contracts/00000000-0000-0000-0000-000000000000/edit', { waitUntil: 'domcontentloaded' });
+    // Explicit goto timeout: Playwright's default `page.goto` budget is 30 s,
+    // which on staging cold-start is consumed by:
+    //   - DNS + TLS handshake to the edge (≤ 2 s)
+    //   - HTML byte-serve (≤ 2 s)
+    //   - Initial JS bundle download + parse (≤ 8 s)
+    //   - React mount + auth-store init (≤ 15 s, dominated by /auth/me/)
+    // The previous bare goto raced that budget and produced a flaky 30 s
+    // TimeoutError. Phase 2 below already waits the real 150 s window for the
+    // contract API response, so we widen goto to a matching 90 s — just enough
+    // to clear the cold-start path without masking a genuinely-stuck navigation.
+    await page.goto('/contracts/00000000-0000-0000-0000-000000000000/edit', {
+      waitUntil: 'domcontentloaded',
+      timeout: 90_000,
+    });
 
     // Phase 1: Wait for auth init to complete (.app-main indicates app shell is rendered).
     // 65s covers the worst-case auth init including the 60s auth-store safety timeout

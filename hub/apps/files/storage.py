@@ -92,31 +92,54 @@ class S3StorageClient:
                         # Outside Docker, use localhost
                         self.endpoint_url = 'http://localhost:9000'
             else:
-                # No endpoint set, use defaults
-                is_in_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER') == 'true'
-                is_test_env = (
-                    'pytest' in sys.modules or
-                    'unittest' in sys.modules or
-                    os.getenv('PYTEST_CURRENT_TEST') or
-                    'test' in sys.argv
-                )
-
-                if is_in_docker:
-                    # In Docker, use service name first (works within Docker network)
-                    try:
-                        import socket
-                        socket.gethostbyname('minio')
-                        # Service name resolves, use it
-                        self.endpoint_url = 'http://minio:9000'  # Use service name in Docker
-                    except (socket.gaierror, Exception):
-                        # Service name doesn't resolve, use localhost
-                        if is_test_env:
-                            self.endpoint_url = 'http://localhost:9010'  # Test port
-                        else:
-                            self.endpoint_url = 'http://localhost:9000'  # Dev port
+                # endpoint_url is None — explicit "use native AWS S3" signal
+                # set by hub/settings.py for staging/production deployments.
+                # In dev/test environments we still need a working MinIO
+                # default (settings.py supplies one); in staging/prod we MUST
+                # leave it None so boto3 signs against
+                # `<bucket>.s3.<region>.amazonaws.com`. The localhost fallback
+                # that used to live here was the actual root cause of the
+                # JOURNEY-DPO-001 staging file-upload regression: the api pod
+                # has no MinIO on loopback, and even if it did the resulting
+                # presigned URL would be unreachable from browsers.
+                #
+                # Detect deployed environments via the same env var Django
+                # uses (ENVIRONMENT) so we don't depend on `/.dockerenv`,
+                # which containerd-based runtimes (EKS) do not create.
+                deployed_environment = (
+                    os.getenv('ENVIRONMENT')
+                    or os.getenv('DJANGO_ENVIRONMENT')
+                    or ''
+                ).lower()
+                if deployed_environment in {'staging', 'production', 'prod'}:
+                    # Leave endpoint_url as None — boto3 will use AWS defaults.
+                    pass
                 else:
-                    # Outside Docker, use localhost
-                    self.endpoint_url = 'http://localhost:9000'
+                    # Local dev or unit-test without explicit settings — fall
+                    # back to a MinIO endpoint that actually exists on dev
+                    # machines. This branch is unreachable in deployed envs
+                    # because settings.py sets a non-None default there.
+                    is_in_docker = (
+                        os.path.exists('/.dockerenv')
+                        or os.getenv('DOCKER_CONTAINER') == 'true'
+                    )
+                    is_test_env = (
+                        'pytest' in sys.modules
+                        or 'unittest' in sys.modules
+                        or os.getenv('PYTEST_CURRENT_TEST')
+                        or 'test' in sys.argv
+                    )
+                    if is_in_docker:
+                        try:
+                            import socket
+                            socket.gethostbyname('minio')
+                            self.endpoint_url = 'http://minio:9000'
+                        except (socket.gaierror, Exception):
+                            self.endpoint_url = (
+                                'http://localhost:9010' if is_test_env else 'http://localhost:9000'
+                            )
+                    else:
+                        self.endpoint_url = 'http://localhost:9000'
 
         self.use_ssl = getattr(settings, 'AWS_S3_USE_SSL', True)
 
