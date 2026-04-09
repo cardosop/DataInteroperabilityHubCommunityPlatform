@@ -71,6 +71,12 @@ venv/
 venv-*/
 **/venv/
 **/.venv/
+# Explicit paths for SDK venvs — belt-and-suspenders with the ** globs above.
+# Trivy scans flagged stale packages in sdk/python/.venv that leaked into the
+# worker image despite **/.venv/ being present. Explicit paths are unambiguous.
+sdk/python/.venv/
+sdk/python/venv/
+sdk/js/node_modules/
 test_reports_comprehensive/
 test_reports_integration/
 htmlcov/
