@@ -154,3 +154,13 @@ CVE-2026-31403
 # headers only — runtime uses host kernel. Review by 2026-05-07.
 CVE-2026-23401
 CVE-2026-31408
+
+# Added: 2026-04-09 (worker-service trivy gate failure — 4th consecutive)
+# linux-libc-dev 6.12.74-2, status: affected (no Debian fix available).
+# kernel: net: atm: fix crash due to unvalidated vcc pointer.
+# Impact: None — container userspace headers only; containers use host kernel,
+# and the atm (Asynchronous Transfer Mode) networking subsystem is not used.
+# Verified locally: `trivy image --ignorefile .trivyignore meshant-worker-trivy-test`
+# returns Total: 0 after this entry.
+# Review by: 2026-05-09
+CVE-2026-31411
