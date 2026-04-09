@@ -200,6 +200,30 @@ class S3StorageClient:
         if _ak_looks_real:
             client_kwargs['aws_access_key_id'] = _ak
             client_kwargs['aws_secret_access_key'] = _sk
+        else:
+            # CRITICAL: also scrub the env vars so boto3's default credential
+            # provider chain (which reads os.environ['AWS_ACCESS_KEY_ID']
+            # directly as its FIRST resolver step) doesn't pick up the
+            # invalid/placeholder value. Without this, omitting the kwargs
+            # from boto3.client() has no effect — boto3 just reads the env.
+            #
+            # This is safe because:
+            # - We've already captured the values in _ak/_sk and decided
+            #   they're not real credentials.
+            # - The IRSA web-identity provider (next in the chain) doesn't
+            #   use AWS_ACCESS_KEY_ID — it reads AWS_WEB_IDENTITY_TOKEN_FILE.
+            # - If the env vars contained real creds, _ak_looks_real would
+            #   be True and we wouldn't be in this branch.
+            for _env_key in ('AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'):
+                if _env_key in os.environ:
+                    _scrubbed = os.environ.pop(_env_key)
+                    import logging as _log
+                    _log.getLogger(__name__).warning(
+                        "S3StorageClient: scrubbed invalid %s='%s' from env "
+                        "so boto3 falls through to IRSA/IMDS credential chain",
+                        _env_key,
+                        _scrubbed[:4] + '***' if len(_scrubbed) > 4 else '***',
+                    )
 
         self.client = boto3.client('s3', **client_kwargs)
 
