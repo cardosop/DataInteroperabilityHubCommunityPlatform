@@ -226,6 +226,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // clearAuthState() fires → ProtectedRoute re-renders → redirect
         // to /login. On network/timeout failure, the stored user is
         // kept (fail-open at lines ~162-173).
+        //
+        // CRITICAL: initializeAuth() must run before any API call.
+        // It loads the refresh_token from localStorage into apiClient's
+        // in-memory store. Without it, apiClient has null tokens after a
+        // page reload → API calls return 401 → the 401 interceptor tries
+        // to refresh with null refresh_token → permanent auth failure.
+        // (This was the root cause of the AUTH_UNAUTHORIZED cascade in
+        // the e2e suite after the 213.I non-blocking init change.)
+        authService.initializeAuth();
+        syncTenantIdGetter(get);
+
+        // Proactively refresh the access token if it's missing (typical
+        // after page reload — Phase 11.1 stores access_token in memory
+        // only). This ensures the first API call from a component has a
+        // valid token instead of relying on the 401-retry interceptor.
+        if (!authService.getAccessToken() && authService.getRefreshToken()) {
+          try {
+            await authService.refreshAccessToken();
+          } catch {
+            // Refresh failed — tryFetchUser below will also fail with 401
+            // and clearAuthState() will redirect to /login. No action needed.
+          }
+        }
+
         await tryFetchUser(2);
         return;
       }
