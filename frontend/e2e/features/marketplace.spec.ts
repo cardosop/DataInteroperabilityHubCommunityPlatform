@@ -6,56 +6,16 @@
 
 import { expect, test } from '@playwright/test';
 import { assertFailureRedirect, assertSuccessLoad } from '../fixtures/journey-helpers';
-import { waitForAppMainReady } from '../fixtures/helpers';
+import { assertListPageLoads, waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Marketplace', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
-    test('marketplace list loads (or redirects to login)', async ({ page }) => {
+    test('marketplace list loads', async ({ page }) => {
       await page.goto('/marketplace');
       await page.waitForLoadState('domcontentloaded');
-      // RootRoute redirects unauthenticated users to /login after hydrate; URL can
-      // still be /marketplace briefly — wait for login route or marketplace UI.
-      await page.waitForFunction(
-        () => {
-          const path = window.location.pathname;
-          if (path === '/login' || path.startsWith('/login/')) return true;
-          return !!document.querySelector(
-            '[data-testid="skeleton-row"], [data-testid="listing-list-page"], .listing-list-page, .empty-state, .error-display'
-          );
-        },
-        { timeout: 65000 }
-      );
-      if (page.url().includes('/login')) {
-        await assertFailureRedirect(page);
-        return;
-      }
-      // ListingListPage shows ListPageSkeleton until the listings API returns
-      await page.waitForSelector(
-        [
-          '[data-testid="listing-list-page"]',
-          '.listing-list-page',
-          '.empty-state',
-          '.error-display',
-          '[data-testid="skeleton-row"]',
-        ].join(', '),
-        { timeout: 65000 }
-      );
-      const skeleton = page.locator('[data-testid="skeleton-row"]');
-      if (await skeleton.first().isVisible().catch(() => false)) {
-        await page.waitForSelector(
-          '[data-testid="listing-list-page"], .listing-list-page, .empty-state, .error-display',
-          { timeout: 60000 }
-        );
-      }
-      if (page.url().includes('/login')) {
-        await assertFailureRedirect(page);
-        return;
-      }
-      await assertSuccessLoad(page, {
-        successContentSelector: '[data-testid="listing-list-page"], .listing-list-page, .empty-state',
-      });
+      await assertListPageLoads(page, '[data-testid="listing-list-page"], .listing-list-page, .empty-state', { timeout: 60000 });
     });
   });
 

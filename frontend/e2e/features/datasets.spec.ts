@@ -5,32 +5,16 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { waitForAppMainReady } from '../fixtures/helpers';
+import { assertListPageLoads } from '../fixtures/helpers';
 
 test.describe('Feature: Datasets', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
-    test('datasets list loads or redirects to login', async ({ page }) => {
+    test('datasets list loads', async ({ page }) => {
       await page.goto('/datasets');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
-          return;
-        }
-        throw _err;
-      }
-      expect(page.url()).toContain('/datasets');
-      // Success test must NOT accept .error-display
-      await expect(page.locator('.error-display')).not.toBeVisible();
-      const hasContent =
-        (await page.locator('.dataset-list-page, .empty-state, h1').count()) > 0;
-      expect(
-        hasContent,
-        'Expected .dataset-list-page, .empty-state, or h1 on /datasets'
-      ).toBe(true);
+      await page.waitForLoadState('domcontentloaded');
+      await assertListPageLoads(page, '.dataset-list-page, .empty-state, h1', { timeout: 60000 });
     });
   });
 

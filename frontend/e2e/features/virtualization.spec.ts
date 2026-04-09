@@ -5,24 +5,16 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { waitForAppMainReady } from '../fixtures/helpers';
+import { assertListPageLoads } from '../fixtures/helpers';
 
 test.describe('Feature: Virtualization', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
-    test('virtualization route loads or redirects to login', async ({ page }) => {
+    test('virtualization route loads', async ({ page }) => {
       await page.goto('/virtualization');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
-          return;
-        }
-        throw _err;
-      }
-      expect(page.url()).toContain('/virtualization');
+      await page.waitForLoadState('domcontentloaded');
+      await assertListPageLoads(page, '.virtualization-page, .empty-state, h1', { timeout: 60000 });
     });
   });
 

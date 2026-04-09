@@ -7,7 +7,7 @@
 
 import { expect, test } from '@playwright/test';
 import { getDataMeshDomainOwnerUser } from '../../fixtures/auth';
-import { loginAndNavigateToRoute } from '../../fixtures/helpers';
+import { loginAndNavigateToRoute, assertCapabilityGatedPageLoads } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-TOPOLOGY-VISUALIZATION: Topology React Flow canvas', () => {
   test.setTimeout(120000);
@@ -16,37 +16,27 @@ test.describe('JOURNEY-TOPOLOGY-VISUALIZATION: Topology React Flow canvas', () =
     const dmoUser = await getDataMeshDomainOwnerUser();
     await loginAndNavigateToRoute(page, dmoUser, '/mesh/topology', {
       timeout: 90000,
-      contentSelector: '.react-flow, .empty-state, .error-display, .loading-spinner',
+      contentSelector: '.react-flow, .empty-state',
     });
 
-    // Bail if redirected to login or 403
-    if (page.url().includes('/login') || page.url().includes('/403')) {
-      expect(true).toBe(true) /* acceptable states */; // auth-gated — pass gracefully
-      return;
-    }
+    // assertCapabilityGatedPageLoads rejects .error-display and allows
+    // /403, /login, .unavailable-page as valid gating outcomes.
+    await assertCapabilityGatedPageLoads(
+      page,
+      '.react-flow, .empty-state, .unavailable-page',
+      { timeout: 30000 },
+    );
 
-    // One of React Flow canvas, EmptyState, error, or loading must be present
     const hasReactFlow = (await page.locator('.react-flow').count()) > 0;
     const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
-    const hasError = (await page.locator('.error-display').count()) > 0;
-    const hasLoading = (await page.locator('.loading-spinner').count()) > 0;
-
-    expect(hasReactFlow || hasEmptyState || hasError || hasLoading).toBe(true) /* acceptable states */;
 
     if (hasReactFlow) {
-      // React Flow controls should be present
-      const hasControls = (await page.locator('.react-flow__controls').count()) > 0;
-      expect(hasControls).toBe(true) /* acceptable states */;
-
-      // MiniMap should be present
-      const hasMinimap = (await page.locator('.react-flow__minimap').count()) > 0;
-      expect(hasMinimap).toBe(true) /* acceptable states */;
+      await expect(page.locator('.react-flow__controls')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.react-flow__minimap')).toBeVisible({ timeout: 5000 });
     }
 
     if (hasEmptyState) {
-      // EmptyState should show the correct message
-      const noDomainsText = (await page.getByText('No domains found').count()) > 0;
-      expect(noDomainsText).toBe(true) /* acceptable states */;
+      await expect(page.getByText('No domains found')).toBeVisible({ timeout: 5000 });
     }
   });
 
@@ -54,38 +44,42 @@ test.describe('JOURNEY-TOPOLOGY-VISUALIZATION: Topology React Flow canvas', () =
     const dmoUser = await getDataMeshDomainOwnerUser();
     await loginAndNavigateToRoute(page, dmoUser, '/mesh/topology', {
       timeout: 90000,
-      contentSelector: '.react-flow, .empty-state, .error-display, .loading-spinner',
+      contentSelector: '.react-flow, .empty-state',
     });
 
-    if (page.url().includes('/login') || page.url().includes('/403')) {
-      expect(true).toBe(true) /* acceptable states */;
-      return;
+    await assertCapabilityGatedPageLoads(
+      page,
+      '.react-flow, .empty-state, .unavailable-page',
+      { timeout: 30000 },
+    );
+
+    // Legend check only applies when the page actually rendered (not gated)
+    if (page.url().includes('/403') || page.url().includes('/login') || page.url().includes('/unavailable')) {
+      return; // Capability-gated — no legend to check
     }
 
-    // Legend should always be visible (even with EmptyState)
-    const legendVisible = (await page.getByText('Legend').count()) > 0;
-    expect(legendVisible).toBe(true) /* acceptable states */;
-
-    // Health threshold labels should be present
-    const hasHealthy = (await page.getByText('≥ 80').count()) > 0;
-    const hasCritical = (await page.getByText('< 60').count()) > 0;
-    expect(hasHealthy).toBe(true) /* acceptable states */;
-    expect(hasCritical).toBe(true) /* acceptable states */;
+    await expect(page.getByText('Legend')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('≥ 80')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('< 60')).toBeVisible({ timeout: 5000 });
   });
 
   test('topology page shows header with Mesh Topology title', async ({ page }) => {
     const dmoUser = await getDataMeshDomainOwnerUser();
     await loginAndNavigateToRoute(page, dmoUser, '/mesh/topology', {
       timeout: 90000,
-      contentSelector: '.react-flow, .empty-state, .error-display, .loading-spinner',
+      contentSelector: '.react-flow, .empty-state',
     });
 
-    if (page.url().includes('/login') || page.url().includes('/403')) {
-      expect(true).toBe(true) /* acceptable states */;
-      return;
+    await assertCapabilityGatedPageLoads(
+      page,
+      '.react-flow, .empty-state, .unavailable-page',
+      { timeout: 30000 },
+    );
+
+    if (page.url().includes('/403') || page.url().includes('/login') || page.url().includes('/unavailable')) {
+      return; // Capability-gated
     }
 
-    const titleVisible = (await page.getByText('Mesh Topology').count()) > 0;
-    expect(titleVisible).toBe(true) /* acceptable states */;
+    await expect(page.getByText('Mesh Topology')).toBeVisible({ timeout: 5000 });
   });
 });

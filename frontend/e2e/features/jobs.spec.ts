@@ -5,32 +5,16 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { waitForAppMainReady } from '../fixtures/helpers';
+import { assertListPageLoads } from '../fixtures/helpers';
 
 test.describe('Feature: Jobs', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
-    test('jobs list loads or redirects to login', async ({ page }) => {
+    test('jobs list loads', async ({ page }) => {
       await page.goto('/jobs');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
-          return;
-        }
-        throw _err;
-      }
-      expect(page.url()).toContain('/jobs');
-      // Success test must NOT accept .error-display
-      await expect(page.locator('.error-display')).not.toBeVisible();
-      const hasContent =
-        (await page.locator('.job-list-page, .empty-state, h1').count()) > 0;
-      expect(
-        hasContent,
-        'Expected .job-list-page, .empty-state, or h1 on /jobs'
-      ).toBe(true);
+      await page.waitForLoadState('domcontentloaded');
+      await assertListPageLoads(page, '.job-list-page, .empty-state, h1', { timeout: 60000 });
     });
   });
 

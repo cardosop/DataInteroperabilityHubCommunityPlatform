@@ -5,32 +5,16 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { waitForAppMainReady } from '../fixtures/helpers';
+import { assertListPageLoads } from '../fixtures/helpers';
 
 test.describe('Feature: Webhooks', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
-    test('webhooks list loads or redirects to login', async ({ page }) => {
+    test('webhooks list loads', async ({ page }) => {
       await page.goto('/webhooks');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
-          return;
-        }
-        throw _err;
-      }
-      expect(page.url()).toContain('/webhooks');
-      // Success test must NOT accept .error-display
-      await expect(page.locator('.error-display')).not.toBeVisible();
-      const hasContent =
-        (await page.locator('.webhook-list-page, .empty-state, h1').count()) > 0;
-      expect(
-        hasContent,
-        'Expected .webhook-list-page, .empty-state, or h1 on /webhooks'
-      ).toBe(true);
+      await page.waitForLoadState('domcontentloaded');
+      await assertListPageLoads(page, '.webhook-list-page, .empty-state, h1', { timeout: 60000 });
     });
   });
 

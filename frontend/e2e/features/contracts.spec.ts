@@ -5,30 +5,16 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { assertSuccessLoad } from '../fixtures/journey-helpers';
-import { waitForAppMainReady } from '../fixtures/helpers';
+import { assertListPageLoads, waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Contracts', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
-    test('contracts list loads (or redirects to login)', async ({ page }) => {
+    test('contracts list loads', async ({ page }) => {
       await page.goto('/contracts');
-      try {
-        await waitForAppMainReady(page, {
-          timeout: 60000,
-          contentSelector: '.contract-list-page, .empty-state',
-        });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
-          return;
-        }
-        throw _err;
-      }
-      await assertSuccessLoad(page, {
-        successContentSelector: '[data-testid="contract-list-page"], .contract-list-page, .empty-state',
-      });
+      await page.waitForLoadState('domcontentloaded');
+      await assertListPageLoads(page, '[data-testid="contract-list-page"], .contract-list-page, .empty-state', { timeout: 60000 });
     });
   });
 

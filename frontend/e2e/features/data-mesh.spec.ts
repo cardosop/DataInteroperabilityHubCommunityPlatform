@@ -5,24 +5,16 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { waitForAppMainReady } from '../fixtures/helpers';
+import { assertListPageLoads } from '../fixtures/helpers';
 
 test.describe('Feature: Data Mesh', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
-    test('mesh list loads or redirects to login', async ({ page }) => {
+    test('mesh list loads', async ({ page }) => {
       await page.goto('/mesh');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
-          return;
-        }
-        throw _err;
-      }
-      expect(page.url()).toContain('/mesh');
+      await page.waitForLoadState('domcontentloaded');
+      await assertListPageLoads(page, '.mesh-list-page, .empty-state, h1', { timeout: 60000 });
     });
   });
 

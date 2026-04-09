@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { waitForAppMainReady } from '../fixtures/helpers';
+import { assertListPageLoads } from '../fixtures/helpers';
 
 test.describe('Feature: Versioning', () => {
   test.setTimeout(120000);
@@ -13,16 +13,8 @@ test.describe('Feature: Versioning', () => {
   test.describe('Success', () => {
     test('datasets route with versions context loads', async ({ page }) => {
       await page.goto('/datasets');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
-          return;
-        }
-        throw _err;
-      }
-      expect(page.url()).toContain('/datasets');
+      await page.waitForLoadState('domcontentloaded');
+      await assertListPageLoads(page, '.dataset-list-page, .empty-state, h1', { timeout: 60000 });
     });
   });
 

@@ -5,30 +5,16 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { assertSuccessfulLoad, waitForAppMainReady } from '../fixtures/helpers';
+import { assertListPageLoads, waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Assets', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
-    test('assets list loads (or redirects to login)', async ({ page }) => {
+    test('assets list loads', async ({ page }) => {
       await page.goto('/assets');
-      try {
-        await waitForAppMainReady(page, {
-          timeout: 60000,
-          contentSelector: '.asset-list-page, .empty-state',
-        });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
-          return;
-        }
-        throw _err;
-      }
-      expect(page.url()).toContain('/assets');
-      await assertSuccessfulLoad(page, {
-        successContentSelector: '.asset-list-page, .empty-state',
-      });
+      await page.waitForLoadState('domcontentloaded');
+      await assertListPageLoads(page, '.asset-list-page, .empty-state', { timeout: 60000 });
     });
   });
 

@@ -9,36 +9,16 @@
 
 import { expect, test } from '@playwright/test';
 import { loginUser, getTestUser, getTenantAdminUser } from '../fixtures/auth';
-import { waitForAppMainReady } from '../fixtures/helpers';
+import { assertListPageLoads, waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Data Quality', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
-    test('DQ list loads or redirects to login', async ({ page }) => {
+    test('DQ list loads', async ({ page }) => {
       await page.goto('/dq');
-      try {
-        await waitForAppMainReady(page, {
-          timeout: 60000,
-          contentSelector: '.dq-run-list-page, .empty-state, h1',
-        });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — auth may have expired');
-          return;
-        }
-        throw _err;
-      }
-      expect(page.url()).toContain('/dq');
-      // Success test must NOT accept .error-display
-      await expect(page.locator('.error-display')).not.toBeVisible();
-      // URL check must be accompanied by a content assertion — URL alone doesn't prove the page rendered
-      const hasContent =
-        (await page.locator('.dq-run-list-page, .empty-state, h1').count()) > 0;
-      expect(
-        hasContent,
-        'Expected .dq-run-list-page, .empty-state, or h1 on /dq'
-      ).toBe(true);
+      await page.waitForLoadState('domcontentloaded');
+      await assertListPageLoads(page, '.dq-run-list-page, .empty-state, h1', { timeout: 60000 });
     });
   });
 

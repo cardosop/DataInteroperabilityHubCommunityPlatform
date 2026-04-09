@@ -2383,6 +2383,20 @@ export async function assertListPageLoads(
 ): Promise<void> {
   const { timeout = 30000 } = options;
 
+  // Fail immediately if we're on /login — this means auth is broken, not that
+  // the page hasn't loaded yet. Success tests must NOT accept login redirect as
+  // a pass; that hides real auth/backend failures. (This was the root cause of
+  // 60%+ of tests giving false confidence when the backend was unreachable.)
+  if (page.url().includes('/login')) {
+    throw new Error(
+      `assertListPageLoads: redirected to /login before content loaded.\n` +
+        `Expected content on: ${listPageSelector}\n` +
+        `This means authentication is broken — storageState tokens may be expired, ` +
+        `the auth service may be down, or the refresh flow failed.\n` +
+        `This is a REAL FAILURE, not a "skip" condition.`
+    );
+  }
+
   // Race-based detection: wait for EITHER the expected success content OR an error to appear.
   // This eliminates the previous 800ms static window where a slow-responding API error
   // would be missed by an early check, then produce a misleading "element not found" timeout.
@@ -2398,6 +2412,15 @@ export async function assertListPageLoads(
       .first()
       .waitFor({ state: 'visible', timeout });
   } catch {
+    // Check for login redirect first — auth may have failed during the wait
+    if (page.url().includes('/login')) {
+      throw new Error(
+        `assertListPageLoads: redirected to /login while waiting for content.\n` +
+          `Expected content on: ${listPageSelector}\n` +
+          `Auth token likely expired during page load or API returned 401.`
+      );
+    }
+
     // Neither success content nor error appeared within the timeout.
     // Check if the page is actively loading (skeleton/spinner visible) — if so, the
     // backend is slow but the app is working. Wait for the loading state to resolve.
