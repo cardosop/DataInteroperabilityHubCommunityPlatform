@@ -162,19 +162,102 @@ class S3StorageClient:
             read_timeout=_read_timeout,
         )
 
-        self.client = boto3.client(
-            's3',
+        # Phase 213.H.4 — only pass aws_access_key_id / aws_secret_access_key
+        # when BOTH are real AWS credentials (non-empty AND look like an actual
+        # AWS access key ID — 16-128 alphanumeric chars, typically 20 chars
+        # starting with AKIA/AIDA/AROA/ASIA).
+        #
+        # When the values are empty, placeholder strings (e.g. the literal
+        # "IRSA" that was found in the staging AWS SM secret), or MinIO dev
+        # defaults that don't apply in deployed envs, omit them entirely so
+        # boto3 walks the default credential-resolver chain:
+        #   env → IRSA web identity → ECS → IMDS → profile
+        #
+        # History: the deploy.yml previously seeded the staging/hub/s3 AWS SM
+        # secret with {"AWS_ACCESS_KEY_ID":"","AWS_SECRET_ACCESS_KEY":""}.
+        # A subsequent manual update changed it to the literal string "IRSA"
+        # (thinking it meant "use IRSA") which produced presigned URLs with
+        # <AWSAccessKeyId>IRSA</AWSAccessKeyId> → InvalidAccessKeyId from S3.
+        import re as _re
+        _ak = (getattr(settings, 'AWS_ACCESS_KEY_ID', '') or '').strip()
+        _sk = (getattr(settings, 'AWS_SECRET_ACCESS_KEY', '') or '').strip()
+        # Real AWS access key IDs are 16-128 alphanumeric characters.
+        # MinIO keys (used in dev/test) are also alphanumeric but shorter.
+        # Reject obvious placeholders: "IRSA", "minio", "minio_staging",
+        # "none", "placeholder", single words < 8 chars that aren't AK-like.
+        _ak_looks_real = bool(
+            _ak
+            and _sk
+            and len(_ak) >= 8
+            and _re.match(r'^[A-Za-z0-9/+=]+$', _ak)
+        )
+        client_kwargs = dict(
             endpoint_url=self.endpoint_url,
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
             use_ssl=self.use_ssl,
             verify=getattr(settings, 'AWS_S3_VERIFY', True),
-            config=s3_config
+            config=s3_config,
         )
+        if _ak_looks_real:
+            client_kwargs['aws_access_key_id'] = _ak
+            client_kwargs['aws_secret_access_key'] = _sk
+
+        self.client = boto3.client('s3', **client_kwargs)
+
+        # Phase 213.H.5 — startup STS probe. In staging/production, verify
+        # that the boto3 credential chain resolved to a valid identity.
+        # Fail-fast at pod startup beats silent file-upload failures 30 min
+        # later. Skipped in tests and local dev to avoid STS calls.
+        _env_name = (
+            os.getenv('ENVIRONMENT')
+            or os.getenv('DJANGO_ENVIRONMENT')
+            or ''
+        ).lower()
+        if (
+            _env_name in {'staging', 'production', 'prod'}
+            and not _is_test
+        ):
+            # Extract only credential kwargs for STS (not S3-specific ones)
+            _sts_kwargs = {
+                k: v for k, v in client_kwargs.items()
+                if k not in ('endpoint_url', 'config', 'use_ssl', 'verify')
+            }
+            self._run_sts_probe(_env_name, _sts_kwargs)
 
         # Don't check bucket in __init__ - check lazily when needed
         self._bucket_checked = False
         self._original_endpoint = self.endpoint_url  # Store original for fallback
+
+    @staticmethod
+    def _run_sts_probe(env_name: str, sts_kwargs: dict) -> dict:
+        """
+        Phase 213.H.5 — call STS get_caller_identity() and return the
+        response. Raises RuntimeError on failure with a remediation hint.
+
+        Extracted as a static method so it can be unit-tested without
+        fighting the ``_is_test`` guard in ``__init__``.
+        """
+        import logging as _logging
+        _logger = _logging.getLogger(__name__)
+        try:
+            _sts = boto3.client('sts', **sts_kwargs)
+            _identity = _sts.get_caller_identity()
+            _logger.info(
+                "S3StorageClient: STS identity resolved",
+                extra={
+                    "arn": _identity.get("Arn"),
+                    "account": _identity.get("Account"),
+                },
+            )
+            return _identity
+        except Exception as exc:
+            raise RuntimeError(
+                f"S3StorageClient: STS get_caller_identity() failed in "
+                f"{env_name} — no valid AWS credentials available. "
+                f"Check IRSA annotation on the ServiceAccount "
+                f"(eks.amazonaws.com/role-arn) or set AWS_ACCESS_KEY_ID / "
+                f"AWS_SECRET_ACCESS_KEY env vars. "
+                f"Original error: {type(exc).__name__}: {exc}"
+            ) from exc
 
     def _ensure_bucket_exists(self):
         """Ensure the bucket exists, create it if it doesn't."""
@@ -228,15 +311,18 @@ class S3StorageClient:
                                 signature_version='s3v4',
                                 retries={'max_attempts': 3, 'mode': 'standard'}
                             )
-                            self.client = boto3.client(
-                                's3',
+                            _fallback_kwargs = dict(
                                 endpoint_url=self.endpoint_url,
-                                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
                                 use_ssl=self.use_ssl,
                                 verify=getattr(settings, 'AWS_S3_VERIFY', True),
-                                config=s3_config
+                                config=s3_config,
                             )
+                            _fak = getattr(settings, 'AWS_ACCESS_KEY_ID', '') or ''
+                            _fsk = getattr(settings, 'AWS_SECRET_ACCESS_KEY', '') or ''
+                            if _fak.strip() and _fsk.strip():
+                                _fallback_kwargs['aws_access_key_id'] = _fak
+                                _fallback_kwargs['aws_secret_access_key'] = _fsk
+                            self.client = boto3.client('s3', **_fallback_kwargs)
                             # Retry bucket check with new endpoint
                             try:
                                 self.client.head_bucket(Bucket=self.bucket_name)
@@ -336,15 +422,18 @@ class S3StorageClient:
                     s3={'addressing_style': 'path'},
                     retries={'max_attempts': 3, 'mode': 'standard'}
                 )
-                browser_client = boto3.client(
-                    's3',
+                _bak = getattr(settings, 'AWS_ACCESS_KEY_ID', '') or ''
+                _bsk = getattr(settings, 'AWS_SECRET_ACCESS_KEY', '') or ''
+                _browser_kwargs = dict(
                     endpoint_url=browser_endpoint,
-                    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
                     use_ssl=self.use_ssl,
                     verify=getattr(settings, 'AWS_S3_VERIFY', True),
-                    config=s3_config
+                    config=s3_config,
                 )
+                if _bak.strip() and _bsk.strip():
+                    _browser_kwargs['aws_access_key_id'] = _bak
+                    _browser_kwargs['aws_secret_access_key'] = _bsk
+                browser_client = boto3.client('s3', **_browser_kwargs)
                 client_to_use = browser_client
             
             if use_put:
@@ -358,6 +447,28 @@ class S3StorageClient:
                     },
                     ExpiresIn=expires_in
                 )
+
+                # Phase 213.H.6 — validate AKID in X-Amz-Credential.
+                # Reject: empty AKID (`/20260409/...`), placeholder strings
+                # like "IRSA" or "minio" that aren't real AWS credentials,
+                # and anything shorter than 16 chars (real AKIA*/ASIA* keys
+                # are 20 chars; IRSA STS session keys are longer).
+                from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs
+                _qs = _parse_qs(_urlparse(upload_url).query)
+                _cred = (_qs.get('X-Amz-Credential') or [''])[0]
+                if _cred:
+                    _akid_part = _cred.split('/')[0]
+                    if not _akid_part or len(_akid_part) < 16:
+                        raise RuntimeError(
+                            f"Presigned URL has invalid AKID '{_akid_part}' in "
+                            f"X-Amz-Credential ({_cred!r}). boto3 signed with "
+                            "placeholder or missing credentials — check IRSA "
+                            "annotation on the ServiceAccount or "
+                            "AWS_ACCESS_KEY_ID env var. The value must be a "
+                            "real AWS access key (20+ chars starting with "
+                            "AKIA/ASIA/AROA), not a placeholder like 'IRSA'."
+                        )
+
                 return {
                     'upload_url': upload_url,
                     'fields': {},  # Not used for PUT

@@ -138,7 +138,11 @@ def poll_compliance_job(run_id) -> None:
         )
 
     elif remote_status == "FAILED":
-        error_detail = result.get("error") or result.get("detail", "")
+        error_detail = (
+            result.get("error")
+            or result.get("detail")
+            or "compliance microservice reported FAILED with no error/detail field"
+        )
         logger.warning(
             "poll_compliance_job: remote job failed",
             extra={
@@ -148,7 +152,19 @@ def poll_compliance_job(run_id) -> None:
             },
         )
         run.status = ComplianceRunStatus.FAILED
-        run.save(update_fields=["status", "updated_at"])
+        # Phase 213.G.1 — persist error_detail so it is reachable to API
+        # consumers (previously only logged, then thrown away).
+        existing_mapping = dict(run.regulation_mapping_json or {})
+        existing_mapping["error"] = error_detail
+        existing_mapping["error_type"] = "REMOTE_FAILURE"
+        run.regulation_mapping_json = existing_mapping
+        run.save(
+            update_fields=[
+                "status",
+                "regulation_mapping_json",
+                "updated_at",
+            ]
+        )
 
     else:
         # RUNNING, QUEUED, or any unrecognised status → poll again

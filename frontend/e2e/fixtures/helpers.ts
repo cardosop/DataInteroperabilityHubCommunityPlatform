@@ -58,6 +58,12 @@ export async function hasLoginPrompt(page: Page): Promise<boolean> {
  * After `goto` to a role-gated path, wait for SPA to finish (403, login, MVP
  * coming-soon/unavailable, or navigated off the forbidden prefix).
  * Do not use `waitForURL(/...admin.../)` — it resolves immediately while still on /admin.
+ *
+ * Phase 213.I.8 — after Phase 213.I the redirect is synchronous (<100ms)
+ * because ProtectedRoute hydrates from localStorage instead of waiting for
+ * /auth/me/. The 25s budget is intentionally over-spec'd as a safety net
+ * against any future regression that re-introduces blocking init.
+ * DO NOT lower the budget.
  */
 export async function waitForRoleGuardResolved(
   page: Page,

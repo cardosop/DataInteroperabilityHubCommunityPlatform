@@ -8,17 +8,58 @@ import { apiClient } from '../../../shared/api/client';
 import type { LoginRequest, User } from '../../../shared/types/auth';
 import { authService } from '../services/authService';
 
-/** When a prior session exists in storage, start with isLoading: true so ProtectedRoute shows Loading instead of redirecting to login before initialize() runs. */
-function getInitialIsLoading(): boolean {
+// ---------------------------------------------------------------------------
+// Phase 213.I — Synchronous hydration helpers.
+//
+// The auth store now hydrates `user`, `isAuthenticated`, and `isLoading`
+// synchronously from localStorage on first render so that ProtectedRoute
+// can make an immediate role-gate decision without waiting for /auth/me/.
+// Previously, only `isLoading` was hydrated (to `true`), which caused a
+// 2-retry × 3s + 60s safety-timeout blocking init before ProtectedRoute
+// could redirect to /403 or render children — a real product UX bug on
+// cold staging pods.
+// ---------------------------------------------------------------------------
+
+/** Synchronously read the stored user profile from localStorage. */
+export function getInitialUser(): User | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem('user');
+    if (!raw) return null;
+    return JSON.parse(raw) as User;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns `true` when BOTH a stored user AND a refresh token exist.
+ * Without a refresh token any authenticated API call would 401 anyway,
+ * so the session is not resumable.
+ */
+export function getInitialIsAuthenticated(): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    // Phase 11.1: access_token is no longer stored in localStorage.
-    // Check for user profile only — its presence indicates a prior session that
-    // may be resumable via refresh_token cookie or in-memory token.
-    return !!localStorage.getItem('user');
+    return (
+      !!localStorage.getItem('user') &&
+      !!localStorage.getItem('refresh_token')
+    );
   } catch {
     return false;
   }
+}
+
+/**
+ * Phase 213.I.3 — always returns `false`.
+ *
+ * When the store can hydrate synchronously (user + refresh_token in
+ * storage), it is not loading from the user's perspective — role-gate
+ * decisions can be made immediately. When it cannot hydrate, the user
+ * is unauthenticated and ProtectedRoute redirects to /login on first
+ * render — there is also nothing to wait for.
+ */
+export function getInitialIsLoading(): boolean {
+  return false;
 }
 
 const ACTIVE_TENANT_STORAGE_KEY = 'active_tenant_id';
@@ -63,10 +104,11 @@ function syncTenantIdGetter(get: () => AuthState): void {
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-  user: null,
+  // Phase 213.I.4 — synchronous hydration from localStorage.
+  user: getInitialUser(),
   active_tenant_id: getInitialActiveTenantId(),
-  isAuthenticated: false,
-  isLoading: getInitialIsLoading(),
+  isAuthenticated: getInitialIsAuthenticated(),
+  isLoading: false,
   error: null,
 
   login: async (credentials: LoginRequest) => {
@@ -179,12 +221,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const runInit = async (): Promise<void> => {
       const currentState = get();
       if (currentState.isAuthenticated && currentState.user) {
-        set({ isLoading: true });
+        // Phase 213.I.5 — hydrated from localStorage; do NOT flip
+        // isLoading. Run /auth/me/ as a background refresh. On 401
+        // clearAuthState() fires → ProtectedRoute re-renders → redirect
+        // to /login. On network/timeout failure, the stored user is
+        // kept (fail-open at lines ~162-173).
         await tryFetchUser(2);
         return;
       }
 
-      set({ isLoading: true });
+      // Cold-start: no stored user. ProtectedRoute has already
+      // redirected to /login on the first render (isAuthenticated is
+      // false, isLoading is false), so this branch runs invisibly.
       authService.initializeAuth();
 
       // Phase 11.1: after page reload, access_token is lost (in-memory only).

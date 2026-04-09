@@ -74,6 +74,13 @@ export interface ComplianceRunResult {
   status: string;
   run_id?: string;
   issues?: Record<string, unknown>[];
+  // Phase 213.G.10 — surface the error fields the backend now persists.
+  // `error` is the human-readable message (REMOTE_FAILURE / EXECUTION_ERROR),
+  // `errorType` is the canonical taxonomy slot, and `errorCode` is the
+  // machine-readable code from the POLL_TIMEOUT path (metadata_json).
+  error?: string;
+  errorType?: string;
+  errorCode?: string;
 }
 
 /**
@@ -228,10 +235,29 @@ export async function waitForComplianceRunViaApi(
       const data = (await resp.json()) as {
         status?: string;
         issues?: Record<string, unknown>[];
+        regulation_mapping_json?: {
+          error?: string;
+          error_type?: string;
+        } | null;
+        metadata_json?: {
+          error_code?: string;
+        } | null;
       };
       const status = data.status?.toUpperCase() ?? '';
       if (terminalStates.has(status)) {
-        return { status, run_id: runId, issues: data.issues };
+        // Phase 213.G.10 — surface error fields so a FAILED run produces
+        // a one-shot diagnosable message in the test output (instead of
+        // the historical bare "Status was 'FAILED'" form).
+        const mapping = data.regulation_mapping_json ?? undefined;
+        const metadata = data.metadata_json ?? undefined;
+        return {
+          status,
+          run_id: runId,
+          issues: data.issues,
+          error: mapping?.error,
+          errorType: mapping?.error_type,
+          errorCode: metadata?.error_code,
+        };
       }
       break;
     }
@@ -240,4 +266,39 @@ export async function waitForComplianceRunViaApi(
   throw new Error(
     `waitForComplianceRunViaApi: run ${runId} did not reach terminal state within ${timeoutMs}ms`
   );
+}
+
+/**
+ * Phase 213.G.13 — assert a compliance run reached SUCCEEDED, and on
+ * failure produce a one-shot diagnosable message that includes the
+ * canonical error_type AND whichever of (error | error_code) is
+ * populated. Replaces the historical bare ``Status was 'FAILED'`` form
+ * which discarded every diagnostic field even when the backend had it.
+ *
+ * Throws a `Error` (so Playwright's expect.poll / `test.fail` paths
+ * still work). Returns void on success.
+ */
+export function expectComplianceRunSucceeded(
+  result: ComplianceRunResult,
+  context?: string
+): void {
+  const okStatuses = new Set(['SUCCEEDED', 'COMPLETED', 'PASSED']);
+  if (okStatuses.has(result.status)) return;
+
+  const parts: string[] = [];
+  if (context) parts.push(context);
+  parts.push(`status=${result.status}`);
+  if (result.errorType) parts.push(`error_type=${result.errorType}`);
+  if (result.error) {
+    parts.push(`error=${result.error}`);
+  } else if (result.errorCode) {
+    parts.push(`error_code=${result.errorCode}`);
+  } else {
+    parts.push(
+      'error=<NONE PERSISTED — backend invariant violated: every FAILED ' +
+        'ComplianceRun must have regulation_mapping_json.error or ' +
+        'metadata_json.error_code>'
+    );
+  }
+  throw new Error(`Compliance run did not succeed — ${parts.join(' ')}`);
 }

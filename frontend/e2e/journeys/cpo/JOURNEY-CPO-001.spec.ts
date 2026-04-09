@@ -22,7 +22,10 @@ import {
   waitForLoadingComplete,
 } from '../../fixtures/helpers';
 import { createAssetViaApi, createDatasetViaApi } from '../../fixtures/api-assets';
-import { waitForComplianceRunViaApi } from '../../fixtures/api-compliance';
+import {
+  expectComplianceRunSucceeded,
+  waitForComplianceRunViaApi,
+} from '../../fixtures/api-compliance';
 
 // Phase 213.C.9 — configurable compliance-run poll budget. Local default 90s; staging
 // gets 180s because the compliance engine cold-starts more often under shared load.
@@ -80,8 +83,11 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       // forceNew: true creates a brand-new asset (not a reused one) so it appears first
       // in the AssetPicker's -created_at ordering and has a fresh dataset+file attached.
       const assetId = await createAssetViaApi(dpoUser, { forceNew: true, cleanup });
-      // Link the dataset+file to the asset so the compliance engine can find the file
-      const datasetId = await createDatasetViaApi(dpoUser, { assetId, cleanup }).catch(() => undefined);
+      // Phase 213.G.11 — dataset creation MUST succeed. Silently swallowing
+      // this error caused the compliance scan to run against an asset with
+      // no file → backend raised "No file found for compliance run" → run
+      // FAILED, but the causal chain (missing dataset) was invisible.
+      const datasetId = await createDatasetViaApi(dpoUser, { assetId, cleanup });
 
       await loginAsPersona(page, getComplianceOfficerUser);
 
@@ -89,19 +95,35 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       try {
         const result = await triggerComplianceScanViaUI(page, assetId, {
           datasetId: datasetId || undefined,
-          assetName: 'E2E Publish Asset',
         });
         runId = result.runId;
         expect(result.httpStatus).toBeGreaterThanOrEqual(200);
         expect(result.httpStatus).toBeLessThan(300);
       } catch (scanErr) {
-        // Compliance scan UI may not be available in all environments (capability-gated)
-        test.skip(
-          true,
-          `Compliance scan UI not available: ${scanErr}. ` +
-          'Ensure the compliance service is running and the CPO user has permission to create runs.'
-        );
-        return;
+        // Classify the error rather than blanket-skipping. The previous
+        // implementation converted EVERY failure here to test.skip(), which
+        // hid five consecutive real bugs in the compliance modal/asset-picker
+        // path under a green "skipped" status. Only skip on explicit
+        // capability-gating signals (404 capability route, 503 service
+        // unavailable, or an explicit RBAC 403). Everything else — picker
+        // mismatch, disabled submit, missing API response, parse errors,
+        // 4xx/5xx from /compliance/runs/ — is a real failure and must fail.
+        const errStr = String(scanErr);
+        const isCapabilityGated =
+          /returned 404\b/.test(errStr) ||
+          /returned 503\b/.test(errStr) ||
+          /does not have permission/.test(errStr) ||
+          /capability_disabled|CAPABILITY_DISABLED/i.test(errStr);
+        if (isCapabilityGated) {
+          test.skip(
+            true,
+            `Compliance scan UI capability-gated in this env: ${errStr.slice(0, 300)}`
+          );
+          return;
+        }
+        // Real failure — propagate with the original message so the next
+        // run is one-shot diagnosable.
+        throw new Error(`Compliance scan trigger failed: ${errStr}`);
       }
 
       // Navigate to the compliance list and verify it loaded with at least one run row
@@ -146,11 +168,13 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       if (!finalResult) {
         throw new Error('API poll timed out — compliance run never reached terminal state');
       }
-      const terminalOkStatuses = ['SUCCEEDED', 'COMPLETED', 'PASSED'];
-      expect(
-        terminalOkStatuses,
-        `Status was '${finalResult.status}' — expected SUCCEEDED`
-      ).toContain(finalResult.status);
+      // Phase 213.G.13 — use the new helper so a FAILED run produces a
+      // one-shot diagnosable message (status + error_type + error/error_code)
+      // instead of the historical bare "Status was 'FAILED'" form.
+      expectComplianceRunSucceeded(
+        finalResult,
+        `JOURNEY-CPO-001 compliance scan run_id=${runId}`
+      );
       // Verify detail page shows a status badge when scan succeeded
       await expect(page.locator('.status-badge')).toBeVisible();
     });
