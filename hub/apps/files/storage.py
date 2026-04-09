@@ -30,10 +30,18 @@ class S3StorageClient:
         if env_endpoint:
             self.endpoint_url = env_endpoint
         else:
-            # Use settings value
+            # Use settings value (may be None when running against native AWS S3
+            # in staging/production — settings.py deliberately leaves it unset
+            # so boto3 signs URLs against `<bucket>.s3.<region>.amazonaws.com`,
+            # which is browser-reachable and IRSA-authenticated).
             self.endpoint_url = getattr(settings, 'AWS_S3_ENDPOINT_URL', None)
 
-            # If endpoint from settings doesn't work, try to detect correct one
+            # If endpoint from settings doesn't work, try to detect correct one.
+            # Skip the localhost-fallback chain when endpoint_url is None: that
+            # is the explicit "use native AWS S3" signal, and falling back to
+            # http://localhost:9000 here is exactly what broke staging uploads
+            # before — the api pod has no MinIO on loopback, and even if it did,
+            # the resulting presigned URL is unreachable from browsers.
             if self.endpoint_url:
                 # Try to verify the endpoint hostname is resolvable
                 import socket

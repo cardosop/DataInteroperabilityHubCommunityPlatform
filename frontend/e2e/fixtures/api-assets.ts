@@ -706,34 +706,54 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
   const fileId = initData.file_id ?? initData.id;
   if (!fileId) throw new Error('File init response missing file_id');
 
-  // Upload to presigned URL (may point to MinIO; replace host for localhost reachability)
+  // Upload to the presigned URL. The upload MUST succeed before we call
+  // /complete/ — otherwise the file row exists in the DB but the bytes are
+  // missing from S3, and every downstream test (compliance scan, DQ run,
+  // dataset preview) will then fail mysteriously with "file not found" or
+  // hit a fail-closed timeout. Previously this block silently swallowed
+  // any upload error ("backend may allow complete without storage"); that
+  // hid the staging-broken AWS_S3_ENDPOINT_URL bug for weeks and showed up
+  // as flaky compliance/DQ runs.
+  //
+  // For docker-compose dev where the API hands out a presigned URL signed
+  // for the in-network `minio:9000` host, we still rewrite to localhost so
+  // the host-side e2e runner can reach MinIO — but failures from that
+  // rewrite are now propagated, not swallowed.
   const uploadUrl = initData.upload_url;
-  if (uploadUrl) {
-    try {
-      const putRes = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: csvContent,
-        headers: { 'Content-Type': 'text/csv' },
+  if (!uploadUrl) {
+    throw new Error('File init response missing upload_url — cannot upload');
+  }
+
+  const tryPut = async (url: string): Promise<Response> =>
+    fetch(url, {
+      method: 'PUT',
+      body: csvContent,
+      headers: { 'Content-Type': 'text/csv' },
+    });
+
+  let putRes = await tryPut(uploadUrl).catch((err) => {
+    throw new Error(`Upload network error to ${uploadUrl}: ${err}`);
+  });
+
+  if (!putRes.ok) {
+    const parsed = new URL(uploadUrl);
+    const isInternalHost =
+      parsed.hostname !== 'localhost' &&
+      parsed.hostname !== '127.0.0.1' &&
+      // Only attempt the localhost rewrite for docker-compose-style hostnames;
+      // a real AWS S3 endpoint (`*.amazonaws.com`) failing must surface as-is.
+      !parsed.hostname.endsWith('.amazonaws.com');
+    if (isInternalHost) {
+      const localUrl = `http://localhost:${parsed.port || '9010'}${parsed.pathname}${parsed.search}`;
+      putRes = await tryPut(localUrl).catch((err) => {
+        throw new Error(`Upload network error to ${localUrl} (rewrite of ${uploadUrl}): ${err}`);
       });
-      if (!putRes.ok) {
-        // Try with localhost if URL uses docker hostname (e2e runs on host)
-        const url = new URL(uploadUrl);
-        if (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
-          const localUrl = `http://localhost:${url.port || '9010'}${url.pathname}${url.search}`;
-          const localPutRes = await fetch(localUrl, {
-            method: 'PUT',
-            body: csvContent,
-            headers: { 'Content-Type': 'text/csv' },
-          });
-          if (!localPutRes.ok) {
-            throw new Error(`Upload failed: ${localPutRes.status}`);
-          }
-        } else {
-          throw new Error(`Upload failed: ${putRes.status}`);
-        }
-      }
-    } catch {
-      // In test/dev mode backend may allow complete without storage; continue
+    }
+    if (!putRes.ok) {
+      const body = await putRes.text().catch(() => '');
+      throw new Error(
+        `File upload to object store failed: ${putRes.status} ${putRes.statusText} — ${body.slice(0, 300)}`
+      );
     }
   }
 

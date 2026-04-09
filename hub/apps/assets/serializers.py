@@ -1,8 +1,27 @@
 """
 Asset Serializers
 """
+import re
+
 from rest_framework import serializers
 from .models import Asset, AssetStatus, AssetVisibility, DQStatus, ComplianceStatus
+
+# Asset keys are user-facing tenant-scoped identifiers used in URLs, contract
+# bindings, and ODPS payloads. They must be lowercase alphanumeric with optional
+# single hyphens between segments — no underscores, uppercase, or punctuation —
+# so the same value renders identically across UI, API, and downstream systems.
+_ASSET_KEY_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+
+def validate_asset_key(value: str) -> str:
+    """Enforce the asset-key format (lowercase, digits, single hyphens)."""
+    if not _ASSET_KEY_RE.match(value or ""):
+        raise serializers.ValidationError(
+            "Invalid key format: must be lowercase alphanumeric with hyphens "
+            "between segments (e.g. 'my-asset-1'). Underscores, uppercase, and "
+            "other punctuation are not allowed."
+        )
+    return value
 
 
 class AssetSerializer(serializers.ModelSerializer):
@@ -71,7 +90,11 @@ class AssetSerializer(serializers.ModelSerializer):
 
 class AssetCreateSerializer(serializers.Serializer):
     """Serializer for asset creation"""
-    key = serializers.CharField(max_length=255, help_text="Human-friendly identifier, unique per tenant")
+    key = serializers.CharField(
+        max_length=255,
+        help_text="Human-friendly identifier, unique per tenant. Must be lowercase alphanumeric with hyphens.",
+        validators=[validate_asset_key],
+    )
     name = serializers.CharField(max_length=255)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     domain = serializers.CharField(max_length=100, required=False, allow_blank=True, allow_null=True)
@@ -125,7 +148,11 @@ class DataFirstAssetCreateSerializer(serializers.Serializer):
     """Serializer for data-first asset creation (POST /api/v1/assets/data-first/)."""
 
     file_id = serializers.UUIDField(help_text="ID of the uploaded file")
-    key = serializers.CharField(max_length=255, help_text="Asset key, unique per tenant")
+    key = serializers.CharField(
+        max_length=255,
+        help_text="Asset key, unique per tenant. Must be lowercase alphanumeric with hyphens.",
+        validators=[validate_asset_key],
+    )
     name = serializers.CharField(max_length=255)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     domain = serializers.CharField(max_length=100, required=False, allow_blank=True, allow_null=True)

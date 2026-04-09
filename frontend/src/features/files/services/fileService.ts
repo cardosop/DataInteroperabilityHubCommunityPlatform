@@ -75,21 +75,41 @@ export const fileService = {
         }
       });
 
+      // Capture object-storage error bodies (S3/MinIO return XML with <Code>
+      // and <Message>) so failures surface a real diagnostic instead of a
+      // generic "Upload failed" string.
+      const summarizeBody = (): string => {
+        const body = (xhr.responseText || '').trim();
+        if (!body) return '';
+        const code = body.match(/<Code>([^<]+)<\/Code>/i)?.[1];
+        const msg = body.match(/<Message>([^<]+)<\/Message>/i)?.[1];
+        if (code || msg) return ` (${[code, msg].filter(Boolean).join(': ')})`;
+        return ` (${body.slice(0, 200)})`;
+      };
+
       xhr.addEventListener('load', () => {
         const duration = Date.now() - startTime;
         if (xhr.status >= 200 && xhr.status < 300) {
           console.log(`File upload completed in ${duration}ms`);
           resolve();
         } else {
-          console.error(`Upload failed with status ${xhr.status}`);
-          reject(new Error(`Upload failed with status ${xhr.status}`));
+          const detail = summarizeBody();
+          console.error(`Upload failed with status ${xhr.status}${detail}`);
+          reject(new Error(`Upload failed with status ${xhr.status}${detail}`));
         }
       });
 
       xhr.addEventListener('error', (e) => {
         const duration = Date.now() - startTime;
-        console.error(`Upload error after ${duration}ms:`, e);
-        reject(new Error('Upload failed'));
+        // Network-layer failure: no HTTP status, but capture whatever the
+        // browser exposed (CORS preflight rejection, DNS failure, TLS error).
+        const detail = summarizeBody();
+        console.error(`Upload network error after ${duration}ms:`, e);
+        reject(
+          new Error(
+            `Upload failed: network error (no HTTP response from object store)${detail}`
+          )
+        );
       });
 
       xhr.addEventListener('abort', () => {

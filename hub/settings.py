@@ -1212,7 +1212,26 @@ if USE_S3:
     is_in_docker = os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "true"
     is_test_env = "test" in sys.argv or "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST")
 
-    if staging_detected:
+    # In real deployments (staging/production K8s), the api/worker pods do NOT
+    # have `/.dockerenv` (containerd-based runtimes don't create it), so the
+    # legacy default of `http://localhost:9000` was being applied. That signed
+    # presigned URLs against `localhost`, breaking both browser uploads (the
+    # browser hit its own loopback) and server-side file fetches (the api pod
+    # has no MinIO on localhost). The correct default in any
+    # staging/production deployment is "no endpoint override" → boto3 uses
+    # native AWS S3 endpoints (`<bucket>.s3.<region>.amazonaws.com`), which
+    # are universally browser-reachable and IRSA-authorisable.
+    deployed_environment = (
+        os.getenv("ENVIRONMENT") or os.getenv("DJANGO_ENVIRONMENT") or ""
+    ).lower()
+    is_deployed_env = deployed_environment in {"staging", "production", "prod"}
+
+    if is_deployed_env and not is_test_env:
+        # Native AWS S3 — no endpoint override. boto3 will sign against
+        # `<bucket>.s3.<region>.amazonaws.com`, which is browser-reachable
+        # without any host rewrite, and authenticates via the pod's IRSA role.
+        default_s3_endpoint = None
+    elif staging_detected:
         default_s3_endpoint = "http://localhost:9010"
     elif is_in_docker and is_test_env:
         # In Docker test environment, try test service names, then localhost with test port
