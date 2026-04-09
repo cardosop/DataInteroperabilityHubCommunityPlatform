@@ -150,7 +150,9 @@ async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
           ? 'Postgres pool exhausted'
           : isHostResolutionRetryable(error)
             ? 'host resolution (API recovering)'
-            : 'connection error';
+            : isRateLimitError(error)
+              ? 'rate limited / account locked (429)'
+              : 'connection error';
         console.log(
           `⚠️ ${label} failed (${reason}), retrying in ${delay}ms (attempt ${i + 1}/${maxAttempts})...`
         );
