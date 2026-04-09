@@ -2881,22 +2881,34 @@ export async function triggerComplianceScanViaUI(
       }
       await assetPickerInput.click();
       await assetPickerInput.fill(searchTerms[pickerAttempt]);
-      await page.waitForTimeout(600);
-      const listbox = page.locator('[role="listbox"]').first();
-      await listbox.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
 
-      // If searching by name, find the option that matches exactly; else take first
-      let targetOption = page.locator('[role="listbox"] [role="option"]').first();
+      // Wait for the asset picker's own listbox (scoped to the picker
+      // container) to appear with at least one option. The previous
+      // implementation used a page-wide `[role="listbox"]` selector
+      // which could match other dropdowns, and swallowed timeouts via
+      // .catch(() => null) — both hid real failures.
+      const scopedListbox = assetPickerContainer.locator('[role="listbox"]');
+      const scopedOption = scopedListbox.locator('[role="option"]');
+
+      try {
+        await scopedOption.first().waitFor({ state: 'visible', timeout: 10000 });
+      } catch {
+        // No options appeared for this search term — try the next one
+        continue;
+      }
+
+      // If searching by name, prefer an exact match; otherwise take first
+      let targetOption = scopedOption.first();
       if (options?.assetName && pickerAttempt === 0) {
-        const exactMatch = page.locator(`[role="listbox"] [role="option"]:has-text("${options.assetName}")`).first();
+        const exactMatch = scopedListbox
+          .locator(`[role="option"]:has-text("${options.assetName}")`)
+          .first();
         if ((await exactMatch.count()) > 0) targetOption = exactMatch;
       }
 
-      if ((await targetOption.count()) > 0) {
-        await targetOption.click();
-        pickerOptionSelected = true;
-        break;
-      }
+      await targetOption.click();
+      pickerOptionSelected = true;
+      break;
     }
     if (!pickerOptionSelected) {
       throw new Error('triggerComplianceScanViaUI: could not select any asset in the picker');
