@@ -203,6 +203,19 @@ class Command(BaseCommand):
                             self.style.SUCCESS(f"Synced password for existing user: {email}")
                         )
 
+                # Phase 204: mark all E2E users as email-verified so the
+                # 24-hour grace period check in the login view doesn't block
+                # them after the first day. Without this, E2E users created
+                # >24h ago get 403 EMAIL_NOT_VERIFIED on every login attempt.
+                if not dry_run and not getattr(user, "email_verified", False):
+                    user.email_verified = True
+                    from django.utils import timezone as _tz
+                    user.email_verified_at = _tz.now()
+                    user.save(update_fields=["email_verified", "email_verified_at"])
+                    self.stdout.write(
+                        self.style.SUCCESS(f"Marked {email} as email-verified")
+                    )
+
                 # Update is_platform_admin if changed
                 if not dry_run and user.is_platform_admin != is_platform_admin:
                     user.is_platform_admin = is_platform_admin
