@@ -11,7 +11,9 @@ WORKDIR /app
 # libmagic1 is required by python-magic (magic-byte file-type validation used
 # by the bundled compliance_engine package).  Without it, importing python-magic
 # raises "failed to find libmagic.so.1 / libmagic-mgc" at runtime.
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y \
     gcc \
     postgresql-client \
     curl \

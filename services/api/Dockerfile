@@ -10,7 +10,9 @@ WORKDIR /app
 
 # Install system dependencies (unixodbc + PostgreSQL ODBC driver for virtualization ODBC sources,
 # libfreetype6 for reportlab PDF invoice generation)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
     gcc \
     postgresql-client \
     curl \
