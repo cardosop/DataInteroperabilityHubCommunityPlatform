@@ -9,10 +9,7 @@ DatasetsBusinessRules before performing mutations.
 
 from typing import Any, Dict, List, Optional
 
-import boto3
 import structlog
-from botocore.config import Config
-from botocore.exceptions import ClientError
 from django.conf import settings
 from django.db import transaction
 
@@ -132,38 +129,30 @@ class DatasetService(BaseService, DatasetEventPublisher):
             elif filename_lower.endswith(".parquet"):
                 file_format = "PARQUET"
 
-        # Download file from S3 (with timeouts to avoid hanging in tests/slow MinIO)
+        # Download file from S3 using the centralized S3StorageClient.
+        # Previously this created its own boto3.client with hardcoded
+        # settings.AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY, which
+        # bypassed the IRSA credential resolution in S3StorageClient
+        # and caused 403 Forbidden on HeadObject in staging (where
+        # the settings values are stale "minio" defaults, not real
+        # AWS credentials — IRSA provides credentials via the pod's
+        # web identity token, not via env vars).
         file_content = None
-        s3_connect_timeout = getattr(settings, "AWS_S3_CONNECT_TIMEOUT", 5)
-        s3_read_timeout = getattr(settings, "AWS_S3_READ_TIMEOUT", 15)
-        s3_config = Config(
-            connect_timeout=s3_connect_timeout,
-            read_timeout=s3_read_timeout,
-            retries={"max_attempts": 2, "mode": "standard"},
-        )
         try:
-            s3_client = boto3.client(
-                "s3",
-                endpoint_url=settings.AWS_S3_ENDPOINT_URL,
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                use_ssl=getattr(settings, "AWS_S3_USE_SSL", False),
-                verify=getattr(settings, "AWS_S3_VERIFY", False),
-                config=s3_config,
-            )
+            from hub.apps.files.storage import S3StorageClient
+            storage = S3StorageClient()
 
-            bucket = settings.AWS_STORAGE_BUCKET_NAME
             key = file_obj.storage_path
 
-            # Check if file exists in S3 first
+            # Check if file exists, then download
             try:
-                s3_client.head_object(Bucket=bucket, Key=key)
-                response = s3_client.get_object(Bucket=bucket, Key=key)
-                file_content = response["Body"].read()
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "404" or "NoSuchKey" in str(e):
-                    # Generate mock content for schema inference
+                if storage.file_exists(key):
+                    file_content = storage.get_file_content(key)
+                else:
+                    file_content = _generate_mock_file_content(file_obj, file_format)
+            except Exception as e:
+                error_str = str(e).lower()
+                if "404" in error_str or "nosuchkey" in error_str:
                     file_content = _generate_mock_file_content(file_obj, file_format)
                 else:
                     raise
