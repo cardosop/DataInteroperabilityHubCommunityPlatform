@@ -359,12 +359,6 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 return handle_service_exception(e)
             except ServiceValidationError as e:
                 return handle_service_exception(e)
-                body = {"error": str(e)}
-                if getattr(e, "code", None):
-                    body["code"] = e.code
-                if getattr(e, "details", None):
-                    body["details"] = e.details
-                return Response(body, status=status.HTTP_400_BAD_REQUEST)
             create_audit_event(
                 resource_type="DATASET",
                 action="VERSION_CREATED",

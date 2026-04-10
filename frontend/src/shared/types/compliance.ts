@@ -5,6 +5,7 @@
 
 export const ComplianceRunStatus = {
   PENDING: 'PENDING',
+  QUEUED: 'QUEUED',
   RUNNING: 'RUNNING',
   SUCCEEDED: 'SUCCEEDED',
   FAILED: 'FAILED',

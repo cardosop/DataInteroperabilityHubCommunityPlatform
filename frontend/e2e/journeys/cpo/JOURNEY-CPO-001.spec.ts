@@ -197,15 +197,32 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       await loginAsPersona(page, getComplianceOfficerUser);
       await page.goto('/compliance');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      try {
+        await waitForAppMainReady(page, {
+          timeout: 60000,
+          contentSelector: '.compliance-run-list-page, .empty-state',
+        });
+      } catch (_err) {
+        if (page.url().includes('/login') || page.url().includes('/403')) {
+          expect(page.url()).toMatch(/\/login|\/403/);
+          return;
+        }
+        throw _err;
+      }
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
         return;
       }
       expect(page.url()).toContain('/compliance');
+      await waitForLoadingComplete(page, { timeout: 15000 });
       // Page must not show an unhandled error (blank white screen or 500)
       const has500 = (await page.locator('text=/500|Internal Server Error/i').count()) > 0;
       expect(has500).toBe(false);
+      // Verify page actually rendered (not blank)
+      const hasContent =
+        (await page.locator('.compliance-run-list-page').count()) > 0 ||
+        (await page.locator('.empty-state').count()) > 0;
+      expect(hasContent).toBe(true);
     });
   });
 });

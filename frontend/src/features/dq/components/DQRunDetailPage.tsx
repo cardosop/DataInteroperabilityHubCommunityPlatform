@@ -88,7 +88,7 @@ export function DQRunDetailPage() {
               <div className="quality-score-display">
                 <span className="quality-score-label">Quality Score:</span>
                 <span className="quality-score-value">
-                  {Math.round(dqRun.quality_score * 100)}%
+                  {Math.round(dqRun.quality_score)}%
                 </span>
               </div>
             )}

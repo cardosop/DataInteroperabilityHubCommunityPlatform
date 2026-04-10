@@ -18,7 +18,7 @@ export function useComplianceRuns(filters: ComplianceRunListFilters = {}) {
       const data = query.state.data;
       if (data?.results) {
         const hasRunningRuns = data.results.some(
-          (run) => run.status === 'PENDING' || run.status === 'RUNNING'
+          (run) => run.status === 'PENDING' || run.status === 'QUEUED' || run.status === 'RUNNING'
         );
         return hasRunningRuns ? 2000 : false; // Poll every 2 seconds if running
       }
@@ -35,7 +35,7 @@ export function useComplianceRun(id: string | null) {
     refetchInterval: (query) => {
       // Auto-refetch if compliance run is running
       const run = query.state.data;
-      if (run && (run.status === 'PENDING' || run.status === 'RUNNING')) {
+      if (run && (run.status === 'PENDING' || run.status === 'QUEUED' || run.status === 'RUNNING')) {
         return 2000; // Poll every 2 seconds
       }
       return false;

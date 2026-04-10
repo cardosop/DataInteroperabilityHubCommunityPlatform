@@ -64,7 +64,7 @@ export function DQRunResultsViewer({ results }: DQRunResultsViewerProps) {
           <div className="summary-label">Quality Score</div>
           <div className="summary-value quality-score">
             {results.quality_score !== null && results.quality_score !== undefined
-              ? Math.round(results.quality_score * 100)
+              ? Math.round(results.quality_score)
               : 0}
             %
           </div>

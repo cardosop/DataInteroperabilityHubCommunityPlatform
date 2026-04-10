@@ -241,7 +241,7 @@ export function DQRunListPage() {
                 </td>
                 <td>
                   {run.quality_score !== null && run.quality_score !== undefined ? (
-                    <span className="quality-score">{Math.round(run.quality_score * 100)}%</span>
+                    <span className="quality-score">{Math.round(run.quality_score)}%</span>
                   ) : (
                     '-'
                   )}

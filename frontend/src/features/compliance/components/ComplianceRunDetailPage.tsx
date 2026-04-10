@@ -64,7 +64,7 @@ export function ComplianceRunDetailPage() {
     );
   }
 
-  const isRunning = complianceRun.status === 'PENDING' || complianceRun.status === 'RUNNING';
+  const isRunning = complianceRun.status === 'PENDING' || complianceRun.status === 'QUEUED' || complianceRun.status === 'RUNNING';
 
   const handleCancelClick = () => setShowCancelConfirm(true);
   const handleCancelConfirm = async () => {

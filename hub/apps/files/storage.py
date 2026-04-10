@@ -729,10 +729,6 @@ class S3StorageClient:
             raise Exception(f"Failed to get file size: {str(e)}")
 
     def get_file_content(self, key: str) -> bytes:
-        # Ensure bucket exists (lazy check)
-        if not self._bucket_checked:
-            self._ensure_bucket_exists()
-            self._bucket_checked = True
         """
         Download file content from S3.
 
@@ -742,6 +738,10 @@ class S3StorageClient:
         Returns:
             File content as bytes
         """
+        # Ensure bucket exists (lazy check)
+        if not self._bucket_checked:
+            self._ensure_bucket_exists()
+            self._bucket_checked = True
         try:
             response = self.client.get_object(
                 Bucket=self.bucket_name,

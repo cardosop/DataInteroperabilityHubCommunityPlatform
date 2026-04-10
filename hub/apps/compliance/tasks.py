@@ -91,15 +91,13 @@ def poll_compliance_job(run_id) -> None:
         )
         run.status = ComplianceRunStatus.FAILED
         # Fail-closed: unknown risk, deny storage
-        if hasattr(run, "risk_level"):
-            run.risk_level = "UNKNOWN"
-        if hasattr(run, "allowed_to_store"):
-            run.allowed_to_store = False
-        if hasattr(run, "error_message"):
-            run.error_message = f"Compliance service polling timed out after {int(elapsed)}s"
-        # Record error code in metadata for telemetry
+        run.risk_level = "UNKNOWN"
+        run.allowed_to_store = False
+        run.completed_at = timezone.now()
+        # Record error context in metadata (model has no error_message field)
         metadata = run.metadata_json or {}
         metadata["error_code"] = "POLL_TIMEOUT"
+        metadata["error_message"] = f"Compliance service polling timed out after {int(elapsed)}s"
         run.metadata_json = metadata
         # Phase 78: Prometheus counter for poll timeouts
         try:
@@ -107,10 +105,10 @@ def poll_compliance_job(run_id) -> None:
             poll_timeout_total.labels(service="compliance").inc()
         except Exception:
             pass
-        update_fields = ["status", "metadata_json", "updated_at"]
-        for f in ("risk_level", "allowed_to_store", "error_message"):
-            if hasattr(run, f):
-                update_fields.append(f)
+        update_fields = [
+            "status", "risk_level", "allowed_to_store",
+            "completed_at", "metadata_json", "updated_at",
+        ]
         run.save(update_fields=update_fields)
         return
 
