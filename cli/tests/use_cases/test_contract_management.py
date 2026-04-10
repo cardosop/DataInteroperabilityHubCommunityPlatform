@@ -21,7 +21,7 @@ class TestContractCreation:
 
         # Create ODCS contract file
         odcs_contract = '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: test-contract-yaml
 name: Test Contract YAML
@@ -97,7 +97,7 @@ schema:
 
         # Create comprehensive ODCS contract with all objects
         odcs_contract = '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: complete-contract
 name: Complete Contract
@@ -166,7 +166,7 @@ privacy_compliance:
 
         # Create minimal ODCS contract
         odcs_contract = '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: minimal-contract
 name: Minimal Contract
@@ -210,7 +210,7 @@ schema:
 
         # Create contract file
         contract_file, contract_content = temp_file('.yaml', '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: contract-with-asset
 name: Contract With Asset
@@ -236,7 +236,7 @@ schema:
         """Test contract creation with JSON output format"""
 
         contract_file, contract_content = temp_file('.yaml', '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: json-output-contract
 name: JSON Output Contract
@@ -284,7 +284,7 @@ class TestContractValidation:
 
         # Create valid contract
         contract_file, contract_content = temp_file('.yaml', '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: valid-contract
 name: Valid Contract
@@ -339,7 +339,7 @@ schema:
         # Create contract with minimal valid structure (name + schema.fields)
         # but missing version — the validate command should flag issues
         contract_file, contract_content = temp_file('.yaml', '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: invalid-contract
 name: Invalid Contract
@@ -382,7 +382,7 @@ schema:
 
         # Create contract with schema errors
         contract_file, contract_content = temp_file('.yaml', '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: error-contract
 name: Error Contract
@@ -436,7 +436,7 @@ schema:
         """Test contract validation with JSON output format"""
 
         contract_file, contract_content = temp_file('.yaml', '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: json-validate-contract
 name: JSON Validate Contract
@@ -491,7 +491,7 @@ class TestContractNormalization:
 
         # Create comprehensive ODCS contract
         odcs_contract = '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: normalize-all-contract
 name: Normalize All Contract
@@ -609,7 +609,7 @@ privacy_compliance:
 
         # Create minimal ODCS contract
         odcs_contract = '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: normalize-minimal-contract
 name: Minimal Contract
@@ -638,7 +638,7 @@ schema:
 
         # Create ODCS contract with potential normalization issues
         odcs_contract = '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: normalize-error-contract
 name: Error Contract
@@ -689,7 +689,7 @@ schema:
 
         # Create ODCS contract that may produce warnings (e.g., deprecated fields)
         odcs_contract = '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: normalize-warning-contract
 name: Warning Contract
@@ -857,7 +857,7 @@ product:
       description: Product-First flow test with YAML format
   contract:
     spec:
-      apiVersion: odcs/v3
+      apiVersion: odcs.io/v3.0.0
       kind: DataContract
       id: e2e-test-contract-yaml
       name: E2E Test Contract YAML
@@ -1028,7 +1028,7 @@ class TestContractManagementWorkflows:
 
         # Step 1: Create contract
         contract_file, contract_content = temp_file('.yaml', '''
-apiVersion: odcs/v3
+apiVersion: odcs.io/v3.0.0
 kind: DataContract
 id: lifecycle-contract
 name: Lifecycle Contract
