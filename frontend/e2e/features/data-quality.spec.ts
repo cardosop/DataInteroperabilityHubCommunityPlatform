@@ -107,7 +107,7 @@ test.describe('Feature: Data Quality', () => {
           name: `e2e-dq-${Date.now()}.csv`,
           content_type: 'text/csv',
           size: Buffer.byteLength(csvContent, 'utf-8'),
-          upload_method: 'direct',
+          upload_method: 'browser',
         },
       });
       if (initResp.status() >= 400) {
