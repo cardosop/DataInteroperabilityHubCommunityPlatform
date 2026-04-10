@@ -2981,7 +2981,25 @@ export async function uploadODPSContractViaUI(
     if ((await fileInput.count()) === 0) continue;
 
     await fileInput.first().setInputFiles(filePath);
-    await page.waitForTimeout(1000); // allow form to process the file
+
+    // Wait for the file to be processed by ContractFileReader (reads content
+    // asynchronously) and the submit button to become enabled. The previous
+    // fixed 1s wait was insufficient — file read + spec detection can take
+    // longer on staging with large payloads.
+    const submitBtn = page.locator(
+      'button:has-text("Create Contract"), button[type="submit"]:has-text("Create"), button:has-text("Upload"), button:has-text("Create ODPS"), button[type="submit"]:has-text("Submit"), button:has-text("Submit ODPS")'
+    );
+    if ((await submitBtn.count()) === 0) continue;
+
+    // Wait for button to become enabled (file content processed, hasContent=true)
+    try {
+      await submitBtn.first().waitFor({ state: 'visible', timeout: 10000 });
+      // Poll until the button is enabled (disabled attr removed after file is parsed)
+      await expect(submitBtn.first()).toBeEnabled({ timeout: 15000 });
+    } catch {
+      // Button stayed disabled — file content wasn't detected; continue to next route
+      continue;
+    }
 
     const responsePromise = page.waitForResponse(
       (resp) =>
@@ -2989,11 +3007,6 @@ export async function uploadODPSContractViaUI(
         resp.request().method() === 'POST',
       { timeout: 30000 }
     );
-
-    const submitBtn = page.locator(
-      'button[type="submit"]:has-text("Create"), button:has-text("Upload"), button:has-text("Create ODPS"), button[type="submit"]:has-text("Submit"), button:has-text("Submit ODPS")'
-    );
-    if ((await submitBtn.count()) === 0) continue;
 
     await submitBtn.first().click();
     const resp = await responsePromise;
