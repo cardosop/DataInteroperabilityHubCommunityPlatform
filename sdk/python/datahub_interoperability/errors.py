@@ -85,6 +85,56 @@ class NotFoundError(DataHubError):
         super().__init__(message, "NOT_FOUND", 404, request_id)
 
 
+class MVPGatedFeatureError(NotFoundError):
+    """
+    Raised when a 404 hits an MVP-gated /api/v1/ prefix.
+
+    Subclass of :class:`NotFoundError` so existing ``except NotFoundError:``
+    handlers continue to catch every MVP-gated 404 unchanged (D131
+    backwards-compat contract). Carries the stable
+    ``code='MVP_FEATURE_GATED'`` plus structured fields (``feature``,
+    ``prefix``, ``endpoint``, ``environment_url``) so programmatic consumers
+    can branch on ``error.code`` without parsing the rendered message.
+    """
+
+    # NotFoundError.__init__ does not accept ``code`` (it hardcodes
+    # ``"NOT_FOUND"``), so we override and call DataHubError.__init__
+    # directly to pass the MVP_FEATURE_GATED code through cleanly. (D136)
+    def __init__(
+        self,
+        feature: str,
+        prefix: str,
+        endpoint: str,
+        environment_url: str,
+        request_id: Optional[str] = None,
+    ):
+        from ._mvp_gates import MVP_FEATURE_GATED_CODE, MVP_GATED_MESSAGE_TEMPLATE
+
+        rendered = MVP_GATED_MESSAGE_TEMPLATE.format(
+            feature=feature,
+            endpoint=endpoint or "(unknown)",
+            environment_url=environment_url or "(unknown)",
+            code=MVP_FEATURE_GATED_CODE,
+        )
+        DataHubError.__init__(
+            self,
+            message=rendered,
+            code=MVP_FEATURE_GATED_CODE,
+            http_status=404,
+            request_id=request_id,
+            details={
+                "feature": feature,
+                "prefix": prefix,
+                "endpoint": endpoint,
+                "environment_url": environment_url,
+            },
+        )
+        self.feature = feature
+        self.prefix = prefix
+        self.endpoint = endpoint
+        self.environment_url = environment_url
+
+
 class ConflictError(DataHubError):
     """Conflict error (409)"""
 

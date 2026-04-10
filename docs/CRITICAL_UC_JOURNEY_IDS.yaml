@@ -44,6 +44,12 @@ critical_use_cases:
   - UC-GOV-ADV-004  # Configure Automated Retention
   # Billing / Cost (Tenant Admin)
   - UC-TA-007    # Monitor Cost Tracking
+  # Authentication — net-new (Phase 217.1.4)
+  - UC-AUTH-005  # Invitation Accept
+  - UC-AUTH-006  # SSO Login
+  - UC-AUTH-007  # Tenant Switch
+  # Billing — net-new (Phase 217.1.4)
+  - UC-BILL-002  # Billing Upgrade
   # Transformation Pipeline (implemented Phase 115A)
   - UC-TRANS-001   # Create Transformation Pipeline
   - UC-TRANS-002   # Execute Transformation Pipeline

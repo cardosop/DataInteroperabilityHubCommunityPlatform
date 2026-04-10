@@ -1,0 +1,18 @@
+{
+  "defaults": {
+    "standard": "WCAG2AA",
+    "timeout": 30000,
+    "wait": 1000,
+    "chromeLaunchConfig": {
+      "args": ["--no-sandbox"]
+    }
+  },
+  "urls": [
+    "http://localhost:8000/mvpdocs/index.html",
+    "http://localhost:8000/mvpdocs/personas/_persona-overview/index.html",
+    "http://localhost:8000/mvpdocs/integrators/index.html",
+    "http://localhost:8000/mvpdocs/operations/index.html",
+    "http://localhost:8000/mvpdocs/product/index.html",
+    "http://localhost:8000/mvpdocs/compliance/index.html"
+  ]
+}

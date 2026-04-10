@@ -1,3 +1,7 @@
+from tests.pytest_mvp_skip import skip_if_mvp_mode
+
+pytestmark = skip_if_mvp_mode
+
 """
 Integration tests for BaaS API key commands using Django LiveServerTestCase.
 
@@ -6,6 +10,13 @@ with real API endpoints. No mocks or stubs are used - all tests interact with
 the actual backend API.
 """
 import pytest
+
+# Phase 215.4 review fix: this module imports from django/hub which are
+# not on the CLI test PYTHONPATH (CLI pytest.ini sets ``-p no:django``).
+# Skip the entire module gracefully when those packages are unavailable
+# instead of crashing pytest collection.
+django = pytest.importorskip("django")
+hub = pytest.importorskip("hub")
 import json
 import uuid
 from click.testing import CliRunner

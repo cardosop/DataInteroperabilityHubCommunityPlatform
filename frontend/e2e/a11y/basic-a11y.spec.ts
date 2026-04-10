@@ -68,7 +68,9 @@ test.describe('Accessibility (axe) — public / unauthenticated pages', () => {
   });
 
   test('403 page has no critical accessibility violations', async ({ page }) => {
-    await page.goto('/403', { waitUntil: 'domcontentloaded' });
+    // Staging cold-start can exceed the default 30s navigation timeout.
+    // Use explicit timeout to survive slow initial TLS + CDN handshakes.
+    await page.goto('/403', { waitUntil: 'domcontentloaded', timeout: 60000 });
     await assertNoA11yViolations(page);
   });
 

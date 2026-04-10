@@ -3,6 +3,7 @@ Comprehensive integration tests for CLI output formatting.
 
 Tests output formatting with real API structure (when available).
 """
+import os
 import pytest
 import json
 from click.testing import CliRunner

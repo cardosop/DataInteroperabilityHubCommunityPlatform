@@ -913,6 +913,33 @@ services:
           cpus: "0.5"
           memory: 512M
 
+  # Phase 216.0.8 — MVP-mode API backend.
+  # Identical to api-service-test but with MVP_MODE=true so post-MVP
+  # API namespaces return 404. Used by `pytest -m mvp` and the CI
+  # mvp-test-suite job.
+  # Default port 8003 avoids collision with api-service-test (8001).
+  api-service-test-mvp:
+    extends:
+      service: api-service-test
+    container_name: hub-test-api-mvp
+    ports:
+      - "${API_TEST_MVP_PORT:-8003}:8000"
+    environment:
+      MVP_MODE: "true"
+
+  # Phase 216.0.8 — Full-mode API backend.
+  # Identical to api-service-test with MVP_MODE explicitly false.
+  # Used by post-MVP integration tests that exercise gated endpoints.
+  # Default port 8004 avoids collision with api-service-test (8001).
+  api-service-test-full:
+    extends:
+      service: api-service-test
+    container_name: hub-test-api-full
+    ports:
+      - "${API_TEST_FULL_PORT:-8004}:8000"
+    environment:
+      MVP_MODE: "false"
+
   # Worker Service for Testing
   worker-service-test:
     build:

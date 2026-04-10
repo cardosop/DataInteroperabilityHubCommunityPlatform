@@ -15,7 +15,7 @@ from ..api_client import api_client
 
 @click.group()
 def transformation():
-    """Transformation pipeline management commands"""
+    """Transformation pipeline management commands [Post-MVP]"""
     pass
 
 

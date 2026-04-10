@@ -703,21 +703,25 @@ class VirtualizationAPI:
                 "Cannot specify both page_size and limit. Use either page/page_size or offset/limit."
             )
 
-        # Validate page/page_size if provided
-        if page is not None:
-            if not isinstance(page, int) or page < 1:
-                raise ValidationError("page must be a positive integer >= 1")
-            if page_size is not None:
-                if not isinstance(page_size, int) or page_size < 1 or page_size > 1000:
-                    raise ValidationError("page_size must be between 1 and 1000")
+        # Validate page/page_size — each must be checked independently because
+        # callers may legitimately pass page_size without page (it then applies
+        # to the implicit first page). The previous logic only validated
+        # page_size when page was also set, letting page_size=0 / page_size>1000
+        # slip through to the backend.
+        if page is not None and (not isinstance(page, int) or page < 1):
+            raise ValidationError("page must be a positive integer >= 1")
+        if page_size is not None and (
+            not isinstance(page_size, int) or page_size < 1 or page_size > 1000
+        ):
+            raise ValidationError("page_size must be between 1 and 1000")
 
-        # Validate offset/limit if provided
-        if offset is not None:
-            if not isinstance(offset, int) or offset < 0:
-                raise ValidationError("offset must be a non-negative integer")
-            if limit is not None:
-                if not isinstance(limit, int) or limit < 1 or limit > 1000:
-                    raise ValidationError("limit must be between 1 and 1000")
+        # Validate offset/limit independently for the same reason as above.
+        if offset is not None and (not isinstance(offset, int) or offset < 0):
+            raise ValidationError("offset must be a non-negative integer")
+        if limit is not None and (
+            not isinstance(limit, int) or limit < 1 or limit > 1000
+        ):
+            raise ValidationError("limit must be between 1 and 1000")
 
         # Build query parameters
         params: Dict[str, Any] = {

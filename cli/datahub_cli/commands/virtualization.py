@@ -10,7 +10,7 @@ from ..api_client import api_client
 
 @click.group()
 def virtualization():
-    """Virtualization management commands"""
+    """Virtualization management commands [Post-MVP]"""
     pass
 
 

@@ -30,6 +30,10 @@ class ComplianceRunSerializer(serializers.ModelSerializer):
             "detected_categories_json",
             "column_findings_json",
             "regulation_mapping_json",
+            # Phase 213.G.2 — surface metadata_json so the POLL_TIMEOUT
+            # path (which writes metadata_json["error_code"]) is visible
+            # to API consumers, not just to backend logs.
+            "metadata_json",
             # v2 fields (19.10.1)
             "cross_border_alert",
             "localisation_alert",
@@ -54,6 +58,7 @@ class ComplianceRunSerializer(serializers.ModelSerializer):
             "detected_categories_json",
             "column_findings_json",
             "regulation_mapping_json",
+            "metadata_json",
             "cross_border_alert",
             "localisation_alert",
             "legal_basis_violations",

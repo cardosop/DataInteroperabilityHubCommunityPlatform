@@ -15,7 +15,7 @@ from ..api_client import api_client
 
 @click.group()
 def scheduled_ingestion():
-    """Scheduled ingestion management commands"""
+    """Scheduled ingestion management commands [Post-MVP]"""
     pass
 
 

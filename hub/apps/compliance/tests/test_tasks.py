@@ -31,6 +31,7 @@ class PollComplianceJobTest(TestCase):
         run.risk_level = None
         run.allowed_to_store = None
         run.error_message = None
+        run.regulation_mapping_json = None
         return run
 
     @patch("hub.apps.compliance.tasks._reenqueue")
@@ -98,6 +99,63 @@ class PollComplianceJobTest(TestCase):
         from hub.apps.compliance.tasks import poll_compliance_job
         poll_compliance_job(str(run.id))
         mock_reenq.assert_called_once()
+
+    # ----------------------------------------------------------------
+    # Phase 213.G.6 — FAILED branch must persist error_detail and
+    # error_type so the error is reachable to API consumers, not just
+    # to the Django logs.
+    # ----------------------------------------------------------------
+    @patch(f"{_CLIENT}.ComplianceServiceClient")
+    @patch(f"{_MODELS}.ComplianceRun.objects")
+    def test_remote_failed_persists_error_detail_and_type(
+        self, mock_qs, mock_client_cls,
+    ):
+        run = self._make_run()
+        mock_qs.select_related.return_value.get.return_value = run
+        mock_client = MagicMock()
+        mock_client.get_scan_result.return_value = {
+            "status": "FAILED",
+            "error": "scan worker crashed: KeyError 'tenant_id'",
+        }
+        mock_client_cls.return_value = mock_client
+
+        from hub.apps.compliance.tasks import poll_compliance_job
+        poll_compliance_job(str(run.id))
+
+        assert run.status == "FAILED"
+        assert run.regulation_mapping_json is not None
+        assert (
+            run.regulation_mapping_json["error"]
+            == "scan worker crashed: KeyError 'tenant_id'"
+        )
+        assert run.regulation_mapping_json["error_type"] == "REMOTE_FAILURE"
+        # Save must include regulation_mapping_json so the error reaches DB.
+        save_kwargs = run.save.call_args.kwargs
+        assert "regulation_mapping_json" in save_kwargs["update_fields"]
+
+    @patch(f"{_CLIENT}.ComplianceServiceClient")
+    @patch(f"{_MODELS}.ComplianceRun.objects")
+    def test_remote_failed_preserves_existing_mapping_keys(
+        self, mock_qs, mock_client_cls,
+    ):
+        run = self._make_run()
+        run.regulation_mapping_json = {"GDPR": {"articles": ["Art. 6"]}}
+        mock_qs.select_related.return_value.get.return_value = run
+        mock_client = MagicMock()
+        mock_client.get_scan_result.return_value = {
+            "status": "FAILED",
+            "detail": "boom",
+        }
+        mock_client_cls.return_value = mock_client
+
+        from hub.apps.compliance.tasks import poll_compliance_job
+        poll_compliance_job(str(run.id))
+
+        # Pre-existing keys are preserved.
+        assert run.regulation_mapping_json["GDPR"] == {"articles": ["Art. 6"]}
+        # And error fields are added on top.
+        assert run.regulation_mapping_json["error"] == "boom"
+        assert run.regulation_mapping_json["error_type"] == "REMOTE_FAILURE"
 
     @patch("hub.apps.compliance.tasks._reenqueue")
     @patch(f"{_CLIENT}.ComplianceServiceClient")

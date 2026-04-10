@@ -1,3 +1,7 @@
+from tests.pytest_mvp_skip import skip_if_mvp_mode
+
+pytestmark = skip_if_mvp_mode
+
 """
 End-to-end tests for complete ML training workflows.
 
@@ -11,6 +15,7 @@ These tests require:
 
 No mocks or stubs - all tests use real implementations.
 """
+import os
 import pytest
 import json
 import uuid

@@ -1,0 +1,44 @@
+# MVP Documentation Overlay Model
+
+## What Is This?
+
+`docs/mvpdocs/` is an **overlay directory** (D152) that sits alongside
+the existing `docs/` tree.  It does not replace or move existing
+documentation — it adds MVP-specific entry points and fills gaps.
+
+## Design Principles
+
+1. **Overlay, not greenfield** (D150) — existing `docs/*.md` files
+   stay in place; the overlay cross-references them.
+2. **InputDocs/ is a source, not a destination** (D151) — content is
+   selectively promoted with editorial polish.
+3. **Persona-first IA** (D155) — six product-canonical personas from
+   `InputDocs/personas.md` drive the navigation.
+4. **Auto-generated reference** (D156) — API, CLI, and SDK reference
+   pages are generated from source, not hand-written.
+5. **MVP boundary enforced** (D157) — `scripts/check_mvp_doc_boundary.py`
+   fails CI if user-facing pages reference post-MVP features without
+   a `[Post-MVP]` badge.
+
+## Directory Layout
+
+```
+docs/mvpdocs/
+  index.md              — landing page (4 audience entry points)
+  _audit/               — classification.yaml, api-audit-consolidated.md
+  _meta/                — persona-mapping.yaml
+  _meta.md              — this file
+  _assets/              — shared images, diagrams
+  personas/             — one subdir per product-canonical persona
+  use-cases/            — one page per MVP UC (stable IDs)
+  journeys/             — one page per MVP journey (stable IDs)
+  concepts/             — domain entity explainers
+  api-reference/        — auto-generated from OpenAPI
+  cli-reference/        — auto-generated from Click tree
+  sdk-reference/python/ — auto-generated from docstrings
+  reference/            — hand-written common reference
+  operations/           — operator runbooks + config reference
+  product/              — features, roadmap, glossary
+  compliance/           — regulations, audit trail, GDPR
+  integrators/          — integrator landing page
+```

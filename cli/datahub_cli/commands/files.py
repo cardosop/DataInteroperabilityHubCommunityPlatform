@@ -81,28 +81,54 @@ def upload_file(file_path: str, name: Optional[str], output_format: str):
     # Initialize upload
     try:
         # API endpoint: /api/v1/files/init/ (files/ from api/urls.py, router registered at "")
+        # upload_method='sdk' generates a presigned POST URL with form fields.
         init_data = api_client.post('files/init/', json_data={
             'name': file_name,
             'content_type': content_type,
             'size': file_size,
             'upload_method': 'sdk'
         })
-        
+
         file_id = init_data.get('file_id')
         upload_url = init_data.get('upload_url')
-        
+        fields = init_data.get('fields', {})
+
         if not upload_url:
             raise click.ClickException("No upload URL received from server")
-        
+
         # Upload file to S3
         click.echo(f"Uploading {file_name} ({file_size} bytes)...")
         with open(file_path, 'rb') as f:
-            upload_response = requests.put(upload_url, data=f, headers={'Content-Type': content_type})
+            if fields:
+                # Presigned POST — send as multipart form with fields
+                upload_response = requests.post(
+                    upload_url,
+                    data=fields,
+                    files={'file': (file_name, f, content_type)},
+                )
+            else:
+                # Presigned PUT — send raw bytes
+                upload_response = requests.put(
+                    upload_url,
+                    data=f,
+                    headers={'Content-Type': content_type},
+                )
             upload_response.raise_for_status()
         
+        # Compute SHA-256 of uploaded content (required by complete endpoint)
+        import hashlib
+        sha256 = hashlib.sha256()
+        with open(file_path, 'rb') as f:
+            for chunk in iter(lambda: f.read(8192), b''):
+                sha256.update(chunk)
+        content_sha256 = sha256.hexdigest()
+
         # Complete upload
         # API endpoint: /api/v1/files/{id}/complete/
-        complete_data = api_client.post(f'files/{file_id}/complete/')
+        complete_data = api_client.post(
+            f'files/{file_id}/complete/',
+            json_data={'content_sha256': content_sha256},
+        )
         
         if output_format == 'json':
             click.echo(json.dumps(complete_data, indent=2))

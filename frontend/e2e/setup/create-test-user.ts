@@ -609,6 +609,12 @@ export async function ensureConsumerTestUser(): Promise<TestUser> {
   }
 }
 
+/**
+ * Per-worker cache for persona logins. Avoids redundant API login calls
+ * that exhaust rate limits when many persona tests run sequentially.
+ */
+const _cachedPersonaUsers = new Map<string, TestUser>();
+
 /** E2E persona user credentials (must match hub ensure_e2e_user_roles) */
 const E2E_PERSONA_USERS: Record<string, TestUser> = {
   tenant_admin: {
@@ -724,7 +730,8 @@ async function registerPersonaViaApi(user: TestUser, baseUrl: string = API_BASE_
     if ((registerResponse.status === 400 || registerResponse.status === 409) && isAlreadyRegisteredError(errorData)) {
       return true; // Already exists
     }
-    console.warn(`⚠️ Persona registration for ${user.email} failed: ${registerResponse.status}`);
+    const body = JSON.stringify(errorData).slice(0, 300);
+    console.warn(`⚠️ Persona registration for ${user.email} failed: ${registerResponse.status} ${body}`);
     return false;
   } catch {
     return false;
@@ -762,6 +769,8 @@ async function runEnsureE2EUserRoles(): Promise<boolean> {
  * Retries on connection errors (ECONNRESET, fetch failed) to handle backend overload.
  */
 export async function ensureTenantAdminUser(): Promise<TestUser> {
+  const cached = _cachedPersonaUsers.get('tenant_admin');
+  if (cached) return cached;
   const user = E2E_PERSONA_USERS.tenant_admin;
   const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -778,6 +787,7 @@ export async function ensureTenantAdminUser(): Promise<TestUser> {
       }
       if (ok) {
         await ensureE2ESubscriptionForUser(user);
+        _cachedPersonaUsers.set('tenant_admin', user);
         return user;
       }
     } catch (err) {
@@ -801,6 +811,8 @@ export async function ensureTenantAdminUser(): Promise<TestUser> {
  * Retries after running ensure_e2e_user_roles if login fails (handles global setup race).
  */
 export async function ensurePlatformAdminUser(): Promise<TestUser> {
+  const cached = _cachedPersonaUsers.get('platform_admin');
+  if (cached) return cached;
   const user = E2E_PERSONA_USERS.platform_admin;
   let ok = await tryLogin(user);
   if (!ok) {
@@ -812,7 +824,7 @@ export async function ensurePlatformAdminUser(): Promise<TestUser> {
     await new Promise((r) => setTimeout(r, 2000));
     ok = await tryLogin(user);
   }
-  if (ok) return user;
+  if (ok) { _cachedPersonaUsers.set('platform_admin', user); return user; }
   throw new Error(
     _isRemoteApi
       ? `Platform admin user '${user.email}' not found on remote. Seed with: kubectl exec -n hub-staging deploy/hub-staging-api -- python hub/manage.py ensure_e2e_user_roles`
@@ -825,6 +837,8 @@ export async function ensurePlatformAdminUser(): Promise<TestUser> {
  * Retries after running ensure_e2e_user_roles if login fails (handles global setup race).
  */
 export async function ensureAuditorUser(): Promise<TestUser> {
+  const cached = _cachedPersonaUsers.get('auditor');
+  if (cached) return cached;
   const user = E2E_PERSONA_USERS.auditor;
   let ok = await tryLogin(user);
   if (!ok) {
@@ -838,6 +852,7 @@ export async function ensureAuditorUser(): Promise<TestUser> {
   }
   if (ok) {
     await ensureE2ESubscriptionForUser(user);
+    _cachedPersonaUsers.set('auditor', user);
     return user;
   }
   throw new Error(
@@ -852,6 +867,8 @@ export async function ensureAuditorUser(): Promise<TestUser> {
  * Retries after running ensure_e2e_user_roles if login fails (handles global setup race).
  */
 export async function ensureComplianceOfficerUser(): Promise<TestUser> {
+  const cached = _cachedPersonaUsers.get('compliance_officer');
+  if (cached) return cached;
   const user = E2E_PERSONA_USERS.compliance_officer;
   let ok = await tryLogin(user);
   if (!ok) {
@@ -873,6 +890,7 @@ export async function ensureComplianceOfficerUser(): Promise<TestUser> {
   }
   if (ok) {
     await ensureE2ESubscriptionForUser(user);
+    _cachedPersonaUsers.set('compliance_officer', user);
     return user;
   }
   throw new Error(
@@ -887,6 +905,8 @@ export async function ensureComplianceOfficerUser(): Promise<TestUser> {
  * Retries after running ensure_e2e_user_roles if login fails (handles global setup race).
  */
 export async function ensureExternalDeveloperUser(): Promise<TestUser> {
+  const cached = _cachedPersonaUsers.get('external_developer');
+  if (cached) return cached;
   const user = E2E_PERSONA_USERS.external_developer;
   let ok = await tryLogin(user);
   if (!ok) {
@@ -900,6 +920,7 @@ export async function ensureExternalDeveloperUser(): Promise<TestUser> {
   }
   if (ok) {
     await ensureE2ESubscriptionForUser(user);
+    _cachedPersonaUsers.set('external_developer', user);
     return user;
   }
   throw new Error(
@@ -914,6 +935,8 @@ export async function ensureExternalDeveloperUser(): Promise<TestUser> {
  * Retries after running ensure_e2e_user_roles if login fails (handles global setup race).
  */
 export async function ensureDataMeshDomainOwnerUser(): Promise<TestUser> {
+  const cached = _cachedPersonaUsers.get('data_mesh_domain_owner');
+  if (cached) return cached;
   const user = E2E_PERSONA_USERS.data_mesh_domain_owner;
   let ok = await tryLogin(user);
   if (!ok) {
@@ -927,6 +950,7 @@ export async function ensureDataMeshDomainOwnerUser(): Promise<TestUser> {
   }
   if (ok) {
     await ensureE2ESubscriptionForUser(user);
+    _cachedPersonaUsers.set('data_mesh_domain_owner', user);
     return user;
   }
   throw new Error(

@@ -1,3 +1,7 @@
+from tests.pytest_mvp_skip import skip_if_mvp_mode
+
+pytestmark = skip_if_mvp_mode
+
 """
 Integration tests for ML Inference CLI command registration against real Docker Compose services.
 
@@ -8,6 +12,7 @@ These tests verify that:
 
 These tests run against the real Docker Compose API service to ensure end-to-end CLI functionality.
 """
+import os
 import pytest
 import time
 from click.testing import CliRunner

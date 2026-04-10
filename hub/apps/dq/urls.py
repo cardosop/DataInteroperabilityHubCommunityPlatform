@@ -6,10 +6,11 @@ This follows the plural resources rule and avoids duplication (no 'dq/dq-runs').
 """
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import DQRunViewSet
+from .views import DQAlertingRuleViewSet, DQRunViewSet
 
 router = DefaultRouter()
 router.register(r"runs", DQRunViewSet, basename="dq-run")
+router.register(r"alerting-rules", DQAlertingRuleViewSet, basename="dq-alerting-rule")
 
 urlpatterns = [
     path("", include(router.urls)),

@@ -5,22 +5,17 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../fixtures/auth';
 
+// storageState from chromium-mvp project already injects auth — no loginUser() needed.
 const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 
 test.describe('Feature: Lineage', () => {
-  // loginUser (~5-10s) + goto (~2s) + checks (~5s) — no need for the long loginAndNavigateToRoute path
   test.setTimeout(45000);
 
   test.describe('Success', () => {
     test('lineage route loads or redirects appropriately when authenticated', async ({ page }) => {
-      const testUser = await getTestUser();
-      // Use loginUser + direct goto to avoid the double app-sidebar wait in loginAndNavigateToRoute.
-      // /lineage is not defined in the SPA — NotFoundPage renders without .app-main so
-      // waitForAppMainReady would hang for the full grace period; bypass it entirely.
-      await loginUser(page, testUser);
-      await page.waitForLoadState('domcontentloaded');
+      // storageState provides auth. /lineage may not exist in the SPA — go directly.
+      await page.goto('/lineage', { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(1000);
 
       if (page.url().includes('/login')) {
@@ -58,18 +53,7 @@ test.describe('Feature: Lineage', () => {
 
   test.describe('Edge', () => {
     test('lineage for non-existent asset shows error or unavailable state', async ({ page }) => {
-      const testUser = await getTestUser();
-      // Same pattern: loginUser + direct goto to avoid slow loginAndNavigateToRoute path.
-      // /assets/:id/lineage is not defined — NotFoundPage renders without .app-main.
-      await loginUser(page, testUser);
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(1000);
-
-      if (page.url().includes('/login')) {
-        test.skip(true, 'Auth not configured — cannot test lineage edge case');
-        return;
-      }
-
+      // storageState provides auth — go directly to non-existent lineage route.
       await page.goto(`/assets/${NIL_UUID}/lineage`, { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(1500);
 

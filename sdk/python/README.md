@@ -87,6 +87,69 @@ except UnauthorizedError as e:
     print(f"Authentication required: {e.message}")
 ```
 
+## MVP Compatibility
+
+Several large feature areas in the hub backend are gated behind an `MVP_MODE`
+deployment flag. When `MVP_MODE=true`, requests to those routes return HTTP 404
+— the route exists in the codebase and **will** be enabled post-MVP, but is
+currently off by deliberate policy, not because the resource is missing.
+
+The SDK distinguishes these gated 404s from real "not found" errors by raising
+`MVPGatedFeatureError`, a subclass of `NotFoundError`, with the stable error
+code `MVP_FEATURE_GATED` plus structured fields (`feature`, `prefix`,
+`endpoint`, `environment_url`).
+
+### Gated modules
+
+| Backend prefix         | Feature                          | Gated by  |
+| ---------------------- | -------------------------------- | --------- |
+| `mesh/`                | Data Mesh                        | MVP_MODE  |
+| `virtualization/`      | Data Virtualization              | MVP_MODE  |
+| `integrations/`        | Marketplace Integrations         | MVP_MODE  |
+| `baas/`                | Backend-as-a-Service             | MVP_MODE  |
+| `ml/`                  | Machine Learning Workbench       | MVP_MODE  |
+| `ai/`                  | AI Assistants                    | MVP_MODE  |
+| `transformation/`      | Data Transformation Pipelines    | MVP_MODE  |
+| `social/`              | Social / Collaboration           | MVP_MODE  |
+| `scheduled-ingestions/`| Scheduled Ingestions             | MVP_MODE  |
+| `scheduled-exports/`   | Scheduled Exports                | MVP_MODE  |
+
+### Programmatic detection
+
+```python
+from datahub_interoperability import MVPGatedFeatureError, NotFoundError
+
+try:
+    await client.request("GET", "/api/v1/mesh/clusters")
+except MVPGatedFeatureError as e:
+    # Stable, machine-readable contract — branch on the code, not the message.
+    assert e.code == "MVP_FEATURE_GATED"
+    print(f"Feature {e.feature!r} is gated until post-MVP")
+    print(f"  Prefix: {e.prefix}")
+    print(f"  Endpoint: {e.endpoint}")
+    print(f"  Environment: {e.environment_url}")
+```
+
+### Offline introspection
+
+To pre-check whether a path would be MVP-gated **without** making an HTTP
+request, import the canonical prefix set:
+
+```python
+from datahub_interoperability import MVP_GATED_PREFIXES
+
+path = "mesh/clusters/abc"
+if any(path.startswith(p) for p in MVP_GATED_PREFIXES):
+    print("This path is MVP-gated; skipping the call.")
+```
+
+### Backwards compatibility
+
+`MVPGatedFeatureError` subclasses `NotFoundError`, so any existing
+`except NotFoundError:` handler continues to catch every MVP-gated 404 unchanged.
+You only need to refine your handlers to `except MVPGatedFeatureError:` if you
+want the structured fields.
+
 ## Retry Logic
 
 The SDK automatically retries transient errors (5xx, network timeouts) with exponential backoff:

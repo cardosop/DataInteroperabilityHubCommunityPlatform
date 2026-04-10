@@ -115,24 +115,32 @@ class TestEnvironmentVariables:
         assert api_key == 'env-api-key'
     
     def test_env_var_precedence(self, temp_config_dir, monkeypatch):
-        """Test that environment variables take precedence over config file"""
+        """Test that environment variables take precedence over config file.
+
+        ``Config.get_api_key()`` was upgraded to read ``DATAHUB_API_KEY`` /
+        ``TEST_API_KEY`` from the environment first and fall back to the
+        config file value. This test now matches the documented + actually
+        implemented precedence (env > file). The previous version asserted
+        the opposite, encoding a stale pre-upgrade contract.
+        """
         config_dir, config_file = temp_config_dir
-        
+
         # Set in config file
         config = Config()
         config.set_api_key('file-api-key')
-        
-        # Set in environment
+
+        # Set in environment — env MUST win over the file value.
         monkeypatch.setenv('DATAHUB_API_KEY', 'env-api-key')
-        
-        # Note: Current implementation doesn't check env vars
-        # This test documents expected behavior
-        env_key = os.getenv('DATAHUB_API_KEY')
-        file_key = config.get_api_key()
-        
-        # Both should be accessible
-        assert env_key == 'env-api-key'
-        assert file_key == 'file-api-key'
+
+        # Direct env access still returns the env value (sanity check).
+        assert os.getenv('DATAHUB_API_KEY') == 'env-api-key'
+        # And ``get_api_key()`` MUST return the env value, not the file value.
+        assert config.get_api_key() == 'env-api-key'
+
+        # When the env var is removed, the file value MUST resurface.
+        monkeypatch.delenv('DATAHUB_API_KEY', raising=False)
+        monkeypatch.delenv('TEST_API_KEY', raising=False)
+        assert config.get_api_key() == 'file-api-key'
     
     def test_env_var_clearing(self, temp_config_dir, monkeypatch):
         """Test that clearing environment variable works"""

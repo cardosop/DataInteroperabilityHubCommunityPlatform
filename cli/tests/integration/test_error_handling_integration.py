@@ -3,6 +3,7 @@ Comprehensive integration tests for CLI error handling.
 
 Tests error handling with real API structure (when available) and integration scenarios.
 """
+import os
 import pytest
 import requests
 from click.testing import CliRunner

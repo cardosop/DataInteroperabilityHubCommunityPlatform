@@ -3,12 +3,15 @@ API client for DataHub CLI.
 
 Handles HTTP requests to the DataHub API.
 """
-import json
 import requests
 import click
 from typing import Optional, Dict, Any, List
 from .auth import auth_manager
 from .config import config
+from .odps_errors import handle_api_error
+
+
+_WRITE_METHODS = frozenset({"POST", "PATCH", "PUT", "DELETE"})
 
 
 class APIClient:
@@ -17,6 +20,7 @@ class APIClient:
     def __init__(self):
         # Don't cache base_url - read it dynamically so config changes are picked up
         self.auth_manager = auth_manager
+        self.dry_run: bool = False
 
     def _get_base_url(self):
         """Get API base URL dynamically from config"""
@@ -41,6 +45,24 @@ class APIClient:
 
         Returns Response object. Raises click.ClickException on error.
         """
+        # Dry-run: print what would happen and return a synthetic empty response
+        if self.dry_run and method.upper() in _WRITE_METHODS:
+            base_url = self._get_base_url()
+            url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+            click.echo(f"[dry-run] {method.upper()} {url}")
+            if json_data:
+                import json as _json
+                click.echo(f"[dry-run] payload: {_json.dumps(json_data, indent=2)}")
+            if files:
+                click.echo(f"[dry-run] files: {list(files.keys())}")
+            # Return a synthetic 200 response with empty JSON body
+            synthetic = requests.models.Response()
+            synthetic.status_code = 200
+            synthetic._content = b"{}"
+            synthetic.encoding = "utf-8"
+            synthetic.headers["Content-Type"] = "application/json"
+            return synthetic
+
         # Reload config to ensure we have the latest API key (important for tests)
         config._load()
 
@@ -158,23 +180,18 @@ class APIClient:
     def _handle_response(self, response: requests.Response) -> Dict[str, Any]:
         """Handle API response"""
         if response.status_code >= 400:
-            error_data = {}
-            try:
-                error_data = response.json()
-            except (json.JSONDecodeError, ValueError):
-                error_data = {'error': {'message': response.text or 'Unknown error'}}
-
-            # Try to use ODPS error handling if available
-            try:
-                from .odps_errors import handle_api_error
-                url = response.url if response.url is not None else ""
-                endpoint = url.split("/api/v1/")[-1] if "/api/v1/" in url else None
-                raise handle_api_error(response.text, response.status_code, endpoint)
-            except ImportError:
-                # Fallback to basic error handling
-                error_msg = error_data.get('error', {}).get('message', 'Unknown error')
-                error_code = error_data.get('error', {}).get('code', 'UNKNOWN_ERROR')
-                raise click.ClickException(f"API error ({error_code}): {error_msg}")
+            url = response.url if response.url is not None else ""
+            endpoint = url.split("/api/v1/")[-1] if "/api/v1/" in url else None
+            # ``handle_api_error`` is imported at module top (no lazy import)
+            # so MVP-gated 404 detection runs unconditionally on every error
+            # path, including in environments where importlib hooks would
+            # otherwise mask a deferred ``ImportError``.
+            raise handle_api_error(
+                response.text,
+                response.status_code,
+                endpoint,
+                request_url=url,
+            )
 
         if response.status_code == 204:  # No content
             return {}

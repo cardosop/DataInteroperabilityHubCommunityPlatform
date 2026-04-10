@@ -15,6 +15,13 @@ All tests use real API connections (no mocks/stubs) and follow TDD principles.
 Tests verify complete workflows, error handling, output formats, and edge cases.
 """
 import pytest
+
+# Phase 215.4 review fix: this module imports from django/hub which are
+# not on the CLI test PYTHONPATH (CLI pytest.ini sets ``-p no:django``).
+# Skip the entire module gracefully when those packages are unavailable
+# instead of crashing pytest collection.
+django = pytest.importorskip("django")
+hub = pytest.importorskip("hub")
 import json
 import uuid
 import tempfile

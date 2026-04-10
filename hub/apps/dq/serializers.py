@@ -2,7 +2,7 @@
 DQ Serializers
 """
 from rest_framework import serializers
-from .models import DQRun, DQRunStatus, DQEngine
+from .models import DQAlertingRule, DQRun, DQRunStatus, DQEngine
 
 
 class DQRunSerializer(serializers.ModelSerializer):
@@ -69,4 +69,61 @@ class DQRunCreateSerializer(serializers.Serializer):
     def validate(self, data):
         """At least one of asset_id, dataset_id, file_id is validated by DQBusinessRules in service."""
         return data
+
+
+class DQAlertingRuleSerializer(serializers.ModelSerializer):
+    """Serializer for DQAlertingRule model (read)"""
+
+    asset_id = serializers.UUIDField(source="asset.id", read_only=True, allow_null=True)
+
+    class Meta:
+        model = DQAlertingRule
+        fields = [
+            "id",
+            "tenant",
+            "asset_id",
+            "name",
+            "description",
+            "metric_type",
+            "threshold",
+            "comparison_operator",
+            "severity",
+            "alert_channels",
+            "enabled",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "tenant",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class DQAlertingRuleCreateSerializer(serializers.Serializer):
+    """Serializer for creating / updating a DQ alerting rule"""
+
+    asset_id = serializers.UUIDField(required=True, help_text="Asset ID to attach the rule to")
+    name = serializers.CharField(max_length=255, required=False, default="Quality Score Alert")
+    description = serializers.CharField(required=False, allow_blank=True, default="")
+    metric_type = serializers.CharField(max_length=100, required=False, default="quality_score")
+    threshold = serializers.FloatField(required=True, help_text="Threshold value")
+    comparison_operator = serializers.ChoiceField(
+        choices=["<", "<=", ">", ">=", "==", "!="],
+        required=False,
+        default="<",
+    )
+    severity = serializers.ChoiceField(
+        choices=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+        required=False,
+        default="MEDIUM",
+    )
+    alert_channels = serializers.ListField(
+        child=serializers.ChoiceField(choices=["EMAIL", "SLACK", "WEBHOOK", "PAGERDUTY"]),
+        required=False,
+        default=["EMAIL"],
+    )
+    channel_config = serializers.DictField(required=False, default=dict)
+    enabled = serializers.BooleanField(required=False, default=True)
 

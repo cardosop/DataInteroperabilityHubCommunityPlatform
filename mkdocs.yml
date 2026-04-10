@@ -1,0 +1,72 @@
+site_name: Meshant — Data Interoperability Hub
+site_description: MVP documentation for the Meshant platform
+site_url: https://meshant-internal.example.com/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [../sdk/python]
+          options:
+            show_source: false
+            show_root_heading: true
+            members_order: source
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - tables
+  - toc:
+      permalink: true
+
+# docs_dir defaults to docs/ which is correct
+nav:
+  - Home: mvpdocs/index.md
+  # D154: four audience entry points
+  - For Users:
+      - Overview: mvpdocs/personas/_persona-overview.md
+  - For Integrators:
+      - Overview: mvpdocs/integrators/index.md
+  - For Operators:
+      - Overview: mvpdocs/operations/index.md
+  - For Stakeholders:
+      - Overview: mvpdocs/product/index.md
+
+strict: false  # TODO: enable after Phase 217.5 link cleanup
+
+# Exclude legacy directories with known broken links from the build.
+# Phase 217.0 only — later phases will clean these up.
+exclude_docs: |
+  deprecated-doc/

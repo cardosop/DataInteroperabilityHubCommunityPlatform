@@ -202,13 +202,23 @@ def delete_asset(asset_id: str, confirm: bool):
 def activate_asset(asset_id: str, output_format: str):
     """Activate an asset"""
     try:
-        # API endpoint structure: /api/v1/assets/{id}/activate/ (assets/ from api/urls.py + assets from router)
-        result = api_client.post(f'assets/{asset_id}/activate/')
-        
+        # Fetch current asset to get version for optimistic locking
+        asset_data = api_client.get(f'assets/{asset_id}/')
+        version = asset_data.get('version')
+        if version is None:
+            raise click.ClickException(
+                "Could not read asset version (required for activation)"
+            )
+
+        result = api_client.post(
+            f'assets/{asset_id}/activate/',
+            json_data={'version': version},
+        )
+
         if output_format == 'json':
             click.echo(json.dumps(result, indent=2))
         else:
-            click.echo(f"Asset activated successfully!")
+            click.echo("Asset activated successfully!")
             click.echo(f"ID: {result.get('id')}")
             click.echo(f"Status: {result.get('status')}")
     except click.ClickException:

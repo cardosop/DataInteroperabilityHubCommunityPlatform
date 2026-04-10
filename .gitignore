@@ -3,6 +3,9 @@ InputDocs/
 AGENTS.md
 .cursor/
 
+# MkDocs build output
+site/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -98,3 +101,6 @@ aws/
 # Pip/npm empty version-specifier junk files at repo root (e.g. =1.2.3)
 =*.*.*
 =3.8
+
+# Phase 216 — performance test results (CI uploads to S3)
+.perf-results/

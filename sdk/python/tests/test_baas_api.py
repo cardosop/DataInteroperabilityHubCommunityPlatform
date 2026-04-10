@@ -1,8 +1,13 @@
+from tests.pytest_mvp_skip import skip_if_mvp_mode
+
+pytestmark = skip_if_mvp_mode
+
 """
 Unit tests for BaaS API.
 
 Tests validation, error handling, and method signatures without making real API calls.
 """
+import os
 import pytest
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch

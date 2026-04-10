@@ -1,10 +1,10 @@
 /**
  * ProtectedRoute Component Tests
  *
- * Root cause addressed: auth store uses lazy init (no localStorage at module load).
- * This file still stubs useAuthStore because when run in isolation the vitest worker
- * hangs (cause unknown; lazy init removed the previous cause). Stub is minimal
- * (hook return value only); real store + setState() can be used in app and other tests.
+ * Phase 213.I.7 — tests for synchronous auth-store hydration.
+ *
+ * This file stubs useAuthStore because when run in isolation the vitest worker
+ * hangs (lazy init issue). Stub is minimal (hook return value only).
  */
 
 import { render, screen } from '@testing-library/react';
@@ -43,7 +43,7 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText('Protected Content')).toBeInTheDocument();
   });
 
-  it('shows loading when isLoading is true', () => {
+  it('shows LoadingSpinner when isLoading is true', () => {
     mockUseAuthStore.mockReturnValue({
       isAuthenticated: false,
       user: null,
@@ -59,6 +59,8 @@ describe('ProtectedRoute', () => {
     );
 
     expect(screen.getByText('Loading...')).toBeInTheDocument();
+    // Phase 213.I.6: verify it's a LoadingSpinner (role="status"), not a bare <div>
+    expect(screen.getByRole('status')).toBeInTheDocument();
     expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
   });
 
@@ -78,6 +80,131 @@ describe('ProtectedRoute', () => {
     );
 
     expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
+  });
+
+  // Phase 213.I.7(a) — hydrated DE user with requiredRole: ['TENANT_ADMIN']
+  // navigates to /403 on first render with NO loading state.
+  it('hydrated DE user redirects to /403 on first render (no loading)', () => {
+    mockUseAuthStore.mockReturnValue({
+      isAuthenticated: true,
+      user: {
+        id: '1',
+        email: 'de@example.com',
+        name: 'Data Engineer',
+        tenant_id: 't1',
+        roles: ['DATA_ENGINEER'],
+      },
+      isLoading: false,
+    } as never);
+
+    render(
+      <MemoryRouter initialEntries={['/admin']}>
+        <ProtectedRoute requiredRole={['TENANT_ADMIN']}>
+          <div>Admin Content</div>
+        </ProtectedRoute>
+      </MemoryRouter>
+    );
+
+    // Must redirect immediately — no "Loading..." shown
+    expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+    expect(screen.queryByText('Admin Content')).not.toBeInTheDocument();
+  });
+
+  // Phase 213.I.7(b) — empty localStorage → redirect to /login on first render.
+  it('empty localStorage redirects to /login on first render', () => {
+    mockUseAuthStore.mockReturnValue({
+      isAuthenticated: false,
+      user: null,
+      isLoading: false,
+    } as never);
+
+    render(
+      <MemoryRouter initialEntries={['/admin']}>
+        <ProtectedRoute requiredRole={['TENANT_ADMIN']}>
+          <div>Admin Content</div>
+        </ProtectedRoute>
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+    expect(screen.queryByText('Admin Content')).not.toBeInTheDocument();
+  });
+
+  // Phase 213.I.7(c) — hydrated TENANT_ADMIN with matching role renders synchronously.
+  it('hydrated TENANT_ADMIN renders children synchronously', () => {
+    mockUseAuthStore.mockReturnValue({
+      isAuthenticated: true,
+      user: {
+        id: '1',
+        email: 'admin@example.com',
+        name: 'Admin',
+        tenant_id: 't1',
+        roles: ['USER', 'TENANT_ADMIN'],
+      },
+      isLoading: false,
+    } as never);
+
+    render(
+      <MemoryRouter>
+        <ProtectedRoute requiredRole={['TENANT_ADMIN']}>
+          <div>Admin Content</div>
+        </ProtectedRoute>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('Admin Content')).toBeInTheDocument();
+  });
+
+  // Phase 213.I.7(d) — regression: when the store updates with new roles
+  // (background /auth/me/ refresh), ProtectedRoute re-evaluates and
+  // redirects if the new role set no longer matches.
+  it('re-evaluates on store update: revoked role triggers redirect', () => {
+    // First render: user has TENANT_ADMIN → children render.
+    mockUseAuthStore.mockReturnValue({
+      isAuthenticated: true,
+      user: {
+        id: '1',
+        email: 'admin@example.com',
+        name: 'Admin',
+        tenant_id: 't1',
+        roles: ['USER', 'TENANT_ADMIN'],
+      },
+      isLoading: false,
+    } as never);
+
+    const { rerender } = render(
+      <MemoryRouter initialEntries={['/admin']}>
+        <ProtectedRoute requiredRole={['TENANT_ADMIN']}>
+          <div>Admin Content</div>
+        </ProtectedRoute>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('Admin Content')).toBeInTheDocument();
+
+    // Background refresh returns updated roles WITHOUT TENANT_ADMIN.
+    mockUseAuthStore.mockReturnValue({
+      isAuthenticated: true,
+      user: {
+        id: '1',
+        email: 'admin@example.com',
+        name: 'Admin',
+        tenant_id: 't1',
+        roles: ['USER'],
+      },
+      isLoading: false,
+    } as never);
+
+    rerender(
+      <MemoryRouter initialEntries={['/admin']}>
+        <ProtectedRoute requiredRole={['TENANT_ADMIN']}>
+          <div>Admin Content</div>
+        </ProtectedRoute>
+      </MemoryRouter>
+    );
+
+    // Children must no longer render after role revocation.
+    expect(screen.queryByText('Admin Content')).not.toBeInTheDocument();
   });
 
   it('redirects to 403 when user lacks required role', () => {

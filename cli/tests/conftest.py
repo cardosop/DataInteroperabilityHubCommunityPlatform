@@ -9,6 +9,38 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from datahub_cli.config import Config, CONFIG_FILE, CONFIG_DIR
 
+# Phase 216.X.3 — surface the cleanup_registry autouse fixture and the
+# persona teardown plumbing to every test under cli/tests/. The fixture
+# is defined in tests/fixtures/cleanup_registry.py but pytest only
+# auto-discovers fixtures declared in conftest.py modules, so we
+# re-export it here. (F401 is intentional: the import IS the wiring.)
+from tests.fixtures.cleanup_registry import (  # noqa: F401
+    cleanup_registry,
+    drain_persona_teardown_callbacks,
+)
+
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
+    """Phase 216.X.3 layer 2 — drain any persona teardown callbacks left
+    over after the session ends.
+
+    Persona-provisioning helpers register a teardown callback at the
+    moment they provision a persona; this hook fires once at the end of
+    the session and runs every callback in LIFO order, even if a test
+    crashed mid-flight. Failures are collected and surfaced via the
+    session exit status so a broken teardown does not silently leak.
+    """
+    failures = drain_persona_teardown_callbacks()
+    if failures:
+        # Don't override an existing non-zero exitstatus; only mark
+        # failure if the session was otherwise green.
+        if exitstatus == 0:
+            session.exitstatus = 1
+        for name, exc in failures:
+            session.config.get_terminal_writer().line(
+                f"[Phase 216 persona teardown] {name}: {exc!r}"
+            )
+
 # Ensure Django is initialized for CLI integration tests that use Django
 # This is needed when tests are run from CLI directory with CLI's pytest.ini
 # Note: For proper Django test support, run tests from Django project root

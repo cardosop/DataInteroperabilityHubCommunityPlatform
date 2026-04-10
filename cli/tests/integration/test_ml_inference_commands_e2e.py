@@ -1,3 +1,7 @@
+from tests.pytest_mvp_skip import skip_if_mvp_mode
+
+pytestmark = skip_if_mvp_mode
+
 """
 End-to-end tests for ML Inference CLI commands.
 
@@ -7,6 +11,7 @@ These tests verify complete workflows:
 These tests require a real API service running and will skip if not available.
 No mocks or stubs are used - all tests use real API endpoints.
 """
+import os
 import pytest
 import json
 import uuid

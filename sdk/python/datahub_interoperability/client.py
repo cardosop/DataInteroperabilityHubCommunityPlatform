@@ -12,8 +12,10 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 import httpx
 
 from .config import DataHubClientConfig
+from ._mvp_detection import detect_mvp_gated_feature, extract_environment_url
 from .errors import (
     DataHubError,
+    MVPGatedFeatureError,
     NetworkError,
     UnauthorizedError,
     parse_error,
@@ -34,6 +36,34 @@ def calculate_backoff_delay(attempt: int, base_delay: float = 1.0) -> float:
         Delay in seconds
     """
     return base_delay * (2**attempt)
+
+
+def _maybe_raise_mvp_gated(response: httpx.Response) -> None:
+    """If ``response`` is a 404 against an MVP-gated /api/v1/ prefix, raise
+    :class:`MVPGatedFeatureError`. Otherwise return None and let the caller
+    fall through to its normal error-parsing path.
+
+    Factored as a single helper (D132) so both ``parse_error`` sites in
+    :meth:`DataHubClient.request` share one detection path with zero inline
+    duplication.
+    """
+    if response.status_code != 404:
+        return
+    request_url = str(response.request.url) if response.request is not None else ""
+    detected = detect_mvp_gated_feature(request_url)
+    if detected is None:
+        return
+    prefix, feature = detected
+    if "/api/v1/" in request_url:
+        endpoint = request_url.split("/api/v1/", 1)[1]
+    else:
+        endpoint = request_url
+    raise MVPGatedFeatureError(
+        feature=feature,
+        prefix=prefix,
+        endpoint=endpoint,
+        environment_url=extract_environment_url(request_url),
+    )
 
 
 def is_retryable_error(error: Exception) -> bool:
@@ -356,9 +386,14 @@ class DataHubClient:
                                 # If ODPS parsing fails, fall back to standard error parsing
                                 pass
 
+                        # MVP-gated 404 detection runs BEFORE the generic
+                        # parse_error fall-through (Phase 215.2 D132).
+                        _maybe_raise_mvp_gated(response)
                         raise parse_error(error_data)
                     except ValueError:
-                        # Not JSON, create generic error
+                        # Not JSON — still check for MVP-gated 404 before
+                        # falling back to a bare HTTP_ERROR.
+                        _maybe_raise_mvp_gated(response)
                         raise DataHubError(
                             f"HTTP {response.status_code}: {response.text}",
                             "HTTP_ERROR",
@@ -397,8 +432,11 @@ class DataHubClient:
                         except Exception:
                             # If ODPS parsing fails, fall back to standard error parsing
                             pass
+                    # MVP-gated 404 detection runs BEFORE parse_error here too.
+                    _maybe_raise_mvp_gated(e.response)
                     raise parse_error(error_data)
                 except ValueError:
+                    _maybe_raise_mvp_gated(e.response)
                     raise DataHubError(
                         f"HTTP {e.response.status_code}: {e.response.text}",
                         "HTTP_ERROR",

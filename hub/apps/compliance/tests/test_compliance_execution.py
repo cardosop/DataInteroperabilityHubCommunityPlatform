@@ -561,3 +561,82 @@ class ComplianceExecutionTest(TestCase):
         self.assertIn(
             compliance_run.status, [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED]
         )
+
+
+
+
+class EmptyBytesGuardTest(TestCase):
+    """Phase 213.G.8 — execute_compliance_run must raise a clear, hint-rich
+    FileNotFoundError when S3 returns empty bytes for the file's storage_path.
+
+    Without this guard, an orphan File row (presigned PUT silently failed)
+    causes pandas to raise the cryptic `EmptyDataError: No columns to parse
+    from file` deep inside the compliance microservice — invisible to the
+    test output.
+    """
+
+    def setUp(self):
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        self.user = User.objects.create_user(
+            email=f"user-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        self.file = File.objects.create(
+            tenant=self.tenant,
+            name="orphan.csv",
+            content_type="text/csv",
+            size=0,
+            storage_path=f"{self.tenant.id}/{uuid.uuid4()}/orphan.csv",
+            status=FileStatus.ACTIVE,
+            created_by=self.user,
+        )
+        self.job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            status=JobStatus.PENDING,
+            resource_type="COMPLIANCE_RUN",
+            resource_id=uuid.uuid4(),
+            created_by=self.user,
+            timeout_seconds=300,
+            details_json={"scan_mode": "internal", "applicable_regulations": []},
+        )
+        self.run = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            file=self.file,
+            job=self.job,
+            status=ComplianceRunStatus.PENDING,
+        )
+
+    def test_empty_bytes_persists_storage_missing_error_type(self):
+        """Phase 213.G — orphan File row → STORAGE_MISSING canonical type.
+
+        The empty-bytes guard raises FileNotFoundError, which the
+        execute_compliance_run except block catches, persists onto the
+        ComplianceRun row with `error_type=STORAGE_MISSING`, and swallows
+        (does not re-raise). After the call: status=FAILED, allowed=False,
+        regulation_mapping_json carries the orphan-File hint.
+        """
+        from unittest.mock import patch
+
+        with patch.object(
+            S3StorageClient, "get_file_content", return_value=b""
+        ):
+            # Must NOT raise — execute_compliance_run catches and persists.
+            execute_compliance_run(str(self.run.id))
+
+        self.run.refresh_from_db()
+        self.assertEqual(self.run.status, ComplianceRunStatus.FAILED)
+        self.assertFalse(self.run.allowed_to_store)
+        mapping = self.run.regulation_mapping_json or {}
+        self.assertEqual(mapping.get("error_type"), "STORAGE_MISSING")
+        err = mapping.get("error", "")
+        self.assertIn(self.file.storage_path, err)
+        self.assertIn("orphan", err.lower())

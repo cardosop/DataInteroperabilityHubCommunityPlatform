@@ -12,7 +12,15 @@ immediately visible to subsequent CLI commands.
 NOTE: These tests must be run from the Django project root (not CLI directory)
 to ensure Django is properly initialized via pytest-django.
 """
+import os
 import pytest
+
+# Phase 215.4 review fix: this module imports from django/hub which are
+# not on the CLI test PYTHONPATH (CLI pytest.ini sets ``-p no:django``).
+# Skip the entire module gracefully when those packages are unavailable
+# instead of crashing pytest collection.
+django = pytest.importorskip("django")
+hub = pytest.importorskip("hub")
 import requests
 from click.testing import CliRunner
 from django.test import LiveServerTestCase

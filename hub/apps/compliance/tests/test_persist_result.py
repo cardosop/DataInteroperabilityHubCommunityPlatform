@@ -216,6 +216,45 @@ class PersistResultTest(TestCase):
         self.assertEqual(metering["scan_mode"], "internal")
 
     # ----------------------------------------------------------------
+    # Phase 213.G.7 — defensive guard: a FAILED payload must not be
+    # marked SUCCEEDED. The error must be persisted with
+    # error_type=EXECUTION_ERROR and the run must end FAILED.
+    # ----------------------------------------------------------------
+
+    def test_failed_payload_does_not_mark_succeeded(self):
+        run = self._create_run()
+        ComplianceService._persist_result(
+            run,
+            {
+                "status": "FAILED",
+                "error": "scan worker raised RuntimeError('boom')",
+            },
+        )
+        run.refresh_from_db()
+        self.assertEqual(run.status, ComplianceRunStatus.FAILED)
+        self.assertFalse(run.allowed_to_store)
+        self.assertIsNotNone(run.regulation_mapping_json)
+        self.assertEqual(
+            run.regulation_mapping_json["error"],
+            "scan worker raised RuntimeError('boom')",
+        )
+        self.assertEqual(
+            run.regulation_mapping_json["error_type"], "EXECUTION_ERROR"
+        )
+
+    def test_error_payload_status_aliased_to_failed(self):
+        run = self._create_run()
+        ComplianceService._persist_result(
+            run, {"status": "ERROR", "detail": "kaboom"}
+        )
+        run.refresh_from_db()
+        self.assertEqual(run.status, ComplianceRunStatus.FAILED)
+        self.assertEqual(
+            run.regulation_mapping_json["error_type"], "EXECUTION_ERROR"
+        )
+        self.assertEqual(run.regulation_mapping_json["error"], "kaboom")
+
+    # ----------------------------------------------------------------
     # 7. Asset compliance_status updated on PASS
     # ----------------------------------------------------------------
 

@@ -22,21 +22,32 @@ def client():
 
 
 # ---------------------------------------------------------------------------
-# 118B.1 — client.py auth header: X-API-Key is accepted by backend
+# 118B.1 — client.py auth header: API keys travel as Authorization: ApiKey
+#
+# History: an early Phase 118b draft used ``X-API-Key``. The SDK was later
+# changed to send ``Authorization: ApiKey <token>`` instead because Django's
+# CSRF middleware exempts requests carrying an Authorization header, which
+# is required for mutating (POST/PUT/PATCH/DELETE) operations to work
+# end-to-end. See ``client.py::_get_headers`` for the inline rationale.
+# This test was previously asserting the stale ``X-API-Key`` contract; it
+# now locks the current correct contract.
 # ---------------------------------------------------------------------------
 class TestClientAuthHeader:
     """Verify SDK auth header format matches backend middleware."""
 
     @pytest.mark.asyncio
-    async def test_api_key_uses_x_api_key_header(self, client):
-        """API key (no dots) should use X-API-Key header."""
+    async def test_api_key_uses_authorization_apikey_header(self, client):
+        """API key (no dots) MUST travel as Authorization: ApiKey <token>."""
         client.config = DataHubClientConfig(
             base_url="https://api.example.com/api/v1",
             api_token="sk_test_abc123def456",  # No dots = API key
         )
         headers = await client._get_headers()
-        assert "X-API-Key" in headers
-        assert headers["X-API-Key"] == "sk_test_abc123def456"
+        assert "Authorization" in headers
+        assert headers["Authorization"] == "ApiKey sk_test_abc123def456"
+        # The deprecated X-API-Key header MUST NOT be set — it would
+        # bypass the CSRF-exemption code path and break mutating requests.
+        assert "X-API-Key" not in headers
 
     @pytest.mark.asyncio
     async def test_jwt_uses_bearer_header(self, client):

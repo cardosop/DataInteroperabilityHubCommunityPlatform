@@ -9,6 +9,32 @@ import subprocess
 import time
 import os
 
+# Phase 216.X.3 — surface the cleanup_registry autouse fixture and the
+# persona teardown plumbing to every test under sdk/python/tests/.
+# Pytest only auto-discovers fixtures declared in conftest.py modules,
+# so we re-export the fixture here. (F401 is intentional: the import
+# IS the wiring.)
+from tests.fixtures.cleanup_registry import (  # noqa: F401
+    cleanup_registry,
+    drain_persona_teardown_callbacks,
+)
+
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
+    """Phase 216.X.3 layer 2 — drain pending persona teardown callbacks.
+
+    See ``cli/tests/conftest.py`` for the rationale; this is the SDK
+    mirror of the same hook.
+    """
+    failures = drain_persona_teardown_callbacks()
+    if failures:
+        if exitstatus == 0:
+            session.exitstatus = 1
+        for name, exc in failures:
+            session.config.get_terminal_writer().line(
+                f"[Phase 216 persona teardown] {name}: {exc!r}"
+            )
+
 
 def check_service_health(service_name: str, port: int, health_path: str = "/health", max_wait: int = 30) -> bool:
     """

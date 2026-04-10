@@ -9,7 +9,7 @@ from ..api_client import api_client
 
 @click.group()
 def mesh():
-    """Data Mesh management commands"""
+    """Data Mesh management commands [Post-MVP]"""
     pass
 
 

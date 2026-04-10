@@ -9,6 +9,12 @@ import re
 from typing import Optional, Dict, Any, List
 import click
 
+from ._mvp_detection import detect_mvp_gated_feature, extract_environment_url
+from ._mvp_gates import (
+    MVP_FEATURE_GATED_CODE,
+    MVP_GATED_MESSAGE_TEMPLATE,
+)
+
 
 class ODPSCLIError(click.ClickException):
     """
@@ -94,6 +100,57 @@ class ODPSLinkingError(ODPSCLIError):
 class ODPSParameterError(ODPSCLIError):
     """Error for invalid ODPS command parameters"""
     pass
+
+
+class ODPSFeatureGatedError(ODPSCLIError):
+    """
+    Raised when a CLI request hits an MVP-gated backend route.
+
+    Carries the stable ``code='MVP_FEATURE_GATED'`` plus structured fields
+    (``feature``, ``prefix``, ``endpoint``, ``environment_url``) so
+    programmatic consumers can branch on ``error.code`` without parsing the
+    rendered message.
+
+    Subclasses :class:`ODPSCLIError` so existing ``except ODPSCLIError``
+    handlers continue to catch these unchanged (backwards-compat contract).
+    """
+
+    def __init__(
+        self,
+        feature: str,
+        prefix: str,
+        endpoint: str,
+        environment_url: str,
+        original_error: Optional[Exception] = None,
+    ):
+        rendered = MVP_GATED_MESSAGE_TEMPLATE.format(
+            feature=feature,
+            endpoint=endpoint or "(unknown)",
+            environment_url=environment_url or "(unknown)",
+            code=MVP_FEATURE_GATED_CODE,
+        )
+        super().__init__(
+            message=rendered,
+            error_code=MVP_FEATURE_GATED_CODE,
+            context={
+                "feature": feature,
+                "prefix": prefix,
+                "endpoint": endpoint,
+                "environment_url": environment_url,
+            },
+            suggestion=(
+                f"'{feature}' is gated until the post-MVP release. Use "
+                "'datahub --help' to see commands available in the current MVP."
+            ),
+            original_error=original_error,
+        )
+        # Promote structured fields to top-level attributes for ergonomic
+        # programmatic access (``err.feature`` instead of ``err.context['feature']``).
+        self.code = MVP_FEATURE_GATED_CODE
+        self.feature = feature
+        self.prefix = prefix
+        self.endpoint = endpoint
+        self.environment_url = environment_url
 
 
 def parse_api_error_response(error_data: Dict[str, Any]) -> Optional[ODPSCLIError]:
@@ -203,7 +260,8 @@ def parse_api_error_response(error_data: Dict[str, Any]) -> Optional[ODPSCLIErro
 def handle_api_error(
     response_text: str,
     status_code: int,
-    endpoint: Optional[str] = None
+    endpoint: Optional[str] = None,
+    request_url: Optional[str] = None,
 ) -> ODPSCLIError:
     """
     Handle API error response and convert to ODPS CLI error.
@@ -211,11 +269,31 @@ def handle_api_error(
     Args:
         response_text: Response text from API
         status_code: HTTP status code
-        endpoint: API endpoint that failed
+        endpoint: API endpoint that failed (relative path under /api/v1/)
+        request_url: Full request URL (used to derive ``environment_url`` and
+            to detect MVP-gated routes when only the URL is available).
 
     Returns:
-        ODPSCLIError instance
+        ODPSCLIError instance. For HTTP 404 against an MVP-gated prefix this
+        is an :class:`ODPSFeatureGatedError` (subclass of ODPSCLIError) so
+        existing ``except ODPSCLIError:`` handlers keep working unchanged.
     """
+    # Intercept MVP-gated 404s BEFORE any generic JSON-error fall-through.
+    # We try ``endpoint`` first (which is already the post-/api/v1/ relative
+    # path computed by the api_client) and fall back to ``request_url`` so
+    # callers can pass either or both.
+    if status_code == 404:
+        detection_input = endpoint or request_url or ""
+        detected = detect_mvp_gated_feature(detection_input)
+        if detected is not None:
+            prefix, feature = detected
+            return ODPSFeatureGatedError(
+                feature=feature,
+                prefix=prefix,
+                endpoint=endpoint or detection_input,
+                environment_url=extract_environment_url(request_url or ""),
+            )
+
     error_data = {}
 
     # Try to parse JSON error response

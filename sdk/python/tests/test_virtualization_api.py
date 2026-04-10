@@ -1,3 +1,7 @@
+from tests.pytest_mvp_skip import skip_if_mvp_mode
+
+pytestmark = skip_if_mvp_mode
+
 """
 Virtualization API Tests
 
@@ -1293,7 +1297,9 @@ async def test_get_query_result_json_format(virtualization_api):
     # Mock response object
     mock_http_response = MagicMock()
     mock_http_response.headers = {"content-type": "application/json"}
-    mock_http_response.json = AsyncMock(return_value=mock_response)
+    # httpx.Response.json is SYNC — use a regular MagicMock callable, not
+    # AsyncMock (the SDK calls ``response.json()`` without await).
+    mock_http_response.json = MagicMock(return_value=mock_response)
 
     virtualization_api.client.request = AsyncMock(return_value=mock_http_response)
 
@@ -1373,7 +1379,9 @@ async def test_get_query_result_with_pagination(virtualization_api):
     # Mock response object
     mock_http_response = MagicMock()
     mock_http_response.headers = {"content-type": "application/json"}
-    mock_http_response.json = AsyncMock(return_value=mock_response)
+    # httpx.Response.json is SYNC — use a regular MagicMock callable, not
+    # AsyncMock (the SDK calls ``response.json()`` without await).
+    mock_http_response.json = MagicMock(return_value=mock_response)
 
     virtualization_api.client.request = AsyncMock(return_value=mock_http_response)
 
@@ -1404,7 +1412,9 @@ async def test_get_query_result_with_offset_limit(virtualization_api):
     # Mock response object
     mock_http_response = MagicMock()
     mock_http_response.headers = {"content-type": "application/json"}
-    mock_http_response.json = AsyncMock(return_value=mock_response)
+    # httpx.Response.json is SYNC — use a regular MagicMock callable, not
+    # AsyncMock (the SDK calls ``response.json()`` without await).
+    mock_http_response.json = MagicMock(return_value=mock_response)
 
     virtualization_api.client.request = AsyncMock(return_value=mock_http_response)
 

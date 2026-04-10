@@ -83,6 +83,23 @@ _BASE_E2E_USERS = [
         "roles": ["TENANT_ADMIN", "DATA_PROVIDER"],
         "is_platform_admin": False,
     },
+    # Secondary tenants for cross-tenant isolation & tenant-switching tests
+    {
+        "email": "e2e_iso@example.com",
+        "password": "TestPass123",
+        "display_name": "E2E Isolation Tenant User",
+        "roles": ["DATA_PROVIDER"],
+        "is_platform_admin": False,
+        "tenant_slug": "tenant-iso",
+    },
+    {
+        "email": "e2e_tenant_b@example.com",
+        "password": "TestPass123",
+        "display_name": "E2E Tenant-B User",
+        "roles": ["DATA_PROVIDER", "DATA_CONSUMER"],
+        "is_platform_admin": False,
+        "tenant_slug": "tenant-b",
+    },
 ]
 
 # One user per Playwright worker: profile E2E mutates display_name; sharing e2e_test@ across
@@ -151,6 +168,23 @@ class Command(BaseCommand):
                 defaults={"name": "Consumer Tenant", "status": TenantStatus.ACTIVE},
             )
 
+            # Secondary tenants for cross-tenant isolation and tenant-switching tests
+            _tenant_cache = {
+                "default": default_tenant,
+                "consumer": consumer_tenant,
+            }
+            for extra_slug, extra_name in [
+                ("tenant-iso", "Isolation Test Tenant"),
+                ("tenant-b", "Tenant-B Test Tenant"),
+            ]:
+                t, t_created = Tenant.objects.get_or_create(
+                    slug=extra_slug,
+                    defaults={"name": extra_name, "status": TenantStatus.ACTIVE},
+                )
+                _tenant_cache[extra_slug] = t
+                if t_created and not dry_run:
+                    self.stdout.write(self.style.SUCCESS(f"Created tenant: {extra_slug}"))
+
             for spec in users_to_ensure:
                 email = spec["email"]
                 password = spec["password"]
@@ -158,7 +192,7 @@ class Command(BaseCommand):
                 roles = spec.get("roles", [])
                 is_platform_admin = spec.get("is_platform_admin", False)
                 tenant_slug = spec.get("tenant_slug", "default")
-                tenant = consumer_tenant if tenant_slug == "consumer" else default_tenant
+                tenant = _tenant_cache.get(tenant_slug, default_tenant)
 
                 user, user_created = User.objects.get_or_create(
                     email=email,

@@ -9,18 +9,16 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser } from '../fixtures/auth';
-import { loginAndNavigateToRoute } from '../fixtures/helpers';
+import { assertListPageLoads } from '../fixtures/helpers';
+
+// storageState from chromium-mvp project already injects auth — no loginUser() needed.
 
 test.describe('Dimension: Concurrent operations', () => {
   test.setTimeout(60000);
 
   test('double navigation to assets list does not corrupt page state', async ({ page }) => {
-    const testUser = await getTestUser();
-    await loginAndNavigateToRoute(page, testUser, '/assets', {
-      timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display',
-    });
+    await page.goto('/assets', { waitUntil: 'domcontentloaded' });
+    await assertListPageLoads(page, '.asset-list-page, .empty-state, .error-display', { timeout: 30000 });
     // Second goto reloads the SPA from scratch — auth must re-init and the
     // asset list must re-render. The previous fixed waitForTimeout(2000) was
     // racy on cold staging workers (auth refresh + lazy chunk + list query

@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.mvp
+
 """
 End-to-end tests for marketplace sync workflows.
 
@@ -6,6 +10,13 @@ These tests verify complete workflows from start to finish:
 - Start sync job → Watch progress → Verify completion
 """
 import pytest
+
+# Phase 215.4 review fix: this module imports from django/hub which are
+# not on the CLI test PYTHONPATH (CLI pytest.ini sets ``-p no:django``).
+# Skip the entire module gracefully when those packages are unavailable
+# instead of crashing pytest collection.
+django = pytest.importorskip("django")
+hub = pytest.importorskip("hub")
 import requests
 import json
 import time

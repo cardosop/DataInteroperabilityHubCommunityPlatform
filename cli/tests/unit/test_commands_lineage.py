@@ -152,7 +152,13 @@ class TestLineageField:
         assert 'Field Lineage: model1.field1' in result.output
         assert 'Input Fields (2)' in result.output
         assert 'ns1/contract1/model1.field1' in result.output
-        mock_api_client.get.assert_called_once_with('contracts/contract-1/fields/model1/field1/lineage/')
+        # The CLI passes the model name as a query parameter (not a path
+        # segment) to match the backend route signature
+        # ``contracts/<contract>/fields/<field>/lineage/?model_name=<model>``.
+        mock_api_client.get.assert_called_once_with(
+            'contracts/contract-1/fields/field1/lineage/',
+            params={'model_name': 'model1'},
+        )
     
     def test_get_field_lineage_success_json_format(self, runner, mock_api_client):
         """Test getting field-level lineage in JSON format"""

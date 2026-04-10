@@ -20,7 +20,7 @@ test.describe('Feature: Compliance', () => {
 
   test.describe('Failure', () => {
     test('compliance run detail with non-existent id shows error or redirect', async ({ page }) => {
-      await page.goto('/compliance/runs/00000000-0000-0000-0000-000000000000');
+      await page.goto('/compliance/runs/00000000-0000-0000-0000-000000000000', { waitUntil: 'domcontentloaded', timeout: 60000 });
       try {
         await waitForAppMainReady(page, {
           timeout: 60000,

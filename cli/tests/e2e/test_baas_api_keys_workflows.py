@@ -1,3 +1,7 @@
+from tests.pytest_mvp_skip import skip_if_mvp_mode
+
+pytestmark = skip_if_mvp_mode
+
 """
 End-to-end tests for BaaS API key management workflows.
 
@@ -7,6 +11,13 @@ Tests complete workflows for API key lifecycle management:
 - Error scenarios and edge cases
 """
 import pytest
+
+# Phase 215.4 review fix: this module imports from django/hub which are
+# not on the CLI test PYTHONPATH (CLI pytest.ini sets ``-p no:django``).
+# Skip the entire module gracefully when those packages are unavailable
+# instead of crashing pytest collection.
+django = pytest.importorskip("django")
+hub = pytest.importorskip("hub")
 import json
 import uuid
 from click.testing import CliRunner

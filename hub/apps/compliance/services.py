@@ -275,6 +275,39 @@ class ComplianceService(BaseService):
             else "internal"
         )
 
+        # Phase 213.G.4 — defensive guard. If a caller hands us a FAILED
+        # payload (legacy callers, retry shims, sync fallback after the
+        # microservice already failed), do NOT mark the run SUCCEEDED.
+        # Persist the error fields and bail out so the FAILED-row
+        # invariant (regulation_mapping_json.error is not None) holds
+        # for every code path, not just the poll-task path.
+        _incoming_status = str(result_data.get("status") or "").upper()
+        if _incoming_status in {"FAILED", "ERROR"}:
+            error_detail = (
+                result_data.get("error")
+                or result_data.get("detail")
+                or result_data.get("message")
+                or "compliance scan failed"
+            )
+            existing_mapping = dict(run.regulation_mapping_json or {})
+            existing_mapping["error"] = error_detail
+            existing_mapping["error_type"] = "EXECUTION_ERROR"
+            run.regulation_mapping_json = existing_mapping
+            run.status = ComplianceRunStatus.FAILED
+            # Fail-closed for any caller that reads these fields.
+            run.allowed_to_store = False
+            run.completed_at = timezone.now()
+            run.save(
+                update_fields=[
+                    "status",
+                    "regulation_mapping_json",
+                    "allowed_to_store",
+                    "completed_at",
+                    "updated_at",
+                ]
+            )
+            return
+
         run.status = ComplianceRunStatus.SUCCEEDED
         run.overall_status = result_data.get("overall_status")
         run.risk_level = result_data.get("risk_level")

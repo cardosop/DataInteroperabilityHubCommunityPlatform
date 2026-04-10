@@ -668,12 +668,32 @@ def execute_compliance_run(compliance_run_id: str) -> None:
                 )
 
         if not file_obj:
-            raise ValueError("No file found for compliance run")
+            # Phase 213.G — raise FileNotFoundError so the except handler
+            # below maps it to the canonical STORAGE_MISSING error_type.
+            # This is the original "No file found" path called out in the
+            # phase context: the asset/dataset has no attached file row.
+            raise FileNotFoundError(
+                "No file found for compliance run "
+                f"(run_id={compliance_run.id}) — the asset/dataset has no "
+                "attached File row. Typically caused by dataset creation "
+                "failing or being skipped during test setup."
+            )
 
         storage_client = S3StorageClient()
         file_content = storage_client.get_file_content(
             file_obj.storage_path
         )
+
+        # Phase 213.G.3 — empty-bytes guard. Catches both the
+        # NoSuchKey-returns-empty case and the legitimately-empty file
+        # case with one clear, actionable message instead of letting
+        # pandas raise EmptyDataError downstream.
+        if not file_content:
+            raise FileNotFoundError(
+                f"file is empty (storage_path={file_obj.storage_path}) — "
+                f"typically means the File row is orphaned (presigned PUT "
+                f"silently failed)"
+            )
 
         tenant_id = (
             str(compliance_run.tenant_id)
@@ -720,11 +740,18 @@ def execute_compliance_run(compliance_run_id: str) -> None:
             e,
             exc_info=True,
         )
+        # Phase 213.G — map exception to canonical error_type taxonomy
+        # {REMOTE_FAILURE, POLL_TIMEOUT, STORAGE_MISSING, EXECUTION_ERROR}
+        # so the FAILED-row invariant holds for every code path.
+        if isinstance(e, FileNotFoundError):
+            _error_type = "STORAGE_MISSING"
+        else:
+            _error_type = "EXECUTION_ERROR"
         compliance_run.status = ComplianceRunStatus.FAILED
         compliance_run.allowed_to_store = False
         compliance_run.regulation_mapping_json = {
             "error": str(e),
-            "error_type": type(e).__name__,
+            "error_type": _error_type,
             "fail_closed": True,
         }
         compliance_run.completed_at = timezone.now()

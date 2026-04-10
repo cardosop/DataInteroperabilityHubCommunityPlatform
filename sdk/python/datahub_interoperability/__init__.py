@@ -9,12 +9,14 @@ governance, mesh, search, observability, virtualization, and webhooks.
 
 from .client import DataHubClient
 from .config import DataHubClientConfig
+from ._mvp_gates import MVP_GATED_PREFIXES
 from .errors import (
     DataHubError,
     ValidationError,
     UnauthorizedError,
     ForbiddenError,
     NotFoundError,
+    MVPGatedFeatureError,
     ConflictError,
     RateLimitError,
     ServerError,
@@ -96,6 +98,8 @@ __all__ = [
     "UnauthorizedError",
     "ForbiddenError",
     "NotFoundError",
+    "MVPGatedFeatureError",
+    "MVP_GATED_PREFIXES",
     "ConflictError",
     "RateLimitError",
     "ServerError",

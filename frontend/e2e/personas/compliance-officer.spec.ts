@@ -48,7 +48,8 @@ test.describe('Persona RBAC: Compliance Officer', () => {
   });
 
   test('non-CPO user cannot access /audit', async ({ page }) => {
-    await loginAsPersona(page, getTestUser); // DATA_PROVIDER, not CPO/auditor
+    // storageState already has the default DATA_PROVIDER user (non-CPO).
+    // No need for loginAsPersona — saves an API login call and avoids rate limits.
     await page.goto('/audit');
     await page.waitForLoadState('domcontentloaded');
     await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/audit' });

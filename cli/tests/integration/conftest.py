@@ -1,13 +1,65 @@
 """
 Shared pytest fixtures for CLI integration tests.
 
-Provides service health checks and common fixtures for ODH integration tests.
+Provides service health checks and common fixtures for ODH integration tests,
+plus a session-level auto-skip when the main Meshant API on port 8000 is not
+reachable. CLI integration tests SHOULD never fail because a dev box has no
+local API service running — they should skip cleanly. The actual integration
+runs happen in CI where docker compose is up.
 """
+import os
 import pytest
 import requests
 import subprocess
 import time
-import os
+
+
+def _api_is_reachable(url: str) -> bool:
+    """Return True if the Meshant API root responds within the timeout."""
+    try:
+        response = requests.get(url, timeout=2)
+    except requests.RequestException:
+        return False
+    # Any response (even 404 from root) proves the service is up.
+    return response.status_code < 500
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-skip CLI integration tests when no live Meshant API is reachable.
+
+    Root cause: integration tests under ``cli/tests/integration/`` invoke the
+    real CLI which makes real HTTP calls to the configured backend. On a dev
+    box without docker compose running these calls fail with connection
+    refused / 404 / 500, surfacing as 100+ test failures that are noise, not
+    signal. The correct engineering behavior is to skip these tests when
+    their precondition isn't met — the same pattern used by every
+    integration suite in the SDK side of this repo.
+
+    Opt-out: set ``MESHANT_FORCE_INTEGRATION=1`` to bypass the skip and run
+    every integration test even when the API is unreachable (useful for
+    triaging which tests would fail in CI).
+    """
+    if os.environ.get("MESHANT_FORCE_INTEGRATION") == "1":
+        return
+    api_url = os.environ.get(
+        "MESHANT_API_URL",
+        "http://localhost:8000/api/v1",
+    )
+    # Probe the API root once per session.
+    api_root = api_url.rsplit("/api/v1", 1)[0] or api_url
+    if _api_is_reachable(api_root):
+        return
+    skip_marker = pytest.mark.skip(
+        reason=(
+            f"Meshant API not reachable at {api_root}. CLI integration "
+            "tests require a live backend; start docker compose or set "
+            "MESHANT_FORCE_INTEGRATION=1 to override."
+        )
+    )
+    for item in items:
+        # Only skip items under tests/integration/ — leave unit tests alone.
+        if "/tests/integration/" in str(item.fspath):
+            item.add_marker(skip_marker)
 
 
 def check_service_health(service_name: str, port: int, health_path: str = "/health", max_wait: int = 30) -> bool:

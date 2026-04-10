@@ -1,0 +1,18 @@
+# Lychee link checker — Phase 217.5.2
+# Run weekly (not per-PR) for external links
+
+[config]
+exclude = [
+    "localhost",
+    "127.0.0.1",
+    "example.com",
+    "meshant.com",       # internal domain, not publicly resolvable yet
+    "meshant-internal.example.com",
+    "meshant-internal.example.com",
+    "security@meshant.com",
+]
+accept = [200, 204, 301, 302, 403]
+timeout = 30
+max_concurrency = 8
+cache = true
+max_cache_age = "1d"

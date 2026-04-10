@@ -18,7 +18,7 @@ from ..baas_errors import (
 
 @click.group()
 def baas():
-    """BaaS (Backend as a Service) management commands"""
+    """BaaS (Backend as a Service) management commands [Post-MVP]"""
     pass
 
 

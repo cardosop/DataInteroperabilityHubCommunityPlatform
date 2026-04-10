@@ -34,13 +34,20 @@ from .commands import (
     webhooks,
 )
 from .commands import config as config_cmd
+from .api_client import api_client
 from .config import config
 
 
 @click.group()
 @click.version_option(version="1.0.0", prog_name="datahub")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Preview write operations without executing them. GET requests still run; POST/PATCH/DELETE are skipped.",
+)
 @click.pass_context
-def cli(ctx):
+def cli(ctx, dry_run):
     """
     DataHub CLI - Command-line tool for managing DataHub resources.
 
@@ -48,6 +55,9 @@ def cli(ctx):
     """
     # Ensure context object exists
     ctx.ensure_object(dict)
+    ctx.obj["dry_run"] = dry_run
+    # Propagate to the global API client so every command benefits
+    api_client.dry_run = dry_run
 
 
 @cli.command("login")

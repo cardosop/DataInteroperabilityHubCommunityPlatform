@@ -15,7 +15,7 @@ from ..api_client import api_client
 
 @click.group()
 def scheduled_export():
-    """Scheduled export management commands"""
+    """Scheduled export management commands [Post-MVP]"""
     pass
 
 

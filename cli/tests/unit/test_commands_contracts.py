@@ -522,7 +522,15 @@ class TestContractsCreateODPS:
             },
             'workflow_instance_id': 'workflow-1'
         }
-        mock_api_client.post.return_value = mock_result
+        # The --extract-odcs path uses api_client.request() to get the
+        # raw Response, then api_client._handle_response() to parse it.
+        # Wire both ends of that chain so the CLI command sees the
+        # canned ``mock_result`` exactly as if a real 201 had returned.
+        from unittest.mock import MagicMock as _MM
+        _resp = _MM()
+        _resp.status_code = 201
+        mock_api_client.request.return_value = _resp
+        mock_api_client._handle_response.return_value = mock_result
 
         result = runner.invoke(cli, ['contracts', 'create-odps', '--file', file_path, '--extract-odcs'])
 
@@ -531,9 +539,9 @@ class TestContractsCreateODPS:
         assert 'odps-1' in result.output
         assert 'odcs-1' in result.output
         assert 'Product-First flow' in result.output
-        mock_api_client.post.assert_called_once()
-        call_args = mock_api_client.post.call_args
-        assert call_args[0][0] == 'contracts/products/'
+        mock_api_client.request.assert_called_once()
+        call_args = mock_api_client.request.call_args
+        assert call_args[0][1] == 'contracts/products/'
         assert call_args[1]['json_data']['original_format'] == 'JSON'
         assert call_args[1]['json_data']['resolve_external_refs'] is True
         assert 'original_raw' in call_args[1]['json_data']
@@ -559,12 +567,20 @@ product:
             'odcs_contract': {'id': 'odcs-1', 'version': 1, 'status': 'DRAFT'},
             'workflow_instance_id': 'workflow-1'
         }
-        mock_api_client.post.return_value = mock_result
+        # The --extract-odcs path uses api_client.request() to get the
+        # raw Response, then api_client._handle_response() to parse it.
+        # Wire both ends of that chain so the CLI command sees the
+        # canned ``mock_result`` exactly as if a real 201 had returned.
+        from unittest.mock import MagicMock as _MM
+        _resp = _MM()
+        _resp.status_code = 201
+        mock_api_client.request.return_value = _resp
+        mock_api_client._handle_response.return_value = mock_result
 
         result = runner.invoke(cli, ['contracts', 'create-odps', '--file', file_path, '--extract-odcs'])
 
         assert result.exit_code == 0
-        call_args = mock_api_client.post.call_args
+        call_args = mock_api_client.request.call_args
         assert call_args[1]['json_data']['original_format'] == 'YAML'
 
     def test_create_odps_link_odcs_success(self, runner, mock_api_client, temp_file):
@@ -617,7 +633,15 @@ product:
             'odcs_contract': {'id': 'odcs-1'},
             'workflow_instance_id': 'workflow-1'
         }
-        mock_api_client.post.return_value = mock_result
+        # The --extract-odcs path uses api_client.request() to get the
+        # raw Response, then api_client._handle_response() to parse it.
+        # Wire both ends of that chain so the CLI command sees the
+        # canned ``mock_result`` exactly as if a real 201 had returned.
+        from unittest.mock import MagicMock as _MM
+        _resp = _MM()
+        _resp.status_code = 201
+        mock_api_client.request.return_value = _resp
+        mock_api_client._handle_response.return_value = mock_result
 
         result = runner.invoke(cli, [
             'contracts', 'create-odps',
@@ -627,7 +651,7 @@ product:
         ])
 
         assert result.exit_code == 0
-        call_args = mock_api_client.post.call_args
+        call_args = mock_api_client.request.call_args
         assert call_args[1]['json_data']['original_format'] == 'JSON'
 
     def test_create_odps_with_version(self, runner, mock_api_client, temp_file):
@@ -639,7 +663,15 @@ product:
             'odcs_contract': {'id': 'odcs-1'},
             'workflow_instance_id': 'workflow-1'
         }
-        mock_api_client.post.return_value = mock_result
+        # The --extract-odcs path uses api_client.request() to get the
+        # raw Response, then api_client._handle_response() to parse it.
+        # Wire both ends of that chain so the CLI command sees the
+        # canned ``mock_result`` exactly as if a real 201 had returned.
+        from unittest.mock import MagicMock as _MM
+        _resp = _MM()
+        _resp.status_code = 201
+        mock_api_client.request.return_value = _resp
+        mock_api_client._handle_response.return_value = mock_result
 
         result = runner.invoke(cli, [
             'contracts', 'create-odps',
@@ -649,7 +681,7 @@ product:
         ])
 
         assert result.exit_code == 0
-        call_args = mock_api_client.post.call_args
+        call_args = mock_api_client.request.call_args
         assert call_args[1]['json_data'].get('odps_version') == '4.1'
 
     def test_create_odps_with_asset_id(self, runner, mock_api_client, temp_file):
@@ -661,7 +693,15 @@ product:
             'odcs_contract': {'id': 'odcs-1'},
             'workflow_instance_id': 'workflow-1'
         }
-        mock_api_client.post.return_value = mock_result
+        # The --extract-odcs path uses api_client.request() to get the
+        # raw Response, then api_client._handle_response() to parse it.
+        # Wire both ends of that chain so the CLI command sees the
+        # canned ``mock_result`` exactly as if a real 201 had returned.
+        from unittest.mock import MagicMock as _MM
+        _resp = _MM()
+        _resp.status_code = 201
+        mock_api_client.request.return_value = _resp
+        mock_api_client._handle_response.return_value = mock_result
 
         result = runner.invoke(cli, [
             'contracts', 'create-odps',
@@ -671,7 +711,7 @@ product:
         ])
 
         assert result.exit_code == 0
-        call_args = mock_api_client.post.call_args
+        call_args = mock_api_client.request.call_args
         assert call_args[1]['json_data']['asset_id'] == 'asset-123'
 
     def test_create_odps_no_resolve_external_refs(self, runner, mock_api_client, temp_file):
@@ -683,7 +723,15 @@ product:
             'odcs_contract': {'id': 'odcs-1'},
             'workflow_instance_id': 'workflow-1'
         }
-        mock_api_client.post.return_value = mock_result
+        # The --extract-odcs path uses api_client.request() to get the
+        # raw Response, then api_client._handle_response() to parse it.
+        # Wire both ends of that chain so the CLI command sees the
+        # canned ``mock_result`` exactly as if a real 201 had returned.
+        from unittest.mock import MagicMock as _MM
+        _resp = _MM()
+        _resp.status_code = 201
+        mock_api_client.request.return_value = _resp
+        mock_api_client._handle_response.return_value = mock_result
 
         result = runner.invoke(cli, [
             'contracts', 'create-odps',
@@ -693,7 +741,7 @@ product:
         ])
 
         assert result.exit_code == 0
-        call_args = mock_api_client.post.call_args
+        call_args = mock_api_client.request.call_args
         assert call_args[1]['json_data']['resolve_external_refs'] is False
 
     def test_create_odps_json_output(self, runner, mock_api_client, temp_file):
@@ -705,7 +753,15 @@ product:
             'odcs_contract': {'id': 'odcs-1', 'version': 1},
             'workflow_instance_id': 'workflow-1'
         }
-        mock_api_client.post.return_value = mock_result
+        # The --extract-odcs path uses api_client.request() to get the
+        # raw Response, then api_client._handle_response() to parse it.
+        # Wire both ends of that chain so the CLI command sees the
+        # canned ``mock_result`` exactly as if a real 201 had returned.
+        from unittest.mock import MagicMock as _MM
+        _resp = _MM()
+        _resp.status_code = 201
+        mock_api_client.request.return_value = _resp
+        mock_api_client._handle_response.return_value = mock_result
 
         result = runner.invoke(cli, [
             'contracts', 'create-odps',
@@ -801,7 +857,15 @@ product:
             'odcs_contract': {'id': 'odcs-1'},
             'workflow_instance_id': 'workflow-1'
         }
-        mock_api_client.post.return_value = mock_result
+        # The --extract-odcs path uses api_client.request() to get the
+        # raw Response, then api_client._handle_response() to parse it.
+        # Wire both ends of that chain so the CLI command sees the
+        # canned ``mock_result`` exactly as if a real 201 had returned.
+        from unittest.mock import MagicMock as _MM
+        _resp = _MM()
+        _resp.status_code = 201
+        mock_api_client.request.return_value = _resp
+        mock_api_client._handle_response.return_value = mock_result
 
         result = runner.invoke(cli, [
             'contracts', 'create-odps',
@@ -810,7 +874,7 @@ product:
         ])
 
         assert result.exit_code == 0
-        call_args = mock_api_client.post.call_args
+        call_args = mock_api_client.request.call_args
         # Should auto-detect JSON from content
         assert call_args[1]['json_data']['original_format'] == 'JSON'
 
@@ -823,7 +887,15 @@ product:
             'odcs_contract': {'id': 'odcs-1'},
             'workflow_instance_id': 'workflow-1'
         }
-        mock_api_client.post.return_value = mock_result
+        # The --extract-odcs path uses api_client.request() to get the
+        # raw Response, then api_client._handle_response() to parse it.
+        # Wire both ends of that chain so the CLI command sees the
+        # canned ``mock_result`` exactly as if a real 201 had returned.
+        from unittest.mock import MagicMock as _MM
+        _resp = _MM()
+        _resp.status_code = 201
+        mock_api_client.request.return_value = _resp
+        mock_api_client._handle_response.return_value = mock_result
 
         result = runner.invoke(cli, [
             'contracts', 'create-odps',
@@ -832,7 +904,7 @@ product:
         ])
 
         assert result.exit_code == 0
-        call_args = mock_api_client.post.call_args
+        call_args = mock_api_client.request.call_args
         # Should auto-detect YAML from content
         assert call_args[1]['json_data']['original_format'] == 'YAML'
 
@@ -856,7 +928,15 @@ product:
             },
             'workflow_instance_id': 'workflow-1'
         }
-        mock_api_client.post.return_value = mock_result
+        # The --extract-odcs path uses api_client.request() to get the
+        # raw Response, then api_client._handle_response() to parse it.
+        # Wire both ends of that chain so the CLI command sees the
+        # canned ``mock_result`` exactly as if a real 201 had returned.
+        from unittest.mock import MagicMock as _MM
+        _resp = _MM()
+        _resp.status_code = 201
+        mock_api_client.request.return_value = _resp
+        mock_api_client._handle_response.return_value = mock_result
 
         result = runner.invoke(cli, [
             'contracts', 'create-odps',

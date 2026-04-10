@@ -24,8 +24,13 @@ from hub.apps.jobs.utils import create_job, get_job_timeout
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 from hub.apps.tenants.services import get_tenant_dq_profile
 
-from .models import DQEngine, DQRun, DQRunStatus
-from .serializers import DQRunCreateSerializer, DQRunSerializer
+from .models import DQAlertingRule, DQEngine, DQRun, DQRunStatus
+from .serializers import (
+    DQAlertingRuleCreateSerializer,
+    DQAlertingRuleSerializer,
+    DQRunCreateSerializer,
+    DQRunSerializer,
+)
 from .service_client import DQServiceClient
 from .services import DQService
 
@@ -542,6 +547,103 @@ class DQRunViewSet(viewsets.ModelViewSet):
                 "completed_at": dq_run.completed_at.isoformat() if dq_run.completed_at else None,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class DQAlertingRuleViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for DQ alerting rule management.
+
+    Tenant-scoped: users can only see/manage alerting rules in their tenant.
+    """
+
+    queryset = DQAlertingRule.objects.all()
+    serializer_class = DQAlertingRuleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "id"
+
+    def get_queryset(self):
+        user = self.request.user
+        base = DQAlertingRule.objects.select_related("tenant", "asset")
+
+        if hasattr(user, "is_platform_admin") and user.is_platform_admin:
+            queryset = base
+        else:
+            tenant_id = get_request_tenant_id(self.request)
+            if tenant_id:
+                queryset = base.filter(tenant_id=tenant_id)
+            else:
+                return DQAlertingRule.objects.none()
+
+        # Optional filters
+        asset_id = self.request.query_params.get("asset_id")
+        if asset_id:
+            queryset = queryset.filter(asset_id=asset_id)
+
+        enabled = self.request.query_params.get("enabled")
+        if enabled is not None:
+            queryset = queryset.filter(enabled=enabled.lower() in ("true", "1"))
+
+        return queryset.order_by("-created_at")
+
+    def create(self, request):
+        serializer = DQAlertingRuleCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        tenant_id, tenant = get_request_tenant(request)
+        if not tenant:
+            return Response(
+                {"error": "User must belong to a tenant to create alerting rules"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Resolve asset
+        asset_id = serializer.validated_data.get("asset_id")
+        asset = None
+        if asset_id:
+            try:
+                asset = Asset.objects.get(id=asset_id, tenant=tenant)
+            except Asset.DoesNotExist:
+                return api_error_response(
+                    message="Asset not found",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    code="NOT_FOUND",
+                )
+
+        rule = DQAlertingRule(
+            tenant=tenant,
+            asset=asset,
+            name=serializer.validated_data.get("name", "Quality Score Alert"),
+            description=serializer.validated_data.get("description", ""),
+            metric_type=serializer.validated_data.get("metric_type", "quality_score"),
+            threshold=serializer.validated_data["threshold"],
+            comparison_operator=serializer.validated_data.get("comparison_operator", "<"),
+            severity=serializer.validated_data.get("severity", "MEDIUM"),
+            alert_channels=serializer.validated_data.get("alert_channels", ["EMAIL"]),
+            channel_config=serializer.validated_data.get("channel_config", {}),
+            enabled=serializer.validated_data.get("enabled", True),
+            created_by=request.user,
+        )
+        rule.save()
+
+        create_audit_event(
+            resource_type="DQ_ALERTING_RULE",
+            action="DQ_ALERTING_RULE_CREATED",
+            actor_user=request.user,
+            tenant=tenant,
+            resource_id=str(rule.id),
+            details={
+                "name": rule.name,
+                "metric_type": rule.metric_type,
+                "threshold": rule.threshold,
+                "asset_id": str(asset.id) if asset else None,
+            },
+            request=request,
+        )
+
+        return Response(
+            DQAlertingRuleSerializer(rule).data,
+            status=status.HTTP_201_CREATED,
         )
 
 

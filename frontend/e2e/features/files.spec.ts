@@ -5,17 +5,17 @@
  */
 
 import { test } from '@playwright/test';
-import { clearAuthStorage, getTestUser, loginUser } from '../fixtures/auth';
+import { clearAuthStorage } from '../fixtures/auth';
 import { assertEdgeBehavior, assertFailureRedirect, assertSuccessLoad } from '../fixtures/journey-helpers';
 import { waitForAppMainReady } from '../fixtures/helpers';
+
+// storageState from chromium-mvp project already injects auth — no loginUser() needed.
 
 test.describe('Feature: Files', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('files list loads when authenticated', async ({ page }) => {
-      const user = await getTestUser();
-      await loginUser(page, user);
       await page.goto('/files');
       try {
         await waitForAppMainReady(page, { timeout: 60000 });
@@ -50,8 +50,6 @@ test.describe('Feature: Files', () => {
 
   test.describe('Edge', () => {
     test('files route shows empty state when no files', async ({ page }) => {
-      const user = await getTestUser();
-      await loginUser(page, user);
       await page.goto('/files');
       try {
         await waitForAppMainReady(page, { timeout: 60000 });

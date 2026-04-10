@@ -9,7 +9,25 @@ Prefix list is relative to ``/api/v1/`` (tuple entries include a trailing slash)
 
 from __future__ import annotations
 
+import os
 from typing import Final
+
+
+def _parse_bool_env(name: str) -> bool:
+    """Parse a boolean environment variable using the same rules as ``env.bool``.
+
+    Truthy values: ``true``, ``1``, ``yes``, ``on``, ``y``, ``t`` (case-insensitive).
+    Everything else (including unset / empty) is False.
+
+    This function is the **canonical** implementation. Phase 216 test helpers
+    in ``cli/tests/_pytest_helpers.py`` and ``sdk/python/tests/_pytest_helpers.py``
+    duplicate this function byte-for-byte (no shared module — see D129)
+    and a drift test ast-parses this file to assert the bodies stay
+    byte-equivalent.
+    """
+    value = os.environ.get(name, "")
+    return value.strip().lower() in ("true", "1", "yes", "on", "y", "t")
+
 
 # Path segments under /api/v1/ that are disabled when MVP_MODE is True.
 MVP_GATED_RELATIVE_PREFIXES: Final[tuple[str, ...]] = (

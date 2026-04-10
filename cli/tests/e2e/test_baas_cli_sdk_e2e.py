@@ -1,3 +1,7 @@
+from tests.pytest_mvp_skip import skip_if_mvp_mode
+
+pytestmark = skip_if_mvp_mode
+
 """
 End-to-end tests for BaaS CLI/SDK comprehensive workflows.
 

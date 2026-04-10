@@ -22,7 +22,7 @@ from ..ml_errors import (
 
 @click.group()
 def ml():
-    """ML Model Registry management commands"""
+    """ML Model Registry management commands [Post-MVP]"""
     pass
 
 

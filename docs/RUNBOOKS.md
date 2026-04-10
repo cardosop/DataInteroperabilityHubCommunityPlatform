@@ -13,26 +13,26 @@ Complete troubleshooting and operational procedures for the Data Interoperabilit
 7. [Deployment and rollback](#deployment-and-rollback)
 8. [Normalization Failures](#normalization-failures)
 9. [Lineage Issues](#lineage-issues)
-10. [Scheduled Ingestion Failures](#scheduled-ingestion-failures)
-11. [Prefect Server Issues](#prefect-server-issues)
-12. [Prefect Workers Issues](#prefect-workers-issues)
+10. [Scheduled Ingestion Failures [Post-MVP]](#scheduled-ingestion-failures-post-mvp)
+11. [Prefect Server Issues [Post-MVP]](#prefect-server-issues-post-mvp)
+12. [Prefect Workers Issues [Post-MVP]](#prefect-workers-issues-post-mvp)
 13. [Search Service Issues](#search-service-issues)
 14. [Observability Service Issues](#observability-service-issues)
 15. [Webhook Service Issues](#webhook-service-issues)
 16. [Marketplace Connector Pattern Violations](#marketplace-connector-pattern-violations)
-17. [BaaS Platform Troubleshooting](#baas-platform-troubleshooting)
+17. [BaaS Platform Troubleshooting [Post-MVP]](#baas-platform-troubleshooting-post-mvp)
 18. [ODH Integration Troubleshooting](#odh-integration-troubleshooting)
 19. [Disaster Recovery](#disaster-recovery)
 20. [Backup and Recovery](#backup-and-recovery)
-21. [BaaS Infrastructure (dedicated instances)](#baas-infrastructure-dedicated-instances)
-22. [Marketplace orders and entitlements — KYC required](#marketplace-orders-and-entitlements--kyc-required)
-23. [KYC provider integration](#kyc-provider-integration)
-24. [Real Scheduled Ingestion/Export E2E](#real-scheduled-ingestionexport-e2e)
-25. [Compliance Service — Policy and Risk Config](#compliance-service--policy-and-risk-config)
+21. [BaaS Infrastructure (dedicated instances) [Post-MVP]](#baas-infrastructure-dedicated-instances-post-mvp)
+22. [Marketplace orders and entitlements — KYC required](#marketplace-orders-and-entitlements-kyc-required)
+23. [KYC provider integration [Post-MVP]](#kyc-provider-integration-post-mvp)
+24. [Real Scheduled Ingestion/Export E2E [Post-MVP]](#real-scheduled-ingestionexport-e2e-post-mvp)
+25. [Compliance Service — Policy and Risk Config](#compliance-service-policy-and-risk-config)
 26. [Compliance Run Stuck PENDING](#compliance-run-stuck-pending)
 27. [Personal tenant creation failures](#personal-tenant-creation-failures)
 28. [Subscription plan change failures](#subscription-plan-change-failures)
-29. [ODBC Virtualization Issues](#odbc-virtualization-issues)
+29. [ODBC Virtualization Issues [Post-MVP]](#odbc-virtualization-issues-post-mvp)
 30. [Brand Name Change](#brand-name-change)
 31. [Tenant switch failures](#tenant-switch-failures)
 32. [Frontend UX troubleshooting](#frontend-ux-troubleshooting)
@@ -104,7 +104,7 @@ Complete troubleshooting and operational procedures for the Data Interoperabilit
 
 ---
 
-## ODBC Virtualization Issues
+## ODBC Virtualization Issues [Post-MVP]
 
 **When to use:** Virtual dataset query execution fails for ODBC sources. Error may indicate missing driver, connection failure, or invalid config.
 
@@ -236,7 +236,7 @@ for q in ['job_critical','job_default','default']:
 
 ---
 
-## Real Scheduled Ingestion/Export E2E
+## Real Scheduled Ingestion/Export E2E [Post-MVP]
 
 **When to use:** Manual or environment-gated validation of scheduled ingestion and scheduled export with **real credentials and real storage** (S3, GCS, Azure Blob, HTTP/HTTPS, FTP/SFTP, DATABASE). No credentials in repo; use env vars or Prefect Blocks.
 
@@ -244,7 +244,7 @@ for q in ['job_critical','job_default','default']:
 
 ---
 
-## KYC provider integration
+## KYC provider integration [Post-MVP]
 
 **Purpose:** Documented path for a future KYC provider to set tenant `kyc_status` to VERIFIED or PENDING_REVIEW in a secure, auditable, and idempotent way. No live provider implementation in this change.
 
@@ -277,7 +277,7 @@ for q in ['job_critical','job_default','default']:
 
 ---
 
-## BaaS Infrastructure (dedicated instances)
+## BaaS Infrastructure (dedicated instances) [Post-MVP]
 
 Optional dedicated Postgres and Redis for BaaS usage and quota. When `BAAS_DATABASE_URL` and `BAAS_REDIS_URL` are set, BaaS uses these; when unset, it uses the main DB and Redis. See **[runbooks/BAAS_INFRASTRUCTURE.md](runbooks/BAAS_INFRASTRUCTURE.md)** for Docker wiring, env vars, and test setup.
 
@@ -897,7 +897,7 @@ contract.save()
 
 ---
 
-## Scheduled Ingestion Failures
+## Scheduled Ingestion Failures [Post-MVP]
 
 ### Symptoms
 - Scheduled ingestion runs fail
@@ -963,7 +963,7 @@ ingestion = ScheduledIngestion.objects.get(id='<id>')
 
 ---
 
-## Prefect Server Issues
+## Prefect Server Issues [Post-MVP]
 
 ### Symptoms
 - Prefect Server not responding
@@ -1013,7 +1013,7 @@ If `hub-test-prefect-server` exits with code 0 and compose reports "dependency f
 
 ---
 
-## Prefect Workers Issues
+## Prefect Workers Issues [Post-MVP]
 
 ### Symptoms
 - Workers not processing jobs
@@ -1831,7 +1831,7 @@ For detailed troubleshooting, see [Marketplace Connector Deployment Runbook](./r
 
 ---
 
-## BaaS Platform Troubleshooting
+## BaaS Platform Troubleshooting [Post-MVP]
 
 ### Symptoms
 - API key creation/validation failures

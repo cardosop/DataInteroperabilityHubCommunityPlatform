@@ -30,7 +30,7 @@ def marketplace():
 
 @marketplace.group('connections')
 def connections():
-    """Marketplace connection management commands"""
+    """Marketplace connection management commands [Post-MVP]"""
     pass
 
 
@@ -414,7 +414,7 @@ def _parse_config(config: str) -> dict:
 
 @marketplace.group('sync')
 def sync():
-    """Marketplace sync job commands"""
+    """Marketplace sync job commands [Post-MVP]"""
     pass
 
 
@@ -683,7 +683,7 @@ def sync_cancel(sync_job_id: str, output_format: str):
 
 @marketplace.group('connectors')
 def connectors():
-    """Marketplace connector management commands"""
+    """Marketplace connector management commands [Post-MVP]"""
     pass
 
 
@@ -804,7 +804,7 @@ def get_connector_info(connector_type: str, output_format: str):
 
 @marketplace.group('mappings')
 def mappings():
-    """Marketplace mapping management commands"""
+    """Marketplace mapping management commands [Post-MVP]"""
     pass
 
 

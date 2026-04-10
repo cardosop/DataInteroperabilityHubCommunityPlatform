@@ -5,17 +5,16 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser, loginUser } from '../fixtures/auth';
 import { assertSuccessLoad } from '../fixtures/journey-helpers';
 import { waitForAppMainReady } from '../fixtures/helpers';
+
+// storageState from chromium-mvp project already injects auth — no loginUser() needed.
 
 test.describe('Feature: Semantic', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('semantic route loads when authenticated and capability enabled', async ({ page }) => {
-      const user = await getTestUser();
-      await loginUser(page, user);
       await page.goto('/semantic');
       try {
         await waitForAppMainReady(page, { timeout: 60000, acceptRedirectToLogin: true });
@@ -39,8 +38,6 @@ test.describe('Feature: Semantic', () => {
 
   test.describe('Edge', () => {
     test('semantic shows /unavailable when capability-gated', async ({ page }) => {
-      const user = await getTestUser();
-      await loginUser(page, user);
       await page.goto('/semantic');
       // Wait for the app to fully initialize (lazy bundles + auth check) rather than a fixed sleep.
       // waitForAppMainReady handles the visible/slowMo project's slower rendering correctly.

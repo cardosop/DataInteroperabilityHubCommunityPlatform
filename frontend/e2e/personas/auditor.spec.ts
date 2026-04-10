@@ -29,7 +29,8 @@ test.describe('Persona RBAC: Auditor', () => {
   });
 
   test('non-auditor cannot access /audit (RBAC boundary)', async ({ page }) => {
-    await loginAsPersona(page, getTestUser); // DATA_PROVIDER — not auditor
+    // storageState already has the default DATA_PROVIDER user (non-auditor).
+    // No need for loginAsPersona — saves an API login call and avoids rate limits.
     await page.goto('/audit');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForURL(/\/(403|login)/, { timeout: 20000 }).catch(() => null);
