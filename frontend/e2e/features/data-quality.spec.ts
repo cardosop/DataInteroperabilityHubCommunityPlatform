@@ -106,7 +106,7 @@ test.describe('Feature: Data Quality', () => {
       // -- Step 4: Poll until the run reaches a terminal state --
       const MAX_POLLS = 20;
       let runStatus = dqRun.status;
-      for (let i = 0; i < MAX_POLLS && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(runStatus); i++) {
+      for (let i = 0; i < MAX_POLLS && !['SUCCEEDED', 'FAILED'].includes(runStatus); i++) {
         await page.waitForTimeout(3_000);
         const pollResp = await request.get(`/api/v1/dq/runs/${runId}/`, { headers: authHeader });
         if (pollResp.ok()) {
@@ -117,7 +117,8 @@ test.describe('Feature: Data Quality', () => {
       // -- Step 5: Navigate to run detail page and assert UI shows violations --
       await page.goto(`/dq/runs/${runId}`);
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(5_000);
+      // Wait for the detail page to render (loading spinner → content)
+      await page.waitForSelector('.dq-run-detail-page, .error-display, .status-badge', { timeout: 30_000 }).catch(() => null);
 
       // The page must not crash; redirect to login is also acceptable for
       // expired sessions (non-fatal for this smoke test).
