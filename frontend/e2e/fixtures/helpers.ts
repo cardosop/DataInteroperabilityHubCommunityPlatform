@@ -2838,14 +2838,10 @@ export async function triggerComplianceScanViaUI(
     throw new Error('triggerComplianceScanViaUI: user does not have permission to access compliance runs');
   }
 
-  // Wait for list page to settle
+  // Wait for list page to fully load (not just the loading spinner)
   await page.waitForSelector(
-    '.compliance-run-list-page, .loading-spinner-container',
-    { timeout: 30000 }
-  );
-  await page.waitForSelector(
-    '.compliance-run-list-page',
-    { timeout: 30000 }
+    '.compliance-run-list-page, .empty-state',
+    { timeout: 45000 }
   );
 
   // Click the modal trigger (stable data-testid preferred)

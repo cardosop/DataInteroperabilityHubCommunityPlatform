@@ -552,9 +552,18 @@ export async function getDataMeshDomainOwnerUser(): Promise<TestUser> {
  * would cause 403 on role-gated routes. Required for AUD, TA, PA, CPO, DEV, DMO specs.
  */
 export async function loginAsPersona(page: Page, getUser: () => Promise<TestUser>): Promise<void> {
-  await clearAuthStorage(page);
-  const user = await getUser();
-  await loginUser(page, user);
+  // Resolve user credentials (API call, may trigger subscription ensure)
+  // concurrently with clearing auth — getUser() does Node.js HTTP calls
+  // (no page interaction) so it can run while the page navigates.
+  const [user] = await Promise.all([
+    getUser(),
+    clearAuthStorage(page),
+  ]);
+  // forceFreshLogin: true skips the fast-path (navigate to '/' and check
+  // localStorage for stored user) which always fails after clearAuthStorage
+  // and wastes 30s on a navigation timeout.  forceFreshLogin calls
+  // clearAuthStorage again but it's fast when page is already on /login.
+  await loginUser(page, user, { forceFreshLogin: true });
 }
 
 export interface LoginUserOptions {
