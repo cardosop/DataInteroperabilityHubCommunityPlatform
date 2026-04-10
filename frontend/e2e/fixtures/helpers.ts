@@ -3030,24 +3030,28 @@ export async function uploadODPSContractViaUI(
     // Async workflow: poll until completed, then extract contract id from result
     if (!contractId && data.workflow_instance_id) {
       const wfId = data.workflow_instance_id;
-      const token = await page.evaluate(() => localStorage.getItem('access_token'));
+      const wfToken = await page.evaluate(() => localStorage.getItem('access_token'));
       for (let poll = 0; poll < 30; poll++) {
         await page.waitForTimeout(3000);
         try {
           const statusResp = await page.request.get(
             `/api/v1/contracts/products/workflows/${wfId}/status/`,
-            { headers: token ? { Authorization: `Bearer ${token}` } : undefined }
+            { headers: wfToken ? { Authorization: `Bearer ${wfToken}` } : undefined }
           );
           if (statusResp.ok()) {
-            const wfData = (await statusResp.json()) as {
-              status?: string;
-              result?: { contract_id?: string; odps_contract?: { id?: string }; odcs_contract?: { id?: string } };
-            };
-            if (wfData.status === 'COMPLETED' || wfData.status === 'SUCCEEDED') {
-              contractId = wfData.result?.contract_id || wfData.result?.odps_contract?.id || wfData.result?.odcs_contract?.id;
+            const wfData = (await statusResp.json()) as Record<string, unknown>;
+            const wfStatus = wfData.status as string | undefined;
+            if (wfStatus === 'COMPLETED' || wfStatus === 'SUCCEEDED') {
+              // The workflow status response puts odps_contract/odcs_contract at
+              // the TOP level (not nested under 'result'). Extract contract id
+              // from all possible locations.
+              const odps = wfData.odps_contract as { id?: string } | undefined;
+              const odcs = wfData.odcs_contract as { id?: string } | undefined;
+              const result = wfData.result as { contract_id?: string; odps_contract?: { id?: string }; odcs_contract?: { id?: string } } | undefined;
+              contractId = odps?.id || odcs?.id || result?.contract_id || result?.odps_contract?.id || result?.odcs_contract?.id || (wfData.contract_id as string | undefined);
               break;
             }
-            if (wfData.status === 'FAILED') {
+            if (wfStatus === 'FAILED') {
               throw new Error(`uploadODPSContractViaUI: workflow ${wfId} FAILED`);
             }
           }
