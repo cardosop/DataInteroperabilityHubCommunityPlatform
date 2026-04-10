@@ -100,9 +100,13 @@ RUN { \
 RUN npm run build
 
 # Production stage
-FROM nginx:alpine
-# Upgrade OS packages with known CVEs, then install wget for healthcheck
-RUN apk upgrade --no-cache && apk add --no-cache wget
+FROM nginx:alpine AS production
+# Upgrade OS packages with known CVEs (including OpenSSL), then install wget
+# for healthcheck.  The explicit libcrypto3/libssl3 upgrade ensures
+# CVE-2026-28390 is patched even when Docker layer cache is warm.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache --upgrade libcrypto3 libssl3 \
+    && apk add --no-cache wget
 
 # Copy built files
 COPY --from=builder /app/dist /usr/share/nginx/html

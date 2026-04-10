@@ -458,3 +458,151 @@ def ensure_e2e_tenant_switch_setup(request):
         },
         status=200,
     )
+
+
+@extend_schema(exclude=True, tags=["API"])
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def ensure_e2e_users(request):
+    """
+    E2E-only: Ensure E2E test users exist with correct passwords and roles.
+
+    POST /api/v1/test/ensure-e2e-users/
+    Calls the same logic as ``manage.py ensure_e2e_user_roles`` to create
+    or reset E2E accounts.  AllowAny because the whole problem this solves
+    is that users cannot log in (chicken-and-egg).
+
+    Safety guards:
+    - Only available when ENVIRONMENT in (test, staging) or DEBUG=True
+    - Only processes hardcoded @example.com E2E addresses
+    - Idempotent — safe to call on every test run
+
+    Optional body: {"email": "e2e_test@example.com"} to process a single user.
+    If omitted, processes all E2E users.
+    """
+    from django.db import transaction as db_transaction
+
+    from hub.apps.tenants.models import Tenant, TenantStatus
+    from hub.apps.users.management.commands.ensure_e2e_user_roles import (
+        E2E_USERS,
+        ROLE_DESCRIPTIONS,
+    )
+    from hub.apps.users.models import Role, User, UserRole, UserStatus
+
+    if not (
+        getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG
+    ):
+        raise NotFound("Resource not found")
+
+    target_email = request.data.get("email") if request.data else None
+
+    if target_email:
+        users_to_ensure = [u for u in E2E_USERS if u["email"] == target_email]
+        if not users_to_ensure:
+            return Response(
+                {"ok": False, "error": f"Unknown E2E email: {target_email}"},
+                status=400,
+            )
+    else:
+        users_to_ensure = E2E_USERS
+
+    processed = []
+    with db_transaction.atomic():
+        # Ensure all required tenants exist
+        tenant_cache = {}
+        for slug, name in [
+            ("default", "Default Tenant"),
+            ("consumer", "Consumer Tenant"),
+            ("tenant-iso", "Isolation Test Tenant"),
+            ("tenant-b", "Tenant-B Test Tenant"),
+        ]:
+            t, _ = Tenant.objects.get_or_create(
+                slug=slug,
+                defaults={"name": name, "status": TenantStatus.ACTIVE},
+            )
+            tenant_cache[slug] = t
+
+        for spec in users_to_ensure:
+            email = spec["email"]
+            password = spec["password"]
+            display_name = spec["display_name"]
+            roles = spec.get("roles", [])
+            is_pa = spec.get("is_platform_admin", False)
+            tenant_slug = spec.get("tenant_slug", "default")
+            tenant = tenant_cache.get(tenant_slug, tenant_cache["default"])
+
+            user, created = User.objects.get_or_create(
+                email=email,
+                defaults={
+                    "tenant": tenant,
+                    "display_name": display_name,
+                    "status": UserStatus.ACTIVE,
+                    "is_platform_admin": is_pa,
+                },
+            )
+
+            # Sync password (always — the user may exist with wrong password)
+            if not user.check_password(password):
+                user.set_password(password)
+                user.save(update_fields=["password"])
+
+            # Ensure email verified
+            if not getattr(user, "email_verified", False):
+                from django.utils import timezone as _tz
+                user.email_verified = True
+                user.email_verified_at = _tz.now()
+                user.save(update_fields=["email_verified", "email_verified_at"])
+
+            # Ensure correct tenant
+            if tenant_slug == "consumer" and user.tenant_id != tenant.id:
+                user.tenant = tenant
+                user.save(update_fields=["tenant"])
+            elif not user.tenant_id:
+                user.tenant = tenant
+                user.save(update_fields=["tenant"])
+
+            # Ensure platform admin flag
+            if user.is_platform_admin != is_pa:
+                user.is_platform_admin = is_pa
+                user.save(update_fields=["is_platform_admin"])
+
+            # Ensure status is ACTIVE
+            if user.status != UserStatus.ACTIVE:
+                user.status = UserStatus.ACTIVE
+                user.save(update_fields=["status"])
+
+            # Ensure tenant membership
+            user_tenant = user.tenant or tenant
+            if user_tenant:
+                from hub.apps.users.services import UserTenantMembershipService
+                UserTenantMembershipService().add_membership(user, user_tenant)
+
+            # Ensure roles
+            for role_name in roles:
+                role, _ = Role.objects.get_or_create(
+                    tenant=user_tenant,
+                    name=role_name,
+                    defaults={
+                        "description": ROLE_DESCRIPTIONS.get(role_name, role_name),
+                    },
+                )
+                UserRole.objects.get_or_create(
+                    user=user, tenant=role.tenant, role=role,
+                )
+
+            # Ensure tenant has a plan
+            if user_tenant and not user_tenant.plan:
+                from hub.apps.tenants.models import TenantPlan
+                free_plan = TenantPlan.objects.filter(
+                    slug="free", is_active=True,
+                ).first()
+                if free_plan:
+                    user_tenant.plan = free_plan
+                    user_tenant.save(update_fields=["plan"])
+
+            processed.append(email)
+
+    return Response(
+        {"ok": True, "users_processed": len(processed), "emails": processed},
+        status=200,
+    )

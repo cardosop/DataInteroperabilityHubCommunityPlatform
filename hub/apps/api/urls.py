@@ -10,6 +10,7 @@ from .views import (
     ensure_e2e_invitation_token,
     ensure_e2e_subscription,
     ensure_e2e_tenant_switch_setup,
+    ensure_e2e_users,
 )
 
 # Non-MVP areas remain mounted so URLconf is stable across Django settings reloads
@@ -57,6 +58,7 @@ urlpatterns = [
     path("test/ensure-e2e-subscription/", ensure_e2e_subscription, name="ensure-e2e-subscription"),
     path("test/ensure-e2e-invitation-token/", ensure_e2e_invitation_token, name="ensure-e2e-invitation-token"),
     path("test/ensure-e2e-tenant-switch-setup/", ensure_e2e_tenant_switch_setup, name="ensure-e2e-tenant-switch-setup"),
+    path("test/ensure-e2e-users/", ensure_e2e_users, name="ensure-e2e-users"),
     re_path(
         r"^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|test/).*$",
         api_not_found,
