@@ -3021,10 +3021,43 @@ export async function uploadODPSContractViaUI(
       odps_contract?: { id?: string };
       odcs_contract?: { id?: string };
       workflow_instance_id?: string;
+      status?: string;
     };
     // The ODPS product creation endpoint returns {odps_contract: {id}, odcs_contract: {id}, workflow_instance_id}
     // for synchronous execution, or {workflow_instance_id, status: "RUNNING"} for async.
-    const contractId = data.id || data.odps_contract?.id || data.odcs_contract?.id;
+    let contractId = data.id || data.odps_contract?.id || data.odcs_contract?.id;
+
+    // Async workflow: poll until completed, then extract contract id from result
+    if (!contractId && data.workflow_instance_id) {
+      const wfId = data.workflow_instance_id;
+      const token = await page.evaluate(() => localStorage.getItem('access_token'));
+      for (let poll = 0; poll < 30; poll++) {
+        await page.waitForTimeout(3000);
+        try {
+          const statusResp = await page.request.get(
+            `/api/v1/contracts/products/workflows/${wfId}/status/`,
+            { headers: token ? { Authorization: `Bearer ${token}` } : undefined }
+          );
+          if (statusResp.ok()) {
+            const wfData = (await statusResp.json()) as {
+              status?: string;
+              result?: { contract_id?: string; odps_contract?: { id?: string }; odcs_contract?: { id?: string } };
+            };
+            if (wfData.status === 'COMPLETED' || wfData.status === 'SUCCEEDED') {
+              contractId = wfData.result?.contract_id || wfData.result?.odps_contract?.id || wfData.result?.odcs_contract?.id;
+              break;
+            }
+            if (wfData.status === 'FAILED') {
+              throw new Error(`uploadODPSContractViaUI: workflow ${wfId} FAILED`);
+            }
+          }
+        } catch (pollErr) {
+          if (String(pollErr).includes('FAILED')) throw pollErr;
+          // Transient error — retry
+        }
+      }
+    }
+
     if (!contractId) throw new Error(`uploadODPSContractViaUI: response missing contract id. Body: ${JSON.stringify(data).slice(0, 300)}`);
     return { contractId };
   }
