@@ -30,7 +30,17 @@ test.describe('Dimension: Timeout handling', () => {
     await page.fill('input#email', testUser.email);
     await page.fill('input#password', testUser.password);
     await page.locator('button[type="submit"]').click();
-    await page.waitForTimeout(8000);
+    // Wait for a definitive outcome: either navigate away from /login
+    // (success) or show an error message (invalid creds, rate limit, etc.).
+    // A fixed timeout (the previous 8s) was insufficient on slow staging.
+    try {
+      await Promise.race([
+        page.waitForURL(/^(?!.*\/login)/, { timeout: 30000 }),
+        page.locator('.error-message').waitFor({ state: 'visible', timeout: 30000 }),
+      ]);
+    } catch {
+      // If both timeout, the test should still check current state
+    }
     const leftLogin = !page.url().includes('/login');
     const hasError = (await page.locator('.error-message').count()) > 0;
     expect(leftLogin || hasError).toBe(true) /* acceptable states */;
