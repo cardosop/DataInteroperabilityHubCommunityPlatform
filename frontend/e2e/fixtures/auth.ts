@@ -405,13 +405,19 @@ export async function clearAuthStorage(page: Page): Promise<void> {
       // Navigate to /login to get a page context for localStorage clearing.
       // Use 'commit' instead of 'domcontentloaded' — we only need the document to exist,
       // not for all scripts to load. This avoids hanging when Vite is slow or backend proxy stalls.
-      await page.goto('/login', { waitUntil: 'commit', timeout: 10000 });
+      await page.goto('/login', { waitUntil: 'commit', timeout: 30000 });
     } catch (navErr) {
       if (isPageClosedError(navErr)) {
         return; // Page/context closed (test timeout); absorb to avoid cascading
       }
       const navMsg = String(navErr);
-      if (
+      if (isNavigationTimeout(navErr)) {
+        // Navigation timeout is non-fatal for clearAuthStorage: the purpose is
+        // to get a page context for localStorage.clear(). If the page is already
+        // on any route (from a previous test), evaluate() will work regardless.
+        // Throwing here causes cascading failures in loginAsPersona on staging
+        // where network latency makes 'commit' slow.
+      } else if (
         /interrupted by another navigation/i.test(navMsg) ||
         /ERR_ABORTED/i.test(navMsg) ||
         /net::ERR_/i.test(navMsg)

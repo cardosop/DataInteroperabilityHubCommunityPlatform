@@ -200,14 +200,40 @@ export async function ensureTestUser(): Promise<TestUser> {
     }, 'Test user login');
 
     if (!loginResult && _isRemoteApi) {
-      // Remote API: docker exec and self-registration are unavailable.
-      // The test user must be pre-seeded on the deployed environment.
-      throw new Error(
-        `Test user '${email}' login failed on remote API (${baseUrl}).\n` +
-          'On deployed environments, test users must be pre-seeded. Run:\n' +
-          '  kubectl exec -n hub-staging deploy/hub-staging-api -- python hub/manage.py ensure_e2e_user_roles\n' +
-          'Or set E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD to an existing user.'
+      // Remote API: docker exec is unavailable but self-registration IS.
+      // The test user may have been wiped by a pod restart or DB migration.
+      // Try to re-register before giving up (same pattern persona users use).
+      const registered = await registerPersonaViaApi(
+        { email, password, name },
+        baseUrl
       );
+      if (registered) {
+        // Wait for DB to propagate, then retry login
+        await new Promise((r) => setTimeout(r, 3000));
+        loginResult = await withRetry(async () => {
+          const resp = await fetch(`${baseUrl}/auth/login/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          if (resp.ok) {
+            console.log('✅ Test user login OK after re-registration');
+            return { email, password, name } as TestUser;
+          }
+          if (resp.status === 429) {
+            throw new Error('Rate limited (429); will retry');
+          }
+          return null;
+        }, 'Test user login (after re-register)');
+      }
+      if (!loginResult) {
+        throw new Error(
+          `Test user '${email}' login failed on remote API (${baseUrl}).\n` +
+            'On deployed environments, test users must be pre-seeded. Run:\n' +
+            '  kubectl exec -n hub-staging deploy/hub-staging-api -- python hub/manage.py ensure_e2e_user_roles\n' +
+            'Or set E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD to an existing user.'
+        );
+      }
     }
 
     if (!loginResult) {
