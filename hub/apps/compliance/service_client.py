@@ -28,36 +28,14 @@ class ComplianceServiceClient:
     """
 
     def __init__(self):
-        import os
-        import sys
-
-        # Determine if we're running tests from host machine (not in Docker)
-        is_in_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER') == 'true'
-        is_test_env = 'pytest' in sys.modules or 'unittest' in sys.modules
-        is_test_from_host = is_test_env and not is_in_docker
-
-        # Priority: 1. Test environment from host (use localhost), 2. Settings, 3. Default
-        if is_test_from_host:
-            # Running tests from host machine - always use localhost
-            default_url = 'http://localhost:8082'
-        elif hasattr(settings, 'TESTING') and settings.TESTING:
-            import os
-            if os.getenv('TEST_ENVIRONMENT') == 'staging':
-                default_url = 'http://localhost:8082'
-            elif os.getenv('TEST_ENVIRONMENT') == 'default':
-                default_url = 'http://localhost:8082'
-            elif 'pytest' in sys.modules or 'unittest' in sys.modules:
-                default_url = 'http://localhost:8082'
-            else:
-                default_url = 'http://compliance-service:8082'
-        else:
-            default_url = 'http://compliance-service:8082'
-
-        # Only use settings override if not running tests from host
-        if not is_test_from_host:
-            self.base_url = getattr(settings, 'COMPLIANCE_SERVICE_URL', default_url)
-        else:
-            self.base_url = default_url
+        # Always use the Django setting. The default matches docker-compose
+        # service names; Kubernetes overrides via values.staging.yaml.
+        # Previous logic tried to detect "host pytest" vs "Docker" via
+        # /.dockerenv and 'unittest' in sys.modules, but this broke in
+        # Kubernetes (containerd has no /.dockerenv, Django imports unittest
+        # at setup time) — causing the client to connect to localhost:8082
+        # instead of the real service URL on staging.
+        self.base_url = getattr(settings, 'COMPLIANCE_SERVICE_URL', 'http://compliance-service:8082')
         self.timeout = getattr(settings, 'COMPLIANCE_SERVICE_TIMEOUT', 1800)  # 30 minutes default
         if not self.base_url.endswith('/'):
             self.base_url = self.base_url.rstrip('/')

@@ -29,45 +29,14 @@ class DQServiceClient:
     """
 
     def __init__(self):
-        import os
-        import sys
-
-        # Determine if we're running tests from host machine (not in Docker)
-        is_in_docker = os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "true"
-        is_test_env = "pytest" in sys.modules or "unittest" in sys.modules
-        is_test_from_host = is_test_env and not is_in_docker
-
-        # Priority: 1. Host-only pytest → localhost, 2. Django settings (so
-        # @override_settings works in Docker where Compose sets DQ_SERVICE_URL),
-        # 3. process env, 4. defaults by context.
-        if is_test_from_host:
-            default_url = "http://localhost:8083"
-        else:
-            env_url = os.getenv("DQ_SERVICE_URL")
-            settings_url = getattr(settings, "DQ_SERVICE_URL", None)
-            # Prefer Django settings during pytest/unittest so @override_settings wins over
-            # process env (Docker Compose always sets DQ_SERVICE_URL).
-            if is_test_env and settings_url:
-                default_url = settings_url
-            elif env_url:
-                default_url = env_url
-            elif settings_url:
-                default_url = settings_url
-            else:
-                if is_in_docker and is_test_env:
-                    import socket
-
-                    try:
-                        socket.gethostbyname("dq-service-test")
-                        default_url = "http://dq-service-test:8083"
-                    except socket.gaierror:
-                        default_url = "http://localhost:8084"
-                elif is_in_docker:
-                    default_url = "http://dq-service:8083"
-                else:
-                    default_url = "http://dq-service:8083"
-
-        self.base_url = default_url
+        # Always use the Django setting. The default matches docker-compose
+        # service names; Kubernetes overrides via values.staging.yaml.
+        # Previous logic tried to detect "host pytest" vs "Docker" via
+        # /.dockerenv and 'unittest' in sys.modules, but this broke in
+        # Kubernetes (containerd has no /.dockerenv, Django imports unittest
+        # at setup time) — causing the client to connect to localhost:8083
+        # instead of the real service URL on staging.
+        self.base_url = getattr(settings, "DQ_SERVICE_URL", "http://dq-service:8083")
         self.timeout = getattr(settings, "DQ_SERVICE_TIMEOUT", 1800)  # 30 minutes default
         if not self.base_url.endswith("/"):
             self.base_url = self.base_url.rstrip("/")
