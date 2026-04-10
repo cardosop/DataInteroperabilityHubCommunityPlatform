@@ -115,6 +115,14 @@ test.describe('Feature: Data Quality', () => {
       }
 
       // -- Step 5: Navigate to run detail page and assert UI shows violations --
+      // Re-inject auth tokens before full-page navigation — the poll loop above
+      // takes 30-60s, and the in-memory auth state can expire or be cleared by
+      // React Query background refetches that trigger 401 → logout. Without this,
+      // page.goto() lands on /login and the test skips with "session expired".
+      await page.evaluate(
+        (t) => { if (t) localStorage.setItem('access_token', t); },
+        token
+      );
       await page.goto(`/dq/runs/${runId}`);
       await page.waitForLoadState('domcontentloaded');
       // Wait for the detail page to render (loading spinner → content)
