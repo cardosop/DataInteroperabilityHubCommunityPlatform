@@ -22,17 +22,10 @@ import { clearAuthStorage } from '../fixtures/auth';
 test.describe('Dimension: Rate limit (429)', () => {
   test.setTimeout(60000);
 
-  // Staging deliberately sets RATE_LIMIT_E2E_RELAX=true (helm/values.staging.yaml)
-  // to disable the auth burst limiter for the rest of the E2E suite — without
-  // it, parallel/sequential tests would constantly trip 429s on shared
-  // fixtures. This single test is the lone exception that NEEDS the limiter
-  // active, so it can only meaningfully run against environments where the
-  // limiter isn't relaxed (local docker-compose with standard rate config).
-  // Skip on staging rather than have a permanent red test.
-  test.skip(
-    !!process.env.PLAYWRIGHT_BASE_URL?.includes('staging.hub'),
-    'RATE_LIMIT_E2E_RELAX=true on staging — limiter intentionally disabled'
-  );
+  // Staging sets RATE_LIMIT_E2E_RELAX=true so the suite does not trip shared 429s.
+  // We still run this test there: invalid credentials must never return 200, and
+  // every response must be a client error. Off staging we require at least one 429
+  // so the burst limiter remains verified in docker-compose / CI where it is active.
 
   test('login burst limit (3/10s) triggers 429 by the 4th attempt', async ({ page }) => {
     await clearAuthStorage(page);
@@ -76,17 +69,22 @@ test.describe('Dimension: Rate limit (429)', () => {
     // We don't assert which attempt triggers it (3rd onward, depending on
     // exact timing) — only that the limiter engaged at all within the burst.
     const saw429 = responses.includes(429);
-
-    // Primary assertion: the limiter MUST engage within ATTEMPTS burst calls.
-    // If it doesn't, the burst limit is mis-configured or bypassed.
-    expect(
-      saw429,
-      `Expected auth burst limit (3/10s) to engage within ${ATTEMPTS} attempts. Statuses: ${responses.join(', ')}`
-    ).toBe(true);
-
-    // Secondary assertion: every non-429 response must be 4xx (never 200).
-    // Invalid credentials must never authenticate, even with rate limiting active.
     const sawSuccess = responses.includes(200);
     expect(sawSuccess).toBe(false);
+
+    const allClientErrors = responses.every((s) => s >= 400 && s < 500);
+    expect(
+      allClientErrors,
+      `Invalid-login burst must only yield 4xx. Statuses: ${responses.join(', ')}`
+    ).toBe(true);
+
+    const relaxedStaging =
+      !!process.env.PLAYWRIGHT_BASE_URL?.includes('staging.hub');
+    if (!relaxedStaging) {
+      expect(
+        saw429,
+        `Expected auth burst limit (3/10s) to engage within ${ATTEMPTS} attempts when limiter is active. Statuses: ${responses.join(', ')}`
+      ).toBe(true);
+    }
   });
 });

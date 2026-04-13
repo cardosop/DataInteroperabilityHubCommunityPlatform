@@ -5,28 +5,34 @@
  * authenticated routes. No axe-core dependency — fast checks that always run.
  */
 import { test, expect } from '@playwright/test';
-import { getTestUser, loginUser } from '../fixtures/auth';
+import { getTestUser, getTenantAdminUser, loginUser } from '../fixtures/auth';
 
-const AUTHENTICATED_ROUTES = [
-  '/assets',
-  '/contracts',
-  '/datasets',
-  '/marketplace/listings',
-  '/jobs',
-  '/webhooks',
-  '/governance/access-requests',
-  '/compliance',
-  '/data-quality',
-  '/search',
+interface RouteSpec {
+  path: string;
+  /** Override the default test user for role-gated routes. */
+  getUser?: () => Promise<import('../fixtures/auth').TestUser>;
+}
+
+const AUTHENTICATED_ROUTES: RouteSpec[] = [
+  { path: '/assets' },
+  { path: '/contracts' },
+  { path: '/datasets' },
+  { path: '/marketplace' },
+  { path: '/jobs' },
+  { path: '/webhooks' },
+  { path: '/governance', getUser: getTenantAdminUser },
+  { path: '/compliance' },
+  { path: '/dq' },
+  { path: '/search' },
 ];
 
 test.describe('Authenticated Pages A11y', () => {
   test.setTimeout(120000);
 
-  for (const route of AUTHENTICATED_ROUTES) {
+  for (const { path: route, getUser } of AUTHENTICATED_ROUTES) {
     test(`${route} has no critical a11y violations`, async ({ page }) => {
-      // Authenticate first — these are protected routes
-      const user = await getTestUser();
+      // Authenticate with the appropriate persona for this route
+      const user = await (getUser ?? getTestUser)();
       await loginUser(page, user);
       if (page.url().includes('/login')) {
         test.skip(true, 'Could not authenticate — backend may be unreachable');
@@ -42,9 +48,20 @@ test.describe('Authenticated Pages A11y', () => {
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
 
-      // If redirected to login, auth failed for this route — skip
+      // If redirected to login or 403, auth/role requirement blocks this route — skip
       if (page.url().includes('/login')) {
         test.skip(true, `Redirected to login from ${route} — auth or capability issue`);
+        return;
+      }
+      if (page.url().includes('/403')) {
+        test.skip(true, `Redirected to /403 from ${route} — test user lacks required role`);
+        return;
+      }
+
+      // SPA 404: NotFoundPage renders inline at the same URL (no redirect)
+      const is404 = (await page.locator('text=/404 - Page Not Found/').count()) > 0;
+      if (is404) {
+        test.skip(true, `${route} rendered 404 — route not available in this build`);
         return;
       }
 

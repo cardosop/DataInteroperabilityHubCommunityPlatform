@@ -380,8 +380,8 @@ export async function waitForAppMainReady(
           'Ensure loginUser completed successfully before calling this helper.'
       );
     }
-    // /403 and /unavailable are top-level routes without .app-main; page is ready when we reach them
-    if (url.includes('/403') || url.includes('/unavailable')) {
+    // /403, /unavailable, and /coming-soon are top-level routes without .app-main; page is ready when we reach them
+    if (url.includes('/403') || url.includes('/unavailable') || url.includes('/coming-soon')) {
       await safeWait(500);
       return;
     }
@@ -444,7 +444,12 @@ export async function waitForAppMainReady(
         'waitForAppMainReady: Redirected to login after auth safety timeout.'
       );
     }
-    if (currentUrl.includes('/403') || currentUrl.includes('/unavailable')) return;
+    if (
+      currentUrl.includes('/403') ||
+      currentUrl.includes('/unavailable') ||
+      currentUrl.includes('/coming-soon')
+    )
+      return;
     if ((await page.locator('.app-main').count()) > 0) return;
     if ((await page.locator('.unavailable-page').count()) > 0) return;
     // Still in auth loading state — keep waiting

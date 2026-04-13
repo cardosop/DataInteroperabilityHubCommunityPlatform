@@ -37,13 +37,12 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
       // Accept either the legacy URL (if redirect hasn't fired yet on a slow page) or
       // the canonical post-redirect URL.
       expect(url).toMatch(/\/(odps|contracts)/);
-      // And assert the contracts list rendered (proves the redirect target loaded, not
-      // a blank page or error).
-      const hasContent =
-        (await page.locator('.contract-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
-      expect(hasContent).toBe(true);
+      // ContractListPage shows ListPageSkeleton until the API returns — a snapshot right
+      // after domcontentloaded has no .contract-list-page / .empty-state / .error-display
+      // yet (root cause of staging false failures). Same race-safe wait as contracts list.
+      await assertListPageLoads(page, '.contract-list-page, .empty-state, .error-display', {
+        timeout: 60000,
+      });
     });
 
     test('ODPS upload page loads', async ({ page }) => {

@@ -8,7 +8,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { loginUser, getTestUser, getTenantAdminUser } from '../fixtures/auth';
+import { loginUser, getTenantAdminUser } from '../fixtures/auth';
 import { assertListPageLoads, waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Data Quality', () => {
@@ -253,9 +253,9 @@ test.describe('Feature: Data Quality', () => {
             s => statusText?.includes(s)
           )
         ).toBe(true);
-        // FAILED status indicates the DQ service encountered an error — skip
-        // (page still rendered correctly, which is what this test verifies).
-        test.skip(statusText?.includes('FAILED') ?? false, 'DQ run ended in FAILED status — DQ service error, but page rendered correctly');
+        // FAILED (or other non-results states): badge already proves the detail shell
+        // rendered — skipping here only hid real regressions in the report without
+        // adding coverage. Terminal FAILED is an acceptable outcome for this smoke.
       }
     });
   });

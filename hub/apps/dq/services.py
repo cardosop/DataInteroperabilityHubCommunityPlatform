@@ -252,9 +252,13 @@ class DQService(BaseService):
 
         try:
             from hub.apps.jobs.tasks import process_job
-            from django_rq import get_queue
+            from hub.apps.jobs.utils import (
+                get_queue,
+                get_queue_for_job_type,
+            )
 
-            queue = get_queue("default")
+            queue_name = get_queue_for_job_type(JobType.DQ_RUN)
+            queue = get_queue(queue_name)
             _job_id = str(job.id)
             _queue = queue
             _timeout = get_job_timeout(JobType.DQ_RUN)

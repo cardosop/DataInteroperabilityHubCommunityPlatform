@@ -22,18 +22,26 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
       await page.goto('/semantic');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
-      const onLogin = page.url().includes('/login');
-      const on403 = page.url().includes('/403');
-      const onSemantic = page.url().includes('/semantic');
+      const url = page.url();
+      const onLogin = url.includes('/login');
+      const on403 = url.includes('/403');
+      const onSemantic = url.includes('/semantic');
+      const onComingSoon = url.includes('/coming-soon');
+      const onUnavailable = url.includes('/unavailable');
       if (onLogin || on403) {
         test.skip(true, 'Auth/role gated — skipping success assertion');
         return;
       }
-      expect(onSemantic).toBe(true);
-      const hasContent =
-        (await page.locator('.semantic-page, .app-main').count()) > 0;
-      expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      // CapabilityRoute sends MVP builds to /coming-soon when semantic.sparql is off.
+      expect(onSemantic || onComingSoon || onUnavailable).toBe(true);
+      if (onSemantic) {
+        const hasContent =
+          (await page.locator('.semantic-page, .app-main').count()) > 0;
+        expect(hasContent).toBe(true);
+        await expect(page.locator('.error-display')).not.toBeVisible();
+      } else {
+        await expect(page.locator('.unavailable-page').first()).toBeVisible({ timeout: 15000 });
+      }
     });
 
     test('virtualization list loads for federated sources', async ({ page }) => {
@@ -61,10 +69,16 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
       await page.goto('/semantic');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
-      const on403 = page.url().includes('/403');
-      const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
-      const onLogin = page.url().includes('/login');
-      expect(on403 || onUnavailable || onLogin).toBe(true) /* acceptable states */;
+      const url = page.url();
+      const on403 = url.includes('/403');
+      const onUnavailableDom =
+        (await page.locator('.unavailable-page, .error-display').count()) > 0;
+      const onLogin = url.includes('/login');
+      const onUnavailableUrl = url.includes('/unavailable');
+      const onComingSoon = url.includes('/coming-soon');
+      expect(on403 || onUnavailableDom || onLogin || onUnavailableUrl || onComingSoon).toBe(
+        true
+      ) /* acceptable states */;
     });
 
     test('unauthenticated access redirects to login', async ({ page }) => {
@@ -82,10 +96,13 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
       await page.goto('/semantic');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(2000);
+      const su = page.url();
       expect(
-        page.url().includes('/semantic') ||
-          page.url().includes('/403') ||
-          page.url().includes('/login')
+        su.includes('/semantic') ||
+          su.includes('/403') ||
+          su.includes('/login') ||
+          su.includes('/unavailable') ||
+          su.includes('/coming-soon')
       ).toBe(true);
       await page.goto('/virtualization');
       await page.waitForLoadState('domcontentloaded');

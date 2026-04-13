@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
@@ -15,11 +15,21 @@ import { Button } from '../../../shared/components/Button';
 import './ContractListPage.css';
 
 const SPEC_TYPE_OPTIONS = ['', 'ODPS', 'ODCS', 'HUB'] as const;
+type SpecType = (typeof SPEC_TYPE_OPTIONS)[number];
+
+function isValidSpecType(value: string): value is SpecType {
+  return (SPEC_TYPE_OPTIONS as readonly string[]).includes(value);
+}
 
 export function ContractListPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
-  const [specTypeFilter, setSpecTypeFilter] = useState('');
+
+  // Read spec_type from URL query parameter (e.g. /contracts?spec_type=ODPS
+  // from the /odps backward-compatibility redirect). Fall back to '' (all).
+  const urlSpecType = searchParams.get('spec_type') ?? '';
+  const specTypeFilter = isValidSpecType(urlSpecType) ? urlSpecType : '';
 
   const { data, isLoading, error, refetch } = useContracts({
     page,
@@ -60,7 +70,8 @@ export function ContractListPage() {
               id="spec-type-filter"
               value={specTypeFilter}
               onChange={(e) => {
-                setSpecTypeFilter(e.target.value);
+                const value = e.target.value;
+                setSearchParams(value ? { spec_type: value } : {}, { replace: true });
                 setPage(1);
               }}
               className="contract-list-header__filter-select"

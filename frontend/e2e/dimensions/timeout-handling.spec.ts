@@ -9,7 +9,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { clearAuthStorage, getTestUser } from '../fixtures/auth';
+import { clearAuthStorage, getTestUser, gotoWithRetry } from '../fixtures/auth';
 import { loginAndNavigateToRoute } from '../fixtures/helpers';
 
 test.describe('Dimension: Timeout handling', () => {
@@ -25,7 +25,11 @@ test.describe('Dimension: Timeout handling', () => {
       }
       await route.continue();
     });
-    await page.goto('/login', { waitUntil: 'domcontentloaded' });
+    // Raw page.goto uses the global navigationTimeout (30s) with no retry. Staging
+    // occasionally exceeds that for the first HTML navigation under load; the failure
+    // in front-staging.log was TimeoutError on goto, not on the intentional login delay.
+    // gotoWithRetry matches auth-storage / loginUser and retries navigation timeouts.
+    await gotoWithRetry(page, '/login', { waitUntil: 'domcontentloaded' });
     const testUser = await getTestUser();
     await page.fill('input#email', testUser.email);
     await page.fill('input#password', testUser.password);

@@ -1,7 +1,8 @@
 /**
  * E2E Feature: Semantic
  * Per E2E_FULL_COVERAGE_PLAN and tasks 29.1.10. Routes: /semantic.
- * Assert route loads or shows /unavailable when capability-gated. Real backend only; no mocks.
+ * Assert route loads or shows /unavailable or MVP /coming-soon when capability-gated
+ * (CapabilityRoute uses /coming-soon when VITE_MVP_MODE=true). Real backend only; no mocks.
  */
 
 import { expect, test } from '@playwright/test';
@@ -23,7 +24,7 @@ test.describe('Feature: Semantic', () => {
         throw _err;
       }
       const url = page.url();
-      expect(url).toMatch(/\/semantic|\/login|\/403|\/unavailable/);
+      expect(url).toMatch(/\/semantic|\/login|\/403|\/unavailable|\/coming-soon/);
       if (url.includes('/semantic')) {
         await assertSuccessLoad(page, {
           successContentSelector: '[data-testid="semantic-page"], .semantic-page, .unavailable-page',
@@ -32,12 +33,16 @@ test.describe('Feature: Semantic', () => {
         await assertSuccessLoad(page, {
           successContentSelector: '[data-testid="unavailable-page"], .unavailable-page',
         });
+      } else if (url.includes('/coming-soon')) {
+        await assertSuccessLoad(page, {
+          successContentSelector: '[data-testid="coming-soon-page"], [data-testid="unavailable-page"], .unavailable-page',
+        });
       }
     });
   });
 
   test.describe('Edge', () => {
-    test('semantic shows /unavailable when capability-gated', async ({ page }) => {
+    test('semantic shows unavailable or MVP coming-soon when capability-gated', async ({ page }) => {
       await page.goto('/semantic');
       // Wait for the app to fully initialize (lazy bundles + auth check) rather than a fixed sleep.
       // waitForAppMainReady handles the visible/slowMo project's slower rendering correctly.
@@ -49,9 +54,10 @@ test.describe('Feature: Semantic', () => {
       const url = page.url();
       const onSemantic = url.includes('/semantic');
       const onUnavailable = url.includes('/unavailable');
+      const onComingSoon = url.includes('/coming-soon');
       const onLogin = url.includes('/login');
       const on403 = url.includes('/403');
-      expect(onSemantic || onUnavailable || onLogin || on403).toBe(true) /* acceptable states */;
+      expect(onSemantic || onUnavailable || onComingSoon || onLogin || on403).toBe(true) /* acceptable states */;
       if (onSemantic) {
         // Wait for the page content to become visible — lazy bundle may still be loading
         await page
@@ -65,6 +71,10 @@ test.describe('Feature: Semantic', () => {
       } else if (onUnavailable) {
         await assertSuccessLoad(page, {
           successContentSelector: '[data-testid="unavailable-page"], .unavailable-page',
+        });
+      } else if (onComingSoon) {
+        await assertSuccessLoad(page, {
+          successContentSelector: '[data-testid="coming-soon-page"], [data-testid="unavailable-page"], .unavailable-page',
         });
       }
     });
