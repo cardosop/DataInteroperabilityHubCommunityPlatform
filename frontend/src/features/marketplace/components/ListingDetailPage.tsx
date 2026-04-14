@@ -169,11 +169,11 @@ export function ListingDetailPage() {
                   </span>
                   {listing.metadata_json?.billing_cycle && (
                     <span className="listing-price-cycle">
-                      / {listing.metadata_json.billing_cycle === 'monthly' ? 'mo' : 'yr'}
+                      / {String(listing.metadata_json.billing_cycle) === 'monthly' ? 'mo' : 'yr'}
                     </span>
                   )}
                   {listing.metadata_json?.pricing_description && (
-                    <p className="listing-price-desc">{listing.metadata_json.pricing_description}</p>
+                    <p className="listing-price-desc">{String(listing.metadata_json.pricing_description)}</p>
                   )}
                 </>
               ) : (

@@ -213,7 +213,7 @@ export function ListingListPage() {
                 {listing.pricing_model === PricingModel.FREE || listing.pricing_model === PricingModel.FREE_AUTO_APPROVE
                   ? 'Free'
                   : listing.price_amount && Number(listing.price_amount) > 0
-                  ? `${listing.currency === 'EUR' ? '€' : listing.currency === 'GBP' ? '£' : '$'}${Number(listing.price_amount).toFixed(2)}${listing.metadata_json?.billing_cycle ? (listing.metadata_json.billing_cycle === 'monthly' ? '/mo' : '/yr') : ''}`
+                  ? `${listing.currency === 'EUR' ? '€' : listing.currency === 'GBP' ? '£' : '$'}${Number(listing.price_amount).toFixed(2)}${listing.metadata_json?.billing_cycle ? (String(listing.metadata_json.billing_cycle) === 'monthly' ? '/mo' : '/yr') : ''}`
                   : 'Request Access'}
               </span>
               {listing.domain && <span className="listing-domain">{listing.domain}</span>}
