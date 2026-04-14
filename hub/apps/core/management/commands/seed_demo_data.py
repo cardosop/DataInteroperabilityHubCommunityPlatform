@@ -448,7 +448,6 @@ class Command(BaseCommand):
                 tenant=dpo_tenant, asset=asset, job=job,
                 status=ComplianceRunStatus.SUCCEEDED if idx < 5 else ComplianceRunStatus.FAILED,
                 allowed_to_store=idx < 5,
-                scan_mode="FULL",
                 started_at=timezone.now() - timedelta(hours=idx),
                 completed_at=timezone.now() - timedelta(hours=idx, minutes=-10),
             )
