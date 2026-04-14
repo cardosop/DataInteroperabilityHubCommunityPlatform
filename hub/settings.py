@@ -1832,6 +1832,7 @@ COMPLIANCE_SERVICE_TIMEOUT = env.int("COMPLIANCE_SERVICE_TIMEOUT", default=1800)
 
 # Semantic Service Configuration
 SEMANTIC_SERVICE_URL = env("SEMANTIC_SERVICE_URL", default="http://semantic-service:8081")
+SEMANTIC_INTERNAL_API_KEY = env("SEMANTIC_INTERNAL_API_KEY", default="")
 # Test env: 60s - Fuseki/SPARQL can be slow (cold start, complex queries). Prod: 15s fail-fast.
 if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
     SEMANTIC_SERVICE_TIMEOUT = env.int(
