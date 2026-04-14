@@ -28,7 +28,12 @@ from .cli_client import (
     group_errors_by_category,
     interpret_validation_status,
 )
-from .models import ValidationStatus
+from .models import NormalizationStatus, ValidationStatus
+from .normalization_service import NormalizationService
+from .serializers import (
+    ContractValidateDraftResponseSerializer,
+    ContractValidateDraftSerializer,
+)
 
 
 class ContractValidationMixin:
@@ -40,41 +45,51 @@ class ContractValidationMixin:
 
     @extend_schema(
         summary="Validate contract draft without persisting",
-        description="Dry-run normalization of raw contract content. "
-        "Returns detection results and normalization errors/warnings "
-        "without creating a Contract record. Always returns 200.",
-        request="ContractValidateDraftSerializer",
+        description=(
+            "Dry-run normalization of raw contract content. "
+            "Returns detection results and normalization "
+            "errors/warnings without creating a Contract "
+            "record. Always returns 200."
+        ),
+        request=ContractValidateDraftSerializer,
         responses={
-            200: "ContractValidateDraftResponseSerializer",
-            400: OpenApiResponse(description="Invalid request (missing/bad fields)"),
-            401: OpenApiResponse(description="Authentication required"),
+            200: ContractValidateDraftResponseSerializer,
+            400: OpenApiResponse(
+                description="Invalid request (missing/bad fields)",
+            ),
+            401: OpenApiResponse(
+                description="Authentication required",
+            ),
         },
         tags=["Contracts"],
     )
-    @action(detail=False, methods=["post"], url_path="validate-draft")
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="validate-draft",
+    )
     def validate_draft(self, request):
         """
         Validate a contract draft without persisting (Phase 219.4).
 
         POST /contracts/validate-draft/
-        Body: { "original_raw": "<content>", "original_format": "JSON"|"YAML" }
+        Body: {"original_raw": "<content>",
+               "original_format": "JSON"|"YAML"}
 
-        Returns normalization results: spec type, version, status, errors, warnings.
+        Returns normalization results: spec type, version,
+        status, errors, warnings.
         """
         import logging
 
         logger = logging.getLogger(__name__)
 
-        from .normalization_service import NormalizationService
-        from .serializers import ContractValidateDraftSerializer
-
-        serializer = ContractValidateDraftSerializer(data=request.data)
+        serializer = ContractValidateDraftSerializer(
+            data=request.data,
+        )
         serializer.is_valid(raise_exception=True)
 
         raw = serializer.validated_data["original_raw"]
         fmt = serializer.validated_data["original_format"]
-
-        from .models import NormalizationStatus
 
         svc = NormalizationService()
         try:

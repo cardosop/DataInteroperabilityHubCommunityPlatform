@@ -56,6 +56,20 @@ MALFORMED_JSON = '{"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"'  # mi
 
 UNRECOGNIZED_SPEC = json.dumps({"some_random_key": "some_value", "version": 1})
 
+VALID_ODCS_YAML = """\
+apiVersion: odcs.io/v3.0.2
+kind: DataContract
+id: test-validate-draft-yaml
+name: Validate Draft YAML Test
+version: "1.0.0"
+schema:
+  fields:
+    - name: id
+      type: string
+    - name: name
+      type: string
+"""
+
 ENDPOINT = "/api/v1/contracts/validate-draft/"
 
 
@@ -160,3 +174,16 @@ class ValidateDraftEndpointTest(ContractsAPITestBase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_validate_draft_yaml_format(self):
+        """Valid ODCS YAML content normalizes successfully."""
+        response = self.client.post(
+            ENDPOINT,
+            {"original_raw": VALID_ODCS_YAML, "original_format": "YAML"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.data
+        self.assertEqual(data["detected_spec_type"], "ODCS")
+        self.assertIsInstance(data["normalization_errors"], list)
+        self.assertIsInstance(data["normalization_warnings"], list)
