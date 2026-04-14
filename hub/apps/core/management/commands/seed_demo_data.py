@@ -363,26 +363,49 @@ class Command(BaseCommand):
         self.stdout.write(f"  Activated {activated} assets")
 
         # ── Phase 5: Marketplace Listings (20) ───────────────────────
+        # Mix of pricing models: FREE_AUTO_APPROVE (free, instant access),
+        # REQUEST_APPROVAL with price (paid, provider must approve),
+        # FREE (free, provider must approve). Prices in metadata_json.
         active_assets = list(
             Asset.objects.filter(key__startswith="demo-", tenant=dpo_tenant, status=AssetStatus.ACTIVE)
             .order_by("key")[:20]
         )
-        pricing_cycle = ["FREE_AUTO_APPROVE", "REQUEST_APPROVAL"]
+        # Pricing configs: (model, price_amount, currency, description)
+        pricing_configs = [
+            ("FREE_AUTO_APPROVE", None, None, "Free instant access"),
+            ("REQUEST_APPROVAL", 49.99, "USD", "Monthly subscription"),
+            ("REQUEST_APPROVAL", 199.00, "USD", "Annual license"),
+            ("FREE_AUTO_APPROVE", None, None, "Free for evaluation"),
+            ("REQUEST_APPROVAL", 9.99, "USD", "Per-query pricing"),
+            ("REQUEST_APPROVAL", 499.00, "EUR", "Enterprise tier"),
+            ("FREE", None, None, "Free with manual approval"),
+            ("REQUEST_APPROVAL", 29.99, "USD", "Standard tier"),
+            ("REQUEST_APPROVAL", 149.00, "GBP", "Premium data feed"),
+            ("FREE_AUTO_APPROVE", None, None, "Open data — free access"),
+        ]
         for i, asset in enumerate(active_assets):
             if Listing.objects.filter(asset=asset, tenant=dpo_tenant).exists():
                 continue
-            pricing = pricing_cycle[i % 2]
+            config = pricing_configs[i % len(pricing_configs)]
+            pricing_model, price, currency, price_desc = config
             publish = i < 15
+            metadata = {
+                "title": asset.name,
+                "short_description": asset.description or "",
+                "long_description": f"Marketplace listing for {asset.name}. {price_desc}.",
+                "domain": asset.domain or "",
+                "tags": ["demo", asset.domain or "general"],
+            }
+            if price is not None:
+                metadata["price_amount"] = price
+                metadata["currency"] = currency
+                metadata["pricing_description"] = price_desc
+                metadata["billing_cycle"] = "monthly" if price < 100 else "annual"
             Listing.objects.create(
                 asset=asset,
                 tenant=dpo_tenant,
-                pricing_model=pricing,
-                metadata_json={
-                    "title": asset.name,
-                    "short_description": asset.description or "",
-                    "domain": asset.domain or "",
-                    "tags": ["demo", asset.domain or "general"],
-                },
+                pricing_model=pricing_model,
+                metadata_json=metadata,
                 status="PUBLISHED" if publish else "DRAFT",
                 published_at=timezone.now() if publish else None,
             )
