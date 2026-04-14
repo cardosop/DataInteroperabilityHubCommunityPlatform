@@ -23,13 +23,13 @@ class AccessRequestSerializer(serializers.ModelSerializer):
             'requires_approval', 'approval_workflow', 'current_approval_step',
             'approvers', 'approved_by', 'approved_at',
             'rejected_by', 'rejected_at', 'rejection_reason',
-            'expires_at', 'access_granted_at',
+            'expires_at', 'access_granted_at', 'order',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'tenant', 'requested_by', 'created_at', 'updated_at',
             'approved_by', 'approved_at', 'rejected_by', 'rejected_at',
-            'access_granted_at'
+            'access_granted_at', 'order'
         ]
 
 

@@ -203,6 +203,18 @@ export function OrderDetailPage() {
               <p>{order.rejection_reason}</p>
             </div>
           )}
+
+          {order.access_request_id && (
+            <div className="order-section">
+              <h2>Governance</h2>
+              <p>
+                This order has a linked governance access request.{' '}
+                <a href={`/governance/access-requests/${order.access_request_id}`}>
+                  View access request
+                </a>
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="order-detail-sidebar">

@@ -284,3 +284,47 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 code="INTERNAL_ERROR",
             )
+
+    @transaction.atomic
+    @action(detail=True, methods=["post"], url_path="revoke")
+    def revoke(self, request, id=None):
+        """
+        Revoke an approved access request.
+
+        POST /api/v1/governance/access-requests/{id}/revoke/
+        """
+        access_request = self.get_object()
+
+        if access_request.status != AccessRequestStatus.APPROVED:
+            from hub.apps.core.responses import api_error_response
+
+            return api_error_response(
+                message=f"Only approved requests can be revoked (status: {access_request.status})",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="BUSINESS_RULES_VALIDATION",
+                details={"status": access_request.status},
+            )
+
+        access_request.status = AccessRequestStatus.REVOKED
+        access_request.save(update_fields=["status", "updated_at"])
+
+        # Cascade to marketplace entitlement
+        if access_request.order:
+            from hub.apps.marketplace.entitlement_utils import revoke_entitlement_for_order
+
+            revoke_entitlement_for_order(
+                access_request.order, reason="Governance access revoked"
+            )
+
+        create_audit_event(
+            resource_type="ACCESS_REQUEST",
+            action="ACCESS_REQUEST_REVOKED",
+            actor_user=request.user,
+            tenant=access_request.tenant,
+            resource_id=str(access_request.id),
+            details={"revoked_by": str(request.user.id)},
+            request=request,
+        )
+
+        serializer = AccessRequestSerializer(access_request)
+        return Response(serializer.data, status=status.HTTP_200_OK)

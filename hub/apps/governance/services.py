@@ -273,6 +273,16 @@ class GovernanceService(BaseService, AccessEventPublisher):
             access_request.expires_at = timezone.now() + timedelta(days=90)
         access_request.save()
 
+        # Cascade to marketplace: fulfill the linked order + create entitlement
+        if access_request.order:
+            from hub.apps.marketplace.entitlement_utils import create_entitlement_for_order
+            from hub.apps.marketplace.models import OrderStatus
+            order = access_request.order
+            if order.status == OrderStatus.REQUESTED:
+                order.approve(approved_by_user=approver_user)
+                create_entitlement_for_order(order)
+                order.fulfill()
+
         return access_request
 
     def reject_access_request(
@@ -328,6 +338,13 @@ class GovernanceService(BaseService, AccessEventPublisher):
         access_request.rejected_at = timezone.now()
         access_request.rejection_reason = reason
         access_request.save()
+
+        # Cascade to marketplace: reject the linked order
+        if access_request.order:
+            from hub.apps.marketplace.models import OrderStatus
+            order = access_request.order
+            if order.status == OrderStatus.REQUESTED:
+                order.reject(rejected_by_user=rejector_user, reason=reason)
 
         return access_request
 

@@ -13,6 +13,7 @@ import {
   useAccessRequest,
   useApproveAccessRequest,
   useRejectAccessRequest,
+  useRevokeAccessRequest,
 } from '../hooks/useGovernance';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
@@ -31,11 +32,23 @@ export function AccessRequestDetailPage() {
   const { data: accessRequest, isLoading, error, refetch } = useAccessRequest(id || null);
   const approveMutation = useApproveAccessRequest();
   const rejectMutation = useRejectAccessRequest();
+  const revokeMutation = useRevokeAccessRequest();
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
 
   const isAdmin = canApproveOrReject(user?.roles);
   const isPending = accessRequest?.status === AccessRequestStatus.PENDING;
+  const isApproved = accessRequest?.status === AccessRequestStatus.APPROVED;
+
+  const handleRevoke = async () => {
+    if (!id) return;
+    try {
+      await revokeMutation.mutateAsync(id);
+      refetch();
+    } catch {
+      // Error shown by mutation
+    }
+  };
 
   const handleApprove = async () => {
     if (!id) return;
@@ -151,6 +164,13 @@ export function AccessRequestDetailPage() {
             )}
           </div>
 
+          {accessRequest.order && (
+            <div className="metadata-item">
+              <label>Marketplace Order</label>
+              <a href={`/marketplace/orders/${accessRequest.order}`}>View order</a>
+            </div>
+          )}
+
           {isAdmin && isPending && (
             <div className="governance-detail-actions">
               <Button
@@ -167,9 +187,20 @@ export function AccessRequestDetailPage() {
               </Button>
             </div>
           )}
+
+          {isAdmin && isApproved && (
+            <div className="governance-detail-actions">
+              <Button
+ variant="danger"
+ onClick={handleRevoke}
+ loading={revokeMutation.isPending}>
+                Revoke Access
+              </Button>
+            </div>
+          )}
         </div>
 
-        {!!(approveMutation.error || rejectMutation.error) && (
+        {!!(approveMutation.error || rejectMutation.error || revokeMutation.error) && (
           <div className="error-display" role="alert">
             {approveMutation.error instanceof Error
               ? approveMutation.error.message

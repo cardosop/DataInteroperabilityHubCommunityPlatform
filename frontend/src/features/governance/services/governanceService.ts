@@ -81,4 +81,14 @@ export const governanceService = {
       .post<AccessRequest>(`${GOVERNANCE_ACCESS_REQUESTS_PATH}/${id}/reject/`, { reason });
     return response.data;
   },
+
+  /**
+   * Revoke an approved access request (and its marketplace entitlement)
+   */
+  async revoke(id: string): Promise<AccessRequest> {
+    const response = await apiClient
+      .getClient()
+      .post<AccessRequest>(`${GOVERNANCE_ACCESS_REQUESTS_PATH}/${id}/revoke/`, {});
+    return response.data;
+  },
 };

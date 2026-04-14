@@ -2,14 +2,19 @@
 Management command to revoke expired access requests.
 
 Transitions APPROVED access requests past their expires_at to REVOKED,
-and creates audit events for each revocation.
+creates audit events for each revocation, and revokes linked marketplace
+entitlements.
 """
+import logging
+
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.governance.models import AccessRequest, AccessRequestStatus
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -32,10 +37,23 @@ class Command(BaseCommand):
         revoked = 0
         with transaction.atomic():
             for request in expired_requests.select_for_update().select_related(
-                "tenant", "requested_by"
+                "tenant", "requested_by", "order"
             ):
                 request.status = AccessRequestStatus.REVOKED
                 request.save(update_fields=["status", "updated_at"])
+
+                # Cascade to marketplace entitlement
+                if request.order:
+                    try:
+                        from hub.apps.marketplace.entitlement_utils import revoke_entitlement_for_order
+                        revoke_entitlement_for_order(
+                            request.order, reason="Governance access expired"
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Failed to revoke entitlement for order %s",
+                            request.order_id,
+                        )
 
                 create_audit_event(
                     resource_type="ACCESS_REQUEST",

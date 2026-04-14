@@ -114,6 +114,7 @@ export interface Order {
   listing_title?: string;
   asset_id?: string;
   rejection_reason?: string;
+  access_request_id?: string | null;
 }
 
 export interface OrderCreateRequest {

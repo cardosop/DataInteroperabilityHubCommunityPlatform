@@ -33,6 +33,7 @@ export interface AccessRequest {
   rejection_reason: string | null;
   expires_at: string | null;
   access_granted_at: string | null;
+  order: string | null;
   created_at: string;
   updated_at: string;
 }

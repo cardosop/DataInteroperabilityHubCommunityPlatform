@@ -461,6 +461,14 @@ class AccessRequest(models.Model):
         blank=True,
         help_text="When access was granted"
     )
+    order = models.ForeignKey(
+        "marketplace.Order",
+        on_delete=models.SET_NULL,
+        related_name="governance_access_requests",
+        null=True,
+        blank=True,
+        help_text="Marketplace order that triggered this access request",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -474,6 +482,7 @@ class AccessRequest(models.Model):
             models.Index(fields=["tenant", "file"]),
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["expires_at"]),
+            models.Index(fields=["order"]),
         ]
     
     def __str__(self):

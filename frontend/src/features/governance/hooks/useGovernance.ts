@@ -68,3 +68,18 @@ export function useRejectAccessRequest() {
     },
   });
 }
+
+export function useRevokeAccessRequest() {
+  const queryClient = useQueryClient();
+  return useMutationWithNotification({
+    mutationFn: (id: string) => governanceService.revoke(id),
+    successMessage: 'Access revoked',
+    errorMessage: 'Failed to revoke access',
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['governance', 'access-requests'] });
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'access-requests', 'detail', data.id],
+      });
+    },
+  });
+}
