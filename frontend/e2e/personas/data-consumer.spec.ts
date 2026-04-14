@@ -35,19 +35,26 @@ test.describe('Persona RBAC: Data Consumer', () => {
     expect(page.url()).toContain('/marketplace');
     await expect(page.locator('.app-main')).toBeVisible();
     await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    // Assert actual marketplace content rendered (not just app shell)
+    const hasContent = page.locator(
+      '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state',
+    );
+    await expect(hasContent.first()).toBeVisible({ timeout: 30000 });
   });
 
   test('DC cannot access /admin', async ({ page }) => {
     await loginAsPersona(page, getConsumerTestUser);
     await page.goto('/admin');
     await page.waitForLoadState('domcontentloaded');
-    await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/admin' });
-    const path = new URL(page.url()).pathname;
+    const resolvedPath = await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/admin' });
+    if (resolvedPath.includes('/login')) {
+      test.skip(true, 'Auth session expired — not an RBAC result');
+      return;
+    }
     expect(
-      path.includes('/403') ||
-        path.includes('/login') ||
-        path.startsWith('/coming-soon') ||
-        path.startsWith('/unavailable')
+      resolvedPath.includes('/403') ||
+        resolvedPath.startsWith('/coming-soon') ||
+        resolvedPath.startsWith('/unavailable')
     ).toBe(true);
   });
 });

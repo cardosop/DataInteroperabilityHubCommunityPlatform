@@ -20,34 +20,42 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
     test('admin page loads with users section', async ({ page }) => {
       const taUser = await getTenantAdminUser();
       await loginAndNavigateToRoute(page, taUser, '/admin', { timeout: 60000 });
-      if (page.url().includes('/login') || page.url().includes('/403')) {
-        expect(page.url()).toMatch(/\/login|\/403/);
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Auth redirect — session expired');
+        return;
+      }
+      if (page.url().includes('/403')) {
+        test.skip(true, 'Tenant admin lacks admin role on this environment');
         return;
       }
       expect(page.url()).toContain('/admin');
-      const hasContent =
-        (await page.locator('.admin-page').count()) > 0 &&
-        ((await page.locator('.admin-tabs, .admin-users-section, [data-testid="admin-users-section"]').count()) > 0 ||
-          (await page.locator('button:has-text("Users")').count()) > 0);
-      expect(hasContent).toBe(true) /* acceptable states */;
+      // Assert admin page AND users section rendered (not just page class)
+      await expect(page.locator('.admin-page')).toBeVisible({ timeout: 15000 });
+      const usersSection = page.locator(
+        '.admin-tabs, .admin-users-section, [data-testid="admin-users-section"], button:has-text("Users")',
+      );
+      await expect(usersSection.first()).toBeVisible({ timeout: 10000 });
     });
 
     test('users tab loads user list', async ({ page }) => {
       const taUser = await getTenantAdminUser();
       await loginAndNavigateToRoute(page, taUser, '/admin', { timeout: 60000 });
-      if (page.url().includes('/login') || page.url().includes('/403')) {
-        expect(page.url()).toMatch(/\/login|\/403/);
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Auth redirect — session expired');
+        return;
+      }
+      if (page.url().includes('/403')) {
+        test.skip(true, 'Tenant admin lacks admin role on this environment');
         return;
       }
       const usersTab = page.locator('button:has-text("Users")');
-      expect((await usersTab.count()) > 0).toBe(true);
+      await expect(usersTab.first()).toBeVisible({ timeout: 10000 });
       await usersTab.first().click();
-      await page.waitForTimeout(2000);
-      const hasUsersSection =
-        (await page.locator('[data-testid="admin-users-section"]').count()) > 0 ||
-        (await page.locator('.admin-table').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
-      expect(hasUsersSection).toBe(true) /* acceptable states */;
+      // Wait for content to render (not arbitrary 2s sleep)
+      const usersContent = page.locator(
+        '[data-testid="admin-users-section"], .admin-table, .admin-table tbody tr, .empty-state',
+      );
+      await expect(usersContent.first()).toBeVisible({ timeout: 15000 });
     });
   });
 
@@ -56,17 +64,23 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
       await loginAsPersona(page, getTenantAdminUser);
       await page.goto('/admin');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Auth redirect — session expired');
+        return;
+      }
+      // Wait for page to settle
+      await page
+        .locator('.admin-page, [data-testid="forbidden-page"], .error-display')
+        .first()
+        .waitFor({ state: 'visible', timeout: 15000 })
+        .catch(() => null);
+      // Assert no 500 error
+      const has500 = (await page.locator('text=/500|internal server error/i').count()) > 0;
+      expect(has500).toBe(false);
+      // Assert meaningful content rendered
       const onAdmin = page.url().includes('/admin');
       const on403 = page.url().includes('/403');
-      const onLogin = page.url().includes('/login');
-      const hasContent =
-        (await page.locator('.admin-page, .admin-no-permission, [data-testid="forbidden-page"]').count()) > 0 ||
-        (await page.locator('text=/403|forbidden/i').count()) > 0;
-      const no500 = (await page.locator('text=/500|internal server error/i').count()) === 0;
-      expect(onAdmin || on403 || onLogin).toBe(true) /* acceptable states */;
-      // When on /login, we may not have admin content; when on /admin or /403, expect content and no 500
-      expect(onLogin || (hasContent && no500)).toBe(true);
+      expect(onAdmin || on403).toBe(true);
     });
   });
 

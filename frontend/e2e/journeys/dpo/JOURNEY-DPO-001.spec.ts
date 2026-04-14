@@ -399,6 +399,10 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       // Ensure activation prerequisites (ACTIVE contract with valid validation/normalization)
       const prereq = await ensureAssetActivationPrerequisites(page, assetId);
       if (!prereq.success) {
+        test.info().annotations.push({
+          type: 'activation-skipped',
+          description: `Prerequisites failed: ${prereq.error}`,
+        });
         test.skip(
           true,
           `Activation prerequisites failed: ${prereq.error}. ` +
@@ -425,6 +429,10 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       } catch {
         // D86: Button not visible is a real precondition failure — skip (not silent pass).
         // This surfaces as YELLOW in CI so the team investigates activation prerequisites.
+        test.info().annotations.push({
+          type: 'activation-skipped',
+          description: 'Activate button not visible after 15s',
+        });
         test.skip(
           true,
           'Activate Asset button not visible after 15s — prerequisites (contracts) may be unmet. ' +
@@ -444,6 +452,10 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
         activateResp = await responsePromise;
       } catch (activateTimeoutErr) {
         // D86: Activation API timeout is a real infrastructure failure — skip (not silent pass).
+        test.info().annotations.push({
+          type: 'activation-skipped',
+          description: `API timeout: ${String(activateTimeoutErr).slice(0, 100)}`,
+        });
         test.skip(
           true,
           `Activate API timed out (60s): ${String(activateTimeoutErr).slice(0, 200)}. ` +
@@ -462,6 +474,10 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       if (activateResp.status() >= 500) {
         const body = await activateResp.text().catch(() => '');
         // 5xx: backend crashed — skip (not pass), surface in CI as yellow.
+        test.info().annotations.push({
+          type: 'activation-skipped',
+          description: `Backend ${activateResp.status()} error`,
+        });
         test.skip(
           true,
           `Asset activation returned ${activateResp.status()}: ${body.slice(0, 200)}. Backend error.`

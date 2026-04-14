@@ -52,13 +52,15 @@ test.describe('Persona RBAC: Tenant Admin', () => {
     await loginAsPersona(page, getTenantAdminUser);
     await page.goto('/audit');
     await page.waitForLoadState('domcontentloaded');
-    await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/audit' });
-    const path = new URL(page.url()).pathname;
+    const resolvedPath = await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/audit' });
+    if (resolvedPath.includes('/login')) {
+      test.skip(true, 'Auth session expired — not an RBAC result');
+      return;
+    }
     expect(
-      path.includes('/403') ||
-        path.includes('/login') ||
-        path.startsWith('/coming-soon') ||
-        path.startsWith('/unavailable')
+      resolvedPath.includes('/403') ||
+        resolvedPath.startsWith('/coming-soon') ||
+        resolvedPath.startsWith('/unavailable')
     ).toBe(true);
   });
 });

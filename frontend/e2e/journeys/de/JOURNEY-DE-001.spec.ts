@@ -20,7 +20,7 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
     test('contracts list loads', async ({ page }) => {
       // storageState from chromium-mvp already provides auth — go directly.
       await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
-      await assertListPageLoads(page, '.contract-list-page, .empty-state, .error-display', { timeout: 60000 });
+      await assertListPageLoads(page, '.contract-list-page, .empty-state', { timeout: 60000 });
     });
 
     test('ODPS list loads', async ({ page }) => {
@@ -40,7 +40,7 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
       // ContractListPage shows ListPageSkeleton until the API returns — a snapshot right
       // after domcontentloaded has no .contract-list-page / .empty-state / .error-display
       // yet (root cause of staging false failures). Same race-safe wait as contracts list.
-      await assertListPageLoads(page, '.contract-list-page, .empty-state, .error-display', {
+      await assertListPageLoads(page, '.contract-list-page, .empty-state', {
         timeout: 60000,
       });
     });
@@ -76,14 +76,15 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
-      const url = page.url();
-      const onLinkOdps = url.includes('/link-odps');
-      const onLogin = url.includes('/login');
-      const on403 = url.includes('/403');
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Auth redirect — session expired');
+        return;
+      }
+      const on403 = page.url().includes('/403');
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('text=/not found|failed|403|forbidden/i').count()) > 0;
-      expect(onLinkOdps || hasError || onLogin || on403).toBe(true) /* acceptable states */;
+      expect(on403 || hasError).toBe(true);
     });
   });
 });

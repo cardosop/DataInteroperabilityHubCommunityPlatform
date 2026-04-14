@@ -52,14 +52,15 @@ test.describe('Persona RBAC: Compliance Officer', () => {
     // No need for loginAsPersona — saves an API login call and avoids rate limits.
     await page.goto('/audit');
     await page.waitForLoadState('domcontentloaded');
-    await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/audit' });
-    const url = page.url();
-    const path = new URL(url).pathname;
+    const resolvedPath = await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/audit' });
+    if (resolvedPath.includes('/login')) {
+      test.skip(true, 'Auth session expired — not an RBAC result');
+      return;
+    }
     expect(
-      path.includes('/403') ||
-        path.includes('/login') ||
-        path.startsWith('/coming-soon') ||
-        path.startsWith('/unavailable')
+      resolvedPath.includes('/403') ||
+        resolvedPath.startsWith('/coming-soon') ||
+        resolvedPath.startsWith('/unavailable')
     ).toBe(true);
   });
 });

@@ -18,7 +18,7 @@ test.describe('Dimension: Concurrent operations', () => {
 
   test('double navigation to assets list does not corrupt page state', async ({ page }) => {
     await page.goto('/assets', { waitUntil: 'domcontentloaded' });
-    await assertListPageLoads(page, '.asset-list-page, .empty-state, .error-display', { timeout: 30000 });
+    await assertListPageLoads(page, '.asset-list-page, .empty-state', { timeout: 30000 });
     // Second goto reloads the SPA from scratch — auth must re-init and the
     // asset list must re-render. The previous fixed waitForTimeout(2000) was
     // racy on cold staging workers (auth refresh + lazy chunk + list query

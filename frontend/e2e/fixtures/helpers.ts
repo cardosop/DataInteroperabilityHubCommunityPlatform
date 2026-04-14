@@ -65,10 +65,18 @@ export async function hasLoginPrompt(page: Page): Promise<boolean> {
  * against any future regression that re-introduces blocking init.
  * DO NOT lower the budget.
  */
+/**
+ * Returns the resolved pathname so callers can distinguish RBAC denial
+ * (/403, /coming-soon, /unavailable) from auth expiry (/login).
+ *
+ * Phase 220 audit: `/login` redirect means the session expired, NOT
+ * that the role was denied. Callers should `test.skip()` on `/login`
+ * to avoid false positives where auth expiry is counted as RBAC working.
+ */
 export async function waitForRoleGuardResolved(
   page: Page,
   options: { forbiddenPathPrefix: string; timeout?: number }
-): Promise<void> {
+): Promise<string> {
   const { forbiddenPathPrefix, timeout = 25000 } = options;
   await page.waitForFunction(
     (prefix: string) => {
@@ -83,6 +91,7 @@ export async function waitForRoleGuardResolved(
     forbiddenPathPrefix,
     { timeout }
   );
+  return new URL(page.url()).pathname;
 }
 
 /**

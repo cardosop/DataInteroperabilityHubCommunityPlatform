@@ -154,7 +154,10 @@ test.describe('Failure Scenarios (real tests)', () => {
     // 65s covers the worst-case auth init including the 60s auth-store safety timeout
     // (INIT_MAX_MS) which clears auth state and redirects to /login.
     await page.waitForSelector('.app-main', { timeout: 65000 }).catch(() => null);
-    if (page.url().includes('/login')) return;
+    if (page.url().includes('/login')) {
+      test.skip(true, 'Auth session expired — redirected to /login before test could run');
+      return;
+    }
 
     // D86: if .app-main never appeared (auth init timed out without redirect), the contract
     // editor component never mounted and no API call was made.  Skip rather than false-fail.

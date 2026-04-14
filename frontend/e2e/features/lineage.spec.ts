@@ -25,7 +25,7 @@ test.describe('Feature: Lineage', () => {
       try {
         await assertListPageLoads(
           page,
-          '[data-testid="contract-list-page"], .contract-list-page, .empty-state, .error-display',
+          '[data-testid="contract-list-page"], .contract-list-page, .empty-state',
           { timeout: 60000 },
         );
       } catch {

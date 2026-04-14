@@ -22,10 +22,20 @@ test.describe('Feature: Search', () => {
     test('search with empty query loads page', async ({ page }) => {
       await page.goto('/search');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000);
-      const onLogin = page.url().includes('/login');
-      const onSearch = page.url().includes('/search');
-      expect(onLogin || onSearch).toBe(true) /* acceptable states */;
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Auth redirect — session expired');
+        return;
+      }
+      expect(page.url()).toContain('/search');
+      // Assert page rendered meaningful content, not just a URL match
+      await page
+        .locator('.search-page, .search-results, .empty-state, h1, input[type="search"], input[placeholder*="search" i]')
+        .first()
+        .waitFor({ state: 'visible', timeout: 15000 })
+        .catch(() => null);
+      const hasContent =
+        (await page.locator('.search-page, .search-results, .empty-state, h1, input[type="search"], input[placeholder*="search" i]').count()) > 0;
+      expect(hasContent).toBe(true);
     });
   });
 });

@@ -45,7 +45,9 @@ test.describe('Feature: Webhooks', () => {
       // Either the API responded (deterministic) or the SPA redirected to login
       // before the request fired (also acceptable). `.catch(() => null)` keeps
       // the test resilient to the redirect path.
-      await detailApiDone.catch(() => null);
+      await detailApiDone.catch((err) =>
+        console.log(`Webhook detail API wait: ${(err as Error).message?.slice(0, 100)}`)
+      );
 
       // After the query settles, React renders either the ErrorDisplay (4xx/5xx)
       // or stays on the skeleton (200 + null body). Wait for one of the terminal
@@ -54,13 +56,18 @@ test.describe('Feature: Webhooks', () => {
         .locator('.error-display, .webhook-detail-page')
         .first()
         .waitFor({ state: 'visible', timeout: 15_000 })
-        .catch(() => null);
+        .catch((err) =>
+          console.log(`Webhook detail UI wait: ${(err as Error).message?.slice(0, 100)}`)
+        );
 
-      const onLogin = page.url().includes('/login');
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Auth redirect — session expired before webhook detail loaded');
+        return;
+      }
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('text=/not found|404/i').count()) > 0;
-      expect(onLogin || hasError).toBe(true) /* acceptable states */;
+      expect(hasError).toBe(true);
     });
   });
 });

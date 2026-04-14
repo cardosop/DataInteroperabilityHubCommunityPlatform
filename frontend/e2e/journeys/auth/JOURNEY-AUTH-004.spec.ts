@@ -27,6 +27,9 @@ test.describe('JOURNEY-AUTH-004: Unauthenticated User Accesses Public Resources'
       await page.goto('/public', { waitUntil: 'domcontentloaded' });
       expect(page.url()).toContain('/public');
       expect(page.url()).not.toContain('/login');
+      // Assert page rendered meaningful content, not just URL check
+      const hasContent = page.locator('.public-page, .public-resources, h1');
+      await expect(hasContent.first()).toBeVisible({ timeout: 10000 });
     });
 
     test('unauthenticated access to protected route redirects to login', async ({ page }) => {
@@ -47,9 +50,12 @@ test.describe('JOURNEY-AUTH-004: Unauthenticated User Accesses Public Resources'
     test('public page shows OpenAPI link', async ({ page }) => {
       await clearAuthStorage(page);
       await page.goto('/public', { waitUntil: 'domcontentloaded' });
-      await expect(page.locator('a').filter({ hasText: 'OpenAPI' }).first()).toBeVisible({
-        timeout: 10_000,
-      });
+      const openApiLink = page.locator('a').filter({ hasText: 'OpenAPI' }).first();
+      await expect(openApiLink).toBeVisible({ timeout: 10_000 });
+      // Validate link actually points to API docs
+      const href = await openApiLink.getAttribute('href');
+      expect(href).toBeTruthy();
+      expect(href).toMatch(/openapi|swagger|api-docs/i);
     });
 
     test('unauthenticated user visiting protected route sees no authenticated content', async ({

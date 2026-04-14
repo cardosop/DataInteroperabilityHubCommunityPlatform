@@ -46,7 +46,10 @@ test.describe('Feature: Audit', () => {
         contentSelector: '.audit-log-page, .audit-page, .empty-state, .error-display, h1',
         acceptRedirectToLogin: true,
       });
-      if (page.url().includes('/login')) return;
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Auth session expired before RBAC check — not a valid RBAC result');
+        return;
+      }
 
       const url = page.url();
       const on403 = url.includes('/403');
