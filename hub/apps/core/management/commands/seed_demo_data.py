@@ -453,17 +453,21 @@ class Command(BaseCommand):
             )
 
         # ── Phase 9: Webhooks (5) ────────────────────────────────────
+        # Webhook model validates event_types in save() → full_clean().
+        # Use filter + create pattern to avoid get_or_create validation issues.
         event_configs = [
-            ("Demo Asset Events", ["asset.created", "asset.activated", "asset.retired"]),
-            ("Demo Contract Events", ["contract.created", "contract.validated"]),
-            ("Demo Marketplace Events", ["listing.published", "order.created"]),
-            ("Demo DQ Events", ["dq.run.completed", "dq.run.failed"]),
-            ("Demo Compliance Events", ["compliance.run.completed"]),
+            ("Demo Asset Events", ["asset.created", "asset.updated"]),
+            ("Demo Contract Events", ["contract.created", "contract.updated"]),
+            ("Demo Marketplace Events", ["marketplace.listing.published", "marketplace.order.created"]),
+            ("Demo DQ Events", ["dq.run.succeeded", "dq.run.failed"]),
+            ("Demo Compliance Events", ["compliance.run.succeeded"]),
         ]
         for wh_name, events in event_configs:
-            Webhook.objects.get_or_create(
-                name=wh_name, tenant=dpo_tenant,
-                defaults=dict(
+            if Webhook.objects.filter(name=wh_name, tenant=dpo_tenant).exists():
+                continue
+            try:
+                Webhook.objects.create(
+                    name=wh_name, tenant=dpo_tenant,
                     url=f"https://webhook.site/{uuid.uuid4().hex[:12]}",
                     secret=uuid.uuid4().hex,
                     event_types=events,
@@ -471,8 +475,9 @@ class Command(BaseCommand):
                     max_retries=3,
                     retry_intervals=[1, 5, 30],
                     created_by=dpo_user,
-                ),
-            )
+                )
+            except Exception as e:
+                self.stderr.write(f"  Webhook '{wh_name}' failed: {e}")
 
         # ── Summary ──────────────────────────────────────────────────
         total_assets = Asset.objects.filter(key__startswith="demo-", tenant=dpo_tenant).count()
