@@ -384,8 +384,7 @@ class Command(BaseCommand):
             ("FREE_AUTO_APPROVE", None, None, "Open data — free access"),
         ]
         for i, asset in enumerate(active_assets):
-            if Listing.objects.filter(asset=asset, tenant=dpo_tenant).exists():
-                continue
+            existing = Listing.objects.filter(asset=asset, tenant=dpo_tenant).first()
             config = pricing_configs[i % len(pricing_configs)]
             pricing_model, price, currency, price_desc = config
             publish = i < 15
@@ -401,15 +400,29 @@ class Command(BaseCommand):
                 metadata["currency"] = currency
                 metadata["pricing_description"] = price_desc
                 metadata["billing_cycle"] = "monthly" if price < 100 else "annual"
-            Listing.objects.create(
-                asset=asset,
-                tenant=dpo_tenant,
-                pricing_model=pricing_model,
-                metadata_json=metadata,
-                status="PUBLISHED" if publish else "DRAFT",
-                published_at=timezone.now() if publish else None,
-            )
-            stats["listings"] += 1
+
+            if existing:
+                # Update existing listing with pricing data (idempotent fix)
+                changed = False
+                if existing.pricing_model != pricing_model:
+                    existing.pricing_model = pricing_model
+                    changed = True
+                if existing.metadata_json != metadata:
+                    existing.metadata_json = metadata
+                    changed = True
+                if changed:
+                    existing.save(update_fields=["pricing_model", "metadata_json"])
+                    self.stdout.write(f"  Updated listing: {asset.name}")
+            else:
+                Listing.objects.create(
+                    asset=asset,
+                    tenant=dpo_tenant,
+                    pricing_model=pricing_model,
+                    metadata_json=metadata,
+                    status="PUBLISHED" if publish else "DRAFT",
+                    published_at=timezone.now() if publish else None,
+                )
+                stats["listings"] += 1
 
         # ── Phase 6: Consumer Orders + Entitlements (10) ─────────────
         free_published = Listing.objects.filter(
