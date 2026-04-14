@@ -4,8 +4,11 @@ DQ Service
 Service layer for DQ run operations.
 All create/update/delete paths call DQBusinessRules before mutation.
 """
+import logging
 from typing import Dict, Any, Optional, List
 from django.db import transaction
+
+logger = logging.getLogger(__name__)
 
 from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
 from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
@@ -270,7 +273,14 @@ class DQService(BaseService):
                     timeout=_timeout,
                 )
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Failed to enqueue DQ run job %s (run %s): %s. "
+                "Ensure Redis and the RQ worker are running.",
+                job.id,
+                dq_run.id,
+                e,
+                exc_info=True,
+            )
 
         return dq_run

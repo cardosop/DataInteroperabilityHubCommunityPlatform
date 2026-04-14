@@ -31,7 +31,7 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
       await page.waitForLoadState('domcontentloaded');
       const url = page.url();
       if (url.includes('/login')) {
-        expect(url).toContain('/login');
+        test.skip(true, 'Redirected to /login — auth token expired or backend unreachable');
         return;
       }
       // Accept either the legacy URL (if redirect hasn't fired yet on a slow page) or
@@ -51,7 +51,7 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
       await page.waitForLoadState('domcontentloaded');
       const url = page.url();
       if (url.includes('/login')) {
-        expect(url).toContain('/login');
+        test.skip(true, 'Redirected to /login — auth token expired or backend unreachable');
         return;
       }
       expect(url).toMatch(/\/(odps\/upload|contracts\/create)/);
