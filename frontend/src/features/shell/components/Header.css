@@ -31,6 +31,13 @@
   color: var(--color-primary-600);
 }
 
+.header-logo {
+  height: 28px;
+  width: auto;
+  margin-right: var(--spacing-sm, 0.5rem);
+  flex-shrink: 0;
+}
+
 .app-title {
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);

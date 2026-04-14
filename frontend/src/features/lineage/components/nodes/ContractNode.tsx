@@ -38,7 +38,8 @@ function ContractNodeInner({ data, selected }: NodeProps) {
         background: 'var(--color-background-primary, white)',
         border: `2px solid ${selected ? 'var(--color-primary, #0A1F44)' : color}`,
         borderRadius: 'var(--border-radius-md, 8px)',
-        minWidth: 140,
+        width: 160,
+        minHeight: 70,
         textAlign: 'center',
         boxShadow: selected ? 'var(--shadow-md)' : 'var(--shadow-sm)',
       }}

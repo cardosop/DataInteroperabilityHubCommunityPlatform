@@ -104,6 +104,7 @@ export function Header() {
       <div className="header-content">
         <div className="header-left">
           <Link to="/" className="app-title-link" aria-label={`${APP_NAME} — go to home`}>
+            <img src="/meshant-logo.png" alt="" className="header-logo" aria-hidden="true" />
             <h1 className="app-title">{APP_NAME}</h1>
           </Link>
         </div>

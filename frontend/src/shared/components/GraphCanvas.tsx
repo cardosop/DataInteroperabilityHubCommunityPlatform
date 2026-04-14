@@ -78,7 +78,6 @@ function GraphCanvasInner({
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodeClick={onNodeClick}
-        fitView
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={16} size={1} />
