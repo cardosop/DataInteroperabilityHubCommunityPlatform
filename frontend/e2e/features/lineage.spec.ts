@@ -36,8 +36,9 @@ test.describe('Feature: Lineage', () => {
         throw new Error('Contract list did not load');
       }
 
-      // If empty state or no contracts, skip — lineage needs contract data
-      const rows = page.locator('.contract-row, [data-testid="contract-list-table"] tr');
+      // If empty state or no contracts, skip — lineage needs contract data.
+      // Use .contract-row only (not generic tr) to avoid matching <thead> rows.
+      const rows = page.locator('.contract-row');
       if ((await rows.count()) === 0) {
         test.skip(true, 'No contracts on staging — lineage requires contract data');
         return;
