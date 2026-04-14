@@ -5,7 +5,7 @@
  * toolbar, loading/error states, and auto-fitView on first data load.
  */
 
-import { useCallback, type ComponentType } from 'react';
+import { useEffect, useRef, type ComponentType } from 'react';
 import {
   ReactFlow,
   Background,
@@ -46,12 +46,18 @@ function GraphCanvasInner({
   className,
 }: GraphCanvasProps) {
   const { fitView } = useReactFlow();
+  const prevNodeCount = useRef(0);
 
-  const onInit = useCallback(() => {
-    // React Flow viewport is ready but nodes may not be measured yet.
-    // Wait for DOM measurement + layout to complete before fitting.
-    setTimeout(() => fitView({ padding: 0.1 }), 200);
-  }, [fitView]);
+  // Re-fit when nodes arrive or change count (handles async data loading).
+  // React Flow needs time to measure DOM nodes before fitView can calculate
+  // the correct viewport — 300ms accommodates slow staging environments.
+  useEffect(() => {
+    if (nodes.length > 0 && nodes.length !== prevNodeCount.current) {
+      prevNodeCount.current = nodes.length;
+      const t = setTimeout(() => fitView({ padding: 0.1 }), 300);
+      return () => clearTimeout(t);
+    }
+  }, [nodes.length, fitView]);
 
   if (loading) {
     return <Skeleton.Block height="600px" borderRadius="var(--border-radius-md, 8px)" />;
@@ -72,7 +78,6 @@ function GraphCanvasInner({
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodeClick={onNodeClick}
-        onInit={onInit}
         fitView
         fitViewOptions={{ padding: 0.1 }}
         proOptions={{ hideAttribution: true }}
