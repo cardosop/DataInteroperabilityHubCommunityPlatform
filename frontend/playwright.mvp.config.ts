@@ -66,6 +66,7 @@ const mvpTestMatch: string[] = [
   'features/jobs.spec.ts',
   'features/search.spec.ts',
   'features/semantic.spec.ts',
+  'features/lineage.spec.ts',
   // Phase 213.A.5 — resilience, security & cross-cutting promotion
   // Audited 2026-04-07: zero docker-exec/MailHog deps, only invalid-login form fills
   // (no entity creation), all use getTestUser/getConsumerTestUser (auto-registered).

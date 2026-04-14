@@ -2968,7 +2968,11 @@ export async function uploadODPSContractViaUI(
   page: Page,
   filePath: string
 ): Promise<{ contractId: string }> {
-  const routes = ['/odps/upload', '/contracts/odps-upload', '/odps/new'];
+  // Phase 219.7.4: /odps/upload, /contracts/odps-upload, /odps/new are dead routes.
+  // The unified ContractCreatePage at /contracts/create handles both ODCS and ODPS
+  // via auto-detection (detectSpecType). /odps/upload redirects to /contracts/create
+  // (backward-compat route in routes.tsx), so try the canonical path first.
+  const routes = ['/contracts/create', '/odps/upload'];
 
   for (const route of routes) {
     // Inject fresh auth tokens before page.goto — full-page navigation resets

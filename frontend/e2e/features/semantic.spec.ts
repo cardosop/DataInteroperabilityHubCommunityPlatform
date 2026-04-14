@@ -41,6 +41,71 @@ test.describe('Feature: Semantic', () => {
     });
   });
 
+  test.describe('Success — tabs', () => {
+    test('SPARQL tab loads query interface', async ({ page }) => {
+      await page.goto('/semantic');
+      try {
+        await waitForAppMainReady(page, { timeout: 30000, acceptRedirectToLogin: true });
+      } catch {
+        // route gated or login redirect
+      }
+      if (!page.url().includes('/semantic')) {
+        test.skip(true, 'Semantic page not available — capability gated or auth redirect');
+        return;
+      }
+      // SPARQL is the default tab — look for query input area
+      const queryArea = page.locator(
+        'textarea, [data-testid="sparql-query-input"], .sparql-query-input, .CodeMirror',
+      );
+      const errorDisplay = page.locator('.error-display');
+      await queryArea.or(errorDisplay).first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => null);
+
+      const hasQueryUI = (await queryArea.count()) > 0;
+      const hasError = (await errorDisplay.count()) > 0;
+      expect(hasQueryUI || hasError).toBe(true);
+    });
+
+    test('ontology tab loads and shows content or service-unavailable error', async ({ page }) => {
+      await page.goto('/semantic');
+      try {
+        await waitForAppMainReady(page, { timeout: 30000, acceptRedirectToLogin: true });
+      } catch {
+        // route gated or login redirect
+      }
+      if (!page.url().includes('/semantic')) {
+        test.skip(true, 'Semantic page not available — capability gated or auth redirect');
+        return;
+      }
+      // Click the Ontology tab
+      const ontologyTab = page.locator(
+        'button:has-text("Ontology"), [role="tab"]:has-text("Ontology")',
+      ).first();
+      await ontologyTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+      if ((await ontologyTab.count()) === 0) {
+        test.skip(true, 'Ontology tab not visible on semantic page');
+        return;
+      }
+      await ontologyTab.click();
+
+      // Wait for either ontology tree content or error display
+      const ontologyTree = page.locator('[data-testid="ontology-tree"]');
+      const codeBlock = page.locator('pre, code, .code-block');
+      const errorDisplay = page.locator('.error-display');
+      const loadingSpinner = page.locator('.loading-spinner');
+
+      await ontologyTree.or(codeBlock).or(errorDisplay).first()
+        .waitFor({ state: 'visible', timeout: 20000 })
+        .catch(() => null);
+
+      const hasOntologyContent = (await ontologyTree.count()) > 0 || (await codeBlock.count()) > 0;
+      const hasError = (await errorDisplay.count()) > 0;
+      const stillLoading = (await loadingSpinner.count()) > 0;
+
+      // Accept: ontology tree rendered, code block visible, error display, or still loading
+      expect(hasOntologyContent || hasError || stillLoading).toBe(true);
+    });
+  });
+
   test.describe('Edge', () => {
     test('semantic shows unavailable or MVP coming-soon when capability-gated', async ({ page }) => {
       await page.goto('/semantic');

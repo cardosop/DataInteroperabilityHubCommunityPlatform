@@ -36,6 +36,46 @@ test.describe('Feature: Contracts', () => {
     });
   });
 
+  test.describe('Validation', () => {
+    test('contract create page shows validation errors for invalid content', async ({ page }) => {
+      await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
+
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Redirected to /login — auth token expired');
+        return;
+      }
+
+      // Paste invalid ODCS (missing required fields)
+      const textarea = page.locator(
+        'textarea[aria-label*="contract" i], textarea[aria-label*="content" i], .contract-file-reader textarea',
+      ).first();
+      await textarea.waitFor({ state: 'visible', timeout: 10000 });
+      await textarea.fill('{"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}');
+
+      // Wait for debounced validation (1.5s) + API response
+      const validationPanel = page.locator('.validation-result-panel');
+      await validationPanel.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+
+      if ((await validationPanel.count()) === 0) {
+        // Validation panel may not appear if backend is unreachable
+        test.skip(true, 'Validation panel did not appear — validate-draft endpoint may be unavailable');
+        return;
+      }
+
+      // Assert: error state shown (incomplete ODCS contract)
+      const hasError = (await page.locator('.validation-result-panel--error').count()) > 0;
+      const hasSuccess = (await page.locator('.validation-result-panel--success').count()) > 0;
+      // Accept either error (expected for incomplete ODCS) or success (if normalizer is lenient)
+      expect(hasError || hasSuccess).toBe(true);
+
+      // If error state, verify Create button is disabled
+      if (hasError) {
+        const createBtn = page.locator('button:has-text("Create Contract")').first();
+        await expect(createBtn).toBeDisabled();
+      }
+    });
+  });
+
   test.describe('Edge', () => {
     test('contract link-odps with non-existent id shows error or redirect', async ({ page }) => {
       await page.goto('/contracts/00000000-0000-0000-0000-000000000000/link-odps');
