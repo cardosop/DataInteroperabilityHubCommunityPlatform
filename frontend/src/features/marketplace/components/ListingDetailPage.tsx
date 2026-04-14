@@ -12,6 +12,7 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { PricingModel, ListingStatus } from '../../../shared/types/marketplace';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
+import { useAuthStore } from '../../auth/store/authStore';
 import './ListingDetailPage.css';
 import { Button } from '../../../shared/components/Button';
 
@@ -20,6 +21,8 @@ export function ListingDetailPage() {
   const navigate = useNavigate();
   const { data: listing, isLoading, error, refetch } = useListing(id || null);
   const createOrderMutation = useCreateOrder();
+  const userTenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const activeTenantId = useAuthStore((state) => state.active_tenant_id);
 
   const handlePurchase = async () => {
     if (!id) return;
@@ -54,7 +57,9 @@ export function ListingDetailPage() {
     return <ErrorDisplay error="Listing not found" title="Listing not found" />;
   }
 
-  const canPurchase = listing.status === ListingStatus.PUBLISHED && 
+  const effectiveTenantId = activeTenantId || userTenantId;
+  const isOwnListing = !!effectiveTenantId && listing.tenant === effectiveTenantId;
+  const canPurchase = !isOwnListing && listing.status === ListingStatus.PUBLISHED &&
     (listing.pricing_model === PricingModel.FREE || listing.pricing_model === PricingModel.FREE_AUTO_APPROVE || listing.pricing_model === PricingModel.REQUEST_APPROVAL);
 
   const priceNum = listing.price_amount != null ? Number(listing.price_amount) : 0;
@@ -154,30 +159,69 @@ export function ListingDetailPage() {
 
         <div className="listing-detail-sidebar">
           <div className="listing-actions-card">
+            {/* Pricing display */}
+            <div className="listing-price-display">
+              {needsPaidCheckout ? (
+                <>
+                  <span className="listing-price-amount">
+                    {listing.currency === 'EUR' ? '€' : listing.currency === 'GBP' ? '£' : '$'}
+                    {Number(listing.price_amount).toFixed(2)}
+                  </span>
+                  {listing.metadata_json?.billing_cycle && (
+                    <span className="listing-price-cycle">
+                      / {listing.metadata_json.billing_cycle === 'monthly' ? 'mo' : 'yr'}
+                    </span>
+                  )}
+                  {listing.metadata_json?.pricing_description && (
+                    <p className="listing-price-desc">{listing.metadata_json.pricing_description}</p>
+                  )}
+                </>
+              ) : (
+                <span className="listing-price-amount listing-price-free">Free</span>
+              )}
+            </div>
+
+            {isOwnListing && (
+              <p className="listing-action-hint">
+                This listing belongs to your active tenant. Marketplace orders are only for cross-tenant access.
+              </p>
+            )}
             {canPurchase && (
               <Button
- variant="primary" className="btn-large"
- onClick={
+                variant="primary"
+                className="btn-large"
+                onClick={
                   needsPaidCheckout && id
                     ? () => navigate(`/marketplace/checkout/${id}`)
                     : handlePurchase
                 }
- loading={createOrderMutation.isPending}>
+                loading={createOrderMutation.isPending}
+              >
                 {createOrderMutation.isPending ? (
                   <>
                     <LoadingSpinner size="small" />
                     Processing...
                   </>
                 ) : needsPaidCheckout ? (
-                  'Pay with card'
-                ) : listing.pricing_model === PricingModel.REQUEST_APPROVAL ? (
-                  'Request Access'
+                  `Purchase for ${listing.currency === 'EUR' ? '€' : listing.currency === 'GBP' ? '£' : '$'}${Number(listing.price_amount).toFixed(2)}`
+                ) : listing.pricing_model === PricingModel.FREE_AUTO_APPROVE ? (
+                  'Get Free Access'
                 ) : (
-                  'Get Access'
+                  'Request Access'
                 )}
               </Button>
             )}
             <div className="listing-meta">
+              <div className="listing-meta-item">
+                <span className="listing-meta-label">Pricing Model:</span>
+                <span className="listing-meta-value">
+                  {listing.pricing_model === PricingModel.FREE_AUTO_APPROVE
+                    ? 'Free — instant access'
+                    : listing.pricing_model === PricingModel.REQUEST_APPROVAL
+                    ? needsPaidCheckout ? 'Paid — requires approval' : 'Free — requires approval'
+                    : 'Free'}
+                </span>
+              </div>
               <div className="listing-meta-item">
                 <span className="listing-meta-label">Asset ID:</span>
                 <span className="listing-meta-value">{listing.asset}</span>

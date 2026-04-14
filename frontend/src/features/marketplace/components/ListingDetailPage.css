@@ -93,11 +93,52 @@
   top: var(--spacing-lg);
 }
 
+.listing-price-display {
+  text-align: center;
+  margin-bottom: var(--spacing-lg);
+  padding-bottom: var(--spacing-md);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.listing-price-amount {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  line-height: 1.2;
+}
+
+.listing-price-free {
+  color: var(--color-success, #22c55e);
+}
+
+.listing-price-cycle {
+  font-size: var(--font-size-base);
+  font-weight: 400;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.listing-price-desc {
+  margin: var(--spacing-xs) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary, #6b7280);
+}
+
 .btn-large {
   width: 100%;
   padding: var(--spacing-md) var(--spacing-lg);
   font-size: var(--font-size-base);
   margin-bottom: var(--spacing-lg);
+}
+
+.listing-action-hint {
+  margin: 0 0 var(--spacing-md) 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--border-radius-md);
+  border: var(--border-width) solid var(--color-warning, #ffc107);
+  background: var(--color-warning-light, #fff8e1);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
 }
 
 .listing-meta {
