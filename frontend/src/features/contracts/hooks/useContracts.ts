@@ -2,7 +2,7 @@
  * Contracts React Query Hooks
  */
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { emptyPaginatedResponse } from '../../../shared/types/api';
 import { contractService } from '../services/contractService';
@@ -77,11 +77,11 @@ export function useUpdateContract() {
 
 /**
  * Validate a contract draft without persisting (Phase 219.5).
- * Silent mutation — no toast on success; errors surface in the
- * ValidationResultPanel UI, not as global notifications.
+ * Uses plain useMutation (not useMutationWithNotification) — validation
+ * errors surface in the ValidationResultPanel UI, not as global toasts.
  */
 export function useValidateDraft() {
-  return useMutationWithNotification({
+  return useMutation({
     mutationFn: (data: { original_raw: string; original_format: string }) =>
       contractService.validateDraft(data),
   });

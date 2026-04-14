@@ -67,7 +67,10 @@ export function ContractCreatePage() {
     const contractFormat = format === 'json' ? 'JSON' : 'YAML';
     validateDraft.mutate(
       { original_raw: debouncedContent, original_format: contractFormat },
-      { onSuccess: (data) => setValidationResult(data) },
+      {
+        onSuccess: (data) => setValidationResult(data),
+        onError: () => setValidationResult(null),
+      },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only trigger on debounced content/format changes
   }, [debouncedContent, format]);
@@ -99,6 +102,9 @@ export function ContractCreatePage() {
   const handleContentChange = useCallback((newContent: string, newFormat: string) => {
     setContent(newContent);
     setFormat(newFormat);
+    // Clear stale validation immediately so the previous green/red panel
+    // doesn't persist during the 1.5s debounce window while the user edits.
+    setValidationResult(null);
   }, []);
 
   const handleDetection = useCallback((result: DetectedSpec) => {
