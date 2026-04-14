@@ -66,7 +66,7 @@ function isConnectionError(err: unknown): boolean {
 function isPageClosedError(err: unknown): boolean {
   const msg = String(err);
   return (
-    /Target page, context or browser has been closed|page has been closed|Protocol error.*Target closed|Execution context was destroyed/i.test(
+    /Target page, context or browser has been closed|page has been closed|Protocol error.*Target closed|Execution context was destroyed|Not attached to an active page/i.test(
       msg
     )
   );
@@ -440,7 +440,7 @@ export async function clearAuthStorage(page: Page): Promise<void> {
     }).catch((e) => {
       const msg = String(e);
       const pageClosed =
-        /Execution context was destroyed|Target closed|page has been closed|context or browser has been closed|Protocol error.*closed/i.test(
+        /Execution context was destroyed|Target closed|page has been closed|context or browser has been closed|Protocol error.*closed|Not attached to an active page/i.test(
           msg
         );
       if (!pageClosed) throw e;
@@ -460,14 +460,14 @@ export async function clearAuthStorage(page: Page): Promise<void> {
       const reloadMsg = String(reloadErr);
       const isTimeout = /[Tt]imeout/.test(reloadMsg);
       const isPageClosed =
-        /Target.*closed|page has been closed|context.*closed|Execution context was destroyed/i.test(reloadMsg);
+        /Target.*closed|page has been closed|context.*closed|Execution context was destroyed|Not attached to an active page/i.test(reloadMsg);
       if (!isTimeout && !isPageClosed) throw reloadErr;
       // Timeout or page-closed during reload — localStorage is already cleared, safe to continue
     });
   } catch (err) {
     const msg = String(err);
     const pageClosed =
-      /Target page, context or browser has been closed|page has been closed|Protocol error.*closed|closed during clear|Execution context was destroyed/i.test(
+      /Target page, context or browser has been closed|page has been closed|Protocol error.*closed|closed during clear|Execution context was destroyed|Not attached to an active page/i.test(
         msg
       );
     if (pageClosed) {

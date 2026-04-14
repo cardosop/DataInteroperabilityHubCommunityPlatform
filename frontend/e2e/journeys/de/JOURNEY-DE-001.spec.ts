@@ -24,22 +24,17 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
     });
 
     test('ODPS list loads', async ({ page }) => {
-      // Phase 211.A6: /odps redirects to /contracts?spec_type=ODPS (the contracts list
-      // filtered to the ODPS spec type). storageState provides auth — go directly.
-      await page.goto('/odps', { waitUntil: 'domcontentloaded', timeout: 60000 });
-      // Wait for redirect to resolve and content to render
-      await page.waitForLoadState('domcontentloaded');
+      // Phase 211.A6: /odps redirects to /contracts?spec_type=ODPS.
+      // Navigate directly to the canonical URL to avoid the extra redirect hop
+      // which doubles navigation time and can trigger client-side API timeouts
+      // on slow staging backends.
+      await page.goto('/contracts?spec_type=ODPS', { waitUntil: 'domcontentloaded', timeout: 60000 });
       const url = page.url();
       if (url.includes('/login')) {
         test.skip(true, 'Redirected to /login — auth token expired or backend unreachable');
         return;
       }
-      // Accept either the legacy URL (if redirect hasn't fired yet on a slow page) or
-      // the canonical post-redirect URL.
-      expect(url).toMatch(/\/(odps|contracts)/);
-      // ContractListPage shows ListPageSkeleton until the API returns — a snapshot right
-      // after domcontentloaded has no .contract-list-page / .empty-state / .error-display
-      // yet (root cause of staging false failures). Same race-safe wait as contracts list.
+      expect(url).toContain('/contracts');
       await assertListPageLoads(page, '.contract-list-page, .empty-state', {
         timeout: 60000,
       });
