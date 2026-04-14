@@ -391,11 +391,25 @@ def refresh_token(request):
         return response
 
     if refresh_token_obj.is_expired():
-        raise ValidationError({"refresh_token": "Refresh token is expired"})
+        # Return 401 (not 400) so the frontend's auth interceptor
+        # recognises this as an auth failure and forces re-login,
+        # instead of treating it as a validation error and leaving
+        # the user stuck with UNKNOWN_ERROR on every page.
+        response = Response(
+            {"error": "Refresh token is expired", "code": "TOKEN_EXPIRED"},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+        _clear_refresh_cookie(response)
+        return response
 
     user = refresh_token_obj.user
     if not user.is_active():
-        raise ValidationError({"refresh_token": "User account is not active"})
+        response = Response(
+            {"error": "User account is not active", "code": "USER_INACTIVE"},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+        _clear_refresh_cookie(response)
+        return response
 
     # ── Rotate: revoke old, issue new sibling in same family (11.2) ──────────
     refresh_token_obj.revoke()

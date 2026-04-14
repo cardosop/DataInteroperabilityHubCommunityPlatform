@@ -113,9 +113,38 @@ function normalizeApiError(
     };
   }
 
+  // Fall back to HTTP status-based error code so that 404/403/500 responses
+  // with non-JSON bodies (e.g. HTML from reverse proxy) still produce a
+  // meaningful code instead of the opaque UNKNOWN_ERROR.
+  const HTTP_STATUS_CODE_MAP: Record<number, string> = {
+    400: 'VALIDATION_ERROR',
+    401: 'AUTH_UNAUTHORIZED',
+    403: 'AUTH_FORBIDDEN',
+    404: 'NOT_FOUND',
+    409: 'CONFLICT_ERROR',
+    429: 'RATE_LIMIT_EXCEEDED',
+    500: 'INTERNAL_ERROR',
+    502: 'SERVICE_UNAVAILABLE',
+    503: 'SERVICE_UNAVAILABLE',
+    504: 'SERVICE_UNAVAILABLE',
+  };
+
+  const HTTP_STATUS_MESSAGE_MAP: Record<number, string> = {
+    400: 'Bad request',
+    401: 'Unauthorized',
+    403: 'Forbidden',
+    404: 'The requested resource was not found',
+    409: 'Resource conflict',
+    429: 'Too many requests',
+    500: 'Internal server error',
+    502: 'Service temporarily unavailable',
+    503: 'Service temporarily unavailable',
+    504: 'Request timed out (gateway)',
+  };
+
   return {
-    code: 'UNKNOWN_ERROR',
-    message: 'An error occurred',
+    code: HTTP_STATUS_CODE_MAP[httpStatus] || 'UNKNOWN_ERROR',
+    message: HTTP_STATUS_MESSAGE_MAP[httpStatus] || 'An error occurred',
     http_status: httpStatus,
     request_id: correlationId || 'unknown',
     timestamp: new Date().toISOString(),
@@ -192,7 +221,14 @@ export class ApiClient {
     config: RequestConfig | undefined,
   ): Promise<ApiResponse<T> | null> {
     const canRefresh = this._refreshToken || !this._accessToken;
-    if (!canRefresh) return null;
+    if (!canRefresh) {
+      // No refresh token available — session is dead, force re-login
+      this.clearTokens();
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+      }
+      return null;
+    }
 
     try {
       const newAccessToken = await this._refreshAccessToken();
@@ -202,7 +238,12 @@ export class ApiClient {
       // Retry original request with new token
       return this._httpClient._request<T>(url, method, data, config, true);
     } catch {
+      // Refresh failed (400/401/network error) — session is unrecoverable.
+      // Force re-login instead of leaving user stuck with UNKNOWN_ERROR.
       this.clearTokens();
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+      }
       return null;
     }
   }
