@@ -35,8 +35,95 @@ class ContractValidationMixin:
     """
     Mixin for Contract validation, linting, and conversion operations.
 
-    Provides validation, linting, and format conversion endpoints.
+    Provides validation, linting, draft validation, and format conversion endpoints.
     """
+
+    @extend_schema(
+        summary="Validate contract draft without persisting",
+        description="Dry-run normalization of raw contract content. "
+        "Returns detection results and normalization errors/warnings "
+        "without creating a Contract record. Always returns 200.",
+        request="ContractValidateDraftSerializer",
+        responses={
+            200: "ContractValidateDraftResponseSerializer",
+            400: OpenApiResponse(description="Invalid request (missing/bad fields)"),
+            401: OpenApiResponse(description="Authentication required"),
+        },
+        tags=["Contracts"],
+    )
+    @action(detail=False, methods=["post"], url_path="validate-draft")
+    def validate_draft(self, request):
+        """
+        Validate a contract draft without persisting (Phase 219.4).
+
+        POST /contracts/validate-draft/
+        Body: { "original_raw": "<content>", "original_format": "JSON"|"YAML" }
+
+        Returns normalization results: spec type, version, status, errors, warnings.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        from .normalization_service import NormalizationService
+        from .serializers import ContractValidateDraftSerializer
+
+        serializer = ContractValidateDraftSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        raw = serializer.validated_data["original_raw"]
+        fmt = serializer.validated_data["original_format"]
+
+        from .models import NormalizationStatus
+
+        svc = NormalizationService()
+        try:
+            (
+                hub_contract,
+                detected_spec_type,
+                detected_spec_version,
+                norm_status,
+                norm_errors,
+                norm_warnings,
+            ) = svc.normalize_contract(raw, fmt)
+        except Exception as e:
+            logger.warning("validate_draft normalization error: %s", e, exc_info=True)
+            # Extract structured errors from hub ValidationError when available
+            details = getattr(e, "details", None)
+            if isinstance(details, dict) and "errors" in details:
+                norm_errors = details["errors"]
+            else:
+                norm_errors = [str(e)]
+            detected_spec_type = "UNKNOWN"
+            detected_spec_version = ""
+            norm_status = NormalizationStatus.NORMALIZATION_FAILED
+            norm_warnings = []
+
+        valid = norm_status in (
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+        )
+
+        logger.info(
+            "validate_draft: spec_type=%s version=%s valid=%s errors=%d warnings=%d",
+            detected_spec_type,
+            detected_spec_version,
+            valid,
+            len(norm_errors),
+            len(norm_warnings),
+        )
+
+        return Response(
+            {
+                "valid": valid,
+                "detected_spec_type": detected_spec_type,
+                "detected_spec_version": detected_spec_version,
+                "normalization_status": str(norm_status),
+                "normalization_errors": norm_errors,
+                "normalization_warnings": norm_warnings,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(
         summary="Validate contract",

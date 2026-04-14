@@ -797,6 +797,32 @@ class ContractCreateSerializer(serializers.Serializer):
     )
 
 
+class ContractValidateDraftSerializer(serializers.Serializer):
+    """Serializer for dry-run contract validation (Phase 219.4).
+
+    Accepts raw contract content for normalization without persisting.
+    """
+
+    original_raw = serializers.CharField(
+        help_text="Raw contract content (JSON or YAML) to validate"
+    )
+    original_format = serializers.ChoiceField(
+        choices=OriginalFormat.choices,
+        help_text="Content format: JSON or YAML",
+    )
+
+
+class ContractValidateDraftResponseSerializer(serializers.Serializer):
+    """Response serializer for validate-draft endpoint (OpenAPI docs only)."""
+
+    valid = serializers.BooleanField()
+    detected_spec_type = serializers.CharField()
+    detected_spec_version = serializers.CharField()
+    normalization_status = serializers.CharField()
+    normalization_errors = serializers.ListField(child=serializers.CharField())
+    normalization_warnings = serializers.ListField(child=serializers.CharField())
+
+
 class ContractUpdateSerializer(serializers.Serializer):
     """Serializer for contract update"""
     original_raw = serializers.CharField(required=False)
