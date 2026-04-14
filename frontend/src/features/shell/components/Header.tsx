@@ -46,11 +46,14 @@ export function Header() {
     }
   }, []);
 
+  // Load tenants eagerly on mount (not lazily on dropdown open) so the
+  // tenant name is available for the header display immediately — avoids
+  // showing the UUID on first render before the user opens the dropdown.
   useEffect(() => {
-    if (showTenantSwitcher && user) {
+    if (user && tenants.length === 0) {
       loadTenants();
     }
-  }, [showTenantSwitcher, user, loadTenants]);
+  }, [user, tenants.length, loadTenants]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
