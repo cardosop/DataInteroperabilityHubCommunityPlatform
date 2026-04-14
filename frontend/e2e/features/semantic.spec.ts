@@ -53,14 +53,15 @@ test.describe('Feature: Semantic', () => {
         test.skip(true, 'Semantic page not available — capability gated or auth redirect');
         return;
       }
-      // SPARQL is the default tab — look for query input area
-      const queryArea = page.locator(
-        'textarea, [data-testid="sparql-query-input"], .sparql-query-input, .CodeMirror',
+      // SPARQL is the default tab — SemanticPage renders ReactCodeMirror (CM6: .cm-editor),
+      // a <form class="sparql-form">, and data-testid="semantic-sparql-section".
+      const sparqlSection = page.locator(
+        '[data-testid="semantic-sparql-section"], .sparql-form, .cm-editor',
       );
       const errorDisplay = page.locator('.error-display');
-      await queryArea.or(errorDisplay).first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => null);
+      await sparqlSection.or(errorDisplay).first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => null);
 
-      const hasQueryUI = (await queryArea.count()) > 0;
+      const hasQueryUI = (await sparqlSection.count()) > 0;
       const hasError = (await errorDisplay.count()) > 0;
       expect(hasQueryUI || hasError).toBe(true);
     });

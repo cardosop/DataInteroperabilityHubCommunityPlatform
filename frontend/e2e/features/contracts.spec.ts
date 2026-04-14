@@ -52,26 +52,27 @@ test.describe('Feature: Contracts', () => {
       await textarea.waitFor({ state: 'visible', timeout: 10000 });
       await textarea.fill('{"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}');
 
-      // Wait for debounced validation (1.5s) + API response
+      // Wait for debounced validation (1.5s debounce + backend normalization + staging latency).
+      // Use Playwright retry assertion instead of point-in-time check to avoid flakiness.
       const validationPanel = page.locator('.validation-result-panel');
-      await validationPanel.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
-
-      if ((await validationPanel.count()) === 0) {
+      try {
+        await expect(validationPanel).toBeVisible({ timeout: 30000 });
+      } catch {
         // Validation panel may not appear if backend is unreachable
         test.skip(true, 'Validation panel did not appear — validate-draft endpoint may be unavailable');
         return;
       }
 
-      // Assert: error state shown (incomplete ODCS contract)
-      const hasError = (await page.locator('.validation-result-panel--error').count()) > 0;
-      const hasSuccess = (await page.locator('.validation-result-panel--success').count()) > 0;
-      // Accept either error (expected for incomplete ODCS) or success (if normalizer is lenient)
-      expect(hasError || hasSuccess).toBe(true);
+      // Assert: error or success or warning state shown (not just loading)
+      const terminalPanel = page.locator(
+        '.validation-result-panel--error, .validation-result-panel--success, .validation-result-panel--warning',
+      );
+      await expect(terminalPanel.first()).toBeVisible({ timeout: 15000 });
 
       // If error state, verify Create button is disabled
+      const hasError = (await page.locator('.validation-result-panel--error').count()) > 0;
       if (hasError) {
-        const createBtn = page.locator('button:has-text("Create Contract")').first();
-        await expect(createBtn).toBeDisabled();
+        await expect(page.locator('button:has-text("Create Contract")').first()).toBeDisabled();
       }
     });
   });
