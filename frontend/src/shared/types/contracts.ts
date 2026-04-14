@@ -97,6 +97,16 @@ export interface ContractValidationResult {
   }>;
 }
 
+/** Dry-run normalization result from POST /contracts/validate-draft/ (Phase 219.4). */
+export interface DraftValidationResult {
+  valid: boolean;
+  detected_spec_type: string;
+  detected_spec_version: string;
+  normalization_status: string;
+  normalization_errors: string[];
+  normalization_warnings: string[];
+}
+
 export interface ContractLintResult {
   valid: boolean;
   issues?: Array<{

@@ -15,9 +15,16 @@ import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { Button } from '../../../shared/components/Button';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { useToast } from '../../../shared/components/Toast';
-import { useCreateContract, useCreateODPSProduct, useContractWorkflowStatus } from '../hooks/useContracts';
+import { useDebouncedValue } from '../../../shared/hooks/useDebouncedValue';
+import {
+  useCreateContract,
+  useCreateODPSProduct,
+  useContractWorkflowStatus,
+  useValidateDraft,
+} from '../hooks/useContracts';
+import { ValidationResultPanel } from './ValidationResultPanel';
 import type { DetectedSpec } from '../../../shared/utils/detectSpecType';
-import type { ContractFormat } from '../../../shared/types/contracts';
+import type { ContractFormat, DraftValidationResult } from '../../../shared/types/contracts';
 import './ContractCreatePage.css';
 
 const BREADCRUMBS = [
@@ -46,6 +53,24 @@ export function ContractCreatePage() {
   // Mutations
   const createContract = useCreateContract();
   const createODPS = useCreateODPSProduct();
+  const validateDraft = useValidateDraft();
+
+  // Pre-submit validation: debounce content changes (1.5s) then validate
+  const debouncedContent = useDebouncedValue(content, 1500);
+  const [validationResult, setValidationResult] = useState<DraftValidationResult | null>(null);
+
+  useEffect(() => {
+    if (!debouncedContent.trim()) {
+      setValidationResult(null);
+      return;
+    }
+    const contractFormat = format === 'json' ? 'JSON' : 'YAML';
+    validateDraft.mutate(
+      { original_raw: debouncedContent, original_format: contractFormat },
+      { onSuccess: (data) => setValidationResult(data) },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only trigger on debounced content/format changes
+  }, [debouncedContent, format]);
 
   // ODPS workflow polling — only active when workflowId is set
   const workflowStatus = useContractWorkflowStatus(workflowId);
@@ -83,6 +108,7 @@ export function ContractCreatePage() {
   const isODPS = detected?.type === 'ODPS';
   const isPending = createContract.isPending || createODPS.isPending || !!workflowId;
   const hasContent = content.trim().length > 0;
+  const validationBlocks = validationResult !== null && !validationResult.valid;
 
   const handleSubmit = useCallback(async () => {
     if (!hasContent) return;
@@ -172,6 +198,11 @@ export function ContractCreatePage() {
           data-testid="contract-file-reader"
         />
 
+        <ValidationResultPanel
+          result={validationResult}
+          isLoading={validateDraft.isPending}
+        />
+
         {workflowId && (
           <div className="contract-create-page__progress">
             <div className="contract-create-page__progress-bar">
@@ -201,7 +232,7 @@ export function ContractCreatePage() {
           <Button
             variant="primary"
             onClick={handleSubmit}
-            disabled={!hasContent || isPending}
+            disabled={!hasContent || isPending || validationBlocks}
           >
             {isPending ? 'Creating...' : 'Create Contract'}
           </Button>

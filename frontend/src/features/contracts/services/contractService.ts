@@ -14,6 +14,7 @@ import type {
   ContractLintResult,
   ContractConvertRequest,
   ContractConvertResult,
+  DraftValidationResult,
 } from '../../../shared/types/contracts';
 import type {
   ContractLineageVisualization,
@@ -85,6 +86,23 @@ export const contractService = {
    */
   async delete(id: string): Promise<void> {
     await apiClient.getClient().delete(`${CONTRACTS_BASE_PATH}/${id}/`);
+  },
+
+  /**
+   * Validate a contract draft without persisting (Phase 219.4).
+   * Dry-run normalization — returns spec detection and errors/warnings.
+   */
+  async validateDraft(data: {
+    original_raw: string;
+    original_format: string;
+  }): Promise<DraftValidationResult> {
+    const response = await apiClient
+      .getClient()
+      .post<DraftValidationResult>(
+        `${CONTRACTS_BASE_PATH}/validate-draft/`,
+        data,
+      );
+    return response.data;
   },
 
   /**

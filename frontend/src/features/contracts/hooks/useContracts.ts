@@ -75,6 +75,18 @@ export function useUpdateContract() {
   });
 }
 
+/**
+ * Validate a contract draft without persisting (Phase 219.5).
+ * Silent mutation — no toast on success; errors surface in the
+ * ValidationResultPanel UI, not as global notifications.
+ */
+export function useValidateDraft() {
+  return useMutationWithNotification({
+    mutationFn: (data: { original_raw: string; original_format: string }) =>
+      contractService.validateDraft(data),
+  });
+}
+
 export function useDeleteContract() {
   const queryClient = useQueryClient();
 
