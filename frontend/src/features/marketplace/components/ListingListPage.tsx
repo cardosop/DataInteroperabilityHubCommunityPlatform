@@ -10,11 +10,15 @@ import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageS
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ListingStatus, PricingModel, ProductCategory } from '../../../shared/types/marketplace';
+import { useAuthStore } from '../../auth/store/authStore';
 import './ListingListPage.css';
 import { Button } from '../../../shared/components/Button';
 
 export function ListingListPage() {
   const navigate = useNavigate();
+  const userTenantId = useAuthStore((s) => s.user?.tenant_id ?? null);
+  const activeTenantId = useAuthStore((s) => s.active_tenant_id);
+  const effectiveTenantId = activeTenantId || userTenantId;
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   const [search, setSearch] = useState('');
@@ -209,6 +213,9 @@ export function ListingListPage() {
               {listing.short_description || listing.description || 'No description available'}
             </p>
             <div className="listing-card-footer">
+              {effectiveTenantId && listing.tenant !== effectiveTenantId && (
+                <span className="listing-external-badge">External</span>
+              )}
               <span className="listing-pricing">
                 {listing.pricing_model === PricingModel.FREE || listing.pricing_model === PricingModel.FREE_AUTO_APPROVE
                   ? 'Free'

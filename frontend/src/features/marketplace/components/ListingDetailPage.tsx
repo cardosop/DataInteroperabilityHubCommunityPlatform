@@ -59,11 +59,12 @@ export function ListingDetailPage() {
 
   const effectiveTenantId = activeTenantId || userTenantId;
   const isOwnListing = !!effectiveTenantId && listing.tenant === effectiveTenantId;
-  const canPurchase = !isOwnListing && listing.status === ListingStatus.PUBLISHED &&
+  // Same-tenant users can request access (governance); cross-tenant can purchase/get access.
+  const canInteract = listing.status === ListingStatus.PUBLISHED &&
     (listing.pricing_model === PricingModel.FREE || listing.pricing_model === PricingModel.FREE_AUTO_APPROVE || listing.pricing_model === PricingModel.REQUEST_APPROVAL);
 
   const priceNum = listing.price_amount != null ? Number(listing.price_amount) : 0;
-  const needsPaidCheckout = priceNum > 0;
+  const needsPaidCheckout = !isOwnListing && priceNum > 0;
 
   return (
     <div className="listing-detail-page">
@@ -181,18 +182,21 @@ export function ListingDetailPage() {
               )}
             </div>
 
-            {isOwnListing && (
-              <p className="listing-action-hint">
-                This listing belongs to your active tenant. Marketplace orders are only for cross-tenant access.
+            {isOwnListing && canInteract && (
+              <p className="listing-action-hint listing-action-hint--info">
+                Internal access request — requires approval from data owner.
               </p>
             )}
-            {canPurchase && (
+            {canInteract && (
               <Button
                 variant="primary"
                 className="btn-large"
                 onClick={
-                  needsPaidCheckout && id
-                    ? () => navigate(`/marketplace/checkout/${id}`)
+                  // Same-tenant: always regular order (governance, no payment)
+                  // Cross-tenant + paid: Stripe checkout
+                  // Cross-tenant + free: regular order
+                  isOwnListing ? handlePurchase
+                    : needsPaidCheckout && id ? () => navigate(`/marketplace/checkout/${id}`)
                     : handlePurchase
                 }
                 loading={createOrderMutation.isPending}
@@ -202,6 +206,8 @@ export function ListingDetailPage() {
                     <LoadingSpinner size="small" />
                     Processing...
                   </>
+                ) : isOwnListing ? (
+                  'Request Access'
                 ) : needsPaidCheckout ? (
                   `Purchase for ${listing.currency === 'EUR' ? '€' : listing.currency === 'GBP' ? '£' : '$'}${Number(listing.price_amount).toFixed(2)}`
                 ) : listing.pricing_model === PricingModel.FREE_AUTO_APPROVE ? (

@@ -141,6 +141,11 @@
   line-height: 1.45;
 }
 
+.listing-action-hint--info {
+  border-color: var(--color-info, #3b82f6);
+  background: var(--color-info-bg, #eff6ff);
+}
+
 .listing-meta {
   display: flex;
   flex-direction: column;
