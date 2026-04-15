@@ -6,6 +6,7 @@
 import { useMutation } from '@tanstack/react-query';
 import type { UseMutationOptions, UseMutationResult } from '@tanstack/react-query';
 import { useToast } from '../components/Toast';
+import { isApiError } from '../types/api';
 
 export interface MutationWithNotificationOptions<TData, TError, TVariables, TContext>
   extends UseMutationOptions<TData, TError, TVariables, TContext> {
@@ -16,6 +17,11 @@ export interface MutationWithNotificationOptions<TData, TError, TVariables, TCon
 }
 
 function getErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    const detailMessage =
+      typeof error.error.details?.error === 'string' ? error.error.details.error : null;
+    return detailMessage || error.error.message || 'An unexpected error occurred';
+  }
   if (
     typeof error === 'object' &&
     error !== null &&
@@ -57,7 +63,9 @@ export function useMutationWithNotification<
         typeof errorMessage === 'function'
           ? errorMessage(error)
           : errorMessage ?? getErrorMessage(error);
-      toast.error(msg);
+      if (msg) {
+        toast.error(msg);
+      }
       onError?.(error, variables, context);
     },
   });

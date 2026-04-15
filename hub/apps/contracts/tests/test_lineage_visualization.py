@@ -96,6 +96,86 @@ class TestLineageVisualization(ContractsTransactionTestBase):
         self.assertIsInstance(result, str)
         self.assertIn("graph LR", result)
 
+    def test_generate_lineage_json_includes_declared_contract_dependencies(self):
+        """Declared hub_contract_json.lineage.contracts edges appear in visualization JSON."""
+        provider = Contract.objects.create(
+            tenant=self.tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"info": {"name": "lineage-provider"}}',
+            hub_contract_json={
+                "info": {"name": "lineage-provider", "domain": "acme.test"},
+                "models": [],
+            },
+        )
+        consumer = Contract.objects.create(
+            tenant=self.tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"info": {"name": "lineage-consumer"}}',
+            hub_contract_json={
+                "info": {"name": "lineage-consumer"},
+                "lineage": {
+                    "contracts": [
+                        {"namespace": "acme.test", "name": "lineage-provider"},
+                    ]
+                },
+                "models": [],
+            },
+        )
+
+        result = generate_lineage_json(consumer)
+
+        self.assertIsNotNone(result)
+        link_targets = {e["target"] for e in result["links"]}
+        self.assertIn(str(consumer.id), link_targets)
+        self.assertTrue(
+            any(e["source"] == str(provider.id) and e["target"] == str(consumer.id) for e in result["links"]),
+            msg=f"Expected edge provider→consumer in links: {result['links']}",
+        )
+
+    def test_generate_lineage_json_includes_referenced_by_edges(self):
+        """Other contracts that declare this contract in lineage.contracts appear as edges."""
+        core = Contract.objects.create(
+            tenant=self.tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"info": {"name": "refby-core"}}',
+            hub_contract_json={"info": {"name": "refby-core", "domain": "tenant.refby"}, "models": []},
+        )
+        dependent = Contract.objects.create(
+            tenant=self.tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"info": {"name": "refby-dependent"}}',
+            hub_contract_json={
+                "info": {"name": "refby-dependent"},
+                "lineage": {
+                    "contracts": [{"namespace": "tenant.refby", "name": "refby-core"}],
+                },
+                "models": [],
+            },
+        )
+
+        result = generate_lineage_json(core)
+
+        self.assertTrue(
+            any(e["source"] == str(core.id) and e["target"] == str(dependent.id) for e in result["links"]),
+            msg=f"Expected edge core→dependent in links: {result['links']}",
+        )
+
     def test_generate_lineage_json_with_empty_lineage(self):
         """Test JSON format generation with contract that has no lineage."""
         contract_no_lineage = Contract.objects.create(

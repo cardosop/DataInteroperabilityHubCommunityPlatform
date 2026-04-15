@@ -70,7 +70,10 @@ function GraphCanvasInner({
   return (
     <div
       className={`graph-canvas-wrapper ${className ?? ''}`}
-      style={{ minHeight: 600, position: 'relative', width: '100%' }}
+      // React Flow requires a concrete parent height; min-height alone can yield
+      // a 0px internal viewport in some browsers/layouts (nodes exist in DOM but
+      // the plot is not visible). Keep both fixed and minimum height for safety.
+      style={{ height: 600, minHeight: 600, position: 'relative', width: '100%' }}
     >
       <ReactFlow
         nodes={nodes}

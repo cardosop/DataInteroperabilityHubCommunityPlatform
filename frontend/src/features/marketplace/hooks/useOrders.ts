@@ -4,6 +4,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { isApiError } from '../../../shared/types/api';
 import { orderService } from '../services/orderService';
 import type {
   OrderCreateRequest,
@@ -25,13 +26,29 @@ export function useOrder(id: string | null) {
   });
 }
 
-export function useCreateOrder() {
+type UseCreateOrderOptions = {
+  onDuplicateActiveOrder?: (orderId: string) => void;
+};
+
+export function useCreateOrder(options?: UseCreateOrderOptions) {
   const queryClient = useQueryClient();
 
   return useMutationWithNotification({
     mutationFn: (data: OrderCreateRequest) => orderService.create(data),
     successMessage: 'Order created',
-    errorMessage: 'Failed to create order',
+    errorMessage: (error) => {
+      if (isApiError(error) && error.error.http_status === 409) {
+        const details = error.error.details as Record<string, unknown> | undefined;
+        const orderId = typeof details?.order_id === 'string' ? details.order_id : null;
+        if (orderId) {
+          options?.onDuplicateActiveOrder?.(orderId);
+          // Duplicate active-order conflict is handled as a redirect flow.
+          return '';
+        }
+        return error.error.message || 'You already have an active order for this listing.';
+      }
+      return 'Failed to create order';
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['marketplace', 'orders'] });
       queryClient.invalidateQueries({ queryKey: ['marketplace', 'entitlements'] });

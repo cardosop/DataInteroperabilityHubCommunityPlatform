@@ -5,6 +5,15 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { GraphCanvas } from '../GraphCanvas';
 
+if (!globalThis.ResizeObserver) {
+  class ResizeObserverMock {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = ResizeObserverMock as typeof ResizeObserver;
+}
+
 describe('GraphCanvas', () => {
   it('renders skeleton when loading=true', () => {
     const { container } = render(<GraphCanvas nodes={[]} edges={[]} loading={true} />);
@@ -35,5 +44,13 @@ describe('GraphCanvas', () => {
     const retryBtn = screen.getByRole('button', { name: /retry/i });
     fireEvent.click(retryBtn);
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a concrete canvas height for React Flow viewport', () => {
+    const { container } = render(<GraphCanvas nodes={[]} edges={[]} />);
+    const wrapper = container.querySelector('.graph-canvas-wrapper') as HTMLElement | null;
+    expect(wrapper).toBeTruthy();
+    expect(wrapper?.style.height).toBe('600px');
+    expect(wrapper?.style.minHeight).toBe('600px');
   });
 });

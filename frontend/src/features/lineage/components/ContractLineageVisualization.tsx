@@ -9,6 +9,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { MarkerType, type Node, type Edge } from '@xyflow/react';
 import { useContractLineageVisualization } from '../../contracts/hooks/useContracts';
+import { EmptyState } from '../../../shared/components/EmptyState';
 import { GraphCanvas } from '../../../shared/components/GraphCanvas';
 import { useDagreLayout } from '../../../shared/hooks/useDagreLayout';
 import { ContractNode } from './nodes/ContractNode';
@@ -73,6 +74,13 @@ export function ContractLineageVisualization({
     nodeHeight: 70,
   });
 
+  const showNoRelationshipsHint =
+    lineage &&
+    !isLoading &&
+    !error &&
+    lineage.links.length === 0 &&
+    lineage.nodes.length <= 1;
+
   return (
     <div className={styles.wrapper}>
       <div className={styles.header}>
@@ -97,14 +105,22 @@ export function ContractLineageVisualization({
         </div>
       </div>
 
-      <GraphCanvas
-        nodes={layoutedNodes}
-        edges={rfEdges}
-        nodeTypes={nodeTypes}
-        loading={isLoading}
-        error={error ?? undefined}
-        onRetry={() => refetch()}
-      />
+      {showNoRelationshipsHint ? (
+        <EmptyState
+          data-testid="contract-lineage-empty"
+          title="No lineage relationships in this contract"
+          message="The normalized data contract has no declared contract, model, or field lineage, and no other contract in this tenant references it by name. Add lineage in the contract document or link related contracts to populate the graph."
+        />
+      ) : (
+        <GraphCanvas
+          nodes={layoutedNodes}
+          edges={rfEdges}
+          nodeTypes={nodeTypes}
+          loading={isLoading}
+          error={error ?? undefined}
+          onRetry={() => refetch()}
+        />
+      )}
     </div>
   );
 }

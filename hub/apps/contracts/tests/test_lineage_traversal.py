@@ -117,6 +117,9 @@ class TestLineageTraversal(ContractsTestBase):
         self.assertIsNotNone(result)
         self.assertIn("upstream", result)
         self.assertIn("downstream", result)
+        # Upstream must not inherit visited_* from downstream traversal (regression:
+        # a single traverser used for both caused immediate "Cycle detected" on bottom-up).
+        self.assertNotIn("error", result["upstream"])
 
     def test_traverse_top_down_with_empty_contract(self):
         """Test top-down traversal with contract that has no models (edge case)."""

@@ -633,9 +633,25 @@ class LineageTraverser:
         Traverse lineage bidirectionally (both upstream and downstream).
 
         Returns a structure with both upstream and downstream lineage.
+
+        Important: top-down and bottom-up each maintain their own visited_* sets.
+        Reusing one traverser for both calls left the root contract marked visited,
+        so traverse_bottom_up immediately returned {"error": "Cycle detected"} and
+        upstream ``referenced_by`` was never populated — a root cause of empty
+        lineage visualizations for reverse references.
         """
-        top_down = self.traverse_top_down(contract_id, model_name, field_name)
-        bottom_up = self.traverse_bottom_up(contract_id, model_name, field_name)
+        top_down = LineageTraverser(
+            self.contract,
+            self.max_contract_depth,
+            self.max_model_depth,
+            self.max_field_depth,
+        ).traverse_top_down(contract_id, model_name, field_name)
+        bottom_up = LineageTraverser(
+            self.contract,
+            self.max_contract_depth,
+            self.max_model_depth,
+            self.max_field_depth,
+        ).traverse_bottom_up(contract_id, model_name, field_name)
 
         return {
             "upstream": bottom_up,
@@ -714,6 +730,61 @@ def _process_lineage_for_visualization(
                 "label": contract_name,
             }
         )
+
+    # Contract-level lineage: this contract declares dependencies on other contracts
+    # (hub_contract_json.lineage.contracts). Previously only model/field trees were
+    # processed, so declared contract-to-contract edges never appeared in the graph.
+    if contract_id:
+        for dep in lineage_data.get("contract_lineage") or []:
+            if not isinstance(dep, dict):
+                continue
+            dep_id = dep.get("contract_id")
+            if not dep_id:
+                continue
+            dep_name = dep.get("contract_name")
+            if dep_id not in [n["id"] for n in nodes]:
+                nodes.append(
+                    {
+                        "id": dep_id,
+                        "type": "contract",
+                        "name": dep_name,
+                        "label": dep_name,
+                    }
+                )
+            edges.append(
+                {
+                    "source": dep_id,
+                    "target": contract_id,
+                    "type": "contract_dependency",
+                    "direction": direction,
+                }
+            )
+
+        # Reverse references: contracts whose lineage lists this contract (traverse_bottom_up)
+        for ref in lineage_data.get("referenced_by") or []:
+            if not isinstance(ref, dict):
+                continue
+            other_id = ref.get("contract_id")
+            if not other_id:
+                continue
+            other_name = ref.get("contract_name")
+            if other_id not in [n["id"] for n in nodes]:
+                nodes.append(
+                    {
+                        "id": other_id,
+                        "type": "contract",
+                        "name": other_name,
+                        "label": other_name,
+                    }
+                )
+            edges.append(
+                {
+                    "source": contract_id,
+                    "target": other_id,
+                    "type": "contract_reference",
+                    "direction": direction,
+                }
+            )
 
     # Process models
     models = lineage_data.get("models", [])

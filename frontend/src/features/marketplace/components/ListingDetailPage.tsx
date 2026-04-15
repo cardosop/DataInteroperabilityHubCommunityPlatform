@@ -20,7 +20,9 @@ export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: listing, isLoading, error, refetch } = useListing(id || null);
-  const createOrderMutation = useCreateOrder();
+  const createOrderMutation = useCreateOrder({
+    onDuplicateActiveOrder: (orderId) => navigate(`/marketplace/orders/${orderId}`),
+  });
   const userTenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
   const activeTenantId = useAuthStore((state) => state.active_tenant_id);
 
