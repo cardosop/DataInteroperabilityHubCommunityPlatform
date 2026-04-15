@@ -7,7 +7,7 @@
  */
 
 import { HelpCircle } from 'lucide-react';
-import { forwardRef, type ReactNode, type Ref } from 'react';
+import { forwardRef, type ReactNode, type ButtonHTMLAttributes } from 'react';
 import { Tooltip } from './Tooltip';
 import './InfoHint.css';
 
@@ -20,26 +20,30 @@ export interface InfoHintProps {
   size?: number;
 }
 
-// Forwarded-ref wrapper so Tooltip can attach its floating-ui reference to the
-// real <button> element rather than a DOM wrapper, preserving focus ring and
-// native keyboard semantics.
-const HintTrigger = forwardRef(function HintTrigger(
-  props: { label: string; size: number } & Record<string, unknown>,
-  ref: Ref<HTMLButtonElement>,
-) {
-  const { label, size, ...rest } = props;
-  return (
-    <button
-      type="button"
-      ref={ref}
-      className="info-hint-trigger"
-      aria-label={label}
-      {...rest}
-    >
-      <HelpCircle size={size} aria-hidden="true" focusable="false" />
-    </button>
-  );
-});
+// Explicit generics on forwardRef<Element, Props> so TypeScript doesn't have
+// to infer the `ref` type from the function signature — the previous version
+// tripped TS2345/TS2322 because `forwardRef` strips `ref` from Props via
+// `Omit<…, 'ref'>` and the intersection with `Record<string, unknown>` broke
+// the narrowing. Forwarding all native <button> props lets Tooltip attach
+// handlers (onMouseEnter, onFocus, …) cleanly.
+type HintTriggerProps = { label: string; size: number } &
+  ButtonHTMLAttributes<HTMLButtonElement>;
+
+const HintTrigger = forwardRef<HTMLButtonElement, HintTriggerProps>(
+  function HintTrigger({ label, size, ...rest }, ref) {
+    return (
+      <button
+        type="button"
+        ref={ref}
+        className="info-hint-trigger"
+        aria-label={label}
+        {...rest}
+      >
+        <HelpCircle size={size} aria-hidden="true" focusable="false" />
+      </button>
+    );
+  },
+);
 
 export function InfoHint({ label, content, size = 14 }: InfoHintProps) {
   return (
