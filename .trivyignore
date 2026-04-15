@@ -164,3 +164,13 @@ CVE-2026-31408
 # returns Total: 0 after this entry.
 # Review by: 2026-05-09
 CVE-2026-31411
+
+# Added: 2026-04-15 (worker-service trivy gate failure — Phase 224/225 deploy)
+# Both unfixed in Debian linux-libc-dev 6.12.74-2, status: affected.
+# CVE-2026-31414 — kernel: netfilter: nf_conntrack_expect: use expect->helper.
+# CVE-2026-31419 — kernel: Use-after-free in bonding driver.
+# Impact: None — container userspace headers only; containers use host kernel,
+# and neither nf_conntrack_expect nor the bonding driver runs in our workloads.
+# Review by: 2026-05-15
+CVE-2026-31414
+CVE-2026-31419
