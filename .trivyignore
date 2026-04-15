@@ -174,3 +174,16 @@ CVE-2026-31411
 # Review by: 2026-05-15
 CVE-2026-31414
 CVE-2026-31419
+
+# Added: 2026-04-15 (datacontract-service trivy gate — Phase 224/225 deploy)
+# CVE-2026-6100 — Python: use-after-free in decompression (libpython3.13
+# 3.13.5-2), status: affected (no Debian fix yet). Hits libpython3.13-minimal,
+# libpython3.13-stdlib, python3.13, python3.13-minimal in the
+# datacontract-service base image.
+# Impact: Low — datacontract-service does not decompress untrusted user input
+# (it validates JSON/YAML contract specs, which the decompression code path
+# does not exercise). API ingress is through Spring / JAX-RS, not tarfile /
+# zipfile / lzma consumers. Containers will pick up the patch automatically
+# when Debian ships a fixed libpython3.13-*.
+# Review by: 2026-05-15
+CVE-2026-6100
