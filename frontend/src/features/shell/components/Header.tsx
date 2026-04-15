@@ -10,6 +10,9 @@ import { getMyTenants, switchTenant } from '../../auth/services/tenantSwitchServ
 import type { TenantSummary } from '../../auth/types/tenantSwitch';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { APP_NAME } from '../../../shared/constants/brand';
+import { NotificationBell } from '../../notifications/components/NotificationBell';
+import { useTheme } from '../../../shared/hooks/useTheme';
+import { useMobileSidebar } from './useMobileSidebar';
 import './Header.css';
 
 function getErrorMessage(err: unknown, fallback: string): string {
@@ -19,6 +22,8 @@ function getErrorMessage(err: unknown, fallback: string): string {
 export function Header() {
   const navigate = useNavigate();
   const { user, active_tenant_id, setActiveTenant, refreshUser, logout } = useAuthStore();
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const { isOpen: sidebarOpen, toggle: toggleSidebar } = useMobileSidebar();
   const [showTenantSwitcher, setShowTenantSwitcher] = useState(false);
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
   const [tenantLoading, setTenantLoading] = useState(false);
@@ -106,6 +111,21 @@ export function Header() {
     <header className="app-header" role="banner">
       <div className="header-content">
         <div className="header-left">
+          {/* Phase 224.5 — mobile-only hamburger toggle for the sidebar overlay.
+              CSS hides it at ≥ tablet breakpoint. */}
+          <button
+            type="button"
+            className="sidebar-toggle"
+            onClick={toggleSidebar}
+            aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
+            aria-controls="app-sidebar"
+            aria-expanded={sidebarOpen}
+            data-testid="sidebar-toggle"
+          >
+            <span aria-hidden="true" className="sidebar-toggle__icon">
+              {sidebarOpen ? '✕' : '☰'}
+            </span>
+          </button>
           <Link to="/" className="app-title-link" aria-label={`${APP_NAME} — go to home`}>
             <img src="/meshant-logo.png" alt="" className="header-logo" aria-hidden="true" />
             <h1 className="app-title">{APP_NAME}</h1>
@@ -186,8 +206,19 @@ export function Header() {
               <span className="tenant-static" title={displayName}>{displayName}</span>
               )}
 
-              {/* Notifications removed — no backend notification system yet.
-                  Re-add when notification API is implemented (Phase 212+). */}
+              {/* Phase 224.4 — theme toggle (sun / moon) */}
+              <button
+                type="button"
+                className="theme-toggle"
+                onClick={toggleTheme}
+                aria-label={resolvedTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+                title={resolvedTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              >
+                <span aria-hidden="true">{resolvedTheme === 'dark' ? '☀' : '🌙'}</span>
+              </button>
+
+              {/* Phase 223.1 — in-app notification bell */}
+              <NotificationBell />
 
               {/* User Menu */}
               <div className="user-menu" ref={userMenuRef}>
@@ -236,6 +267,20 @@ export function Header() {
                     >
                       Privacy & data
                     </Link>
+                    {/* Phase 224.4 — theme toggle mirrored into the user menu
+                        (acceptance criteria: "Toggle in user menu"). The
+                        header-bar toggle stays as a quick-access affordance. */}
+                    <button
+                      type="button"
+                      className="user-menu-item"
+                      onClick={() => {
+                        toggleTheme();
+                      }}
+                      role="menuitem"
+                      data-testid="user-menu-theme-toggle"
+                    >
+                      {resolvedTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+                    </button>
                     {(user.roles?.includes('TENANT_ADMIN') || user.roles?.includes('PLATFORM_ADMIN')) && (
                       <>
                         <Link

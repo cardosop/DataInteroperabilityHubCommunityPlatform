@@ -50,17 +50,22 @@ class TestHealthEndpoints:
 
 
 class TestAPIDocumentation:
-    """Validate API documentation endpoints."""
+    """Validate API documentation endpoints (221.4: auth-gated)."""
 
-    def test_openapi_schema_accessible(self):
+    def test_openapi_schema_gated_in_production(self):
+        """/api-docs/openapi.json absent in production (221.4.1), available in staging."""
         r = _get("/api-docs/openapi.json")
-        assert r.status_code == 200
-        data = r.json()
-        assert "paths" in data
+        # 200 in staging/dev (schema view has no auth gate); 404 in production
+        assert r.status_code in (200, 404), (
+            f"Expected 200 (staging) or 404 (production), got {r.status_code}"
+        )
 
-    def test_swagger_ui_accessible(self):
+    def test_swagger_ui_requires_auth(self):
+        """Swagger UI requires auth (221.4.2)."""
         r = _get("/api-docs/")
-        assert r.status_code == 200
+        assert r.status_code in (401, 403, 404), (
+            f"Expected 401/403/404, got {r.status_code}"
+        )
 
 
 class TestAuthEndpoints:

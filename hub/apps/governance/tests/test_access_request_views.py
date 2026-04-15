@@ -1112,3 +1112,329 @@ class AccessRequestViewSetTest(TestCase):
         response = self.client.delete(f"/api/v1/governance/access-requests/{request.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class AccessRequestPendingCountTest(TestCase):
+    """Tests for the AccessRequestViewSet.pending_count action.
+
+    Admin-only endpoint that surfaces the number of PENDING access requests in
+    the caller's tenant (or across all tenants for platform admins) so the UI
+    can render a Governance badge without polling the paginated list.
+    """
+
+    PENDING_COUNT_URL = "/api/v1/governance/access-requests/pending-count/"
+
+    def setUp(self):
+        from hub.apps.users.models import Role, UserRole
+
+        self.client = APIClient()
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Tenant {uid}",
+            slug=f"tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        other_uid = uuid.uuid4().hex[:8]
+        self.other_tenant = Tenant.objects.create(
+            name=f"Other {other_uid}",
+            slug=f"other-{other_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        ensure_tenant_has_active_subscription(self.tenant)
+        ensure_tenant_has_active_subscription(self.other_tenant)
+
+        self.regular_user = User.objects.create_user(
+            email=f"regular-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        self.tenant_admin = User.objects.create_user(
+            email=f"admin-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.create(
+            user=self.tenant_admin, tenant=self.tenant, role=admin_role
+        )
+
+        self.other_admin = User.objects.create_user(
+            email=f"otheradmin-{other_uid}@example.com",
+            password="testpass123",
+            tenant=self.other_tenant,
+            status=UserStatus.ACTIVE,
+        )
+        other_admin_role, _ = Role.objects.get_or_create(
+            tenant=self.other_tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.create(
+            user=self.other_admin, tenant=self.other_tenant, role=other_admin_role
+        )
+
+        self.platform_admin = User.objects.create_user(
+            email=f"platform-{uid}@example.com",
+            password="testpass123",
+            is_platform_admin=True,
+        )
+
+        self.asset = Asset.objects.create(
+            tenant=self.tenant,
+            key=f"asset-{uid}",
+            name="Asset",
+            status=AssetStatus.ACTIVE,
+            created_by=self.regular_user,
+        )
+        self.other_asset = Asset.objects.create(
+            tenant=self.other_tenant,
+            key=f"asset-{other_uid}",
+            name="Other Asset",
+            status=AssetStatus.ACTIVE,
+            created_by=self.other_admin,
+        )
+
+    def _make_request(self, tenant, asset, requested_by, status_value):
+        return AccessRequest.objects.create(
+            tenant=tenant,
+            requested_by=requested_by,
+            asset=asset,
+            reason="r",
+            requested_access_type="READ",
+            status=status_value,
+        )
+
+    def test_pending_count_requires_authentication(self):
+        response = self.client.get(self.PENDING_COUNT_URL)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_pending_count_forbidden_for_regular_user(self):
+        self._make_request(
+            self.tenant, self.asset, self.regular_user, AccessRequestStatus.PENDING
+        )
+        self.client.force_authenticate(user=self.regular_user)
+        response = self.client.get(self.PENDING_COUNT_URL)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_pending_count_zero_when_no_requests(self):
+        self.client.force_authenticate(user=self.tenant_admin)
+        response = self.client.get(self.PENDING_COUNT_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {"count": 0})
+
+    def test_pending_count_tenant_admin_sees_only_own_tenant(self):
+        self._make_request(
+            self.tenant, self.asset, self.regular_user, AccessRequestStatus.PENDING
+        )
+        self._make_request(
+            self.tenant, self.asset, self.regular_user, AccessRequestStatus.PENDING
+        )
+        self._make_request(
+            self.tenant, self.asset, self.regular_user, AccessRequestStatus.APPROVED
+        )
+        self._make_request(
+            self.other_tenant,
+            self.other_asset,
+            self.other_admin,
+            AccessRequestStatus.PENDING,
+        )
+
+        self.client.force_authenticate(user=self.tenant_admin)
+        response = self.client.get(self.PENDING_COUNT_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {"count": 2})
+
+    def test_pending_count_ignores_non_pending_statuses(self):
+        for non_pending in (
+            AccessRequestStatus.APPROVED,
+            AccessRequestStatus.REJECTED,
+            AccessRequestStatus.REVOKED,
+        ):
+            self._make_request(self.tenant, self.asset, self.regular_user, non_pending)
+        self.client.force_authenticate(user=self.tenant_admin)
+        response = self.client.get(self.PENDING_COUNT_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {"count": 0})
+
+    def test_pending_count_platform_admin_sees_all_tenants(self):
+        self._make_request(
+            self.tenant, self.asset, self.regular_user, AccessRequestStatus.PENDING
+        )
+        self._make_request(
+            self.other_tenant,
+            self.other_asset,
+            self.other_admin,
+            AccessRequestStatus.PENDING,
+        )
+        self.client.force_authenticate(user=self.platform_admin)
+        response = self.client.get(self.PENDING_COUNT_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {"count": 2})
+
+
+class AccessRequestBulkActionsTest(TestCase):
+    """223.3.3 — bulk-approve / bulk-reject.
+
+    Per-id atomicity: a single failing row must not abort the others.
+    The response must surface both successes and per-id failures.
+    """
+
+    URL_BULK_APPROVE = "/api/v1/governance/access-requests/bulk-approve/"
+    URL_BULK_REJECT = "/api/v1/governance/access-requests/bulk-reject/"
+
+    def setUp(self):
+        from hub.apps.users.models import Role, UserRole
+
+        self.client = APIClient()
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"T {uid}",
+            slug=f"t-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        ensure_tenant_has_active_subscription(self.tenant)
+        self.requester = User.objects.create_user(
+            email=f"req-{uid}@example.com",
+            password="x",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        self.admin = User.objects.create_user(
+            email=f"adm-{uid}@example.com",
+            password="x",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Admin"},
+        )
+        UserRole.objects.create(
+            user=self.admin, tenant=self.tenant, role=admin_role
+        )
+        self.asset = Asset.objects.create(
+            tenant=self.tenant,
+            key=f"asset-{uid}",
+            name="A",
+            status=AssetStatus.ACTIVE,
+            created_by=self.requester,
+        )
+
+    def _make(self, status_value=AccessRequestStatus.PENDING):
+        return AccessRequest.objects.create(
+            tenant=self.tenant,
+            requested_by=self.requester,
+            asset=self.asset,
+            reason="r",
+            requested_access_type="READ",
+            status=status_value,
+        )
+
+    def test_bulk_approve_rejects_empty_ids(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            self.URL_BULK_APPROVE, {"ids": []}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_bulk_approve_requires_ids_list(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            self.URL_BULK_APPROVE, {}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_bulk_approve_all_pending(self):
+        a = self._make()
+        b = self._make()
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            self.URL_BULK_APPROVE,
+            {"ids": [str(a.id), str(b.id)]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            sorted(response.data["succeeded"]),
+            sorted([str(a.id), str(b.id)]),
+        )
+        self.assertEqual(response.data["failed"], [])
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertEqual(a.status, AccessRequestStatus.APPROVED)
+        self.assertEqual(b.status, AccessRequestStatus.APPROVED)
+
+    def test_bulk_approve_partial_failure_reports_per_id_error(self):
+        # ``b`` is already APPROVED and should fail; ``a`` must still succeed.
+        a = self._make()
+        b = self._make(status_value=AccessRequestStatus.APPROVED)
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            self.URL_BULK_APPROVE,
+            {"ids": [str(a.id), str(b.id)]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn(str(a.id), response.data["succeeded"])
+        failed_ids = [row["id"] for row in response.data["failed"]]
+        self.assertIn(str(b.id), failed_ids)
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertEqual(a.status, AccessRequestStatus.APPROVED)
+        # `b` was already APPROVED and stays that way.
+        self.assertEqual(b.status, AccessRequestStatus.APPROVED)
+
+    def test_bulk_approve_unknown_id_returns_failed_entry(self):
+        unknown = str(uuid.uuid4())
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            self.URL_BULK_APPROVE, {"ids": [unknown]}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["succeeded"], [])
+        self.assertEqual(len(response.data["failed"]), 1)
+        self.assertEqual(response.data["failed"][0]["id"], unknown)
+
+    def test_bulk_reject_requires_reason(self):
+        a = self._make()
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            self.URL_BULK_REJECT, {"ids": [str(a.id)]}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_bulk_reject_all_pending(self):
+        a = self._make()
+        b = self._make()
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            self.URL_BULK_REJECT,
+            {"ids": [str(a.id), str(b.id)], "reason": "nope"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            sorted(response.data["succeeded"]),
+            sorted([str(a.id), str(b.id)]),
+        )
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertEqual(a.status, AccessRequestStatus.REJECTED)
+        self.assertEqual(b.status, AccessRequestStatus.REJECTED)
+        self.assertEqual(a.rejection_reason, "nope")
+
+    def test_bulk_endpoints_require_authentication(self):
+        response = self.client.post(
+            self.URL_BULK_APPROVE, {"ids": ["x"]}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

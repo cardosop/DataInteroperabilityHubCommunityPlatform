@@ -2,7 +2,8 @@
  * Governance React Query Hooks
  */
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '../../../shared/components/Toast';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import type {
   AccessRequestCreateRequest,
@@ -10,10 +11,14 @@ import type {
 } from '../../../shared/types/governance';
 import { governanceService } from '../services/governanceService';
 
-export function useAccessRequests(filters: AccessRequestListFilters = {}) {
+export function useAccessRequests(
+  filters: AccessRequestListFilters = {},
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: ['governance', 'access-requests', 'list', filters],
     queryFn: () => governanceService.list(filters),
+    enabled: options?.enabled !== false,
   });
 }
 
@@ -65,6 +70,71 @@ export function useRejectAccessRequest() {
       queryClient.invalidateQueries({
         queryKey: ['governance', 'access-requests', 'detail', data.id],
       });
+    },
+  });
+}
+
+/**
+ * Build a partial-failure-aware toast payload.
+ * Backend returns HTTP 200 with `{succeeded, failed}` even when some rows
+ * failed — so `useMutation.onSuccess` always fires, and we must inspect
+ * the response to tell the user what actually happened.
+ */
+function summarizeBulkResult(
+  data: { succeeded: string[]; failed: Array<{ id: string; error: string }> },
+  verb: 'Approved' | 'Rejected',
+): { message: string; tone: 'success' | 'info' | 'error' } {
+  const s = data.succeeded.length;
+  const f = data.failed.length;
+  if (f === 0) {
+    return {
+      message: `${verb} ${s} request${s === 1 ? '' : 's'}.`,
+      tone: 'success',
+    };
+  }
+  if (s === 0) {
+    const firstError = data.failed[0]?.error ?? 'unknown error';
+    return {
+      message: `Failed to ${verb.toLowerCase()} ${f} request${f === 1 ? '' : 's'}: ${firstError}`,
+      tone: 'error',
+    };
+  }
+  return {
+    message: `${verb} ${s}; ${f} failed. First error: ${data.failed[0].error}`,
+    tone: 'info',
+  };
+}
+
+export function useBulkApproveAccessRequests() {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: ({ ids, comments }: { ids: string[]; comments?: string }) =>
+      governanceService.bulkApprove(ids, comments),
+    onSuccess: (data) => {
+      const { message, tone } = summarizeBulkResult(data, 'Approved');
+      toast[tone](message);
+      queryClient.invalidateQueries({ queryKey: ['governance', 'access-requests'] });
+    },
+    onError: () => {
+      toast.error('Bulk approve request failed.');
+    },
+  });
+}
+
+export function useBulkRejectAccessRequests() {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: ({ ids, reason }: { ids: string[]; reason: string }) =>
+      governanceService.bulkReject(ids, reason),
+    onSuccess: (data) => {
+      const { message, tone } = summarizeBulkResult(data, 'Rejected');
+      toast[tone](message);
+      queryClient.invalidateQueries({ queryKey: ['governance', 'access-requests'] });
+    },
+    onError: () => {
+      toast.error('Bulk reject request failed.');
     },
   });
 }

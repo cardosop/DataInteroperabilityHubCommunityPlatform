@@ -6,6 +6,7 @@ Extracts governance logic from access_requests.py and views.
 All create/update/approve paths call GovernanceBusinessRules before mutation.
 """
 
+import logging
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
@@ -25,6 +26,8 @@ from hub.apps.governance.models import (
 from hub.apps.orchestration.workflows.access_request import (
     AccessRequestWorkflow as WorkflowAccessRequestWorkflow,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class GovernanceService(BaseService, AccessEventPublisher):
@@ -236,52 +239,92 @@ class GovernanceService(BaseService, AccessEventPublisher):
             NotFoundError: If access request not found
             ValidationError: If GovernanceBusinessRules reject approval
         """
-        access_request = self.get_resource_or_raise(
-            AccessRequest, access_request_id, tenant_id=tenant_id
-        )
-
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import User
 
         approver_user = User.objects.get(id=approver_id)
-        tenant = Tenant.objects.get(id=tenant_id)
+        tenant_obj = Tenant.objects.get(id=tenant_id)
 
-        # Validate approval via GovernanceBusinessRules before mutation
-        rules = GovernanceBusinessRules(
-            tenant_id=tenant_id,
-            user_id=approver_id,
-        )
-        result = rules.validate(
-            access_request=access_request,
-            tenant=tenant,
-            approver=approver_user,
-            validation_type="approval",
-        )
-        if not result.is_valid:
-            raise ValidationError(
-                "; ".join(result.errors),
-                code="BUSINESS_RULES_VALIDATION",
-                details=result.details,
+        # Phase 220.5: wrap the entire approve → entitlement → fulfill chain
+        # in a single transaction with row-level locking.
+        with transaction.atomic():
+            # Lock the access request row to prevent double-approve.
+            try:
+                access_request = (
+                    AccessRequest.objects.select_for_update()
+                    .get(id=access_request_id, tenant_id=tenant_id)
+                )
+            except AccessRequest.DoesNotExist:
+                raise NotFoundError(
+                    f"AccessRequest with id {access_request_id} not found",
+                    details={
+                        "resource_type": "AccessRequest",
+                        "resource_id": access_request_id,
+                    },
+                )
+
+            # Validate approval via GovernanceBusinessRules before mutation
+            rules = GovernanceBusinessRules(
+                tenant_id=tenant_id,
+                user_id=approver_id,
             )
+            result = rules.validate(
+                access_request=access_request,
+                tenant=tenant_obj,
+                approver=approver_user,
+                validation_type="approval",
+            )
+            if not result.is_valid:
+                raise ValidationError(
+                    "; ".join(result.errors),
+                    code="BUSINESS_RULES_VALIDATION",
+                    details=result.details,
+                )
 
-        # Update access request
-        access_request.status = AccessRequestStatus.APPROVED
-        access_request.approved_by = approver_user
-        access_request.approved_at = timezone.now()
-        # Set expiration if not already set (default 90 days from approval)
-        if not access_request.expires_at:
-            access_request.expires_at = timezone.now() + timedelta(days=90)
-        access_request.save()
+            # Update access request
+            access_request.status = AccessRequestStatus.APPROVED
+            access_request.approved_by = approver_user
+            access_request.approved_at = timezone.now()
+            # Set expiration if not already set (default 90 days from approval)
+            if not access_request.expires_at:
+                access_request.expires_at = timezone.now() + timedelta(days=90)
+            access_request.save()
 
-        # Cascade to marketplace: fulfill the linked order + create entitlement
-        if access_request.order:
-            from hub.apps.marketplace.entitlement_utils import create_entitlement_for_order
-            from hub.apps.marketplace.models import OrderStatus
-            order = access_request.order
-            if order.status == OrderStatus.REQUESTED:
-                order.approve(approved_by_user=approver_user)
-                create_entitlement_for_order(order)
-                order.fulfill()
+            # Cascade to marketplace: fulfill the linked order + create entitlement.
+            # The order is also locked to prevent the approve() race condition
+            # if both the governance and marketplace paths fire concurrently.
+            if access_request.order_id:
+                from hub.apps.marketplace.entitlement_utils import create_entitlement_for_order
+                from hub.apps.marketplace.models import Order, OrderStatus
+                order = Order.objects.select_for_update().get(
+                    id=access_request.order_id,
+                )
+                if order.status == OrderStatus.REQUESTED:
+                    order.approve(approved_by_user=approver_user)
+                    create_entitlement_for_order(order)
+                    order.fulfill()
+
+        # Phase 223.1 — in-app inbox notification for the requester.
+        # Runs after the atomic block so a notification write failure
+        # can never roll back the approval.
+        try:
+            from hub.apps.notifications.utils import create_user_notification
+            create_user_notification(
+                user=access_request.requested_by,
+                tenant=tenant_obj,
+                title="Access request approved",
+                message=(
+                    f"Your access request for "
+                    f"{access_request.asset_id or access_request.dataset_id or access_request.file_id} "
+                    f"was approved."
+                ),
+                notification_type="SUCCESS",
+                category="GOVERNANCE",
+                resource_type="ACCESS_REQUEST",
+                resource_id=access_request.id,
+            )
+        except Exception:
+            logger.exception("Failed to deliver approval notification")
 
         return access_request
 
@@ -345,6 +388,22 @@ class GovernanceService(BaseService, AccessEventPublisher):
             order = access_request.order
             if order.status == OrderStatus.REQUESTED:
                 order.reject(rejected_by_user=rejector_user, reason=reason)
+
+        # Phase 223.1 — inbox notification for the requester.
+        try:
+            from hub.apps.notifications.utils import create_user_notification
+            create_user_notification(
+                user=access_request.requested_by,
+                tenant=tenant,
+                title="Access request rejected",
+                message=reason or "Your access request was rejected.",
+                notification_type="WARNING",
+                category="GOVERNANCE",
+                resource_type="ACCESS_REQUEST",
+                resource_id=access_request.id,
+            )
+        except Exception:
+            logger.exception("Failed to deliver rejection notification")
 
         return access_request
 

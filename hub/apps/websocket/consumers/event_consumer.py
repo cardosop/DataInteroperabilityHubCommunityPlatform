@@ -32,6 +32,7 @@ from hub.apps.core.events.deduplication import (
     store_event_id,
     get_redis_client as get_deduplication_redis_client,
 )
+from hub.apps.websocket.middleware.auth import get_user_from_token
 from hub.apps.websocket.protocol import (
     EventMessage,
     SubscribeMessage,
@@ -45,6 +46,7 @@ logger = structlog.get_logger(__name__)
 DEFAULT_PING_INTERVAL = 30  # seconds
 DEFAULT_PONG_TIMEOUT = 10  # seconds
 DEFAULT_CONNECTION_TIMEOUT = 300  # seconds (5 minutes)
+DEFAULT_AUTH_TIMEOUT = 10  # seconds — disconnect if no authenticate message
 
 
 class EventConsumer(AsyncWebsocketConsumer):
@@ -66,6 +68,10 @@ class EventConsumer(AsyncWebsocketConsumer):
         self.redis_subscriber = None
         self.deduplication_redis_client = None  # Lazy initialization for deduplication
 
+        # Message-based authentication state
+        self._awaiting_auth: bool = False
+        self._auth_timeout_task: Optional[asyncio.Task] = None
+
         # Connection health tracking
         self.last_activity: Optional[datetime] = None
         self.last_pong_received: Optional[datetime] = None
@@ -83,6 +89,7 @@ class EventConsumer(AsyncWebsocketConsumer):
         self.ping_interval = getattr(settings, 'WEBSOCKET_PING_INTERVAL', DEFAULT_PING_INTERVAL)
         self.pong_timeout = getattr(settings, 'WEBSOCKET_PONG_TIMEOUT', DEFAULT_PONG_TIMEOUT)
         self.connection_timeout = getattr(settings, 'WEBSOCKET_CONNECTION_TIMEOUT', DEFAULT_CONNECTION_TIMEOUT)
+        self.auth_timeout = getattr(settings, 'WEBSOCKET_AUTH_TIMEOUT', DEFAULT_AUTH_TIMEOUT)
 
     def _get_event_bus(self):
         """Get event bus instance (lazy initialization)."""
@@ -97,19 +104,45 @@ class EventConsumer(AsyncWebsocketConsumer):
         return self.deduplication_redis_client
 
     async def connect(self):
-        """Handle WebSocket connection."""
-        # Check authentication
+        """Handle WebSocket connection.
+
+        Supports two authentication paths:
+        1. Pre-authenticated (middleware set scope["user"]): immediately ready.
+        2. Pending message auth (scope["auth_method"] == "pending_message_auth"):
+           accept the connection, start a timeout, and wait for an
+           ``authenticate`` message before allowing any other operations.
+        """
+        auth_method = self.scope.get("auth_method")
         user = self.scope.get("user")
+
+        # --- Pending message-based auth ---
+        if auth_method == "pending_message_auth":
+            # Accept connection and wait for authenticate message
+            await self.accept()
+            self._awaiting_auth = True
+            self._connection_closed = False
+            self.last_activity = datetime.now(dt_timezone.utc)
+
+            # Start auth timeout — disconnect if no authenticate message
+            self._auth_timeout_task = asyncio.create_task(
+                self._auth_timeout_loop()
+            )
+
+            logger.info(
+                "websocket_awaiting_auth",
+                path=self.scope.get("path"),
+                auth_timeout=self.auth_timeout,
+            )
+            return
+
+        # --- Pre-authenticated (from middleware: header or deprecated query param) ---
         if isinstance(user, AnonymousUser) or not user:
-            # Accept connection first (required by WebsocketCommunicator), then close
             await self.accept()
             await self.close(code=4001)  # Unauthorized
             return
 
-        # Get tenant
         tenant = self.scope.get("tenant")
         if not tenant:
-            # Accept connection first (required by WebsocketCommunicator), then close
             await self.accept()
             await self.send_error("User must belong to a tenant")
             await self.close(code=4003)  # Forbidden
@@ -117,19 +150,34 @@ class EventConsumer(AsyncWebsocketConsumer):
 
         # Accept connection
         await self.accept()
+        await self._complete_authenticated_setup(user, tenant)
 
+    async def _complete_authenticated_setup(
+        self, user, tenant, *, send_confirmation=True,
+    ):
+        """Shared setup after authentication (both middleware and message-based).
+
+        Args:
+            user: Authenticated user.
+            tenant: User's tenant.
+            send_confirmation: Whether to send the ``subscription_confirmed``
+                connection message.  Set to ``False`` for message-based auth
+                where ``auth_confirmed`` was already sent.
+        """
         # Initialize connection health tracking
         self.last_activity = datetime.now(dt_timezone.utc)
         self.last_pong_received = datetime.now(dt_timezone.utc)
         self._connection_closed = False
 
-        # Send connection confirmation
-        await self.send_json_message(
-            WebSocketMessage(
-                type=WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value,
-                data={"message": "Connected to event stream"},
+        if send_confirmation:
+            # Send connection confirmation (pre-authenticated path only;
+            # message-based auth already sent AUTH_CONFIRMED).
+            await self.send_json_message(
+                WebSocketMessage(
+                    type=WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value,
+                    data={"message": "Connected to event stream"},
+                )
             )
-        )
 
         # Start background tasks for connection health monitoring
         self.ping_task = asyncio.create_task(self._ping_loop())
@@ -147,6 +195,14 @@ class EventConsumer(AsyncWebsocketConsumer):
         """Handle WebSocket disconnection."""
         # Mark connection as closed
         self._connection_closed = True
+
+        # Cancel auth timeout task
+        if self._auth_timeout_task and not self._auth_timeout_task.done():
+            self._auth_timeout_task.cancel()
+            try:
+                await self._auth_timeout_task
+            except asyncio.CancelledError:
+                pass
 
         # Cancel background tasks
         if self.ping_task and not self.ping_task.done():
@@ -210,6 +266,18 @@ class EventConsumer(AsyncWebsocketConsumer):
         # Update last activity timestamp
         self.last_activity = datetime.now(dt_timezone.utc)
 
+        # --- Gate: authenticate message when awaiting auth ---
+        if message.type == WebSocketMessageType.AUTHENTICATE.value:
+            await self.handle_authenticate(message)
+            return
+
+        # --- Gate: reject all other messages before authentication ---
+        if self._awaiting_auth:
+            await self.send_error(
+                "Authentication required. Send an 'authenticate' message first."
+            )
+            return
+
         # Handle message based on type
         if message.type == WebSocketMessageType.SUBSCRIBE.value:
             await self.handle_subscribe(message)
@@ -223,6 +291,90 @@ class EventConsumer(AsyncWebsocketConsumer):
             await self.handle_pong(message)
         else:
             await self.send_error(f"Unknown message type: {message.type}")
+
+    async def handle_authenticate(self, message: WebSocketMessage):
+        """Handle message-based authentication.
+
+        Expects: ``{ "type": "authenticate", "data": { "token": "<jwt>" } }``
+        """
+        # Reject if already authenticated
+        if not self._awaiting_auth:
+            await self.send_error("Already authenticated")
+            return
+
+        data = message.data or {}
+        token = data.get("token")
+        if not token:
+            await self.send_error(
+                "Missing token field in authenticate message"
+            )
+            await self.close(code=4001)
+            return
+
+        user = await get_user_from_token(token)
+        if not user:
+            await self.send_error("Authentication failed: invalid token")
+            await self.close(code=4001)
+            return
+
+        tenant = user.tenant if hasattr(user, "tenant") else None
+        if not tenant:
+            await self.send_error("User must belong to a tenant")
+            await self.close(code=4003)
+            return
+
+        # Authentication successful — cancel timeout, set scope, transition
+        self._awaiting_auth = False
+        if self._auth_timeout_task and not self._auth_timeout_task.done():
+            self._auth_timeout_task.cancel()
+            try:
+                await self._auth_timeout_task
+            except asyncio.CancelledError:
+                pass
+
+        self.scope["user"] = user
+        self.scope["tenant"] = tenant
+        self.scope["auth_method"] = "message_auth"
+
+        # Send auth confirmation
+        await self.send_json_message(
+            WebSocketMessage(
+                type=WebSocketMessageType.AUTH_CONFIRMED.value,
+                data={
+                    "message": "Authenticated successfully",
+                    "user_id": str(user.id),
+                },
+            )
+        )
+
+        # Complete the standard authenticated setup (ping/pong, health check).
+        # send_confirmation=False because AUTH_CONFIRMED was already sent above.
+        await self._complete_authenticated_setup(
+            user, tenant, send_confirmation=False,
+        )
+
+        logger.info(
+            "websocket_message_auth_success",
+            user_id=str(user.id),
+            tenant_id=str(tenant.id),
+        )
+
+    async def _auth_timeout_loop(self):
+        """Close connection if no authenticate message within the timeout."""
+        try:
+            await asyncio.sleep(self.auth_timeout)
+            if self._awaiting_auth and not self._connection_closed:
+                logger.warning(
+                    "websocket_auth_timeout",
+                    auth_timeout=self.auth_timeout,
+                    path=self.scope.get("path"),
+                )
+                await self.send_error(
+                    "Authentication timeout: no authenticate message received"
+                )
+                await self.close(code=4001)
+        except asyncio.CancelledError:
+            pass
 
     async def handle_subscribe(self, message: WebSocketMessage):
         """Handle subscribe message."""

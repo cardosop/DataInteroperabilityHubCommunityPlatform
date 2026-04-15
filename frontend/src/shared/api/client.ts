@@ -157,6 +157,13 @@ export class ApiClient {
   _refreshToken: string | null = null;
   _refreshPromise: Promise<string> | null = null;
   _getTenantId: (() => string | null | undefined) | null = null;
+  /**
+   * When true, auth tokens are delivered via httpOnly cookies — the client
+   * must NOT send ``Authorization: Bearer`` and must NOT store tokens in
+   * memory/localStorage.  Detected automatically when the login response
+   * does not contain ``access_token`` in the body (Phase 220.4).
+   */
+  _cookieAuthMode = false;
   readonly _baseURL: string;
   readonly _httpClient: InternalHttpClient;
 
@@ -179,8 +186,10 @@ export class ApiClient {
       'Content-Type': 'application/json',
     };
 
-    // Auth token
-    if (this._accessToken) {
+    // Auth token — skip in cookie mode (httpOnly cookies are sent automatically
+    // via credentials: 'include'; sending a Bearer header would be redundant
+    // and the token isn't available in JS anyway).
+    if (this._accessToken && !this._cookieAuthMode) {
       headers['Authorization'] = `Bearer ${this._accessToken}`;
     }
 
@@ -220,7 +229,9 @@ export class ApiClient {
     data: unknown | undefined,
     config: RequestConfig | undefined,
   ): Promise<ApiResponse<T> | null> {
-    const canRefresh = this._refreshToken || !this._accessToken;
+    // In cookie mode, refresh is always possible (httpOnly cookie sent automatically).
+    // In legacy mode, we need either a refresh token or no access token (cold start).
+    const canRefresh = this._cookieAuthMode || this._refreshToken || !this._accessToken;
     if (!canRefresh) {
       // No refresh token available — session is dead, force re-login
       this.clearTokens();
@@ -255,10 +266,16 @@ export class ApiClient {
 
     this._refreshPromise = (async () => {
       try {
+        // In cookie mode, refresh_token cookie is sent automatically via
+        // credentials: 'include'; no body payload needed.
+        const body = this._cookieAuthMode
+          ? undefined
+          : JSON.stringify({ refresh_token: this._refreshToken });
+
         const response = await fetch(`${this._baseURL}/auth/refresh/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: this._refreshToken }),
+          body,
           credentials: 'include',
         });
 
@@ -271,6 +288,8 @@ export class ApiClient {
           refresh_token?: string;
         };
 
+        // In cookie mode, tokens are in httpOnly cookies — not in body.
+        // The browser handles cookie storage automatically.
         if (responseData.access_token) {
           this.setAccessToken(responseData.access_token);
         }
@@ -278,6 +297,7 @@ export class ApiClient {
           this.setRefreshToken(responseData.refresh_token);
         }
 
+        // In cookie mode, return empty string (token is in cookie, not JS).
         return responseData.access_token || '';
       } finally {
         this._refreshPromise = null;
@@ -303,6 +323,7 @@ export class ApiClient {
   clearTokens(): void {
     this._accessToken = null;
     this._refreshToken = null;
+    this._cookieAuthMode = false;
   }
 
   getClient(): HttpClient {

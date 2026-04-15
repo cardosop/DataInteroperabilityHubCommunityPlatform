@@ -131,7 +131,7 @@
 
 .form-section label {
   font-weight: 600;
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .form-section input[type="text"],
@@ -177,7 +177,7 @@
 }
 
 .error-message p {
-  color: #666;
+  color: var(--color-text-secondary);
   margin: 1rem 0;
 }
 

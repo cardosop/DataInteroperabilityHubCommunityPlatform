@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type { ApiError } from '../../../shared/types/api';
@@ -98,6 +99,13 @@ export function CostPage() {
 
   return (
     <div className="cost-page" data-testid="cost-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'Settings', href: '/settings/profile' },
+          { label: 'Cost' },
+        ]}
+      />
       <div className="cost-page-header">
         <h1>Cost Tracking</h1>
         <p className="cost-page-description">

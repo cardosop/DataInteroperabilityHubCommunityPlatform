@@ -1,0 +1,117 @@
+/* Phase 224.3.3 — Activity Timeline */
+.activity-timeline {
+  padding: var(--spacing-md, 1rem) 0;
+}
+
+.activity-timeline__empty {
+  color: var(--color-text-secondary, #6b7280);
+  font-style: italic;
+  margin: 0;
+}
+
+.activity-timeline__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  position: relative;
+}
+
+.activity-timeline__list::before {
+  content: '';
+  position: absolute;
+  left: 1rem;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  width: 2px;
+  background: var(--color-border, #e5e7eb);
+}
+
+.activity-item {
+  display: flex;
+  gap: var(--spacing-md, 1rem);
+  padding: var(--spacing-sm, 0.5rem) 0;
+  position: relative;
+}
+
+.activity-avatar {
+  flex: 0 0 2rem;
+  height: 2rem;
+  width: 2rem;
+  border-radius: 50%;
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  position: relative;
+  z-index: 1;
+}
+
+.activity-avatar--system {
+  background: var(--color-text-secondary, #6b7280);
+}
+
+.activity-item__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.activity-item__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-sm, 0.5rem);
+}
+
+.activity-item__action {
+  font-weight: 600;
+  color: var(--color-text-primary, #111827);
+}
+
+.activity-item__actor {
+  color: var(--color-text-secondary, #6b7280);
+  font-size: 0.875rem;
+}
+
+.activity-item__time {
+  color: var(--color-text-secondary, #6b7280);
+  font-size: 0.75rem;
+  margin-left: auto;
+}
+
+.activity-item--failure .activity-item__action {
+  color: var(--color-error, #b91c1c);
+}
+
+.activity-item--warning .activity-item__action {
+  color: var(--color-warning, #b45309);
+}
+
+.activity-details {
+  margin: 0.25rem 0 0 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-background-secondary, #f9fafb);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: var(--border-radius-sm, 0.25rem);
+  font-size: 0.8125rem;
+}
+
+.activity-details__row {
+  display: grid;
+  grid-template-columns: minmax(6rem, max-content) 1fr;
+  gap: 0.5rem;
+  padding: 0.125rem 0;
+}
+
+.activity-details__row dt {
+  color: var(--color-text-secondary, #6b7280);
+  font-weight: 500;
+}
+
+.activity-details__row dd {
+  margin: 0;
+  color: var(--color-text-primary, #111827);
+  word-break: break-word;
+}

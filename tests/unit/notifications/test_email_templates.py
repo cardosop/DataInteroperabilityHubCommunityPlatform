@@ -219,12 +219,12 @@ class EmailTemplateURLBuildingTest(TestCase):
             self.assertEqual(url, 'https://hub.example.com/auth/accept-invitation?token=test-token-123')
     
     def test_build_password_reset_url(self):
-        """Test building password reset URL"""
+        """Test building password reset URL — token in fragment (221.1.3)"""
         from django.test import override_settings
-        
+
         with override_settings(EMAIL_BASE_URL='https://hub.example.com'):
             url = build_password_reset_url('reset-token-456')
-            self.assertEqual(url, 'https://hub.example.com/auth/password-reset/confirm?token=reset-token-456')
+            self.assertEqual(url, 'https://hub.example.com/auth/password-reset/confirm#token=reset-token-456')
     
     def test_build_job_url(self):
         """Test building job URL"""

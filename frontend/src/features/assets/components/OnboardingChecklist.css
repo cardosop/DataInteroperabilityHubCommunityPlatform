@@ -57,6 +57,31 @@
   padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--border-radius-sm);
   transition: background 0.15s ease;
+  border-width: 2px;
+  border-style: solid;
+  border-color: transparent;
+}
+
+.onboarding-step--required {
+  border-style: solid;
+  border-color: var(--color-border, #d0d0d0);
+}
+
+.onboarding-step--optional {
+  border-style: dashed;
+  border-color: var(--color-border, #d0d0d0);
+}
+
+.onboarding-step--required.pending {
+  border-color: var(--color-primary, #1e40af);
+}
+
+.onboarding-step-optional-tag {
+  margin-left: 0.375rem;
+  font-weight: var(--font-weight-regular, 400);
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--color-text-tertiary, #6b7280);
+  font-style: italic;
 }
 
 .onboarding-step:hover {

@@ -61,7 +61,7 @@
   font-weight: 600;
   font-size: 0.875rem;
   text-transform: uppercase;
-  color: #666;
+  color: var(--color-text-secondary);
   border-bottom: 2px solid #ddd;
 }
 
@@ -152,7 +152,7 @@
 
 .btn-secondary {
   background: var(--color-neutral-100);
-  color: #333;
+  color: var(--color-text-primary);
   border: 1px solid #ddd;
 }
 

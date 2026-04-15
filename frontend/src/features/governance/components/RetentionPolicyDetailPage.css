@@ -44,14 +44,14 @@
 .metadata-item label {
   font-weight: 600;
   font-size: 0.875rem;
-  color: #666;
+  color: var(--color-text-secondary);
   text-transform: uppercase;
 }
 
 .metadata-item span,
 .metadata-item p {
   font-size: 1rem;
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .metadata-item a {

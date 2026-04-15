@@ -37,7 +37,7 @@ function getWsBaseUrl(): string {
 
 const WS_BASE_URL = getWsBaseUrl();
 
-export type WebSocketMessageType = 'subscribe' | 'unsubscribe' | 'list_subscriptions' | 'ping' | 'pong' | 'event';
+export type WebSocketMessageType = 'authenticate' | 'auth_confirmed' | 'subscribe' | 'unsubscribe' | 'list_subscriptions' | 'ping' | 'pong' | 'event';
 
 export interface WebSocketMessage {
   type: WebSocketMessageType;
@@ -80,13 +80,22 @@ class WebSocketClient {
   private isConnecting = false;
   /** When true, server rejected or doesn't support WS; no reconnect, polling is used. */
   private wsUnavailable = false;
+  /** True once server has confirmed authentication via auth_confirmed. */
+  private authenticated = false;
+  /** Resolves when the server confirms authentication via auth_confirmed message. */
+  private authResolve: (() => void) | null = null;
+  private authReject: ((err: Error) => void) | null = null;
 
   constructor() {
     this.url = `${WS_BASE_URL}/ws/events/`;
   }
 
   /**
-   * Connect to WebSocket server
+   * Connect to WebSocket server.
+   *
+   * Opens the connection **without** a token in the URL, then sends an
+   * ``authenticate`` message as the first frame. The returned promise
+   * resolves once the server replies with ``auth_confirmed``.
    */
   connect(accessToken: string): Promise<void> {
     if (!WS_ENABLED || this.wsUnavailable) {
@@ -99,7 +108,7 @@ class WebSocketClient {
     if (this.isConnecting) {
       return new Promise((resolve, reject) => {
         const checkConnection = setInterval(() => {
-          if (this.ws?.readyState === WebSocket.OPEN) {
+          if (this.ws?.readyState === WebSocket.OPEN && !this.authResolve) {
             clearInterval(checkConnection);
             resolve();
           } else if (!this.isConnecting) {
@@ -115,20 +124,34 @@ class WebSocketClient {
 
     return new Promise((resolve, reject) => {
       try {
-        const wsUrl = `${this.url}?token=${encodeURIComponent(accessToken)}`;
-        this.ws = new WebSocket(wsUrl);
+        // Connect WITHOUT token in URL (message-based auth)
+        this.ws = new WebSocket(this.url);
 
         this.ws.onopen = () => {
-          this.isConnecting = false;
-          this.reconnectAttempts = 0;
-          this.startPingInterval();
-          
-          // Re-subscribe to previously subscribed event types
-          if (this.subscribedEventTypes.size > 0) {
-            this.subscribe(Array.from(this.subscribedEventTypes));
-          }
-          
-          resolve();
+          // Send authenticate message as the first frame
+          this.authResolve = () => {
+            this.authenticated = true;
+            this.isConnecting = false;
+            this.reconnectAttempts = 0;
+            this.startPingInterval();
+
+            // Re-subscribe to previously subscribed event types
+            if (this.subscribedEventTypes.size > 0) {
+              this.subscribe(Array.from(this.subscribedEventTypes));
+            }
+
+            resolve();
+          };
+          this.authReject = (err: Error) => {
+            this.isConnecting = false;
+            reject(err);
+          };
+
+          const authMessage: WebSocketMessage = {
+            type: 'authenticate',
+            data: { token: accessToken },
+          };
+          this.ws!.send(JSON.stringify(authMessage));
         };
 
         this.ws.onmessage = (event) => {
@@ -142,6 +165,11 @@ class WebSocketClient {
 
         this.ws.onerror = (error) => {
           this.isConnecting = false;
+          if (this.authReject) {
+            this.authReject(new Error('WebSocket error during authentication'));
+            this.authResolve = null;
+            this.authReject = null;
+          }
           this.errorHandlers.forEach(handler => handler(error));
           reject(error);
         };
@@ -149,6 +177,11 @@ class WebSocketClient {
         this.ws.onclose = (event) => {
           this.isConnecting = false;
           this.stopPingInterval();
+          if (this.authReject) {
+            this.authReject(new Error(`WebSocket closed before auth (code ${event.code})`));
+            this.authResolve = null;
+            this.authReject = null;
+          }
           this.closeHandlers.forEach(handler => handler());
           if (WS_UNAVAILABLE_CLOSE_CODES.has(event.code)) {
             this.wsUnavailable = true;
@@ -174,6 +207,13 @@ class WebSocketClient {
       this.reconnectTimer = null;
     }
     this.stopPingInterval();
+    // Clean up pending auth callbacks before closing
+    if (this.authReject) {
+      this.authReject(new Error('Disconnect called during authentication'));
+    }
+    this.authResolve = null;
+    this.authReject = null;
+    this.authenticated = false;
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -258,7 +298,22 @@ class WebSocketClient {
   }
 
   private handleMessage(message: WebSocketMessage): void {
-    if (message.type === 'event') {
+    if (message.type === 'auth_confirmed') {
+      // Server confirmed message-based authentication
+      if (this.authResolve) {
+        this.authResolve();
+        this.authResolve = null;
+        this.authReject = null;
+      }
+    } else if ((message as { type: string; error?: string }).error && this.authReject) {
+      // Server sent an error during auth handshake (e.g. invalid token).
+      // Reject the connect() promise so the caller gets a clear error
+      // instead of waiting for the close event.
+      const errMsg = (message as { error?: string }).error ?? 'Authentication error';
+      this.authReject(new Error(errMsg));
+      this.authResolve = null;
+      this.authReject = null;
+    } else if (message.type === 'event') {
       const eventMessage = message.data as EventMessage;
       const handlers = this.eventHandlers.get(eventMessage.event_type);
       if (handlers) {
@@ -308,7 +363,7 @@ class WebSocketClient {
    * Get connection status
    */
   isConnected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
+    return this.ws?.readyState === WebSocket.OPEN && this.authenticated;
   }
 }
 

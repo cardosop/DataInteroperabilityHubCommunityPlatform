@@ -329,6 +329,7 @@ export function BaaSPage() {
             {usageByEndpoint && usageByEndpoint.length > 0 && (
               <div className="usage-by-endpoint">
                 <h3>Usage by Endpoint</h3>
+                <div className="table-scroll">
                 <table className="usage-table">
                   <thead>
                     <tr>
@@ -351,6 +352,7 @@ export function BaaSPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
           </div>
@@ -380,6 +382,7 @@ export function BaaSPage() {
 
               <div className="ml-dev-card">
                 <h3>Available Endpoints</h3>
+                <div className="table-scroll">
                 <table className="ml-dev-endpoint-table">
                   <thead>
                     <tr>
@@ -436,6 +439,7 @@ export function BaaSPage() {
                     </tr>
                   </tbody>
                 </table>
+                </div>
               </div>
 
               <div className="ml-dev-card">

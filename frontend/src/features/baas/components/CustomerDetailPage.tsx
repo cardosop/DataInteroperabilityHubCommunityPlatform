@@ -5,6 +5,7 @@
 
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAPIKeys, useBillingReports } from '../hooks/useBaaS';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
@@ -30,6 +31,13 @@ export function CustomerDetailPage() {
 
   return (
     <div className="customer-detail-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'BaaS', href: '/baas' },
+          { label: customerName || 'Customer' },
+        ]}
+      />
       <Button variant="secondary" onClick={() => navigate('/settings/baas')}>
         Back
       </Button>

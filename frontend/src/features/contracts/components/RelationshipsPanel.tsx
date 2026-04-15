@@ -120,6 +120,7 @@ export function RelationshipsPanel({
       {grouped.map(({ modelName, rels }) => (
         <div key={modelName} className="rel-group">
           <h3 className="rel-group-title">{modelName}</h3>
+          <div className="table-scroll">
           <table className="rel-table">
             <thead>
               <tr>
@@ -136,6 +137,7 @@ export function RelationshipsPanel({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       ))}
     </div>

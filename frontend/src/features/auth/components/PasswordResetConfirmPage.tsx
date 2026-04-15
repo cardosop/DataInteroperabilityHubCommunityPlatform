@@ -25,12 +25,35 @@ export function PasswordResetConfirmPage() {
   const location = useLocation();
   const { isAuthenticated } = useAuthStore();
 
-  const tokenFromQuery = useMemo(() => {
+  // ---------------------------------------------------------------------------
+  // Phase 221.1.2 + 221.1.3 — Secure token extraction & URL cleanup
+  //
+  // Token sources (checked in priority order):
+  //   1. URL fragment  (#token=…) — preferred: fragment is NEVER sent to the
+  //      server, so it won't appear in access logs or Referer headers.
+  //   2. Query string  (?token=…) — legacy / backward-compat with existing
+  //      password-reset emails that may still use this format.
+  //
+  // After reading the token, we immediately strip it from the browser address
+  // bar via history.replaceState so it cannot leak through:
+  //   • the Referer header on outbound navigation,
+  //   • browser history entries,
+  //   • shoulder-surfing the address bar.
+  // ---------------------------------------------------------------------------
+  const tokenFromUrl = useMemo(() => {
+    // 1. Try hash fragment first (never sent to server)
+    const hash = location.hash;
+    if (hash) {
+      const fragmentParams = new URLSearchParams(hash.replace(/^#/, ''));
+      const fromFragment = fragmentParams.get('token');
+      if (fromFragment) return fromFragment;
+    }
+    // 2. Fallback to query string (legacy emails)
     const params = new URLSearchParams(location.search);
     return params.get('token') || '';
-  }, [location.search]);
+  }, [location.search, location.hash]);
 
-  const [token, setToken] = useState(tokenFromQuery);
+  const [token, setToken] = useState(tokenFromUrl);
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -42,12 +65,19 @@ export function PasswordResetConfirmPage() {
     }
   }, [isAuthenticated, navigate]);
 
+  // Phase 221.1.2 — Clear token from URL immediately after reading it.
   useEffect(() => {
-    if (tokenFromQuery && !token) {
-      setToken(tokenFromQuery);
+    if (tokenFromUrl) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [tokenFromUrl]);
+
+  useEffect(() => {
+    if (tokenFromUrl && !token) {
+      setToken(tokenFromUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokenFromQuery]);
+  }, [tokenFromUrl]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -93,7 +123,7 @@ export function PasswordResetConfirmPage() {
               value={token}
               onChange={(e) => setToken(e.target.value)}
               required
-              readOnly={Boolean(tokenFromQuery)}
+              readOnly={Boolean(tokenFromUrl)}
               autoComplete="off"
             />
           </div>

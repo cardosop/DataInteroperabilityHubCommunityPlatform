@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import type { ApiError } from '../../../shared/types/api';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { useToast } from '../../../shared/components/Toast';
@@ -111,6 +112,13 @@ export function AuthAPIKeyListPage() {
 
   return (
     <div className="auth-api-key-list-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'Settings', href: '/settings/profile' },
+          { label: 'API Keys' },
+        ]}
+      />
       <div className="auth-api-key-list-header">
         <div>
           <h1>Auth API Keys</h1>

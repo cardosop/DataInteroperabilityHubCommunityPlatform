@@ -4,25 +4,48 @@
  */
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { BulkActionBar } from '../../../shared/components/BulkActionBar';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
+import { useToast } from '../../../shared/components/Toast';
+import { useBulkSelection } from '../../../shared/hooks/useBulkSelection';
+import { exportToCSV } from '../../../shared/utils/exportUtils';
 import type { AssetStatus, AssetVisibility } from '../../../shared/types/assets';
+import { assetService } from '../services/assetService';
 import { useAssets } from '../hooks/useAssets';
 import './AssetListPage.css';
 import { Button } from '../../../shared/components/Button';
 
+const ALLOWED_STATUSES: AssetStatus[] = ['DRAFT', 'ACTIVE', 'RETIRED'];
+const ALLOWED_VISIBILITIES: AssetVisibility[] = ['INTERNAL', 'EXTERNAL', 'PUBLIC'];
+const ALLOWED_DQ = ['PASSED', 'FAILED', 'WARNING', 'PENDING'];
+const ALLOWED_COMPLIANCE = ['COMPLIANT', 'NON_COMPLIANT', 'WARNING', 'PENDING'];
+
+function pickParam<T extends string>(value: string | null, allowed: readonly T[]): T | '' {
+  return value && (allowed as readonly string[]).includes(value) ? (value as T) : '';
+}
+
 export function AssetListPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
-  const [search, setSearch] = useState('');
-  const [domainFilter, setDomainFilter] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<AssetStatus | ''>('');
-  const [visibilityFilter, setVisibilityFilter] = useState<AssetVisibility | ''>('');
-  const [dqStatusFilter, setDqStatusFilter] = useState('');
-  const [complianceStatusFilter, setComplianceStatusFilter] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '');
+  const [domainFilter, setDomainFilter] = useState<string>(() => searchParams.get('domain') ?? '');
+  const [statusFilter, setStatusFilter] = useState<AssetStatus | ''>(
+    () => pickParam(searchParams.get('status'), ALLOWED_STATUSES),
+  );
+  const [visibilityFilter, setVisibilityFilter] = useState<AssetVisibility | ''>(
+    () => pickParam(searchParams.get('visibility'), ALLOWED_VISIBILITIES),
+  );
+  const [dqStatusFilter, setDqStatusFilter] = useState(
+    () => pickParam(searchParams.get('dq_status'), ALLOWED_DQ),
+  );
+  const [complianceStatusFilter, setComplianceStatusFilter] = useState(
+    () => pickParam(searchParams.get('compliance_status'), ALLOWED_COMPLIANCE),
+  );
 
   const filters = {
     page,
@@ -37,9 +60,55 @@ export function AssetListPage() {
   };
 
   const { data, isLoading, error, refetch } = useAssets(filters);
+  const toast = useToast();
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
+  const assetRows = data?.results ?? [];
+  // DRAFT-only bulk delete: guards against catastrophic removal of ACTIVE
+  // assets that may be under active consumer use. The backend will also
+  // reject non-DRAFT deletes, but disabling the checkbox is the right UX.
+  const selection = useBulkSelection({
+    allIds: assetRows.map((a) => a.id),
+    isSelectable: (id) => assetRows.find((r) => r.id === id)?.status === 'DRAFT',
+  });
 
   const handleAssetClick = (assetId: string) => {
     navigate(`/assets/${assetId}`);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selection.selectedIds.length === 0) return;
+    const count = selection.selectedIds.length;
+    const ok = window.confirm(
+      `Delete ${count} DRAFT asset${count === 1 ? '' : 's'}? This cannot be undone.`,
+    );
+    if (!ok) return;
+    // Use the raw service directly — not `useDeleteAsset`, which fires one
+    // "Asset deleted" toast per call. For bulk, we want ONE summary toast.
+    // Parallel deletes: each DELETE hits its own row, ordering is not
+    // meaningful; `allSettled` surfaces partial failures in a single await.
+    const ids = [...selection.selectedIds];
+    selection.deselectAll();
+    setIsBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => assetService.delete(id)),
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      const succeeded = results.length - failed;
+      if (failed === 0) {
+        toast.success(`Deleted ${succeeded} asset${succeeded === 1 ? '' : 's'}.`);
+      } else if (succeeded === 0) {
+        toast.error(`Failed to delete ${failed} asset${failed === 1 ? '' : 's'}.`);
+      } else {
+        toast.info(
+          `Deleted ${succeeded}; ${failed} failed. See details on each asset.`,
+        );
+      }
+    } finally {
+      setIsBulkDeleting(false);
+      refetch();
+    }
   };
 
   const handleCreateAsset = () => {
@@ -86,9 +155,36 @@ export function AssetListPage() {
     <div className="asset-list-page" data-testid="asset-list-page">
       <div className="asset-list-header" data-testid="asset-list-header">
         <h1>Assets</h1>
-        <Button variant="primary" onClick={handleCreateAsset}>
-          Create Asset
-        </Button>
+        <div className="asset-list-header-actions">
+          <Button
+            variant="secondary"
+            onClick={() =>
+              exportToCSV(
+                assetRows as unknown as Array<Record<string, unknown>>,
+                'assets',
+                {
+                  columns: [
+                    { key: 'id', label: 'ID' },
+                    { key: 'name', label: 'Name' },
+                    { key: 'key', label: 'Key' },
+                    { key: 'domain', label: 'Domain' },
+                    { key: 'status', label: 'Status' },
+                    { key: 'visibility', label: 'Visibility' },
+                    { key: 'dq_status', label: 'DQ Status' },
+                    { key: 'compliance_status', label: 'Compliance Status' },
+                    { key: 'created_at', label: 'Created' },
+                  ],
+                },
+              )
+            }
+            data-testid="assets-export-csv"
+          >
+            Export CSV
+          </Button>
+          <Button variant="primary" onClick={handleCreateAsset}>
+            Create Asset
+          </Button>
+        </div>
       </div>
 
       <div className="asset-list-filters" role="group" aria-label="Asset filters" data-testid="asset-list-filters">
@@ -189,6 +285,18 @@ export function AssetListPage() {
         <table role="table" aria-label="Assets list">
           <thead>
             <tr>
+              <th scope="col" style={{ width: '2.5rem' }}>
+                <input
+                  type="checkbox"
+                  aria-label="Select all DRAFT assets"
+                  checked={selection.isAllSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = selection.isIndeterminate;
+                  }}
+                  onChange={() => selection.toggleAll()}
+                  data-testid="asset-select-all"
+                />
+              </th>
               <th scope="col">Name</th>
               <th scope="col">Key</th>
               <th scope="col">Domain</th>
@@ -202,7 +310,10 @@ export function AssetListPage() {
               <tr
                 key={asset.id}
                 data-asset-id={asset.id}
-                onClick={() => handleAssetClick(asset.id)}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).tagName === 'INPUT') return;
+                  handleAssetClick(asset.id);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
@@ -214,6 +325,17 @@ export function AssetListPage() {
                 tabIndex={0}
                 aria-label={`Asset ${asset.name}`}
               >
+                <td>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select asset ${asset.name}`}
+                    checked={selection.isSelected(asset.id)}
+                    disabled={asset.status !== 'DRAFT'}
+                    onChange={() => selection.toggle(asset.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    data-testid={`asset-select-${asset.id}`}
+                  />
+                </td>
                 <td>
                   <strong>{asset.name}</strong>
                   {asset.description && (
@@ -246,6 +368,21 @@ export function AssetListPage() {
           </tbody>
         </table>
       </div>
+
+      <BulkActionBar
+        selectedCount={selection.selectedCount}
+        onDeselectAll={selection.deselectAll}
+        description="Only DRAFT assets may be bulk-deleted."
+        actions={[
+          {
+            label: `Delete ${selection.selectedCount}`,
+            variant: 'danger',
+            onClick: handleBulkDelete,
+            disabled: isBulkDeleting,
+            'data-testid': 'bulk-delete-assets',
+          },
+        ]}
+      />
 
       {data.total_pages > 1 && (
         <div className="asset-list-pagination">

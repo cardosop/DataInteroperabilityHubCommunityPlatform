@@ -13,6 +13,7 @@ import { EmptyState } from '../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../shared/components/LoadingSpinner';
 import { useHealth } from '../../shared/hooks/useHealth';
+import { RoleDashboard } from './RoleDashboard';
 import './HomePage.css';
 
 const GETTING_STARTED_KEY = 'meshant_getting_started_dismissed';
@@ -130,6 +131,9 @@ export function HomePage() {
       {/* Getting Started — dismissible first-login guide */}
       <GettingStartedCard />
 
+      {/* Role-Specific Dashboard — Phase 224.2 */}
+      <RoleDashboard />
+
       {/* Quick Actions */}
       <div className="quick-actions" data-testid="home-quick-actions">
         <h2>Quick Actions</h2>
@@ -157,30 +161,30 @@ export function HomePage() {
       <div className="governance-overview" data-testid="governance-overview">
         <h2>Governance Overview</h2>
         <div className="governance-stats-grid">
-          <div className="governance-stat">
+          <Link to="/assets?compliance_status=COMPLIANT" className="governance-stat" data-testid="governance-stat-compliance">
             <span className="governance-stat__value">
               {totalAssets.data?.count
                 ? `${Math.round(((compliantAssets.data?.count ?? 0) / totalAssets.data.count) * 100)}%`
                 : '—'}
             </span>
             <span className="governance-stat__label">Compliance Posture</span>
-          </div>
-          <div className="governance-stat">
+          </Link>
+          <Link to="/assets?dq_status=PASSED" className="governance-stat" data-testid="governance-stat-dq">
             <span className="governance-stat__value">
               {totalAssets.data?.count
                 ? `${Math.round(((dqPassedAssets.data?.count ?? 0) / totalAssets.data.count) * 100)}%`
                 : '—'}
             </span>
             <span className="governance-stat__label">DQ Health</span>
-          </div>
-          <div className="governance-stat">
+          </Link>
+          <Link to="/assets?status=DRAFT" className="governance-stat" data-testid="governance-stat-draft">
             <span className="governance-stat__value">{draftAssets.data?.count ?? '—'}</span>
             <span className="governance-stat__label">Draft Assets</span>
-          </div>
-          <div className="governance-stat">
+          </Link>
+          <Link to="/assets?status=ACTIVE" className="governance-stat" data-testid="governance-stat-active">
             <span className="governance-stat__value">{activeAssets.data?.count ?? '—'}</span>
             <span className="governance-stat__label">Active Assets</span>
-          </div>
+          </Link>
         </div>
       </div>
 

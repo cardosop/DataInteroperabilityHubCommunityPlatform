@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
@@ -15,14 +15,22 @@ import { Button } from '../../../shared/components/Button';
 
 export function OrderListPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
+
+  // Reverse-link filter: `/marketplace/orders?listing_id=...` (from
+  // ListingOrdersCount in 223.2.3) must actually narrow the result set,
+  // not drop silently. Read from the URL so the query survives
+  // navigation and deep-links work.
+  const listingIdFilter = searchParams.get('listing_id') || undefined;
 
   const filters = {
     page,
     page_size: pageSize,
     status: statusFilter || undefined,
+    listing_id: listingIdFilter,
     ordering: '-created_at',
   };
 

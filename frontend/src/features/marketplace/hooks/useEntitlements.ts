@@ -10,10 +10,14 @@ import type {
   CheckAccessRequest,
 } from '../../../shared/types/marketplace';
 
-export function useEntitlements(filters: EntitlementListFilters = {}) {
+export function useEntitlements(
+  filters: EntitlementListFilters = {},
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: ['marketplace', 'entitlements', 'list', filters],
     queryFn: () => entitlementService.list(filters),
+    enabled: options?.enabled !== false,
   });
 }
 

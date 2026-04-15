@@ -423,10 +423,10 @@
   font-weight: 600;
   text-transform: uppercase;
 }
-.status-draft { background: #fef3c7; color: #92400e; }
-.status-finalized { background: #dbeafe; color: #1e40af; }
-.status-sent { background: #d1fae5; color: #065f46; }
-.status-void { background: #fee2e2; color: #991b1b; }
+.status-draft { background: var(--color-warning-subtle); color: var(--color-warning-700); }
+.status-finalized { background: var(--color-info-subtle); color: var(--color-info-dark); }
+.status-sent { background: var(--color-success-subtle); color: #065f46; }
+.status-void { background: var(--color-error-subtle); color: var(--color-error-dark); }
 
 /* Section header with badge */
 .section-header {

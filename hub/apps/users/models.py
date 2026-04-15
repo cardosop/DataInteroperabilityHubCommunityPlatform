@@ -386,6 +386,59 @@ class UserTenantMembership(models.Model):
         return f"{self.user.email} -> {self.tenant.name}"
 
 
+class PasswordHistory(models.Model):
+    """
+    Phase 225.1 — historical password hashes per user.
+
+    Each row stores the Django hasher-produced ``password_hash`` (already
+    salted + cost-parameterised) of a password the user once held. The
+    application never reads plaintext back: re-use is checked via
+    ``django.contrib.auth.hashers.check_password`` against each stored hash.
+
+    The ``unique_together (user, password_hash)`` constraint is a defensive
+    guarantee against duplicate rows — because Django salts each hash, the
+    same plaintext produces a different stored hash on each call, so
+    collisions at the string level are vanishingly unlikely in practice.
+
+    Rows are ordered newest-first so service code can take a simple
+    ``[:window]`` slice when evaluating reuse.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="password_history",
+        help_text="User whose password was hashed here",
+    )
+    password_hash = models.CharField(
+        max_length=255,
+        help_text="Django hasher output (algorithm$iterations$salt$hash) for a prior password",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "password_history"
+        ordering = ["-created_at"]
+        indexes = [
+            # Named explicitly so `makemigrations --check` does not drift from
+            # the migration that introduces this index (0016_passwordhistory).
+            models.Index(
+                fields=["user", "-created_at"],
+                name="password_history_user_ts_idx",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "password_hash"],
+                name="unique_user_password_hash",
+            ),
+        ]
+
+    def __str__(self):  # pragma: no cover — trivial repr
+        return f"PasswordHistory(user_id={self.user_id}, created_at={self.created_at.isoformat()})"
+
+
 # ---------------------------------------------------------------------------
 # Signal handlers: invalidate the per-instance _role_cache on the affected
 # User object whenever a UserRole row is created, updated, or deleted.

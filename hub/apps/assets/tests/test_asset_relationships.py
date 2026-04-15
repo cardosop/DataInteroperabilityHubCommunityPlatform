@@ -1103,3 +1103,113 @@ class AssetRelationshipsTest(TestCase):
         response = self.client.patch(f"/api/v1/assets/{asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class AssetListContractFilterTest(TestCase):
+    """223.2.1 — GET /assets/?contract_id={id} returns only assets linked to
+    that contract. The relationship is driven by Contract.asset (FK to Asset),
+    so the list filters through the reverse relation (`contracts__id`).
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"T {uid}",
+            slug=f"t-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        ensure_tenant_has_active_subscription(self.tenant)
+        self.user = User.objects.create_user(
+            email=f"u-{uid}@example.com",
+            password="x",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+        # Two assets sharing the same tenant
+        self.asset_linked = Asset.objects.create(
+            tenant=self.tenant,
+            key=f"linked-{uid}",
+            name="Linked",
+            created_by=self.user,
+        )
+        self.asset_unrelated = Asset.objects.create(
+            tenant=self.tenant,
+            key=f"unrelated-{uid}",
+            name="Unrelated",
+            created_by=self.user,
+        )
+
+        # Contract bound to the linked asset via FK
+        self.contract = Contract.objects.create(
+            tenant=self.tenant,
+            asset=self.asset_linked,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id":"t"}',
+            validation_status=ValidationStatus.VALID,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            hub_contract_version="1.0.0",
+            hub_contract_json={},
+            created_by=self.user,
+        )
+
+    def test_contract_id_filter_returns_only_linked_assets(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(
+            f"/api/v1/assets/?contract_id={self.contract.id}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = [row["id"] for row in response.data["results"]]
+        self.assertIn(str(self.asset_linked.id), ids)
+        self.assertNotIn(str(self.asset_unrelated.id), ids)
+
+    def test_contract_id_filter_no_results_when_contract_unused(self):
+        orphan = Contract.objects.create(
+            tenant=self.tenant,
+            asset=None,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id":"o"}',
+            validation_status=ValidationStatus.VALID,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            hub_contract_version="1.0.0",
+            hub_contract_json={},
+            created_by=self.user,
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(f"/api/v1/assets/?contract_id={orphan.id}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), 0)
+
+    def test_contract_id_invalid_uuid_returns_empty_not_500(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get("/api/v1/assets/?contract_id=not-a-uuid")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), 0)
+
+    def test_contract_id_tenant_isolation(self):
+        other_tenant = Tenant.objects.create(
+            name="other",
+            slug=f"other-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        ensure_tenant_has_active_subscription(other_tenant)
+        other_user = User.objects.create_user(
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="x",
+            tenant=other_tenant,
+            status=UserStatus.ACTIVE,
+        )
+        self.client.force_authenticate(user=other_user)
+        response = self.client.get(
+            f"/api/v1/assets/?contract_id={self.contract.id}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # The contract exists but belongs to a different tenant — no leak.
+        self.assertEqual(len(response.data["results"]), 0)

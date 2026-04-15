@@ -1588,8 +1588,20 @@ JWT_ISSUER = env("JWT_ISSUER", default="hub")
 # Default False for backward compatibility with existing SPA clients.
 USE_HTTPONLY_AUTH_COOKIES = env.bool("USE_HTTPONLY_AUTH_COOKIES", default=False)
 
-# ── Refresh-token cookie (11.1) ───────────────────────────────────────────────
-REFRESH_COOKIE_NAME = env("REFRESH_COOKIE_NAME", default="refresh_token")
+# ── Refresh-token cookie (11.1, hardened 221.5.1) ────────────────────────────
+# Phase 221.5.1: The __Secure- prefix is a browser-enforced security feature
+# that requires the Secure attribute (HTTPS).  This prevents:
+#   • Subdomain cookie theft (an HTTP subdomain cannot set/read the cookie)
+#   • Accidental transmission over unencrypted connections
+#
+# In development (DEBUG=True → secure=False), __Secure- cookies are silently
+# dropped by browsers, so the plain name is used instead.
+_refresh_cookie_default = (
+    "__Secure-refresh_token"
+    if ENVIRONMENT in ("production", "staging")
+    else "refresh_token"
+)
+REFRESH_COOKIE_NAME = env("REFRESH_COOKIE_NAME", default=_refresh_cookie_default)
 
 # ── Login rate-limiting & account lockout (11.5) ─────────────────────────────
 LOGIN_IP_RATE_PER_MINUTE = env.int("LOGIN_IP_RATE_PER_MINUTE", default=10)
@@ -1999,7 +2011,13 @@ CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
 # Session Security
 SESSION_COOKIE_HTTPONLY = env.bool("SESSION_COOKIE_HTTPONLY", default=True)
-SESSION_COOKIE_SAMESITE = env("SESSION_COOKIE_SAMESITE", default="Lax")
+# Phase 221.5.2: Default changed from "Lax" to "Strict".
+# The SPA authenticates via JWT (not Django sessions), so Strict does not
+# break any auth flow.  Django admin is disabled in production (221.2.1).
+# SSO views issue JWT tokens, not session cookies.  Strict prevents the
+# session cookie from being sent on ANY cross-site request, including
+# top-level navigations — a stronger CSRF mitigation than Lax.
+SESSION_COOKIE_SAMESITE = env("SESSION_COOKIE_SAMESITE", default="Strict")
 SESSION_COOKIE_AGE = env.int("SESSION_COOKIE_AGE", default=1209600)  # 2 weeks default
 
 # GraphQL Settings
@@ -2043,6 +2061,17 @@ PARAMETERIZED_VIRTUAL_QUERIES = env.bool(
 # ROLE_SCOPE_MAP.  When False (default), current permissive behaviour is
 # preserved for safe rollout.
 ENFORCE_JWT_SCOPES = env.bool("ENFORCE_JWT_SCOPES", default=False)
+
+# Phase 220.3: warn if production is running without JWT scope enforcement.
+# This is a warning (not error) to allow gradual rollout.
+if ENVIRONMENT == "production" and not ENFORCE_JWT_SCOPES:
+    import warnings
+    warnings.warn(
+        "ENFORCE_JWT_SCOPES is False in production. "
+        "JWT users can bypass role-based scope checks. "
+        "Set ENFORCE_JWT_SCOPES=true to enforce.",
+        stacklevel=1,
+    )
 
 # Phase 200: MVP deployment — omit non-MVP /api/v1 routes, OpenAPI paths, and gate via middleware.
 MVP_MODE = env.bool("MVP_MODE", default=False)

@@ -12,6 +12,28 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
     />
     <title>Meshant</title>
+    <!--
+      Phase 224.4 — pre-hydration theme application.
+      Synchronous, blocking: runs before any CSS parses so the page paints
+      with the correct theme on first frame (no flash-of-light for dark users).
+      Must stay in lockstep with useTheme.ts: storage key, media query,
+      data-theme values.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('meshant.theme');
+          var pref = stored === 'light' || stored === 'dark' ? stored : 'system';
+          var systemDark =
+            typeof window.matchMedia === 'function' &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var resolved = pref === 'system' ? (systemDark ? 'dark' : 'light') : pref;
+          document.documentElement.setAttribute('data-theme', resolved);
+        } catch (_) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

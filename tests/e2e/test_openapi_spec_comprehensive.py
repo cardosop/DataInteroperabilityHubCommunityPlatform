@@ -25,9 +25,10 @@ class OpenAPISpecAccuracyTest(E2ETestBase):
     """Comprehensive tests for OpenAPI specification accuracy."""
 
     def setUp(self):
-        """Set up test fixtures."""
+        """Set up test fixtures — uses authenticated client from E2ETestBase."""
         super().setUp()
-        self.client = APIClient()
+        # Do NOT override self.client — E2ETestBase.setUp() provides an
+        # authenticated client via force_authenticate (required by 221.4.2).
         # Fetch OpenAPI spec once for all tests
         response = self.client.get('/api-docs/openapi.json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -256,12 +257,9 @@ class OpenAPISpecAccuracyTest(E2ETestBase):
 
 
 class SwaggerUIFunctionalityTest(E2ETestBase):
-    """Comprehensive tests for Swagger UI functionality."""
+    """Comprehensive tests for Swagger UI functionality (auth required — 221.4.2)."""
 
-    def setUp(self):
-        """Set up test fixtures."""
-        super().setUp()
-        self.client = APIClient()
+    # Uses authenticated self.client from E2ETestBase.setUp() — do NOT override.
 
     def test_swagger_ui_endpoint_accessible(self):
         """Test Swagger UI endpoint is accessible."""

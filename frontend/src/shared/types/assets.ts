@@ -80,6 +80,8 @@ export interface AssetListFilters {
   visibility?: AssetVisibility;
   dq_status?: string;
   compliance_status?: string;
+  /** 223.2 — filter assets that are linked to a specific contract. */
+  contract_id?: string;
 }
 
 export interface AttachContractRequest {

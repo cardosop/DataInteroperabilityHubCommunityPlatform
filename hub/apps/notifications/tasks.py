@@ -536,6 +536,23 @@ def send_job_completion_email(job_id: str):
             user_id=str(job.created_by.id)
         )
 
+        # Phase 223.1 — in-app inbox notification (complements email).
+        try:
+            from hub.apps.notifications.utils import create_user_notification
+            if job.tenant is not None:
+                create_user_notification(
+                    user=job.created_by,
+                    tenant=job.tenant,
+                    title=f"Job completed: {job.get_type_display()}",
+                    message="Your job finished successfully.",
+                    notification_type="SUCCESS",
+                    category="JOBS",
+                    resource_type="JOB",
+                    resource_id=job.id,
+                )
+        except Exception:
+            logger.warning("in_app_job_completion_notification_failed", job_id=job_id, exc_info=True)
+
         logger.info(
             "job_completion_email_sent",
             job_id=job_id,
@@ -607,6 +624,23 @@ def send_job_failure_email(job_id: str):
             user_id=str(job.created_by.id)
         )
 
+        # Phase 223.1 — in-app inbox notification.
+        try:
+            from hub.apps.notifications.utils import create_user_notification
+            if job.tenant is not None:
+                create_user_notification(
+                    user=job.created_by,
+                    tenant=job.tenant,
+                    title=f"Job failed: {job.get_type_display()}",
+                    message=job.error_message or "Your job failed. See details in the job log.",
+                    notification_type="ERROR",
+                    category="JOBS",
+                    resource_type="JOB",
+                    resource_id=job.id,
+                )
+        except Exception:
+            logger.warning("in_app_job_failure_notification_failed", job_id=job_id, exc_info=True)
+
         logger.info(
             "job_failure_email_sent",
             job_id=job_id,
@@ -676,6 +710,23 @@ def send_odps_creation_completion_email(contract_id: str):
             tenant_id=str(contract.tenant.id) if contract.tenant else None,
             user_id=str(contract.created_by.id)
         )
+
+        # Phase 223.1 — in-app inbox notification.
+        try:
+            from hub.apps.notifications.utils import create_user_notification
+            if contract.tenant is not None:
+                create_user_notification(
+                    user=contract.created_by,
+                    tenant=contract.tenant,
+                    title="Contract normalized",
+                    message="Your contract was normalized and is ready to use.",
+                    notification_type="SUCCESS",
+                    category="CONTRACTS",
+                    resource_type="CONTRACT",
+                    resource_id=contract.id,
+                )
+        except Exception:
+            logger.warning("in_app_contract_creation_notification_failed", contract_id=contract_id, exc_info=True)
 
         logger.info(
             "odps_creation_completion_email_sent",
@@ -762,6 +813,23 @@ def send_odps_normalization_failure_email(
             tenant_id=str(contract.tenant.id) if contract.tenant else None,
             user_id=str(contract.created_by.id)
         )
+
+        # Phase 223.1 — in-app inbox notification.
+        try:
+            from hub.apps.notifications.utils import create_user_notification
+            if contract.tenant is not None:
+                create_user_notification(
+                    user=contract.created_by,
+                    tenant=contract.tenant,
+                    title="Contract normalization failed",
+                    message=error_message or "Normalization failed. See details on the contract page.",
+                    notification_type="ERROR",
+                    category="CONTRACTS",
+                    resource_type="CONTRACT",
+                    resource_id=contract.id,
+                )
+        except Exception:
+            logger.warning("in_app_contract_normalization_failure_notification_failed", contract_id=contract_id, exc_info=True)
 
         logger.info(
             "odps_normalization_failure_email_sent",

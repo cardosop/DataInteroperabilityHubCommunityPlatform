@@ -42,11 +42,11 @@
 }
 
 .create-asset-summary__badge--odps {
-  background-color: #dcfce7;
-  color: #166534;
+  background-color: var(--color-success-subtle);
+  color: var(--color-success-700);
 }
 
 .create-asset-summary__badge--odcs {
-  background-color: #dbeafe;
-  color: #1e40af;
+  background-color: var(--color-info-subtle);
+  color: var(--color-info-dark);
 }

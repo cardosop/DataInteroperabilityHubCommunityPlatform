@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { useToast } from '../../../shared/components/Toast';
@@ -121,6 +122,13 @@ export function PrivacyPage() {
 
   return (
     <div className="privacy-page" data-testid="privacy-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'Settings', href: '/settings/profile' },
+          { label: 'Privacy' },
+        ]}
+      />
       <div className="privacy-header">
         <h1>Privacy & Data</h1>
         <p className="privacy-description">

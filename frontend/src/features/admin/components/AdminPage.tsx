@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
@@ -47,6 +48,12 @@ export function AdminPage() {
   if (!hasAdminAccess) {
     return (
       <div className="admin-page" data-testid="admin-page">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Admin' },
+          ]}
+        />
         <div className="admin-no-permission">
           <h1>Admin Access Required</h1>
           <p>You do not have permission to access the admin area.</p>
@@ -70,6 +77,12 @@ export function AdminPage() {
 
   return (
     <div className="admin-page" data-testid="admin-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'Admin' },
+        ]}
+      />
       <div className="admin-header">
         <h1>Admin</h1>
         <p className="subtitle">Platform and tenant administration</p>

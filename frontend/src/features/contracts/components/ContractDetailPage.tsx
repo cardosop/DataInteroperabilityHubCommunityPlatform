@@ -8,6 +8,8 @@ import { useState } from 'react';
 import { useContract, useUpdateContract, useValidateContract, useLintContract, useConvertContract, useExportContract, useDownloadContract, useContractLinks } from '../hooks/useContracts';
 import { AssetPicker } from '../../../shared/components/pickers';
 import { ContractLineageVisualization } from '../../lineage/components/ContractLineageVisualization';
+import { ActivityTimeline } from '../../../shared/components/ActivityTimeline';
+import { ContractUsedByAssets } from './ContractUsedByAssets';
 import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import {
@@ -19,10 +21,11 @@ import {
 } from '../../../shared/types/contracts';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
+import { InfoHint } from '../../../shared/components/InfoHint';
 import './ContractDetailPage.css';
 import { Button } from '../../../shared/components/Button';
 
-type ContractDetailTab = 'details' | 'lineage';
+type ContractDetailTab = 'details' | 'lineage' | 'activity';
 
 export function ContractDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -163,6 +166,16 @@ export function ContractDetailPage() {
         >
           Lineage
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'activity'}
+          className={`contract-detail-tab ${activeTab === 'activity' ? 'active' : ''}`}
+          onClick={() => setActiveTab('activity')}
+          data-testid="contract-tab-activity"
+        >
+          Activity
+        </button>
       </div>
 
       <div className="contract-detail-content">
@@ -176,6 +189,11 @@ export function ContractDetailPage() {
         <div className="contract-detail-main">
           {activeTab === 'lineage' && id ? (
             <ContractLineageVisualization contractId={id} maxDepth={10} />
+          ) : activeTab === 'activity' && id ? (
+            <section data-testid="contract-activity">
+              <h2>Activity</h2>
+              <ActivityTimeline resourceType="CONTRACT" resourceId={id} />
+            </section>
           ) : (
             <>
           <h1>{contract.name || 'Unnamed Contract'}</h1>
@@ -189,7 +207,13 @@ export function ContractDetailPage() {
           <div className="contract-detail-metadata">
             {contract.original_spec_type && (
               <div className="metadata-item">
-                <label>Spec Type</label>
+                <label>
+                  Spec Type
+                  <InfoHint
+                    label="About Spec Type"
+                    content="The original machine-readable format the contract was authored in (e.g. ODPS, ODCS, OpenAPI, JSON Schema). Meshant normalises each spec type into a common internal contract model so lineage and validation work uniformly across formats."
+                  />
+                </label>
                 <span className={`spec-type-badge spec-type-badge--${contract.original_spec_type.toLowerCase()}`}>
                   {contract.original_spec_type}
                 </span>
@@ -200,7 +224,13 @@ export function ContractDetailPage() {
               <span>{contract.original_format ?? '—'}</span>
             </div>
             <div className="metadata-item">
-              <label>Normalization Status</label>
+              <label>
+                Normalization Status
+                <InfoHint
+                  label="About Normalization Status"
+                  content="Tracks whether this contract has been successfully normalised into Meshant's internal canonical form. PENDING → queued; IN_PROGRESS → being converted; SUCCESS → usable for validation and lineage; FAILED → see logs. Contracts must be SUCCESS before lineage edges or DQ checks will bind."
+                />
+              </label>
               <span className={`status-badge status-${(contract.normalization_status ?? '').toLowerCase().replace('_', '-')}`}>
                 {contract.normalization_status ?? '—'}
               </span>
@@ -220,6 +250,8 @@ export function ContractDetailPage() {
               <span>{new Date(contract.updated_at).toLocaleString()}</span>
             </div>
           </div>
+
+          {id && <ContractUsedByAssets contractId={id} />}
 
           <div className="contract-operations">
             <h2>Operations</h2>

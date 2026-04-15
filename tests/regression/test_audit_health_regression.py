@@ -124,7 +124,7 @@ class HealthAPIRegressionTest(AuditHealthRegressionTestBase):
         self.assertIn("status", data)
 
     def test_circuit_breaker_status_endpoint(self):
-        """GET /health/circuit-breakers/ returns 200 or 500 and JSON."""
+        """GET /health/circuit-breakers/ returns 200 or 500 and JSON (221.3 — auth required)."""
         response = self.client.get("/health/circuit-breakers/")
         self.assertIn(
             response.status_code,
@@ -133,11 +133,18 @@ class HealthAPIRegressionTest(AuditHealthRegressionTestBase):
         )
         data = response.json() if hasattr(response, "json") else response.data
         self.assertIsInstance(data, dict)
+        if response.status_code == status.HTTP_200_OK:
+            # 221.3.2: only aggregate fields, no service names
+            self.assertNotIn("circuit_breakers", data)
+            self.assertNotIn("open_breaker_names", data)
+            self.assertIn("total_breakers", data)
+            self.assertIn("open_breakers", data)
 
-    def test_circuit_breaker_status_specific_service(self):
-        """GET /health/circuit-breakers/?service_name=... returns 200 or 404."""
-        response = self.client.get("/health/circuit-breakers/?service_name=test-service")
-        self.assertIn(
-            response.status_code,
-            (status.HTTP_200_OK, status.HTTP_404_NOT_FOUND, status.HTTP_500_INTERNAL_SERVER_ERROR),
+    def test_circuit_breaker_service_name_param_removed(self):
+        """?service_name= has no effect (221.3.2)."""
+        resp_all = self.client.get("/health/circuit-breakers/")
+        resp_named = self.client.get(
+            "/health/circuit-breakers/?service_name=test-service",
         )
+        # Both return the same shape — service_name is ignored
+        self.assertEqual(resp_all.status_code, resp_named.status_code)

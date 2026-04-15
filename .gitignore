@@ -104,3 +104,4 @@ aws/
 
 # Phase 216 — performance test results (CI uploads to S3)
 .perf-results/
+node_modules

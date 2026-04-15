@@ -37,3 +37,25 @@ export interface AuditEventListResponse {
 }
 
 export type AuditEventExportFormat = 'csv' | 'json';
+
+/**
+ * Phase 224.3 — sanitized per-resource activity feed shape.
+ * Raw ``details_json`` is scrubbed server-side (``sanitize_activity_details``);
+ * clients should treat ``details`` as a safe, display-only bag of strings.
+ */
+export interface ResourceActivityEvent {
+  id: string;
+  action: string;
+  result: AuditEventResult;
+  timestamp: string;
+  resource_type: string;
+  resource_id: string | null;
+  actor_display_name: string;
+  details: Record<string, unknown>;
+}
+
+export interface ResourceActivityResponse {
+  results: ResourceActivityEvent[];
+}
+
+export type ResourceType = 'ASSET' | 'CONTRACT' | 'ORDER' | 'ACCESS_REQUEST' | string;

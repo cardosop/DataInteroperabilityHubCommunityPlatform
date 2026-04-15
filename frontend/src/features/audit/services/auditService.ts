@@ -9,6 +9,8 @@ import type {
   AuditEventExportFormat,
   AuditEventListFilters,
   AuditEventListResponse,
+  ResourceActivityResponse,
+  ResourceType,
 } from '../../../shared/types/audit';
 
 const AUDIT_EVENTS_PATH = 'audit/audit-events';
@@ -60,6 +62,22 @@ export const auditService = {
     const response = await apiClient.getClient().get<Blob>(url, {
       responseType: 'blob',
     });
+    return response.data;
+  },
+
+  /**
+   * Phase 224.3 — fetch the sanitized activity feed for a single resource.
+   * Available to any authenticated tenant member (server scopes by tenant).
+   */
+  async resourceActivity(
+    resourceType: ResourceType,
+    resourceId: string,
+  ): Promise<ResourceActivityResponse> {
+    const params = new URLSearchParams();
+    params.set('resource_type', resourceType);
+    params.set('resource_id', resourceId);
+    const url = `${AUDIT_EVENTS_PATH}/resource-activity/?${params.toString()}`;
+    const response = await apiClient.getClient().get<ResourceActivityResponse>(url);
     return response.data;
   },
 };

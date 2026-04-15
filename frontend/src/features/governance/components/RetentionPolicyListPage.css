@@ -58,7 +58,7 @@
   font-weight: 600;
   font-size: 0.875rem;
   text-transform: uppercase;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 .governance-retention-policy-table td {
@@ -109,7 +109,7 @@
 }
 
 .pagination-info {
-  color: #666;
+  color: var(--color-text-secondary);
   font-size: 0.875rem;
 }
 

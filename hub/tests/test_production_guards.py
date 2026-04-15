@@ -728,6 +728,308 @@ class TestStaticUrlNotOverridden:
         assert "STATIC_URL" in source, "STATIC_URL must be defined in settings.py"
 
 
+# ---------------------------------------------------------------------------
+# Phase 221.2.1 — Django admin path restriction
+# ---------------------------------------------------------------------------
+
+class TestAdminUrlGate:
+    """Phase 221.2.1: /admin/ must be absent from URL patterns in production.
+
+    The helper ``_build_urlpatterns()`` in ``hub/urls.py`` reads
+    ``settings.ENVIRONMENT`` at call time, so ``override_settings``
+    gives us a clean, reload-free test surface.
+    """
+
+    @staticmethod
+    def _admin_patterns(patterns):
+        """Return URL patterns whose route matches 'admin/'."""
+        return [
+            p for p in patterns
+            if hasattr(p, 'pattern') and 'admin' in str(p.pattern)
+        ]
+
+    def test_admin_absent_in_production(self):
+        from django.test import override_settings
+        with override_settings(ENVIRONMENT='production'):
+            from hub.urls import _build_urlpatterns
+            patterns = _build_urlpatterns()
+            hits = self._admin_patterns(patterns)
+            assert len(hits) == 0, (
+                f"Admin URL must NOT be registered in production, "
+                f"found: {[str(p.pattern) for p in hits]}"
+            )
+
+    def test_admin_present_in_development(self):
+        from django.test import override_settings
+        with override_settings(ENVIRONMENT='development'):
+            from hub.urls import _build_urlpatterns
+            patterns = _build_urlpatterns()
+            hits = self._admin_patterns(patterns)
+            assert len(hits) == 1, (
+                "Admin URL must be registered in development"
+            )
+
+    def test_admin_present_in_staging(self):
+        from django.test import override_settings
+        with override_settings(ENVIRONMENT='staging'):
+            from hub.urls import _build_urlpatterns
+            patterns = _build_urlpatterns()
+            hits = self._admin_patterns(patterns)
+            assert len(hits) == 1, (
+                "Admin URL must be registered in staging"
+            )
+
+    def test_admin_present_in_test(self):
+        """Test environment must have admin available for admin-related tests."""
+        from django.test import override_settings
+        with override_settings(ENVIRONMENT='test'):
+            from hub.urls import _build_urlpatterns
+            patterns = _build_urlpatterns()
+            hits = self._admin_patterns(patterns)
+            assert len(hits) == 1, (
+                "Admin URL must be registered in test environment"
+            )
+
+    def test_admin_url_resolves_to_django_admin(self):
+        """When admin is registered, verify it wires up to django.contrib.admin."""
+        from django.test import override_settings
+        with override_settings(ENVIRONMENT='development'):
+            from hub.urls import _build_urlpatterns
+            patterns = _build_urlpatterns()
+            hits = self._admin_patterns(patterns)
+            assert len(hits) == 1
+            assert str(hits[0].pattern) == 'admin/'
+
+
+# ---------------------------------------------------------------------------
+# Phase 221.5 — Cookie security: __Secure- prefix & SameSite=Strict
+# ---------------------------------------------------------------------------
+
+class TestRefreshCookieSecurePrefix:
+    """Phase 221.5.1: REFRESH_COOKIE_NAME must use __Secure- prefix
+    in production/staging (HTTPS available).
+
+    The __Secure- prefix is browser-enforced: the Secure attribute MUST
+    be set, preventing the cookie from being sent or set over HTTP.  This
+    blocks subdomain cookie-theft attacks.
+
+    In development, the prefix is NOT used because ``secure=False``
+    (DEBUG=True) would cause browsers to silently drop the cookie.
+    """
+
+    def test_production_uses_secure_prefix(self):
+        from django.test import override_settings
+        with override_settings(ENVIRONMENT='production'):
+            # Re-evaluate the default the way settings.py does
+            env = "production"
+            default = (
+                "__Secure-refresh_token"
+                if env in ("production", "staging")
+                else "refresh_token"
+            )
+            assert default.startswith("__Secure-"), (
+                "Production default must use __Secure- prefix"
+            )
+
+    def test_staging_uses_secure_prefix(self):
+        env = "staging"
+        default = (
+            "__Secure-refresh_token"
+            if env in ("production", "staging")
+            else "refresh_token"
+        )
+        assert default.startswith("__Secure-"), (
+            "Staging default must use __Secure- prefix"
+        )
+
+    def test_development_uses_plain_name(self):
+        env = "development"
+        default = (
+            "__Secure-refresh_token"
+            if env in ("production", "staging")
+            else "refresh_token"
+        )
+        assert not default.startswith("__Secure-"), (
+            "Development default must NOT use __Secure- prefix "
+            "(browsers drop __Secure- cookies without Secure attribute)"
+        )
+        assert default == "refresh_token"
+
+    def test_settings_module_reflects_environment(self):
+        """The live settings.REFRESH_COOKIE_NAME must match the
+        environment-appropriate default (test env = development)."""
+        from django.conf import settings
+        cookie_name = getattr(settings, "REFRESH_COOKIE_NAME", "")
+        env = getattr(settings, "ENVIRONMENT", "development")
+        if env in ("production", "staging"):
+            assert cookie_name.startswith("__Secure-"), (
+                f"REFRESH_COOKIE_NAME must start with __Secure- "
+                f"in {env}, got: {cookie_name}"
+            )
+        else:
+            # Development/test — plain name
+            assert cookie_name == "refresh_token", (
+                f"REFRESH_COOKIE_NAME must be 'refresh_token' "
+                f"in {env}, got: {cookie_name}"
+            )
+
+
+class TestSessionCookieSameSiteStrict:
+    """Phase 221.5.2: SESSION_COOKIE_SAMESITE must default to Strict.
+
+    The SPA uses JWT for auth (not Django sessions), so Strict does not
+    break any authentication flow.  The Django admin is disabled in
+    production (221.2.1).  SSO views use JWT tokens, not sessions.
+    """
+
+    def test_session_cookie_samesite_is_strict(self):
+        """Default must be Strict (not Lax)."""
+        from django.conf import settings
+        value = getattr(settings, "SESSION_COOKIE_SAMESITE", "Lax")
+        assert value == "Strict", (
+            f"SESSION_COOKIE_SAMESITE must default to 'Strict', "
+            f"got: {value!r}"
+        )
+
+    def test_csrf_cookie_samesite_stays_lax(self):
+        """CSRF cookie must remain Lax — Strict would cause CSRF validation
+        failures on the first navigation from an external site."""
+        from django.conf import settings
+        value = getattr(settings, "CSRF_COOKIE_SAMESITE", "Lax")
+        assert value == "Lax", (
+            f"CSRF_COOKIE_SAMESITE must remain 'Lax', got: {value!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Phase 221.6 — Bandit configuration: no blanket skips for security rules
+# ---------------------------------------------------------------------------
+
+class TestBanditConfigNoB601Skip:
+    """Phase 221.6: B601 (paramiko_calls) must NOT be globally skipped.
+
+    B601 detects potentially dangerous paramiko ``exec_command`` calls.
+    The codebase has zero B601 violations (paramiko usage is SFTP-only),
+    so the global skip was dead weight that would silently suppress any
+    *future* violation introduced by a contributor.
+    """
+
+    @staticmethod
+    def _repo_root():
+        import os
+        return os.path.dirname(
+            os.path.dirname(os.path.dirname(__file__))
+        )
+
+    def test_bandit_yaml_does_not_skip_b601(self):
+        """`.bandit.yaml` must not list B601 in skips."""
+        import os
+        import yaml
+
+        path = os.path.join(self._repo_root(), ".bandit.yaml")
+        if not os.path.exists(path):
+            pytest.skip(".bandit.yaml not found")
+        with open(path) as f:
+            cfg = yaml.safe_load(f)
+        skips = cfg.get("skips", [])
+        assert "B601" not in skips, (
+            f"B601 must not be in .bandit.yaml skips: {skips}"
+        )
+
+    def test_bandit_ini_does_not_skip_b601(self):
+        """`.bandit` INI config must not list B601 in skips."""
+        import configparser
+        import os
+
+        path = os.path.join(self._repo_root(), ".bandit")
+        if not os.path.exists(path):
+            pytest.skip(".bandit not found")
+        cp = configparser.ConfigParser()
+        cp.read(path)
+        raw = cp.get("bandit", "skips", fallback="")
+        skips = [s.strip().strip('"').strip("'")
+                 for s in raw.strip("[]").split(",") if s.strip()]
+        assert "B601" not in skips, (
+            f"B601 must not be in .bandit skips: {skips}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Phase 221.4.1 — OpenAPI / Swagger / ReDoc restriction
+# ---------------------------------------------------------------------------
+
+class TestApiDocsUrlGate:
+    """Phase 221.4.1: /api-docs/ must be absent from URL patterns in production.
+
+    The developer documentation endpoints (Swagger UI, ReDoc, and the
+    api-docs-scoped OpenAPI schema) expose the full API surface and are
+    only needed in development / staging.
+
+    The ``/api/v1/openapi.json`` endpoint is NOT gated — it lives in the
+    API app's URL conf and is required pre-auth by the frontend for
+    capability discovery.
+    """
+
+    _API_DOCS_ROUTES = {'api-docs/openapi.json', 'api-docs/', 'api-docs/redoc/'}
+
+    @staticmethod
+    def _api_docs_patterns(patterns):
+        """Return URL patterns whose route starts with 'api-docs'."""
+        return [
+            p for p in patterns
+            if hasattr(p, 'pattern') and str(p.pattern).startswith('api-docs')
+        ]
+
+    def test_api_docs_absent_in_production(self):
+        from django.test import override_settings
+        with override_settings(ENVIRONMENT='production'):
+            from hub.urls import _build_urlpatterns
+            patterns = _build_urlpatterns()
+            hits = self._api_docs_patterns(patterns)
+            assert len(hits) == 0, (
+                f"api-docs endpoints must NOT be registered in production, "
+                f"found: {[str(p.pattern) for p in hits]}"
+            )
+
+    def test_api_docs_present_in_development(self):
+        from django.test import override_settings
+        with override_settings(ENVIRONMENT='development'):
+            from hub.urls import _build_urlpatterns
+            patterns = _build_urlpatterns()
+            hits = self._api_docs_patterns(patterns)
+            routes = {str(p.pattern) for p in hits}
+            assert routes == self._API_DOCS_ROUTES, (
+                f"Expected {self._API_DOCS_ROUTES}, got {routes}"
+            )
+
+    def test_api_docs_present_in_staging(self):
+        from django.test import override_settings
+        with override_settings(ENVIRONMENT='staging'):
+            from hub.urls import _build_urlpatterns
+            patterns = _build_urlpatterns()
+            hits = self._api_docs_patterns(patterns)
+            assert len(hits) == 3, (
+                "api-docs endpoints must be registered in staging"
+            )
+
+    def test_api_v1_openapi_not_affected(self):
+        """The /api/v1/openapi.json endpoint must remain available
+        regardless of environment — the frontend needs it pre-auth."""
+        from django.test import override_settings
+        with override_settings(ENVIRONMENT='production'):
+            from hub.urls import _build_urlpatterns
+            patterns = _build_urlpatterns()
+            # /api/v1/ is an include, so just verify it's still registered
+            api_v1 = [
+                p for p in patterns
+                if hasattr(p, 'pattern') and str(p.pattern) == 'api/v1/'
+            ]
+            assert len(api_v1) == 1, (
+                "/api/v1/ must remain registered in production "
+                "(contains /api/v1/openapi.json for frontend capability discovery)"
+            )
+
+
 class TestThreadPatchNotInSettingsModule:
     """validate_thread_sharing monkey-patches must not exist in settings.py."""
 

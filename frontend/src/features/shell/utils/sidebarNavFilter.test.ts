@@ -40,4 +40,18 @@ describe('filterVisibleNavItems', () => {
     });
     expect(out.some((i) => i.path === '/mesh')).toBe(false);
   });
+
+  it('preserves the optional badge field on retained items', () => {
+    const itemsWithBadge: NavItem[] = [
+      { path: '/governance', label: 'Governance', badge: 7 },
+      { path: '/audit', label: 'Audit', badge: 0 },
+    ];
+    const out = filterVisibleNavItems(itemsWithBadge, {
+      mvpModeEnabled: false,
+      hasRole: allowAllRoles,
+      isCapabilityAvailable: allowAllCaps,
+    });
+    expect(out.find((i) => i.path === '/governance')?.badge).toBe(7);
+    expect(out.find((i) => i.path === '/audit')?.badge).toBe(0);
+  });
 });

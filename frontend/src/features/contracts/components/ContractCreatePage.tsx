@@ -23,9 +23,17 @@ import {
   useValidateDraft,
 } from '../hooks/useContracts';
 import { ValidationResultPanel } from './ValidationResultPanel';
+import { ODPSProductForm, makeEmptyODPSFormData } from './ODPSProductForm';
+import {
+  buildODPSDocument,
+  validateODPSFormData,
+} from '../utils/odpsDocumentBuilder';
 import type { DetectedSpec } from '../../../shared/utils/detectSpecType';
 import type { ContractFormat, DraftValidationResult } from '../../../shared/types/contracts';
+import type { ODPSFormData } from '../../../shared/types/odps';
 import './ContractCreatePage.css';
+
+type CreationMode = 'odcs' | 'odps-form' | 'raw';
 
 const BREADCRUMBS = [
   { label: 'Home', href: '/' },
@@ -40,12 +48,20 @@ export function ContractCreatePage() {
 
   const assetId = searchParams.get('asset_id') ?? undefined;
 
-  // Form state
+  // Creation mode — selects which entry path the user takes.
+  const [mode, setMode] = useState<CreationMode>('raw');
+
+  // Form state (used by `raw` mode; ODCS goes through raw too)
   const [content, setContent] = useState('');
   const [format, setFormat] = useState<string>('yaml');
   const [detected, setDetected] = useState<DetectedSpec | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+
+  // Form state for guided ODPS mode
+  const [odpsForm, setOdpsForm] = useState<ODPSFormData>(() =>
+    makeEmptyODPSFormData(),
+  );
 
   // ODPS workflow state
   const [workflowId, setWorkflowId] = useState<string | null>(null);
@@ -116,7 +132,27 @@ export function ContractCreatePage() {
   const hasContent = content.trim().length > 0;
   const validationBlocks = validationResult !== null && !validationResult.valid;
 
+  const odpsFormErrors = mode === 'odps-form' ? validateODPSFormData(odpsForm) : [];
+  const odpsFormValid = odpsFormErrors.length === 0;
+
   const handleSubmit = useCallback(async () => {
+    // Guided ODPS form mode: serialise form → submit via ODPS workflow.
+    if (mode === 'odps-form') {
+      if (!odpsFormValid) return;
+      const raw = buildODPSDocument(odpsForm, 'YAML');
+      try {
+        const result = await createODPS.mutateAsync({
+          original_raw: raw,
+          original_format: 'YAML',
+          asset_id: odpsForm.linkedAssetId ?? assetId,
+        });
+        setWorkflowId(result.workflow_instance_id);
+      } catch {
+        // handled by mutation toast
+      }
+      return;
+    }
+
     if (!hasContent) return;
 
     const contractFormat: ContractFormat = format === 'json' ? 'JSON' : 'YAML';
@@ -148,6 +184,7 @@ export function ContractCreatePage() {
       // but catch here to prevent unhandled rejection
     }
   }, [
+    mode, odpsForm, odpsFormValid,
     hasContent, isODPS, content, format, detected, assetId,
     name, description, createContract, createODPS, navigate,
   ]);
@@ -169,6 +206,76 @@ export function ContractCreatePage() {
         </div>
       )}
 
+      <div className="contract-create-page__mode-selector" role="tablist" aria-label="Creation mode">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'odcs'}
+          className={`contract-create-page__mode ${mode === 'odcs' ? 'active' : ''}`}
+          onClick={() => setMode('odcs')}
+        >
+          ODCS Contract
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'odps-form'}
+          className={`contract-create-page__mode ${mode === 'odps-form' ? 'active' : ''}`}
+          onClick={() => setMode('odps-form')}
+        >
+          ODPS Data Product
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'raw'}
+          className={`contract-create-page__mode ${mode === 'raw' ? 'active' : ''}`}
+          onClick={() => setMode('raw')}
+        >
+          Raw Upload
+        </button>
+      </div>
+
+      {mode === 'odps-form' ? (
+        <div className="contract-create-page__form">
+          <ODPSProductForm value={odpsForm} onChange={setOdpsForm} />
+
+          {workflowId && (
+            <div className="contract-create-page__progress">
+              <div className="contract-create-page__progress-bar">
+                <div
+                  className="contract-create-page__progress-fill"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+              <p className="contract-create-page__progress-text">
+                {stepName || 'Processing ODPS product...'} ({progressPct}%)
+              </p>
+            </div>
+          )}
+
+          {error && (
+            <ErrorDisplay
+              error={error}
+              title="Failed to create data product"
+              onRetry={() => {
+                createContract.reset();
+                createODPS.reset();
+              }}
+            />
+          )}
+
+          <div className="contract-create-page__actions">
+            <Button
+              variant="primary"
+              onClick={handleSubmit}
+              disabled={!odpsFormValid || isPending}
+            >
+              {isPending ? 'Creating...' : 'Create Data Product'}
+            </Button>
+          </div>
+        </div>
+      ) : (
       <div className="contract-create-page__form">
         <div className="contract-create-page__field">
           <label htmlFor="contract-name" className="contract-create-page__label">
@@ -244,6 +351,7 @@ export function ContractCreatePage() {
           </Button>
         </div>
       </div>
+      )}
     </div>
   );
 }

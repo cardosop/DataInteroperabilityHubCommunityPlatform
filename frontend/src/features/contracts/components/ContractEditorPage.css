@@ -46,6 +46,13 @@
   gap: var(--spacing-lg);
 }
 
+/* Phase 224.5 — collapse 2-column editor layout on tablet and below. */
+@media (max-width: 768px) {
+  .contract-editor-content {
+    grid-template-columns: 1fr;
+  }
+}
+
 .editor-main {
   background: var(--color-background-primary);
   border: 1px solid var(--color-border);

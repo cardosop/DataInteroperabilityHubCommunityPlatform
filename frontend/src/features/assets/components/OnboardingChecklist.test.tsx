@@ -48,10 +48,11 @@ describe('OnboardingChecklist', () => {
     expect(screen.getByTestId('onboarding-checklist')).toBeInTheDocument();
   });
 
-  it('should render all 6 steps', () => {
+  it('should render all 7 steps (6 prerequisites + Activate)', () => {
     renderChecklist();
     const steps = screen.getByTestId('onboarding-steps');
-    expect(steps.children).toHaveLength(6);
+    expect(steps.children).toHaveLength(7);
+    expect(screen.getByTestId('onboarding-step-activate')).toBeInTheDocument();
   });
 
   it('should show progress 1/6 when only asset is created (no contract, no dataset)', () => {
@@ -174,12 +175,119 @@ describe('OnboardingChecklist', () => {
     expect(bar.style.width).toBe('67%');
   });
 
-  it('should scroll to contracts section when "Attach Contract" action is clicked', async () => {
+  it('should scroll to contracts section when "Attach Contract" action is clicked without assetId', async () => {
     const user = userEvent.setup();
     renderChecklist();
     const action = screen.getByTestId('onboarding-action-attach-contract');
     await user.click(action);
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  // ------- 222.4: required vs optional steps, Activate action, Attach-link -------
+
+  it('marks required steps with data-required="true" and optional steps with "false"', () => {
+    renderChecklist({ assetId: 'asset-req' });
+    expect(
+      screen.getByTestId('onboarding-step-create-asset'),
+    ).toHaveAttribute('data-required', 'true');
+    expect(
+      screen.getByTestId('onboarding-step-attach-contract'),
+    ).toHaveAttribute('data-required', 'true');
+    expect(
+      screen.getByTestId('onboarding-step-validate-contract'),
+    ).toHaveAttribute('data-required', 'true');
+    // Dataset and downstream DQ/Compliance are optional for contract-only assets.
+    expect(
+      screen.getByTestId('onboarding-step-upload-dataset'),
+    ).toHaveAttribute('data-required', 'false');
+    expect(
+      screen.getByTestId('onboarding-step-run-dq'),
+    ).toHaveAttribute('data-required', 'false');
+    expect(
+      screen.getByTestId('onboarding-step-run-compliance'),
+    ).toHaveAttribute('data-required', 'false');
+  });
+
+  it('labels optional steps with an "(optional)" tag in the DOM', () => {
+    renderChecklist({ assetId: 'asset-opt' });
+    const upload = screen.getByTestId('onboarding-step-upload-dataset');
+    expect(upload).toHaveTextContent(/\(optional\)/i);
+  });
+
+  it('Attach Contract action is a real <a> link to /contracts/create?asset_id=... when assetId present', () => {
+    renderChecklist({ assetId: 'asset-abc', contracts: [] });
+    const action = screen.getByTestId('onboarding-action-attach-contract');
+    expect(action.tagName).toBe('A');
+    expect(action).toHaveAttribute(
+      'href',
+      '/contracts/create?asset_id=asset-abc',
+    );
+  });
+
+  it('renders Activate step and invokes onActivate when clicked (ready to activate)', async () => {
+    const user = userEvent.setup();
+    const onActivate = vi.fn();
+    renderChecklist({
+      assetId: 'asset-ready',
+      contracts: [
+        makeContract({ normalization_status: 'NORMALIZED_OK', validation_status: 'VALID' }),
+      ],
+      datasets: [makeDataset()],
+      dqStatus: 'PASS',
+      complianceStatus: 'COMPLIANT',
+      onActivate,
+    });
+    const activateAction = screen.getByTestId('onboarding-action-activate');
+    await user.click(activateAction);
+    expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables Activate action while prerequisites are incomplete and does not call onActivate on click', async () => {
+    const user = userEvent.setup();
+    const onActivate = vi.fn();
+    renderChecklist({
+      assetId: 'asset-not-ready',
+      contracts: [],
+      datasets: [],
+      onActivate,
+    });
+    const activateAction = screen.getByTestId('onboarding-action-activate');
+    expect(activateAction).toBeDisabled();
+    // user.click on a disabled button is a no-op — asserts the handler is
+    // gated by the disabled attribute, not by any separate guard inside.
+    await user.click(activateAction);
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  it('disables Activate while isActivating is true even when prerequisites pass', () => {
+    renderChecklist({
+      assetId: 'asset-inflight',
+      contracts: [
+        makeContract({ normalization_status: 'NORMALIZED_OK', validation_status: 'VALID' }),
+      ],
+      datasets: [makeDataset()],
+      dqStatus: 'PASS',
+      complianceStatus: 'COMPLIANT',
+      onActivate: vi.fn(),
+      isActivating: true,
+    });
+    expect(screen.getByTestId('onboarding-action-activate')).toBeDisabled();
+  });
+
+  it('Activate is rendered but inert when onActivate is not supplied', () => {
+    renderChecklist({
+      assetId: 'asset-no-handler',
+      contracts: [
+        makeContract({ normalization_status: 'NORMALIZED_OK', validation_status: 'VALID' }),
+      ],
+      datasets: [makeDataset()],
+      dqStatus: 'PASS',
+      complianceStatus: 'COMPLIANT',
+    });
+    // Step row is present, but no action button is rendered when the caller
+    // does not wire an activate handler — guarding against a broken link.
+    expect(screen.getByTestId('onboarding-step-activate')).toBeInTheDocument();
+    expect(screen.queryByTestId('onboarding-action-activate')).toBeNull();
   });
 });
 

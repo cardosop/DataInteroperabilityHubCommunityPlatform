@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { useRoles, useUpdateUser, useUser } from '../hooks/useAdmin';
@@ -101,8 +102,17 @@ export function UserEditPage() {
     );
   }
 
+  const userLabel = (user.display_name && user.display_name.trim()) || user.email;
+
   return (
     <div className="user-edit-page" data-testid="admin-user-edit-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'Admin', href: '/admin' },
+          { label: userLabel },
+        ]}
+      />
       <div className="user-edit-header">
         <h1>Edit User</h1>
         <p className="user-edit-subtitle">

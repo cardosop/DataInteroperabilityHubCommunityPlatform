@@ -14,6 +14,7 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
+from hub.apps.auth.permissions import HasScope
 from hub.apps.core.responses import api_error_response, handle_service_exception
 from hub.apps.core.services.base import (
     ConflictError as ServiceConflictError,
@@ -64,6 +65,21 @@ class AssetViewSet(viewsets.ModelViewSet):
     ordering_fields = ["name", "key", "created_at", "updated_at"]
     ordering = ["-created_at"]  # Default ordering
     search_fields = ["name", "key", "description"]
+
+    def get_permissions(self):
+        """Add scope check for write operations (Phase 220.3).
+
+        Read actions (GET, HEAD, OPTIONS) use ``IsAuthenticated`` only.
+        All write actions — including custom ``@action(methods=["post"])``
+        endpoints like ``attach_dataset``, ``activate``, ``retire`` etc. —
+        additionally require ``assets:write`` scope.
+        """
+        if self.request.method not in permissions.SAFE_METHODS:
+            return [
+                permissions.IsAuthenticated(),
+                HasScope("assets:write"),
+            ]
+        return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
         """Filter queryset based on user permissions and query parameters"""
@@ -124,6 +140,21 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         # Note: Tags filtering is not yet implemented as Asset model doesn't have a tags field
         # This will require adding a tags field (ManyToMany or ArrayField) to the Asset model first
+
+        # 223.2.1 — reverse-relationship filter: assets using a given contract.
+        # `Contract.asset` is the owning FK, so the assets linked to a
+        # contract are reached through the reverse `contracts` accessor.
+        # Invalid UUIDs collapse to an empty queryset (consistent with
+        # domain/status/visibility handling above).
+        contract_id_filter = self.request.query_params.get("contract_id")
+        if contract_id_filter:
+            import uuid as _uuid
+
+            try:
+                _uuid.UUID(str(contract_id_filter))
+            except (ValueError, TypeError):
+                return Asset.objects.none()
+            queryset = queryset.filter(contracts__id=contract_id_filter).distinct()
 
         return queryset
 

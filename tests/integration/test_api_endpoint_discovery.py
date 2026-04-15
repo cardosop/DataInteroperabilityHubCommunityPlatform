@@ -4,21 +4,29 @@ Comprehensive integration tests for API endpoint discovery.
 Tests verify:
 - API info endpoint (/api/v1/) structure and accuracy
 - OpenAPI spec generation (JSON and YAML)
-- Swagger UI availability
-- ReDoc availability
+- Swagger UI availability (221.4.2: requires auth)
+- ReDoc availability (221.4.2: requires auth)
 - Endpoint listing accuracy (comparing API info with OpenAPI spec)
 
 Uses REAL services (no mocks/stubs) - always fixing root causes and following
 development best practices.
 """
+import uuid
+
 import pytest
 import json
 import yaml
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 from django.urls import get_resolver, URLPattern, URLResolver
 from django.conf import settings
+
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import UserStatus
+
+User = get_user_model()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -26,8 +34,20 @@ class APIEndpointDiscoveryTest(TestCase):
     """Comprehensive tests for API endpoint discovery"""
 
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures — authenticated client (221.4.2)."""
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"T {uid}", slug=f"t-disc-{uid}",
+            status="ACTIVE", kyc_status="UNVERIFIED",
+        )
+        self.user = User.objects.create_user(
+            email=f"disc-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
         self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
 
     def test_api_info_endpoint_structure(self):
         """Test that /api/v1/ info endpoint returns correct structure"""
@@ -484,27 +504,25 @@ class APIEndpointDiscoveryTest(TestCase):
             "OpenAPI spec should be accessible without authentication",
         )
 
-    def test_swagger_ui_no_auth_required(self):
-        """Test that Swagger UI is accessible without authentication"""
-        # Use unauthenticated client
+    def test_swagger_ui_requires_auth(self):
+        """Swagger UI must reject unauthenticated access (221.4.2)."""
         client = APIClient()
         response = client.get("/api-docs/")
 
-        self.assertEqual(
+        self.assertIn(
             response.status_code,
-            status.HTTP_200_OK,
-            "Swagger UI should be accessible without authentication",
+            (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN),
+            "Swagger UI must reject unauthenticated requests",
         )
 
-    def test_redoc_no_auth_required(self):
-        """Test that ReDoc is accessible without authentication"""
-        # Use unauthenticated client
+    def test_redoc_requires_auth(self):
+        """ReDoc must reject unauthenticated access (221.4.2)."""
         client = APIClient()
         response = client.get("/api-docs/redoc/")
 
-        self.assertEqual(
+        self.assertIn(
             response.status_code,
-            status.HTTP_200_OK,
-            "ReDoc should be accessible without authentication",
+            (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN),
+            "ReDoc must reject unauthenticated requests",
         )
 

@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { Button } from '../../../shared/components/Button';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
@@ -107,6 +108,13 @@ export function ProfilePage() {
 
   return (
     <div className="profile-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'Settings', href: '/settings/profile' },
+          { label: 'Profile' },
+        ]}
+      />
       <div className="profile-page-header">
         <h1>Profile</h1>
         <p className="profile-page-description">

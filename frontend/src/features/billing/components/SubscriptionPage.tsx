@@ -5,9 +5,16 @@
  */
 
 import { useState } from 'react';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+
+const SUBSCRIPTION_BREADCRUMBS = [
+  { label: 'Home', href: '/' },
+  { label: 'Settings', href: '/settings/profile' },
+  { label: 'Subscription' },
+];
 import {
   useChangePlan,
   useCurrentSubscription,
@@ -78,6 +85,7 @@ export function SubscriptionPage() {
   if (!subscription) {
     return (
       <div className="subscription-page">
+        <Breadcrumbs items={SUBSCRIPTION_BREADCRUMBS} />
         <h1>Subscription</h1>
         <p className="subscription-no-data">No subscription found for your tenant.</p>
       </div>
@@ -115,6 +123,7 @@ export function SubscriptionPage() {
 
   return (
     <div className="subscription-page">
+      <Breadcrumbs items={SUBSCRIPTION_BREADCRUMBS} />
       <div className="subscription-page-header">
         <h1>Subscription</h1>
         <p className="subscription-page-description">
@@ -269,6 +278,7 @@ export function SubscriptionPage() {
         ) : invoices.length === 0 ? (
           <p className="subscription-no-data">No invoices yet.</p>
         ) : (
+          <div className="table-scroll">
           <table className="subscription-invoices-table" aria-label="Invoice history">
             <thead>
               <tr>
@@ -308,6 +318,7 @@ export function SubscriptionPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 
@@ -349,6 +360,7 @@ function PlanComparisonTable({
   return (
     <section className="subscription-card" aria-labelledby="plan-comparison-heading">
       <h2 id="plan-comparison-heading">Plan comparison</h2>
+      <div className="table-scroll">
       <table className="subscription-comparison-table" aria-label="Plan limit comparison">
         <thead>
           <tr>
@@ -384,6 +396,7 @@ function PlanComparisonTable({
           })}
         </tbody>
       </table>
+      </div>
     </section>
   );
 }

@@ -9,7 +9,7 @@ import structlog
 from django.db import transaction
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
@@ -328,3 +328,162 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
 
         serializer = AccessRequestSerializer(access_request)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="pending-count")
+    def pending_count(self, request):
+        """Return the number of PENDING access requests visible to an admin.
+
+        GET /api/v1/governance/access-requests/pending-count/
+
+        - Platform admins: count across all tenants.
+        - TENANT_ADMIN role: count within the caller's tenant.
+        - All other users: 403.
+        """
+        user = request.user
+        is_platform_admin = bool(getattr(user, "is_platform_admin", False))
+        is_tenant_admin = hasattr(user, "has_role") and user.has_role("TENANT_ADMIN")
+
+        if not (is_platform_admin or is_tenant_admin):
+            raise PermissionDenied(
+                "Only tenant or platform administrators may view pending counts."
+            )
+
+        queryset = AccessRequest.objects.filter(status=AccessRequestStatus.PENDING)
+        if not is_platform_admin:
+            tenant = getattr(user, "tenant", None)
+            if tenant is None:
+                return Response({"count": 0}, status=status.HTTP_200_OK)
+            queryset = queryset.filter(tenant=tenant)
+
+        return Response({"count": queryset.count()}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="bulk-approve")
+    def bulk_approve(self, request):
+        """Bulk-approve pending access requests (Phase 223.3.3).
+
+        POST /api/v1/governance/access-requests/bulk-approve/
+        Body: { "ids": ["uuid", ...], "comments": "optional" }
+
+        Each id is processed in its **own** ``transaction.atomic`` so a
+        single failure does not roll back the successful approvals. The
+        response surfaces both outcomes:
+            { "succeeded": ["uuid", ...], "failed": [{"id": "uuid", "error": "..."}] }
+        """
+        return self._bulk_transition(
+            request,
+            action_name="approve",
+            success_status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["post"], url_path="bulk-reject")
+    def bulk_reject(self, request):
+        """Bulk-reject pending access requests (Phase 223.3.3).
+
+        POST /api/v1/governance/access-requests/bulk-reject/
+        Body: { "ids": ["uuid", ...], "reason": "required string" }
+
+        Semantics match ``bulk_approve``: per-id atomicity, partial
+        success reported in ``failed``.
+        """
+        return self._bulk_transition(
+            request,
+            action_name="reject",
+            success_status=status.HTTP_200_OK,
+        )
+
+    def _bulk_transition(self, request, *, action_name, success_status):
+        from hub.apps.core.responses import api_error_response
+
+        ids = request.data.get("ids")
+        if not isinstance(ids, list) or not ids:
+            return api_error_response(
+                message="'ids' must be a non-empty list of access request UUIDs.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="VALIDATION_ERROR",
+            )
+
+        reason = request.data.get("reason")
+        if action_name == "reject" and not reason:
+            return api_error_response(
+                message="'reason' is required for bulk-reject.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="VALIDATION_ERROR",
+            )
+        comments = request.data.get("comments")
+
+        succeeded: list[str] = []
+        failed: list[dict[str, str]] = []
+
+        queryset = self.get_queryset()
+
+        for raw_id in ids:
+            request_id = str(raw_id)
+            try:
+                access_request = queryset.get(id=request_id)
+            except AccessRequest.DoesNotExist:
+                failed.append({
+                    "id": request_id,
+                    "error": "not found or not permitted",
+                })
+                continue
+
+            if access_request.status != AccessRequestStatus.PENDING:
+                failed.append({
+                    "id": request_id,
+                    "error": f"access request is not pending (status: {access_request.status})",
+                })
+                continue
+
+            service = GovernanceService(
+                tenant_id=str(access_request.tenant.id),
+            )
+            try:
+                with transaction.atomic():
+                    if action_name == "approve":
+                        service.approve_access_request(
+                            access_request_id=request_id,
+                            tenant_id=str(access_request.tenant.id),
+                            approver_id=str(request.user.id),
+                            comments=comments,
+                        )
+                        audit_action = "ACCESS_REQUEST_APPROVED"
+                        audit_details = {"approved_by": str(request.user.id), "bulk": True}
+                    else:
+                        service.reject_access_request(
+                            access_request_id=request_id,
+                            tenant_id=str(access_request.tenant.id),
+                            approver_id=str(request.user.id),
+                            reason=reason,
+                        )
+                        audit_action = "ACCESS_REQUEST_REJECTED"
+                        audit_details = {
+                            "rejected_by": str(request.user.id),
+                            "rejection_reason": reason,
+                            "bulk": True,
+                        }
+                create_audit_event(
+                    resource_type="ACCESS_REQUEST",
+                    action=audit_action,
+                    actor_user=request.user,
+                    tenant=access_request.tenant,
+                    resource_id=request_id,
+                    details=audit_details,
+                    request=request,
+                )
+                succeeded.append(request_id)
+            except (ServiceValidationError, NotFoundError) as exc:
+                failed.append({"id": request_id, "error": str(exc)})
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "bulk_%s_failed",
+                    action_name,
+                    error=str(exc),
+                    request_id=request_id,
+                    exc_info=True,
+                )
+                failed.append({"id": request_id, "error": "internal error"})
+
+        return Response(
+            {"succeeded": succeeded, "failed": failed},
+            status=success_status,
+        )

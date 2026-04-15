@@ -291,7 +291,18 @@ class FileViewSet(viewsets.ModelViewSet):
 
         Verifies file upload and calculates SHA-256 hash.
         """
-        file_obj = self.get_object()
+        # Permission check via standard get_object (tenant scope)
+        self.get_object()
+        # Re-fetch with row-level lock to prevent double-activation (Phase 220.5).
+        file_obj = File.objects.select_for_update().get(id=id)
+
+        # Guard: if another request already completed this upload while we
+        # waited for the lock, return 409 instead of retrying S3 operations.
+        if file_obj.status in (FileStatus.ACTIVE, FileStatus.COMPLETED):
+            return Response(
+                {"error": "File upload already completed"},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         serializer = FileCompleteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

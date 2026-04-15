@@ -29,7 +29,7 @@
 }
 
 .domain-description {
-  color: #666;
+  color: var(--color-text-secondary);
   margin-bottom: 1rem;
 }
 
@@ -47,7 +47,7 @@
 
 .metadata-label {
   font-size: 0.875rem;
-  color: #666;
+  color: var(--color-text-secondary);
   font-weight: 600;
 }
 
@@ -88,7 +88,7 @@
 
 .analytics-label {
   font-size: 0.875rem;
-  color: #666;
+  color: var(--color-text-secondary);
   margin-bottom: 0.5rem;
 }
 

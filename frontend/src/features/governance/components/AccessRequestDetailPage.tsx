@@ -17,6 +17,8 @@ import {
 } from '../hooks/useGovernance';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
+import { ActivityTimeline } from '../../../shared/components/ActivityTimeline';
+import { InfoHint } from '../../../shared/components/InfoHint';
 import './AccessRequestDetailPage.css';
 import { Button } from '../../../shared/components/Button';
 
@@ -35,6 +37,7 @@ export function AccessRequestDetailPage() {
   const revokeMutation = useRevokeAccessRequest();
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [activeTab, setActiveTab] = useState<'details' | 'activity'>('details');
 
   const isAdmin = canApproveOrReject(user?.roles);
   const isPending = accessRequest?.status === AccessRequestStatus.PENDING;
@@ -112,14 +115,54 @@ export function AccessRequestDetailPage() {
             { label: 'Request' },
           ]}
         />
-        <h1>Access Request</h1>
+        <h1>
+          Access Request
+          <InfoHint
+            label="About Access Requests"
+            content="An Access Request is a formal, auditable ticket from a data consumer asking to use a specific asset, dataset, or file. When APPROVED by a governance admin, it becomes an entitlement that grants scoped READ/WRITE access for a bounded time window. Every status transition is captured in the audit log."
+          />
+        </h1>
         {id && (
           <div className="access-request-uuid" data-testid="access-request-uuid">
             <UuidWithCopy value={id} label="Access Request ID" />
           </div>
         )}
 
-        <div className="governance-detail-section">
+        {/* Phase 224.3.4 — Details/Activity tabs. */}
+        <div
+          className="governance-detail-tabs"
+          role="tablist"
+          aria-label="Access Request sections"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'details'}
+            className={`governance-detail-tab ${activeTab === 'details' ? 'active' : ''}`}
+            onClick={() => setActiveTab('details')}
+            data-testid="access-request-tab-details"
+          >
+            Details
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'activity'}
+            className={`governance-detail-tab ${activeTab === 'activity' ? 'active' : ''}`}
+            onClick={() => setActiveTab('activity')}
+            data-testid="access-request-tab-activity"
+          >
+            Activity
+          </button>
+        </div>
+
+        {activeTab === 'activity' && id && (
+          <div className="governance-detail-section" data-testid="access-request-activity">
+            <ActivityTimeline resourceType="ACCESS_REQUEST" resourceId={id} />
+          </div>
+        )}
+
+        <div className="governance-detail-section" hidden={activeTab !== 'details'}>
           <span className={`governance-status-badge ${accessRequest.status}`}>
             {accessRequest.status}
           </span>

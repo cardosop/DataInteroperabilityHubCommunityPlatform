@@ -11,6 +11,8 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { DQRunResultsViewer } from './DQRunResultsViewer';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
+import { InfoHint } from '../../../shared/components/InfoHint';
+import { exportToCSV } from '../../../shared/utils/exportUtils';
 import './DQRunDetailPage.css';
 import { Button } from '../../../shared/components/Button';
 
@@ -86,7 +88,13 @@ export function DQRunDetailPage() {
 
             {dqRun.quality_score !== null && dqRun.quality_score !== undefined && (
               <div className="quality-score-display">
-                <span className="quality-score-label">Quality Score:</span>
+                <span className="quality-score-label">
+                  Quality Score:
+                  <InfoHint
+                    label="About Quality Score"
+                    content="A 0–100% aggregate of every DQ check executed in this run, weighted by check severity. 100% means every row passed every rule; 0% means every row failed at least one critical rule. Use the per-check breakdown below to see which rules drove the score."
+                  />
+                </span>
                 <span className="quality-score-value">
                   {Math.round(dqRun.quality_score)}%
                 </span>
@@ -141,7 +149,26 @@ export function DQRunDetailPage() {
 
           {dqRun.status === 'SUCCEEDED' && (
             <div className="dq-run-results-section">
-              <h2>Results</h2>
+              <div
+                className="dq-run-results-header"
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <h2>Results</h2>
+                {results && results.checks && results.checks.length > 0 && (
+                  <Button
+                    variant="secondary"
+                    onClick={() =>
+                      exportToCSV(
+                        results.checks as unknown as Array<Record<string, unknown>>,
+                        `dq-run-${id}`,
+                      )
+                    }
+                    data-testid="dq-run-export-csv"
+                  >
+                    Export CSV
+                  </Button>
+                )}
+              </div>
               {resultsLoading ? (
                 <LoadingSpinner message="Loading results..." />
               ) : resultsError ? (

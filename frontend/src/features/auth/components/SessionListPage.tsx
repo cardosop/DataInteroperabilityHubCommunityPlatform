@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { useToast } from '../../../shared/components/Toast';
@@ -71,6 +72,13 @@ export function SessionListPage() {
 
   return (
     <div className="session-list-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'Settings', href: '/settings/profile' },
+          { label: 'Sessions' },
+        ]}
+      />
       <div className="session-list-header">
         <h1>Active Sessions</h1>
         <p className="session-list-description">

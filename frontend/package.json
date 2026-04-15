@@ -53,6 +53,7 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "~2.0.4",
+    "@floating-ui/react": "^0.27.19",
     "@sentry/react": "~8.55.0",
     "@stripe/react-stripe-js": "^3.10.0",
     "@stripe/stripe-js": "^4.10.0",
@@ -62,6 +63,7 @@
     "@uiw/codemirror-extensions-langs": "~4.25.8",
     "@uiw/react-codemirror": "~4.25.8",
     "@xyflow/react": "~12.10.1",
+    "cmdk": "^1.1.1",
     "dompurify": "~3.3.3",
     "highlight.js": "~11.11.1",
     "js-yaml": "^4.1.1",

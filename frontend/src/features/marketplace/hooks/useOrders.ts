@@ -11,10 +11,14 @@ import type {
   OrderListFilters,
 } from '../../../shared/types/marketplace';
 
-export function useOrders(filters: OrderListFilters = {}) {
+export function useOrders(
+  filters: OrderListFilters = {},
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: ['marketplace', 'orders', 'list', filters],
     queryFn: () => orderService.list(filters),
+    enabled: options?.enabled !== false,
   });
 }
 

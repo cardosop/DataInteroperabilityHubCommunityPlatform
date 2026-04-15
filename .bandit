@@ -19,8 +19,7 @@ exclude_dirs = [
 
 # Skip specific tests
 skips = [
-    "B101",  # assert_used - Allow asserts in tests
-    "B601",  # shell_injection_subprocess - Some subprocess calls are safe
+    "B101",  # assert_used - Allow asserts in non-test production code (rare but intentional)
 ]
 
 # Test IDs to include (empty means all)

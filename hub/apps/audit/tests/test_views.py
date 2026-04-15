@@ -19,7 +19,20 @@ from rest_framework.test import APIClient
 from hub.apps.audit.models import AuditEvent
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
+
+
+def grant_role(user, tenant, name):
+    """Assign a tenant-scoped role to ``user`` idempotently.
+
+    Phase 224.3.1 — raw audit list/retrieve/export now require
+    TENANT_ADMIN or AUDITOR, so existing tests that exercise these
+    endpoints must grant an appropriate role during setup.
+    """
+    role, _ = Role.objects.get_or_create(
+        tenant=tenant, name=name, defaults={"description": name}
+    )
+    UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -67,6 +80,13 @@ class AuditEventViewSetTest(TestCase):
             is_platform_admin=True,
             status=UserStatus.ACTIVE,
         )
+
+        # Phase 224.3.1: raw audit endpoints require AUDITOR/TENANT_ADMIN.
+        # user1 tests tenant-scoped read behavior, user2 lives on tenant2 and
+        # only appears in negative/platform-admin assertions here, but grant
+        # the role anyway so either may be used as an authenticated caller.
+        grant_role(self.user1, self.tenant1, "AUDITOR")
+        grant_role(self.user2, self.tenant2, "AUDITOR")
 
         # Create audit events
         self.event1 = create_audit_event(

@@ -1,22 +1,19 @@
 """
 E2E tests for API documentation endpoints.
+
+Phase 221.4.2: Swagger UI and ReDoc now require authentication.
+The E2ETestBase.setUp() provides an authenticated self.client via
+force_authenticate — we must NOT override it with a bare APIClient().
 """
 import pytest
-from django.test import TestCase
 from rest_framework import status
-from rest_framework.test import APIClient
 from tests.e2e.conftest import E2ETestBase
+
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e_batch1]
 
 
-
 class APIDocumentationE2ETest(E2ETestBase):
-    """E2E tests for API documentation endpoints."""
-
-    def setUp(self):
-        """Set up test fixtures."""
-        super().setUp()
-        self.client = APIClient()
+    """E2E tests for API documentation endpoints (auth required — 221.4.2)."""
 
     def test_openapi_schema_endpoint(self):
         """Test OpenAPI schema endpoint."""

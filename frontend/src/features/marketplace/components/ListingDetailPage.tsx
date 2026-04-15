@@ -12,6 +12,7 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { PricingModel, ListingStatus } from '../../../shared/types/marketplace';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
+import { ListingOrdersCount } from './ListingOrdersCount';
 import { useAuthStore } from '../../auth/store/authStore';
 import './ListingDetailPage.css';
 import { Button } from '../../../shared/components/Button';
@@ -145,6 +146,8 @@ export function ListingDetailPage() {
               <p>{new Date(listing.published_at).toLocaleDateString()}</p>
             </div>
           )}
+
+          {id && <ListingOrdersCount listingId={id} />}
 
           {listing.asset && (
             <div className="listing-section">

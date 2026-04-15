@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
   useOrder,
   useApproveOrder,
@@ -24,6 +24,7 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { OrderStatus } from '../../../shared/types/marketplace';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
+import { ActivityTimeline } from '../../../shared/components/ActivityTimeline';
 import './OrderDetailPage.css';
 import { Button } from '../../../shared/components/Button';
 
@@ -43,6 +44,7 @@ export function OrderDetailPage() {
   const [rejectReason, setRejectReason] = useState('');
   const [showRefundDialog, setShowRefundDialog] = useState(false);
   const [refundReason, setRefundReason] = useState('');
+  const [activeTab, setActiveTab] = useState<'details' | 'activity'>('details');
 
   const handleApprove = async () => {
     if (!id) return;
@@ -138,7 +140,38 @@ export function OrderDetailPage() {
             { label: `Order ${order.id.slice(0, 8)}` },
           ]}
         />
-        <div className="order-detail-main">
+
+        {/* Phase 224.3.4 — Details/Activity tabs. */}
+        <div className="order-detail-tabs" role="tablist" aria-label="Order sections">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'details'}
+            className={`order-detail-tab ${activeTab === 'details' ? 'active' : ''}`}
+            onClick={() => setActiveTab('details')}
+            data-testid="order-tab-details"
+          >
+            Details
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'activity'}
+            className={`order-detail-tab ${activeTab === 'activity' ? 'active' : ''}`}
+            onClick={() => setActiveTab('activity')}
+            data-testid="order-tab-activity"
+          >
+            Activity
+          </button>
+        </div>
+
+        {activeTab === 'activity' && id && (
+          <div className="order-detail-main" data-testid="order-activity">
+            <ActivityTimeline resourceType="ORDER" resourceId={id} />
+          </div>
+        )}
+
+        <div className="order-detail-main" hidden={activeTab !== 'details'}>
           <div className="order-section">
             <h2>Listing Information</h2>
             <div className="order-info-grid">
@@ -209,9 +242,24 @@ export function OrderDetailPage() {
               <h2>Governance</h2>
               <p>
                 This order has a linked governance access request.{' '}
-                <a href={`/governance/access-requests/${order.access_request_id}`}>
+                <Link to={`/governance/access-requests/${order.access_request_id}`}>
                   View access request
-                </a>
+                </Link>
+              </p>
+            </div>
+          )}
+
+          {order.entitlement_id && (
+            <div
+              className="order-section"
+              data-testid="order-entitlement-link"
+            >
+              <h2>Access</h2>
+              <p>
+                Your purchase granted an active entitlement.{' '}
+                <Link to={`/marketplace/entitlements/${order.entitlement_id}`}>
+                  View your access
+                </Link>
               </p>
             </div>
           )}
@@ -281,6 +329,7 @@ export function OrderDetailPage() {
             )}
           </div>
         </div>
+
       </div>
 
       <Modal

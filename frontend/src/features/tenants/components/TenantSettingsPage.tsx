@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { Button } from '../../../shared/components/Button';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
@@ -201,6 +202,13 @@ export function TenantSettingsPage() {
 
   return (
     <div className="tenant-settings-page" data-testid="tenant-settings-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'Settings', href: '/settings/profile' },
+          { label: 'Tenant' },
+        ]}
+      />
       <div className="tenant-settings-header">
         <h1>Tenant Settings</h1>
         <p className="tenant-settings-description">

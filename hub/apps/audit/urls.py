@@ -3,12 +3,20 @@ Audit URL Configuration
 """
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import AuditEventViewSet
+from .views import AuditEventViewSet, ResourceActivityViewSet
 
 # Create router without format suffix patterns for export action
 # This allows ?format=csv to work without routing conflicts
 router = DefaultRouter()
 router.register(r"audit-events", AuditEventViewSet, basename="audit-event")
+# Phase 225.3.2 — separate top-level viewset for the per-resource activity
+# feed. Kept next to the raw audit log so the tenant-scope middleware chain
+# matches; access control is enforced in-viewset by user_is_involved().
+router.register(
+    r"resource-activity",
+    ResourceActivityViewSet,
+    basename="resource-activity",
+)
 
 # Add custom export endpoint that bypasses DRF format suffix routing
 # This allows ?format=csv query parameter to work without conflicts

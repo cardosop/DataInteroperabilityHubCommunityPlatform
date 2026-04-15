@@ -35,6 +35,7 @@ export const assetService = {
     if (filters.visibility) params.append('visibility', filters.visibility);
     if (filters.dq_status) params.append('dq_status', filters.dq_status);
     if (filters.compliance_status) params.append('compliance_status', filters.compliance_status);
+    if (filters.contract_id) params.append('contract_id', filters.contract_id);
 
     const response = await apiClient
       .getClient()

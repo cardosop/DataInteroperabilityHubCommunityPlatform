@@ -147,6 +147,40 @@
   padding: var(--spacing-sm) 0;
 }
 
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  /* Use the elevated surface so the button stands out from both the header
+     (neutral-50) and, in dark mode, the page background. */
+  background: var(--color-surface-elevated);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.theme-toggle:hover {
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle {
+    transition: none;
+  }
+}
+
 .notifications-wrapper {
   position: relative;
 }
@@ -290,4 +324,40 @@
 
 .logout-button:hover {
   background: var(--color-neutral-100);
+}
+
+/* Phase 224.5 — hamburger toggle. Hidden on desktop, shown on tablet+. */
+.sidebar-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-md, 0.5rem);
+  cursor: pointer;
+  color: var(--color-text-primary, #111827);
+  margin-right: var(--spacing-sm, 0.5rem);
+}
+
+.sidebar-toggle:hover {
+  background: var(--color-neutral-100);
+}
+
+.sidebar-toggle:focus-visible {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: 2px;
+}
+
+.sidebar-toggle__icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+@media (max-width: 768px) {
+  .sidebar-toggle {
+    display: inline-flex;
+  }
 }

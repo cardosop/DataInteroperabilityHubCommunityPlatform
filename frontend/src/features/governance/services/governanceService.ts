@@ -91,4 +91,45 @@ export const governanceService = {
       .post<AccessRequest>(`${GOVERNANCE_ACCESS_REQUESTS_PATH}/${id}/revoke/`, {});
     return response.data;
   },
+
+  /**
+   * Pending access request count for the caller's scope.
+   * Backend restricts to TENANT_ADMIN / PLATFORM_ADMIN.
+   */
+  async getPendingCount(): Promise<number> {
+    const response = await apiClient
+      .getClient()
+      .get<{ count: number }>(`${GOVERNANCE_ACCESS_REQUESTS_PATH}/pending-count/`);
+    return response.data.count;
+  },
+
+  /** 223.3.3 — bulk approve pending access requests */
+  async bulkApprove(
+    ids: string[],
+    comments?: string,
+  ): Promise<{ succeeded: string[]; failed: Array<{ id: string; error: string }> }> {
+    const body: Record<string, unknown> = { ids };
+    if (comments !== undefined) body.comments = comments;
+    const response = await apiClient
+      .getClient()
+      .post<{ succeeded: string[]; failed: Array<{ id: string; error: string }> }>(
+        `${GOVERNANCE_ACCESS_REQUESTS_PATH}/bulk-approve/`,
+        body,
+      );
+    return response.data;
+  },
+
+  /** 223.3.3 — bulk reject pending access requests */
+  async bulkReject(
+    ids: string[],
+    reason: string,
+  ): Promise<{ succeeded: string[]; failed: Array<{ id: string; error: string }> }> {
+    const response = await apiClient
+      .getClient()
+      .post<{ succeeded: string[]; failed: Array<{ id: string; error: string }> }>(
+        `${GOVERNANCE_ACCESS_REQUESTS_PATH}/bulk-reject/`,
+        { ids, reason },
+      );
+    return response.data;
+  },
 };

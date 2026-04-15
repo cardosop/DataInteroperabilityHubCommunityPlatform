@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useJob, useCancelJob } from '../hooks/useJobs';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
@@ -121,6 +121,16 @@ export function JobDetailPage() {
             <div className="metadata-item">
               <label>Resource ID</label>
               <code>{job.resource_id}</code>
+              {job.resource_type === 'ASSET' && job.resource_id && (
+                <Link
+                  to={`/assets/${job.resource_id}`}
+                  className="job-resource-link"
+                  data-testid="job-asset-link"
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  View asset →
+                </Link>
+              )}
             </div>
             <div className="metadata-item">
               <label>Created</label>

@@ -4,7 +4,6 @@ WebSocket Authentication Middleware
 Authenticates WebSocket connections using JWT tokens or API keys.
 """
 
-import json
 from typing import Optional
 
 import structlog
@@ -29,8 +28,6 @@ except ImportError:
     CHANNELS_AVAILABLE = False
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import AnonymousUser
-from django.db import close_old_connections
 
 from hub.apps.auth.models import APIKey
 
@@ -277,7 +274,15 @@ class WebSocketAuthMiddleware(BaseMiddleware):
         """
         Process WebSocket connection and authenticate user.
 
-        Rejects connection (sends close message) if authentication fails.
+        Supports three authentication paths:
+        1. Message-based auth (preferred): No credentials at connect time; the
+           consumer handles an ``authenticate`` message after the connection opens.
+        2. Header-based auth: JWT via ``Authorization: Bearer`` or API key via
+           ``X-API-Key`` header — authenticated at handshake.
+        3. Query-param auth (deprecated): ``?token=`` / ``?access_token=`` / ``?api_key=``
+           — still works but logs a deprecation warning. Will be removed in a
+           future release. Can be force-disabled with the Django setting
+           ``WEBSOCKET_QUERY_PARAM_AUTH_DISABLED = True``.
         """
         # Only process WebSocket connections
         if scope.get("type") != "websocket":
@@ -292,35 +297,72 @@ class WebSocketAuthMiddleware(BaseMiddleware):
         user = None
         auth_method = None
 
-        # Try JWT token authentication (prefer query params, then headers)
-        token = (
-            query_params.get("token")
-            or query_params.get("access_token")
-            or self._extract_token_from_headers(headers)
+        # Check if query-param auth has been disabled (post-deprecation)
+        from django.conf import settings
+
+        query_param_auth_disabled = getattr(
+            settings, "WEBSOCKET_QUERY_PARAM_AUTH_DISABLED", False
         )
 
-        if token:
-            user = await get_user_from_token(token)
+        # --- Header-based auth (not deprecated) ---
+        header_token = self._extract_token_from_headers(headers)
+        if header_token:
+            user = await get_user_from_token(header_token)
             if user:
                 auth_method = "jwt_token"
 
-        # Try API key authentication if JWT failed
-        if not user:
-            api_key = (
-                query_params.get("api_key")
-                or query_params.get("X-API-Key")
-                or self._extract_api_key_from_headers(headers)
-            )
+        header_api_key = self._extract_api_key_from_headers(headers)
+        if not user and header_api_key:
+            user = await get_user_from_api_key(header_api_key)
+            if user:
+                auth_method = "api_key"
 
-            if api_key:
-                user = await get_user_from_api_key(api_key)
+        # --- Query-param auth (deprecated fallback) ---
+        if not user:
+            query_token = query_params.get("token") or query_params.get("access_token")
+            query_api_key = query_params.get("api_key") or query_params.get("X-API-Key")
+
+            if query_token or query_api_key:
+                if query_param_auth_disabled:
+                    # Post-deprecation: reject query-param auth entirely
+                    logger.warning(
+                        "websocket_auth_query_param_rejected",
+                        path=scope.get("path"),
+                        message="Query-parameter authentication has been disabled. "
+                                "Use message-based authentication.",
+                    )
+                    await send(
+                        {
+                            "type": "websocket.close",
+                            "code": 4001,
+                            "reason": "Query-parameter authentication is no longer supported",
+                        }
+                    )
+                    return
+
+                # Deprecated but still allowed — authenticate and warn
+                if query_token:
+                    user = await get_user_from_token(query_token)
+                    if user:
+                        auth_method = "jwt_token_query_param_deprecated"
+                if not user and query_api_key:
+                    user = await get_user_from_api_key(query_api_key)
+                    if user:
+                        auth_method = "api_key_query_param_deprecated"
+
                 if user:
-                    auth_method = "api_key"
+                    logger.warning(
+                        "websocket_auth_query_param_deprecated",
+                        path=scope.get("path"),
+                        message="Token authentication via query parameter is deprecated. "
+                                "Use message-based authentication instead.",
+                    )
 
         # Set user and tenant in scope if authenticated
         if user:
             scope["user"] = user
             scope["tenant"] = user.tenant if hasattr(user, "tenant") else None
+            scope["auth_method"] = auth_method
 
             logger.debug(
                 "websocket_authenticated",
@@ -330,24 +372,18 @@ class WebSocketAuthMiddleware(BaseMiddleware):
             )
 
             return await super().__call__(scope, receive, send)
-        else:
-            # Authentication failed - reject connection
-            logger.warning(
-                "websocket_auth_failed",
-                path=scope.get("path"),
-                query_string=query_string.decode("utf-8") if query_string else "",
-                message="WebSocket connection rejected due to authentication failure",
-            )
 
-            # Send close message to reject connection
-            # WebSocket close code 4001 = Unauthorized
-            await send(
-                {
-                    "type": "websocket.close",
-                    "code": 4001,  # Unauthorized
-                    "reason": "Authentication required",
-                }
-            )
+        # --- No credentials provided: pass through for message-based auth ---
+        # The consumer will handle the ``authenticate`` message and enforce
+        # a 10-second timeout for unauthenticated connections.
+        scope["user"] = None
+        scope["tenant"] = None
+        scope["auth_method"] = "pending_message_auth"
 
-            # Don't call next middleware/consumer - connection is rejected
-            return
+        logger.debug(
+            "websocket_pending_message_auth",
+            path=scope.get("path"),
+            message="No credentials at handshake; awaiting message-based auth",
+        )
+
+        return await super().__call__(scope, receive, send)

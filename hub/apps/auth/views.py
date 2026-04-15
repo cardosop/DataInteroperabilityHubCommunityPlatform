@@ -25,6 +25,10 @@ from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.audit.utils import log_auth_operation
 from hub.apps.core.events.publisher import publish_event
 from hub.apps.users.models import User, UserStatus
+from hub.apps.users.password_history import (
+    is_password_reused,
+    record_password_change,
+)
 
 from .jwt_utils import JWTTokenGenerator
 from .utils import sha256_hex as _sha256_hex
@@ -156,9 +160,14 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
     """Attach the refresh token as a httpOnly, Secure, SameSite=Strict cookie (11.1)."""
     cookie_name = getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token")
     max_age = getattr(settings, "JWT_REFRESH_TOKEN_EXPIRY", 86400)
-    # secure=True is enforced in production; in dev it falls back to False so
-    # tests can run without HTTPS.
-    secure = not getattr(settings, "DEBUG", False)
+    # Phase 221.5.1: If the cookie name carries the __Secure- prefix,
+    # the Secure attribute MUST be True — browsers silently drop the
+    # cookie otherwise.  This covers both the environment-based default
+    # and any explicit env-var override (REFRESH_COOKIE_NAME=__Secure-x).
+    # For non-prefixed names, secure=True when DEBUG=False (production-like).
+    secure = cookie_name.startswith("__Secure-") or not getattr(
+        settings, "DEBUG", False
+    )
     response.set_cookie(
         cookie_name,
         token,
@@ -174,6 +183,16 @@ def _clear_refresh_cookie(response: Response) -> None:
     """Expire the refresh-token cookie on logout (11.1)."""
     cookie_name = getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token")
     response.delete_cookie(cookie_name, path="/")
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    """Expire all auth cookies on logout (Phase 220.4).
+
+    Clears both the refresh_token cookie (Phase 11.1) and the access_token
+    cookie (Phase 220.4).  Safe to call even when cookies were never set.
+    """
+    _clear_refresh_cookie(response)
+    response.delete_cookie("access_token", path="/")
 
 
 def _get_refresh_token_str(request) -> str:
@@ -318,18 +337,32 @@ def login(request):
             logger.warning("cache_warm_start_failed", error=str(exc))
 
     # ── Build response ────────────────────────────────────────────────────────
-    # access_token + refresh_token are included in the body so API clients
-    # (CLI, SDKs, SPAs using Authorization header) can consume them.
-    # The refresh_token is ALSO set as an httpOnly cookie (11.1) for
-    # browser-based clients as an additional XSS-resistant transport layer.
+    use_cookie_auth = getattr(settings, "USE_HTTPONLY_AUTH_COOKIES", False)
     body = {
         "token_type": "Bearer",
         "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRY,
-        "access_token": access_token,
-        "refresh_token": refresh_token_str,
     }
+    if not use_cookie_auth:
+        # Legacy: tokens in response body for CLI, SDKs, SPAs using Authorization header
+        body["access_token"] = access_token
+        body["refresh_token"] = refresh_token_str
+
     response = Response(body, status=status.HTTP_200_OK)
     _set_refresh_cookie(response, refresh_token_str)
+
+    if use_cookie_auth:
+        # Phase 220.4: deliver access_token via httpOnly cookie only
+        secure = not getattr(settings, "DEBUG", False)
+        response.set_cookie(
+            "access_token",
+            access_token,
+            max_age=settings.JWT_ACCESS_TOKEN_EXPIRY,
+            httponly=True,
+            secure=secure,
+            samesite="Strict",
+            path="/",
+        )
+
     return response
 
 
@@ -506,7 +539,7 @@ def logout(request):
         {"message": "Logged out successfully", "revoked_sessions": revoked_count},
         status=status.HTTP_200_OK,
     )
-    _clear_refresh_cookie(response)
+    _clear_auth_cookies(response)
     return response
 
 
@@ -579,6 +612,7 @@ def password_reset_request(request):
 )
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
+@transaction.atomic
 def password_reset_confirm(request):
     """
     Password reset confirmation endpoint.
@@ -597,14 +631,40 @@ def password_reset_confirm(request):
     # Clients send the plaintext UUID; we hash it for the DB lookup (11.3)
     token_hash = _sha256_hex(str(token))
 
+    # SELECT FOR UPDATE serialises concurrent reset-confirm requests that hold
+    # the same valid token, so two parallel callers cannot both pass the
+    # reuse check and race each other through the write phase.
     try:
-        user = User.objects.get(
-            password_reset_token=token_hash,
-            password_reset_token_expires_at__gt=timezone.now(),
-            password_reset_token_used_at__isnull=True,
+        user = (
+            User.objects.select_for_update()
+            .get(
+                password_reset_token=token_hash,
+                password_reset_token_expires_at__gt=timezone.now(),
+                password_reset_token_used_at__isnull=True,
+            )
         )
     except User.DoesNotExist:
         raise ValidationError({"token": "Invalid or expired password reset token"})
+
+    # Phase 225.1 — reject reuse of the current password or any of the last
+    # PASSWORD_HISTORY_WINDOW historical passwords. Check before mutating any
+    # state so a rejected attempt leaves neither the user nor PasswordHistory
+    # in a changed state (and the reset token remains usable for a retry).
+    if user.check_password(new_password) or is_password_reused(user, new_password):
+        raise ValidationError(
+            {
+                "new_password": (
+                    "This password has been used recently. "
+                    "Please choose a password you have not used before."
+                )
+            }
+        )
+
+    # Snapshot the *current* password hash into history before overwriting it
+    # so the old password cannot be re-selected via the history check above on
+    # a future reset. Idempotent — if the same exact hash is already on file
+    # the service no-ops instead of raising IntegrityError.
+    record_password_change(user)
 
     # Update password
     user.set_password(new_password)
@@ -621,6 +681,9 @@ def password_reset_confirm(request):
     )
 
     user.save()
+
+    # Record the new hash so it counts toward the window on subsequent resets.
+    record_password_change(user)
 
     # Log audit event
     log_auth_operation(action="PASSWORD_RESET_COMPLETED", user=user, details={}, request=request)
@@ -793,15 +856,29 @@ def accept_invitation(request):
         user=user, token_hash=refresh_token_hash, expires_at=expires_at
     )
 
-    response = Response(
-        {
-            "access_token": access_token,
-            "token_type": "Bearer",
-            "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRY,
-        },
-        status=status.HTTP_200_OK,
-    )
+    use_cookie_auth = getattr(settings, "USE_HTTPONLY_AUTH_COOKIES", False)
+    body = {
+        "token_type": "Bearer",
+        "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRY,
+    }
+    if not use_cookie_auth:
+        body["access_token"] = access_token
+
+    response = Response(body, status=status.HTTP_200_OK)
     _set_refresh_cookie(response, refresh_token_str)
+
+    if use_cookie_auth:
+        secure = not getattr(settings, "DEBUG", False)
+        response.set_cookie(
+            "access_token",
+            access_token,
+            max_age=settings.JWT_ACCESS_TOKEN_EXPIRY,
+            httponly=True,
+            secure=secure,
+            samesite="Strict",
+            path="/",
+        )
+
     return response
 
 

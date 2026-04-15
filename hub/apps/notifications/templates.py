@@ -110,14 +110,23 @@ def build_password_reset_url(token: str) -> str:
     """
     Build password reset URL.
 
+    Phase 221.1.3 — The token is placed in the URL **fragment** (#token=…)
+    instead of the query string (?token=…).  Fragments are never sent to the
+    server, so the token cannot appear in nginx access logs, CDN logs, or
+    Referer headers — even before the browser JS has a chance to strip it.
+
+    The frontend ``PasswordResetConfirmPage`` reads the fragment first,
+    falling back to a query-string ``?token=`` for backward-compat with
+    any emails still in-flight from before this change.
+
     Args:
-        token: Password reset token
+        token: Password reset token (plaintext UUID)
 
     Returns:
-        Full password reset URL
+        Full password reset URL with token in the fragment
     """
     base_url = get_base_url()
-    return f"{base_url}/auth/password-reset/confirm?token={token}"
+    return f"{base_url}/auth/password-reset/confirm#token={token}"
 
 
 def build_job_url(job_id: str) -> str:

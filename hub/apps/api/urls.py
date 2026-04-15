@@ -42,6 +42,7 @@ urlpatterns = [
     path("events/", include("hub.apps.core.events.urls")),
     path("", include("hub.apps.api.analytics.urls")),
     path("governance/", include("hub.apps.governance.urls")),
+    path("notifications/", include("hub.apps.notifications.urls")),
     path("", include("hub.apps.observability.urls_api_v1")),
     path("ai/", include("hub.apps.ai.urls")),
     path("", include("hub.apps.social.urls")),
@@ -60,7 +61,7 @@ urlpatterns = [
     path("test/ensure-e2e-tenant-switch-setup/", ensure_e2e_tenant_switch_setup, name="ensure-e2e-tenant-switch-setup"),
     path("test/ensure-e2e-users/", ensure_e2e_users, name="ensure-e2e-users"),
     re_path(
-        r"^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|test/).*$",
+        r"^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|notifications/|governance/|test/).*$",
         api_not_found,
         name="api-not-found",
     ),

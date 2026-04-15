@@ -184,8 +184,13 @@ class SwaggerUIView(SpectacularSwaggerView):
     GET /api-docs/
 
     Provides interactive API documentation using Swagger UI.
+
+    Phase 221.4.2 — Requires authentication as defense-in-depth for
+    staging/dev environments where the URL is registered.  In production,
+    the URL is not registered at all (221.4.1).
     """
 
+    permission_classes = [IsAuthenticated]
     urlconf = "hub.urls"
 
     def get(self, request, *args, **kwargs):
@@ -207,8 +212,11 @@ class ReDocView(SpectacularRedocView):
 
     Provides alternative API documentation using ReDoc.
     ReDoc offers a clean, three-panel documentation layout.
+
+    Phase 221.4.2 — Requires authentication (same rationale as SwaggerUIView).
     """
 
+    permission_classes = [IsAuthenticated]
     urlconf = "hub.urls"
 
     def get(self, request, *args, **kwargs):
@@ -247,17 +255,23 @@ def api_info(request):
     # Get API version from request
     api_version = APIVersionManager.get_request_version(request)
 
+    # Phase 221.4 — Only advertise api-docs URLs when they're registered
+    # (non-production).  In production the /api-docs/* URLs return 404, so
+    # listing them would create dead links and leak URL structure.
+    docs = {"openapi_yaml": "/api/v1/openapi.yaml"}
+    if settings.ENVIRONMENT != "production":
+        docs.update({
+            "openapi": "/api-docs/openapi.json",
+            "swagger": "/api-docs/",
+            "redoc": "/api-docs/redoc/",
+        })
+
     return Response(
         {
             "name": "Interoperable Data Hub API",
             "version": str(api_version),
             "base_url": "/api/v1",
-            "documentation": {
-                "openapi": "/api-docs/openapi.json",
-                "openapi_yaml": "/api/v1/openapi.yaml",
-                "swagger": "/api-docs/",
-                "redoc": "/api-docs/redoc/",
-            },
+            "documentation": docs,
             "endpoints": {
                 "auth": "/api/v1/auth/",
                 "tenants": "/api/v1/tenants/",

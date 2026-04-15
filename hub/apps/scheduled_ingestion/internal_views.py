@@ -628,13 +628,32 @@ class InternalProcessFileView(APIView):
 class InternalTestDataView(APIView):
     """
     Serves a small test file for Phase 2 integration tests only.
-    Only responds when X-Internal-Test-Data header is set (used by Prefect full flow tests).
+
+    Security (Phase 220.2):
+    - **Environment gate**: hidden in production / staging (returns 404).
+    - **Authentication**: WorkerAPIKeyAuthentication (consistent with all
+      other internal endpoints in this module).
+    - **Authorization**: WorkerInternalAPIPermission (requires
+      ``scheduled_ingestion:internal`` scope).
+    - **Header guard**: X-Internal-Test-Data header must be set.
     """
 
-    authentication_classes = []  # No auth for test-data; guarded by header
-    permission_classes = []
+    authentication_classes = [WorkerAPIKeyAuthentication]
+    permission_classes = [IsAuthenticated, WorkerInternalAPIPermission]
 
     def get(self, request, filename):
+        from django.conf import settings
+
+        # Environment gate — dev / test only (220.2.2)
+        if getattr(settings, "ENVIRONMENT", "development") not in (
+            "development",
+            "test",
+        ):
+            return Response(
+                {"error": "Not found", "code": "NOT_FOUND", "details": {}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
         if request.headers.get("X-Internal-Test-Data") != "1":
             return Response(
                 {"error": "Not found", "code": "NOT_FOUND", "details": {}},

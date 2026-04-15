@@ -33,6 +33,8 @@ export interface Contract {
   original_format: ContractFormat;
   original_spec_type?: string;
   hub_contract_json: Record<string, unknown>;
+  /** Contract lifecycle: DRAFT → ACTIVE → RETIRED. */
+  status?: 'DRAFT' | 'ACTIVE' | 'RETIRED';
   normalization_status: NormalizationStatus;
   validation_status: ValidationStatus;
   created_at: string;

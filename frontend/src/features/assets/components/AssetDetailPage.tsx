@@ -11,7 +11,9 @@ import { useAuthStore } from '../../auth/store/authStore';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Banner } from '../../../shared/components/Banner';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
+import { InfoHint } from '../../../shared/components/InfoHint';
 import type { File } from '../../../shared/types/files';
 import { useComplianceRuns, useCreateComplianceRun } from '../../compliance/hooks/useCompliance';
 import { useContracts } from '../../contracts/hooks/useContracts';
@@ -28,10 +30,12 @@ import {
   useRecalculateHealthScore,
   useRetireAsset,
 } from '../hooks/useAssets';
+import { ContractAutoValidationBanner } from '../../contracts/components/ContractAutoValidationBanner';
 import { ContractPicker, DatasetPicker } from '../../../shared/components/pickers';
 import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { AssetSocialSection } from '../../social/components/AssetSocialSection';
+import { ActivityTimeline } from '../../../shared/components/ActivityTimeline';
 import { OnboardingChecklist } from './OnboardingChecklist';
 import { ActivationBlockerDialog, extractBlockersFromError } from './ActivationBlockerDialog';
 import './AssetDetailPage.css';
@@ -53,6 +57,14 @@ export function AssetDetailPage() {
   const [contractId, setContractId] = useState<string | null>(null);
   const [datasetId, setDatasetId] = useState<string | null>(null);
   const [activationBlockers, setActivationBlockers] = useState<string[] | null>(null);
+  // Phase 224.3.4 — Details / Activity tab selector (acceptance criteria:
+  // "Asset detail → Activity tab → chronological timeline").
+  const [activeTab, setActiveTab] = useState<'details' | 'activity'>('details');
+  // Last contract attached in this session — drives the one-shot dry-run
+  // validation banner below the contracts table.
+  const [lastAttachedContractId, setLastAttachedContractId] = useState<
+    string | null
+  >(null);
 
   // Fetch all contracts linked to this asset (plural)
   const { data: contractsData } = useContracts(
@@ -136,6 +148,9 @@ export function AssetDetailPage() {
     if (!id || !contractId) return;
     try {
       await attachContractMutation.mutateAsync({ id, data: { contract_id: contractId } });
+      // Trigger the one-shot dry-run validation banner for this contract.
+      // The hook's ref-guard prevents re-validation on subsequent renders.
+      setLastAttachedContractId(contractId);
       setContractId(null);
       refetch();
       toast.success('Contract attached successfully.');
@@ -261,7 +276,53 @@ export function AssetDetailPage() {
             { label: asset.name || 'Asset' },
           ]}
         />
-        <div className="asset-detail-main">
+        {isDraft && (
+          <div className="asset-draft-banner" data-testid="asset-draft-banner">
+            <Banner variant="info">
+              This asset is in <strong>DRAFT</strong>. Complete the steps below to activate it.
+            </Banner>
+          </div>
+        )}
+
+        {/* Phase 224.3.4 — Details / Activity tabs. */}
+        <div
+          className="asset-detail-tabs"
+          role="tablist"
+          aria-label="Asset sections"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'details'}
+            className={`asset-detail-tab ${activeTab === 'details' ? 'active' : ''}`}
+            onClick={() => setActiveTab('details')}
+            data-testid="asset-tab-details"
+          >
+            Details
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'activity'}
+            className={`asset-detail-tab ${activeTab === 'activity' ? 'active' : ''}`}
+            onClick={() => setActiveTab('activity')}
+            data-testid="asset-tab-activity"
+          >
+            Activity
+          </button>
+        </div>
+
+        {activeTab === 'activity' && id && (
+          <div className="asset-detail-main" data-testid="asset-activity">
+            <ActivityTimeline resourceType="ASSET" resourceId={id} />
+          </div>
+        )}
+
+        <div
+          className="asset-detail-main"
+          hidden={activeTab !== 'details'}
+          data-testid="asset-details-tabpanel"
+        >
           <h1>{asset.name}</h1>
           <p className="asset-key">
             Key: <code>{asset.key}</code>
@@ -275,7 +336,13 @@ export function AssetDetailPage() {
 
           <div className="asset-detail-metadata">
             <div className="metadata-item">
-              <label>Status</label>
+              <label>
+                Status
+                <InfoHint
+                  label="About asset Activation lifecycle"
+                  content="Assets move DRAFT → ACTIVE → RETIRED. Only ACTIVE assets are visible to consumers, eligible for marketplace listings, and participate in lineage. Activation requires passing the onboarding checklist (schema registered, contract bound, DQ baseline)."
+                />
+              </label>
               <span className={`status-badge status-${asset.status.toLowerCase()}`}>
                 {asset.status}
               </span>
@@ -323,6 +390,11 @@ export function AssetDetailPage() {
               datasets={linkedDatasets}
               dqStatus={asset.dq_status}
               complianceStatus={asset.compliance_status}
+              assetId={id}
+              onRunDQ={handleRunDQ}
+              onRunCompliance={handleRunCompliance}
+              onActivate={handleActivate}
+              isActivating={activateMutation.isPending}
             />
           )}
 
@@ -528,6 +600,15 @@ export function AssetDetailPage() {
               </table>
             ) : (
               <p className="no-linked">No contracts linked</p>
+            )}
+            {/* 222.5 — inline dry-run validation feedback for the contract
+                that was just attached in this session. Suspends when null. */}
+            {lastAttachedContractId && (
+              <ContractAutoValidationBanner
+                contract={
+                  linkedContracts.find((c) => c.id === lastAttachedContractId) ?? null
+                }
+              />
             )}
             <div className="attach-controls">
               <ContractPicker
@@ -786,6 +867,7 @@ export function AssetDetailPage() {
               )}
             </div>
           </div>
+
         </div>
       </div>
     </div>

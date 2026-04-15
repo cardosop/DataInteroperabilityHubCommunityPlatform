@@ -6,6 +6,7 @@ REST API views for querying and exporting audit events.
 
 import csv
 import json
+import uuid
 from datetime import datetime, timedelta
 
 from django.http import HttpResponse
@@ -15,11 +16,18 @@ from rest_framework.decorators import action
 from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 
-from hub.apps.auth.permissions import HasRole
+from hub.apps.auth.permissions import HasAnyRole, HasRole
 from hub.apps.tenants.request_tenant import get_request_tenant_id
 
+from .involvement import user_is_involved
 from .models import AuditEvent
-from .serializers import AuditEventSerializer
+from .serializers import AuditEventSerializer, ResourceActivityEventSerializer
+
+# Roles allowed to read raw audit events (list / retrieve / export).
+# ``HasAnyRole`` internally bypasses the check for the ``is_platform_admin``
+# boolean flag, but Phase 225.3.1 requires the *named* ``PLATFORM_ADMIN``
+# role to also grant access — so we list it explicitly here.
+AUDIT_READ_ROLES = ["TENANT_ADMIN", "AUDITOR", "PLATFORM_ADMIN"]
 
 
 class CSVRenderer(BaseRenderer):
@@ -52,6 +60,19 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AuditEventSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
+
+    def get_permissions(self):
+        """Role-gate raw audit access; leave resource-activity open.
+
+        Phase 224.3.1: list/retrieve/export of raw audit events are restricted
+        to ``TENANT_ADMIN``/``AUDITOR`` (platform admins bypass via
+        ``HasAnyRole``). The ``resource_activity`` action remains open to any
+        authenticated tenant user because it returns a sanitized feed scoped
+        to a single resource the user can already see.
+        """
+        if getattr(self, "action", None) == "resource_activity":
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAuthenticated(), HasAnyRole(AUDIT_READ_ROLES)]
 
     def perform_content_negotiation(self, request, force=False):
         """
@@ -87,6 +108,17 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
         resource_type = self.request.query_params.get("resource_type")
         if resource_type:
             queryset = queryset.filter(resource_type=resource_type)
+
+        resource_id = self.request.query_params.get("resource_id")
+        if resource_id:
+            # Validate as UUID to avoid Django throwing DataError on bad input.
+            try:
+                resource_uuid = uuid.UUID(str(resource_id))
+            except (ValueError, TypeError):
+                # Unknown UUID → no rows; fall through with a sentinel filter.
+                queryset = queryset.none()
+            else:
+                queryset = queryset.filter(resource_id=resource_uuid)
 
         action_filter = self.request.query_params.get("action")
         if action_filter:
@@ -166,6 +198,23 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         """Retrieve audit event by ID"""
         return super().retrieve(request, *args, **kwargs)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="resource-activity",
+        url_name="resource-activity",
+    )
+    def resource_activity(self, request):
+        """Backwards-compat shim — delegates to :class:`ResourceActivityViewSet`.
+
+        Kept so existing frontend callers at
+        ``/api/v1/audit/audit-events/resource-activity/`` keep working while
+        clients migrate to the new top-level ``/api/v1/audit/resource-activity/``
+        route.  All scoping / sanitization rules are identical because both
+        paths share the same helper.
+        """
+        return _resource_activity_response(request)
 
     @action(
         detail=False,
@@ -289,3 +338,102 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
         """Export events as JSON"""
         serializer = self.get_serializer(events, many=True)
         return Response(serializer.data)
+
+
+# ---------------------------------------------------------------------------
+# Phase 225.3.2 — separate ResourceActivityViewSet
+# ---------------------------------------------------------------------------
+#
+# Exposes a narrow per-resource feed at ``/api/v1/audit/resource-activity/``
+# for any authenticated user.  Unlike the raw audit log it is gated on
+# *user involvement* with the resource (actor on an event OR owner via the
+# ``hub.apps.audit.involvement.OWNERSHIP_RESOLVERS`` registry) rather than
+# on a role.  Admins bypass the filter; cross-tenant callers get an empty
+# feed (not 403) so the endpoint does not leak resource existence across
+# tenants.
+
+
+def _resource_activity_response(request):
+    """Shared implementation between :class:`ResourceActivityViewSet` and
+    the backwards-compat action on :class:`AuditEventViewSet`.
+
+    Steps:
+      1. Parse & validate ``resource_type`` / ``resource_id`` query params.
+      2. Resolve the caller's tenant. A user with no tenant membership in
+         scope for this resource receives an empty feed (tenant-existence
+         non-disclosure).
+      3. Check ``user_is_involved`` — admins bypass, otherwise we require
+         either an actor match or an ownership match.
+      4. Filter the AuditEvent queryset, cap at 200 rows newest-first,
+         and serialise via :class:`ResourceActivityEventSerializer` which
+         scrubs ``details_json``.
+    """
+    resource_type = (request.query_params.get("resource_type") or "").strip()
+    resource_id_raw = (request.query_params.get("resource_id") or "").strip()
+    if not resource_type or not resource_id_raw:
+        return Response(
+            {"detail": "resource_type and resource_id are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        resource_uuid = uuid.UUID(resource_id_raw)
+    except (ValueError, TypeError):
+        return Response(
+            {"detail": "resource_id must be a valid UUID."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user = request.user
+    is_platform_admin = bool(getattr(user, "is_platform_admin", False))
+
+    if is_platform_admin:
+        qs = AuditEvent.objects.all()
+        tenant_id = None  # admins see cross-tenant by design
+    else:
+        tenant_id = get_request_tenant_id(request)
+        if not tenant_id:
+            # No tenant context → nothing to show. Empty (not 403) to
+            # avoid disclosing the resource's existence in other tenants.
+            return Response({"results": []}, status=status.HTTP_200_OK)
+        qs = AuditEvent.objects.filter(tenant_id=tenant_id)
+
+    # Short-circuit cross-tenant / non-existent: if there are no events
+    # for this (tenant, resource), hand back an empty feed regardless of
+    # the involvement predicate. This avoids a confusing 403 for users
+    # hitting an unknown or cross-tenant UUID (existence non-disclosure)
+    # and also covers owners whose resource has no audit trail yet.
+    scoped = qs.filter(resource_type=resource_type, resource_id=resource_uuid)
+    if not scoped.exists():
+        return Response({"results": []}, status=status.HTTP_200_OK)
+
+    # Involvement gate — admins pass through inside user_is_involved().
+    if not user_is_involved(
+        user,
+        resource_type=resource_type,
+        resource_id=resource_uuid,
+        tenant_id=tenant_id,
+    ):
+        return Response(
+            {"detail": "Not involved with this resource."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    events = scoped.order_by("-timestamp")[:200]
+    serializer = ResourceActivityEventSerializer(events, many=True)
+    return Response({"results": serializer.data})
+
+
+class ResourceActivityViewSet(viewsets.ViewSet):
+    """Per-resource sanitized audit feed.
+
+    Mounted at ``/api/v1/audit/resource-activity/``.  List-only (no
+    retrieve / create / update / destroy).  Authentication required;
+    authorization is handled per-request via the involvement predicate
+    so role-based gating cannot be used to starve legitimate owners.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def list(self, request):
+        return _resource_activity_response(request)
+

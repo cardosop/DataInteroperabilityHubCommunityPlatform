@@ -1,19 +1,33 @@
 """
-Security tests for Health endpoints (test2 Phase 2.4).
+Security tests for Health endpoints (test2 Phase 2.4, updated Phase 221.3).
 
-Health endpoints (/health/, /health/live/, /health/circuit-breakers/) are public by design
-for monitoring and load balancer probes. These tests verify:
-- Unauthenticated access is allowed (200 or 503)
-- No sensitive data in responses (emails, tokens, tenant IDs, internal secrets)
+Health probe endpoints (/health/, /health/live/) are public by design
+for monitoring and load balancer probes.
+
+/health/circuit-breakers/ requires authentication (Phase 221.3.1) and
+returns only aggregate data — no internal service names (Phase 221.3.2).
+
+These tests verify:
+- Unauthenticated access is allowed for probes (200 or 503)
+- Circuit breaker endpoint rejects unauthenticated requests (401/403)
+- No sensitive data in responses (emails, tokens, tenant IDs, secrets)
 - Response structure is appropriate for monitoring
 
 Uses real Django test client; no mocks or stubs.
 """
 
 import re
+import uuid
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
+from rest_framework.test import APIClient
+
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import UserStatus
+
+User = get_user_model()
 
 
 # Sensitive patterns that must NOT appear in health endpoint responses
@@ -29,9 +43,9 @@ SENSITIVE_PATTERNS = [
 # Allowed keys in health check response (operational status only)
 HEALTH_ALLOWED_KEYS = {"status", "database", "redis", "baas", "http_status"}
 LIVE_ALLOWED_KEYS = {"status"}
+# Phase 221.3.2: response sanitized — only aggregate counts, no service names.
 CIRCUIT_BREAKER_ALLOWED_KEYS = {
-    "status", "circuit_breaker", "circuit_breakers",
-    "total_breakers", "open_breakers", "open_breaker_names",
+    "status", "total_breakers", "open_breakers",
     "error", "http_status",
 }
 
@@ -108,24 +122,51 @@ class HealthCheckSecurityTest(HealthSecurityTestBase):
 
 
 class HealthCircuitBreakerSecurityTest(HealthSecurityTestBase):
-    """Circuit breaker status endpoint: operational data only, no sensitive data."""
+    """Circuit breaker status: requires auth (221.3.1), aggregate only (221.3.2)."""
 
-    def test_circuit_breaker_unauthenticated_returns_200_or_404_or_500(self):
-        """GET /health/circuit-breakers/ without auth returns 200, 404, or 500."""
+    def setUp(self):
+        super().setUp()
+        uid = uuid.uuid4().hex[:8]
+        tenant = Tenant.objects.create(
+            name=f"T {uid}", slug=f"t-sec-{uid}",
+            status="ACTIVE", kyc_status="UNVERIFIED",
+        )
+        user = User.objects.create_user(
+            email=f"sec-{uid}@example.com",
+            password="testpass123",
+            tenant=tenant,
+            status=UserStatus.ACTIVE,
+        )
+        self.auth_client = APIClient()
+        self.auth_client.force_authenticate(user=user)
+
+    def test_circuit_breaker_unauthenticated_rejected(self):
+        """GET /health/circuit-breakers/ without auth → 401/403 (221.3.1)."""
         response = self.client.get("/health/circuit-breakers/")
         self.assertIn(
             response.status_code,
-            (200, 404, 500),
-            "Circuit breaker status must be public for monitoring",
+            (401, 403),
+            "Circuit breaker must reject unauthenticated requests",
+        )
+
+    def test_circuit_breaker_authenticated_returns_200_or_500(self):
+        """GET /health/circuit-breakers/ with auth → 200 or 500."""
+        response = self.auth_client.get("/health/circuit-breakers/")
+        self.assertIn(
+            response.status_code,
+            (200, 500),
+            "Authenticated circuit breaker request must succeed",
         )
 
     def test_circuit_breaker_returns_no_sensitive_data(self):
-        """GET /health/circuit-breakers/ must not expose emails, tokens, secrets."""
-        response = self.client.get("/health/circuit-breakers/")
-        if response.status_code not in (200, 404, 500):
+        """Authenticated response must not expose sensitive data."""
+        response = self.auth_client.get("/health/circuit-breakers/")
+        if response.status_code not in (200, 500):
             return
         text = response.content.decode("utf-8", errors="replace")
-        self._assert_no_sensitive_data_in_text(text, "/health/circuit-breakers/")
+        self._assert_no_sensitive_data_in_text(
+            text, "/health/circuit-breakers/",
+        )
         try:
             data = response.json()
         except Exception:
@@ -134,5 +175,5 @@ class HealthCircuitBreakerSecurityTest(HealthSecurityTestBase):
             self.assertIn(
                 key,
                 CIRCUIT_BREAKER_ALLOWED_KEYS,
-                f"Circuit breaker status must not expose '{key}'",
+                f"Circuit breaker must not expose '{key}'",
             )

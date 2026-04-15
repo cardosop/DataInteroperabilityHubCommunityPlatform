@@ -7,10 +7,15 @@
 
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { BulkActionBar } from '../../../shared/components/BulkActionBar';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
+import { useBulkSelection } from '../../../shared/hooks/useBulkSelection';
+import { exportToCSV } from '../../../shared/utils/exportUtils';
+import { contractService } from '../services/contractService';
 import { useContracts } from '../hooks/useContracts';
+import { useToast } from '../../../shared/components/Toast';
 import { Button } from '../../../shared/components/Button';
 import './ContractListPage.css';
 
@@ -37,6 +42,52 @@ export function ContractListPage() {
     ordering: '-created_at',
     spec_type: specTypeFilter || undefined,
   });
+  const toast = useToast();
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
+  const contractRows = data?.results ?? [];
+  // DRAFT-only bulk delete: same guardrail as AssetListPage — deleting
+  // ACTIVE/RETIRED contracts could orphan live assets. Rows without a
+  // `status` field (older responses) are treated as non-selectable so
+  // the safe default wins.
+  const selection = useBulkSelection({
+    allIds: contractRows.map((c) => c.id),
+    isSelectable: (id) => contractRows.find((c) => c.id === id)?.status === 'DRAFT',
+  });
+
+  const handleBulkDelete = async () => {
+    if (selection.selectedIds.length === 0) return;
+    const count = selection.selectedIds.length;
+    const ok = window.confirm(
+      `Delete ${count} DRAFT contract${count === 1 ? '' : 's'}? This cannot be undone.`,
+    );
+    if (!ok) return;
+    // Raw service, not `useDeleteContract` — the notification-wrapped
+    // mutation fires one toast per call, which would spam N toasts for
+    // a bulk delete. One summary toast below is the right UX.
+    const ids = [...selection.selectedIds];
+    selection.deselectAll();
+    setIsBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => contractService.delete(id)),
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      const succeeded = results.length - failed;
+      if (failed === 0) {
+        toast.success(`Deleted ${succeeded} contract${succeeded === 1 ? '' : 's'}.`);
+      } else if (succeeded === 0) {
+        toast.error(`Failed to delete ${failed} contract${failed === 1 ? '' : 's'}.`);
+      } else {
+        toast.info(
+          `Deleted ${succeeded}; ${failed} failed. See details on each contract.`,
+        );
+      }
+    } finally {
+      setIsBulkDeleting(false);
+      refetch();
+    }
+  };
 
   if (isLoading) return <ListPageSkeleton />;
   if (error)
@@ -84,6 +135,30 @@ export function ContractListPage() {
               ))}
             </select>
           </div>
+          <Button
+            variant="secondary"
+            onClick={() =>
+              exportToCSV(
+                contractRows as unknown as Array<Record<string, unknown>>,
+                'contracts',
+                {
+                  columns: [
+                    { key: 'id', label: 'ID' },
+                    { key: 'name', label: 'Name' },
+                    { key: 'original_spec_type', label: 'Spec Type' },
+                    { key: 'original_format', label: 'Format' },
+                    { key: 'status', label: 'Status' },
+                    { key: 'normalization_status', label: 'Normalization' },
+                    { key: 'validation_status', label: 'Validation' },
+                    { key: 'created_at', label: 'Created' },
+                  ],
+                },
+              )
+            }
+            data-testid="contracts-export-csv"
+          >
+            Export CSV
+          </Button>
           <Button variant="primary" onClick={handleCreateContract}>
             Create Contract
           </Button>
@@ -93,6 +168,18 @@ export function ContractListPage() {
         <table role="table" aria-label="Contracts list">
           <thead>
             <tr>
+              <th scope="col" style={{ width: '2.5rem' }}>
+                <input
+                  type="checkbox"
+                  aria-label="Select all DRAFT contracts"
+                  checked={selection.isAllSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = selection.isIndeterminate;
+                  }}
+                  onChange={() => selection.toggleAll()}
+                  data-testid="contract-select-all"
+                />
+              </th>
               <th scope="col">Name</th>
               <th scope="col">Spec Type</th>
               <th scope="col">Format</th>
@@ -105,7 +192,10 @@ export function ContractListPage() {
             {data.results.map((contract) => (
               <tr
                 key={contract.id}
-                onClick={() => navigate(`/contracts/${contract.id}`)}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).tagName === 'INPUT') return;
+                  navigate(`/contracts/${contract.id}`);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
@@ -117,6 +207,17 @@ export function ContractListPage() {
                 tabIndex={0}
                 aria-label={`Contract ${contract.name || 'Unnamed'}`}
               >
+                <td>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select contract ${contract.name || 'Unnamed'}`}
+                    checked={selection.isSelected(contract.id)}
+                    disabled={contract.status !== 'DRAFT'}
+                    onChange={() => selection.toggle(contract.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    data-testid={`contract-select-${contract.id}`}
+                  />
+                </td>
                 <td>
                   <strong>{contract.name || 'Unnamed Contract'}</strong>
                 </td>
@@ -154,6 +255,21 @@ export function ContractListPage() {
           </tbody>
         </table>
       </div>
+      <BulkActionBar
+        selectedCount={selection.selectedCount}
+        onDeselectAll={selection.deselectAll}
+        description="Only DRAFT contracts may be bulk-deleted."
+        actions={[
+          {
+            label: `Delete ${selection.selectedCount}`,
+            variant: 'danger',
+            onClick: handleBulkDelete,
+            disabled: isBulkDeleting,
+            'data-testid': 'bulk-delete-contracts',
+          },
+        ]}
+      />
+
       {data.total_pages > 1 && (
         <div className="contract-list-pagination">
           <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={!data.has_previous}>

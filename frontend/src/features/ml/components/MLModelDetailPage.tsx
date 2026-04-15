@@ -5,6 +5,7 @@
 
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useMLModel } from '../hooks/useML';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import './MLModelDetailPage.css';
@@ -29,6 +30,13 @@ export function MLModelDetailPage() {
 
   return (
     <div className="ml-detail-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'ML', href: '/ml' },
+          { label: model.odh_model_name || 'Model' },
+        ]}
+      />
       <button className="ml-back-btn" onClick={() => navigate('/ml')} type="button">
         &larr; Back to ML Platform
       </button>

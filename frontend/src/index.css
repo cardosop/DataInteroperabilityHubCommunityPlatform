@@ -107,6 +107,14 @@
   --layout-sidebar-width: 240px;
   --layout-content-max-width: 1200px;
 
+  /* Phase 224.5 — responsive breakpoints.
+     Tokens are reference values: @media queries can't read custom props
+     directly, but using a single source means layout rules and JS stay
+     aligned. Matching constants live in shared/hooks/useBreakpoint.ts. */
+  --bp-mobile: 480px;
+  --bp-tablet: 768px;
+  --bp-desktop: 1024px;
+
   /* Border Radius */
   --border-radius-none: 0;
   --border-radius-sm: 4px;
@@ -150,15 +158,34 @@
   --color-background-secondary: var(--color-neutral-50);
   --color-background-tertiary: var(--color-neutral-100);
   --color-surface: var(--color-background-tertiary);
+  --color-surface-elevated: #ffffff;
+  --color-surface-subtle: var(--color-neutral-50);
+  --color-surface-overlay: rgba(0, 0, 0, 0.5);
+  /* Intentional dark accent surface (tooltips, bulk-action bar). Stays
+     dark in both themes so white text on it remains readable. */
+  --color-surface-inverse: #1f2937;
+  --color-surface-inverse-hover: #374151;
+  --color-surface-inverse-border: #4b5563;
 
   /* Text Colors */
+  --color-text: var(--color-neutral-900);
   --color-text-primary: var(--color-neutral-900);
   --color-text-secondary: var(--color-neutral-700);
   --color-text-tertiary: var(--color-neutral-600);
+  --color-text-muted: var(--color-neutral-600);
+  --color-text-inverse: #ffffff;
 
   /* Border Colors */
   --color-border: var(--color-neutral-300);
   --color-border-light: var(--color-neutral-200);
+  --color-border-strong: var(--color-neutral-400);
+  --border-width: 1px;
+
+  /* Subtle status surfaces (pair with --color-*-500 text on light, swap on dark) */
+  --color-success-subtle: var(--color-success-50);
+  --color-warning-subtle: var(--color-warning-50);
+  --color-error-subtle: var(--color-error-50);
+  --color-info-subtle: var(--color-secondary-50);
 
   /* Skeleton Loader Tokens (Phase 40) */
   --skeleton-base: var(--color-neutral-200);
@@ -168,6 +195,97 @@
   /* Font Family (Phase 28.7.3: Inter via Google Fonts) */
   --font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-family-mono: 'Monaco', 'Menlo', 'Consolas', monospace;
+}
+
+/* ------------------------------------------------------------------ */
+/* Dark theme — 224.4                                                  */
+/* ------------------------------------------------------------------ */
+/*
+ * Tokens are overridden at the :root level whenever <html data-theme="dark">
+ * is set (see useTheme). We only remap *semantic* tokens — the raw palette
+ * stays constant so component-level references like `var(--color-error-500)`
+ * keep their meaning. Backgrounds darken, text lightens, borders desaturate,
+ * shadows get stronger blur.
+ */
+[data-theme='dark'] {
+  /* Neutral scale — inverted so existing files that reference
+     `var(--color-neutral-*)` semantically (50/100 = surface, 700–900 = text,
+     200/300 = border) adapt automatically without file-by-file rewrites.
+     Palette token *names* stay the same; only their resolved values flip. */
+  --color-neutral-50: #0b1120;
+  --color-neutral-100: #111827;
+  --color-neutral-200: #1f2937;
+  --color-neutral-300: #334155;
+  --color-neutral-400: #475569;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #94a3b8;
+  --color-neutral-700: #cbd5e1;
+  --color-neutral-800: #e2e8f0;
+  --color-neutral-900: #f1f5f9;
+
+  /* Backgrounds */
+  --color-background-primary: #0b1120;
+  --color-background-secondary: #111827;
+  --color-background-tertiary: #1f2937;
+  --color-surface: var(--color-background-secondary);
+  --color-surface-elevated: #1f2937;
+  --color-surface-subtle: #111827;
+  --color-surface-overlay: rgba(0, 0, 0, 0.7);
+
+  /* Text */
+  --color-text: #e5e7eb;
+  --color-text-primary: #f3f4f6;
+  --color-text-secondary: #d1d5db;
+  --color-text-tertiary: #9ca3af;
+  --color-text-muted: #9ca3af;
+  --color-text-inverse: #0b1120;
+  --color-text-on-primary: #ffffff;
+
+  /* Borders */
+  --color-border: #334155;
+  --color-border-light: #1f2937;
+  --color-border-strong: #475569;
+
+  /* Status subtle surfaces — darker tints so white text reads on top */
+  --color-success-subtle: #0f2a1a;
+  --color-warning-subtle: #2a1f05;
+  --color-error-subtle: #2a0f10;
+  --color-info-subtle: #0f1a2f;
+
+  /* Keep the inverse surface slightly lighter than the page background in
+     dark mode so the bulk-action bar / tooltips remain visible. */
+  --color-surface-inverse: #334155;
+  --color-surface-inverse-hover: #475569;
+  --color-surface-inverse-border: #64748b;
+
+  /* Semantic colours — bump the 500s toward their lighter siblings so
+     coloured accents still have enough contrast on dark surfaces. */
+  --color-primary: var(--color-secondary-400);
+  --color-primary-light: var(--color-primary-900);
+  --color-secondary: var(--color-secondary-400);
+  --color-secondary-light: var(--color-secondary-900);
+  --color-accent: var(--color-accent-400);
+  --color-accent-light: var(--color-accent-900);
+  --color-success: #4ade80;
+  --color-success-light: #052e17;
+  --color-warning: #facc15;
+  --color-warning-light: #3a2a05;
+  --color-error: #f87171;
+  --color-error-light: #3a0e10;
+  --color-info: var(--color-secondary-400);
+  --color-info-light: #0f1a2f;
+
+  /* Shadows — stronger against dark backgrounds */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
+
+  /* Skeleton */
+  --skeleton-base: #1f2937;
+  --skeleton-highlight: #374151;
+
+  color-scheme: dark;
 }
 
 * {
@@ -180,10 +298,18 @@ body {
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base);
   line-height: var(--line-height-normal);
-  color: var(--color-neutral-900);
-  background-color: var(--color-neutral-50);
+  color: var(--color-text-primary);
+  background-color: var(--color-background-secondary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+/* Respect users who explicitly ask for less motion — no theme-switch fade. */
+@media (prefers-reduced-motion: reduce) {
+  body {
+    transition: none;
+  }
 }
 
 #root {
@@ -204,4 +330,53 @@ button {
 /* Remove default list styles */
 ul, ol {
   list-style: none;
+}
+
+/* Phase 224.5 — responsive table scroll utility.
+   Wrap any data table with `.table-scroll` to get horizontal scrolling on
+   narrow viewports. We also override the known list-page wrappers so tables
+   whose wrappers use `overflow: hidden` (to clip border-radius) don't clip
+   away their own content on mobile. */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 768px) {
+  /* Known list-page wrappers: override the default `overflow: hidden` (which
+     exists so border-radius clips cleanly) with horizontal scroll on mobile
+     so tables never become unreachable. Only selectors that actually exist
+     in the codebase are listed — verified via grep. */
+  .asset-list-table,
+  .contract-list-table,
+  .dataset-list-table,
+  .webhook-list-table-wrapper,
+  .order-list-table,
+  .entitlement-list-table,
+  .job-list-table,
+  .compliance-run-list-table,
+  .dq-run-list-table,
+  .privacy-table-wrap,
+  .table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* When a table is in horizontal-scroll mode on small screens, prevent
+     individual cells from wrapping so the intrinsic min-width produces a
+     scrollable region instead of a crushed grid. */
+  .asset-list-table table,
+  .contract-list-table table,
+  .dataset-list-table table,
+  .webhook-list-table-wrapper table,
+  .order-list-table table,
+  .entitlement-list-table table,
+  .job-list-table table,
+  .compliance-run-list-table table,
+  .dq-run-list-table table,
+  .privacy-table-wrap table,
+  .table-scroll > table {
+    white-space: nowrap;
+    min-width: max-content;
+  }
 }

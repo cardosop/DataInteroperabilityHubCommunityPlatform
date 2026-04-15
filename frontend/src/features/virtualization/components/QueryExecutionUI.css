@@ -118,7 +118,7 @@
 
 .result-count {
   font-size: 0.875rem;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 .results-pagination {
@@ -183,11 +183,11 @@
 
 .history-date {
   font-size: 0.75rem;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 .history-duration {
   font-size: 0.75rem;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 

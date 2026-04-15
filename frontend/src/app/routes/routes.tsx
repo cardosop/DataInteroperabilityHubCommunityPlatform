@@ -382,6 +382,12 @@ const WebhookListPage = lazy(() =>
   }))
 );
 
+const NotificationListPage = lazy(() =>
+  import('../../features/notifications/components/NotificationListPage').then((m) => ({
+    default: m.NotificationListPage,
+  }))
+);
+
 const MeshPage = () => <Outlet />;
 const VirtualizationPage = () => <Outlet />;
 const GovernanceLayout = () => <Outlet />;
@@ -1161,6 +1167,14 @@ export const router = createBrowserRouter([
           { path: 'retention/:id', element: <EB fallbackMsg="Loading..."><RetentionPolicyDetailPage /></EB> },
           { path: 'retention/:id/edit', element: <EB fallbackMsg="Loading..."><RetentionPolicyEditPage /></EB> },
         ],
+      },
+      {
+        path: 'notifications',
+        element: (
+          <EB fallbackMsg="Loading notifications...">
+            <NotificationListPage />
+          </EB>
+        ),
       },
       {
         path: 'audit',

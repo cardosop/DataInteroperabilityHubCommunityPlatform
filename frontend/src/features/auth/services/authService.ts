@@ -35,9 +35,21 @@ class AuthService {
       .getClient()
       .post<LoginResponse>('/auth/login/', credentials, { timeout: 45000 });
 
-    // Store tokens
-    this.setAccessToken(response.data.access_token);
-    this.setRefreshToken(response.data.refresh_token);
+    // Phase 220.4: detect cookie-based auth mode.
+    // When USE_HTTPONLY_AUTH_COOKIES=True on the backend, the response body
+    // does NOT contain access_token (tokens are in httpOnly cookies instead).
+    if (response.data.access_token) {
+      // Legacy mode: store tokens in memory / localStorage
+      this.setAccessToken(response.data.access_token);
+      if (response.data.refresh_token) {
+        this.setRefreshToken(response.data.refresh_token);
+      }
+      apiClient._cookieAuthMode = false;
+    } else {
+      // Cookie mode: tokens are in httpOnly cookies, not in JS-accessible body.
+      // Don't store anything in memory or localStorage.
+      apiClient._cookieAuthMode = true;
+    }
 
     // Fetch and store user info
     await this.fetchAndStoreUser();
@@ -95,22 +107,30 @@ class AuthService {
   }
 
   async refreshAccessToken(): Promise<string> {
-    const refreshToken = this.getRefreshToken();
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
+    // In cookie mode, refresh_token is in httpOnly cookie (sent automatically).
+    // In legacy mode, we need the refresh_token from localStorage.
+    if (!apiClient._cookieAuthMode) {
+      const refreshToken = this.getRefreshToken();
+      if (!refreshToken) {
+        throw new Error('No refresh token available');
+      }
     }
 
     // Use fetch directly (bypass apiClient interceptors) to avoid the 401 interceptor
     // triggering a recursive refresh or hard redirect to /login during proactive refresh.
-    // Phase 209: replaced axios.post with native fetch after axios supply chain compromise.
     const baseURL = apiClient.getClient().defaults.baseURL || '/api/v1';
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
+      // In cookie mode, refresh_token cookie is sent via credentials: 'include'.
+      const body = apiClient._cookieAuthMode
+        ? undefined
+        : JSON.stringify({ refresh_token: this.getRefreshToken() } as RefreshTokenRequest);
+
       const fetchResponse = await fetch(`${baseURL}/auth/refresh/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken } as RefreshTokenRequest),
+        body,
         credentials: 'include',
         signal: controller.signal,
       });
@@ -120,12 +140,16 @@ class AuthService {
       }
 
       const data = (await fetchResponse.json()) as RefreshTokenResponse;
-      this.setAccessToken(data.access_token);
+
+      // In cookie mode, tokens are in httpOnly cookies — body may be empty.
+      if (data.access_token) {
+        this.setAccessToken(data.access_token);
+      }
       if (data.refresh_token) {
         this.setRefreshToken(data.refresh_token);
       }
 
-      return data.access_token;
+      return data.access_token || '';
     } finally {
       clearTimeout(timeoutId);
     }
@@ -259,7 +283,12 @@ class AuthService {
   // Check if user is authenticated
   isAuthenticated(): boolean {
     // Phase 11.1: access_token is in-memory only; also consider authenticated
-    // if we have a user profile (session may be resumable via refresh_token cookie)
+    // if we have a user profile (session may be resumable via refresh_token cookie).
+    // Phase 220.4: in cookie mode, tokens are in httpOnly cookies (not in JS),
+    // so we consider authenticated if we have a stored user profile.
+    if (apiClient._cookieAuthMode) {
+      return !!this.getUser();
+    }
     return (!!this.getAccessToken() || !!this.getRefreshToken()) && !!this.getUser();
   }
 
@@ -281,6 +310,16 @@ class AuthService {
     const refreshToken = this.getRefreshToken();
     if (refreshToken) {
       apiClient.setRefreshToken(refreshToken);
+    }
+
+    // Phase 220.4: detect cookie-based auth mode on page reload.
+    // If we have a stored user profile but NO tokens in JS-accessible storage,
+    // the session is carried by httpOnly cookies. Set cookie mode so that
+    // isAuthenticated() returns true and API calls don't send Bearer headers.
+    const hasUser = !!localStorage.getItem(USER_STORAGE_KEY);
+    const hasAnyToken = !!storedToken || !!refreshToken;
+    if (hasUser && !hasAnyToken) {
+      apiClient._cookieAuthMode = true;
     }
 
     // Tenant ID getter is set by authStore.initialize after user is loaded

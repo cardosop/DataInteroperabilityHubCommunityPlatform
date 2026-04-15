@@ -15,7 +15,19 @@ from rest_framework.test import APIClient
 from hub.apps.audit.models import AuditEvent
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
+
+
+def _grant_role(user, tenant, name):
+    """Phase 224.3.1 — raw audit list/retrieve/export require AUDITOR or
+    TENANT_ADMIN; pre-existing tests assumed any authenticated user could
+    read their tenant's events. Granting AUDITOR in setUp preserves the
+    original assertions under the stricter gate.
+    """
+    role, _ = Role.objects.get_or_create(
+        tenant=tenant, name=name, defaults={"description": name}
+    )
+    UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -57,6 +69,10 @@ class AuditEventQueryingTest(TestCase):
             is_platform_admin=True,
             status=UserStatus.ACTIVE,
         )
+
+        # Phase 224.3.1 — AUDITOR grant required for raw audit endpoint access.
+        _grant_role(self.user1, self.tenant1, "AUDITOR")
+        _grant_role(self.user2, self.tenant2, "AUDITOR")
 
         # Create audit events
         self.event1 = create_audit_event(

@@ -13,16 +13,25 @@ Tests cover:
 
 All tests use real implementations (no mocks/stubs).
 External dependencies (Redis, circuit breakers) gracefully handle unavailability.
+
+Phase 221.3 update: circuit_breaker_status is now a DRF @api_view
+requiring authentication.  Tests use APIRequestFactory +
+force_authenticate for the circuit-breaker view.
 """
 import json
+import uuid
 
 import pytest
-from django.http import HttpRequest
+from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
+from rest_framework.test import APIRequestFactory
 
 from hub.apps.health.views import circuit_breaker_status, health_check, liveness
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
+User = get_user_model()
 
 
 class TestLiveness(TestCase):
@@ -226,256 +235,155 @@ class TestHealthCheck(TestCase):
         self.assertNotIn("http_status", data)
 
     def test_circuit_breaker_status_http_status_not_in_response(self):
-        """Test that http_status is not included in response body"""
-        request = self.factory.get("/health/circuit-breakers/")
+        """Test that http_status is not included in response body (221.3 — needs auth)"""
+        uid = uuid.uuid4().hex[:8]
+        tenant = Tenant.objects.create(
+            name=f"T {uid}", slug=f"t-{uid}", status="ACTIVE", kyc_status="UNVERIFIED",
+        )
+        user = User.objects.create_user(
+            email=f"hc-{uid}@example.com", password="testpass123",
+            tenant=tenant, status=UserStatus.ACTIVE,
+        )
+        api_factory = APIRequestFactory()
+        request = api_factory.get("/health/circuit-breakers/")
+        from rest_framework.test import force_authenticate
+        force_authenticate(request, user=user)
         response = circuit_breaker_status(request)
 
         if response.status_code in [200, 404]:
-            data = json.loads(response.content)
-            # http_status should not be in response body (it's used for HTTP status code)
+            data = response.data if hasattr(response, 'data') else json.loads(response.content)
             self.assertNotIn("http_status", data)
 
 
 class TestCircuitBreakerStatus(TestCase):
-    """Test circuit breaker status endpoint"""
+    """Test circuit breaker status endpoint (Phase 221.3 — requires auth)."""
 
     def setUp(self):
-        """Set up test fixtures"""
-        self.factory = RequestFactory()
+        """Set up test fixtures — DRF APIRequestFactory + authenticated user."""
+        self.factory = APIRequestFactory()
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"T {uid}", slug=f"t-cb-{uid}",
+            status="ACTIVE", kyc_status="UNVERIFIED",
+        )
+        self.user = User.objects.create_user(
+            email=f"cb-{uid}@example.com", password="testpass123",
+            tenant=self.tenant, status=UserStatus.ACTIVE,
+        )
+
+    def _authed_get(self, path="/health/circuit-breakers/"):
+        """Helper: create an authenticated GET request and call the view."""
+        from rest_framework.test import force_authenticate
+        request = self.factory.get(path)
+        force_authenticate(request, user=self.user)
+        return circuit_breaker_status(request)
 
     def test_circuit_breaker_status_all_breakers(self):
-        """Test getting status of all circuit breakers"""
-        request = self.factory.get("/health/circuit-breakers/")
-        response = circuit_breaker_status(request)
-
-        # Should return 200 or 500 (depending on circuit breaker availability)
+        """Test getting aggregate status of all circuit breakers"""
+        response = self._authed_get()
         self.assertIn(response.status_code, [200, 500])
 
         if response.status_code == 200:
-            data = json.loads(response.content)
+            data = response.data
             self.assertIn("status", data)
-            self.assertIn("circuit_breakers", data)
-
-    def test_circuit_breaker_status_specific_service(self):
-        """Test getting status of specific circuit breaker"""
-        request = self.factory.get("/health/circuit-breakers/?service_name=test-service")
-        response = circuit_breaker_status(request)
-
-        # Should return 200, 404, or 500
-        self.assertIn(response.status_code, [200, 404, 500])
-
-        if response.status_code == 200:
-            data = json.loads(response.content)
-            self.assertIn("status", data)
-            self.assertIn("circuit_breaker", data)
-
-    def test_circuit_breaker_status_not_found(self):
-        """Test circuit breaker status for non-existent service"""
-        request = self.factory.get("/health/circuit-breakers/?service_name=nonexistent-service")
-        response = circuit_breaker_status(request)
-
-        # Should return 404 if service not found
-        if response.status_code == 404:
-            data = json.loads(response.content)
-            self.assertIn("error", data)
+            self.assertIn("total_breakers", data)
+            self.assertIn("open_breakers", data)
 
     def test_circuit_breaker_status_error_handling(self):
         """Test error handling in circuit breaker status"""
-        # Test that exceptions are handled gracefully
-        request = self.factory.get("/health/circuit-breakers/")
-        response = circuit_breaker_status(request)
-
-        # Should not raise exception, should return JSON
-        self.assertEqual(response["Content-Type"], "application/json")
+        response = self._authed_get()
+        self.assertIn(response.status_code, [200, 500])
 
     # ========== EDGE CASES TESTS ==========
 
-    def test_circuit_breaker_status_empty_query_param(self):
-        """Test circuit breaker status with empty query param"""
-        request = self.factory.get("/health/circuit-breakers/?service_name=")
-        response = circuit_breaker_status(request)
-
-        # Should handle empty service_name gracefully
-        self.assertIn(response.status_code, [200, 404, 500])
-        self.assertEqual(response["Content-Type"], "application/json")
-
-    def test_circuit_breaker_status_multiple_query_params(self):
-        """Test circuit breaker status with multiple query params"""
-        request = self.factory.get("/health/circuit-breakers/?service_name=test&other=value")
-        response = circuit_breaker_status(request)
-
-        # Should use service_name param and ignore others
-        self.assertIn(response.status_code, [200, 404, 500])
+    def test_circuit_breaker_status_query_params_ignored(self):
+        """Test circuit breaker status ignores service_name param (221.3.2)"""
+        response = self._authed_get("/health/circuit-breakers/?service_name=test")
+        self.assertIn(response.status_code, [200, 500])
         if response.status_code == 200:
-            data = json.loads(response.content)
-            self.assertIn("status", data)
+            data = response.data
+            # Should still return aggregate data, not single-service
+            self.assertIn("total_breakers", data)
 
-    def test_circuit_breaker_status_special_characters_in_service_name(self):
-        """Test circuit breaker status with special characters in service name"""
-        request = self.factory.get("/health/circuit-breakers/?service_name=test-service_123")
-        response = circuit_breaker_status(request)
-
-        # Should handle special characters gracefully
-        self.assertIn(response.status_code, [200, 404, 500])
-        self.assertEqual(response["Content-Type"], "application/json")
-
-    def test_circuit_breaker_status_all_breakers_structure(self):
-        """Test that all breakers response has correct structure"""
-        request = self.factory.get("/health/circuit-breakers/")
-        response = circuit_breaker_status(request)
+    def test_circuit_breaker_status_aggregate_structure(self):
+        """Test that response has correct aggregate-only structure (221.3.2)"""
+        response = self._authed_get()
 
         if response.status_code == 200:
-            data = json.loads(response.content)
+            data = response.data
             self.assertIn("status", data)
-            self.assertIn("circuit_breakers", data)
             self.assertIn("total_breakers", data)
             self.assertIn("open_breakers", data)
-            self.assertIn("open_breaker_names", data)
-            # Verify field types
             self.assertIsInstance(data["total_breakers"], int)
             self.assertIsInstance(data["open_breakers"], int)
-            self.assertIsInstance(data["open_breaker_names"], list)
-            self.assertIsInstance(data["circuit_breakers"], dict)
-
-    def test_circuit_breaker_status_specific_service_structure(self):
-        """Test that specific service response has correct structure"""
-        request = self.factory.get("/health/circuit-breakers/?service_name=test-service")
-        response = circuit_breaker_status(request)
-
-        if response.status_code == 200:
-            data = json.loads(response.content)
-            self.assertIn("status", data)
-            self.assertIn("circuit_breaker", data)
-            # Verify status values
-            self.assertIn(data["status"], ["healthy", "degraded"])
-
-    def test_circuit_breaker_status_not_found_structure(self):
-        """Test that not found response has correct structure"""
-        request = self.factory.get("/health/circuit-breakers/?service_name=nonexistent-service-xyz")
-        response = circuit_breaker_status(request)
-
-        if response.status_code == 404:
-            data = json.loads(response.content)
-            self.assertIn("error", data)
-            self.assertIn("status", data)
+            # Service names must NOT be exposed
+            self.assertNotIn("circuit_breakers", data)
+            self.assertNotIn("open_breaker_names", data)
+            self.assertNotIn("circuit_breaker", data)
 
     def test_circuit_breaker_status_error_response_structure(self):
-        """Test that error response has correct structure"""
-        request = self.factory.get("/health/circuit-breakers/")
-        response = circuit_breaker_status(request)
+        """Test that error response has correct structure and generic message"""
+        response = self._authed_get()
 
         if response.status_code == 500:
-            data = json.loads(response.content)
+            data = response.data
             self.assertIn("status", data)
             self.assertIn("error", data)
             self.assertEqual(data["status"], "error")
-
-    def test_circuit_breaker_status_open_breakers_logic(self):
-        """Test that open breakers count matches open breaker names"""
-        request = self.factory.get("/health/circuit-breakers/")
-        response = circuit_breaker_status(request)
-
-        if response.status_code == 200:
-            data = json.loads(response.content)
-            if "open_breakers" in data and "open_breaker_names" in data:
-                self.assertEqual(
-                    data["open_breakers"],
-                    len(data["open_breaker_names"]),
-                    "Open breakers count should match open breaker names length",
-                )
+            # 221.3 — error must be generic, not leak internals
+            self.assertEqual(
+                data["error"],
+                "Circuit breaker status unavailable",
+            )
 
     def test_circuit_breaker_status_multiple_calls(self):
         """Test that circuit breaker status can be called multiple times"""
-        request1 = self.factory.get("/health/circuit-breakers/")
-        request2 = self.factory.get("/health/circuit-breakers/")
-
-        response1 = circuit_breaker_status(request1)
-        response2 = circuit_breaker_status(request2)
-
-        # Both calls should succeed
-        self.assertEqual(response1["Content-Type"], "application/json")
-        self.assertEqual(response2["Content-Type"], "application/json")
+        response1 = self._authed_get()
+        response2 = self._authed_get()
+        self.assertIn(response1.status_code, [200, 500])
+        self.assertIn(response2.status_code, [200, 500])
 
     # ========== TDD COMPLIANCE TESTS ==========
 
-    def test_circuit_breaker_status_returns_all_required_fields_all_breakers(self):
-        """Test that all breakers response returns all required fields"""
-        request = self.factory.get("/health/circuit-breakers/")
-        response = circuit_breaker_status(request)
+    def test_circuit_breaker_status_returns_all_required_aggregate_fields(self):
+        """Test that response returns all required aggregate fields"""
+        response = self._authed_get()
 
         if response.status_code == 200:
-            data = json.loads(response.content)
-            # Verify all required fields are present
+            data = response.data
             self.assertIn("status", data)
-            self.assertIn("circuit_breakers", data)
             self.assertIn("total_breakers", data)
             self.assertIn("open_breakers", data)
-            self.assertIn("open_breaker_names", data)
-
-    def test_circuit_breaker_status_returns_all_required_fields_specific_service(self):
-        """Test that specific service response returns all required fields"""
-        request = self.factory.get("/health/circuit-breakers/?service_name=test-service")
-        response = circuit_breaker_status(request)
-
-        if response.status_code == 200:
-            data = json.loads(response.content)
-            # Verify all required fields are present
-            self.assertIn("status", data)
-            self.assertIn("circuit_breaker", data)
 
     def test_circuit_breaker_status_status_values(self):
         """Test that status field has valid values"""
-        request = self.factory.get("/health/circuit-breakers/")
-        response = circuit_breaker_status(request)
+        response = self._authed_get()
 
         if response.status_code == 200:
-            data = json.loads(response.content)
+            data = response.data
             self.assertIn(data["status"], ["healthy", "degraded"])
 
     def test_circuit_breaker_status_http_status_codes(self):
         """Test that HTTP status codes are correct"""
-        # Test all breakers
-        request_all = self.factory.get("/health/circuit-breakers/")
-        response_all = circuit_breaker_status(request_all)
-        self.assertIn(response_all.status_code, [200, 500])
-
-        # Test specific service
-        request_specific = self.factory.get("/health/circuit-breakers/?service_name=test-service")
-        response_specific = circuit_breaker_status(request_specific)
-        self.assertIn(response_specific.status_code, [200, 404, 500])
-
-        # Test not found
-        request_not_found = self.factory.get(
-            "/health/circuit-breakers/?service_name=nonexistent-service-xyz"
-        )
-        response_not_found = circuit_breaker_status(request_not_found)
-        self.assertIn(response_not_found.status_code, [404, 500])
+        response = self._authed_get()
+        self.assertIn(response.status_code, [200, 500])
 
     # ========== ERROR HANDLING TESTS ==========
 
     def test_circuit_breaker_status_handles_exceptions_gracefully(self):
         """Test that circuit breaker status handles exceptions gracefully"""
-        # Test that exceptions don't propagate
-        request = self.factory.get("/health/circuit-breakers/")
-
-        # Should not raise exception
         try:
-            response = circuit_breaker_status(request)
-            # If it succeeds, verify it returns JSON
-            self.assertEqual(response["Content-Type"], "application/json")
+            response = self._authed_get()
+            self.assertIn(response.status_code, [200, 500])
         except Exception:
-            # If it fails, that's unexpected - circuit breaker should handle errors
             self.fail("circuit_breaker_status raised an exception")
 
     def test_health_check_handles_exceptions_gracefully(self):
         """Test that health check handles exceptions gracefully"""
-        request = self.factory.get("/health/")
-
-        # Should not raise exception
+        factory = RequestFactory()
+        request = factory.get("/health/")
         try:
             response = health_check(request)
-            # If it succeeds, verify it returns JSON
             self.assertEqual(response["Content-Type"], "application/json")
         except Exception:
-            # If it fails, that's unexpected - health check should handle errors
             self.fail("health_check raised an exception")

@@ -115,6 +115,8 @@ export interface Order {
   asset_id?: string;
   rejection_reason?: string;
   access_request_id?: string | null;
+  /** ID of the ACTIVE entitlement this order produced, if any. */
+  entitlement_id?: string | null;
 }
 
 export interface OrderCreateRequest {

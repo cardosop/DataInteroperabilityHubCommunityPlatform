@@ -119,11 +119,15 @@ class TenantScopingMiddleware:
         Returns tenant_id (UUID string) or None.
         """
         auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-        
-        if not auth_header.startswith('Bearer '):
-            return None
-        
-        token = auth_header.split(' ', 1)[1] if ' ' in auth_header else None
+
+        token = None
+        if auth_header.startswith('Bearer '):
+            token = auth_header.split(' ', 1)[1] if ' ' in auth_header else None
+
+        # Phase 220.4: fall back to httpOnly cookie
+        if not token:
+            token = request.COOKIES.get('access_token')
+
         if not token:
             return None
         

@@ -37,7 +37,7 @@
 }
 
 .dataset-description {
-  color: #666;
+  color: var(--color-text-secondary);
   margin-bottom: 1rem;
 }
 
@@ -56,7 +56,7 @@
 
 .metadata-label {
   font-size: 0.875rem;
-  color: #666;
+  color: var(--color-text-secondary);
   font-weight: 600;
 }
 

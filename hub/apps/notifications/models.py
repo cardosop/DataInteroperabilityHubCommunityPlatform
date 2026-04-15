@@ -194,3 +194,97 @@ class EmailDelivery(models.Model):
         self.retry_count += 1
         self.save(update_fields=['retry_count', 'updated_at'])
 
+
+
+class NotificationType(models.TextChoices):
+    """Severity/variant for in-app notifications."""
+    INFO = "INFO", "Info"
+    SUCCESS = "SUCCESS", "Success"
+    WARNING = "WARNING", "Warning"
+    ERROR = "ERROR", "Error"
+
+
+class NotificationCategory(models.TextChoices):
+    """Top-level functional grouping for in-app notifications."""
+    GOVERNANCE = "GOVERNANCE", "Governance"
+    MARKETPLACE = "MARKETPLACE", "Marketplace"
+    JOBS = "JOBS", "Jobs"
+    CONTRACTS = "CONTRACTS", "Contracts"
+    SYSTEM = "SYSTEM", "System"
+
+
+class UserNotification(models.Model):
+    """
+    Thin, user-scoped in-app notification.
+
+    Designed as a pointer: for rich context consumers should follow
+    ``resource_type`` + ``resource_id`` or the optional ``audit_event``
+    link. Storing a short title + message denormalised on the row keeps
+    list rendering cheap and survives deletion of the underlying resource.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="user_notifications",
+        help_text="Tenant this notification belongs to",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="user_notifications",
+        help_text="Recipient",
+    )
+    audit_event = models.ForeignKey(
+        "audit.AuditEvent",
+        on_delete=models.SET_NULL,
+        related_name="user_notifications",
+        null=True,
+        blank=True,
+        help_text="Optional link to the underlying audit event",
+    )
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    notification_type = models.CharField(
+        max_length=10,
+        choices=NotificationType.choices,
+        default=NotificationType.INFO,
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=NotificationCategory.choices,
+        default=NotificationCategory.SYSTEM,
+    )
+    resource_type = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text="Resource type the notification points at (matches AuditEvent.resource_type)",
+    )
+    resource_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text="Resource UUID the notification points at",
+    )
+    read = models.BooleanField(default=False, db_index=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "user_notifications"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "read", "-created_at"]),
+            models.Index(fields=["tenant", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.title} -> {self.user_id} ({self.category})"
+
+    def mark_read(self) -> None:
+        """Flip the row to read; idempotent — no-ops when already read."""
+        if self.read:
+            return
+        self.read = True
+        self.read_at = timezone.now()
+        self.save(update_fields=["read", "read_at"])

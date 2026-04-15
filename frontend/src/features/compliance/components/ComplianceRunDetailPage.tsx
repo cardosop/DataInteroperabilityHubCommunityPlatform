@@ -15,6 +15,7 @@ import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
+import { exportToCSV } from '../../../shared/utils/exportUtils';
 import './ComplianceRunDetailPage.css';
 import { Button } from '../../../shared/components/Button';
 
@@ -225,7 +226,26 @@ export function ComplianceRunDetailPage() {
 
           {complianceRun.status === 'SUCCEEDED' && (
             <div className="compliance-run-results-section">
-              <h2>Results</h2>
+              <div
+                className="compliance-run-results-header"
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <h2>Results</h2>
+                {results && Array.isArray(results.violations) && results.violations.length > 0 && (
+                  <Button
+                    variant="secondary"
+                    onClick={() =>
+                      exportToCSV(
+                        results.violations as unknown as Array<Record<string, unknown>>,
+                        `compliance-run-${id}`,
+                      )
+                    }
+                    data-testid="compliance-run-export-csv"
+                  >
+                    Export CSV
+                  </Button>
+                )}
+              </div>
               {resultsLoading ? (
                 <LoadingSpinner message="Loading results..." />
               ) : resultsError ? (

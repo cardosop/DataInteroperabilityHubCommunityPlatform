@@ -16,22 +16,31 @@ User = get_user_model()
 class JWTAuthentication(BaseAuthentication):
     """
     JWT Authentication implementation.
-    
-    Authenticates requests using JWT Bearer tokens in the Authorization header.
+
+    Authenticates requests using JWT tokens from:
+    1. ``Authorization: Bearer <token>`` header (preferred, always checked first)
+    2. ``access_token`` httpOnly cookie (Phase 220.4 fallback for browser clients
+       when ``USE_HTTPONLY_AUTH_COOKIES=True``)
     """
-    
+
     def authenticate(self, request):
         """
         Authenticate the request using JWT tokens.
-        
+
         Returns (user, token) tuple if authentication succeeds, None otherwise.
         """
         auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-        
-        if not auth_header.startswith('Bearer '):
+
+        token = None
+        if auth_header.startswith('Bearer '):
+            token = auth_header.split(' ')[1]
+
+        # Phase 220.4: fall back to httpOnly cookie when no Bearer header
+        if not token:
+            token = request.COOKIES.get('access_token')
+
+        if not token:
             return None
-        
-        token = auth_header.split(' ')[1]
         
         # Decode token
         payload = JWTTokenGenerator.decode_access_token(token)

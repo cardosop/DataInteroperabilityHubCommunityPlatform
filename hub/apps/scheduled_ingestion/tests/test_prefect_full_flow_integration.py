@@ -143,7 +143,12 @@ class TestPrefectFullFlowIntegration(LiveServerTestCase):
             source_config={
                 "base_url": base_url,
                 "paths": ["sample.csv"],
-                "headers": {"X-Internal-Test-Data": "1"},
+                "headers": {
+                    "X-Internal-Test-Data": "1",
+                    # Phase 220.2: test-data endpoint now requires worker auth
+                    "Authorization": f"ApiKey {self.worker_api_key}",
+                    "X-Tenant-ID": str(self.tenant.id),
+                },
             },
             schedule_type=ScheduleType.DAILY,
             schedule_config={"time": "00:00"},

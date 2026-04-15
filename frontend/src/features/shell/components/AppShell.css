@@ -19,3 +19,14 @@
   padding: var(--spacing-lg);
   background-color: var(--color-neutral-50);
 }
+
+/* Phase 224.5 — responsive layout.
+   At ≤ tablet, the sidebar becomes an absolutely-positioned overlay and
+   the main content gets the full viewport width. The overlay state is
+   driven by `.app-shell--sidebar-open` (React-owned, not :target or
+   :focus-within, so it survives route changes cleanly). */
+@media (max-width: 768px) {
+  .app-main {
+    padding: var(--spacing-md);
+  }
+}

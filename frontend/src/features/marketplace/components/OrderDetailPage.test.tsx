@@ -119,6 +119,27 @@ describe('OrderDetailPage', () => {
     });
   });
 
+  it('renders the "View your access" entitlement link when order.entitlement_id is present', async () => {
+    vi.mocked(mock.get).mockResolvedValue({
+      data: { ...MOCK_ORDER, status: 'FULFILLED', entitlement_id: 'ent-789' },
+    });
+    render(<OrderDetailPage />, { wrapper: Wrapper });
+    const section = await screen.findByTestId('order-entitlement-link');
+    const link = section.querySelector('a');
+    expect(link).not.toBeNull();
+    expect(link).toHaveAttribute('href', '/marketplace/entitlements/ent-789');
+    expect(link).toHaveTextContent(/view your access/i);
+  });
+
+  it('hides the entitlement link when order.entitlement_id is null', async () => {
+    vi.mocked(mock.get).mockResolvedValue({
+      data: { ...MOCK_ORDER, entitlement_id: null },
+    });
+    render(<OrderDetailPage />, { wrapper: Wrapper });
+    await screen.findByText('Test Listing'); // wait for page to render
+    expect(screen.queryByTestId('order-entitlement-link')).toBeNull();
+  });
+
   it('wraps in ErrorBoundary without crash', () => {
     const origError = console.error;
     console.error = vi.fn();

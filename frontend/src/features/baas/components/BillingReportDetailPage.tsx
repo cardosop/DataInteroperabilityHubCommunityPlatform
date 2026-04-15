@@ -11,6 +11,7 @@ import {
   useSendBillingReport,
   useVoidBillingReport,
 } from '../hooks/useBaaS';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { BillingReportStatus } from '../../../shared/types/baas';
@@ -51,6 +52,13 @@ export function BillingReportDetailPage() {
 
   return (
     <div className="billing-report-detail-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'BaaS', href: '/baas' },
+          { label: 'Billing Report' },
+        ]}
+      />
       <Button variant="secondary" onClick={() => navigate('/settings/baas')}>
         Back
       </Button>
