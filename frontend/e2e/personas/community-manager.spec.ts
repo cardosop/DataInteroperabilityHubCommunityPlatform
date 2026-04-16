@@ -12,6 +12,7 @@ import '../journeys/cm/JOURNEY-CM-004.spec';
 
 import { test, expect } from '@playwright/test';
 import { loginAsPersona, getTestUser } from '../fixtures/auth';
+import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
 
 test.describe('Persona RBAC: Community Manager', () => {
   test.setTimeout(120000);
@@ -19,11 +20,8 @@ test.describe('Persona RBAC: Community Manager', () => {
   test('CM can access /communities (capability-gated)', async ({ page }) => {
     await loginAsPersona(page, getTestUser);
     await page.goto('/communities');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    test.skip(page.url().includes('/login'), 'Auth redirect');
+    await waitForAppMainReady(page);
     const url = page.url();
-    // Communities may be capability-gated
     expect(url.includes('/communities') || url.includes('/403') || url.includes('/unavailable')).toBe(true);
   });
 
@@ -31,8 +29,11 @@ test.describe('Persona RBAC: Community Manager', () => {
     await loginAsPersona(page, getTestUser);
     await page.goto('/admin');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForURL(/\/(403|login|admin|assets)/, { timeout: 20000 }).catch(() => null);
-    const url = page.url();
-    expect(url.includes('/403') || url.includes('/login') || !url.includes('/admin')).toBe(true);
+    const resolved = await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/admin' });
+    if (resolved.includes('/login')) {
+      test.skip(true, 'Auth session expired — not an RBAC result');
+      return;
+    }
+    expect(resolved.includes('/403') || !resolved.includes('/admin')).toBe(true);
   });
 });

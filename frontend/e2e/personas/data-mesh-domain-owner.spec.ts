@@ -13,6 +13,7 @@ import '../journeys/dmo/JOURNEY-DMO-005.spec';
 
 import { test, expect } from '@playwright/test';
 import { loginAsPersona, getDataMeshDomainOwnerUser } from '../fixtures/auth';
+import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
 
 test.describe('Persona RBAC: Data Mesh Domain Owner', () => {
   test.setTimeout(120000);
@@ -20,9 +21,7 @@ test.describe('Persona RBAC: Data Mesh Domain Owner', () => {
   test('DMO can access /mesh', async ({ page }) => {
     await loginAsPersona(page, getDataMeshDomainOwnerUser);
     await page.goto('/mesh');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    test.skip(page.url().includes('/login'), 'Auth redirect');
+    await waitForAppMainReady(page);
     const url = page.url();
     expect(url.includes('/mesh') || url.includes('/403')).toBe(true);
   });
@@ -30,9 +29,7 @@ test.describe('Persona RBAC: Data Mesh Domain Owner', () => {
   test('DMO can access /mesh/create', async ({ page }) => {
     await loginAsPersona(page, getDataMeshDomainOwnerUser);
     await page.goto('/mesh/create');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    test.skip(page.url().includes('/login'), 'Auth redirect');
+    await waitForAppMainReady(page);
     const url = page.url();
     expect(url.includes('/mesh') || url.includes('/403')).toBe(true);
   });
@@ -41,8 +38,11 @@ test.describe('Persona RBAC: Data Mesh Domain Owner', () => {
     await loginAsPersona(page, getDataMeshDomainOwnerUser);
     await page.goto('/admin');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForURL(/\/(403|login|admin|mesh)/, { timeout: 20000 }).catch(() => null);
-    const url = page.url();
-    expect(url.includes('/403') || url.includes('/login') || !url.includes('/admin')).toBe(true);
+    const resolved = await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/admin' });
+    if (resolved.includes('/login')) {
+      test.skip(true, 'Auth session expired — not an RBAC result');
+      return;
+    }
+    expect(resolved.includes('/403') || !resolved.includes('/admin')).toBe(true);
   });
 });
