@@ -3062,43 +3062,45 @@ export async function uploadODPSContractViaUI(
       );
     }
 
-    // Capture ALL POST responses to /contracts/ or /odps/ after clicking submit.
-    // The form may fire a validation pre-flight POST (to /contracts/validate-draft/)
-    // before the creation POST (to /contracts/ or /contracts/products/). We need
-    // the creation response, not the validation one.
-    const collectedResponses: Array<{ url: string; status: number; body: string }> = [];
-    const responseHandler = async (resp: import('@playwright/test').Response) => {
-      if (
-        resp.request().method() === 'POST' &&
-        (resp.url().includes('/contracts/') || resp.url().includes('/odps/'))
-      ) {
-        const body = await resp.text().catch(() => '');
-        collectedResponses.push({ url: resp.url(), status: resp.status(), body });
-      }
-    };
-    page.on('response', responseHandler);
+    // Wait for the creation POST response using event-based waitForResponse
+    // (NOT the old poll-loop pattern). The ODPS product creation endpoint on
+    // staging involves datacontract-service normalisation + async workflow
+    // processing, which regularly takes 30-60s. The old 30s poll-loop exited
+    // before the response arrived, producing "0 collected responses" failures.
+    //
+    // waitForResponse is event-driven: it resolves as soon as the response
+    // arrives, regardless of duration — no busy-polling, no race with slow
+    // servers. The 90s timeout matches DPO-001's ODPS-step budget.
+    const creationResponsePromise = page.waitForResponse(
+      (resp) => {
+        if (resp.request().method() !== 'POST') return false;
+        const url = resp.url();
+        if (!url.includes('/contracts/') && !url.includes('/odps/')) return false;
+        // Skip validation / normalization pre-flight POSTs — we only want
+        // the actual creation response.
+        if (/validate-draft|validate\/|normalize\//.test(url)) return false;
+        return true;
+      },
+      { timeout: 90000 },
+    );
 
     await submitBtn.first().click();
 
-    // Wait for a creation response (one that contains an id or workflow_instance_id).
-    // Poll collected responses for up to 30s.
-    let creationResp: { url: string; status: number; body: string } | null = null;
-    for (let poll = 0; poll < 60; poll++) {
-      await page.waitForTimeout(500);
-      for (const r of collectedResponses) {
-        // Skip validation/normalization responses (no id, contain validate-draft in URL)
-        if (/validate-draft|validate\/|normalize\//.test(r.url)) continue;
-        creationResp = r;
-        break;
-      }
-      if (creationResp) break;
-    }
-    page.off('response', responseHandler);
-
-    if (!creationResp) {
+    let creationResp: { url: string; status: number; body: string };
+    try {
+      const resp = await creationResponsePromise;
+      const body = await resp.text().catch(() => '');
+      creationResp = { url: resp.url(), status: resp.status(), body };
+    } catch (waitErr) {
+      // Capture current URL + page snapshot for diagnostics.
+      const currentUrl = page.url();
       throw new Error(
-        `uploadODPSContractViaUI: no creation POST response received within 30s. ` +
-        `Collected ${collectedResponses.length} responses: ${collectedResponses.map(r => r.url).join(', ')}`
+        `uploadODPSContractViaUI: no creation POST response within 90s. ` +
+        `The submit button was clicked but the server never responded. ` +
+        `Current URL: ${currentUrl}. ` +
+        `Possible causes: datacontract-service unreachable, ODPS normalisation timeout, ` +
+        `or the click did not trigger handleSubmit (React state mismatch). ` +
+        `Original: ${String(waitErr)}`
       );
     }
 
