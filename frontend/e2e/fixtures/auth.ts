@@ -333,34 +333,48 @@ export async function loginViaApi(
           throw new Error(`API login failed: ${loginRes.status} ${text}`);
         }
         const loginData = (await loginRes.json()) as {
-          access_token: string;
-          refresh_token?: string; // absent after 11.1 — delivered as httpOnly cookie
+          access_token?: string;
+          refresh_token?: string;
         };
 
-        // Extract refresh token from Set-Cookie header (11.1).
-        // Node fetch returns the raw header string; parse the value before the first ';'.
+        // Extract tokens from Set-Cookie headers.  When the backend runs
+        // with USE_HTTPONLY_AUTH_COOKIES=True (Phase 220.4, enabled on
+        // staging), BOTH access_token and refresh_token are delivered as
+        // httpOnly cookies — the JSON body is empty / has no token fields.
+        // Node.js `fetch` joins multiple Set-Cookie headers with `, ` in
+        // a single `headers.get('set-cookie')` string.
         const setCookieHeader = loginRes.headers.get('set-cookie') ?? '';
-        const refreshCookieMatch = setCookieHeader.match(/(?:^|,\s*)refresh_token=([^;,]+)/i);
+        const refreshCookieMatch = setCookieHeader.match(
+          /(?:^|,\s*)(?:__Secure-)?refresh_token=([^;,]+)/i,
+        );
+        const accessCookieMatch = setCookieHeader.match(
+          /(?:^|,\s*)access_token=([^;,]+)/i,
+        );
+        const access_token = loginData.access_token ?? accessCookieMatch?.[1] ?? '';
         const refresh_token = refreshCookieMatch?.[1] ?? loginData.refresh_token ?? '';
+
+        if (!access_token) {
+          throw new Error(
+            'loginViaApi: no access_token in response body or Set-Cookie header. ' +
+            'Backend may have USE_HTTPONLY_AUTH_COOKIES=True — ensure the cookie ' +
+            'is parsed from the Set-Cookie header. Raw Set-Cookie: ' +
+            setCookieHeader.slice(0, 200),
+          );
+        }
 
         const meRes = await fetch(`${base}/auth/me/`, {
           method: 'GET',
-          headers: { Authorization: `Bearer ${loginData.access_token}` },
+          headers: { Authorization: `Bearer ${access_token}` },
         });
         if (meRes.ok) {
           const user = (await meRes.json()) as ApiAuth['user'];
-          return {
-            access_token: loginData.access_token,
-            refresh_token,
-            user,
-          };
+          return { access_token, refresh_token, user };
         }
         if (meRes.status === 429 || meRes.status >= 500) {
-          // Rate-limited or transient server error: use token payload to avoid blocking tests
           return {
-            access_token: loginData.access_token,
+            access_token,
             refresh_token,
-            user: userFromAccessToken(loginData.access_token),
+            user: userFromAccessToken(access_token),
           };
         }
         throw new Error(`API /auth/me/ failed: ${meRes.status}`);

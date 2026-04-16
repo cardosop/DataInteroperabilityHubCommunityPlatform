@@ -440,9 +440,16 @@ async function ensureE2ESubscriptionForUser(user: TestUser, baseUrl: string = AP
           return;
         }
         const loginData = (await loginRes.json()) as { access_token?: string };
-        const token = loginData.access_token;
+        // Phase 220.4: when USE_HTTPONLY_AUTH_COOKIES is enabled, the
+        // access_token lives in a Set-Cookie header, not in the body.
+        const setCookie = loginRes.headers.get('set-cookie') ?? '';
+        const cookieMatch = setCookie.match(/(?:^|,\s*)access_token=([^;,]+)/i);
+        const token = loginData.access_token ?? cookieMatch?.[1] ?? '';
         if (!token) {
-          console.log('⚠️ ensureE2ESubscription: no access_token in login response');
+          console.log(
+            '⚠️ ensureE2ESubscription: no access_token in body or Set-Cookie. ' +
+            `Set-Cookie header: ${setCookie.slice(0, 120)}`,
+          );
           return;
         }
         const ensureRes = await fetch(`${baseUrl}/test/ensure-e2e-subscription/`, {
