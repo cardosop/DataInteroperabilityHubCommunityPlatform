@@ -27,7 +27,17 @@ const AUTHENTICATED_ROUTES: RouteSpec[] = [
 ];
 
 test.describe('Authenticated Pages A11y', () => {
-  test.setTimeout(120000);
+  // External targets (staging) have higher network latency: loginUser alone
+  // can take 15-20s, then page load + content settle adds another 15-30s.
+  // With 120s the margin was too thin — /compliance (compliance-service
+  // dependency) intermittently timed out during loginUser on staging,
+  // producing a "page/context was closed" flake on every CI run.
+  // Root-cause: not a slow login, but the compliance page's initial data
+  // fetch hitting a cold compliance-service pod, stalling
+  // domcontentloaded until the pod warms. 180s gives a safe margin
+  // without masking real regressions (real login is <20s per AUTH-002).
+  const isExternal = !!process.env.PLAYWRIGHT_BASE_URL?.match(/^https?:\/\/(?!localhost|127\.)/);
+  test.setTimeout(isExternal ? 180000 : 120000);
 
   for (const { path: route, getUser } of AUTHENTICATED_ROUTES) {
     test(`${route} has no critical a11y violations`, async ({ page }) => {

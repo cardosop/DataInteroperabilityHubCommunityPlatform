@@ -939,7 +939,9 @@ async function runNavToRoute(
     if ((await marketplaceLink.count()) > 0) {
       const listTimeout = options.timeout ?? 60000;
       const apiWait = startRouteDataApiWait(page, '/marketplace', listTimeout);
-      await marketplaceLink.click();
+      // Add explicit timeout — without it, click() retries indefinitely until
+      // the test times out when the sidebar is blocked by an overlay or scroll issue.
+      await marketplaceLink.click({ timeout: 30000 });
       await page.waitForLoadState('domcontentloaded');
       if (apiWait) await apiWait;
       await page.waitForTimeout(3000);
@@ -1033,7 +1035,7 @@ async function runNavToRoute(
     const assetsLabel = ROUTE_NAV_LABELS['/assets'];
     const assetsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: assetsLabel }).first();
     if ((await assetsLink.count()) > 0) {
-      await assetsLink.click();
+      await assetsLink.click({ timeout: 30000 });
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(1000);
       const createBtn = page
@@ -3019,22 +3021,94 @@ export async function uploadODPSContractViaUI(
       continue;
     }
 
-    const responsePromise = page.waitForResponse(
-      (resp) =>
-        (resp.url().includes('/contracts/') || resp.url().includes('/odps/')) &&
-        resp.request().method() === 'POST',
-      { timeout: 30000 }
-    );
+    // Phase 225.5 fix: ContractCreatePage runs a debounced validation
+    // (1.5s after content change) via POST /contracts/validate-draft/.
+    // If validate-draft returns {valid: false}, the submit button is
+    // re-disabled (`validationBlocks = true`). The button-enable check
+    // above passes BEFORE the debounce fires, then the button goes
+    // disabled again — clicking a disabled button is a no-op.
+    //
+    // Root-cause fix: wait for the validation response to arrive AND
+    // for the button to remain enabled after it settles. If validation
+    // blocks the button, surface the validation errors rather than
+    // failing with a vague "no creation POST" timeout.
+    const validationSettled = page.waitForResponse(
+      (r) => r.url().includes('/validate-draft') && r.request().method() === 'POST',
+      { timeout: 10000 },
+    ).catch(() => null);
 
-    await submitBtn.first().click();
-    const resp = await responsePromise;
-
-    if (resp.status() < 200 || resp.status() >= 300) {
-      const body = await resp.text().catch(() => '');
-      throw new Error(`uploadODPSContractViaUI: POST failed with ${resp.status()}: ${body}`);
+    // Give debounce + network time to fire.
+    const validationResp = await validationSettled;
+    if (validationResp) {
+      // Validation fired. Re-check button after a short settle window:
+      // the React state update from the validation response takes one
+      // more render cycle (~100-300 ms).
+      await page.waitForTimeout(500);
     }
 
-    const data = (await resp.json().catch(() => ({}))) as {
+    // If the button re-disabled (validation blocked), extract the
+    // error messages from the UI so the caller gets actionable output.
+    const stillEnabled = await submitBtn.first().isEnabled();
+    if (!stillEnabled) {
+      // Read the validation panel for error details.
+      const panelText = await page
+        .locator('.validation-result, .contract-create-page__validation, [data-testid="validation-result"]')
+        .textContent({ timeout: 3000 })
+        .catch(() => '(no validation panel found)');
+      throw new Error(
+        `uploadODPSContractViaUI: submit button disabled after validation settled. ` +
+        `The uploaded document failed pre-submit validation. ` +
+        `Validation panel: ${(panelText || '').slice(0, 300)}`
+      );
+    }
+
+    // Capture ALL POST responses to /contracts/ or /odps/ after clicking submit.
+    // The form may fire a validation pre-flight POST (to /contracts/validate-draft/)
+    // before the creation POST (to /contracts/ or /contracts/products/). We need
+    // the creation response, not the validation one.
+    const collectedResponses: Array<{ url: string; status: number; body: string }> = [];
+    const responseHandler = async (resp: import('@playwright/test').Response) => {
+      if (
+        resp.request().method() === 'POST' &&
+        (resp.url().includes('/contracts/') || resp.url().includes('/odps/'))
+      ) {
+        const body = await resp.text().catch(() => '');
+        collectedResponses.push({ url: resp.url(), status: resp.status(), body });
+      }
+    };
+    page.on('response', responseHandler);
+
+    await submitBtn.first().click();
+
+    // Wait for a creation response (one that contains an id or workflow_instance_id).
+    // Poll collected responses for up to 30s.
+    let creationResp: { url: string; status: number; body: string } | null = null;
+    for (let poll = 0; poll < 60; poll++) {
+      await page.waitForTimeout(500);
+      for (const r of collectedResponses) {
+        // Skip validation/normalization responses (no id, contain validate-draft in URL)
+        if (/validate-draft|validate\/|normalize\//.test(r.url)) continue;
+        creationResp = r;
+        break;
+      }
+      if (creationResp) break;
+    }
+    page.off('response', responseHandler);
+
+    if (!creationResp) {
+      throw new Error(
+        `uploadODPSContractViaUI: no creation POST response received within 30s. ` +
+        `Collected ${collectedResponses.length} responses: ${collectedResponses.map(r => r.url).join(', ')}`
+      );
+    }
+
+    if (creationResp.status < 200 || creationResp.status >= 300) {
+      throw new Error(`uploadODPSContractViaUI: POST failed with ${creationResp.status}: ${creationResp.body}`);
+    }
+
+    let data: Record<string, unknown>;
+    try { data = JSON.parse(creationResp.body); } catch { data = {}; }
+    const typedData = data as {
       id?: string;
       odps_contract?: { id?: string };
       odcs_contract?: { id?: string };
@@ -3043,11 +3117,11 @@ export async function uploadODPSContractViaUI(
     };
     // The ODPS product creation endpoint returns {odps_contract: {id}, odcs_contract: {id}, workflow_instance_id}
     // for synchronous execution, or {workflow_instance_id, status: "RUNNING"} for async.
-    let contractId = data.id || data.odps_contract?.id || data.odcs_contract?.id;
+    let contractId = typedData.id || typedData.odps_contract?.id || typedData.odcs_contract?.id;
 
     // Async workflow: poll until completed, then extract contract id from result
-    if (!contractId && data.workflow_instance_id) {
-      const wfId = data.workflow_instance_id;
+    if (!contractId && typedData.workflow_instance_id) {
+      const wfId = typedData.workflow_instance_id;
       const wfToken = await page.evaluate(() => localStorage.getItem('access_token'));
       for (let poll = 0; poll < 30; poll++) {
         await page.waitForTimeout(3000);
@@ -3080,7 +3154,7 @@ export async function uploadODPSContractViaUI(
       }
     }
 
-    if (!contractId) throw new Error(`uploadODPSContractViaUI: response missing contract id. Body: ${JSON.stringify(data).slice(0, 300)}`);
+    if (!contractId) throw new Error(`uploadODPSContractViaUI: response missing contract id. Body: ${creationResp.body.slice(0, 300)}`);
     return { contractId };
   }
 
