@@ -5,27 +5,24 @@
  */
 
 import { test } from '@playwright/test';
-import { clearAuthStorage } from '../fixtures/auth';
+import { clearAuthStorage, getTestUser, loginUser } from '../fixtures/auth';
 import { assertEdgeBehavior, assertFailureRedirect, assertSuccessLoad } from '../fixtures/journey-helpers';
 import { waitForAppMainReady } from '../fixtures/helpers';
 
-// storageState from chromium-mvp project already injects auth — no loginUser() needed.
+// storageState from chromium-mvp injects auth, but the token can expire
+// during long (1.4 h) staging runs. loginUser() fast-paths when storageState
+// is still valid (<1 s) and re-authenticates when it's not — eliminating
+// the "Redirected to login — session expired" skip that plagued this spec.
 
 test.describe('Feature: Files', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('files list loads when authenticated', async ({ page }) => {
+      const user = await getTestUser();
+      await loginUser(page, user);
       await page.goto('/files');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          await assertFailureRedirect(page);
-          return;
-        }
-        throw _err;
-      }
+      await waitForAppMainReady(page, { timeout: 60000 });
       await assertSuccessLoad(page, {
         successContentSelector: '[data-testid="file-list-page"], .file-list-page, [data-testid="file-list-empty-state"], .empty-state',
       });
@@ -50,16 +47,10 @@ test.describe('Feature: Files', () => {
 
   test.describe('Edge', () => {
     test('files route shows empty state when no files', async ({ page }) => {
+      const user = await getTestUser();
+      await loginUser(page, user);
       await page.goto('/files');
-      try {
-        await waitForAppMainReady(page, { timeout: 60000 });
-      } catch (_err) {
-        if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to login — session expired');
-          return;
-        }
-        throw _err;
-      }
+      await waitForAppMainReady(page, { timeout: 60000 });
       await assertEdgeBehavior(page, {
         emptyStateSelector: '[data-testid="file-list-empty-state"], .empty-state',
         orContentSelector: '[data-testid="file-list-table"], .file-list-table',

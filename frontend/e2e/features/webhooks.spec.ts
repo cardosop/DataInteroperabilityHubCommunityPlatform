@@ -5,6 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { getTestUser, loginUser } from '../fixtures/auth';
 import { assertListPageLoads } from '../fixtures/helpers';
 
 test.describe('Feature: Webhooks', () => {
@@ -12,6 +13,8 @@ test.describe('Feature: Webhooks', () => {
 
   test.describe('Success', () => {
     test('webhooks list loads', async ({ page }) => {
+      const user = await getTestUser();
+      await loginUser(page, user);
       await page.goto('/webhooks');
       await page.waitForLoadState('domcontentloaded');
       await assertListPageLoads(page, '.webhook-list-page, .empty-state, h1', { timeout: 60000 });
@@ -20,6 +23,8 @@ test.describe('Feature: Webhooks', () => {
 
   test.describe('Failure', () => {
     test('webhook detail with non-existent id shows error or redirect', async ({ page }) => {
+      const user = await getTestUser();
+      await loginUser(page, user);
       // Wait for the actual API response that settles the React Query rather
       // than a fixed 5 s sleep — staging cold-start can push the first request
       // beyond 5 s and the previous fixed wait raced the loading skeleton.

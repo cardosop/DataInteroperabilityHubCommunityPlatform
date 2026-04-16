@@ -6,16 +6,20 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { getTestUser, loginUser } from '../fixtures/auth';
 import { assertSuccessLoad } from '../fixtures/journey-helpers';
 import { waitForAppMainReady } from '../fixtures/helpers';
 
-// storageState from chromium-mvp project already injects auth — no loginUser() needed.
+// loginUser() replaces bare storageState reliance — the token can expire
+// during long staging runs (1.4 h), causing silent skips on auth redirect.
 
 test.describe('Feature: Semantic', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('semantic route loads when authenticated and capability enabled', async ({ page }) => {
+      const user = await getTestUser();
+      await loginUser(page, user);
       await page.goto('/semantic');
       try {
         await waitForAppMainReady(page, { timeout: 60000, acceptRedirectToLogin: true });
@@ -43,6 +47,8 @@ test.describe('Feature: Semantic', () => {
 
   test.describe('Success — tabs', () => {
     test('SPARQL tab loads query interface', async ({ page }) => {
+      const user = await getTestUser();
+      await loginUser(page, user);
       await page.goto('/semantic');
       try {
         await waitForAppMainReady(page, { timeout: 30000, acceptRedirectToLogin: true });
@@ -67,6 +73,8 @@ test.describe('Feature: Semantic', () => {
     });
 
     test('ontology tab loads and shows content or service-unavailable error', async ({ page }) => {
+      const user = await getTestUser();
+      await loginUser(page, user);
       await page.goto('/semantic');
       try {
         await waitForAppMainReady(page, { timeout: 30000, acceptRedirectToLogin: true });
@@ -109,6 +117,8 @@ test.describe('Feature: Semantic', () => {
 
   test.describe('Edge', () => {
     test('semantic shows unavailable or MVP coming-soon when capability-gated', async ({ page }) => {
+      const user = await getTestUser();
+      await loginUser(page, user);
       await page.goto('/semantic');
       // Wait for the app to fully initialize (lazy bundles + auth check) rather than a fixed sleep.
       // waitForAppMainReady handles the visible/slowMo project's slower rendering correctly.

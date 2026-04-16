@@ -47,12 +47,22 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
           if (attempt === 0) await new Promise((r) => setTimeout(r, 2000));
         }
       }
-      // Skip when MailHog or worker unavailable (optional services for password reset flow).
-      // Worker processes send_password_reset_email jobs; MailHog captures the email.
+      // Skip when MailHog is unavailable. The success path MUST intercept the
+      // password-reset email to extract the token — there is no API shortcut.
+      // On external targets (staging), MailHog is typically not deployed; set
+      // MAILHOG_URL to a reachable MailHog instance if available.
+      const isExternal = !!process.env.PLAYWRIGHT_BASE_URL?.match(
+        /^https?:\/\/(?!localhost|127\.)/
+      );
       test.skip(
         !mailhogReachable,
-        `MailHog not reachable at ${MAILHOG_BASE_URL}. Password reset requires MailHog for email delivery. ` +
-          `Start: docker compose -f docker-compose.test.yml up -d mailhog-test`
+        isExternal
+          ? `MailHog not reachable at ${MAILHOG_BASE_URL}. ` +
+            `Running against external target (${process.env.PLAYWRIGHT_BASE_URL}); ` +
+            `set MAILHOG_URL to the staging MailHog endpoint, or skip this test ` +
+            `(password reset works — the E2E just cannot intercept real emails).`
+          : `MailHog not reachable at ${MAILHOG_BASE_URL}. Password reset requires MailHog for email delivery. ` +
+            `Start: docker compose -f docker-compose.test.yml up -d mailhog-test`
       );
       test.skip(
         !workerReachable,

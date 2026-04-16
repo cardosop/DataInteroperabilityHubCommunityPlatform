@@ -11,6 +11,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { getTestUser, loginUser } from '../fixtures/auth';
 import { assertListPageLoads } from '../fixtures/helpers';
 
 test.describe('Feature: Lineage', () => {
@@ -18,23 +19,19 @@ test.describe('Feature: Lineage', () => {
 
   test.describe('Success', () => {
     test('contract lineage tab renders graph or empty state', async ({ page }) => {
-      // Navigate to contracts list (storageState provides auth)
+      // Authenticate explicitly — storageState token can expire during long runs.
+      const user = await getTestUser();
+      await loginUser(page, user);
+
+      // Navigate to contracts list
       await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
 
       // Wait for list to load — may be empty on a fresh staging DB
-      try {
-        await assertListPageLoads(
-          page,
-          '[data-testid="contract-list-page"], .contract-list-page, .empty-state',
-          { timeout: 60000 },
-        );
-      } catch {
-        if (page.url().includes('/login')) {
-          test.skip(true, 'Redirected to /login — auth token expired');
-          return;
-        }
-        throw new Error('Contract list did not load');
-      }
+      await assertListPageLoads(
+        page,
+        '[data-testid="contract-list-page"], .contract-list-page, .empty-state',
+        { timeout: 60000 },
+      );
 
       // If empty state or no contracts, skip — lineage needs contract data.
       // Use .contract-row only (not generic tr) to avoid matching <thead> rows.
