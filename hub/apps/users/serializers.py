@@ -87,24 +87,25 @@ class UserCreateSerializer(serializers.ModelSerializer):
             "password",
             "role_ids",
             "send_invitation",
-            "status"
         ]
         extra_kwargs = {
             "password": {"write_only": True, "required": False}
         }
-    
+
     def create(self, validated_data):
         """Create user with optional role assignment"""
         role_ids = validated_data.pop("role_ids", [])
         send_invitation = validated_data.pop("send_invitation", True)
         password = validated_data.pop("password", None)
-        
-        # Set status based on invitation, but respect explicit status if provided
-        if "status" not in validated_data:
-            if send_invitation:
-                validated_data["status"] = UserStatus.INVITED
-            else:
-                validated_data["status"] = UserStatus.ACTIVE
+
+        # G2.2 fix (glittery-dreaming-micali.md): status is no longer a
+        # writable field — clients cannot bypass the invitation workflow
+        # by sending {"status": "ACTIVE"}. Status is derived exclusively
+        # from send_invitation.
+        if send_invitation:
+            validated_data["status"] = UserStatus.INVITED
+        else:
+            validated_data["status"] = UserStatus.ACTIVE
         
         # Create user
         user = User.objects.create_user(

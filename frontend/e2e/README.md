@@ -161,6 +161,55 @@ Role-gated journeys require `ensure_e2e_user_roles` to be run before E2E. The co
 
 **Related**: [docs/TEST_TRACEABILITY.md](../../docs/TEST_TRACEABILITY.md), [docs/SECURITY_TEST_COVERAGE.md](../../docs/SECURITY_TEST_COVERAGE.md), [docs/RUNBOOKS.md](../../docs/RUNBOOKS.md).
 
+## Quarantine policy (Phase 225.4)
+
+A flaky spec promoted into MVP CI can block `main` on every merge. The
+`@quarantine` tag is the escape hatch: mark a spec quarantined, keep it
+out of the default MVP run, and let a nightly staging job re-run it until
+it either proves itself stable or gets fixed.
+
+### How to quarantine a spec
+
+Add `@quarantine` anywhere in the `test.describe()` or `test()` title.
+Playwright treats `@`-prefixed tokens as tags; the default MVP run excludes
+them via `grepInvert: /@quarantine\b/` in
+[`playwright.mvp.config.ts`](../playwright.mvp.config.ts).
+
+```ts
+// Whole suite quarantined:
+test.describe('@quarantine Asset lifecycle — full value chain', () => {
+  test('create → publish → purchase', async ({ page }) => { /* … */ });
+});
+
+// Single case quarantined:
+test('@quarantine flaky on staging Stripe test mode', async ({ page }) => { /* … */ });
+```
+
+Always include a PR comment or code comment linking the failing CI run so
+the tag has a paper trail.
+
+### How quarantined specs still run
+
+- **Nightly** (`.github/workflows/playwright-mvp-quarantine-nightly.yml`, 02:30 UTC)
+  against staging, via
+  [`playwright.mvp.quarantine.config.ts`](../playwright.mvp.quarantine.config.ts).
+  `retries: 3` (vs the default 2) to absorb real flakes without false positives.
+- **Local reproduction**: `npx playwright test --config playwright.mvp.quarantine.config.ts`
+  targets the same grep from your dev stack.
+
+### When to un-quarantine
+
+Strip the `@quarantine` tag when the spec has passed **5 consecutive nightly
+runs** on staging with zero retries. That evidence lives in the uploaded HTML
+report artifact of the nightly workflow.
+
+### What quarantine is NOT
+
+- Not a way to silence a broken feature. If the spec is exposing a real
+  defect, fix the defect (or revert the promotion); do not tag-and-forget.
+- Not a release gate. Nightly is advisory (`continue-on-error: true`); it
+  does not block deploys. Its job is to surface slow decay, not stop ship.
+
 ## Notes
 
 - Tests use real backend (no mocks/stubs)

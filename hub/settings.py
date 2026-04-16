@@ -1980,12 +1980,36 @@ SECURE_COOKIES = env.bool("SECURE_COOKIES", default=False)
 SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
 CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=False)
 
-# Production: enforce secure cookies and HSTS unconditionally.
+# Production: enforce secure cookies, HSTS, and SSL redirect.
 # These settings MUST NOT be forced True outside the production block so that
 # local development and tests work without HTTPS.
+#
+# NEW-1 (glittery-dreaming-micali.md): the guards run FIRST — before any
+# unconditional override — so an env-var like SESSION_COOKIE_SECURE=false
+# causes an immediate ImproperlyConfigured instead of silently being
+# overwritten. This matches the CORS_ALLOWED_ORIGINS guard at line ~1520.
 if ENVIRONMENT == "production":
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+    # Guard BEFORE override: catch env-var misconfig that would disable
+    # HTTPS protections. The env.bool() reads at ~lines 1979-1981 default
+    # to False, so the only way these are True here is if the deployer
+    # explicitly set the env vars — exactly what we require.
+    if not SESSION_COOKIE_SECURE:
+        raise ImproperlyConfigured(
+            "SESSION_COOKIE_SECURE must be True in production. "
+            "Set the env var explicitly."
+        )
+    if not CSRF_COOKIE_SECURE:
+        raise ImproperlyConfigured(
+            "CSRF_COOKIE_SECURE must be True in production. "
+            "Set the env var explicitly."
+        )
+    if not SECURE_SSL_REDIRECT:
+        raise ImproperlyConfigured(
+            "SECURE_SSL_REDIRECT must be True in production. "
+            "Set the env var explicitly."
+        )
+
+    # HSTS: unconditional production values (not env-var-driven).
     SECURE_HSTS_SECONDS = 63072000          # 2 years
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True

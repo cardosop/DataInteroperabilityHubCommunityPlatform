@@ -1,42 +1,32 @@
 /**
- * Phase 102: Revoked Entitlement Blocks Access
+ * Lifecycle: Revoked Entitlement (Phase 102, modernised in 225.4 P0.2).
  *
- * Consumer has entitlement → admin revokes → query blocked
+ * Sanity-level contract test: the entitlements endpoint is reachable for an
+ * authenticated Data Consumer and never returns 5xx. Existence of a positive
+ * "revocation denies access" case is deferred to the full value-chain spec,
+ * which has the full listing→order→entitlement chain.
+ *
+ * 225.4 changes:
+ *   - Imports `test, expect` from the cleanup fixture (no-op here; kept for
+ *     consistency with the other lifecycle specs).
+ *   - Uses `getConsumerTestUser()` + `loginViaApi`.
+ *   - Drops the `E2E_LIFECYCLE_TESTS` opt-in guard.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures/test-data-cleanup';
+import { getConsumerTestUser, loginViaApi } from '../fixtures/auth';
 
 test.describe('Revoked Entitlement', () => {
-  test.skip(
-    !process.env.E2E_LIFECYCLE_TESTS,
-    'Lifecycle tests require full stack — set E2E_LIFECYCLE_TESTS=1'
-  );
-
-  test('revoked entitlement denies data access', async ({ request }) => {
-    const loginRes = await request.post('/api/v1/auth/login/', {
-      data: {
-        email: process.env.E2E_DC_EMAIL || 'dc@example.com',
-        password: process.env.E2E_DC_PASSWORD || 'testpass123',
-      },
-    });
-
-    if (loginRes.status() !== 200) {
-      test.skip(true, 'DC user not available');
-      return;
-    }
-
-    const { access_token } = await loginRes.json();
+  test('entitlements endpoint is reachable and returns a non-5xx', async ({ request }) => {
+    const consumer = await getConsumerTestUser();
+    const { access_token } = await loginViaApi(consumer.email, consumer.password);
     const headers = {
       Authorization: `Bearer ${access_token}`,
-      'Content-Type': 'application/json',
-      'X-Tenant-ID': process.env.E2E_TENANT_ID || '',
     };
 
-    // Attempt to access entitlements endpoint
     const entitlementsRes = await request.get('/api/v1/marketplace/entitlements/', {
       headers,
     });
 
-    // Endpoint should be accessible (even if empty)
     expect(entitlementsRes.status()).toBeLessThan(500);
   });
 });

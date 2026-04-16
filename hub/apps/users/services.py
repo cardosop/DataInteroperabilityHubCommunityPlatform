@@ -370,9 +370,20 @@ class UserService(BaseService):
             raise NotFoundError(f"Actor user {actor_user_id} not found")
 
         if self._user_has_resources(user):
-            # Soft delete: set status to DISABLED
+            # Soft delete: set status to DISABLED + bump token_version so
+            # existing JWTs are rejected immediately (B3 fix —
+            # glittery-dreaming-micali.md). Without the version bump, the
+            # disabled user's sessions remain valid until the access_token
+            # naturally expires (up to 2 h on staging, 15 min on prod).
+            #
+            # Single save with both fields — avoids the non-atomic
+            # two-save pattern that increment_token_version() + save()
+            # would produce (review fix from 225.5.review).
             user.status = UserStatus.DISABLED
-            user.save(update_fields=["status", "updated_at"])
+            user.token_version += 1
+            user.save(update_fields=[
+                "status", "token_version", "updated_at",
+            ])
             log_user_operation(
                 action="USER_DISABLED",
                 user=user,

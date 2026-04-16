@@ -78,6 +78,27 @@ const mvpTestMatch: string[] = [
   'cross-cutting/edge-cases-tests.spec.ts',
   'cross-cutting/failure-scenarios-tests.spec.ts',
   'security/csp-enforce.spec.ts',
+  // Phase 225.4 — meta-test: guards the @quarantine policy regex from drift.
+  // Pure Node, no browser, no backend → runs in ~100 ms.
+  'meta/quarantine-policy.spec.ts',
+  // Phase 225.4 P0.1 — multi-tenancy isolation (security boundary). Zero
+  // mutation after cleanup.track() retrofit in 225.4 P0.5.
+  'journeys/cross-persona/multi-tenancy-isolation.spec.ts',
+  // Phase 225.4 P0.2 — fail-closed gate specs. All three were modernised in
+  // P0.5: dropped the E2E_LIFECYCLE_TESTS opt-in guard, switched to persona
+  // fixtures, added cleanup.track() for the mutating spec.
+  'lifecycle/failed-dq-blocks-publish.spec.ts',
+  'lifecycle/rejected-compliance-blocks-order.spec.ts',
+  'lifecycle/revoked-entitlement.spec.ts',
+  // Phase 225.4 P0.3 — canonical end-to-end value-chain smoke. Modernised
+  // in P0.5 with cleanup tracking for the asset + contract it creates.
+  'lifecycle/full-value-chain.spec.ts',
+  // Phase 225.4 P1.2 — PA-002 (Manage Tenant Lifecycle). The platform-admin
+  // persona aggregator imports PA-001 + MPA-* + PA-010 but NOT PA-002, so
+  // the grep allowlist alone would admit zero tests for it. Include the
+  // spec file directly so the `JOURNEY-PA-002` grep entry has something to
+  // match.
+  'journeys/pa/JOURNEY-PA-002.spec.ts',
 ];
 
 export default defineConfig({
@@ -88,7 +109,20 @@ export default defineConfig({
   // OR titles tagged with one of the promoted journeys.
   // Phase 213.B (zero-mutation): AUTH-002, AUTH-004, TA-001, DE-001.
   // Phase 213.C (mutating + cleanup fixture): AUTH-001, DPO-001, DPO-002, DC-001, CPO-001.
-  grep: /^(?!.*JOURNEY-)|JOURNEY-(AUTH-001|AUTH-002|AUTH-004|TA-001|DE-001|DPO-001|DPO-002|DC-001|CPO-001)/,
+  // Phase 225.4 P0.4 / P1.1 / P1.2 / P1.3 — grep allowlist extended to include:
+  //   - AUTH-003 (password reset — aggregator visitor.spec.ts already imports it)
+  //   - CPO-002 (Generate Compliance Report; read-only)
+  //   - AUD-001..006 (all Auditor journeys; read-only, no cleanup needed)
+  //   - PA-001, PA-002 (Platform Admin core flows; tenant + user onboarding)
+  // Phase 213.B/C originals kept: AUTH-001/002/004, TA-001, DE-001,
+  // DPO-001/002, DC-001, CPO-001.
+  grep: /^(?!.*JOURNEY-)|JOURNEY-(AUTH-001|AUTH-002|AUTH-003|AUTH-004|TA-001|DE-001|DPO-001|DPO-002|DC-001|CPO-001|CPO-002|AUD-00[1-6]|PA-00[12])/,
+  // Phase 225.4 — quarantine policy. Tests tagged `@quarantine` in their title or
+  // `test.describe()` block are excluded from the default MVP run so a single flaky
+  // promotion cannot break `main`. They still run (a) via `playwright.mvp.quarantine.config.ts`
+  // in the nightly-staging job, and (b) locally when an engineer explicitly removes
+  // the `grepInvert` to reproduce. See `e2e/README.md` → "Quarantine policy".
+  grepInvert: /@quarantine\b/,
   fullyParallel: !isVisibleRun,
   forbidOnly: !!process.env.CI,
   // External targets (staging) get 1 retry to absorb the rare worker-process

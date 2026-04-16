@@ -863,6 +863,12 @@ def accept_invitation(request):
     }
     if not use_cookie_auth:
         body["access_token"] = access_token
+        # B5 fix (glittery-dreaming-micali.md): body mode must include
+        # refresh_token so the SPA can store and rotate it — matching
+        # the login() response shape. Without this, the session dies
+        # at access_token expiry with no way to refresh, forcing users
+        # who accepted an invitation to re-login after 15 min (prod).
+        body["refresh_token"] = refresh_token_str
 
     response = Response(body, status=status.HTTP_200_OK)
     _set_refresh_cookie(response, refresh_token_str)

@@ -14,7 +14,9 @@
  * Real backend only; no mocks. Uses api-assets.ts and the switchTenantViaUI helper.
  */
 
-import { expect, test } from '@playwright/test';
+// Phase 225.4 P0.5 — use the cleanup fixture so the asset created by this test
+// is torn down on pass OR fail; otherwise repeated runs accumulate orphans.
+import { expect, test } from '../../fixtures/test-data-cleanup';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, switchTenantViaUI } from '../../fixtures/helpers';
 
@@ -32,7 +34,7 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
 
   test(
     'asset created in Tenant A is invisible in Tenant B and visible back in Tenant A',
-    async ({ page }) => {
+    async ({ page, cleanup }) => {
       await clearAuthStorage(page);
       const user = await getTestUser();
 
@@ -93,6 +95,9 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
         test.skip(true, 'Asset creation response missing id');
         return;
       }
+      // Phase 225.4 P0.5 — track for auto-teardown so the asset is deleted
+      // regardless of which assertion below fails.
+      cleanup.track({ type: 'asset', id: assetId, owner: user });
       // Use the unique key as the identifier — it has a timestamp so it cannot collide with
       // pre-existing secondary tenant assets that have generic names like "Test Asset".
       const assetIdentifier = assetData.key ?? uniqueAssetKey;
