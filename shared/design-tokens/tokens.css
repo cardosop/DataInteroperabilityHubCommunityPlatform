@@ -1,0 +1,309 @@
+/**
+ * Meshant Design Tokens (shared between app and product site)
+ *
+ * This file is the single source of truth for CSS custom properties.
+ * Imported by:
+ *   - frontend/src/index.css (application)
+ *   - product-site/src/styles/global.css (marketing site)
+ *
+ * DO NOT add component styles, resets, or base selectors here.
+ * Only CSS custom property declarations (:root and dark mode overrides).
+ */
+
+:root {
+  /* Colors — Meshant palette: primary #0A1F44, secondary #2F6BFF, accent #17C6E6 */
+  --color-primary-50: #E8ECF4;
+  --color-primary-100: #CFD8E8;
+  --color-primary-200: #9BA8C4;
+  --color-primary-300: #6778A0;
+  --color-primary-400: #33497C;
+  --color-primary-500: #0A1F44;
+  --color-primary-600: #081A3A;
+  --color-primary-700: #061530;
+  --color-primary-800: #0A1F44;
+  --color-primary-900: #030D22;
+
+  --color-secondary-50: #EBF0FF;
+  --color-secondary-100: #D6E0FF;
+  --color-secondary-200: #ADBFFF;
+  --color-secondary-300: #849EFF;
+  --color-secondary-400: #5B7DFF;
+  --color-secondary-500: #2F6BFF;
+  --color-secondary-600: #2756E6;
+  --color-secondary-700: #1F41CC;
+  --color-secondary-800: #172DB3;
+  --color-secondary-900: #0F1999;
+
+  --color-accent-50: #E6FAFC;
+  --color-accent-100: #CCF5F9;
+  --color-accent-200: #99EBF3;
+  --color-accent-300: #66E0ED;
+  --color-accent-400: #33D6E7;
+  --color-accent-500: #17C6E6;
+  --color-accent-600: #12A0C0;
+  --color-accent-700: #0E7A9A;
+  --color-accent-800: #095474;
+  --color-accent-900: #052E3D;
+
+  --color-success-50: #E8F5E9;
+  --color-success-100: #C8E6C9;
+  --color-success-500: #4CAF50;
+  --color-success-700: #388E3C;
+  --color-success-900: #1B5E20;
+
+  --color-warning-50: #FFF8E1;
+  --color-warning-100: #FFECB3;
+  --color-warning-500: #FFC107;
+  --color-warning-700: #F57C00;
+  --color-warning-800: #7D4200;
+  --color-warning-900: #E65100;
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
+
+  --color-error-50: #FFEBEE;
+  --color-error-100: #FFCDD2;
+  --color-error-500: #F44336;
+  --color-error-700: #D32F2F;
+  --color-error-900: #B71C1C;
+
+  --color-neutral-50: #FAFAFA;
+  --color-neutral-100: #F5F5F5;
+  --color-neutral-200: #EEEEEE;
+  --color-neutral-300: #E0E0E0;
+  --color-neutral-400: #BDBDBD;
+  --color-neutral-500: #9E9E9E;
+  --color-neutral-600: #757575;
+  --color-neutral-700: #616161;
+  --color-neutral-800: #424242;
+  --color-neutral-900: #212121;
+
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 48px;
+  --spacing-2xl: 48px;
+  --spacing-3xl: 64px;
+
+  /* Typography */
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-base: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --font-size-xxl: 24px;
+  --font-size-2xl: 24px;
+  --font-size-3xl: 30px;
+  --font-size-4xl: 36px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+
+  /* Layout — Meshant design system */
+  --layout-sidebar-width: 240px;
+  --layout-content-max-width: 1200px;
+
+  /* Phase 224.5 — responsive breakpoints.
+     Tokens are reference values: @media queries can't read custom props
+     directly, but using a single source means layout rules and JS stay
+     aligned. Matching constants live in shared/hooks/useBreakpoint.ts. */
+  --bp-mobile: 480px;
+  --bp-tablet: 768px;
+  --bp-desktop: 1024px;
+
+  /* Border Radius */
+  --border-radius-none: 0;
+  --border-radius-sm: 4px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+  --border-radius-full: 9999px;
+
+  /* Semantic Colors */
+  --color-primary: var(--color-primary-500);
+  --color-primary-dark: var(--color-primary-600);
+  --color-primary-darker: var(--color-primary-700);
+  --color-primary-light: var(--color-primary-100);
+  --color-text-on-primary: #ffffff;
+
+  --color-secondary: var(--color-secondary-500);
+  --color-secondary-dark: var(--color-secondary-600);
+  --color-secondary-light: var(--color-secondary-100);
+
+  --color-accent: var(--color-accent-500);
+  --color-accent-light: var(--color-accent-50);
+
+  --color-success: var(--color-success-500);
+  --color-success-dark: var(--color-success-700);
+  --color-success-light: var(--color-success-100);
+
+  --color-warning: var(--color-warning-500);
+  --color-warning-dark: var(--color-warning-700);
+  --color-warning-light: var(--color-warning-100);
+
+  --color-error: var(--color-error-500);
+  --color-error-dark: var(--color-error-700);
+  --color-error-light: var(--color-error-100);
+
+  --color-info: var(--color-primary-500);
+  --color-info-dark: var(--color-primary-700);
+  --color-info-light: var(--color-primary-100);
+
+  /* Background Colors */
+  --color-background-primary: #ffffff;
+  --color-background-secondary: var(--color-neutral-50);
+  --color-background-tertiary: var(--color-neutral-100);
+  --color-surface: var(--color-background-tertiary);
+  --color-surface-elevated: #ffffff;
+  --color-surface-subtle: var(--color-neutral-50);
+  --color-surface-overlay: rgba(0, 0, 0, 0.5);
+  /* Intentional dark accent surface (tooltips, bulk-action bar). Stays
+     dark in both themes so white text on it remains readable. */
+  --color-surface-inverse: #1f2937;
+  --color-surface-inverse-hover: #374151;
+  --color-surface-inverse-border: #4b5563;
+
+  /* Text Colors */
+  --color-text: var(--color-neutral-900);
+  --color-text-primary: var(--color-neutral-900);
+  --color-text-secondary: var(--color-neutral-700);
+  --color-text-tertiary: var(--color-neutral-600);
+  --color-text-muted: var(--color-neutral-600);
+  --color-text-inverse: #ffffff;
+
+  /* Border Colors */
+  --color-border: var(--color-neutral-300);
+  --color-border-light: var(--color-neutral-200);
+  --color-border-strong: var(--color-neutral-400);
+  --border-width: 1px;
+
+  /* Subtle status surfaces (pair with --color-*-500 text on light, swap on dark) */
+  --color-success-subtle: var(--color-success-50);
+  --color-warning-subtle: var(--color-warning-50);
+  --color-error-subtle: var(--color-error-50);
+  --color-info-subtle: var(--color-secondary-50);
+
+  /* Skeleton Loader Tokens (Phase 40) */
+  --skeleton-base: var(--color-neutral-200);
+  --skeleton-highlight: var(--color-neutral-100);
+  --skeleton-animation-duration: 1.5s;
+
+  /* Font Family (Phase 28.7.3: Inter via Google Fonts) */
+  --font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-family-mono: 'Monaco', 'Menlo', 'Consolas', monospace;
+}
+
+/* ------------------------------------------------------------------ */
+/* Dark theme — 224.4                                                  */
+/* ------------------------------------------------------------------ */
+/*
+ * Tokens are overridden at the :root level whenever <html data-theme="dark">
+ * is set (see useTheme). We only remap *semantic* tokens — the raw palette
+ * stays constant so component-level references like `var(--color-error-500)`
+ * keep their meaning. Backgrounds darken, text lightens, borders desaturate,
+ * shadows get stronger blur.
+ */
+[data-theme='dark'] {
+  /* Neutral scale — inverted so existing files that reference
+     `var(--color-neutral-*)` semantically (50/100 = surface, 700–900 = text,
+     200/300 = border) adapt automatically without file-by-file rewrites.
+     Palette token *names* stay the same; only their resolved values flip. */
+  --color-neutral-50: #0b1120;
+  --color-neutral-100: #111827;
+  --color-neutral-200: #1f2937;
+  --color-neutral-300: #334155;
+  --color-neutral-400: #475569;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #94a3b8;
+  --color-neutral-700: #cbd5e1;
+  --color-neutral-800: #e2e8f0;
+  --color-neutral-900: #f1f5f9;
+
+  /* Backgrounds */
+  --color-background-primary: #0b1120;
+  --color-background-secondary: #111827;
+  --color-background-tertiary: #1f2937;
+  --color-surface: var(--color-background-secondary);
+  --color-surface-elevated: #1f2937;
+  --color-surface-subtle: #111827;
+  --color-surface-overlay: rgba(0, 0, 0, 0.7);
+
+  /* Text */
+  --color-text: #e5e7eb;
+  --color-text-primary: #f3f4f6;
+  --color-text-secondary: #d1d5db;
+  --color-text-tertiary: #9ca3af;
+  --color-text-muted: #9ca3af;
+  --color-text-inverse: #0b1120;
+  --color-text-on-primary: #ffffff;
+
+  /* Borders */
+  --color-border: #334155;
+  --color-border-light: #1f2937;
+  --color-border-strong: #475569;
+
+  /* Status subtle surfaces — darker tints so white text reads on top */
+  --color-success-subtle: #0f2a1a;
+  --color-warning-subtle: #2a1f05;
+  --color-error-subtle: #2a0f10;
+  --color-info-subtle: #0f1a2f;
+
+  /* Keep the inverse surface slightly lighter than the page background in
+     dark mode so the bulk-action bar / tooltips remain visible. */
+  --color-surface-inverse: #334155;
+  --color-surface-inverse-hover: #475569;
+  --color-surface-inverse-border: #64748b;
+
+  /* Primary-800: light blue for readability on dark surfaces. The light-mode
+     value (#0A1F44 navy) is invisible on dark backgrounds. */
+  --color-primary-800: #93c5fd;
+
+  /* Warning panel tokens — dark amber tints readable on dark backgrounds.
+     Without these, var(--color-warning-bg) falls back to #fffbeb (light cream),
+     which is jarring on dark. */
+  --color-warning-bg: #2a1f05;
+  --color-warning-border: #78601a;
+
+  /* Semantic colours — bump the 500s toward their lighter siblings so
+     coloured accents still have enough contrast on dark surfaces. */
+  --color-primary: var(--color-secondary-400);
+  --color-primary-light: var(--color-primary-900);
+  --color-secondary: var(--color-secondary-400);
+  --color-secondary-light: var(--color-secondary-900);
+  --color-accent: var(--color-accent-400);
+  --color-accent-light: var(--color-accent-900);
+  --color-success: #4ade80;
+  --color-success-light: #052e17;
+  --color-warning: #facc15;
+  --color-warning-light: #3a2a05;
+  --color-error: #f87171;
+  --color-error-light: #3a0e10;
+  --color-info: var(--color-secondary-400);
+  --color-info-light: #0f1a2f;
+
+  /* Shadows — stronger against dark backgrounds */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
+
+  /* Skeleton */
+  --skeleton-base: #1f2937;
+  --skeleton-highlight: #374151;
+
+  color-scheme: dark;
+}
