@@ -52,8 +52,9 @@ test.describe('Feature: Semantic', () => {
       await page.goto('/semantic');
       try {
         await waitForAppMainReady(page, { timeout: 30000, acceptRedirectToLogin: true });
-      } catch {
-        // route gated or login redirect
+      } catch (err) {
+        // Only acceptable if capability-gated redirect or login
+        if (!/\/(login|403|unavailable|coming-soon)/.test(page.url())) throw err;
       }
       if (!page.url().includes('/semantic')) {
         test.skip(true, 'Semantic page not available — capability gated or auth redirect');
@@ -124,8 +125,9 @@ test.describe('Feature: Semantic', () => {
       // waitForAppMainReady handles the visible/slowMo project's slower rendering correctly.
       try {
         await waitForAppMainReady(page, { timeout: 30000, acceptRedirectToLogin: true });
-      } catch {
-        // Ignore if the route is gated or login redirect fires
+      } catch (err) {
+        // Only acceptable for capability-gated redirects
+        if (!/\/(login|403|unavailable|coming-soon)/.test(page.url())) throw err;
       }
       const url = page.url();
       const onSemantic = url.includes('/semantic');

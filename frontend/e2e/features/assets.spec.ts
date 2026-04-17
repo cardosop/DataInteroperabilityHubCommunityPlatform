@@ -6,7 +6,11 @@
 
 import { expect, test } from '@playwright/test';
 import { getTestUser } from '../fixtures/auth';
-import { assertListPageLoads, loginAndNavigateToRoute, waitForAppMainReady } from '../fixtures/helpers';
+import {
+  assertListPageLoads,
+  assertNonExistentIdShowsError,
+  loginAndNavigateToRoute,
+} from '../fixtures/helpers';
 
 test.describe('Feature: Assets', () => {
   test.setTimeout(120000);
@@ -24,52 +28,39 @@ test.describe('Feature: Assets', () => {
 
   test.describe('Failure', () => {
     test('asset detail with non-existent id shows error or redirect', async ({ page }) => {
+      const testUser = await getTestUser();
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
-      await page.goto(`/assets/${nonExistentId}`);
-      try {
-        await waitForAppMainReady(page, {
-          timeout: 60000,
-          acceptRedirectToLogin: true,
-        });
-      } catch {
-        // May resolve to error/login — acceptable
-      }
-      const onLogin = page.url().includes('/login');
-      const hasError = (await page.locator('.error-display').count()) > 0;
-      // `noDetail` was trivially true after any redirect (page doesn't have .asset-detail-page
-      // when redirected to login or when not yet loaded). Removed — only assert real error signals.
-      expect(
-        onLogin || hasError,
-        'Expected .error-display or login redirect for a nil-UUID asset detail'
-      ).toBe(true);
+      await loginAndNavigateToRoute(page, testUser, `/assets/${nonExistentId}`, {
+        timeout: 60000,
+        contentSelector: '.error-display, .asset-detail-page, h1',
+      });
+      await assertNonExistentIdShowsError(page, {
+        detailContentSelector: '.asset-detail-page, .asset-detail-content',
+      });
     });
   });
 
   test.describe('Edge', () => {
     test('assets create route loads or requires auth', async ({ page }) => {
-      await page.goto('/assets/create');
-      try {
-        await waitForAppMainReady(page, {
-          timeout: 60000,
-          acceptRedirectToLogin: true,
-        });
-      } catch {
-        // May resolve to login — acceptable
-      }
-      const onLogin = page.url().includes('/login');
-      const onCreate = page.url().includes('/assets/create');
-      const hasForm =
-        (await page.locator('form').count()) > 0 || (await page.locator('.asset-form').count()) > 0;
-      // `onCreate` alone was trivially true (we navigated there and staying counts as a pass).
-      // If on create route, must also show a form — otherwise the route rendered something broken.
-      if (onLogin) {
-        expect(onLogin).toBe(true);
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/assets/create', {
+        timeout: 60000,
+        contentSelector: 'form, .asset-form, .asset-create-page, h1',
+      });
+      const url = page.url();
+      if (url.includes('/login')) {
+        // Auth redirect — acceptable
         return;
       }
+      // Must show a form — not just be on the URL
+      const hasForm =
+        (await page.locator('form').count()) > 0 ||
+        (await page.locator('.asset-form, .asset-create-page').count()) > 0;
       expect(
-        onCreate && hasForm,
-        'Expected a form (.asset-form or <form>) to be present when on /assets/create'
+        hasForm,
+        'Expected a form (.asset-form or <form>) to be present on /assets/create'
       ).toBe(true);
+      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 3000 });
     });
   });
 });

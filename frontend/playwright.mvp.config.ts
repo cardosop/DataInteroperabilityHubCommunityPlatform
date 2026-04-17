@@ -67,6 +67,26 @@ const mvpTestMatch: string[] = [
   'features/search.spec.ts',
   'features/semantic.spec.ts',
   'features/lineage.spec.ts',
+  // Phase 226 — MVP feature gap closure: features available in staging but previously untested.
+  // All use loginAndNavigateToRoute (event-driven auth), real backend, no mocks.
+  'features/notifications.spec.ts',
+  'features/home.spec.ts',
+  'features/observability.spec.ts',
+  'features/data-mesh.spec.ts',
+  'features/virtualization.spec.ts',
+  'features/integrations.spec.ts',
+  'features/versioning.spec.ts',
+  'features/health.spec.ts',
+  // Phase 226 — use-case tests promoted to MVP CI. Only tests verified passing on staging.
+  // UC-AM-001, UC-CM-001, UC-DQ-001 removed: form selectors (#key, modal interactions)
+  // don't match staging UI — need individual audit before re-promotion.
+  'use-cases/assets/UC-AM-002.spec.ts',
+  'use-cases/contracts/UC-CM-002.spec.ts',
+  'use-cases/compliance/UC-COMP-001.spec.ts',
+  'use-cases/marketplace/UC-MKT-001.spec.ts',
+  'use-cases/marketplace/UC-MKT-002.spec.ts',
+  'use-cases/webhooks/UC-WH-001.spec.ts',
+  'use-cases/ux/files-upload.spec.ts',
   // Phase 213.A.5 — resilience, security & cross-cutting promotion
   // Audited 2026-04-07: zero docker-exec/MailHog deps, only invalid-login form fills
   // (no entity creation), all use getTestUser/getConsumerTestUser (auto-registered).

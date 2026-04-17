@@ -1,22 +1,19 @@
 /**
  * Lifecycle: Revoked Entitlement (Phase 102, modernised in 225.4 P0.2).
  *
- * Sanity-level contract test: the entitlements endpoint is reachable for an
- * authenticated Data Consumer and never returns 5xx. Existence of a positive
- * "revocation denies access" case is deferred to the full value-chain spec,
- * which has the full listing→order→entitlement chain.
+ * Tests the entitlements API boundary:
+ *   1. Entitlements endpoint is reachable and returns structured response.
+ *   2. Requesting a non-existent entitlement returns 4xx (not 5xx).
  *
- * 225.4 changes:
- *   - Imports `test, expect` from the cleanup fixture (no-op here; kept for
- *     consistency with the other lifecycle specs).
- *   - Uses `getConsumerTestUser()` + `loginViaApi`.
- *   - Drops the `E2E_LIFECYCLE_TESTS` opt-in guard.
+ * Full entitlement lifecycle (create → revoke → verify access denied) requires
+ * the complete listing→order→entitlement chain which lives in the full-value-chain
+ * spec and DPO/DC journey suites.
  */
 import { test, expect } from '../fixtures/test-data-cleanup';
 import { getConsumerTestUser, loginViaApi } from '../fixtures/auth';
 
 test.describe('Revoked Entitlement', () => {
-  test('entitlements endpoint is reachable and returns a non-5xx', async ({ request }) => {
+  test('entitlements endpoint returns structured response', async ({ request }) => {
     const consumer = await getConsumerTestUser();
     const { access_token } = await loginViaApi(consumer.email, consumer.password);
     const headers = {
@@ -27,6 +24,43 @@ test.describe('Revoked Entitlement', () => {
       headers,
     });
 
-    expect(entitlementsRes.status()).toBeLessThan(500);
+    // Must not return 5xx
+    expect(
+      entitlementsRes.status(),
+      'Entitlements endpoint must not return 5xx',
+    ).toBeLessThan(500);
+
+    // If 200, verify the response is structured (not blank or malformed)
+    if (entitlementsRes.ok()) {
+      const body = await entitlementsRes.json().catch(() => null);
+      expect(body, 'Entitlements response must be valid JSON').not.toBeNull();
+      // DRF pagination: { count, results: [] } or direct array
+      const isArray = Array.isArray(body);
+      const hasPagination = body && typeof body === 'object' && 'results' in body;
+      expect(
+        isArray || hasPagination,
+        `Expected array or paginated response, got: ${JSON.stringify(body).slice(0, 200)}`,
+      ).toBe(true);
+    }
+  });
+
+  test('non-existent entitlement id returns 4xx (not 5xx)', async ({ request }) => {
+    const consumer = await getConsumerTestUser();
+    const { access_token } = await loginViaApi(consumer.email, consumer.password);
+    const headers = {
+      Authorization: `Bearer ${access_token}`,
+    };
+
+    const detailRes = await request.get(
+      '/api/v1/marketplace/entitlements/00000000-0000-0000-0000-000000000000/',
+      { headers }
+    );
+
+    // Must not return 5xx — should be 404 or 403
+    expect(
+      detailRes.status(),
+      'Non-existent entitlement must return 4xx',
+    ).toBeGreaterThanOrEqual(400);
+    expect(detailRes.status()).toBeLessThan(500);
   });
 });

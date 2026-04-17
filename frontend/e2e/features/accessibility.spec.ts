@@ -33,9 +33,16 @@ test.describe('Accessibility (axe) — core authenticated pages', () => {
         return;
       }
 
-      // Wait for page content to stabilize
-      await page.waitForLoadState('networkidle').catch(() => null);
-      await page.waitForTimeout(1000);
+      // Wait for page content to stabilize — use domcontentloaded + selector wait
+      // instead of 'networkidle' which is unreliable (background WebSocket/polling
+      // keeps network active, causing silent timeout via .catch(() => null)).
+      await page.waitForLoadState('domcontentloaded');
+      await page.locator('.app-main, .empty-state, h1, [role="main"]')
+        .first()
+        .waitFor({ state: 'visible', timeout: 15000 })
+        .catch(() => {
+          // Content may already be visible from loginAndNavigateToRoute
+        });
 
       const results = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])

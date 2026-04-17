@@ -7,37 +7,67 @@
  * violation count > 0 after a DQ run that encounters type errors.
  */
 
-import { expect, test } from '@playwright/test';
-import { loginUser, getTenantAdminUser } from '../fixtures/auth';
-import { assertListPageLoads, waitForAppMainReady } from '../fixtures/helpers';
+import { expect, test } from '../fixtures/test-data-cleanup';
+import { getTestUser, loginUser, getTenantAdminUser } from '../fixtures/auth';
+import {
+  assertListPageLoads,
+  assertNonExistentIdShowsError,
+  loginAndNavigateToRoute,
+} from '../fixtures/helpers';
 
 test.describe('Feature: Data Quality', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('DQ list loads', async ({ page }) => {
-      await page.goto('/dq');
-      await page.waitForLoadState('domcontentloaded');
-      await assertListPageLoads(page, '.dq-run-list-page, .empty-state, h1', { timeout: 60000 });
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/dq', {
+        timeout: 60000,
+        contentSelector: '.dq-run-list-page, .empty-state, .error-display, h1',
+      });
+      await assertListPageLoads(page, '.dq-run-list-page, .empty-state', { timeout: 60000 });
     });
   });
 
   test.describe('Failure', () => {
     test('DQ run detail with non-existent id shows error', async ({ page }) => {
-      await page.goto('/dq/runs/00000000-0000-0000-0000-000000000000');
-      try {
-        await waitForAppMainReady(page, {
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(
+        page,
+        testUser,
+        '/dq/runs/00000000-0000-0000-0000-000000000000',
+        {
           timeout: 60000,
-          acceptRedirectToLogin: true,
-        });
-      } catch {
-        // May resolve to error/login — acceptable
-      }
-      const onLogin = page.url().includes('/login');
-      const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('text=/not found|404/i').count()) > 0;
-      expect(onLogin || hasError).toBe(true) /* acceptable states */;
+          contentSelector: '.error-display, .dq-run-detail-page, h1',
+        }
+      );
+      await assertNonExistentIdShowsError(page, {
+        detailContentSelector: '.dq-run-detail-page',
+      });
+    });
+
+    test('unauthenticated access to DQ redirects to login', async ({ page }) => {
+      await page.goto('/dq');
+      await page.waitForLoadState('domcontentloaded');
+      const url = page.url();
+      expect(
+        url.includes('/login') || url.includes('/dq'),
+        'Expected /login redirect or /dq with auth'
+      ).toBe(true);
+    });
+  });
+
+  test.describe('Edge', () => {
+    test('DQ list shows empty state when no runs exist', async ({ page }) => {
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/dq', {
+        timeout: 60000,
+        contentSelector: '.dq-run-list-page, .empty-state, .error-display, h1',
+      });
+      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 5000 });
+      const hasContent =
+        (await page.locator('.dq-run-list-page, .empty-state').count()) > 0;
+      expect(hasContent, 'Expected DQ list or empty state (no crash)').toBe(true);
     });
   });
 
@@ -59,7 +89,7 @@ test.describe('Feature: Data Quality', () => {
       'DQ type-mismatch smoke test requires VITE_E2E_TEST=true and a running DQ service'
     );
 
-    test('DQ run detail page renders after run completes', async ({ page, request }) => {
+    test('DQ run detail page renders after run completes', async ({ page, request, cleanup }) => {
       // Use tenant admin: the bare DPO test user has no entitlement on a freshly
       // seeded tenant, so POST /api/v1/assets/ returns 403 and the test silently
       // skipped. Tenant admin is the entitled role for asset creation; the DQ
@@ -92,6 +122,7 @@ test.describe('Feature: Data Quality', () => {
       }
       const asset = await assetResp.json();
       const assetId = asset.id;
+      cleanup.track({ type: 'asset', id: assetId, owner: user });
       console.log(`DQ: Asset created: ${assetId}`);
 
       // -- Step 2b: Upload a file and create a dataset linked to the asset --

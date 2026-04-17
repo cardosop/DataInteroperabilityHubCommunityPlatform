@@ -95,6 +95,38 @@ async function globalSetup(config: FullConfig) {
 
         if (apiResponse.status !== undefined) {
           console.log('✅ Backend API is available and responding');
+
+          // Auth health gate: verify that a real login can succeed before running
+          // 120+ tests that all depend on it. If the auth service is broken (DB down,
+          // user doesn't exist, rate-limited), fail fast with a clear message instead
+          // of letting every test fail with unclear timeout errors.
+          const E2E_EMAIL = process.env.E2E_TEST_USER_EMAIL || 'e2e-test-dpo@meshant.com';
+          const E2E_PASSWORD = process.env.E2E_TEST_USER_PASSWORD || 'E2eTestPass123!';
+          try {
+            const authCheck = await fetch(`${API_BASE_URL}/auth/login/`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: E2E_EMAIL, password: E2E_PASSWORD }),
+            });
+            if (authCheck.status === 200) {
+              console.log('✅ Auth health gate passed — test user can log in');
+            } else if (authCheck.status === 429) {
+              console.log('⚠️  Auth health gate: rate-limited (429) — tests may be slow but should recover');
+            } else if (authCheck.status === 400 || authCheck.status === 401) {
+              console.warn(
+                `⚠️  Auth health gate: login returned ${authCheck.status}. ` +
+                `Test user (${E2E_EMAIL}) may not exist or password may be wrong. ` +
+                `Tests that depend on authentication will fail.`
+              );
+            } else {
+              console.warn(`⚠️  Auth health gate: unexpected status ${authCheck.status}`);
+            }
+          } catch (authErr) {
+            console.warn(
+              `⚠️  Auth health gate: login request failed — ${authErr instanceof Error ? authErr.message : String(authErr)}`
+            );
+          }
+
           process.env.E2E_API_BASE_URL = API_BASE_URL;
 
           // Skip docker exec seeding for remote APIs (staging/production).

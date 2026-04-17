@@ -60,27 +60,29 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
   });
 
   test.describe('Failure', () => {
-    test('admin page loads without crash', async ({ page }) => {
-      await loginAsPersona(page, getTenantAdminUser);
-      await page.goto('/admin');
-      await page.waitForLoadState('domcontentloaded');
+    test('admin page loads without crash and shows no server errors', async ({ page }) => {
+      const taUser = await getTenantAdminUser();
+      await loginAndNavigateToRoute(page, taUser, '/admin', {
+        timeout: 60000,
+        contentSelector: '.admin-page, [data-testid="forbidden-page"], .error-display',
+      });
       if (page.url().includes('/login')) {
         test.skip(true, 'Auth redirect — session expired');
         return;
       }
-      // Wait for page to settle
-      await page
-        .locator('.admin-page, [data-testid="forbidden-page"], .error-display')
-        .first()
-        .waitFor({ state: 'visible', timeout: 15000 })
-        .catch(() => null);
-      // Assert no 500 error
+      const url = page.url();
+      expect(
+        url.includes('/admin') || url.includes('/403'),
+        'Expected /admin or /403'
+      ).toBe(true);
+      // No 500 errors
       const has500 = (await page.locator('text=/500|internal server error/i').count()) > 0;
-      expect(has500).toBe(false);
-      // Assert meaningful content rendered
-      const onAdmin = page.url().includes('/admin');
-      const on403 = page.url().includes('/403');
-      expect(onAdmin || on403).toBe(true);
+      expect(has500, 'Admin page must not show 500 errors').toBe(false);
+      // Must have meaningful content (not blank)
+      if (url.includes('/admin')) {
+        const hasContent = (await page.locator('.admin-page').count()) > 0;
+        expect(hasContent, 'Expected .admin-page content').toBe(true);
+      }
     });
   });
 

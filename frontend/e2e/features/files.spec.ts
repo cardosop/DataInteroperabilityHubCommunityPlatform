@@ -38,8 +38,9 @@ test.describe('Feature: Files', () => {
           timeout: 60000,
           acceptRedirectToLogin: true,
         });
-      } catch {
-        // Expected to redirect to login
+      } catch (err) {
+        // Only acceptable if we ended up on /login (auth guard triggered)
+        if (!page.url().includes('/login')) throw err;
       }
       await assertFailureRedirect(page);
     });
