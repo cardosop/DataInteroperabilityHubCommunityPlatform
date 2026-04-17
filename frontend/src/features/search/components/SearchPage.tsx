@@ -31,6 +31,7 @@ import {
   type RecentSearchEntry,
 } from '../../../shared/utils/recentSearches';
 import { searchService } from '../services/searchService';
+import { useMeshDomains } from '../../mesh/hooks/useMesh';
 import './SearchPage.css';
 
 type ScopeValue = 'ALL' | SearchResultType | 'JOB' | 'ORDER';
@@ -73,6 +74,10 @@ export function SearchPage() {
   const [domainFilter, setDomainFilter] = useState('');
   const [dqStatusFilter, setDqStatusFilter] = useState('');
   const [complianceFilter, setComplianceFilter] = useState('');
+
+  // Populate domain dropdown from mesh domains API (graceful degradation:
+  // if mesh backend is unavailable, the dropdown shows only "All domains")
+  const { data: domainsData } = useMeshDomains();
 
   const [data, setData] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -252,14 +257,20 @@ export function SearchPage() {
         <div className="search-page-filters">
           <div className="search-filter-group">
             <label htmlFor="search-domain-filter">Domain</label>
-            <input
+            <select
               id="search-domain-filter"
-              type="text"
               value={domainFilter}
               onChange={(e) => setDomainFilter(e.target.value)}
-              placeholder="e.g. marketing"
               aria-label="Filter by domain"
-            />
+              className="search-filter-select"
+            >
+              <option value="">All domains</option>
+              {domainsData?.results?.map((d) => (
+                <option key={d.id} value={d.name}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="search-filter-group">
             <label htmlFor="search-dq-filter">DQ Status</label>

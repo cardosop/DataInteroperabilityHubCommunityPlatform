@@ -591,6 +591,7 @@ services:
         VITE_FEATURE_TOAST_ENABLED: ${VITE_FEATURE_TOAST_ENABLED:-}
         VITE_FEATURE_BREADCRUMBS_ENABLED: ${VITE_FEATURE_BREADCRUMBS_ENABLED:-}
         VITE_FEATURE_RESOURCE_PICKERS_ENABLED: ${VITE_FEATURE_RESOURCE_PICKERS_ENABLED:-}
+        VITE_FEATURE_SIDEBAR_ADVANCED: ${VITE_FEATURE_SIDEBAR_ADVANCED:-}
         # Empty by default: app uses relative /api/v1 paths proxied by nginx.
         # Set to an absolute URL only for non-nginx deployments (e.g. CDN-hosted SPA).
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}

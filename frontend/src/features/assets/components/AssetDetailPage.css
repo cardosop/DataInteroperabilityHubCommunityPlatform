@@ -34,6 +34,14 @@
   }
 }
 
+/* Ensure hidden tab panels are fully removed from grid flow. Without this,
+   the [hidden] attribute alone may not produce display:none if another CSS
+   rule sets an explicit display value — the hidden div occupies a grid cell,
+   pushing .asset-detail-linked to row 2 with a visible gap. */
+.asset-detail-main[hidden] {
+  display: none;
+}
+
 .asset-detail-main h1 {
   margin: 0 0 var(--spacing-sm) 0;
   font-size: var(--font-size-2xl);

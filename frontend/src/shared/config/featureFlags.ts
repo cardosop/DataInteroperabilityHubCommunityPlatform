@@ -25,3 +25,10 @@ export const FEATURE_BREADCRUMBS_ENABLED = parseBool(
 export const FEATURE_RESOURCE_PICKERS_ENABLED = parseBool(
   import.meta.env.VITE_FEATURE_RESOURCE_PICKERS_ENABLED as string | undefined
 );
+
+/** When false, advanced/non-core sidebar items (Mesh, Virtualization, Semantic,
+ *  AI, Communities, Developer, BaaS, ML, Observability, Transformation) are
+ *  hidden from the sidebar navigation. Default: true (all visible). */
+export const FEATURE_SIDEBAR_ADVANCED = parseBool(
+  import.meta.env.VITE_FEATURE_SIDEBAR_ADVANCED as string | undefined
+);

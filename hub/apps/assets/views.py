@@ -1412,6 +1412,23 @@ class AssetViewSet(viewsets.ModelViewSet):
                 f"Failed to create audit event for asset activation {asset.id}: {e}", exc_info=True
             )
 
+        # Notify asset owner that activation succeeded
+        try:
+            from hub.apps.notifications.utils import create_user_notification
+
+            create_user_notification(
+                user=request.user,
+                tenant=asset.tenant,
+                title="Asset Activated",
+                message=f"Your asset '{asset.name}' has been activated and is now visible in the marketplace.",
+                notification_type="SUCCESS",
+                category="ASSETS",
+                resource_type="ASSET",
+                resource_id=str(asset.id),
+            )
+        except Exception:
+            pass  # Notifications must never block business operations
+
         return Response(AssetSerializer(asset).data, status=status.HTTP_200_OK)
 
     @transaction.atomic

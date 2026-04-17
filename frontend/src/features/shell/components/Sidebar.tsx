@@ -12,6 +12,7 @@ import { isMvpModeEnabledFromEnv } from '../utils/mvpNav';
 // reuse the same source of truth.
 import { SIDEBAR_NAV_ITEMS, type NavItem } from '../utils/navItems';
 import { filterVisibleNavItems } from '../utils/sidebarNavFilter';
+import { FEATURE_SIDEBAR_ADVANCED } from '../../../shared/config/featureFlags';
 import { useMobileSidebar } from './useMobileSidebar';
 import './Sidebar.css';
 
@@ -42,6 +43,7 @@ export function Sidebar() {
     mvpModeEnabled: isMvpModeEnabledFromEnv(),
     hasRole,
     isCapabilityAvailable,
+    sidebarAdvancedEnabled: FEATURE_SIDEBAR_ADVANCED,
   });
 
   // Group nav items into sections

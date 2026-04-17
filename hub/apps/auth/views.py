@@ -978,6 +978,23 @@ def accept_invitation(request):
         # who accepted an invitation to re-login after 15 min (prod).
         body["refresh_token"] = refresh_token_str
 
+    # Notify the newly activated user about successful onboarding
+    try:
+        from hub.apps.notifications.utils import create_user_notification
+
+        create_user_notification(
+            user=user,
+            tenant=user.tenant,
+            title="Welcome to Meshant",
+            message=f"Your account has been activated. Welcome aboard, {user.display_name or user.email}!",
+            notification_type="SUCCESS",
+            category="USERS",
+            resource_type="USER",
+            resource_id=str(user.id),
+        )
+    except Exception:
+        pass  # Notifications must never block invitation acceptance
+
     response = Response(body, status=status.HTTP_200_OK)
     _set_refresh_cookie(response, refresh_token_str)
 

@@ -858,6 +858,23 @@ def execute_dq_run(dq_run_id: str) -> None:
             dq_run.asset.dq_status = dq_status
             dq_run.asset.save(update_fields=["dq_status"])
 
+            # Notify asset owner that DQ run completed
+            try:
+                from hub.apps.notifications.utils import create_user_notification
+
+                create_user_notification(
+                    user=dq_run.created_by if hasattr(dq_run, "created_by") and dq_run.created_by else dq_run.asset.created_by,
+                    tenant=dq_run.asset.tenant,
+                    title="Data Quality Check Complete",
+                    message=f"Data quality check for '{dq_run.asset.name}' completed with status: {dq_run.overall_status or 'UNKNOWN'}.",
+                    notification_type="SUCCESS" if dq_status == AssetDQStatus.PASS else "WARNING",
+                    category="DATA_QUALITY",
+                    resource_type="DQ_RUN",
+                    resource_id=str(dq_run.id),
+                )
+            except Exception:
+                pass  # Notifications must never block DQ pipeline
+
     except Exception as e:
         logger.exception(
             "dq_run_execute_failed",

@@ -16,6 +16,9 @@ import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ContractFormat } from '../../../shared/types/contracts';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Button } from '../../../shared/components/Button';
+import { ODPSProductForm, makeEmptyODPSFormData } from './ODPSProductForm';
+import { buildODPSDocument } from '../utils/odpsDocumentBuilder';
+import type { ODPSFormData } from '../../../shared/types/odps';
 import './ContractLinkODPSPage.css';
 
 export function ContractLinkODPSPage() {
@@ -38,6 +41,8 @@ export function ContractLinkODPSPage() {
   const [odpsContent, setOdpsContent] = useState('');
   const [format, setFormat] = useState<ContractFormat>(ContractFormat.JSON);
   const [resolveExternalRefs, setResolveExternalRefs] = useState(true);
+  // Guided ODPS form state for "create" mode
+  const [odpsFormData, setOdpsFormData] = useState<ODPSFormData>(() => makeEmptyODPSFormData());
   const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false);
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -80,14 +85,25 @@ export function ContractLinkODPSPage() {
           data: { odps_contract_id: odpsContractId },
         });
       } else {
-        if (!odpsContent.trim()) {
-          toast.error('Please provide ODPS content');
-          return;
+        // "Create and Link" mode — serialize from guided form OR raw content
+        let rawContent = odpsContent;
+        if (!rawContent.trim()) {
+          // No raw paste — try building from guided form
+          try {
+            rawContent = buildODPSDocument(odpsFormData, format === ContractFormat.YAML ? 'YAML' : 'JSON');
+          } catch {
+            toast.error('Please fill in the ODPS product details or paste content');
+            return;
+          }
+          if (!rawContent.trim()) {
+            toast.error('Please fill in the ODPS product details or paste content');
+            return;
+          }
         }
         await linkMutation.mutateAsync({
           odcsContractId: odcsContractId,
           data: {
-            original_raw: odpsContent,
+            original_raw: rawContent,
             original_format: format,
             resolve_external_refs: resolveExternalRefs,
           },
@@ -250,26 +266,11 @@ export function ContractLinkODPSPage() {
                 />
               </div>
             ) : (
-              <>
-                <div className="form-section">
-                  <label htmlFor="odps-file">Upload ODPS File (JSON or YAML)</label>
-                  <input
-                    ref={fileInputRef}
-                    id="odps-file"
-                    type="file"
-                    accept=".json,.yaml,.yml"
-                    onChange={handleFileInputChange}
-                    className="file-input"
-                  />
-                  <Button
- onClick={() => fileInputRef.current?.click()}
- variant="secondary">
-                    Select File
-                  </Button>
-                </div>
+              <div className="form-section odps-guided-create">
+                <ODPSProductForm value={odpsFormData} onChange={setOdpsFormData} />
 
                 <div className="form-section">
-                  <label htmlFor="odps-format">Format</label>
+                  <label htmlFor="odps-format">Output Format</label>
                   <select
                     id="odps-format"
                     value={format}
@@ -278,19 +279,6 @@ export function ContractLinkODPSPage() {
                     <option value="JSON">JSON</option>
                     <option value="YAML">YAML</option>
                   </select>
-                </div>
-
-                <div className="form-section">
-                  <label htmlFor="odps-content">ODPS Content</label>
-                  <textarea
-                    id="odps-content"
-                    value={odpsContent}
-                    onChange={(e) => setOdpsContent(e.target.value)}
-                    placeholder="Paste ODPS content here or upload a file..."
-                    rows={15}
-                    className="odps-content-editor"
-                    spellCheck={false}
-                  />
                 </div>
 
                 <div className="form-section">
@@ -303,13 +291,13 @@ export function ContractLinkODPSPage() {
                     Resolve external $ref references
                   </label>
                 </div>
-              </>
+              </div>
             )}
 
             <div className="form-actions">
               <Button
  onClick={handleLink}
- disabled={linkMutation.isPending || (linkMode === 'existing' && !odpsContractId) || (linkMode === 'create' && !odpsContent.trim())}
+ disabled={linkMutation.isPending || (linkMode === 'existing' && !odpsContractId)}
  variant="primary">
                 {linkMutation.isPending ? 'Linking...' : 'Link ODPS Contract'}
               </Button>

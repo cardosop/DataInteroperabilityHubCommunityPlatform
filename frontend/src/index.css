@@ -49,6 +49,8 @@
   --color-warning-700: #F57C00;
   --color-warning-800: #7D4200;
   --color-warning-900: #E65100;
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
 
   --color-error-50: #FFEBEE;
   --color-error-100: #FFCDD2;
@@ -257,6 +259,16 @@
   --color-surface-inverse: #334155;
   --color-surface-inverse-hover: #475569;
   --color-surface-inverse-border: #64748b;
+
+  /* Primary-800: light blue for readability on dark surfaces. The light-mode
+     value (#0A1F44 navy) is invisible on dark backgrounds. */
+  --color-primary-800: #93c5fd;
+
+  /* Warning panel tokens — dark amber tints readable on dark backgrounds.
+     Without these, var(--color-warning-bg) falls back to #fffbeb (light cream),
+     which is jarring on dark. */
+  --color-warning-bg: #2a1f05;
+  --color-warning-border: #78601a;
 
   /* Semantic colours — bump the 500s toward their lighter siblings so
      coloured accents still have enough contrast on dark surfaces. */

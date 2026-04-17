@@ -14,6 +14,9 @@ export interface NavItem {
   requiredCapability?: string;
   /** Optional unread-style badge shown next to the label when > 0. */
   badge?: number;
+  /** When true, this item is hidden unless FEATURE_SIDEBAR_ADVANCED is enabled.
+   *  Used for non-core features (Mesh, Virtualization, AI, etc.). */
+  advanced?: boolean;
 }
 
 export const SIDEBAR_NAV_ITEMS: NavItem[] = [
@@ -36,12 +39,13 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
   },
   { path: '/dq', label: 'Data Quality', icon: '✅' },
   { path: '/compliance', label: 'Compliance', icon: '🛡️' },
-  { path: '/mesh', label: 'Data Mesh', icon: '🌐', requiredCapability: 'mesh.domains' },
+  { path: '/mesh', label: 'Data Mesh', icon: '🌐', requiredCapability: 'mesh.domains', advanced: true },
   {
     path: '/virtualization',
     label: 'Virtualization',
     icon: '🔮',
     requiredCapability: 'virtualization.datasets',
+    advanced: true,
   },
   { path: '/search', label: 'Search', icon: '🔍' },
   {
@@ -49,29 +53,33 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
     label: 'Semantic',
     icon: '🔗',
     requiredCapability: 'semantic.sparql',
+    advanced: true,
   },
   {
     path: '/ai/search',
     label: 'AI Search',
     icon: '🤖',
     requiredCapability: 'ai.natural-language-search',
+    advanced: true,
   },
   {
     path: '/ai/schema-matching',
     label: 'Schema Matching',
     icon: '🔀',
     requiredCapability: 'ai.schema-matching',
+    advanced: true,
   },
-  { path: '/communities', label: 'Communities', icon: '👥', requiredCapability: 'social.communities' },
-  { path: '/developer', label: 'Developer', icon: '🛠️', requiredCapability: 'developer.plugins' },
-  { path: '/baas', label: 'BaaS', icon: '🔑', requiredCapability: 'baas.api-keys' },
-  { path: '/ml', label: 'ML', icon: '🧠', requiredCapability: 'ml.models' },
-  { path: '/observability', label: 'Observability', icon: '📈' },
+  { path: '/communities', label: 'Communities', icon: '👥', requiredCapability: 'social.communities', advanced: true },
+  { path: '/developer', label: 'Developer', icon: '🛠️', requiredCapability: 'developer.plugins', advanced: true },
+  { path: '/baas', label: 'BaaS', icon: '🔑', requiredCapability: 'baas.api-keys', advanced: true },
+  { path: '/ml', label: 'ML', icon: '🧠', requiredCapability: 'ml.models', advanced: true },
+  { path: '/observability', label: 'Observability', icon: '📈', advanced: true },
   {
     path: '/transformation',
     label: 'Transformation',
     icon: '🔄',
     requiredCapability: 'transformation',
+    advanced: true,
   },
   { path: '/jobs', label: 'Jobs', icon: '⚙️' },
   { path: '/webhooks', label: 'Webhooks', icon: '🔗' },

@@ -10,6 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_APP_NAME?: string;
   readonly VITE_FEATURE_BREADCRUMBS_ENABLED?: string;
   readonly VITE_FEATURE_RESOURCE_PICKERS_ENABLED?: string;
+  /** When "false", hide advanced sidebar items (Mesh, Virtualization, etc.). Default: true */
+  readonly VITE_FEATURE_SIDEBAR_ADVANCED?: string;
   /** When "true", hide non-MVP nav and send capability misses to /coming-soon */
   readonly VITE_MVP_MODE?: string;
   /** Stripe.js publishable key (optional; billing UI) */

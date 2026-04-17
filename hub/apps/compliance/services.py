@@ -408,6 +408,29 @@ class ComplianceService(BaseService):
             run.asset.compliance_status = comp_status
             run.asset.save(update_fields=["compliance_status"])
 
+            # Notify user that compliance scan completed
+            try:
+                from hub.apps.notifications.utils import create_user_notification
+
+                notify_user = (
+                    run.created_by
+                    if hasattr(run, "created_by") and run.created_by
+                    else run.asset.created_by
+                )
+                if notify_user and run.asset.tenant:
+                    create_user_notification(
+                        user=notify_user,
+                        tenant=run.asset.tenant,
+                        title="Compliance Scan Complete",
+                        message=f"Compliance scan for '{run.asset.name}' completed: {run.overall_status or 'UNKNOWN'}. Storage {'allowed' if run.allowed_to_store else 'blocked'}.",
+                        notification_type="SUCCESS" if run.allowed_to_store else "WARNING",
+                        category="COMPLIANCE",
+                        resource_type="COMPLIANCE_RUN",
+                        resource_id=str(run.id),
+                    )
+            except Exception:
+                pass  # Notifications must never block compliance pipeline
+
     # ------------------------------------------------------------------
     # Compliance service call dispatcher (19.10.4)
     # ------------------------------------------------------------------

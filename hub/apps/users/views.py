@@ -428,8 +428,15 @@ class UserViewSet(viewsets.ModelViewSet):
         elif action_type == "remove":
             UserRole.objects.filter(user=user, role=role).delete()
 
-        # Increment token version to invalidate sessions
+        # Increment token version to invalidate JWT sessions
         user.increment_token_version()
+
+        # Invalidate the /auth/me response cache so the new role is visible
+        # immediately. Without this, the cached response (TTL 300s) returns
+        # stale roles for up to 5 minutes, causing spurious 403s on role-gated
+        # routes like /audit after an AUDITOR role is assigned.
+        from django.core.cache import cache
+        cache.delete(f"user:me:{user.id}")
 
         # Log audit event
         log_user_operation(
