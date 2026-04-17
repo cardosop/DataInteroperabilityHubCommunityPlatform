@@ -3,7 +3,7 @@
  * Moved from features/odps/components/ODPSLinkPage.tsx (Phase 211.A7).
  */
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useContract, useLinkODPS, useUnlinkODPS, useContractLinks } from '../hooks/useContracts';
 import { ContractPicker } from '../../../shared/components/pickers';
@@ -45,31 +45,6 @@ export function ContractLinkODPSPage() {
   const [odpsFormData, setOdpsFormData] = useState<ODPSFormData>(() => makeEmptyODPSFormData());
   const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false);
   const toast = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFileSelect = async (file: File) => {
-    try {
-      const text = await file.text();
-      setOdpsContent(text);
-      
-      // Auto-detect format from file extension
-      const extension = file.name.split('.').pop()?.toLowerCase();
-      if (extension === 'yaml' || extension === 'yml') {
-        setFormat(ContractFormat.YAML);
-      } else if (extension === 'json') {
-        setFormat(ContractFormat.JSON);
-      }
-    } catch (error) {
-      console.error('Failed to read file:', error);
-    }
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleFileSelect(file);
-    }
-  };
 
   const handleLink = async () => {
     if (!odcsContractId) return;
