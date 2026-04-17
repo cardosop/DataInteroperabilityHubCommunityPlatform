@@ -1,7 +1,7 @@
 /**
  * Global Styles with Design System Tokens
  */
-@import '../../shared/design-tokens/tokens.css';
+@import '@shared/design-tokens/tokens.css';
 
 :root {
   /* Colors — Meshant palette: primary #0A1F44, secondary #2F6BFF, accent #17C6E6 */

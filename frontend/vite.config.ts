@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
+import fs from 'fs';
 import path from 'path';
 import { defineConfig } from 'vite';
 
@@ -64,6 +65,11 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Resolves to ./shared/ in Docker (CI copies shared/ into frontend/)
+      // or ../shared/ in local dev (repo root shared/).
+      '@shared': fs.existsSync(path.resolve(__dirname, 'shared'))
+        ? path.resolve(__dirname, 'shared')
+        : path.resolve(__dirname, '../shared'),
     },
   },
   server: {
