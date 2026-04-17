@@ -38,7 +38,10 @@ export function ContractLinkODPSPage() {
 
   const [linkMode, setLinkMode] = useState<'existing' | 'create'>('existing');
   const [odpsContractId, setOdpsContractId] = useState<string | null>(null);
-  const [odpsContent, setOdpsContent] = useState('');
+  // Raw ODPS content is built from the guided form (odpsFormData) via
+  // buildODPSDocument() at submit time. This state is kept as a fallback
+  // for the submit handler but has no setter (no raw-paste UI anymore).
+  const [odpsContent] = useState('');
   const [format, setFormat] = useState<ContractFormat>(ContractFormat.JSON);
   const [resolveExternalRefs, setResolveExternalRefs] = useState(true);
   // Guided ODPS form state for "create" mode
