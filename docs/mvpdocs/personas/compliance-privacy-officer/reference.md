@@ -30,9 +30,9 @@ datahub audit export --from 2026-03-10 --to 2026-04-09 --format json --output au
 **List all high-risk assets:**
 
 ```python
-from datahub_sdk import MeshantClient
+from datahub_interoperability import DataHubClient
 
-client = MeshantClient()
+client = DataHubClient()
 assets = client.compliance.list_assets(risk_level="high")
 for a in assets:
     print(f"{a.name} — {a.risk_level}")

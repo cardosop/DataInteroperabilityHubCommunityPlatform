@@ -8,21 +8,27 @@ message, and optional structured details.
 
 ```json
 {
-  "code": "ASSET_NOT_FOUND",
-  "message": "Asset with ID a-999 does not exist.",
-  "details": {
-    "asset_id": "a-999"
-  },
-  "request_id": "req_abc123"
+  "error": {
+    "code": "ASSET_NOT_FOUND",
+    "message": "Asset with ID a-999 does not exist.",
+    "http_status": 404,
+    "request_id": "550e8400-e29b-41d4-a716-446655440000",
+    "timestamp": "2026-04-17T12:00:00Z",
+    "details": {
+      "asset_id": "a-999"
+    }
+  }
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `code` | `string` | Machine-readable error code (see tables below) |
-| `message` | `string` | Human-readable description |
-| `details` | `object` | Optional context-specific fields |
-| `request_id` | `string` | Unique request identifier for support tickets |
+| `error.code` | `string` | Machine-readable error code (see tables below) |
+| `error.message` | `string` | Human-readable description |
+| `error.http_status` | `integer` | HTTP status code |
+| `error.request_id` | `string` | UUID for support tickets |
+| `error.timestamp` | `string` | ISO 8601 UTC timestamp |
+| `error.details` | `object` | Optional context-specific fields |
 
 ## Standard HTTP Error Codes
 
@@ -52,8 +58,8 @@ the appropriate HTTP status code.
 | `QUOTA_EXCEEDED` | 429 | The tenant has exceeded its usage quota for this resource |
 | `TENANT_NOT_FOUND` | 404 | The specified tenant does not exist or the user has no access |
 | `WEBHOOK_DELIVERY_FAILED` | 422 | The webhook endpoint did not respond with a 2xx status |
-| `TOKEN_EXPIRED` | 401 | The JWT access token has expired; use the refresh endpoint |
-| `RATE_LIMITED` | 429 | Too many requests; see `X-RateLimit-Reset` header for retry time |
+| `AUTH_TOKEN_EXPIRED` | 401 | The JWT access token has expired; use the refresh endpoint |
+| `RATE_LIMIT_EXCEEDED` | 429 | Too many requests; see `X-RateLimit-Reset` header for retry time |
 
 ## SDK Exception Mapping
 

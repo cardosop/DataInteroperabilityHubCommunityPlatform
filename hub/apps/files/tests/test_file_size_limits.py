@@ -144,6 +144,37 @@ class FileSizeLimitsTest(FilesAPITestBase):
         self.assertIn("detail", response.data)
         self.assertIn("size", response.data["detail"].lower())
 
+    def test_no_conflicting_upload_size_settings(self):
+        """Regression: ensure orphaned _BYTES upload-limit settings do not exist.
+
+        Previously settings.py defined both MAX_BROWSER_UPLOAD_SIZE (100 MB,
+        used) and MAX_BROWSER_UPLOAD_SIZE_BYTES (1 GB, unused), which caused
+        confusion.  Only the non-_BYTES variants should be present.
+        """
+        self.assertFalse(
+            hasattr(settings, "MAX_BROWSER_UPLOAD_SIZE_BYTES"),
+            "MAX_BROWSER_UPLOAD_SIZE_BYTES should not exist — use MAX_BROWSER_UPLOAD_SIZE",
+        )
+        self.assertFalse(
+            hasattr(settings, "MAX_SDK_UPLOAD_SIZE_BYTES"),
+            "MAX_SDK_UPLOAD_SIZE_BYTES should not exist — use MAX_SDK_UPLOAD_SIZE",
+        )
+
+    def test_upload_limits_are_sensible(self):
+        """Verify upload limit settings have sane values."""
+        self.assertGreater(settings.MAX_BROWSER_UPLOAD_SIZE, 0)
+        self.assertGreater(settings.MAX_SDK_UPLOAD_SIZE, 0)
+        self.assertGreaterEqual(
+            settings.MAX_SDK_UPLOAD_SIZE,
+            settings.MAX_BROWSER_UPLOAD_SIZE,
+            "SDK upload limit should be >= browser upload limit",
+        )
+        self.assertGreaterEqual(
+            settings.MAX_FILE_SIZE,
+            settings.MAX_SDK_UPLOAD_SIZE,
+            "Global MAX_FILE_SIZE should be >= SDK upload limit",
+        )
+
     def test_init_upload_file_type_validation(self):
         """Test upload initialization validates file type"""
 

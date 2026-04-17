@@ -59,7 +59,7 @@ If issues are detected after upgrade:
 1. Roll back Helm: `helm rollback meshant <previous-revision>`.
 2. If migrations need reverting, run
    `python manage.py migrate <app> <previous-migration>`.
-3. See [RUNBOOKS.md -- Deployment and rollback](../../RUNBOOKS.md#deployment-and-rollback).
+3. See [Production Deploy -- Rollback](production-deploy.md#rollback-procedure) for detailed procedures.
 
 ## Related
 

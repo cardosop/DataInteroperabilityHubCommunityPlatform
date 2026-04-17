@@ -59,7 +59,7 @@ view: **Governance > DQ Profile Comparison**.
 Each regulation has configurable rule sets:
 
 ```bash
-datahub-cli compliance rules --regulation GDPR --format table
+datahub compliance rules --regulation GDPR --format table
 ```
 
 This lists all available GDPR rules with their current enabled/disabled
@@ -107,7 +107,7 @@ classifying assets (e.g., `finance`, `healthcare`, `marketing`).
 Via CLI:
 
 ```bash
-datahub-cli governance domains --format table
+datahub governance domains --format table
 ```
 
 
@@ -117,13 +117,13 @@ After making changes, verify the platform state:
 
 ```bash
 # Check tenant usage and plan limits
-datahub-cli tenants usage --format table
+datahub tenants usage --format table
 
 # Check DQ status for a sample asset
-datahub-cli dq status --asset-id <asset-id> --format table
+datahub dq status --asset-id <asset-id> --format table
 
 # Check compliance rules
-datahub-cli compliance rules --regulation GDPR --format table
+datahub compliance rules --regulation GDPR --format table
 ```
 
 

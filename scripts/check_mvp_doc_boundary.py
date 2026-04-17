@@ -134,6 +134,47 @@ def _check_cli_commands(
                 )
 
 
+# Deprecated SDK identifiers that should no longer appear in docs
+WRONG_SDK_IDENTIFIERS = frozenset({"datahub_sdk", "MeshantClient"})
+
+# External doc files that mvpdocs must NOT link to (self-containment)
+EXTERNAL_DOC_PATTERNS = [
+    re.compile(r"\]\([^)]*RUNBOOKS\.md"),
+    re.compile(r"\]\([^)]*SECURITY_AND_COMPLIANCE\.md"),
+    re.compile(r"\]\([^)]*DEVELOPER_GUIDE\.md"),
+    re.compile(r"\]\([^)]*DEPLOYMENT_AND_OPERATIONS\.md"),
+    re.compile(r"\]\([^)]*OPERATIONS\.md"),
+    re.compile(r"\]\([^)]*API_ENDPOINTS_REFERENCE\.md"),
+]
+
+
+def _check_wrong_sdk_identifiers(
+    content: str, rel: str, errors: list[str],
+) -> None:
+    """Check for deprecated SDK package/class names."""
+    for ident in WRONG_SDK_IDENTIFIERS:
+        if ident in content:
+            errors.append(
+                f"{rel}: contains deprecated SDK identifier"
+                f" {ident!r} — use datahub_interoperability"
+                " / DataHubClient"
+            )
+
+
+def _check_external_doc_links(
+    content: str, rel: str, errors: list[str],
+) -> None:
+    """Check for links to docs outside mvpdocs (self-containment)."""
+    for pattern in EXTERNAL_DOC_PATTERNS:
+        match = pattern.search(content)
+        if match:
+            errors.append(
+                f"{rel}: links to external doc"
+                f" {match.group()!r} — mvpdocs must be"
+                " self-contained"
+            )
+
+
 def _check_api_paths(
     content: str,
     rel: str,
@@ -224,6 +265,8 @@ def main() -> int:
         _check_api_paths(content, rel, api_patterns, errors)
         _check_sdk_classes(content, rel, errors)
         _check_cli_commands(content, rel, errors)
+        _check_wrong_sdk_identifiers(content, rel, errors)
+        _check_external_doc_links(content, rel, errors)
 
     if errors:
         print(

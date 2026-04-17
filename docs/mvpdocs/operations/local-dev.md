@@ -4,7 +4,7 @@ This page orients you to existing developer setup documentation.
 
 ## Quick Reference
 
-**Primary guide:** [DEVELOPER_GUIDE.md](../../DEVELOPER_GUIDE.md)
+This is the primary local development setup guide for Meshant.
 
 ### Prerequisites
 
@@ -38,7 +38,33 @@ setup.
 - **Node version mismatch**: Use `nvm use 20` to switch to the correct
   Node.js version.
 
+### Running Services
+
+| Service | Command | Default Port |
+|---------|---------|-------------|
+| Backend API | `python hub/manage.py runserver` | 8000 |
+| Frontend SPA | `cd frontend && npm run dev` | 3000 |
+| RQ Worker | `python hub/manage.py rqworker job_critical job_default job_low` | -- |
+| PostgreSQL | `docker compose up -d postgres` | 5432 |
+| Redis | `docker compose up -d redis` | 6379 |
+| MinIO (S3) | `docker compose up -d minio` | 9000 |
+
+### Code Quality
+
+```bash
+# Linting (ruff)
+ruff check hub/
+
+# Formatting (black)
+black hub/
+
+# Type checking (mypy)
+mypy hub/
+
+# Run backend tests
+pytest hub/ -x --tb=short
+```
+
 ## Related
 
 - [Configuration Reference](configuration-reference.md) -- env vars for local dev
-- [DEVELOPER_GUIDE.md](../../DEVELOPER_GUIDE.md) -- full developer reference

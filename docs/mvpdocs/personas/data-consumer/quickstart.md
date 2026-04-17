@@ -19,7 +19,7 @@ published assets, and category filters.
 You can also browse from the CLI:
 
 ```bash
-datahub-cli search search \
+datahub search search \
   --query "customer demographics" \
   --domain "marketing" \
   --quality-status "PASSED" \
@@ -47,7 +47,7 @@ Use the search bar or faceted filters to narrow results:
 GDPR-compliant healthcare datasets with passing quality:
 
 ```bash
-datahub-cli search search \
+datahub search search \
   --query "patient outcomes" \
   --domain "healthcare" \
   --quality-status "PASSED" \
@@ -101,7 +101,7 @@ Navigate to **My Purchases**, find the asset, and click **Download**.
 **API access (for API-backed assets):**
 
 ```bash
-datahub-cli assets get --id <asset-id> --format json
+datahub assets get --id <asset-id> --format json
 ```
 
 **SDK access:**

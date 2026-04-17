@@ -2,8 +2,7 @@
 
 This page outlines the incident response process for the Meshant
 platform. For detailed recovery procedures, see the
-[Disaster Recovery](disaster-recovery.md) page and the
-[RUNBOOKS.md disaster recovery section](../../RUNBOOKS.md#disaster-recovery).
+[Disaster Recovery](disaster-recovery.md) page.
 
 ## Severity Levels
 
@@ -32,7 +31,7 @@ platform. For detailed recovery procedures, see the
    - [Monitoring](monitoring.md)
 4. **Mitigate** -- apply a fix or roll back:
    - `helm rollback meshant <revision>` for deployment issues
-   - See [RUNBOOKS.md](../../RUNBOOKS.md) for service-specific runbooks
+   - See [Operational Runbooks](index.md#operational-runbooks) for service-specific guidance
 5. **Communicate** status updates every 30 minutes for P0/P1.
 6. **Resolve** and confirm with health checks.
 
@@ -49,4 +48,4 @@ After every P0/P1 incident:
 
 - [Disaster Recovery](disaster-recovery.md) -- RTO/RPO and failover
 - [Monitoring](monitoring.md) -- dashboards and alerting
-- [RUNBOOKS.md](../../RUNBOOKS.md) -- full operator runbooks
+- [Operational Runbooks](index.md#operational-runbooks) -- service-specific runbooks

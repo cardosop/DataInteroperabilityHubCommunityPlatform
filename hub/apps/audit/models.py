@@ -11,6 +11,13 @@ from django.conf import settings
 User = get_user_model()
 
 
+class ActiveAuditEventManager(models.Manager):
+    """Default manager that excludes archived events from queries."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(is_archived=False)
+
+
 class AuditEvent(models.Model):
     """
     Audit Event model for immutable audit logging.
@@ -67,7 +74,21 @@ class AuditEvent(models.Model):
         db_index=True,
         help_text="When the event occurred (UTC)"
     )
-    
+    is_archived = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Whether this event has been archived by the retention policy",
+    )
+    archived_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this event was archived (UTC)",
+    )
+
+    # Default manager excludes archived events; use all_objects for admin ops.
+    objects = ActiveAuditEventManager()
+    all_objects = models.Manager()
+
     class Meta:
         db_table = "audit_events"
         ordering = ["-timestamp"]
@@ -77,6 +98,7 @@ class AuditEvent(models.Model):
             models.Index(fields=["resource_type", "resource_id"]),
             models.Index(fields=["action", "timestamp"]),
             models.Index(fields=["timestamp"]),  # For retention queries
+            models.Index(fields=["is_archived", "timestamp"]),  # For archival queries
         ]
         # Prevent updates and deletes
         default_permissions = ()  # No default permissions (read-only)
@@ -86,7 +108,7 @@ class AuditEvent(models.Model):
     
     def save(self, *args, **kwargs):
         """Override save to prevent updates (append-only)"""
-        if self.pk and AuditEvent.objects.filter(pk=self.pk).exists():
+        if self.pk and AuditEvent.all_objects.filter(pk=self.pk).exists():
             raise ValueError("Audit events are immutable and cannot be updated")
         super().save(*args, **kwargs)
     

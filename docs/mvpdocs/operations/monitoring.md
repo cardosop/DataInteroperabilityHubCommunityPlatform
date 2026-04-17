@@ -1,7 +1,6 @@
 # Monitoring
 
-This page orients you to the Meshant monitoring stack. For the
-full operations reference, see [OPERATIONS.md](../../OPERATIONS.md).
+This page documents the Meshant monitoring stack.
 
 ## Stack Overview
 
@@ -55,4 +54,3 @@ Each log entry includes `trace_id`, `tenant_id`, `user_id`, and
 
 - [Health Checks](health-checks.md) -- endpoint monitoring
 - [Incident Response](incident-response.md) -- responding to alerts
-- [OPERATIONS.md](../../OPERATIONS.md) -- full operations reference

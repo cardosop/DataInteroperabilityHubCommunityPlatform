@@ -8,15 +8,13 @@ documentation — it adds MVP-specific entry points and fills gaps.
 
 ## Design Principles
 
-1. **Overlay, not greenfield** (D150) — existing `docs/*.md` files
-   stay in place; the overlay cross-references them.
-2. **InputDocs/ is a source, not a destination** (D151) — content is
-   selectively promoted with editorial polish.
-3. **Persona-first IA** (D155) — six product-canonical personas from
-   `InputDocs/personas.md` drive the navigation.
-4. **Auto-generated reference** (D156) — API, CLI, and SDK reference
+1. **Self-contained** — mvpdocs is the single source of truth for all
+   MVP documentation. It does not link to external doc files.
+2. **Persona-first IA** (D155) — six product-canonical personas drive
+   the navigation.
+3. **Auto-generated reference** (D156) — API, CLI, and SDK reference
    pages are generated from source, not hand-written.
-5. **MVP boundary enforced** (D157) — `scripts/check_mvp_doc_boundary.py`
+4. **MVP boundary enforced** (D157) — `scripts/check_mvp_doc_boundary.py`
    fails CI if user-facing pages reference post-MVP features without
    a `[Post-MVP]` badge.
 

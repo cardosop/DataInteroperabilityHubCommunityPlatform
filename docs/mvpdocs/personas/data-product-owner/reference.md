@@ -29,8 +29,8 @@ datahub asset list --domain finance --page 1 --page-size 25
 ```
 
 ```python
-from datahub_sdk import MeshantClient
-client = MeshantClient()
+from datahub_interoperability import DataHubClient
+client = DataHubClient()
 assets = client.assets.list(domain="finance", page=1, page_size=25)
 ```
 

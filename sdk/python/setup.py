@@ -12,12 +12,12 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 setup(
     name="datahub-interoperability",
     version="1.0.0",
-    author="DataHub Team",
-    author_email="team@datahub.example.com",
-    description="Python SDK for Interoperable Data Hub",
+    author="Meshant Team",
+    author_email="engineering@meshant.com",
+    description="Python SDK for the Meshant Data Interoperability Platform",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/datahub/interoperability-hub",
+    url="https://github.com/meshant/data-interoperability-hub",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",

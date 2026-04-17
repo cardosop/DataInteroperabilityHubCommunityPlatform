@@ -38,7 +38,7 @@ indicator.
 ### Viewing DQ Details via CLI
 
 ```bash
-datahub-cli dq status --asset-id <asset-id> --format table
+datahub dq status --asset-id <asset-id> --format table
 ```
 
 This returns the most recent DQ check results for the asset, broken down

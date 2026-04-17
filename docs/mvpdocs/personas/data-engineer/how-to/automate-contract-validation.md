@@ -10,7 +10,7 @@ CI pipelines.
 - Contracts stored as YAML files in your Git repository (e.g., under
   `contracts/`).
 - A CI service account token with the **data_engineer** role.
-- The `datahub-cli` package available in your CI environment.
+- The `datahub` package available in your CI environment.
 
 ## Option A -- GitHub Actions
 
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Meshant CLI
-        run: pip install datahub-cli
+        run: pip install datahub
 
       - name: Configure CLI
         env:
@@ -49,7 +49,7 @@ validate-contracts:
   image: python:3.12-slim
   stage: test
   script:
-    - pip install datahub-cli
+    - pip install datahub
     - datahub config set --api-url "$MESHANT_API_URL" --token "$MESHANT_TOKEN"
     - datahub contract validate contracts/**/*.yaml --strict
   only:
@@ -68,7 +68,7 @@ For Jenkins, CircleCI, or any system that runs shell commands:
 #!/usr/bin/env bash
 set -euo pipefail
 
-pip install datahub-cli
+pip install datahub
 datahub config set --api-url "$MESHANT_API_URL" --token "$MESHANT_TOKEN"
 
 # Validate every YAML file under contracts/
@@ -97,10 +97,10 @@ In `--strict` mode, both errors and warnings cause a non-zero exit.
 If your pipeline is Python-native, use the SDK directly:
 
 ```python
-from datahub_sdk import MeshantClient
+from datahub_interoperability import DataHubClient
 from pathlib import Path
 
-client = MeshantClient()
+client = DataHubClient()
 errors = []
 
 for contract_path in Path("contracts").glob("**/*.yaml"):

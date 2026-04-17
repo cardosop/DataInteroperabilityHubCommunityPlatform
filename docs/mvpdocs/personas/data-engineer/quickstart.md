@@ -13,7 +13,7 @@ only the CLI and Python SDK. No UI required.
 ## Step 1 -- Install and Configure the CLI
 
 ```bash
-pip install datahub-cli
+pip install datahub
 ```
 
 Point the CLI at your Meshant instance:
@@ -92,9 +92,9 @@ in place.
 Use the Python SDK to create the asset and attach the contract in one script:
 
 ```python
-from datahub_sdk import MeshantClient
+from datahub_interoperability import DataHubClient
 
-client = MeshantClient(
+client = DataHubClient(
     base_url="https://meshant-internal.example.com",
     token="<YOUR_TOKEN>",
 )

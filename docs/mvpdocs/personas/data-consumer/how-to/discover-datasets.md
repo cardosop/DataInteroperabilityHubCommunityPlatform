@@ -25,10 +25,10 @@ datasets that match your requirements.
 
 ## Search via the CLI
 
-The `datahub-cli search search` command supports all the same filters:
+The `datahub search search` command supports all the same filters:
 
 ```bash
-datahub-cli search search \
+datahub search search \
   --query "customer churn" \
   --domain "analytics" \
   --classification "INTERNAL" \

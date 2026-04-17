@@ -62,4 +62,4 @@ If you discover a security issue, please follow the
 
 - [Compliance Runs concept](../concepts/compliance-runs.md)
 - [Governance concept](../concepts/governance.md)
-- [Full security and compliance document](../../SECURITY_AND_COMPLIANCE.md)
+- [Security Posture](security-posture.md)

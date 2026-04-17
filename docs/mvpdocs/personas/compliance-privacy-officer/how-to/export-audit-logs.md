@@ -68,9 +68,9 @@ datahub audit export \
 ## Step 4 -- Export via the SDK
 
 ```python
-from datahub_sdk import MeshantClient
+from datahub_interoperability import DataHubClient
 
-client = MeshantClient()
+client = DataHubClient()
 
 events = client.audit.list(
     from_date="2026-04-01",

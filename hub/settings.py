@@ -1770,11 +1770,6 @@ if OPENTELEMETRY_ENABLED:
 # Metrics are pushed via OTLP to the OTel Collector, which exposes them
 # on a Prometheus pull endpoint (:8889) for Prometheus to scrape.
 
-# File Upload Limits
-MAX_BROWSER_UPLOAD_SIZE_BYTES = env.int("MAX_BROWSER_UPLOAD_SIZE_BYTES", default=1073741824)  # 1 GB
-MAX_SDK_UPLOAD_SIZE_BYTES = env.int("MAX_SDK_UPLOAD_SIZE_BYTES", default=10737418240)  # 10 GB
-SIMPLE_UPLOAD_THRESHOLD_BYTES = env.int("SIMPLE_UPLOAD_THRESHOLD_BYTES", default=67108864)  # 64 MB
-
 # Job Timeouts
 JOB_TIMEOUT_DQ_RUN = env.int("JOB_TIMEOUT_DQ_RUN", default=1800)  # 30 minutes
 JOB_TIMEOUT_COMPLIANCE_RUN = env.int("JOB_TIMEOUT_COMPLIANCE_RUN", default=1800)  # 30 minutes

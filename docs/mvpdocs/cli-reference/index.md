@@ -2,6 +2,44 @@
 
 Complete reference for the **datahub** CLI (MVP release).
 
+## Installation
+
+```bash
+pip install datahub-cli           # From PyPI
+cd cli && pip install -e .        # From source (development)
+```
+
+## Authentication
+
+```bash
+# Interactive login (email/password)
+datahub login
+
+# API key authentication
+datahub config set api_key YOUR_API_KEY
+
+# Verify connectivity
+datahub health check
+
+# Logout
+datahub logout
+```
+
+## Quick Start
+
+```bash
+# Upload a file and create an asset
+datahub files upload /path/to/data.csv
+datahub assets create --name "Sales Data" --key "sales-data"
+
+# Create and validate a contract
+datahub contracts create --file contract.yaml --spec-type ODPS
+datahub contracts validate <contract-id>
+
+# Monitor a background job
+datahub jobs watch <job-id>
+```
+
 ## Command Groups
 
 | Group | Description |

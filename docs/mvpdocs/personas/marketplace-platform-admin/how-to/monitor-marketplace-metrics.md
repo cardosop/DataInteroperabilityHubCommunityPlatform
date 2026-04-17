@@ -34,8 +34,8 @@ If revenue drops unexpectedly:
 Via CLI:
 
 ```bash
-datahub-cli billing subscriptions --format table
-datahub-cli tenants usage --format table
+datahub billing subscriptions --format table
+datahub tenants usage --format table
 ```
 
 

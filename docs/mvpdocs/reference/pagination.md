@@ -13,7 +13,7 @@ The default pagination method uses `page` and `page_size` query parameters.
 | Parameter | Type | Default | Max | Description |
 |-----------|------|---------|-----|-------------|
 | `page` | `int` | `1` | -- | Page number (1-indexed) |
-| `page_size` | `int` | `20` | `100` | Number of results per page |
+| `page_size` | `int` | `50` | `100` | Number of results per page |
 
 ### Example Request
 
@@ -69,7 +69,7 @@ duplicating records during concurrent writes.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `cursor` | `string` | Opaque cursor from the previous response |
-| `page_size` | `int` | Number of results per page (default 20, max 100) |
+| `page_size` | `int` | Number of results per page (default 50, max 100) |
 
 ### Example Request
 
@@ -106,7 +106,7 @@ for event in client.audit.list_all():
 
 ## Best Practices
 
-- Use the default `page_size` of 20 unless you need more results per request.
+- Use the default `page_size` of 50 unless you need more results per request.
 - Do not use `page_size` greater than 100; the API will cap it silently.
 - For large exports, prefer cursor-based pagination to avoid inconsistencies
   from concurrent inserts or deletes.

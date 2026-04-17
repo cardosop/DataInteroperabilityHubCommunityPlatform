@@ -1,9 +1,6 @@
 # Disaster Recovery
 
-This page summarizes disaster recovery procedures for the Meshant
-platform. For the full runbook, see
-[RUNBOOKS.md -- Disaster Recovery](../../RUNBOOKS.md#disaster-recovery)
-and [Backup and Recovery](../../RUNBOOKS.md#backup-and-recovery).
+This page documents disaster recovery procedures for the Meshant platform.
 
 ## RTO / RPO Targets
 
@@ -57,4 +54,3 @@ enabled for critical buckets. In case of regional outage:
 
 - [Backup & Restore](backup-restore.md) -- scheduled backups and restore drills
 - [Incident Response](incident-response.md) -- incident handling process
-- [RUNBOOKS.md](../../RUNBOOKS.md#disaster-recovery) -- full disaster recovery runbook

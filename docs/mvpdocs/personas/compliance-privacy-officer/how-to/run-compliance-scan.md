@@ -36,9 +36,9 @@ datahub compliance run --asset-id <ASSET_ID> --profile gdpr-eu
 ### Via the SDK
 
 ```python
-from datahub_sdk import MeshantClient
+from datahub_interoperability import DataHubClient
 
-client = MeshantClient()
+client = DataHubClient()
 run = client.compliance.run(asset_id="<ASSET_ID>", profile="gdpr-eu")
 print(f"Run ID: {run.id}")
 ```

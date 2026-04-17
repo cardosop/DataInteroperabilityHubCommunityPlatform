@@ -32,7 +32,7 @@ print(f"Created webhook {webhook.id}")
 ### Via the CLI
 
 ```bash
-datahub-cli webhooks create \
+datahub webhooks create \
   --url "https://your-app.example.com/webhooks/meshant" \
   --events "asset.published,dq.check.completed,contract.created" \
   --secret "a-strong-random-secret"
@@ -41,7 +41,7 @@ datahub-cli webhooks create \
 ### Via the API
 
 ```bash
-curl -X POST https://meshant-internal.example.com/api/v1/webhooks/webhooks/ \
+curl -X POST https://meshant-internal.example.com/api/v1/webhooks/ \
   -H "Authorization: Api-Key YOUR_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -155,13 +155,13 @@ retries can deliver the same event more than once.
 
 ```bash
 # List registered webhooks
-datahub-cli webhooks list --format table
+datahub webhooks list --format table
 
 # View webhook delivery history
-datahub-cli webhooks deliveries --webhook-id <id> --format table
+datahub webhooks deliveries --webhook-id <id> --format table
 
 # Deactivate a webhook
-datahub-cli webhooks update --id <id> --status INACTIVE
+datahub webhooks update --id <id> --status INACTIVE
 ```
 
 

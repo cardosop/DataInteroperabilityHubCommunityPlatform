@@ -41,9 +41,9 @@ datahub dq run --asset-id <ASSET_ID>
 **Python SDK:**
 
 ```python
-from datahub_sdk import MeshantClient
+from datahub_interoperability import DataHubClient
 
-client = MeshantClient()
+client = DataHubClient()
 run = client.dq.run(asset_id="<ASSET_ID>")
 print(f"Run ID: {run.id}, Status: {run.status}")
 ```
@@ -102,10 +102,10 @@ Example: fail an Airflow task if DQ does not pass.
 
 ```python
 from airflow.exceptions import AirflowFailException
-from datahub_sdk import MeshantClient
+from datahub_interoperability import DataHubClient
 
 def dq_gate(asset_id: str):
-    client = MeshantClient()
+    client = DataHubClient()
     run = client.dq.run(asset_id=asset_id)
 
     while run.status in ("pending", "running"):

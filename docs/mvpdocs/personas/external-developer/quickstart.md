@@ -68,7 +68,7 @@ for asset in assets:
 Or use the CLI directly:
 
 ```bash
-datahub-cli assets list --status ACTIVE --limit 10 --format table
+datahub assets list --status ACTIVE --limit 10 --format table
 ```
 
 Expected output:
@@ -128,7 +128,7 @@ print(f"Webhook ID: {webhook.id}, Status: {webhook.status}")
 Or via CLI:
 
 ```bash
-datahub-cli webhooks create \
+datahub webhooks create \
   --url "https://your-app.example.com/webhooks/meshant" \
   --events "asset.published,dq.check.completed" \
   --secret "your-hmac-secret"

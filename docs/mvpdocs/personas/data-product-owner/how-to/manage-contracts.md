@@ -94,9 +94,9 @@ datahub contract attach \
 **SDK:**
 
 ```python
-from datahub_sdk import MeshantClient
+from datahub_interoperability import DataHubClient
 
-client = MeshantClient()
+client = DataHubClient()
 client.contracts.attach(asset_id="<ASSET_ID>", file_path="contract.yaml")
 ```
 

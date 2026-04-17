@@ -5,11 +5,20 @@ within approved geographic regions. These controls are critical for satisfying
 regulations such as GDPR (which restricts cross-border transfers) and LGPD
 (which imposes similar requirements for Brazilian personal data).
 
+## MVP Scope and Limitations
+
+> **Important:** The MVP release supports **single-region deployments only**.
+> All tenants within a single Meshant installation share one AWS region.
+> The `region` field on the Tenant model is stored as a preference but **not
+> enforced** at the storage, database, or query level in the current release.
+> Do not rely on region-based isolation for regulatory compliance until
+> enforcement is implemented in a future release.
+
 ## Tenant-Level Region Configuration
 
-Each [tenant](../concepts/tenants.md) specifies a primary storage region at
-creation time. All [assets](../concepts/assets.md), metadata, and audit events
-belonging to that tenant are stored exclusively within the designated region.
+Each [tenant](../concepts/tenants.md) may specify a preferred storage region at
+creation time. In the MVP release this value is recorded but not enforced — all
+data resides in the single deployment region regardless of the `region` value.
 
 ```json
 POST /api/v1/tenants
@@ -20,40 +29,23 @@ POST /api/v1/tenants
 }
 ```
 
-The `region` field is immutable after tenant creation in the MVP release. To
-change a tenant's region, a migration request must be submitted through the
-platform operator workflow.
+## Storage Location Guarantees (Post-MVP)
 
-## Storage Location Guarantees
+The following guarantees are **planned for a future release** and are not
+enforced in the MVP:
 
-- **Object storage** -- all uploaded files and dataset payloads are written to
-  buckets scoped to the tenant's region.
-- **Database records** -- metadata, compliance results, and audit events are
-  stored in the regional database partition.
-- **Search indices** -- the search subsystem replicates only within the same
-  region to prevent data leakage across boundaries.
-- **Backups** -- encrypted backups remain in the same region as the source data.
+- **Object storage** -- files and dataset payloads written to region-scoped
+  buckets.
+- **Database records** -- metadata stored in regional database partitions.
+- **Search indices** -- replication limited to the tenant's region.
+- **Backups** -- encrypted backups remain in the same region as source data.
 
-## Cross-Region Replication Controls
+## Cross-Region Replication Controls (Post-MVP)
 
-Cross-region replication is disabled by default. When two tenants in different
-regions need to share data through the [marketplace](../concepts/marketplace-listings.md),
-the platform enforces the following rules:
-
-1. The source tenant's compliance regulations are evaluated. If any regulation
-   prohibits cross-border transfer to the destination region, the share is
-   blocked.
-2. If the transfer is permitted, data is encrypted in transit using TLS 1.3 and
-   a copy is created in the destination region. The original remains untouched.
-3. The [audit trail](audit-trail.md) records both the source and destination
-   regions for every cross-region transfer event.
-
-## MVP Scope
-
-The MVP release supports **single-region deployments only**. All tenants within
-a single Meshant installation share one region. Multi-region federation --
-allowing a single control plane to manage tenants across multiple geographic
-regions -- is planned for the post-MVP roadmap.
+Cross-region sharing through the
+[marketplace](../concepts/marketplace-listings.md) with automatic compliance
+checks and audit logging is planned for post-MVP. In the current release, all
+marketplace operations occur within the single deployment region.
 
 ## Further Reading
 

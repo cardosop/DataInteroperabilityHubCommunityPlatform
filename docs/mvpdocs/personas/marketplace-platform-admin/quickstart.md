@@ -45,7 +45,7 @@ Via CLI:
 
 ```bash
 # List tenants by KYC status
-datahub-cli tenants usage --format table
+datahub tenants usage --format table
 ```
 
 For full KYC management workflows, see
@@ -115,7 +115,7 @@ Navigate to **Billing** in the admin panel:
 Via CLI:
 
 ```bash
-datahub-cli tenants usage --format table
+datahub tenants usage --format table
 ```
 
 

@@ -9,7 +9,7 @@ Marketplace & Platform Admin persona.
 | Resource | Link |
 |----------|------|
 | Tenants REST API | [API Reference: Tenants](../../api-reference/tenants.md) |
-| CLI: `datahub-cli tenants` | [CLI Reference: Tenants](../../cli-reference/tenants.md) |
+| CLI: `datahub tenants` | [CLI Reference: Tenants](../../cli-reference/tenants.md) |
 | SDK: `TenantsAPI` | [SDK Reference: Tenants](../../sdk-reference/python/tenants.md) |
 
 
@@ -26,7 +26,7 @@ Marketplace & Platform Admin persona.
 | Resource | Link |
 |----------|------|
 | Billing REST API | [API Reference: Billing](../../api-reference/billing.md) |
-| CLI: `datahub-cli billing` | [CLI Reference: Billing](../../cli-reference/billing.md) |
+| CLI: `datahub billing` | [CLI Reference: Billing](../../cli-reference/billing.md) |
 | SDK: `BillingAPI` | [SDK Reference: Billing](../../sdk-reference/python/billing.md) |
 
 
@@ -35,7 +35,7 @@ Marketplace & Platform Admin persona.
 | Resource | Link |
 |----------|------|
 | Governance REST API | [API Reference: Governance](../../api-reference/governance.md) |
-| CLI: `datahub-cli governance` | [CLI Reference: Governance](../../cli-reference/governance.md) |
+| CLI: `datahub governance` | [CLI Reference: Governance](../../cli-reference/governance.md) |
 | SDK: `GovernanceAPI` | [SDK Reference: Governance](../../sdk-reference/python/governance.md) |
 
 
@@ -44,7 +44,7 @@ Marketplace & Platform Admin persona.
 | Resource | Link |
 |----------|------|
 | Audit REST API | [API Reference: Audit](../../api-reference/audit.md) |
-| CLI: `datahub-cli audit` | [CLI Reference: Audit](../../cli-reference/audit.md) |
+| CLI: `datahub audit` | [CLI Reference: Audit](../../cli-reference/audit.md) |
 | Django Admin: Audit Log | `/admin/audit/` |
 
 

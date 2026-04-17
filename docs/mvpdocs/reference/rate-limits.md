@@ -22,30 +22,43 @@ X-RateLimit-Remaining: 742
 X-RateLimit-Reset: 1744207200
 ```
 
-## Per-Endpoint Limits
+## Rate Limit Model
 
-| Endpoint Category | Limit | Window |
-|-------------------|-------|--------|
-| Read endpoints (`GET`) | 1000 requests | 1 minute |
-| Write endpoints (`POST`, `PUT`, `PATCH`) | 200 requests | 1 minute |
-| Search and autocomplete | 100 requests | 1 minute |
-| File upload | 50 requests | 1 minute |
-| Auth login / refresh | 20 requests | 1 minute |
-| Bulk operations | 10 requests | 1 minute |
+Rate limits are enforced at three levels — **tenant**, **user**, and
+**API key** — using a sliding window algorithm backed by Redis. Each
+request is evaluated against three time windows:
 
-## Tenant Quotas
+| Window | Duration | Purpose |
+|--------|----------|---------|
+| BURST | 10 seconds | Prevents short spikes |
+| SUSTAINED | 60 seconds | Per-minute rate control |
+| DAILY | 24 hours | Long-term fair usage |
 
-In addition to per-minute rate limits, tenants have monthly quotas based
-on their subscription plan:
+### Endpoint Categories
 
-| Plan | Monthly API Calls | Storage | Concurrent Jobs |
-|------|-------------------|---------|-----------------|
-| Free | 10,000 | 1 GB | 2 |
-| Pro | 500,000 | 50 GB | 10 |
-| Enterprise | Unlimited | Unlimited | 50 |
+Limits are configured per endpoint category. Default platform limits apply
+unless overridden by tenant configuration:
 
-When a tenant exceeds its monthly quota, the API returns `429` with the
-`QUOTA_EXCEEDED` error code.
+| Category | Description |
+|----------|-------------|
+| AUTH | Login, token refresh, password reset |
+| ASSET | Asset CRUD operations |
+| CONTRACT | Contract CRUD, validation, linting |
+| SEARCH | Full-text search and autocomplete |
+| FILE_UPLOAD | File upload initiation and chunks |
+| FILE_DOWNLOAD | File downloads |
+| DQ_RUN | Data quality run triggers |
+| COMPLIANCE_RUN | Compliance scan triggers |
+| CONTRACT_VALIDATION | Contract validation and linting |
+| CATALOG_READ | Catalog browsing and listing |
+| SPARQL_QUERY | SPARQL endpoint queries |
+| GENERAL | All other endpoints |
+
+### Tenant-Configurable Limits
+
+Platform administrators can configure per-tenant rate limits via
+`TenantConfig.rate_limits`. Tenant limits cannot exceed platform maximums.
+When no tenant-specific configuration exists, platform defaults apply.
 
 ## 429 Response Handling
 
@@ -53,7 +66,7 @@ When you exceed the rate limit, the API returns:
 
 ```json
 {
-  "code": "RATE_LIMITED",
+  "code": "RATE_LIMIT_EXCEEDED",
   "message": "Rate limit exceeded. Retry after 2026-04-09T14:35:00Z.",
   "details": {
     "limit": 1000,

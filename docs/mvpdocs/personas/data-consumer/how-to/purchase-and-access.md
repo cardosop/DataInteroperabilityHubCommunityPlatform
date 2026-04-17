@@ -54,7 +54,7 @@ For file-based assets (CSV, Parquet, JSON):
 Via CLI:
 
 ```bash
-datahub-cli assets get --id <asset-id> --format json
+datahub assets get --id <asset-id> --format json
 ```
 
 ### API Access
@@ -95,7 +95,7 @@ For subscription-based assets:
 Via CLI:
 
 ```bash
-datahub-cli billing subscriptions --format table
+datahub billing subscriptions --format table
 ```
 
 
@@ -104,7 +104,7 @@ datahub-cli billing subscriptions --format table
 For usage-based assets, track your consumption:
 
 ```bash
-datahub-cli tenants usage --format table
+datahub tenants usage --format table
 ```
 
 This shows current-period API calls, storage, and asset counts against

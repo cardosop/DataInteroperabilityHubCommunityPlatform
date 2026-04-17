@@ -34,11 +34,22 @@ records is detectable.
 
 ## Retention
 
-The default retention period is **three years** from the event timestamp. Tenants
-subject to regulations with longer retention requirements (for example, certain
-SOX interpretations require seven years) can configure a longer period in their
-tenant settings. Retention periods can only be extended, never shortened, once
-set.
+The default retention period is **three years** from the event timestamp. Events
+past the retention cutoff are marked as archived (`is_archived=True`) by the
+`archive_old_audit_events` management command. Archived events are excluded
+from default API queries but remain in the database for compliance access.
+
+Run the archival command periodically (e.g., weekly via CronJob):
+
+```bash
+python manage.py archive_old_audit_events            # archive events > 3 years
+python manage.py archive_old_audit_events --dry-run   # preview without changes
+python manage.py archive_old_audit_events --retention-years 7  # SOX compliance
+```
+
+Tenants subject to regulations with longer retention requirements (for example,
+certain SOX interpretations require seven years) can configure a longer period
+via the `--retention-years` flag or the `AUDIT_RETENTION_YEARS` setting.
 
 ## Querying and Filtering
 

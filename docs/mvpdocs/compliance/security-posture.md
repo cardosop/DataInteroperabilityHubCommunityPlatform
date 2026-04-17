@@ -1,8 +1,7 @@
 # Security Posture
 
 Meshant applies defense-in-depth principles across every layer of the platform.
-This page summarizes the key security controls. For the complete security and
-compliance documentation, see [SECURITY_AND_COMPLIANCE.md](../../SECURITY_AND_COMPLIANCE.md).
+This page documents the key security controls for the Meshant platform.
 
 ---
 
@@ -110,7 +109,6 @@ Meshant addresses the OWASP Top 10 (2021) as follows:
 
 ## Further Reading
 
-- [Full security document](../../SECURITY_AND_COMPLIANCE.md)
 - [Audit Trail](audit-trail.md)
 - [Users and Roles concept](../concepts/users-and-roles.md)
 - [Vulnerability Disclosure](vulnerability-disclosure.md)

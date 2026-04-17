@@ -1,11 +1,6 @@
 # Staging Deploy
 
-This page orients you to the staging deployment process. For full
-details, see the primary deployment reference.
-
-## Quick Reference
-
-**Primary guide:** [DEPLOYMENT_AND_OPERATIONS.md](../../DEPLOYMENT_AND_OPERATIONS.md)
+This page documents the staging deployment process for Meshant.
 
 ## Staging Environment
 
@@ -52,4 +47,3 @@ with smaller instance sizes.
 
 - [Production Deploy](production-deploy.md) -- production deployment procedures
 - [Configuration Reference](configuration-reference.md) -- all env vars and Helm keys
-- [DEPLOYMENT_AND_OPERATIONS.md](../../DEPLOYMENT_AND_OPERATIONS.md) -- full reference

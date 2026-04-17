@@ -47,8 +47,8 @@ practices for data product management.
    an asset programmatically:
 
    ```python
-   from meshant import MeshantClient
-   client = MeshantClient(api_key="...")
+   from meshant import DataHubClient
+   client = DataHubClient(api_key="...")
    asset = client.assets.create(
        name="customer-transactions",
        contract_path="contract.yaml",

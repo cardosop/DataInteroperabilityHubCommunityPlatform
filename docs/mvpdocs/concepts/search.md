@@ -61,12 +61,13 @@ Search indexes are maintained automatically. There is no user-managed lifecycle,
 - Sort by relevance, name, quality score, creation date, or update date.
 - Search via API, CLI, and SDK.
 
+- Typeahead/autocomplete suggestions (trigram similarity).
+
 **Post-MVP:**
 
 - Semantic search using vector embeddings.
 - Saved searches with sharing and notification on new matches.
 - Search analytics (popular queries, zero-result queries, click-through rates).
-- Typeahead/autocomplete suggestions.
 - Federated search across multiple tenants (for platform-admin use).
 - Natural language search with query intent parsing.
 

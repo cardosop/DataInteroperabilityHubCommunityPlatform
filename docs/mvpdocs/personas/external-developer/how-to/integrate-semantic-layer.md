@@ -23,7 +23,7 @@ with machine-readable metadata:
 ### Via the CLI
 
 ```bash
-datahub-cli semantic sparql query \
+datahub semantic sparql query \
   --query "SELECT ?asset ?name WHERE { ?asset a :DataAsset ; :name ?name . } LIMIT 10" \
   --format table
 ```
@@ -31,7 +31,7 @@ datahub-cli semantic sparql query \
 For complex queries, write the SPARQL to a file:
 
 ```bash
-datahub-cli semantic sparql query \
+datahub semantic sparql query \
   --file my-query.sparql \
   --accept "application/sparql-results+json" \
   --format json
@@ -104,10 +104,10 @@ used in Meshant's knowledge graph.
 
 ```bash
 # List ontology classes
-datahub-cli semantic ontology classes --format table
+datahub semantic ontology classes --format table
 
 # List properties for a class
-datahub-cli semantic ontology properties --class DataAsset --format table
+datahub semantic ontology properties --class DataAsset --format table
 ```
 
 ### Via the API
@@ -127,7 +127,7 @@ created resources conform to the expected schema before publishing.
 ### Via the CLI
 
 ```bash
-datahub-cli semantic shacl validate \
+datahub semantic shacl validate \
   --data my-asset.jsonld \
   --format table
 ```

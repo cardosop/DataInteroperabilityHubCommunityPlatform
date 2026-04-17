@@ -55,9 +55,9 @@ Response:
 **SDK:**
 
 ```python
-from datahub_sdk import MeshantClient
+from datahub_interoperability import DataHubClient
 
-client = MeshantClient()
+client = DataHubClient()
 jsonld = client.semantic.get_asset_jsonld(asset_id="<ASSET_ID>")
 print(jsonld)
 ```

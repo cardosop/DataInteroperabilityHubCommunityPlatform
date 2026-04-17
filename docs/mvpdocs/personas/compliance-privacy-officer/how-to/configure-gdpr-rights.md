@@ -69,9 +69,9 @@ datahub gdpr access \
 ### Via the SDK
 
 ```python
-from datahub_sdk import MeshantClient
+from datahub_interoperability import DataHubClient
 
-client = MeshantClient()
+client = DataHubClient()
 export = client.gdpr.access(
     identifier_column="email",
     identifier_value="subject@example.com",

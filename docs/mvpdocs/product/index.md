@@ -43,7 +43,7 @@ versioning, orchestration, and more.
 
 The full OpenAPI specification is served at `/api/v1/` on any running
 instance. Endpoint groups are documented per-domain in the
-[API Endpoints Reference](../../API_ENDPOINTS_REFERENCE.md).
+[API Reference](../api-reference/).
 
 ## Personas
 

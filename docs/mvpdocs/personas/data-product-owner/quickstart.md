@@ -11,7 +11,7 @@ your organization.
 - A sample CSV file (or any supported tabular format) ready to upload.
 - (Optional) The Meshant CLI installed if you prefer the terminal:
   ```bash
-  pip install datahub-cli
+  pip install datahub
   datahub config set --api-url https://meshant-internal.example.com --token <YOUR_TOKEN>
   ```
 

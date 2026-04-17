@@ -64,7 +64,28 @@ class StandardErrorCodes:
     CONTRACT_NORMALIZATION_FAILED = "CONTRACT_NORMALIZATION_FAILED"
     CONTRACT_CLI_ERROR = "CONTRACT_CLI_ERROR"
 
-    # Phase 32 — Semantic-specific errors
+    # Asset-specific errors
+    ASSET_NOT_FOUND = "ASSET_NOT_FOUND"
+
+    # Data quality errors
+    DQ_CHECK_FAILED = "DQ_CHECK_FAILED"
+
+    # Compliance errors
+    COMPLIANCE_SCAN_FAILED = "COMPLIANCE_SCAN_FAILED"
+
+    # Tenant errors
+    TENANT_NOT_FOUND = "TENANT_NOT_FOUND"
+
+    # Webhook errors
+    WEBHOOK_DELIVERY_FAILED = "WEBHOOK_DELIVERY_FAILED"
+
+    # MVP gating
+    MVP_FEATURE_GATED = "MVP_FEATURE_GATED"
+
+    # Quota / billing
+    QUOTA_EXCEEDED = "QUOTA_EXCEEDED"
+
+    # Semantic-specific errors
     MISSING_TENANT_ID = "MISSING_TENANT_ID"
     INVALID_SPARQL = "INVALID_SPARQL"
     QUERY_TIMEOUT = "QUERY_TIMEOUT"

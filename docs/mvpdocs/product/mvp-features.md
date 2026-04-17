@@ -1,8 +1,7 @@
 # MVP Features
 
 This page lists every feature area for the Meshant MVP (v1) and its
-inclusion tier. It is promoted from the internal `InputDocs/MVP_Scope.md`
-planning document.
+inclusion tier.
 
 **Tier legend**
 
@@ -30,7 +29,7 @@ API: `GET /api/v1/tenants/`, `GET /api/v1/users/`
 | Feature | Tier | Notes |
 |---------|------|-------|
 | Token/key-based AuthN (JWT, API keys) | Fully included | Multi-tenant scoping |
-| SSO integration (SAML / OIDC) | Fully included | Optional per tenant |
+| SSO integration (SAML / OIDC) | Partial | Provider skeleton in place; full IdP integration and token parsing require `python3-saml`/`authlib` (post-MVP) |
 | Role-based AuthZ | Fully included | Coarse-grained, enforced |
 | Encryption in transit (TLS) and at rest | Fully included | Cloud-provider encryption |
 | Basic rate limiting (per key / tenant) | Partial | 429 responses; plan-based limits later |
@@ -178,7 +177,7 @@ API: `GET /api/v1/governance/access-requests/`, `POST /api/v1/governance/access-
 | SPARQL and JSON-LD documentation | Fully included | URI patterns and query examples |
 | Webhooks (event subscriptions) | Fully included | |
 | GraphQL schema docs | Post-MVP | v1 external API is REST + SPARQL only |
-| JavaScript SDK | Post-MVP | Planned in roadmap |
+| JavaScript SDK | Partial | TypeScript SDK implemented (`sdk/js/`); documentation pending |
 
 Concept: [Webhooks](../concepts/webhooks.md)
 API: `GET /api/v1/webhooks/`
@@ -289,4 +288,4 @@ on the [Roadmap](roadmap.md).
 | Advanced marketplace | Complex pricing, promotions, revenue sharing |
 | Advanced semantic UI | Ontology browser, SPARQL query builder |
 | GraphQL API | Post-MVP; REST + SPARQL only in v1 |
-| JavaScript SDK | Planned post-MVP |
+| JavaScript SDK | Implemented (`sdk/js/`); docs pending |

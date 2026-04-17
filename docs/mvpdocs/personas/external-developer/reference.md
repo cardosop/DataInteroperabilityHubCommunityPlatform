@@ -43,13 +43,13 @@ relevant to the External Developer persona.
 
 | Command Group | Link |
 |---------------|------|
-| `datahub-cli assets` | [CLI Reference: Assets](../../cli-reference/assets.md) |
-| `datahub-cli search` | [CLI Reference: Search](../../cli-reference/search.md) |
-| `datahub-cli contracts` | [CLI Reference: Contracts](../../cli-reference/contracts.md) |
-| `datahub-cli webhooks` | [CLI Reference: Webhooks](../../cli-reference/webhooks.md) |
-| `datahub-cli semantic` | [CLI Reference: Semantic](../../cli-reference/semantic.md) |
-| `datahub-cli jobs` | [CLI Reference: Jobs](../../cli-reference/jobs.md) |
-| `datahub-cli baas` | [CLI Reference: BaaS](../../cli-reference/baas.md) |
+| `datahub assets` | [CLI Reference: Assets](../../cli-reference/assets.md) |
+| `datahub search` | [CLI Reference: Search](../../cli-reference/search.md) |
+| `datahub contracts` | [CLI Reference: Contracts](../../cli-reference/contracts.md) |
+| `datahub webhooks` | [CLI Reference: Webhooks](../../cli-reference/webhooks.md) |
+| `datahub semantic` | [CLI Reference: Semantic](../../cli-reference/semantic.md) |
+| `datahub jobs` | [CLI Reference: Jobs](../../cli-reference/jobs.md) |
+| `datahub baas` | [CLI Reference: BaaS](../../cli-reference/baas.md) |
 
 
 ## Webhook Specifications

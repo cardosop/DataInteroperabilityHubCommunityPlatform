@@ -61,17 +61,59 @@ assets = client.assets.list(page_size=10)
 | [WebhooksAPI](webhooks-api.md) | `client.webhooks` | Webhook registration and delivery logs |
 | [WorkflowsAPI](workflows-api.md) | `client.workflows` | Orchestration workflow management |
 
+## Common Patterns
+
+### Create and validate a contract
+
+```python
+# Create a contract from an ODPS file
+with open("product.odps.json") as f:
+    contract = client.contracts.create_odps(
+        original_raw=f.read(),
+        extract_odcs=True,
+    )
+
+# Validate and lint
+validation = client.contracts.validate(contract["id"])
+lint_result = client.contracts.lint(contract["id"])
+```
+
+### Upload a file and create an asset
+
+```python
+# Upload
+file_obj = client.files.upload("/path/to/data.csv")
+
+# Create asset (data-first flow)
+asset = client.assets.create(
+    name="Sales Data",
+    key="sales-data",
+    file_id=file_obj["id"],
+)
+```
+
 ## Error Handling
 
 All SDK methods raise typed exceptions that map to HTTP error codes.
 See [Error Codes](../../reference/error-codes.md) for the full list.
 
 ```python
-from datahub_interoperability import DataHubClient, MVPGatedFeatureError
+from datahub_interoperability import (
+    DataHubClient,
+    NotFoundError,
+    ValidationError,
+    RateLimitError,
+    MVPGatedFeatureError,
+)
 
 client = DataHubClient(api_key="msh_live_...")
+
 try:
-    result = client.assets.list()
+    asset = client.assets.get("non-existent-id")
+except NotFoundError as e:
+    print(f"Not found: {e.message}")
+except RateLimitError as e:
+    print(f"Rate limited — retry after {e.retry_after}s")
 except MVPGatedFeatureError as e:
     print(f"Feature {e.feature} is post-MVP")
 ```

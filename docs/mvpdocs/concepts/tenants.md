@@ -34,13 +34,31 @@ Configuration changes are recorded as [audit events](audit-events.md) and take e
 
 ## Isolation Model
 
-Tenant isolation is enforced at multiple layers of the platform stack:
+Tenant isolation is enforced at multiple layers:
 
-- **Database** -- Each tenant's data resides in a separate database schema. Cross-schema queries are not possible.
-- **Storage** -- Each tenant has dedicated storage paths with IAM policies that prevent cross-tenant access.
-- **Search** -- [Search](search.md) indexes are partitioned by tenant. Index-level isolation prevents query-time leakage.
-- **Compute** -- [Jobs](jobs.md) run in tenant-scoped execution contexts with resource limits.
-- **Network** -- API requests are authenticated and tenant-scoped before reaching any business logic.
+- **Middleware** -- `TenantSuspensionMiddleware` resolves the tenant from the
+  request (header, user, or database lookup) and blocks writes for suspended
+  or deleted tenants. Subscription status is also checked — overdue
+  subscriptions trigger read-only mode.
+- **Queryset filtering** -- All viewsets and services filter querysets by the
+  resolved `tenant_id`. Most models have a required `tenant` foreign key. A
+  few models are **platform-scoped** (nullable tenant) for system-level data:
+
+  | Model | Tenant FK | Reason |
+  |-------|-----------|--------|
+  | `AuditEvent` | Nullable | Platform-level events (e.g., tenant creation) |
+  | `User` | Nullable | Platform admins exist outside any single tenant |
+  | `Event` | Nullable | System events without tenant context |
+  | `SecurityAuditLog` | Nullable | Cross-tenant security monitoring |
+  | `Contract`, `Asset`, `Dataset` | **Required** | Always tenant-scoped |
+
+- **Storage** -- File upload paths include the tenant ID. Access is enforced at
+  the application layer (pre-signed URLs are scoped to the tenant's prefix).
+- **Search** -- [Search](search.md) indexes include `tenant_id` in the tsvector
+  filter. Queries always include a tenant predicate.
+- **API requests** -- All authenticated requests must include a valid tenant
+  context. Requests without tenant context receive empty results (not 403) to
+  avoid disclosing resource existence across tenants.
 
 ## Relationships
 

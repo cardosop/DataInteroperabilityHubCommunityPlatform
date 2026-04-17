@@ -28,10 +28,10 @@ datahub contract validate contracts/*.yaml --strict
 **Poll a job until completion:**
 
 ```python
-from datahub_sdk import MeshantClient
+from datahub_interoperability import DataHubClient
 import time
 
-client = MeshantClient()
+client = DataHubClient()
 run = client.dq.run(asset_id="<ASSET_ID>")
 
 while run.status in ("pending", "running"):

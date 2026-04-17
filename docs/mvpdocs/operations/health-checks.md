@@ -76,4 +76,3 @@ readinessProbe:
 
 - [Monitoring](monitoring.md) -- dashboards and alerting
 - [Incident Response](incident-response.md) -- responding to health failures
-- [OPERATIONS.md](../../OPERATIONS.md) -- full operations reference

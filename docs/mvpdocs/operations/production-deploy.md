@@ -37,12 +37,16 @@ git push origin v1.2.3
 
 ## Deployment Strategy
 
-### Blue-Green via Helm Rolling Update
+### Atomic Helm Upgrade with Automatic Rollback
 
-Meshant uses Helm `--atomic` with a 10-minute timeout. Kubernetes performs a
-rolling update across all Deployments (API, worker-light, worker-heavy,
-frontend, compliance, semantic, etc.). The process maintains at least
-`minAvailable` pods per PodDisruptionBudget throughout the rollout:
+Meshant uses `helm upgrade --atomic` with a 10-minute timeout. Kubernetes
+performs a **rolling update** across all Deployments (API, worker-light,
+worker-heavy, frontend, compliance, semantic, etc.). If any pod fails
+readiness probes within the timeout window, Helm automatically rolls back
+the entire release to the previous revision.
+
+The process maintains at least `minAvailable` pods per PodDisruptionBudget
+throughout the rollout:
 
 - **API**: `pdb.minAvailable: 1`, HPA range 2-10 replicas
 - **Worker Light**: `pdb.minAvailable: 1`, HPA range 2-6 replicas
@@ -52,25 +56,17 @@ frontend, compliance, semantic, etc.). The process maintains at least
 Traffic shifts incrementally as new pods pass readiness probes before old
 pods are terminated.
 
-### Canary via Manual `workflow_dispatch`
+### Staging-First Verification
 
-For high-risk releases, deploy to staging first via the `staging` branch push,
+For all releases, deploy to staging first via the `staging` branch push,
 then verify before tagging for production. The staging environment mirrors
 production topology on a single `t3.large` node with reduced replicas (1 per
 service, PDBs disabled).
 
-To perform a controlled canary in production:
-
-1. Deploy the new image tag to a single API pod by temporarily setting
-   `api.replicaCount: 1` and `api.hpa.enabled: false` in a values override.
-2. Route 5-10% of traffic using an Ingress canary annotation:
-   ```yaml
-   nginx.ingress.kubernetes.io/canary: "true"
-   nginx.ingress.kubernetes.io/canary-weight: "5"
-   ```
-3. Monitor error rates and latency in Grafana for 15-30 minutes.
-4. If healthy, remove the canary annotation and let HPA scale normally.
-5. If unhealthy, delete the canary Ingress and roll back (see below).
+> **Note:** Progressive delivery (canary, blue-green) via tools like Flagger
+> or Argo Rollouts is not configured in the current release. The atomic
+> rollback strategy provides the safety net — if smoke tests fail after
+> deploy, the workflow triggers `helm rollback` automatically.
 
 ## Deployment Steps
 

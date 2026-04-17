@@ -98,7 +98,7 @@ your tenant administrator.
 
 ```bash
 # Install the CLI
-pip install datahub-cli
+pip install datahub
 
 # Configure endpoint and credentials
 datahub config set --api-url https://meshant-internal.example.com --token <YOUR_TOKEN>
@@ -110,9 +110,9 @@ datahub health check
 For the Python SDK:
 
 ```python
-from datahub_sdk import MeshantClient
+from datahub_interoperability import DataHubClient
 
-client = MeshantClient(
+client = DataHubClient(
     base_url="https://meshant-internal.example.com",
     token="<YOUR_TOKEN>",
 )
