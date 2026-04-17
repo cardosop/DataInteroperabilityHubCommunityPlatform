@@ -92,6 +92,26 @@ def _check_ip_rate_limit(ip: str) -> bool:
     return True
 
 
+def _check_refresh_rate_limit(ip: str) -> bool:
+    """
+    Enforce IP-level rate limit on /auth/refresh/ (F4 — glittery-herding-graham).
+
+    Returns True if within limits, False if rate-limited.
+    Higher limit than login (30/min vs 10/min) since legitimate SPAs
+    refresh proactively and from multiple tabs.
+    """
+    max_per_minute = getattr(settings, "REFRESH_IP_RATE_PER_MINUTE", 30)
+    cache_key = f"refresh_ip_rate:{ip}"
+    count = cache.get(cache_key, 0)
+    if count >= max_per_minute:
+        return False
+    if count == 0:
+        cache.set(cache_key, 1, 60)
+    else:
+        cache.incr(cache_key)
+    return True
+
+
 def _check_password_reset_rate_limit(email: str) -> bool:
     """
     Enforce per-email rate limit on password reset (Phase 87).
@@ -197,15 +217,31 @@ def _clear_auth_cookies(response: Response) -> None:
 
 def _get_refresh_token_str(request) -> str:
     """
-    Extract the raw refresh-token string (11.1).
+    Extract the raw refresh-token string (11.1 + B2a glittery-herding-graham).
 
-    Precedence: httpOnly cookie > request body.
-    Returns an empty string when neither source carries a token.
+    Precedence depends on the auth mode:
+    - Cookie mode (USE_HTTPONLY_AUTH_COOKIES=True): httpOnly cookie > body
+    - Body mode  (USE_HTTPONLY_AUTH_COOKIES=False): body > cookie
+
+    In body mode, a stale httpOnly cookie (from a prior cookie-mode session
+    or from the always-set refresh cookie) could override a fresh body token.
+    Checking body first prevents this.
     """
     cookie_name = getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token")
-    token = request.COOKIES.get(cookie_name, "")
-    if not token and request.data:
-        token = request.data.get("refresh_token", "") or ""
+    use_cookie_auth = getattr(settings, "USE_HTTPONLY_AUTH_COOKIES", False)
+
+    if use_cookie_auth:
+        # Cookie mode: prefer cookie, fall back to body
+        token = request.COOKIES.get(cookie_name, "")
+        if not token and request.data:
+            token = request.data.get("refresh_token", "") or ""
+    else:
+        # Body mode: prefer body, fall back to cookie
+        token = ""
+        if request.data:
+            token = request.data.get("refresh_token", "") or ""
+        if not token:
+            token = request.COOKIES.get(cookie_name, "")
     return token.strip()
 
 
@@ -389,7 +425,18 @@ def refresh_token(request):
     Issues a new access token and rotates the refresh token (family rotation).
     If a revoked token is presented (replay / theft), the entire family is
     revoked and the client must re-authenticate (11.2).
+
+    Phase F4 (glittery-herding-graham): IP rate-limited (REFRESH_IP_RATE_PER_MINUTE).
+    Phase B2 (glittery-herding-graham): grace period for concurrent-tab replay detection.
     """
+    # F4: rate limit before any DB work
+    client_ip = _get_client_ip(request)
+    if not _check_refresh_rate_limit(client_ip):
+        return Response(
+            {"detail": "Too many refresh attempts. Please try again later."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
     refresh_token_str = _get_refresh_token_str(request)
     if not refresh_token_str:
         raise ValidationError({"refresh_token": "Refresh token is required"})
@@ -406,10 +453,67 @@ def refresh_token(request):
     except RefreshToken.DoesNotExist:
         raise ValidationError({"refresh_token": "Invalid refresh token"})
 
-    # ── Replay detection (11.2) ───────────────────────────────────────────────
+    # ── Replay detection with grace period (11.2 + B2 glittery-herding-graham) ─
     if refresh_token_obj.is_revoked():
-        # A previously-issued token has been presented again — possible theft.
-        # Revoke the entire family to force re-login.
+        # A revoked token was presented. Before revoking the entire family,
+        # check if a valid sibling was created within the grace window —
+        # this indicates a concurrent-tab refresh (Tab A rotated, Tab B is
+        # late) rather than a stolen-token replay attack.
+        grace = getattr(settings, "REFRESH_TOKEN_GRACE_PERIOD_SECONDS", 5)
+        cutoff = timezone.now() - timedelta(seconds=grace)
+
+        latest_sibling = (
+            RefreshToken.objects.select_for_update()
+            .filter(
+                family_id=refresh_token_obj.family_id,
+                revoked_at__isnull=True,
+                created_at__gte=cutoff,
+            )
+            .order_by("-sequence_number")
+            .first()
+        ) if grace > 0 else None
+
+        if latest_sibling and latest_sibling.user.is_active():
+            # Concurrent-tab scenario: rotate from the latest valid sibling.
+            logger.info(
+                "refresh_token_grace_period_applied",
+                family_id=str(refresh_token_obj.family_id),
+                stale_seq=refresh_token_obj.sequence_number,
+                sibling_seq=latest_sibling.sequence_number,
+                user_id=str(refresh_token_obj.user_id),
+            )
+            latest_sibling.revoke()
+
+            new_token_str = RefreshToken.generate_token()
+            new_token_hash = RefreshToken.hash_token(new_token_str)
+            expires_at = timezone.now() + timedelta(seconds=settings.JWT_REFRESH_TOKEN_EXPIRY)
+            RefreshToken.objects.create(
+                user=latest_sibling.user,
+                token_hash=new_token_hash,
+                expires_at=expires_at,
+                family_id=refresh_token_obj.family_id,
+                sequence_number=latest_sibling.sequence_number + 1,
+            )
+
+            access_token = JWTTokenGenerator.generate_access_token(latest_sibling.user)
+            log_auth_operation(action="TOKEN_REFRESHED", user=latest_sibling.user, details={"grace_period": True}, request=request)
+
+            use_cookie_auth = getattr(settings, "USE_HTTPONLY_AUTH_COOKIES", False)
+            body = {"token_type": "Bearer", "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRY}
+            if not use_cookie_auth:
+                body["access_token"] = access_token
+            response = Response(body, status=status.HTTP_200_OK)
+            _set_refresh_cookie(response, new_token_str)
+            if use_cookie_auth:
+                response.set_cookie(
+                    "access_token", access_token,
+                    max_age=settings.JWT_ACCESS_TOKEN_EXPIRY,
+                    httponly=True, secure=not getattr(settings, "DEBUG", False),
+                    samesite="Strict", path="/",
+                )
+            return response
+
+        # No recent valid sibling — genuine replay attack.
         refresh_token_obj.revoke_family()
         logger.warning(
             "refresh_token_replay_detected",
@@ -512,15 +616,19 @@ def logout(request):
     revoked_count = 0
     if refresh_token_str:
         refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
-        refresh_token_obj = RefreshToken.objects.filter(
-            token_hash=refresh_token_hash, user_id=request.user.id
-        ).first()
-
-        if refresh_token_obj:
-            if not refresh_token_obj.revoked_at:
-                refresh_token_obj.revoked_at = timezone.now()
-                refresh_token_obj.save(update_fields=["revoked_at", "updated_at"])
-            revoked_count = 1
+        # B4 (glittery-herding-graham): use select_for_update to prevent race
+        # between concurrent logout + refresh on the same token.
+        with transaction.atomic():
+            refresh_token_obj = (
+                RefreshToken.objects.select_for_update()
+                .filter(token_hash=refresh_token_hash, user_id=request.user.id)
+                .first()
+            )
+            if refresh_token_obj:
+                if not refresh_token_obj.revoked_at:
+                    refresh_token_obj.revoked_at = timezone.now()
+                    refresh_token_obj.save(update_fields=["revoked_at", "updated_at"])
+                revoked_count = 1
     else:
         # No token found: revoke all sessions for this user (full session cleanup)
         revoked = RefreshToken.objects.filter(

@@ -5,16 +5,20 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { getTestUser } from '../fixtures/auth';
 import { assertFailureRedirect, assertSuccessLoad } from '../fixtures/journey-helpers';
-import { assertListPageLoads, waitForAppMainReady } from '../fixtures/helpers';
+import { assertListPageLoads, loginAndNavigateToRoute, waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Marketplace', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('marketplace list loads', async ({ page }) => {
-      await page.goto('/marketplace');
-      await page.waitForLoadState('domcontentloaded');
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/marketplace', {
+        timeout: 60000,
+        contentSelector: '[data-testid="listing-list-page"], .listing-list-page, .empty-state, .error-display',
+      });
       await assertListPageLoads(page, '[data-testid="listing-list-page"], .listing-list-page, .empty-state', { timeout: 60000 });
     });
   });

@@ -5,15 +5,19 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { assertListPageLoads, waitForAppMainReady } from '../fixtures/helpers';
+import { getTestUser } from '../fixtures/auth';
+import { assertListPageLoads, loginAndNavigateToRoute, waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Assets', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('assets list loads', async ({ page }) => {
-      await page.goto('/assets');
-      await page.waitForLoadState('domcontentloaded');
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/assets', {
+        timeout: 60000,
+        contentSelector: '.asset-list-page, .empty-state, .error-display',
+      });
       await assertListPageLoads(page, '.asset-list-page, .empty-state', { timeout: 60000 });
     });
   });

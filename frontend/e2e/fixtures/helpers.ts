@@ -3062,44 +3062,66 @@ export async function uploadODPSContractViaUI(
       );
     }
 
-    // Wait for the creation POST response using event-based waitForResponse
-    // (NOT the old poll-loop pattern). The ODPS product creation endpoint on
-    // staging involves datacontract-service normalisation + async workflow
-    // processing, which regularly takes 30-60s. The old 30s poll-loop exited
-    // before the response arrived, producing "0 collected responses" failures.
+    // Wait for the creation POST response using event-based waitForResponse.
+    // Race against requestfailed to detect connection resets (TCP RST) that
+    // produce NO HTTP response — without this, waitForResponse silently waits
+    // the full 90s and reports a generic timeout.
     //
-    // waitForResponse is event-driven: it resolves as soon as the response
-    // arrives, regardless of duration — no busy-polling, no race with slow
-    // servers. The 90s timeout matches DPO-001's ODPS-step budget.
+    // Root cause: nginx proxy_read_timeout < gunicorn --timeout means nginx
+    // can kill the upstream connection before the backend responds. The browser
+    // receives a TCP reset, not an HTTP 504 — Playwright fires requestfailed
+    // (not response), so waitForResponse never resolves.
+    const isCreationPost = (method: string, url: string) => {
+      if (method !== 'POST') return false;
+      if (!url.includes('/contracts/') && !url.includes('/odps/')) return false;
+      if (/validate-draft|validate\/|normalize\//.test(url)) return false;
+      return true;
+    };
+
     const creationResponsePromise = page.waitForResponse(
-      (resp) => {
-        if (resp.request().method() !== 'POST') return false;
-        const url = resp.url();
-        if (!url.includes('/contracts/') && !url.includes('/odps/')) return false;
-        // Skip validation / normalization pre-flight POSTs — we only want
-        // the actual creation response.
-        if (/validate-draft|validate\/|normalize\//.test(url)) return false;
-        return true;
-      },
+      (resp) => isCreationPost(resp.request().method(), resp.url()),
       { timeout: 90000 },
     );
+
+    // Also listen for request failures (connection reset, DNS failure, etc.)
+    // so we fail fast with an actionable error instead of waiting 90s.
+    const requestFailedPromise = new Promise<never>((_, reject) => {
+      const handler = (request: import('@playwright/test').Request) => {
+        if (isCreationPost(request.method(), request.url())) {
+          page.off('requestfailed', handler);
+          const failure = request.failure();
+          reject(new Error(
+            `uploadODPSContractViaUI: creation POST failed at network level. ` +
+            `URL: ${request.url()}. ` +
+            `Failure: ${failure?.errorText ?? 'unknown'}. ` +
+            `This usually means nginx proxy_read_timeout fired before the ` +
+            `backend responded (TCP RST, not HTTP 504). Check nginx proxy ` +
+            `timeout alignment with gunicorn --timeout.`
+          ));
+        }
+      };
+      page.on('requestfailed', handler);
+      // Clean up listener after the overall timeout
+      setTimeout(() => page.off('requestfailed', handler), 95000);
+    });
 
     await submitBtn.first().click();
 
     let creationResp: { url: string; status: number; body: string };
     try {
-      const resp = await creationResponsePromise;
+      const resp = await Promise.race([creationResponsePromise, requestFailedPromise]);
       const body = await resp.text().catch(() => '');
       creationResp = { url: resp.url(), status: resp.status(), body };
     } catch (waitErr) {
-      // Capture current URL + page snapshot for diagnostics.
       const currentUrl = page.url();
+      // Check if the button reverted to non-pending state (mutation resolved
+      // with a swallowed error before waitForResponse could fire).
+      const btnText = await submitBtn.first().textContent().catch(() => '');
+      const mutationResolved = btnText !== null && !btnText.includes('Creating');
       throw new Error(
         `uploadODPSContractViaUI: no creation POST response within 90s. ` +
-        `The submit button was clicked but the server never responded. ` +
         `Current URL: ${currentUrl}. ` +
-        `Possible causes: datacontract-service unreachable, ODPS normalisation timeout, ` +
-        `or the click did not trigger handleSubmit (React state mismatch). ` +
+        `Button text: "${btnText}" (mutation ${mutationResolved ? 'already resolved — likely network error swallowed by catch block' : 'still pending'}). ` +
         `Original: ${String(waitErr)}`
       );
     }

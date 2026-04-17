@@ -195,6 +195,18 @@ export async function placeOrderViaApi(
   });
   if (!resp.ok) {
     const body = await resp.text().catch(() => '');
+    // 409 = consumer already has an active order for this listing. Extract the
+    // existing order_id from the error response instead of failing — the test's
+    // precondition (an order exists) is already satisfied.
+    if (resp.status === 409) {
+      try {
+        const errData = JSON.parse(body) as { order_id?: string };
+        if (errData.order_id) {
+          options?.cleanup?.track({ type: 'order', id: errData.order_id, owner: consumerUser });
+          return errData.order_id;
+        }
+      } catch { /* fall through to throw */ }
+    }
     throw new Error(`placeOrderViaApi failed: ${resp.status} ${body}`);
   }
   const data = (await resp.json()) as { id?: string; order?: { id?: string } };

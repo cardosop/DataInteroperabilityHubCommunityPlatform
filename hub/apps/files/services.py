@@ -3,6 +3,7 @@ File Service
 
 Business logic for file operations.
 """
+import os
 import uuid
 import time
 from typing import Dict, Any, Optional
@@ -215,7 +216,11 @@ class FileService(BaseService, FileEventPublisher):
             )
 
         file_id = uuid.uuid4()
-        storage_path = f"{tenant_id}/{file_id}/{name}"
+        # G2.1 (glittery-herding-graham): sanitize user-provided filename to
+        # prevent path traversal (../../etc/passwd → passwd). Also strip null
+        # bytes and normalize backslashes.
+        safe_name = os.path.basename((name or "").replace("\x00", "").replace("\\", "/")) or "unnamed"
+        storage_path = f"{tenant_id}/{file_id}/{safe_name}"
         metadata_json = {
             "upload_method": upload_method,
             "chunk_size": None,

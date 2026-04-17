@@ -5,15 +5,22 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { assertListPageLoads, waitForAppMainReady } from '../fixtures/helpers';
+import { getTestUser } from '../fixtures/auth';
+import { assertListPageLoads, loginAndNavigateToRoute, waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Compliance', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('compliance list loads', async ({ page }) => {
-      await page.goto('/compliance');
-      await page.waitForLoadState('domcontentloaded');
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/compliance', {
+        timeout: 60000,
+        contentSelector: '.compliance-run-list-page, .empty-state, .error-display',
+      });
+      if (page.url().includes('/login')) {
+        throw new Error('compliance list loads: still on /login after loginAndNavigateToRoute');
+      }
       await assertListPageLoads(page, '.compliance-run-list-page, .empty-state', { timeout: 60000 });
     });
   });

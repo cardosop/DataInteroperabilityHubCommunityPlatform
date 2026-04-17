@@ -41,16 +41,33 @@ test.describe('Dimension: Network failures', () => {
   test('when assets API fails with connection error, list page shows error or empty', async ({
     page,
   }) => {
-    await page.route('**/api/v1/assets/**', (route) => {
-      void route.abort('connectionrefused').catch(() => {});
-    });
+    // Use loginAndNavigateToRoute to ensure auth persists through SPA navigation
+    // (loginUser + page.goto loses auth on full-page reload in httpOnly cookie mode).
     const testUser = await getTestUser();
-    await loginUser(page, testUser);
-    await page.goto('/assets', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('.asset-list-page, .empty-state, .error-display', {
-      timeout: 15000,
+    const { loginAndNavigateToRoute } = await import('../fixtures/helpers');
+    await loginAndNavigateToRoute(page, testUser, '/assets', {
+      timeout: 60000,
+      contentSelector: '.asset-list-page, .empty-state, .error-display',
     });
-    await page.waitForTimeout(3000);
+
+    // Now that we're on /assets with valid auth, install the route intercept
+    // and reload the page to trigger the error path.
+    await page.route('**/api/v1/assets/**', (route) => {
+      if (route.request().method() === 'GET') {
+        void route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'Service Unavailable' }),
+        });
+      } else {
+        void route.continue();
+      }
+    });
+    // Reload triggers the SPA to re-fetch /assets with the intercept active.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.asset-list-page, .empty-state, .error-display', {
+      timeout: 30000,
+    });
     const hasContent =
       (await page.locator('.error-display').count()) > 0 ||
       (await page.locator('.empty-state').count()) > 0 ||

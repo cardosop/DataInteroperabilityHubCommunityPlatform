@@ -51,8 +51,14 @@ class AuthService {
       apiClient._cookieAuthMode = true;
     }
 
-    // Fetch and store user info
-    await this.fetchAndStoreUser();
+    // Fetch and store user info. If this fails, roll back tokens to prevent
+    // zombie state where tokens exist but user profile is null (C1 — glittery-herding-graham).
+    try {
+      await this.fetchAndStoreUser();
+    } catch (err) {
+      this.clearAuth();
+      throw err;
+    }
 
     return response.data;
   }
@@ -277,6 +283,9 @@ class AuthService {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
     localStorage.removeItem(USER_STORAGE_KEY);
+    // G4.4 (glittery-herding-graham): also clear active_tenant_id so direct
+    // callers of clearAuth() don't leave stale tenant context.
+    try { localStorage.removeItem('active_tenant_id'); } catch { /* ignore */ }
     apiClient.clearTokens();
   }
 
@@ -302,7 +311,24 @@ class AuthService {
     // and the token needs to survive multiple reloads within the same test.
     // Security: UI login (authService.setAccessToken) never writes to localStorage,
     // so production users are unaffected.
-    const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+    // C3 (glittery-herding-graham): clean up stale expired tokens before the
+    // cookie-mode heuristic. An expired access_token from a prior body-mode
+    // session makes hasAnyToken=true, preventing cookie mode detection.
+    let storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (storedToken) {
+      try {
+        const payload = JSON.parse(atob(storedToken.split('.')[1]));
+        if (payload.exp && payload.exp * 1000 < Date.now()) {
+          localStorage.removeItem(TOKEN_STORAGE_KEY);
+          storedToken = null;
+        }
+      } catch {
+        // Malformed token — remove it
+        localStorage.removeItem(TOKEN_STORAGE_KEY);
+        storedToken = null;
+      }
+    }
+
     if (storedToken) {
       apiClient.setAccessToken(storedToken);
     }

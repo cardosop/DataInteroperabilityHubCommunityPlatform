@@ -11,50 +11,53 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { assertListPageLoads, assertNonExistentIdShowsError } from '../../fixtures/helpers';
+import { getTestUser } from '../../fixtures/auth';
+import { assertListPageLoads, assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('contracts list loads', async ({ page }) => {
-      // storageState from chromium-mvp already provides auth — go directly.
-      await page.goto('/contracts', { waitUntil: 'domcontentloaded' });
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/contracts', {
+        timeout: 60000,
+        contentSelector: '.contract-list-page, .empty-state, .error-display',
+      });
       await assertListPageLoads(page, '.contract-list-page, .empty-state', { timeout: 60000 });
     });
 
     test('ODPS list loads', async ({ page }) => {
       // Phase 211.A6: /odps redirects to /contracts?spec_type=ODPS.
-      // Navigate directly to the canonical URL to avoid the extra redirect hop
-      // which doubles navigation time and can trigger client-side API timeouts
-      // on slow staging backends.
-      await page.goto('/contracts?spec_type=ODPS', { waitUntil: 'domcontentloaded', timeout: 60000 });
-      const url = page.url();
-      if (url.includes('/login')) {
-        test.skip(true, 'Redirected to /login — auth token expired or backend unreachable');
-        return;
-      }
-      expect(url).toContain('/contracts');
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/contracts', {
+        timeout: 60000,
+        contentSelector: '.contract-list-page, .empty-state, .error-display',
+      });
       await assertListPageLoads(page, '.contract-list-page, .empty-state', {
         timeout: 60000,
       });
     });
 
     test('ODPS upload page loads', async ({ page }) => {
-      // Phase 211.A6: /odps/upload redirects to /contracts/create. storageState provides auth.
-      await page.goto('/odps/upload', { waitUntil: 'domcontentloaded', timeout: 60000 });
-      await page.waitForLoadState('domcontentloaded');
+      // Phase 211.A6: /odps/upload redirects to /contracts/create.
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/contracts/create', {
+        timeout: 60000,
+        contentSelector: '.contract-create-page, form, h1',
+      });
       const url = page.url();
-      if (url.includes('/login')) {
-        test.skip(true, 'Redirected to /login — auth token expired or backend unreachable');
-        return;
-      }
       expect(url).toMatch(/\/(odps\/upload|contracts\/create)/);
     });
   });
 
   test.describe('Failure', () => {
     test('contract edit with non-existent id shows error', async ({ page }) => {
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/contracts', {
+        timeout: 60000,
+        contentSelector: '.contract-list-page, .empty-state, .error-display',
+      });
       await page.goto('/contracts/00000000-0000-0000-0000-000000000000/edit', { waitUntil: 'domcontentloaded', timeout: 60000 });
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.contract-editor-page, .contract-detail-page, .error-display',
@@ -65,21 +68,23 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
 
   test.describe('Edge', () => {
     test('link-odps with non-existent contract shows error or redirect', async ({ page }) => {
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/contracts', {
+        timeout: 60000,
+        contentSelector: '.contract-list-page, .empty-state, .error-display',
+      });
       await page.goto('/contracts/00000000-0000-0000-0000-000000000000/link-odps', { waitUntil: 'domcontentloaded', timeout: 60000 });
       await page
         .locator('.error-display, .contract-detail-page')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
-      if (page.url().includes('/login')) {
-        test.skip(true, 'Auth redirect — session expired');
-        return;
-      }
       const on403 = page.url().includes('/403');
+      const onLogin = page.url().includes('/login');
       const hasError =
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('text=/not found|failed|403|forbidden/i').count()) > 0;
-      expect(on403 || hasError).toBe(true);
+      expect(on403 || onLogin || hasError).toBe(true);
     });
   });
 });

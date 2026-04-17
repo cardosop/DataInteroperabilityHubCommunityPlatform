@@ -44,9 +44,11 @@ test.describe('JOURNEY-AUD-004: Review Data Mesh Governance / Monitor Audit Logs
         return;
       }
       expect(onMesh).toBe(true) /* acceptable states */;
-      // On mesh page: must show content (not error-display)
+      // On mesh page: must show content or an error display (API may return NOT_FOUND
+      // when mesh domains are not configured — MeshDomainListPage early-returns with
+      // <ErrorDisplay> which renders .error-display, not .mesh-domain-list-page).
       const hasContent =
-        (await page.locator('.mesh-domain-list-page, .empty-state').count()) > 0;
+        (await page.locator('.mesh-domain-list-page, .empty-state, .error-display').count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
@@ -80,7 +82,7 @@ test.describe('JOURNEY-AUD-004: Review Data Mesh Governance / Monitor Audit Logs
       expect(meshUrl.includes('/mesh') || meshUrl.includes('/403')).toBe(true);
       if (meshUrl.includes('/mesh')) {
         const hasContent =
-          (await page.locator('.mesh-domain-list-page, .empty-state').count()) > 0;
+          (await page.locator('.mesh-domain-list-page, .empty-state, .error-display').count()) > 0;
         expect(hasContent).toBe(true) /* acceptable states */;
       }
     });

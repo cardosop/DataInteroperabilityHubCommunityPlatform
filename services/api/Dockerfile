@@ -51,6 +51,12 @@ LABEL org.opencontainers.image.revision="${GIT_SHA}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.source="https://github.com/DataInteroperabilityHub/DataInteroperabilityHub"
 
+# G3.1 (glittery-herding-graham): run as non-root user for security hardening.
+# Matches the pattern in services/prefect-integration/Dockerfile.
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8000
 
 # Default command: gunicorn with ASGI app + uvicorn workers (handles HTTP + WebSocket).

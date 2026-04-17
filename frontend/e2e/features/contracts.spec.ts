@@ -5,15 +5,22 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { assertListPageLoads, waitForAppMainReady } from '../fixtures/helpers';
+import { getTestUser, loginUser } from '../fixtures/auth';
+import { assertListPageLoads, loginAndNavigateToRoute, waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Feature: Contracts', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('contracts list loads', async ({ page }) => {
-      await page.goto('/contracts');
-      await page.waitForLoadState('domcontentloaded');
+      const testUser = await getTestUser();
+      await loginAndNavigateToRoute(page, testUser, '/contracts', {
+        timeout: 60000,
+        contentSelector: '[data-testid="contract-list-page"], .contract-list-page, .empty-state, .error-display',
+      });
+      if (page.url().includes('/login')) {
+        throw new Error('contracts list loads: still on /login after loginAndNavigateToRoute');
+      }
       await assertListPageLoads(page, '[data-testid="contract-list-page"], .contract-list-page, .empty-state', { timeout: 60000 });
     });
   });
@@ -38,6 +45,8 @@ test.describe('Feature: Contracts', () => {
 
   test.describe('Validation', () => {
     test('contract create page shows validation errors for invalid content', async ({ page }) => {
+      const testUser = await getTestUser();
+      await loginUser(page, testUser);
       await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
 
       if (page.url().includes('/login')) {
@@ -45,11 +54,13 @@ test.describe('Feature: Contracts', () => {
         return;
       }
 
-      // Paste invalid ODCS (missing required fields)
+      // Paste invalid ODCS (missing required fields).
+      // ContractFileReader renders with class contract-file-reader__textarea and
+      // aria-label="Contract content (YAML or JSON)".
       const textarea = page.locator(
-        'textarea[aria-label*="contract" i], textarea[aria-label*="content" i], .contract-file-reader textarea',
+        'textarea[aria-label*="contract" i], textarea[aria-label*="content" i], .contract-file-reader textarea, .contract-file-reader__textarea',
       ).first();
-      await textarea.waitFor({ state: 'visible', timeout: 10000 });
+      await textarea.waitFor({ state: 'visible', timeout: 20000 });
       await textarea.fill('{"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}');
 
       // Wait for debounced validation (1.5s debounce + backend normalization + staging latency).

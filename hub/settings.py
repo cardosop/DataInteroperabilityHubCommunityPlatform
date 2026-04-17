@@ -1588,6 +1588,16 @@ JWT_ISSUER = env("JWT_ISSUER", default="hub")
 # Default False for backward compatibility with existing SPA clients.
 USE_HTTPONLY_AUTH_COOKIES = env.bool("USE_HTTPONLY_AUTH_COOKIES", default=False)
 
+# B2 (glittery-herding-graham): grace period (seconds) for concurrent-tab
+# refresh token replay detection. When a revoked token is presented and a
+# valid sibling was created within this window, the system assumes concurrent
+# tabs rather than token theft — rotates from the sibling instead of revoking
+# the entire family. Set to 0 to disable (strict replay detection).
+REFRESH_TOKEN_GRACE_PERIOD_SECONDS = env.int("REFRESH_TOKEN_GRACE_PERIOD_SECONDS", default=5)
+
+# F4 (glittery-herding-graham): IP-level rate limit for /auth/refresh/.
+REFRESH_IP_RATE_PER_MINUTE = env.int("REFRESH_IP_RATE_PER_MINUTE", default=30)
+
 # ── Refresh-token cookie (11.1, hardened 221.5.1) ────────────────────────────
 # Phase 221.5.1: The __Secure- prefix is a browser-enforced security feature
 # that requires the Secure attribute (HTTPS).  This prevents:

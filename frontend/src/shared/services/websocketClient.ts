@@ -352,8 +352,10 @@ class WebSocketClient {
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       if (this.accessToken && !this.wsUnavailable) {
-        this.connect(this.accessToken).catch(() => {
-          // Handshake failed (e.g. 404); onclose will set wsUnavailable and stop further retries
+        this.connect(this.accessToken).catch((err) => {
+          // G4.5 (glittery-herding-graham): log reconnect failures instead of
+          // silently swallowing them. onclose will set wsUnavailable and stop retries.
+          console.warn('WebSocket reconnect failed:', err);
         });
       }
     }, delay);
