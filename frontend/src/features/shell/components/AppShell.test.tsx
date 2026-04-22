@@ -151,3 +151,44 @@ describe('AppShell mobile sidebar', () => {
     );
   });
 });
+
+describe('AppShell CommandPalette MVP filtering (Track A PR 4)', () => {
+  beforeEach(() => {
+    setUser();
+    vi.stubEnv('VITE_MVP_MODE', 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    useAuthStore.setState({
+      user: null,
+      active_tenant_id: null,
+      isAuthenticated: false,
+      isLoading: false,
+      error: null,
+    });
+  });
+
+  it('CommandPalette pages list does NOT include non-MVP routes when VITE_MVP_MODE=true', () => {
+    render(
+      <Wrapper>
+        <AppShell />
+      </Wrapper>,
+    );
+    // Open the palette via Ctrl+K (the canonical shortcut).
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+
+    // Once open, palette options are usually rendered as buttons or links
+    // with the page label as text. Non-MVP labels must be absent.
+    const HIDDEN_LABELS = ['Data Mesh', 'BaaS', 'ML', 'Search', 'Observability', 'Developer'];
+    for (const label of HIDDEN_LABELS) {
+      // Sidebar may be closed (mobile width) so the only place the label
+      // could appear under MVP mode is the palette. Either way, it should
+      // be absent.
+      expect(
+        screen.queryAllByText(label).length,
+        `Palette must not list "${label}" under VITE_MVP_MODE=true`,
+      ).toBe(0);
+    }
+  });
+});

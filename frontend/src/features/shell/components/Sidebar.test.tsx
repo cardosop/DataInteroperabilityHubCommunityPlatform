@@ -129,3 +129,78 @@ describe('Sidebar governance badge', () => {
     expect(calledPendingCount).toBe(false);
   });
 });
+
+describe('Sidebar MVP mode filtering (Track A PR 4)', () => {
+  let queryClient: QueryClient;
+
+  function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>{children}</MemoryRouter>
+      </QueryClientProvider>
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    // Render as a full-access user so any hidden item is hidden by the
+    // MVP filter, not by capability/role gating.
+    setUser({ roles: ['TENANT_ADMIN', 'PLATFORM_ADMIN'], is_platform_admin: true });
+    vi.mocked(apiClient.getClient().get).mockResolvedValue({ data: {} } as never);
+    vi.stubEnv('VITE_MVP_MODE', 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    useAuthStore.setState({
+      user: null,
+      active_tenant_id: null,
+      isAuthenticated: false,
+      isLoading: false,
+      error: null,
+    });
+  });
+
+  it('hides every label whose path is in NON_MVP_PATHS', async () => {
+    render(<Sidebar />, { wrapper: Wrapper });
+    // Allow any one tick of rendering for the capabilities hook to settle.
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Labels from navItems.ts that map to NON_MVP_PATHS:
+    const HIDDEN_LABELS = [
+      'Data Mesh',
+      'Virtualization',
+      'Search',
+      'Communities',
+      'BaaS',
+      'ML',
+      'Observability',
+      'Developer',
+      'Transformation',
+    ];
+    for (const label of HIDDEN_LABELS) {
+      expect(
+        screen.queryByText(label),
+        `Sidebar label "${label}" should be hidden under VITE_MVP_MODE=true`,
+      ).toBeNull();
+    }
+  });
+
+  it('still shows MVP-scope items including /semantic', async () => {
+    render(<Sidebar />, { wrapper: Wrapper });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Items expected to remain visible — Semantic is the load-bearing
+    // exception (see docs/mvp-gate.md).
+    const VISIBLE_LABELS = ['Assets', 'Contracts', 'Datasets', 'Semantic'];
+    for (const label of VISIBLE_LABELS) {
+      expect(
+        screen.getAllByText(label).length,
+        `Sidebar label "${label}" should be visible under VITE_MVP_MODE=true`,
+      ).toBeGreaterThanOrEqual(1);
+    }
+  });
+});
