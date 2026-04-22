@@ -3,36 +3,23 @@
  * Displays list of compliance runs with filtering; Create compliance run from list (OpenAPI ComplianceRunCreateRequest)
  */
 
-import { useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useComplianceRuns, useCreateComplianceRun } from '../hooks/useCompliance';
+import { useComplianceRuns } from '../hooks/useCompliance';
 import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { EmptyState } from '../../../shared/components/EmptyState';
-import { useToast } from '../../../shared/components/Toast';
-import { normalizeError } from '../../../shared/utils/errorUtils';
-import { AssetPicker } from '../../../shared/components/pickers/AssetPicker';
-import { DatasetPicker } from '../../../shared/components/pickers/DatasetPicker';
-import { FilePicker } from '../../../shared/components/pickers/FilePicker';
 import type { ComplianceRunStatus } from '../../../shared/types/compliance';
+import { ComplianceCreateModal } from './ComplianceCreateModal';
 import './ComplianceRunListPage.css';
 import { Button } from '../../../shared/components/Button';
 
 export function ComplianceRunListPage() {
   const navigate = useNavigate();
-  const toast = useToast();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   const [statusFilter, setStatusFilter] = useState<ComplianceRunStatus | ''>('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({
-    asset_id: '',
-    dataset_id: '',
-    file_id: '',
-    scan_mode: 'internal' as 'internal' | 'external',
-    applicable_regulations: '',
-  });
-  const [createError, setCreateError] = useState<string | null>(null);
 
   const filters = {
     page,
@@ -42,151 +29,146 @@ export function ComplianceRunListPage() {
   };
 
   const { data, isLoading, error, refetch } = useComplianceRuns(filters);
-  const createMutation = useCreateComplianceRun();
 
   const handleComplianceRunClick = (complianceRunId: string) => {
     navigate(`/compliance/runs/${complianceRunId}`);
   };
 
-  const handleCreateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreateError(null);
-    const assetId = createForm.asset_id.trim() || undefined;
-    const datasetId = createForm.dataset_id.trim() || undefined;
-    const fileId = createForm.file_id.trim() || undefined;
-    if (!assetId && !datasetId && !fileId) {
-      setCreateError('Provide at least one of: Asset, Dataset, or File');
-      return;
-    }
-    const payload = {
-      asset_id: assetId,
-      dataset_id: datasetId,
-      file_id: fileId,
-      scan_mode: createForm.scan_mode,
-      applicable_regulations: createForm.applicable_regulations
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean).length
-        ? createForm.applicable_regulations.split(',').map((s) => s.trim()).filter(Boolean)
-        : undefined,
-    };
-    try {
-      const run = await createMutation.mutateAsync(payload);
+  // Track B PR 6: stable callbacks for the extracted modal.
+  const closeModal = useCallback(() => setCreateModalOpen(false), []);
+  const handleCreated = useCallback(
+    (complianceRunId: string) => {
       setCreateModalOpen(false);
-      setCreateForm({
-        asset_id: '',
-        dataset_id: '',
-        file_id: '',
-        scan_mode: 'internal',
-        applicable_regulations: '',
-      });
-      toast.success('Compliance run created successfully.');
-      navigate(`/compliance/runs/${run.id}`);
-    } catch (err: unknown) {
-      const msg = normalizeError(err).error.message || 'Failed to create compliance run';
-      setCreateError(msg);
-      toast.error(msg);
-    }
-  };
-
-  const renderCreateModal = () => (
-    <div className="compliance-create-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="compliance-create-modal-title">
-      <div className="compliance-create-modal">
-        <h2 id="compliance-create-modal-title">Create compliance run</h2>
-        <form onSubmit={handleCreateSubmit} className="compliance-create-form">
-          <div className="form-group">
-            <label htmlFor="compliance-create-asset_id">Asset (optional)</label>
-            <AssetPicker
-              value={createForm.asset_id || null}
-              onChange={(id) => setCreateForm({ ...createForm, asset_id: id ?? '' })}
-              placeholder="Search and select an asset..."
-              data-testid="compliance-create-asset-picker"
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="compliance-create-dataset_id">Dataset (optional)</label>
-            <DatasetPicker
-              value={createForm.dataset_id || null}
-              onChange={(id) => setCreateForm({ ...createForm, dataset_id: id ?? '' })}
-              assetId={createForm.asset_id || undefined}
-              placeholder="Search and select a dataset..."
-              data-testid="compliance-create-dataset-picker"
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="compliance-create-file_id">File (optional)</label>
-            <FilePicker
-              value={createForm.file_id || null}
-              onChange={(id) => setCreateForm({ ...createForm, file_id: id ?? '' })}
-              assetId={createForm.asset_id || undefined}
-              datasetId={createForm.dataset_id || undefined}
-              placeholder="Search and select a file..."
-              data-testid="compliance-create-file-picker"
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="compliance-create-scan_mode">Scan mode</label>
-            <select
-              id="compliance-create-scan_mode"
-              value={createForm.scan_mode}
-              onChange={(e) => setCreateForm({ ...createForm, scan_mode: e.target.value as 'internal' | 'external' })}
-            >
-              <option value="internal">Internal</option>
-              <option value="external">External</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label htmlFor="compliance-create-regulations">Applicable regulations (comma-separated, optional)</label>
-            <input
-              id="compliance-create-regulations"
-              type="text"
-              value={createForm.applicable_regulations}
-              onChange={(e) => setCreateForm({ ...createForm, applicable_regulations: e.target.value })}
-              placeholder="e.g. GDPR, HIPAA"
-            />
-          </div>
-          {createError && <p className="compliance-create-error" role="alert">{createError}</p>}
-          <div className="compliance-create-modal-actions">
-            <Button variant="secondary" onClick={() => setCreateModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" loading={createMutation.isPending}>
-              Create
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+      navigate(`/compliance/runs/${complianceRunId}`);
+    },
+    [navigate],
   );
 
+  // Track B structural inversion.
+  let mainContent: ReactNode;
   if (isLoading) {
-    return <ListPageSkeleton />;
-  }
-
-  if (error) {
-    return (
-      <ErrorDisplay error={error} title="Failed to load compliance runs" onRetry={() => refetch()} />
+    mainContent = <ListPageSkeleton />;
+  } else if (error) {
+    mainContent = (
+      <ErrorDisplay
+        error={error}
+        title="Failed to load compliance runs"
+        onRetry={() => refetch()}
+      />
     );
-  }
-
-  if (!data || data.results.length === 0) {
-    return (
-      <div className="compliance-run-list-page">
-        <div className="compliance-run-list-header">
-          <h1>Compliance Runs</h1>
-          <Button
- variant="primary" className="compliance-create-run-btn"
- data-testid="btn-create-compliance-run"
- onClick={() => setCreateModalOpen(true)}>
-            Create compliance run
-          </Button>
+  } else if (!data || data.results.length === 0) {
+    mainContent = (
+      <EmptyState
+        title="No compliance runs found"
+        message="Compliance runs will appear here when created. Use the button above to create a run."
+      />
+    );
+  } else {
+    mainContent = (
+      <>
+        <div className="compliance-run-list-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Regulations</th>
+                <th>Status</th>
+                <th>Overall Status</th>
+                <th>Risk Level</th>
+                <th>Allowed to Store</th>
+                <th>Asset/Dataset</th>
+                <th>Created</th>
+                <th>Completed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.results.map((run) => (
+                <tr
+                  key={run.id}
+                  onClick={() => handleComplianceRunClick(run.id)}
+                  className="compliance-run-row"
+                >
+                  <td>
+                    {run.regulations && run.regulations.length > 0
+                      ? run.regulations.join(', ')
+                      : '-'}
+                  </td>
+                  <td>
+                    <span className={`status-badge status-${run.status.toLowerCase()}`}>
+                      {run.status}
+                    </span>
+                  </td>
+                  <td>
+                    {run.overall_status ? (
+                      <span
+                        className={`overall-status-badge overall-status-${run.overall_status.toLowerCase()}`}
+                      >
+                        {run.overall_status}
+                      </span>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
+                  <td>
+                    {run.risk_level ? (
+                      <span
+                        className={`risk-level-badge risk-level-${run.risk_level.toLowerCase()}`}
+                      >
+                        {run.risk_level}
+                      </span>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
+                  <td>
+                    {run.allowed_to_store !== undefined ? (
+                      <span
+                        className={`allowed-badge ${run.allowed_to_store ? 'allowed' : 'blocked'}`}
+                      >
+                        {run.allowed_to_store ? 'Yes' : 'No'}
+                      </span>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
+                  <td>
+                    {run.asset ? (
+                      <span>Asset: {run.asset.slice(0, 8)}...</span>
+                    ) : run.dataset ? (
+                      <span>Dataset: {run.dataset.slice(0, 8)}...</span>
+                    ) : run.file ? (
+                      <span>File: {run.file.slice(0, 8)}...</span>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
+                  <td>{new Date(run.created_at).toLocaleString()}</td>
+                  <td>{run.completed_at ? new Date(run.completed_at).toLocaleString() : '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <EmptyState
-          title="No compliance runs found"
-          message="Compliance runs will appear here when created. Use the button above to create a run."
-        />
-        {createModalOpen && renderCreateModal()}
-      </div>
+
+        {data.total_pages > 1 && (
+          <div className="compliance-run-list-pagination">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={!data.has_previous}
+            >
+              Previous
+            </button>
+            <span>
+              Page {data.page} of {data.total_pages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(data.total_pages, p + 1))}
+              disabled={!data.has_next}
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -196,131 +178,36 @@ export function ComplianceRunListPage() {
         <h1>Compliance Runs</h1>
         <div className="compliance-run-list-header-actions">
           <Button
- variant="primary" className="compliance-create-run-btn"
- data-testid="btn-create-compliance-run"
- onClick={() => setCreateModalOpen(true)}>
+            variant="primary"
+            className="compliance-create-run-btn"
+            data-testid="btn-create-compliance-run"
+            onClick={() => setCreateModalOpen(true)}
+          >
             Create compliance run
           </Button>
           <div className="compliance-run-list-filters">
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value as ComplianceRunStatus | '');
-              setPage(1);
-            }}
-          >
-            <option value="">All Statuses</option>
-            <option value="PENDING">Pending</option>
-            <option value="RUNNING">Running</option>
-            <option value="SUCCEEDED">Succeeded</option>
-            <option value="FAILED">Failed</option>
-          </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as ComplianceRunStatus | '');
+                setPage(1);
+              }}
+            >
+              <option value="">All Statuses</option>
+              <option value="PENDING">Pending</option>
+              <option value="RUNNING">Running</option>
+              <option value="SUCCEEDED">Succeeded</option>
+              <option value="FAILED">Failed</option>
+            </select>
           </div>
         </div>
       </div>
 
-      {createModalOpen && renderCreateModal()}
-
-      <div className="compliance-run-list-table">
-        <table>
-          <thead>
-            <tr>
-              <th>Regulations</th>
-              <th>Status</th>
-              <th>Overall Status</th>
-              <th>Risk Level</th>
-              <th>Allowed to Store</th>
-              <th>Asset/Dataset</th>
-              <th>Created</th>
-              <th>Completed</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.results.map((run) => (
-              <tr
-                key={run.id}
-                onClick={() => handleComplianceRunClick(run.id)}
-                className="compliance-run-row"
-              >
-                <td>
-                  {run.regulations && run.regulations.length > 0
-                    ? run.regulations.join(', ')
-                    : '-'}
-                </td>
-                <td>
-                  <span className={`status-badge status-${run.status.toLowerCase()}`}>
-                    {run.status}
-                  </span>
-                </td>
-                <td>
-                  {run.overall_status ? (
-                    <span
-                      className={`overall-status-badge overall-status-${run.overall_status.toLowerCase()}`}
-                    >
-                      {run.overall_status}
-                    </span>
-                  ) : (
-                    '-'
-                  )}
-                </td>
-                <td>
-                  {run.risk_level ? (
-                    <span className={`risk-level-badge risk-level-${run.risk_level.toLowerCase()}`}>
-                      {run.risk_level}
-                    </span>
-                  ) : (
-                    '-'
-                  )}
-                </td>
-                <td>
-                  {run.allowed_to_store !== undefined ? (
-                    <span
-                      className={`allowed-badge ${run.allowed_to_store ? 'allowed' : 'blocked'}`}
-                    >
-                      {run.allowed_to_store ? 'Yes' : 'No'}
-                    </span>
-                  ) : (
-                    '-'
-                  )}
-                </td>
-                <td>
-                  {run.asset ? (
-                    <span>Asset: {run.asset.slice(0, 8)}...</span>
-                  ) : run.dataset ? (
-                    <span>Dataset: {run.dataset.slice(0, 8)}...</span>
-                  ) : run.file ? (
-                    <span>File: {run.file.slice(0, 8)}...</span>
-                  ) : (
-                    '-'
-                  )}
-                </td>
-                <td>{new Date(run.created_at).toLocaleString()}</td>
-                <td>{run.completed_at ? new Date(run.completed_at).toLocaleString() : '-'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {data.total_pages > 1 && (
-        <div className="compliance-run-list-pagination">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={!data.has_previous}
-          >
-            Previous
-          </button>
-          <span>
-            Page {data.page} of {data.total_pages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(data.total_pages, p + 1))}
-            disabled={!data.has_next}
-          >
-            Next
-          </button>
-        </div>
+      {createModalOpen && (
+        <ComplianceCreateModal onClose={closeModal} onCreated={handleCreated} />
       )}
+
+      {mainContent}
     </div>
   );
 }

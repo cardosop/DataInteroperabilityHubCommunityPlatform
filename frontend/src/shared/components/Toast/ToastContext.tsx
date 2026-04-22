@@ -2,7 +2,7 @@
  * Toast Provider Component
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { ToastItem } from './ToastItem';
 import { ToastContext } from './toastTypes';
 import type { Toast, ToastType } from './toastTypes';
@@ -50,8 +50,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Track B PR 6: stable Provider value so consumers don't re-render on
+  // unrelated parent renders. addToast / removeToast already have empty
+  // useCallback deps, so the memo only busts when `toasts` actually
+  // changes — i.e., when a toast is added or dismissed.
+  const ctxValue = useMemo(
+    () => ({ toasts, addToast, removeToast }),
+    [toasts, addToast, removeToast],
+  );
+
   return (
-    <ToastContext.Provider value={{ toasts, addToast, removeToast }}>
+    <ToastContext.Provider value={ctxValue}>
       {children}
       <div className="toast-container" role="region" aria-label="Notifications" data-testid="toast-container">
         {toasts.map((toast) => (

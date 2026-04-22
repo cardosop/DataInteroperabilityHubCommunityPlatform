@@ -119,7 +119,7 @@ export function SchemaMatchingPage() {
               value={sourceSchema}
               onChange={(e) => {
                 setSourceSchema(e.target.value);
-                if (schemaError.source) setSchemaError({ ...schemaError, source: undefined });
+                if (schemaError.source) setSchemaError((prev) => ({ ...prev, source: undefined }));
               }}
               rows={12}
               placeholder='{"properties": {"field1": {"type": "string"}}}'
@@ -137,7 +137,7 @@ export function SchemaMatchingPage() {
               value={targetSchema}
               onChange={(e) => {
                 setTargetSchema(e.target.value);
-                if (schemaError.target) setSchemaError({ ...schemaError, target: undefined });
+                if (schemaError.target) setSchemaError((prev) => ({ ...prev, target: undefined }));
               }}
               rows={12}
               placeholder='{"properties": {"field_a": {"type": "string"}}}'

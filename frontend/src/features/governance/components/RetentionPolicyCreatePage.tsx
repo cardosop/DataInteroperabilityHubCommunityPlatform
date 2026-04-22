@@ -159,7 +159,7 @@ export function RetentionPolicyCreatePage() {
             id="name"
             type="text"
             value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
             required
             placeholder="e.g., 30 Day Retention Policy"
           />
@@ -170,7 +170,7 @@ export function RetentionPolicyCreatePage() {
           <textarea
             id="description"
             value={form.description || ''}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
             placeholder="Optional description"
             rows={3}
           />
@@ -183,7 +183,7 @@ export function RetentionPolicyCreatePage() {
               <label htmlFor="retention-asset-picker">Asset (optional)</label>
               <AssetPicker
                 value={form.asset_id || null}
-                onChange={(id) => setForm({ ...form, asset_id: id ?? '' })}
+                onChange={(id) => setForm((prev) => ({ ...prev, asset_id: id ?? '' }))}
                 placeholder="Search and select an asset..."
                 data-testid="retention-asset-picker"
               />
@@ -192,7 +192,7 @@ export function RetentionPolicyCreatePage() {
               <label htmlFor="retention-dataset-picker">Dataset (optional)</label>
               <DatasetPicker
                 value={form.dataset_id || null}
-                onChange={(id) => setForm({ ...form, dataset_id: id ?? '' })}
+                onChange={(id) => setForm((prev) => ({ ...prev, dataset_id: id ?? '' }))}
                 placeholder="Search and select a dataset..."
                 assetId={form.asset_id || undefined}
                 data-testid="retention-dataset-picker"
@@ -202,7 +202,7 @@ export function RetentionPolicyCreatePage() {
               <label htmlFor="retention-file-picker">File (optional)</label>
               <FilePicker
                 value={form.file_id || null}
-                onChange={(id) => setForm({ ...form, file_id: id ?? '' })}
+                onChange={(id) => setForm((prev) => ({ ...prev, file_id: id ?? '' }))}
                 placeholder="Search and select a file..."
                 assetId={form.asset_id || undefined}
                 datasetId={form.dataset_id || undefined}
@@ -263,7 +263,7 @@ export function RetentionPolicyCreatePage() {
               id="event_trigger"
               type="text"
               value={form.event_trigger || ''}
-              onChange={(e) => setForm({ ...form, event_trigger: e.target.value })}
+              onChange={(e) => setForm((prev) => ({ ...prev, event_trigger: e.target.value }))}
               required
               placeholder="e.g., contract_expired, project_completed"
             />
@@ -275,7 +275,7 @@ export function RetentionPolicyCreatePage() {
           <select
             id="action"
             value={form.action}
-            onChange={(e) => setForm({ ...form, action: e.target.value as RetentionAction })}
+            onChange={(e) => setForm((prev) => ({ ...prev, action: e.target.value as RetentionAction }))}
           >
             <option value={RetentionActionEnum.SOFT_DELETE}>Soft Delete</option>
             <option value={RetentionActionEnum.HARD_DELETE}>Hard Delete</option>
@@ -304,7 +304,7 @@ export function RetentionPolicyCreatePage() {
             <input
               type="checkbox"
               checked={form.legal_hold}
-              onChange={(e) => setForm({ ...form, legal_hold: e.target.checked })}
+              onChange={(e) => setForm((prev) => ({ ...prev, legal_hold: e.target.checked }))}
             />
             Legal Hold
           </label>
@@ -317,7 +317,7 @@ export function RetentionPolicyCreatePage() {
               <textarea
                 id="legal_hold_reason"
                 value={form.legal_hold_reason || ''}
-                onChange={(e) => setForm({ ...form, legal_hold_reason: e.target.value })}
+                onChange={(e) => setForm((prev) => ({ ...prev, legal_hold_reason: e.target.value }))}
                 placeholder="Reason for legal hold"
                 rows={3}
               />
@@ -328,7 +328,7 @@ export function RetentionPolicyCreatePage() {
                 id="legal_hold_expires_at"
                 type="datetime-local"
                 value={form.legal_hold_expires_at || ''}
-                onChange={(e) => setForm({ ...form, legal_hold_expires_at: e.target.value })}
+                onChange={(e) => setForm((prev) => ({ ...prev, legal_hold_expires_at: e.target.value }))}
               />
             </div>
           </>
@@ -339,7 +339,7 @@ export function RetentionPolicyCreatePage() {
             <input
               type="checkbox"
               checked={form.enabled}
-              onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
+              onChange={(e) => setForm((prev) => ({ ...prev, enabled: e.target.checked }))}
             />
             Enabled
           </label>

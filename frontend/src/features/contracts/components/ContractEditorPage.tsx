@@ -200,14 +200,14 @@ export function ContractEditorPage() {
                 <input
                   type="text"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                 />
               </div>
               <div className="form-group">
                 <label>Description</label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
                   rows={4}
                 />
               </div>

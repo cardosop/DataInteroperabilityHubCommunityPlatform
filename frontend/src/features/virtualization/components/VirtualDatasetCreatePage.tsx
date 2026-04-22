@@ -132,7 +132,7 @@ export function VirtualDatasetCreatePage() {
             id="name"
             type="text"
             value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
             className={errors.name ? 'error' : ''}
             required
           />
@@ -144,7 +144,7 @@ export function VirtualDatasetCreatePage() {
           <textarea
             id="description"
             value={formData.description}
-            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
             rows={3}
           />
         </div>
@@ -154,7 +154,7 @@ export function VirtualDatasetCreatePage() {
           <select
             id="query_type"
             value={formData.query_type}
-            onChange={(e) => setFormData({ ...formData, query_type: e.target.value as QueryType })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, query_type: e.target.value as QueryType }))}
           >
             <option value={QueryType.SQL}>SQL</option>
             <option value={QueryType.SPARQL}>SPARQL</option>
@@ -171,7 +171,7 @@ export function VirtualDatasetCreatePage() {
           <textarea
             id="query"
             value={formData.query}
-            onChange={(e) => setFormData({ ...formData, query: e.target.value })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, query: e.target.value }))}
             className={errors.query ? 'error' : ''}
             rows={10}
             required
@@ -185,7 +185,7 @@ export function VirtualDatasetCreatePage() {
           <textarea
             id="schema"
             value={formData.schema}
-            onChange={(e) => setFormData({ ...formData, schema: e.target.value })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, schema: e.target.value }))}
             className={errors.schema ? 'error' : ''}
             rows={5}
             placeholder='{"field1": "string", "field2": "number"}'
@@ -212,7 +212,7 @@ export function VirtualDatasetCreatePage() {
           <select
             id="status"
             value={formData.status}
-            onChange={(e) => setFormData({ ...formData, status: e.target.value as VirtualDatasetStatus })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value as VirtualDatasetStatus }))}
           >
             <option value={VirtualDatasetStatus.DRAFT}>Draft</option>
             <option value={VirtualDatasetStatus.ACTIVE}>Active</option>

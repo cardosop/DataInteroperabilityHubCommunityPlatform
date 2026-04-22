@@ -122,7 +122,7 @@ export function MarketplaceConnectionEditPage() {
             id="name"
             type="text"
             value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
             className={errors.name ? 'error' : ''}
             required
           />
@@ -135,7 +135,7 @@ export function MarketplaceConnectionEditPage() {
             id="marketplace_type"
             value={formData.marketplace_type}
             onChange={(e) =>
-              setFormData({ ...formData, marketplace_type: e.target.value as MarketplaceType })
+              setFormData((prev) => ({ ...prev, marketplace_type: e.target.value as MarketplaceType }))
             }
           >
             {MARKETPLACE_TYPE_OPTIONS.map((opt) => (
@@ -151,7 +151,7 @@ export function MarketplaceConnectionEditPage() {
           <textarea
             id="config_json"
             value={formData.config_json}
-            onChange={(e) => setFormData({ ...formData, config_json: e.target.value })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, config_json: e.target.value }))}
             className={errors.config_json ? 'error' : ''}
             rows={8}
           />
@@ -165,7 +165,7 @@ export function MarketplaceConnectionEditPage() {
             <input
               type="checkbox"
               checked={formData.is_active}
-              onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+              onChange={(e) => setFormData((prev) => ({ ...prev, is_active: e.target.checked }))}
             />
             Active (connection enabled for sync)
           </label>

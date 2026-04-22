@@ -80,7 +80,7 @@ export function AccessRequestCreatePage() {
           <textarea
             id="create-reason"
             value={form.reason}
-            onChange={(e) => setForm({ ...form, reason: e.target.value })}
+            onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))}
             required
             placeholder="Why do you need access?"
           />
@@ -89,7 +89,7 @@ export function AccessRequestCreatePage() {
           <label htmlFor="create-asset_id">Asset (optional)</label>
           <AssetPicker
             value={form.asset_id || null}
-            onChange={(id) => setForm({ ...form, asset_id: id ?? '' })}
+            onChange={(id) => setForm((prev) => ({ ...prev, asset_id: id ?? '' }))}
             placeholder="Search and select an asset..."
             data-testid="access-request-asset-picker"
           />
@@ -98,7 +98,7 @@ export function AccessRequestCreatePage() {
           <label htmlFor="create-dataset_id">Dataset (optional)</label>
           <DatasetPicker
             value={form.dataset_id || null}
-            onChange={(id) => setForm({ ...form, dataset_id: id ?? '' })}
+            onChange={(id) => setForm((prev) => ({ ...prev, dataset_id: id ?? '' }))}
             assetId={form.asset_id || undefined}
             placeholder="Search and select a dataset..."
             data-testid="access-request-dataset-picker"
@@ -108,7 +108,7 @@ export function AccessRequestCreatePage() {
           <label htmlFor="create-file_id">File (optional)</label>
           <FilePicker
             value={form.file_id || null}
-            onChange={(id) => setForm({ ...form, file_id: id ?? '' })}
+            onChange={(id) => setForm((prev) => ({ ...prev, file_id: id ?? '' }))}
             assetId={form.asset_id || undefined}
             datasetId={form.dataset_id || undefined}
             placeholder="Search and select a file..."
@@ -120,7 +120,7 @@ export function AccessRequestCreatePage() {
           <select
             id="create-type"
             value={form.requested_access_type}
-            onChange={(e) => setForm({ ...form, requested_access_type: e.target.value })}
+            onChange={(e) => setForm((prev) => ({ ...prev, requested_access_type: e.target.value }))}
           >
             <option value="READ">READ</option>
             <option value="WRITE">WRITE</option>

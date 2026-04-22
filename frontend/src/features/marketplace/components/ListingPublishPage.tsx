@@ -145,7 +145,7 @@ export function ListingPublishPage() {
             <select
               id="asset_id"
               value={formData.asset_id}
-              onChange={(e) => setFormData({ ...formData, asset_id: e.target.value })}
+              onChange={(e) => setFormData((prev) => ({ ...prev, asset_id: e.target.value }))}
               className={errors.asset_id ? 'error' : ''}
             >
               <option value="">Select an asset...</option>
@@ -166,7 +166,7 @@ export function ListingPublishPage() {
               id="title"
               type="text"
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
               placeholder="Enter listing title"
               className={errors.title ? 'error' : ''}
             />
@@ -178,7 +178,7 @@ export function ListingPublishPage() {
             <textarea
               id="description"
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
               rows={4}
               placeholder="Enter listing description..."
             />
@@ -189,7 +189,7 @@ export function ListingPublishPage() {
             <textarea
               id="license_summary"
               value={formData.license_summary}
-              onChange={(e) => setFormData({ ...formData, license_summary: e.target.value })}
+              onChange={(e) => setFormData((prev) => ({ ...prev, license_summary: e.target.value }))}
               rows={3}
               placeholder="Enter license summary..."
             />
@@ -204,7 +204,7 @@ export function ListingPublishPage() {
             <select
               id="pricing_model"
               value={formData.pricing_model}
-              onChange={(e) => setFormData({ ...formData, pricing_model: e.target.value as PricingModel })}
+              onChange={(e) => setFormData((prev) => ({ ...prev, pricing_model: e.target.value as PricingModel }))}
             >
               <option value={PricingModel.FREE}>Free</option>
               <option value={PricingModel.FREE_AUTO_APPROVE}>Free (Auto-approve)</option>
@@ -226,7 +226,7 @@ export function ListingPublishPage() {
               min="0"
               step="0.01"
               value={formData.price_amount}
-              onChange={(e) => setFormData({ ...formData, price_amount: e.target.value })}
+              onChange={(e) => setFormData((prev) => ({ ...prev, price_amount: e.target.value }))}
               placeholder="0.00 (leave empty for free)"
             />
           </div>
@@ -237,7 +237,7 @@ export function ListingPublishPage() {
               id="currency"
               name="currency"
               value={formData.currency}
-              onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+              onChange={(e) => setFormData((prev) => ({ ...prev, currency: e.target.value }))}
             >
               <option value="USD">USD</option>
               <option value="EUR">EUR</option>

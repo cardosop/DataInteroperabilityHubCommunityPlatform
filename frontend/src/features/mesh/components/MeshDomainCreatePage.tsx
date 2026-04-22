@@ -90,7 +90,7 @@ export function MeshDomainCreatePage() {
             id="name"
             type="text"
             value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
             className={errors.name ? 'error' : ''}
             required
           />
@@ -102,7 +102,7 @@ export function MeshDomainCreatePage() {
           <textarea
             id="description"
             value={formData.description}
-            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
             rows={4}
           />
         </div>
@@ -113,7 +113,7 @@ export function MeshDomainCreatePage() {
             id="owner_id"
             type="text"
             value={formData.owner_id}
-            onChange={(e) => setFormData({ ...formData, owner_id: e.target.value })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, owner_id: e.target.value }))}
             placeholder="UUID of the owner user"
             className={errors.owner_id ? 'error' : ''}
           />
@@ -125,7 +125,7 @@ export function MeshDomainCreatePage() {
           <select
             id="status"
             value={formData.status}
-            onChange={(e) => setFormData({ ...formData, status: e.target.value as DomainStatus })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value as DomainStatus }))}
           >
             <option value={DomainStatus.ACTIVE}>Active</option>
             <option value={DomainStatus.INACTIVE}>Inactive</option>
