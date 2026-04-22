@@ -142,10 +142,9 @@ export function HomePage() {
             <span className="quick-action-icon">📦</span>
             <span className="quick-action-label">Create Asset</span>
           </Link>
-          <Link to="/search" className="quick-action-card">
-            <span className="quick-action-icon">🔍</span>
-            <span className="quick-action-label">Search</span>
-          </Link>
+          {/* Track A PR 3: Search quick-action removed for MVP — /search is
+              gated and the page is half-built (JOB/ORDER scopes unsupported).
+              Re-add when Search is in MVP scope or behind a feature flag. */}
           <Link to="/datasets" className="quick-action-card">
             <span className="quick-action-icon">📊</span>
             <span className="quick-action-label">View Datasets</span>

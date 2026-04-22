@@ -25,6 +25,7 @@ import { RegistrationRoute } from '../../features/auth/components/RegistrationRo
 import { RootRoute } from './RootRoute';
 import { CapabilityRoute } from '../../shared/components/CapabilityRoute';
 import { MvpGatedRoute } from '../../shared/components/MvpGatedRoute';
+import { isMvpModeEnabledFromEnv } from '../../features/shell/utils/mvpNav';
 import { ErrorBoundary } from '../../shared/components/ErrorBoundary';
 import { LoadingSpinner } from '../../shared/components/LoadingSpinner';
 import { ProtectedRoute } from '../../shared/components/ProtectedRoute';
@@ -494,7 +495,12 @@ const ForbiddenPage = lazy(() =>
   import('../pages/PlaceholderPages').then((m) => ({ default: m.ForbiddenPage }))
 );
 
-export const router = createBrowserRouter([
+// Track A PR 3: extracted to a named export so the drift test in
+// frontend/src/app/routes/mvpGateDrift.test.tsx (PR 4) can walk the
+// route tree and assert every NON_MVP_PATHS entry has a <MvpGatedRoute>
+// wrapper. Production code uses the same array via createBrowserRouter
+// below — single source of truth.
+export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
   {
     path: '/login',
     element: <LoginPage />,
@@ -787,9 +793,11 @@ export const router = createBrowserRouter([
       {
         path: 'integrations',
         element: (
-          <EB fallbackMsg="Loading...">
-            <IntegrationsLayout />
-          </EB>
+          <MvpGatedRoute>
+            <EB fallbackMsg="Loading...">
+              <IntegrationsLayout />
+            </EB>
+          </MvpGatedRoute>
         ),
         children: [
           {
@@ -909,7 +917,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'mesh',
-        element: <MeshPage />,
+        element: (
+          <MvpGatedRoute>
+            <MeshPage />
+          </MvpGatedRoute>
+        ),
         children: [
           {
             index: true,
@@ -947,7 +959,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'virtualization',
-        element: <VirtualizationPage />,
+        element: (
+          <MvpGatedRoute>
+            <VirtualizationPage />
+          </MvpGatedRoute>
+        ),
         children: [
           { index: true, element: <EB fallbackMsg="Loading..."><VirtualDatasetListPage /></EB> },
           { path: 'create', element: <EB fallbackMsg="Loading..."><VirtualDatasetCreatePage /></EB> },
@@ -957,7 +973,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'search',
-        element: <EB fallbackMsg="Loading..."><SearchPage /></EB>,
+        element: (
+          <MvpGatedRoute>
+            <EB fallbackMsg="Loading..."><SearchPage /></EB>
+          </MvpGatedRoute>
+        ),
       },
       {
         path: 'semantic',
@@ -972,21 +992,25 @@ export const router = createBrowserRouter([
       {
         path: 'ai/search',
         element: (
-          <ErrorBoundary>
-            <CapabilityRoute capability="ai.natural-language-search">
-              <AISearchPage />
-            </CapabilityRoute>
-          </ErrorBoundary>
+          <MvpGatedRoute>
+            <ErrorBoundary>
+              <CapabilityRoute capability="ai.natural-language-search">
+                <AISearchPage />
+              </CapabilityRoute>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
         path: 'ai/schema-matching',
         element: (
-          <ErrorBoundary>
-            <CapabilityRoute capability="ai.schema-matching">
-              <SchemaMatchingPage />
-            </CapabilityRoute>
-          </ErrorBoundary>
+          <MvpGatedRoute>
+            <ErrorBoundary>
+              <CapabilityRoute capability="ai.schema-matching">
+                <SchemaMatchingPage />
+              </CapabilityRoute>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
@@ -995,61 +1019,88 @@ export const router = createBrowserRouter([
         element: <Navigate to="/integrations/sync-jobs" replace />,
       },
       {
+        // Track A PR 3: in MVP mode, /social used to redirect to
+        // /communities (also non-MVP), pushing the user to a gated page
+        // that itself redirects to /coming-soon. Short-circuit to
+        // /coming-soon directly. The flag is build-time inlined, so
+        // this evaluates to a constant per deploy.
         path: 'social',
-        element: <Navigate to="/communities" replace />,
+        element: isMvpModeEnabledFromEnv() ? (
+          <Navigate to="/coming-soon" replace />
+        ) : (
+          <Navigate to="/communities" replace />
+        ),
       },
       {
         path: 'communities',
         element: (
-          <ErrorBoundary>
-            <CapabilityRoute capability="social.communities">
-              <CommunitiesPage />
-            </CapabilityRoute>
-          </ErrorBoundary>
+          <MvpGatedRoute>
+            <ErrorBoundary>
+              <CapabilityRoute capability="social.communities">
+                <CommunitiesPage />
+              </CapabilityRoute>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
         path: 'developer',
         element: (
-          <ErrorBoundary>
-            <CapabilityRoute capability="developer.plugins">
-              <DeveloperPortalPage />
-            </CapabilityRoute>
-          </ErrorBoundary>
+          <MvpGatedRoute>
+            <ErrorBoundary>
+              <CapabilityRoute capability="developer.plugins">
+                <DeveloperPortalPage />
+              </CapabilityRoute>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
         path: 'baas',
         element: (
-          <ErrorBoundary>
-            <CapabilityRoute capability="baas.api-keys">
-              <BaaSPage />
-            </CapabilityRoute>
-          </ErrorBoundary>
+          <MvpGatedRoute>
+            <ErrorBoundary>
+              <CapabilityRoute capability="baas.api-keys">
+                <BaaSPage />
+              </CapabilityRoute>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
         path: 'baas/customers/:customerId',
         element: (
-          <ErrorBoundary>
-            <CapabilityRoute capability="baas.api-keys">
-              <CustomerDetailPage />
-            </CapabilityRoute>
-          </ErrorBoundary>
+          <MvpGatedRoute>
+            <ErrorBoundary>
+              <CapabilityRoute capability="baas.api-keys">
+                <CustomerDetailPage />
+              </CapabilityRoute>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
         path: 'baas/billing-reports/:reportId',
         element: (
-          <ErrorBoundary>
-            <CapabilityRoute capability="baas.api-keys">
-              <BillingReportDetailPage />
-            </CapabilityRoute>
-          </ErrorBoundary>
+          <MvpGatedRoute>
+            <ErrorBoundary>
+              <CapabilityRoute capability="baas.api-keys">
+                <BillingReportDetailPage />
+              </CapabilityRoute>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
         path: 'ml',
+        // Track A PR 3: parent had no `element`, so children rendered
+        // unwrapped. Add an Outlet wrapped in MvpGatedRoute so the gate
+        // fires before any child route renders.
+        element: (
+          <MvpGatedRoute>
+            <Outlet />
+          </MvpGatedRoute>
+        ),
         children: [
           {
             index: true,
@@ -1096,9 +1147,11 @@ export const router = createBrowserRouter([
       {
         path: 'observability',
         element: (
-          <EB fallbackMsg="Loading observability...">
-            <ObservabilityPage />
-          </EB>
+          <MvpGatedRoute>
+            <EB fallbackMsg="Loading observability...">
+              <ObservabilityPage />
+            </EB>
+          </MvpGatedRoute>
         ),
       },
       {
@@ -1117,11 +1170,13 @@ export const router = createBrowserRouter([
       {
         path: 'transformation',
         element: (
-          <CapabilityRoute capability="transformation">
-            <EB fallbackMsg="Loading...">
-              <Outlet />
-            </EB>
-          </CapabilityRoute>
+          <MvpGatedRoute>
+            <CapabilityRoute capability="transformation">
+              <EB fallbackMsg="Loading...">
+                <Outlet />
+              </EB>
+            </CapabilityRoute>
+          </MvpGatedRoute>
         ),
         children: [
           { index: true, element: <EB fallbackMsg="Loading..."><TransformationPipelineListPage /></EB> },
@@ -1389,4 +1444,6 @@ export const router = createBrowserRouter([
       </EB>
     ),
   },
-]);
+];
+
+export const router = createBrowserRouter(appRoutes);

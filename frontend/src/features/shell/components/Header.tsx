@@ -12,6 +12,7 @@ import { normalizeError } from '../../../shared/utils/errorUtils';
 import { APP_NAME } from '../../../shared/constants/brand';
 import { NotificationBell } from '../../notifications/components/NotificationBell';
 import { useTheme } from '../../../shared/hooks/useTheme';
+import { isMvpModeEnabledFromEnv } from '../utils/mvpNav';
 import { useMobileSidebar } from './useMobileSidebar';
 import './Header.css';
 
@@ -132,26 +133,33 @@ export function Header() {
           </Link>
         </div>
 
-        <div className="header-center">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const input = e.currentTarget.querySelector('input');
-              const q = input?.value.trim();
-              if (q) {
-                navigate(`/search?q=${encodeURIComponent(q)}`);
-                if (input) input.value = '';
-              }
-            }}
-          >
-            <input
-              type="search"
-              placeholder="Search assets, contracts, datasets..."
-              className="global-search"
-              aria-label="Global search"
-            />
-          </form>
-        </div>
+        {/* Track A PR 3: hide the global search form entirely when MVP mode
+            is on. The /search page is gated, so a visible-but-non-functional
+            input would be more confusing than no input at all. The flag is
+            evaluated at build time (Vite inlines import.meta.env), so this
+            condition resolves to a constant for any given deploy. */}
+        {!isMvpModeEnabledFromEnv() && (
+          <div className="header-center">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const input = e.currentTarget.querySelector('input');
+                const q = input?.value.trim();
+                if (q) {
+                  navigate(`/search?q=${encodeURIComponent(q)}`);
+                  if (input) input.value = '';
+                }
+              }}
+            >
+              <input
+                type="search"
+                placeholder="Search assets, contracts, datasets..."
+                className="global-search"
+                aria-label="Global search"
+              />
+            </form>
+          </div>
+        )}
 
         <div className="header-right">
           {user && (

@@ -7,12 +7,17 @@
  * open, Escape / backdrop / link-click close it.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { CommandPalette } from '../../../shared/components/CommandPalette';
 import type { PaletteItem } from '../../../shared/components/CommandPalette';
+import { FEATURE_SIDEBAR_ADVANCED } from '../../../shared/config/featureFlags';
+import { useCapabilities } from '../../../shared/hooks/useCapabilities';
 import { SkipLink } from '../../../shared/components/SkipLink';
+import { useAuthStore } from '../../auth/store/authStore';
+import { isMvpModeEnabledFromEnv, isPathHiddenInMvpMode } from '../utils/mvpNav';
 import { SIDEBAR_NAV_ITEMS } from '../utils/navItems';
+import { filterVisibleNavItems } from '../utils/sidebarNavFilter';
 import './AppShell.css';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
@@ -20,16 +25,12 @@ import { MobileSidebarProvider } from './MobileSidebarProvider';
 import { useMobileSidebar } from './useMobileSidebar';
 
 /**
- * 223.5 — palette-indexed pages reuse the sidebar's single source of
- * truth. Actions are verb-style shortcuts that don't appear in the
- * sidebar but are common enough to deserve a ⌘K entry.
+ * 223.5 — palette actions are verb-style shortcuts that don't appear in
+ * the sidebar but are common enough to deserve a ⌘K entry. Track A PR 3:
+ * filtered through isPathHiddenInMvpMode in MVP mode so /search doesn't
+ * leak into the palette while the route is gated.
  */
-const PALETTE_PAGES: PaletteItem[] = SIDEBAR_NAV_ITEMS.map((item) => ({
-  label: item.label,
-  path: item.path,
-}));
-
-const PALETTE_ACTIONS: PaletteItem[] = [
+const RAW_PALETTE_ACTIONS: PaletteItem[] = [
   { id: 'create-asset', label: 'Create Asset', path: '/assets/create' },
   { id: 'create-contract', label: 'Create Contract', path: '/contracts/create' },
   { id: 'search', label: 'Search', path: '/search' },
@@ -38,6 +39,40 @@ const PALETTE_ACTIONS: PaletteItem[] = [
 function ShellBody() {
   const { isOpen, close } = useMobileSidebar();
   const location = useLocation();
+
+  // Track A PR 3: build palette pages by reusing the sidebar's
+  // filterVisibleNavItems pipeline. Without this, the CommandPalette ⌘K
+  // surface lists every nav item including /mesh, /baas, /search etc.
+  // even when the sidebar correctly hides them under MVP mode.
+  //
+  // Memoise so the fuzzy-search index inside CommandPalette doesn't
+  // rebuild on every ShellBody render — the deps array busts only when
+  // auth/role/capability/MVP-flag actually change.
+  const { user } = useAuthStore();
+  const { isCapabilityAvailable } = useCapabilities();
+  const mvpModeEnabled = isMvpModeEnabledFromEnv();
+
+  const palettePages: PaletteItem[] = useMemo(() => {
+    const hasRole = (requiredRoles?: string[]): boolean => {
+      if (!requiredRoles || requiredRoles.length === 0) return true;
+      if (!user) return false;
+      return requiredRoles.some((role) => user.roles.includes(role));
+    };
+    return filterVisibleNavItems(SIDEBAR_NAV_ITEMS, {
+      mvpModeEnabled,
+      hasRole,
+      isCapabilityAvailable,
+      sidebarAdvancedEnabled: FEATURE_SIDEBAR_ADVANCED,
+    }).map((item) => ({ label: item.label, path: item.path }));
+  }, [user, isCapabilityAvailable, mvpModeEnabled]);
+
+  const paletteActions: PaletteItem[] = useMemo(
+    () =>
+      RAW_PALETTE_ACTIONS.filter(
+        (a) => !isPathHiddenInMvpMode(a.path, mvpModeEnabled),
+      ),
+    [mvpModeEnabled],
+  );
 
   // Close the overlay on Escape and on route change — matches common mobile
   // nav UX so the panel doesn't stick around after navigation.
@@ -70,7 +105,7 @@ function ShellBody() {
           <Outlet />
         </main>
       </div>
-      <CommandPalette pages={PALETTE_PAGES} actions={PALETTE_ACTIONS} />
+      <CommandPalette pages={palettePages} actions={paletteActions} />
     </div>
   );
 }
