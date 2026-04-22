@@ -5,6 +5,7 @@
  */
 
 import type { TestUser } from '../setup/create-test-user';
+import { e2eTestHeaders } from './e2e-token';
 import type { CleanupRegistry } from './test-data-cleanup';
 
 // Node fetch needs absolute URL; VITE_API_BASE_URL is relative (/api/v1)
@@ -241,7 +242,11 @@ async function createAssetViaApiOnce(
       // Attempt to re-ensure subscription and retry once
       const reEnsureRes = await fetch(`${API_BASE_URL}/test/ensure-e2e-subscription/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          ...e2eTestHeaders(),
+        },
       }).catch(() => null);
       if (reEnsureRes?.ok) {
         console.log('✅ E2E subscription re-ensured after 403, retrying asset creation');
@@ -681,7 +686,11 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
       // Re-ensure subscription and retry
       await fetch(`${API_BASE_URL}/test/ensure-e2e-subscription/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          ...e2eTestHeaders(),
+        },
       }).catch(() => null);
       const retryInit = await fetch(`${API_BASE_URL}/files/init/`, {
         method: 'POST',
@@ -880,7 +889,11 @@ export async function createODPSProductViaApi(user: TestUser): Promise<string> {
     if (response.status === 403 && /subscription_inactive|No active subscription/i.test(body)) {
       await fetch(`${API_BASE_URL}/test/ensure-e2e-subscription/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          ...e2eTestHeaders(),
+        },
       }).catch(() => null);
       const retryRes = await fetch(`${API_BASE_URL}/contracts/`, {
         method: 'POST',

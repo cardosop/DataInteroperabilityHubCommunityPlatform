@@ -41,6 +41,11 @@ MVP_GATED_RELATIVE_PREFIXES: Final[tuple[str, ...]] = (
     "social/",
     "scheduled-ingestions/",
     "scheduled-exports/",
+    # Phase 5 (current PR): plug backend drift. Both prefixes were mounted in
+    # hub/apps/api/urls.py but absent from this list, so they were reachable
+    # under MVP_MODE=True despite the frontend hiding them.
+    "search/",
+    "developer/",
 )
 
 API_V1_PREFIX: Final[str] = "/api/v1/"

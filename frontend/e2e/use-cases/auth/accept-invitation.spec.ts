@@ -8,6 +8,7 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTenantAdminUser, loginUser } from '../../fixtures/auth';
+import { e2eTestHeaders } from '../../fixtures/e2e-token';
 import { assertSuccessLoad } from '../../fixtures/journey-helpers';
 
 const API_BASE =
@@ -27,7 +28,7 @@ test.describe('Accept Invitation (JOURNEY-TA-001)', () => {
       await loginUser(page, taUser);
       const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
       const tokenRes = await page.request.post(`${API_BASE}/test/ensure-e2e-invitation-token/`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${accessToken}`, ...e2eTestHeaders() },
       });
       if (!tokenRes.ok()) {
         test.skip(true, 'E2E invitation token endpoint not available (ENVIRONMENT=test required)');

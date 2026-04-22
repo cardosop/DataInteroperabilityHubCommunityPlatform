@@ -8,6 +8,7 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser, loginUser, loginViaApi } from '../../fixtures/auth';
+import { e2eTestHeaders } from '../../fixtures/e2e-token';
 import { loginAndNavigateToRoute, switchTenantViaUI } from '../../fixtures/helpers';
 
 // Align with fixtures/auth.ts API resolution
@@ -44,12 +45,12 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
     // Ensure user has 2 tenants (E2E setup). Retry once — under parallel load the first
     // request can fail with a connection error even though the endpoint is healthy.
     let setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
-      headers,
+      headers: { ...headers, ...e2eTestHeaders() },
     }).catch(() => null);
     if (!setupRes?.ok()) {
       await new Promise((r) => setTimeout(r, 3000));
       setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
-        headers,
+        headers: { ...headers, ...e2eTestHeaders() },
       }).catch(() => null);
     }
     if (!setupRes?.ok()) {
@@ -110,12 +111,12 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
 
     // Ensure user has a secondary tenant. Retry once for transient connection errors.
     let setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
-      headers,
+      headers: { ...headers, ...e2eTestHeaders() },
     }).catch(() => null);
     if (!setupRes?.ok()) {
       await new Promise((r) => setTimeout(r, 3000));
       setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
-        headers,
+        headers: { ...headers, ...e2eTestHeaders() },
       }).catch(() => null);
     }
     if (!setupRes?.ok()) {

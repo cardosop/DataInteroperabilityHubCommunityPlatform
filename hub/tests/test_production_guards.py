@@ -769,14 +769,18 @@ class TestAdminUrlGate:
                 "Admin URL must be registered in development"
             )
 
-    def test_admin_present_in_staging(self):
+    def test_admin_absent_in_staging(self):
+        """Track A PR 1: staging is publicly reachable, so admin must
+        disappear there too. Access via `kubectl port-forward` if needed.
+        """
         from django.test import override_settings
         with override_settings(ENVIRONMENT='staging'):
             from hub.urls import _build_urlpatterns
             patterns = _build_urlpatterns()
             hits = self._admin_patterns(patterns)
-            assert len(hits) == 1, (
-                "Admin URL must be registered in staging"
+            assert len(hits) == 0, (
+                "Admin URL must NOT be registered in staging "
+                "(same treatment as production)"
             )
 
     def test_admin_present_in_test(self):
@@ -1002,14 +1006,19 @@ class TestApiDocsUrlGate:
                 f"Expected {self._API_DOCS_ROUTES}, got {routes}"
             )
 
-    def test_api_docs_present_in_staging(self):
+    def test_api_docs_absent_in_staging(self):
+        """Track A PR 1: Swagger/ReDoc/OpenAPI-scoped endpoints aid
+        reconnaissance on any public host. Staging is publicly reachable,
+        so gate them out the same way as production.
+        """
         from django.test import override_settings
         with override_settings(ENVIRONMENT='staging'):
             from hub.urls import _build_urlpatterns
             patterns = _build_urlpatterns()
             hits = self._api_docs_patterns(patterns)
-            assert len(hits) == 3, (
-                "api-docs endpoints must be registered in staging"
+            assert len(hits) == 0, (
+                "api-docs endpoints must NOT be registered in staging "
+                "(same treatment as production)"
             )
 
     def test_api_v1_openapi_not_affected(self):

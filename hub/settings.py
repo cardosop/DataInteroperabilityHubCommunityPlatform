@@ -2105,6 +2105,14 @@ if ENVIRONMENT == "production" and not ENFORCE_JWT_SCOPES:
 # Phase 200: MVP deployment — omit non-MVP /api/v1 routes, OpenAPI paths, and gate via middleware.
 MVP_MODE = env.bool("MVP_MODE", default=False)
 
+# Shared secret for the four /api/v1/test/ensure-e2e-* endpoints. Required
+# in staging/test/production (enforced by hub.E002 system check on
+# `manage.py check --deploy`). The @require_e2e_token decorator compares
+# this via hmac.compare_digest; empty/unset secret returns 404
+# unconditionally. Injected from AWS Secrets Manager via ExternalSecrets
+# (see docs/e2e-setup.md).
+E2E_TEST_SECRET = env.str("E2E_TEST_SECRET", default="")
+
 # Workflow Business Rules Validation Feature Flags (Task 5.1.1)
 # Global enable/disable for business rules validation in workflows
 ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION = env.bool(

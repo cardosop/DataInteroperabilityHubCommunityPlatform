@@ -138,10 +138,156 @@ class MvpGatedPrefixCompletenessTest(TestCase):
             "social/",
             "scheduled-ingestions/",
             "scheduled-exports/",
+            # Added by Track A PR 1 — close backend drift: these were mounted in
+            # hub/apps/api/urls.py but absent from MVP_GATED_RELATIVE_PREFIXES.
+            "search/",
+            "developer/",
         }
         actual = set(MVP_GATED_RELATIVE_PREFIXES)
         missing = expected - actual
         self.assertFalse(
             missing,
             f"Expected gated prefixes missing from MVP_GATED_RELATIVE_PREFIXES: {missing}",
+        )
+
+
+# Track A PR 4: explicit MVP-core allowlist. Every prefix mounted in
+# hub/apps/api/urls.py must be classified as either MVP-core (this set) or
+# non-MVP (MVP_GATED_RELATIVE_PREFIXES). Adding a new mount without
+# classifying it fails the drift test below — preventing the same kind of
+# "mounted but ungated" bug Track A PR 1 fixed for /search and /developer.
+MVP_CORE_PREFIXES = frozenset(
+    {
+        "auth/",
+        "tenants/",
+        "users/",
+        "audit/",
+        "files/",
+        "datasets/",
+        "jobs/",
+        "contracts/",
+        "security/",
+        "assets/",
+        "dq/",
+        "compliance/",
+        "semantic/",
+        "marketplace/",
+        "webhooks/",
+        "events/",
+        "notifications/",
+        "governance/",
+        "billing/",
+        "platform/",
+        "versioning/",
+        "workflows/",
+        # E2E test endpoints — gated by @require_e2e_token (PR 1) and the
+        # hub.E002 deploy check, NOT by MVP_MODE. They are MVP-safe to mount
+        # because the token gate makes them inaccessible without provisioning.
+        "test/",
+    }
+)
+
+
+class EveryMountedPrefixIsClassifiedTest(TestCase):
+    """Drift safety: enumerate every mounted /api/v1/* prefix and assert
+    each is classified as MVP-core or MVP-gated. No third state."""
+
+    def _enumerate_api_v1_prefixes(self) -> set[str]:
+        """Return every leaf prefix mounted under /api/v1/.
+
+        Walks one level of include() composition so that
+        `path("", include("hub.apps.social.urls"))` (where the social app
+        registers its own "social/" prefix) shows up as "social/" — not "".
+
+        Raw `re_path` catch-all entries (``api_not_found``) and pure
+        non-prefix mounts (e.g. ``openapi.json``) are excluded — they are
+        not first-class API surfaces and not subject to MVP gating.
+        """
+        from django.urls import get_resolver
+
+        prefixes: set[str] = set()
+        resolver = get_resolver()
+        api_v1_resolver = None
+        for entry in resolver.url_patterns:
+            pattern_str = str(getattr(entry, "pattern", ""))
+            if pattern_str == "api/v1/":
+                api_v1_resolver = entry
+                break
+        if api_v1_resolver is None:
+            self.fail("/api/v1/ include not found in URL conf")
+
+        for entry in api_v1_resolver.url_patterns:
+            pattern_str = str(getattr(entry, "pattern", ""))
+
+            # Skip raw re_path catch-alls.
+            if pattern_str.startswith("^") or pattern_str.startswith("(?"):
+                continue
+
+            # Skip non-prefix endpoints (no trailing slash + has dot →
+            # likely a file like openapi.json / openapi.yaml).
+            if "." in pattern_str and not pattern_str.endswith("/"):
+                continue
+
+            # Empty prefix include() — walk one level deeper to find what
+            # the inner urlconf actually mounts (e.g. "social/").
+            if pattern_str == "":
+                inner = getattr(entry, "url_patterns", None)
+                if inner is None:
+                    continue
+                for sub in inner:
+                    sub_pattern = str(getattr(sub, "pattern", ""))
+                    if sub_pattern and not sub_pattern.startswith("^"):
+                        # Take only the first segment up to and including '/'
+                        head = sub_pattern.split("/", 1)[0] + "/"
+                        if head and head != "/":
+                            prefixes.add(head)
+                continue
+
+            # Normal prefix mount — keep only the first path segment.
+            head = pattern_str.split("/", 1)[0] + "/"
+            if head and head != "/":
+                prefixes.add(head)
+
+        return prefixes
+
+    def test_every_mounted_prefix_is_classified(self):
+        gated = set(MVP_GATED_RELATIVE_PREFIXES)
+        core = set(MVP_CORE_PREFIXES)
+
+        # Both sets must be disjoint — a prefix can't be both gated and
+        # core, that would be ambiguous.
+        overlap = gated & core
+        self.assertFalse(
+            overlap,
+            f"Prefix appears in BOTH MVP_CORE_PREFIXES and "
+            f"MVP_GATED_RELATIVE_PREFIXES: {overlap}. Pick one.",
+        )
+
+        mounted = self._enumerate_api_v1_prefixes()
+        unclassified = mounted - gated - core
+        self.assertFalse(
+            unclassified,
+            f"Mounted /api/v1/ prefixes not classified as either core or "
+            f"gated: {sorted(unclassified)}. Either add them to "
+            f"MVP_CORE_PREFIXES (frontend-visible / MVP-safe) or to "
+            f"MVP_GATED_RELATIVE_PREFIXES in hub/apps/api/mvp_mode.py.",
+        )
+
+        # Inverse: a classification entry that doesn't match a real mount
+        # is harmless but stale — flag it so the lists stay tidy.
+        stale_gated = gated - mounted
+        stale_core = core - mounted
+        self.assertFalse(
+            stale_gated,
+            f"MVP_GATED_RELATIVE_PREFIXES has entries with no matching "
+            f"URL mount (typo or stale): {sorted(stale_gated)}",
+        )
+        # `test/` is the parent of four ensure_e2e_* paths; the enumeration
+        # only sees the first segment, so allow it to be in core even when
+        # the four sub-paths are what's mounted.
+        unexpected_stale_core = stale_core - {"test/"}
+        self.assertFalse(
+            unexpected_stale_core,
+            f"MVP_CORE_PREFIXES has entries with no matching URL mount: "
+            f"{sorted(unexpected_stale_core)}",
         )

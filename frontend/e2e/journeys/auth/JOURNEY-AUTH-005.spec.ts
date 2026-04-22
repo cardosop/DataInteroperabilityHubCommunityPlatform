@@ -15,6 +15,7 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
+import { e2eTestHeaders } from '../../fixtures/e2e-token';
 
 const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
 const API_BASE =
@@ -109,7 +110,7 @@ test.describe('JOURNEY-AUTH-005: User Switches Active Tenant', () => {
       // Ensure a secondary tenant exists via test helper (requires ENVIRONMENT=test)
       const setupRes = await page.request.post(
         `${API_BASE}/test/ensure-e2e-tenant-switch-setup/`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
+        { headers: { Authorization: `Bearer ${accessToken}`, ...e2eTestHeaders() } }
       );
       if (!setupRes.ok()) {
         test.skip(

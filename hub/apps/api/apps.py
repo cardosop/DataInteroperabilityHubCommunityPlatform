@@ -22,7 +22,13 @@ class ApiConfig(AppConfig):
 
         This method is called when Django starts up and is used to:
         - Validate URL patterns against naming standards
+        - Register Django system checks (deploy-only) for MVP_MODE and E2E_TEST_SECRET
         """
+        # Register deploy-only system checks. Importing the module triggers
+        # @register() side-effects. Checks are gated with deploy=True so they
+        # only fire on `manage.py check --deploy`, not during migrate/collectstatic.
+        from hub.apps.api import checks  # noqa: F401
+
         # Only validate in non-migration contexts
         if self._should_validate():
             try:

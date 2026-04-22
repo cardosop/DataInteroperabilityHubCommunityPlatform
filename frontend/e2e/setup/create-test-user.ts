@@ -6,6 +6,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { e2eTestHeaders } from '../fixtures/e2e-token';
+
 /** Compare API base URLs ignoring trailing slashes. */
 function normalizeApiBaseUrl(u: string): string {
   return u.replace(/\/+$/, '');
@@ -457,6 +459,7 @@ async function ensureE2ESubscriptionForUser(user: TestUser, baseUrl: string = AP
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
+            ...e2eTestHeaders(),
           },
         });
         if (ensureRes.ok) {

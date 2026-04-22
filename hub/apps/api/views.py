@@ -4,6 +4,11 @@ API Views
 Views for API documentation and OpenAPI schema generation.
 """
 
+import functools
+import hmac
+import logging
+from typing import Any, Callable
+
 import drf_spectacular.renderers
 import yaml
 from drf_spectacular.types import OpenApiTypes
@@ -20,6 +25,49 @@ from django.conf import settings
 from hub.apps.users.management.commands.ensure_e2e_user_roles import (
     PROFILE_ISOLATION_WORKER_COUNT,
 )
+
+_e2e_logger = logging.getLogger(__name__)
+
+
+def require_e2e_token(view_func: Callable[..., Any]) -> Callable[..., Any]:
+    """
+    Shared-secret gate for the four ``/api/v1/test/ensure-e2e-*`` endpoints.
+
+    Returns 404 unconditionally when:
+      - ``settings.E2E_TEST_SECRET`` is unset / empty, OR
+      - request header ``X-E2E-Token`` is missing, OR
+      - ``X-E2E-Token`` does not match the configured secret.
+
+    Uses ``hmac.compare_digest`` so byte-by-byte timing leaks don't reveal
+    the secret under probe traffic. Token mismatches are logged at WARNING
+    (without the provided or expected values) so staging probes are
+    visible via structured logs.
+
+    Wraps the inner function and marks it with ``_require_e2e_token = True``
+    so the post-condition test in ``test_require_e2e_token.py`` can
+    verify the decorator stays applied on all four E2E views.
+    """
+
+    @functools.wraps(view_func)
+    def wrapper(request: Any, *args: Any, **kwargs: Any) -> Any:
+        secret = getattr(settings, "E2E_TEST_SECRET", "")
+        provided = request.headers.get("X-E2E-Token", "") or ""
+        if not secret:
+            raise NotFound("Resource not found")
+        if not hmac.compare_digest(provided.encode("utf-8"), secret.encode("utf-8")):
+            _e2e_logger.warning(
+                "e2e_token_mismatch",
+                extra={
+                    "path": request.path,
+                    "remote_addr": request.META.get("REMOTE_ADDR"),
+                    "has_header": bool(provided),
+                },
+            )
+            raise NotFound("Resource not found")
+        return view_func(request, *args, **kwargs)
+
+    wrapper._require_e2e_token = True  # type: ignore[attr-defined]
+    return wrapper
 
 
 class OpenAPISchemaView(SpectacularAPIView):
@@ -326,6 +374,7 @@ E2E_EMAILS = (
 @extend_schema(exclude=True, tags=["API"])
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@require_e2e_token
 def ensure_e2e_invitation_token(request):
     """
     E2E-only: Create an invited user and return invitation token for accept-invitation E2E.
@@ -375,6 +424,7 @@ def ensure_e2e_invitation_token(request):
 @extend_schema(exclude=True, tags=["API"])
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@require_e2e_token
 def ensure_e2e_subscription(request):
     """
     Ensure E2E test user's tenant has active subscription and VERIFIED KYC.
@@ -406,6 +456,7 @@ def ensure_e2e_subscription(request):
 @extend_schema(exclude=True, tags=["API"])
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@require_e2e_token
 def ensure_e2e_tenant_switch_setup(request):
     """
     E2E-only: Add current user to a second tenant for tenant-switch E2E.
@@ -477,6 +528,7 @@ def ensure_e2e_tenant_switch_setup(request):
 @extend_schema(exclude=True, tags=["API"])
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@require_e2e_token
 def ensure_e2e_users(request):
     """
     E2E-only: Ensure E2E test users exist with correct passwords and roles.

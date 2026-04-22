@@ -18,6 +18,7 @@
 // is torn down on pass OR fail; otherwise repeated runs accumulate orphans.
 import { expect, test } from '../../fixtures/test-data-cleanup';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
+import { e2eTestHeaders } from '../../fixtures/e2e-token';
 import { loginAndNavigateToRoute, switchTenantViaUI } from '../../fixtures/helpers';
 
 const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
@@ -57,7 +58,7 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
       // Ensure the user has a secondary tenant
       const setupRes = await page.request.post(
         `${API_BASE}/test/ensure-e2e-tenant-switch-setup/`,
-        { headers }
+        { headers: { ...headers, ...e2eTestHeaders() } }
       );
       if (!setupRes.ok()) {
         test.skip(true, 'ensure-e2e-tenant-switch-setup not available (ENVIRONMENT=test required)');

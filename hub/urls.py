@@ -44,11 +44,12 @@ def _build_urlpatterns() -> list:
         path("graphql/", include("hub.apps.graphql.urls")),
     ]
 
-    # Phase 221.2.1 — Django admin is only available outside production.
-    # In production there is no legitimate need for the admin UI; disabling
-    # it removes the entire attack surface (brute-force login, CSRF on admin
-    # forms, information disclosure via admin model views).
-    if settings.ENVIRONMENT != "production":
+    # Phase 221.2.1 + Track A PR 1 — Django admin is only available outside
+    # production AND staging. Staging is publicly reachable, so exposing
+    # /admin/ there is the same attack surface as prod. Dev / test keep it
+    # for local debugging; access staging admin via `kubectl port-forward`
+    # if needed.
+    if settings.ENVIRONMENT not in ("production", "staging"):
         patterns.insert(0, path("admin/", admin.site.urls))
 
     # Conditionally include graphql_graphene URLs if available
@@ -73,15 +74,15 @@ def _build_urlpatterns() -> list:
         path("api/csp-report/", csp_report_view, name="csp-report"),
     ])
 
-    # Phase 221.4.1 — API documentation endpoints are only available
-    # outside production.  Swagger UI, ReDoc, and the /api-docs/-scoped
-    # OpenAPI schema expose the full API surface interactively, which aids
-    # reconnaissance in production.
+    # Phase 221.4.1 + Track A PR 1 — API documentation endpoints are only
+    # available outside production AND staging. Swagger UI, ReDoc, and the
+    # /api-docs/-scoped OpenAPI schema expose the full API surface
+    # interactively, which aids reconnaissance on any public host.
     #
     # NOTE: /api/v1/openapi.json is NOT gated — it lives in the API app's
     # URL conf and is required pre-auth by the frontend's capability
     # discovery service (capabilitiesService.ts).
-    if settings.ENVIRONMENT != "production":
+    if settings.ENVIRONMENT not in ("production", "staging"):
         patterns.extend([
             path(
                 "api-docs/openapi.json",
